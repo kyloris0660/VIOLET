@@ -311,6 +311,12 @@ class AdminPanel {
         if (syncSharedTagsBtn) {
             syncSharedTagsBtn.addEventListener('click', () => this.syncSharedTags());
         }
+
+        // Local library scan button
+        const localScanBtn = document.getElementById('local-scan-btn');
+        if (localScanBtn) {
+            localScanBtn.addEventListener('click', () => this.scanLocalLibrary());
+        }
     }
 
     setupTabs() {
@@ -1069,6 +1075,89 @@ class AdminPanel {
         } finally {
             scanBtn.disabled = false;
             scanBtn.textContent = originalText;
+        }
+    }
+
+    async scanLocalLibrary() {
+        const btn = document.getElementById('local-scan-btn');
+        const statusDiv = document.getElementById('local-scan-status');
+        const loadingDiv = document.getElementById('local-scan-loading');
+        const resultDiv = document.getElementById('local-scan-result');
+        const originalText = btn.textContent;
+
+        btn.disabled = true;
+        btn.textContent = 'Scanning...';
+        statusDiv.style.display = 'block';
+        loadingDiv.style.display = 'block';
+        resultDiv.style.display = 'none';
+
+        const pathInput = document.getElementById('local-scan-path').value.trim();
+        const maxFilesInput = document.getElementById('local-scan-max-files').value;
+        const dryRun = document.getElementById('local-scan-dry-run').checked;
+
+        const body = {};
+        if (pathInput) {
+            body.paths = [pathInput];
+        }
+        if (dryRun) {
+            body.dry_run = true;
+        }
+        if (maxFilesInput && parseInt(maxFilesInput) > 0) {
+            body.max_files = parseInt(maxFilesInput);
+        }
+
+        try {
+            const result = await app.apiCall('/api/admin/scan-local-library', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            loadingDiv.style.display = 'none';
+            resultDiv.style.display = 'block';
+
+            const dryRunBadge = document.getElementById('local-scan-dry-run-badge');
+            dryRunBadge.style.display = result.dry_run ? 'inline-block' : 'none';
+
+            document.getElementById('scan-total-seen').textContent = result.total_seen;
+            document.getElementById('scan-imported').textContent = result.imported;
+            document.getElementById('scan-skipped-dup').textContent = result.skipped_duplicate;
+            document.getElementById('scan-skipped-unsup').textContent = result.skipped_unsupported;
+            document.getElementById('scan-skipped-limit').textContent = result.skipped_limit || 0;
+            document.getElementById('scan-failed').textContent = result.failed;
+
+            const failuresDiv = document.getElementById('local-scan-failures');
+            const failuresTbody = document.getElementById('local-scan-failures-tbody');
+            if (result.failed_files && result.failed_files.length > 0) {
+                failuresDiv.style.display = 'block';
+                failuresTbody.innerHTML = result.failed_files.map(f =>
+                    `<tr class="border-b text-xs">
+                        <td class="py-2 px-3 font-mono break-all">${this.escapeHtml(f.path)}</td>
+                        <td class="py-2 px-3">${this.escapeHtml(f.reason)}</td>
+                    </tr>`
+                ).join('');
+            } else {
+                failuresDiv.style.display = 'none';
+                failuresTbody.innerHTML = '';
+            }
+
+            const label = result.dry_run ? 'would import' : 'imported';
+            app.showNotification(
+                `Scan complete: ${result.imported} ${label}, ${result.skipped_duplicate} duplicates skipped, ${result.failed} failed`,
+                result.failed > 0 ? 'warning' : 'success'
+            );
+
+            if (!result.dry_run && result.imported > 0) {
+                this.loadMediaStats();
+            }
+
+        } catch (error) {
+            loadingDiv.style.display = 'none';
+            console.error('Local library scan error:', error);
+            app.showNotification(error.message || 'Scan failed', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
     }
 

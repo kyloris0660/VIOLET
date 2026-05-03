@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 1 merge (2026-05-03).
+> Last updated after Phase 1.5 merge (2026-05-03).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -9,7 +9,6 @@
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` |
 | **Branch** | `main` |
-| **Latest commit** | `46dca33 feat: add local library scan MVP (#2)` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -34,24 +33,34 @@ New endpoint `POST /api/admin/scan-local-library` that:
 - Isolates per-file errors; returns detailed statistics
 - Configured via `LOCAL_LIBRARY_PATHS` env var (pipe-separated) or JSON body
 
-**Key files added/modified:**
+### Phase 1.5 — Scan Safety & UX
+
+Enhanced `POST /api/admin/scan-local-library` with:
+
+- **dry_run mode**: scan and report without copying files or writing to DB
+- **max_files limit**: cap the number of candidate files processed per scan
+- **Admin UI**: Local Library Scan section in Admin → Content tab with path input, dry-run toggle, max_files limit, scan results summary, and failed files table
+- **Backward compatible**: existing API calls without `dry_run`/`max_files` behave identically to Phase 1
+
+**Key files modified:**
 
 | File | Role |
 |------|------|
-| `backend/app/utils/local_library_scanner.py` | Core scan + import logic |
-| `backend/app/routes/admin/media.py` | `scan-local-library` endpoint |
-| `backend/app/config.py` | `LOCAL_LIBRARY_PATHS` property |
-| `docs/local-library-scan.md` | Feature documentation |
+| `backend/app/utils/local_library_scanner.py` | dry_run + max_files in scan logic |
+| `backend/app/routes/admin/media.py` | API accepts dry_run, max_files params |
+| `frontend/templates/admin.html` | Local Library Scan UI section |
+| `frontend/static/js/admin.js` | scanLocalLibrary() JS handler |
+| `docs/local-library-scan.md` | Updated feature documentation |
 
 ## What Has NOT Been Built
 
-- No dry-run mode or max_files limit
-- No Admin UI for scan (API-only)
 - No AI tagging integration
 - No anime/photo filtering
 - No tag provenance (source, confidence, lock)
 - No filesystem watcher or scheduled scan
 - No HEIC or video import support
+- No scan progress bar / real-time feedback
+- No scan history / audit log
 - No database migrations beyond upstream Blombooru schema
 
 ## Known Technical Debt
@@ -61,22 +70,26 @@ New endpoint `POST /api/admin/scan-local-library` that:
 3. **No progress reporting** — The caller gets no feedback until the scan finishes.
 4. **Copy mode disk cost** — Every imported image is duplicated on disk.
 
-## Recommended Next Phase: 1.5
+## Recommended Next Phase: 2
 
-**Scan Safety & UX** — before pointing at the real iCloud Photos directory:
+**Tag Metadata Foundation** — extend the tag–media relationship to support AI-generated tags with provenance:
 
-1. `dry_run` parameter: scan and report without importing
-2. `max_files` parameter: cap how many files to process
-3. Admin UI button to trigger scan and display results
-4. Show `failed_files` details in the admin panel
+1. Extend `blombooru_media_tags` junction table with `source` (enum: `manual`, `ai_wd`, `booru_import`), `confidence` (float 0–1), `is_locked` (bool)
+2. Database migration function following existing DIY pattern
+3. Priority rule: `is_locked = true` or `source = manual` → AI never overwrites
+4. Low-confidence tags stored as suggestions, not confirmed
+
+**Important:** This is a database migration. Must be planned, reviewed, and tested on a copy of the DB before merging.
+
+After Phase 2, proceed to Phase 2.1 (AI Auto Tagging using existing WDv3/SmilingWolf ONNX tagger).
 
 See `docs/project-roadmap.md` for the full phase plan.
 
 ## Test Directory
 
-A test directory exists at `C:\Users\kyloris\Pictures\AnimeLocalBooruTest` with 17 files (14 valid images + 1 duplicate + 2 unsupported + 1 zero-byte). This was used for Phase 1 verification. The 14 images are already imported into the local database.
+A test directory exists at `C:\Users\kyloris\Pictures\AnimeLocalBooruTest` with 17 files (14 valid images + 1 duplicate + 2 unsupported + 1 zero-byte). The 14 images are already imported into the local database.
 
-The real target directory is `C:\Users\kyloris\Pictures\iCloud Photos` — do **not** scan it without dry-run support.
+The real target directory is `C:\Users\kyloris\Pictures\iCloud Photos` — use dry-run mode before any real import.
 
 ## Key References
 
@@ -85,5 +98,5 @@ The real target directory is `C:\Users\kyloris\Pictures\iCloud Photos` — do **
 | `AGENTS.md` | Cursor agent instructions (architecture, running, auth, DB, code map) |
 | `docs/project-roadmap.md` | Full phase plan and development standards |
 | `docs/local-anime-library-devlog.md` | Detailed per-phase technical log |
-| `docs/local-library-scan.md` | Phase 1 feature documentation and API usage |
+| `docs/local-library-scan.md` | Phase 1 + 1.5 feature documentation and API usage |
 | `example.env` | All available environment variables |

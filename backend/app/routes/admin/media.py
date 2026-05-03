@@ -32,6 +32,8 @@ async def scan_media(
 
 class ScanLocalLibraryRequest(BaseModel):
     paths: Optional[List[str]] = None
+    dry_run: bool = False
+    max_files: Optional[int] = None
 
 
 @router.post("/scan-local-library")
@@ -43,8 +45,11 @@ async def scan_local_library(
     """Scan external local directories and import supported images.
 
     Files are copied into Blombooru storage; originals are never moved or
-    deleted.  Accepts an optional JSON body ``{"paths": [...]}``.  When
-    *paths* is omitted the ``LOCAL_LIBRARY_PATHS`` env-var is used instead.
+    deleted.  Accepts an optional JSON body with:
+
+    - ``paths``: list of directory paths (falls back to ``LOCAL_LIBRARY_PATHS``)
+    - ``dry_run``: when true, only scan and report — no files copied, no DB writes
+    - ``max_files``: cap the number of candidate files to process
     """
     if body and body.paths:
         scan_paths = [Path(p) for p in body.paths]
@@ -57,7 +62,15 @@ async def scan_local_library(
             detail="No scan paths configured. Set LOCAL_LIBRARY_PATHS in .env or pass paths in request body.",
         )
 
-    result = await run_in_threadpool(scan_and_import, db, scan_paths)
+    dry_run = body.dry_run if body else False
+    max_files = body.max_files if body else None
+
+    if max_files is not None and max_files < 1:
+        raise HTTPException(status_code=400, detail="max_files must be >= 1")
+
+    result = await run_in_threadpool(
+        scan_and_import, db, scan_paths, dry_run=dry_run, max_files=max_files
+    )
     return result
 
 
