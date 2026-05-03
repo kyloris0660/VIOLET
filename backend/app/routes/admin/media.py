@@ -1,13 +1,16 @@
 from pathlib import Path
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
 from ...auth import get_current_admin_user, require_admin_mode
 from ...config import settings
 from ...database import get_db
 from ...models import Media, User
 from ...utils.file_scanner import find_untracked_media
+from ...utils.local_library_scanner import scan_and_import
 from ...utils.logger import logger
 from ...utils.thumbnail_generator import generate_thumbnail
 from sqlalchemy.orm import Session
@@ -26,6 +29,37 @@ async def scan_media(
         'new_files': result['new_files'],
         'files': [f['path'] for f in result['files']]
     }
+
+class ScanLocalLibraryRequest(BaseModel):
+    paths: Optional[List[str]] = None
+
+
+@router.post("/scan-local-library")
+async def scan_local_library(
+    body: Optional[ScanLocalLibraryRequest] = None,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Scan external local directories and import supported images.
+
+    Files are copied into Blombooru storage; originals are never moved or
+    deleted.  Accepts an optional JSON body ``{"paths": [...]}``.  When
+    *paths* is omitted the ``LOCAL_LIBRARY_PATHS`` env-var is used instead.
+    """
+    if body and body.paths:
+        scan_paths = [Path(p) for p in body.paths]
+    else:
+        scan_paths = settings.LOCAL_LIBRARY_PATHS
+
+    if not scan_paths:
+        raise HTTPException(
+            status_code=400,
+            detail="No scan paths configured. Set LOCAL_LIBRARY_PATHS in .env or pass paths in request body.",
+        )
+
+    result = await run_in_threadpool(scan_and_import, db, scan_paths)
+    return result
+
 
 @router.get("/get-untracked-file")
 async def get_untracked_file(
