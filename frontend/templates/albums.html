@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import rating_filter, sorting_options, page_jump_modal,
+loading_indicator, page_navigation, sidebar_start, sidebar_end %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-4">
+    <div class="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-4 gap-4">
+        <!-- Albums Grid -->
+        <div class="xl:col-span-4 lg:col-span-3">
+            {{ rating_filter('mobile', mode=sidebar_filter_mode, custom_buttons=sidebar_custom_buttons) }}
+            {{ sorting_options(default_sort=default_sort, default_order=default_order, location='mobile') }}
+
+            <div id="albums-grid"
+                class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8 gap-2">
+            </div>
+
+            {{ loading_indicator() }}
+            {{ page_navigation() }}
+        </div>
+
+        <!-- Sidebar -->
+        {{ sidebar_start() }}
+        {{ rating_filter('desktop', mode=sidebar_filter_mode, custom_buttons=sidebar_custom_buttons) }}
+        {{ sorting_options(default_sort=default_sort, default_order=default_order) }}
+
+        <h3 class="text-sm font-bold mb-2 pb-1 border-b">{{ t('gallery.popular_tags') }}</h3>
+        <div id="popular-tags" class="text-xs">
+            <p class="text-secondary">{{ t('albums.view_album_for_tags') }}</p>
+        </div>
+
+        {{ sidebar_end() }}
+    </div>
+</div>
+
+{{ page_jump_modal() }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/tooltip-helper.js?v={{ cache_buster }}"></script>
+<script src="/static/js/custom-select.js?v={{ cache_buster }}"></script>
+<script src="/static/js/base-gallery.js?v={{ cache_buster }}"></script>
+<script src="/static/js/albums.js?v={{ cache_buster }}"></script>
+{% endblock %}

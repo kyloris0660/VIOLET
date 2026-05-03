@@ -1,0 +1,7 @@
+venv
+.env
+__pycache__
+data/
+media/
+tailwind/tailwindcss*
+blombooru-upstream/

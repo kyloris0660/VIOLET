@@ -1,0 +1,242 @@
+{# Rating Filter Component #}
+{% macro rating_filter(location='desktop', mode='rating', custom_buttons=[]) %}
+{% if mode == 'off' %}
+{# Hidden mode - render nothing #}
+{% elif mode == 'custom' and custom_buttons %}
+{# Custom button mode #}
+{% if location == 'mobile' %}
+<div class="surface p-3 mb-4 border block lg:hidden">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {{ _custom_buttons(custom_buttons, 'py-2') }}
+    </div>
+</div>
+{% else %}
+<div class="hidden lg:block mb-4">
+    <h3 class="text-sm font-bold mb-3 pb-1 border-b">{{ t('gallery.quick_filter') }}</h3>
+    <div class="grid grid-cols-1 gap-2 mb-3">
+        {{ _custom_buttons(custom_buttons, 'py-1') }}
+    </div>
+</div>
+{% endif %}
+{% else %}
+{# Default rating mode #}
+{% if location == 'mobile' %}
+<div class="surface p-3 mb-4 border block lg:hidden">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {{ _rating_options('py-2') }}
+    </div>
+</div>
+{% else %}
+<div class="hidden lg:block mb-4">
+    <h3 class="text-sm font-bold mb-3 pb-1 border-b">{{ t('gallery.rating_filter') }}</h3>
+    <div class="grid grid-cols-1 gap-2 mb-3">
+        {{ _rating_options('py-1') }}
+    </div>
+</div>
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+{% macro _rating_options(padding='py-1') %}
+{% for rating in ['safe', 'questionable', 'explicit'] %}
+<label class="flex-1">
+    <input type="radio" name="rating" value="{{ rating }}" class="hidden rating-filter-input">
+    <span
+        class="block text-center px-3 {{ padding }} border-1 cursor-pointer bg hover:border-primary transition-colors rating-filter-label">
+        {{ t('common.' + rating) }}
+    </span>
+</label>
+{% endfor %}
+{% endmacro %}
+
+{% macro _custom_buttons(buttons, padding='py-1') %}
+{% for button in buttons %}
+<label class="flex-1">
+    <input type="radio" name="custom_filter" value="{{ button.tags }}" class="hidden custom-filter-input">
+    <span
+        class="block text-center px-3 {{ padding }} border-1 cursor-pointer bg hover:border-primary transition-colors custom-filter-label">
+        {{ button.title }}
+    </span>
+</label>
+{% endfor %}
+{% endmacro %}
+
+
+{# Sorting Options Component #}
+{% macro sorting_options(sort_options=none, default_sort='uploaded_at', default_order='desc', show_wrapper=true,
+location='desktop') %}
+{% set standard_sort_options = {
+'uploaded_at': t('admin.settings.upload_date'),
+'filename': t('admin.settings.file_name'),
+'file_size': t('admin.settings.file_size'),
+'file_type': t('admin.settings.file_type')
+} %}
+{% set options = sort_options if sort_options else standard_sort_options %}
+{% set suffix = '-mobile' if location == 'mobile' else '' %}
+
+{% if location == 'mobile' %}
+<div class="surface p-3 mb-4 border block lg:hidden">
+    <div class="grid grid-cols-2 gap-2">
+        {% elif show_wrapper %}
+        <div class="hidden lg:block mb-4">
+            <h3 class="text-sm font-bold mb-3 pb-1 border-b">{{ t('gallery.sort_by') }}</h3>
+            {% endif %}
+
+            {% if location != 'mobile' %}<div class="mb-3 flex flex-wrap gap-2">{% endif %}
+
+                <div id="sort-by-select{{ suffix }}" class="custom-select js-sort-by-select w-full"
+                    data-value="{{ default_sort }}">
+                    <button
+                        class="custom-select-trigger w-full flex items-center justify-between gap-3 px-2 py-1 bg border text-xs cursor-pointer hover:border-primary focus:outline-none focus:border-primary transition-colors"
+                        type="button">
+                        <span class="custom-select-value text">
+                            {{ options[default_sort] if default_sort in options else options.values()|first }}
+                        </span>
+                        {{ _select_arrow() }}
+                    </button>
+                    <div class="custom-select-dropdown bg border border-primary max-h-60 overflow-y-auto shadow-lg"
+                        style="z-index: 50;">
+                        {% for value, label in options.items() %}
+                        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs transition-colors"
+                            data-value="{{ value }}">{{ label }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div id="sort-order-select{{ suffix }}" class="custom-select js-sort-order-select w-full"
+                    data-value="{{ default_order }}">
+                    <button
+                        class="custom-select-trigger w-full flex items-center justify-between gap-3 px-2 py-1 bg border text-xs cursor-pointer hover:border-primary focus:outline-none focus:border-primary transition-colors"
+                        type="button">
+                        <span class="custom-select-value text">
+                            {{ t('admin.settings.descending') if default_order == 'desc' else
+                            t('admin.settings.ascending') }}
+                        </span>
+                        {{ _select_arrow() }}
+                    </button>
+                    <div class="custom-select-dropdown bg border border-primary max-h-60 overflow-y-auto shadow-lg"
+                        style="z-index: 50;">
+                        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs transition-colors"
+                            data-value="desc">
+                            {{ t('admin.settings.descending') }}
+                        </div>
+                        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs transition-colors"
+                            data-value="asc">
+                            {{ t('admin.settings.ascending') }}
+                        </div>
+                    </div>
+                </div>
+
+                {% if location != 'mobile' %}
+            </div>
+            {% endif %}
+            {% if location == 'mobile' %}
+        </div>
+    </div>
+    {% elif show_wrapper %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro _select_arrow() %}
+<svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary" width="12" height="12"
+    viewBox="0 0 12 12">
+    <path fill="currentColor" d="M6 9L1 4h10z" />
+</svg>
+{% endmacro %}
+
+{# Bulk Actions Component #}
+{% macro bulk_actions(buttons=['select_all', 'deselect_all', 'delete']) %}
+<div id="bulk-actions" style="display: none;" class="surface p-3 mb-4 border">
+    <p class="mb-2">{{ t('common.items_selected', count='<span id="selected-count">0</span>') | safe }}</p>
+    <div class="flex gap-2 flex-wrap">
+        {% if 'select_all' in buttons %}
+        <button id="select-all-btn" class="btn-primary px-3 py-1">
+            {{ t('gallery.select_all') }}
+        </button>
+        {% endif %}
+        {% if 'deselect_all' in buttons %}
+        <button id="deselect-all-btn"
+            class="btn px-3 py-1">
+            {{ t('gallery.deselect_all') }}
+        </button>
+        {% endif %}
+        {% if 'album' in buttons %}
+        <button id="bulk-album-btn" class="btn px-3 py-1">
+            {{ t('common.add_to_albums') }}
+        </button>
+        {% endif %}
+        {% if 'manage_tags' in buttons %}
+        <button id="bulk-manage-tags-btn"
+            class="btn px-3 py-1 flex items-center gap-1.5">
+            {{ t('common.manage_tags') }}
+        </button>
+        {% endif %}
+        {% if 'remove' in buttons %}
+        <button id="bulk-remove-btn" class="btn-danger px-3 py-1">
+            {{ t('gallery.remove_from_album') }}
+        </button>
+        {% endif %}
+        {% if 'delete' in buttons %}
+        <button id="bulk-delete-btn" class="btn-danger px-3 py-1">
+            {{ t('gallery.delete_selected') }}
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{# Page Jump Modal #}
+{% macro page_jump_modal() %}
+<div id="page-jump-modal" class="modal" style="display: none;">
+    <div class="modal-content surface border p-4" style="max-width: 300px;">
+        <h3 class="text-sm font-bold mb-3">{{ t('gallery.jump_to_page') }}</h3>
+        <input type="number" id="page-jump-input" min="1"
+            class="w-full bg px-3 py-2 border text-xs mb-3 focus:outline-none focus:border-primary hover:border-primary transition-colors">
+        <div class="flex gap-2">
+            <button id="page-jump-go"
+                class="btn-primary flex-1 px-3 py-2">
+                {{ t('common.go') }}
+            </button>
+            <button id="page-jump-cancel"
+                class="btn flex-1 px-3 py-2">
+                {{ t('common.cancel') }}
+            </button>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{# Loading Indicator #}
+{% macro loading_indicator() %}
+<div id="loading-indicator" class="text-center py-8">
+    <div class="spinner"></div>
+    <p class="text-secondary mt-2">{{ t('common.loading') }}</p>
+</div>
+{% endmacro %}
+
+{# Page Navigation #}
+{% macro page_navigation(id='page-nav') %}
+<div id="{{ id }}" class="surface p-3 mt-4 border" style="display: none;">
+    <div class="flex items-center justify-center gap-2 text-xs flex-wrap"></div>
+</div>
+{% endmacro %}
+
+{# Popular Tags Sidebar Section #}
+{% macro popular_tags_section() %}
+<h3 class="text-sm font-bold mb-2 pb-1 border-b">{{ t('gallery.popular_tags') }}</h3>
+<div id="popular-tags" class="text-xs">
+    <p class="text-secondary">{{ t('common.loading') }}</p>
+</div>
+{% endmacro %}
+
+{# Sidebar Container #}
+{% macro sidebar_start() %}
+<div class="xl:col-span-1 lg:col-span-1">
+    <div class="surface p-3 border top-4">
+        {% endmacro %}
+
+        {% macro sidebar_end() %}
+    </div>
+</div>
+{% endmacro %}

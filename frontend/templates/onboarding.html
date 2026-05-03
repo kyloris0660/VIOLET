@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% set show_header = false %}
+{% set show_footer = false %}
+
+{% block pwa %}{% endblock %}
+
+{% block title %}Setup - Blombooru{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 my-4 max-w-2xl">
+    <div class="surface p-8 border">
+        <h1 class="text-xl font-bold mb-4">{{ t('onboarding.welcome', app_name=app_name) }}</h1>
+        <p class="text-xs text-secondary mb-6">{{ t('onboarding.setup_intro') }}</p>
+
+        <div id="error-message" style="display: none;" class="bg-danger tag-text p-3 mb-4 text-xs"></div>
+        <div id="success-message" style="display: none;" class="bg-success tag-text p-3 mb-4 text-xs"></div>
+
+        <form id="onboarding-form">
+            <div class="mb-6">
+                <label class="block text-xs font-bold mb-2">{{ t('onboarding.app_name') }}</label>
+                <input type="text" id="app-name" name="app_name" value="{{ settings.APP_NAME }}" required
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+            </div>
+
+            <h3 class="text-sm font-bold mb-3 pb-2 border-b">{{ t('onboarding.database_config') }}</h3>
+
+            <div class="mb-4">
+                <label class="block text-xs font-bold mb-2">{{ t('common.host') }}</label>
+                <input type="text" id="db-host" name="db_host" value="{{ settings.DB_HOST }}" required
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                <span class="text-xs text-secondary">{{ t('onboarding.db_host_hint') }}</span>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-xs font-bold mb-2">{{ t('common.port') }}</label>
+                <input type="number" id="db-port" name="db_port" value="5432" required
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                <span class="text-xs text-secondary">{{ t('onboarding.db_port_hint') }}</span>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-xs font-bold mb-2">{{ t('onboarding.database_name') }}</label>
+                <input type="text" id="db-name" name="db_name" value="{{ settings.DB_NAME }}" required
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-xs font-bold mb-2">{{ t('common.username') }}</label>
+                <input type="text" id="db-user" name="db_user" value="{{ settings.DB_USER }}" required
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-xs font-bold mb-2">{{ t('common.password') }}</label>
+                <input type="password" id="db-password" name="db_password" value="{{ settings.DB_PASSWORD }}"
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+            </div>
+
+            <h3 class="text-sm font-bold mb-3 pb-2 border-b">{{ t('onboarding.redis_config') }}</h3>
+
+            <div class="mb-4">
+                <label class="flex items-center gap-2 cursor-pointer mb-4">
+                    <input type="checkbox" id="redis-enabled" name="redis_enabled" class="w-4 h-4 accent-primary" {% if
+                        settings.REDIS_ENABLED %}checked{% endif %}>
+                    <span class="text-xs font-bold">{{ t('onboarding.enable_redis') }}</span>
+                </label>
+            </div>
+
+            <div id="redis-settings" {% if not settings.REDIS_ENABLED %}style="display: none;" {% endif %}>
+                <div class="mb-4">
+                    <label class="block text-xs font-bold mb-2">{{ t('common.host') }}</label>
+                    <input type="text" id="redis-host" name="redis_host" value="{{ settings.REDIS_HOST }}"
+                        class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                    <span class="text-xs text-secondary">{{ t('onboarding.redis_host_hint') }}</span>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-bold mb-2">{{ t('common.port') }}</label>
+                    <input type="number" id="redis-port" name="redis_port" value="6379"
+                        class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                    <span class="text-xs text-secondary">{{ t('onboarding.redis_port_hint') }}</span>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-bold mb-2">{{ t('onboarding.db_index') }}</label>
+                    <input type="number" id="redis-db" name="redis_db" value="{{ settings.REDIS_DB }}"
+                        class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-xs font-bold mb-2">{{ t('common.password') }}</label>
+                    <input type="password" id="redis-password" name="redis_password"
+                        value="{{ settings.REDIS_PASSWORD or '' }}"
+                        class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                </div>
+            </div>
+
+            <h3 class="text-sm font-bold mb-3 pb-2 border-b">{{ t('common.create_admin_account') }}</h3>
+
+            <div class="mb-4">
+                <label class="block text-xs font-bold mb-2">{{ t('common.username') }}</label>
+                <input type="text" id="admin-username" name="admin_username" required
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-xs font-bold mb-2">{{ t('common.password') }}</label>
+                <input type="password" id="admin-password" name="admin_password" required minlength="6" maxlength="50"
+                    class="w-full bg px-3 py-2 border text-xs focus:outline-none focus:border-primary">
+                <small class="text-secondary text-xs">{{ t('onboarding.password_hint') }}</small>
+            </div>
+
+            <button type="submit" class="btn-primary w-full px-4 py-3 font-bold">
+                {{ t('onboarding.complete_setup') }}
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showError(message) {
+        const errorDiv = document.getElementById('error-message');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 10000);
+    }
+
+    function showSuccess(message) {
+        const successDiv = document.getElementById('success-message');
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+    }
+
+    document.getElementById('redis-enabled').addEventListener('change', (e) => {
+        document.getElementById('redis-settings').style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    document.getElementById('onboarding-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Setting up...';
+
+        const formData = {
+            app_name: document.getElementById('app-name').value,
+            database: {
+                host: document.getElementById('db-host').value,
+                port: parseInt(document.getElementById('db-port').value),
+                name: document.getElementById('db-name').value,
+                user: document.getElementById('db-user').value,
+                password: document.getElementById('db-password').value
+            },
+            redis: {
+                host: document.getElementById('redis-host').value,
+                port: parseInt(document.getElementById('redis-port').value),
+                db: parseInt(document.getElementById('redis-db').value),
+                password: document.getElementById('redis-password').value,
+                enabled: document.getElementById('redis-enabled').checked
+            },
+            admin_username: document.getElementById('admin-username').value,
+            admin_password: document.getElementById('admin-password').value
+        };
+
+        console.log('Sending onboarding data...');
+
+        try {
+            const response = await fetch('/api/admin/onboarding', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showSuccess('Setup complete! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                console.error('Error response:', data);
+                showError('Error: ' + (data.detail || JSON.stringify(data)));
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Complete Setup';
+            }
+        } catch (error) {
+            console.error('Request error:', error);
+            showError('Network error: ' + error.message);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Complete Setup';
+        }
+    });
+</script>
+{% endblock %}

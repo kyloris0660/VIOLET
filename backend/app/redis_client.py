@@ -1,0 +1,107 @@
+import json
+from typing import Any, Optional
+
+import redis
+
+from .config import settings
+from .utils.logger import logger
+
+class RedisClient:
+    def __init__(self):
+        self._client: Optional[redis.Redis] = None
+        self._enabled = settings.REDIS_ENABLED
+
+    @property
+    def client(self) -> Optional[redis.Redis]:
+        if not self._enabled:
+            return None
+        
+        if self._client is None:
+            self.connect()
+            
+        return self._client
+
+    def connect(self):
+        """Initialize Redis connection"""
+        if not self._enabled:
+            return
+
+        try:
+            self._client = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD,
+                decode_responses=True,
+                socket_connect_timeout=2
+            )
+            # Test connection
+            self._client.ping()
+            logger.info(f"Connected to Redis at {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis: {e}")
+            self._client = None
+            # Don't disable globally, might be a temporary connection issue
+
+    def get(self, key: str) -> Optional[Any]:
+        """Get value from cache"""
+        c = self.client
+        if not c:
+            return None
+        
+        try:
+            data = c.get(key)
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            logger.error(f"Redis get error: {e}")
+        return None
+
+    def set(self, key: str, value: Any, expire: int = 3600):
+        """Set value in cache"""
+        c = self.client
+        if not c:
+            return
+        
+        try:
+            c.set(key, json.dumps(value), ex=expire)
+        except Exception as e:
+            logger.error(f"Redis set error: {e}")
+
+    def delete(self, key: str):
+        """Delete key from cache"""
+        c = self.client
+        if not c:
+            return
+        
+        try:
+            c.delete(key)
+        except Exception as e:
+            logger.error(f"Redis delete error: {e}")
+
+    def flush_all(self):
+        """Clear all cache"""
+        c = self.client
+        if not c:
+            return
+        
+        try:
+            c.flushdb()
+            logger.info("Redis cache flushed")
+        except Exception as e:
+            logger.error(f"Redis flush error: {e}")
+
+    def is_available(self) -> bool:
+        """Check if Redis is enabled and reachable"""
+        if not self._enabled:
+            return False
+            
+        try:
+            if self._client is None:
+                self.connect()
+            return self._client.ping() if self._client else False
+        except Exception:
+            return False
+
+# Global instance
+redis_cache = RedisClient()

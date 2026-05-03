@@ -1,0 +1,340 @@
+@import "tailwindcss" source("../frontend/");
+@import "tailwindcss/preflight.css" layer(base);
+@tailwind base;
+@tailwind utilities;
+
+@layer base {
+
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+    * {
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: Ubuntu, Verdana, Arial, Helvetica, sans-serif;
+        font-size: 12px;
+        background-color: var(--background);
+        color: var(--text);
+        line-height: 1.4;
+    }
+
+    code {
+        font-family: 'JetBrains Mono', monospace;
+        background-color: var(--background);
+        color: var(--success);
+        padding: 0 0.2em;
+    }
+}
+
+@layer components {
+
+    .btn,
+    .btn-dark,
+    .btn-primary,
+    .btn-danger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.75rem;
+        line-height: 1;
+        cursor: pointer;
+        transition-property: color, background-color, border-color;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 150ms;
+        border: 1px solid var(--border);
+    }
+
+    .btn,
+    .btn-dark,
+    .btn-primary,
+    .btn-danger {
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    }
+
+    /* Base button: surface-light variant */
+    .btn {
+        background-color: var(--surface-light);
+        color: var(--text);
+    }
+
+    .btn:hover:not(:disabled) {
+        background-color: var(--surface-light-hover);
+    }
+
+    /* Dark button: background variant */
+    .btn-dark {
+        background-color: var(--background);
+        color: var(--text);
+    }
+
+    .btn-dark:hover:not(:disabled) {
+        border-color: var(--primary-color);
+    }
+
+    /* Primary button */
+    .btn-primary {
+        background-color: var(--primary-color);
+        color: var(--primary-text);
+        border-color: var(--primary-color);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background-color: var(--primary-hover);
+        border-color: var(--primary-hover);
+    }
+
+    /* Danger button */
+    .btn-danger {
+        background-color: var(--danger);
+        color: var(--tag-text);
+        border-color: var(--danger);
+    }
+
+    .btn-danger:hover:not(:disabled) {
+        background-color: var(--danger-hover);
+        border-color: var(--danger-hover);
+    }
+}
+
+@layer utilities {
+    .surface {
+        background-color: var(--surface);
+    }
+
+    .hover\:surface:hover {
+        background-color: var(--surface-hover);
+    }
+
+    .surface-light {
+        background-color: var(--surface-light);
+    }
+
+    .hover\:surface-light:hover {
+        background-color: var(--surface-light-hover);
+    }
+
+    .text {
+        color: var(--text);
+    }
+
+    .hover\:text:hover {
+        color: var(--text);
+    }
+
+    .text-secondary {
+        color: var(--text-secondary);
+    }
+
+    .hover\:text-secondary:hover {
+        color: var(--text-secondary);
+    }
+
+    .text-tertiary {
+        color: var(--text-tertiary);
+    }
+
+    .hover\:text-tertiary:hover {
+        color: var(--text-tertiary);
+    }
+
+    .tag-text {
+        color: var(--tag-text);
+    }
+
+    .hover\:tag-text:hover {
+        color: var(--tag-text);
+    }
+
+    .primary-text {
+        color: var(--primary-text);
+    }
+
+    .hover\:primary-text:hover {
+        color: var(--primary-text);
+    }
+
+    .text-primary {
+        color: var(--primary-color);
+    }
+
+    .hover\:text-primary:hover {
+        color: var(--primary-hover);
+    }
+
+    .text-success {
+        color: var(--success);
+    }
+
+    .hover\:text-success:hover {
+        color: var(--success-hover);
+    }
+
+    .text-info {
+        color: var(--info);
+    }
+
+    .hover\:text-info:hover {
+        color: var(--info-hover);
+    }
+
+    .text-warning {
+        color: var(--warning);
+    }
+
+    .hover\:text-warning:hover {
+        color: var(--warning-hover);
+    }
+
+    .text-danger {
+        color: var(--danger);
+    }
+
+    .hover\:text-danger:hover {
+        color: var(--danger-hover);
+    }
+
+    .border,
+    .border-t,
+    .border-r,
+    .border-b,
+    .border-l,
+    .border-x,
+    .border-y,
+    .border-1,
+    .border-2,
+    .border-3,
+    .border-4,
+    .border-5 {
+        border-color: var(--border);
+    }
+
+    .border-primary {
+        border-color: var(--primary-color);
+    }
+
+    .hover\:border-primary:hover {
+        border-color: var(--primary-hover);
+    }
+
+    .focus\:border-primary:focus {
+        border-color: var(--primary-color);
+    }
+
+    .border-success {
+        border-color: var(--success);
+    }
+
+    .hover\:border-success:hover {
+        border-color: var(--success-hover);
+    }
+
+    .border-info {
+        border-color: var(--info);
+    }
+
+    .hover\:border-info:hover {
+        border-color: var(--info-hover);
+    }
+
+    .border-warning {
+        border-color: var(--warning);
+    }
+
+    .hover\:border-warning:hover {
+        border-color: var(--warning-hover);
+    }
+
+    .border-danger {
+        border-color: var(--danger);
+    }
+
+    .hover\:border-danger:hover {
+        border-color: var(--danger-hover);
+    }
+
+    .bg {
+        background-color: var(--background);
+    }
+
+    .bg-primary {
+        background-color: var(--primary-color);
+    }
+
+    .hover\:bg-primary:hover {
+        background-color: var(--primary-hover);
+    }
+
+    .bg-success {
+        background-color: var(--success);
+    }
+
+    .hover\:bg-success:hover {
+        background-color: var(--success-hover);
+    }
+
+    .bg-info {
+        background-color: var(--info);
+    }
+
+    .hover\:bg-info:hover {
+        background-color: var(--info-hover);
+    }
+
+    .bg-warning {
+        background-color: var(--warning);
+    }
+
+    .hover\:bg-warning:hover {
+        background-color: var(--warning-hover);
+    }
+
+    .bg-danger {
+        background-color: var(--danger);
+    }
+
+    .hover\:bg-danger:hover {
+        background-color: var(--danger-hover);
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .grabbing {
+        cursor: grabbing !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+@theme {
+    --background: #000;
+    --color-primary: var(--primary-color);
+    --color-primary-hover: var(--primary-hover);
+    --color-background: var(--background);
+    --color-surface: var(--surface);
+    --color-surface-light: var(--surface-light);
+    --color-text: var(--text);
+    --color-text-secondary: var(--text-secondary);
+    --color-border: var(--border);
+    --color-white: var(--white);
+    --color-black: var(--black);
+    --color-green: var(--green);
+    --color-orange: var(--orange);
+    --color-red: var(--red);
+}
