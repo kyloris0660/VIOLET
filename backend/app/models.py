@@ -1,0 +1,165 @@
+import enum
+from datetime import datetime, timezone
+
+from sqlalchemy import (Boolean, Column, DateTime, Enum, Float, ForeignKey,
+                        Index, Integer, String, Table, Text)
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
+from .database import Base
+from .enums import FileTypeEnum, RatingEnum, TagCategoryEnum
+
+blombooru_media_tags = Table(
+    'blombooru_media_tags',
+    Base.metadata,
+    Column('media_id', Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), primary_key=True)
+)
+
+class User(Base):
+    __tablename__ = 'blombooru_users'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Media(Base):
+    __tablename__ = 'blombooru_media'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False)
+    path = Column(String(500), nullable=False, unique=True)
+    thumbnail_path = Column(String(500))
+    hash = Column(String(64), unique=True, index=True)
+    file_type = Column(Enum(FileTypeEnum), nullable=False)
+    mime_type = Column(String(100))
+    file_size = Column(Integer)
+    width = Column(Integer)
+    height = Column(Integer)
+    duration = Column(Float, nullable=True)
+    rating = Column(Enum(RatingEnum), default=RatingEnum.safe, index=True)
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    is_shared = Column(Boolean, default=False, index=True)
+    share_uuid = Column(String(36), unique=True, nullable=True, index=True)
+    share_ai_metadata = Column(Boolean, default=False)
+    share_language = Column(String(10), nullable=True, default=None)
+    source = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    parent_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    
+    tags = relationship('Tag', secondary=blombooru_media_tags, back_populates='media')
+    parent = relationship('Media', remote_side=[id], backref='children')
+
+    @property
+    def has_children(self) -> bool:
+        return bool(self.children)
+
+class Tag(Base):
+    __tablename__ = 'blombooru_tags'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    category = Column(Enum(TagCategoryEnum), default=TagCategoryEnum.general, index=True)
+    post_count = Column(Integer, default=0, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    media = relationship('Media', secondary=blombooru_media_tags, back_populates='tags')
+    aliases = relationship('TagAlias', foreign_keys='TagAlias.target_tag_id', back_populates='target_tag', cascade="all, delete-orphan")
+
+class BooruConfig(Base):
+    __tablename__ = "blombooru_booru_config"
+
+    domain = Column(String, primary_key=True, index=True)
+    username = Column(String, nullable=True)
+    api_key = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class TagAlias(Base):
+    __tablename__ = 'blombooru_tag_aliases'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    alias_name = Column(String(255), unique=True, nullable=False, index=True)
+    target_tag_id = Column(Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), nullable=False)
+    
+    target_tag = relationship('Tag', foreign_keys=[target_tag_id], back_populates='aliases')
+
+# Tag implication junction tables
+blombooru_implication_targets = Table(
+    'blombooru_implication_targets',
+    Base.metadata,
+    Column('implication_id', Integer, ForeignKey('blombooru_tag_implications.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), primary_key=True)
+)
+
+blombooru_implication_implied = Table(
+    'blombooru_implication_implied',
+    Base.metadata,
+    Column('implication_id', Integer, ForeignKey('blombooru_tag_implications.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), primary_key=True)
+)
+
+class TagImplication(Base):
+    __tablename__ = 'blombooru_tag_implications'
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    target_tags = relationship('Tag', secondary=blombooru_implication_targets)
+    implied_tags = relationship('Tag', secondary=blombooru_implication_implied)
+
+# Album-Media association table
+blombooru_album_media = Table(
+    'blombooru_album_media',
+    Base.metadata,
+    Column('album_id', Integer, ForeignKey('blombooru_albums.id', ondelete='CASCADE'), primary_key=True),
+    Column('media_id', Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), primary_key=True),
+    Column('added_at', DateTime(timezone=True), server_default=func.now(), index=True)
+)
+
+# Album hierarchy (self-referential many-to-many for parent-child relationships)
+blombooru_album_hierarchy = Table(
+    'blombooru_album_hierarchy',
+    Base.metadata,
+    Column('parent_album_id', Integer, ForeignKey('blombooru_albums.id', ondelete='CASCADE'), primary_key=True),
+    Column('child_album_id', Integer, ForeignKey('blombooru_albums.id', ondelete='CASCADE'), primary_key=True)
+)
+
+class Album(Base):
+    __tablename__ = 'blombooru_albums'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_modified = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    # Relationships
+    media = relationship('Media', secondary=blombooru_album_media, back_populates='albums')
+    
+    # Self-referential relationships for album hierarchy
+    children = relationship(
+        'Album',
+        secondary=blombooru_album_hierarchy,
+        primaryjoin=id == blombooru_album_hierarchy.c.parent_album_id,
+        secondaryjoin=id == blombooru_album_hierarchy.c.child_album_id,
+        backref='parents'
+    )
+
+# Update Media model to include albums relationship
+Media.albums = relationship('Album', secondary=blombooru_album_media, back_populates='media')
+
+class ApiKey(Base):
+    __tablename__ = 'blombooru_api_keys'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key_hash = Column(String(64), unique=True, nullable=False, index=True)
+    key_prefix = Column(String(12), nullable=False)
+    name = Column(String(255), nullable=True)
+    user_id = Column(Integer, ForeignKey('blombooru_users.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    
+    user = relationship('User', backref='api_keys')

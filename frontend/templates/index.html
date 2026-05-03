@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import rating_filter, sorting_options, bulk_actions, page_jump_modal,
+loading_indicator, page_navigation, popular_tags_section, sidebar_start, sidebar_end %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-4">
+    {{ rating_filter('mobile', mode=sidebar_filter_mode, custom_buttons=sidebar_custom_buttons) }}
+    {{ sorting_options(default_sort=default_sort, default_order=default_order, location='mobile') }}
+
+    <div class="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-4 gap-4">
+        <!-- Gallery Grid -->
+        <div class="xl:col-span-4 lg:col-span-3">
+            {{ bulk_actions(['select_all', 'deselect_all', 'delete', 'album', 'manage_tags']) }}
+
+            <div id="gallery-grid"
+                class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8 gap-2">
+            </div>
+
+            {{ page_navigation() }}
+            {{ loading_indicator() }}
+        </div>
+
+        <!-- Sidebar -->
+        {{ sidebar_start() }}
+        {{ rating_filter('desktop', mode=sidebar_filter_mode, custom_buttons=sidebar_custom_buttons) }}
+        {{ sorting_options(default_sort=default_sort, default_order=default_order) }}
+        {{ popular_tags_section() }}
+        {{ sidebar_end() }}
+    </div>
+</div>
+
+{{ page_jump_modal() }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/fullscreen-mediaviewer.js?v={{ cache_buster }}"></script>
+<script src="/static/js/tooltip-helper.js?v={{ cache_buster }}"></script>
+<script src="/static/js/custom-select.js?v={{ cache_buster }}"></script>
+<script src="/static/js/album-picker.js?v={{ cache_buster }}"></script>
+<script src="/static/js/tag-input-helper.js?v={{ cache_buster }}"></script>
+<script src="/static/js/ai-tag-utils.js?v={{ cache_buster }}"></script>
+<script src="/static/js/bulk-tag-modal-base.js?v={{ cache_buster }}"></script>
+<script src="/static/js/bulk-manage-tags-modal.js?v={{ cache_buster }}"></script>
+<script src="/static/js/bulk-manual-tag-editor-modal.js?v={{ cache_buster }}"></script>
+<script src="/static/js/bulk-ai-tags-modal.js?v={{ cache_buster }}"></script>
+<script src="/static/js/bulk-wd-tagger-modal.js?v={{ cache_buster }}"></script>
+<script src="/static/js/base-gallery.js?v={{ cache_buster }}"></script>
+<script src="/static/js/gallery.js?v={{ cache_buster }}"></script>
+{% endblock %}
