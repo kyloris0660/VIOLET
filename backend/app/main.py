@@ -65,6 +65,16 @@ async def lifespan(app: FastAPI):
             cleanup_archive_chunks()
             cleanup_media_chunks()
 
+            # Mark stale scan jobs from unclean shutdowns
+            from .database import SessionLocal as _StartupSession
+            if _StartupSession is not None:
+                _sdb = _StartupSession()
+                try:
+                    from .utils.local_library_scanner import mark_stale_jobs
+                    mark_stale_jobs(_sdb)
+                finally:
+                    _sdb.close()
+
             # Start periodic cleanup task for abandoned uploads
             async def periodic_upload_chunks_cleanup():
                 while True:

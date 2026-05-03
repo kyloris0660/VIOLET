@@ -163,3 +163,30 @@ class ApiKey(Base):
     is_active = Column(Boolean, default=True, index=True)
     
     user = relationship('User', backref='api_keys')
+
+
+class ScanJob(Base):
+    __tablename__ = 'blombooru_scan_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String(20), nullable=False, default='pending', index=True)
+    paths_json = Column(Text, nullable=False)
+    dry_run = Column(Boolean, default=False)
+    max_files = Column(Integer, nullable=True)
+
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    total_seen = Column(Integer, default=0)
+    processed = Column(Integer, default=0)
+    imported = Column(Integer, default=0)
+    skipped_duplicate = Column(Integer, default=0)
+    skipped_unsupported = Column(Integer, default=0)
+    skipped_limit = Column(Integer, default=0)
+    failed = Column(Integer, default=0)
+    limit_reached = Column(Boolean, default=False)
+
+    failed_files_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
