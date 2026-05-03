@@ -785,6 +785,111 @@
                 </div>
             </div>
 
+            <!-- Local Library Scan Section -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="local-library-scan">
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">Local Library Scan</h2>
+
+                <div class="bg p-4 border mb-4">
+                    <p class="text-xs text-secondary mb-4">
+                        Scan external local directories and import supported images (.jpg, .jpeg, .png, .webp, .gif).
+                        Files are copied into Blombooru storage; originals are never moved or deleted.
+                    </p>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold mb-2">Scan Path</label>
+                            <input type="text" id="local-scan-path"
+                                placeholder="C:\Users\kyloris\Pictures\AnimeLocalBooruTest"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                            <p class="text-xs text-secondary opacity-70 mt-1 ml-1">
+                                Leave empty to use paths from .env LOCAL_LIBRARY_PATHS
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold mb-2">Max Files</label>
+                                <input type="number" id="local-scan-max-files" min="1"
+                                    placeholder="No limit"
+                                    class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                                <p class="text-xs text-secondary opacity-70 mt-1 ml-1">
+                                    Limit the number of candidate files to process
+                                </p>
+                            </div>
+                            <div class="flex items-end pb-1">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="local-scan-dry-run" class="w-4 h-4 accent-primary">
+                                    <span class="text-xs font-bold">Dry Run</span>
+                                </label>
+                                <span class="text-xs text-secondary opacity-70 ml-2">
+                                    (scan only, no import)
+                                </span>
+                            </div>
+                        </div>
+
+                        <button id="local-scan-btn" class="btn-primary w-full">
+                            Start Scan
+                        </button>
+                    </div>
+                </div>
+
+                <div id="local-scan-status" style="display: none;">
+                    <div id="local-scan-loading" class="bg p-4 border text-xs text-secondary mb-4" style="display: none;">
+                        Scanning... This may take a while for large directories.
+                    </div>
+
+                    <div id="local-scan-result" style="display: none;">
+                        <h3 class="text-sm font-bold mb-3">Scan Result</h3>
+                        <div id="local-scan-dry-run-badge" style="display: none;"
+                            class="inline-block text-xs font-bold px-2 py-1 mb-3 border border-warning text-warning">
+                            DRY RUN — no files were imported
+                        </div>
+                        <div id="local-scan-summary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                            <div class="bg p-3 border">
+                                <div class="text-xs text-secondary">Total Seen</div>
+                                <div class="text-lg font-bold" id="scan-total-seen">0</div>
+                            </div>
+                            <div class="bg p-3 border">
+                                <div class="text-xs text-secondary">Imported</div>
+                                <div class="text-lg font-bold text-green-500" id="scan-imported">0</div>
+                            </div>
+                            <div class="bg p-3 border">
+                                <div class="text-xs text-secondary">Skipped (Duplicate)</div>
+                                <div class="text-lg font-bold" id="scan-skipped-dup">0</div>
+                            </div>
+                            <div class="bg p-3 border">
+                                <div class="text-xs text-secondary">Skipped (Unsupported)</div>
+                                <div class="text-lg font-bold" id="scan-skipped-unsup">0</div>
+                            </div>
+                            <div class="bg p-3 border">
+                                <div class="text-xs text-secondary">Skipped (Limit)</div>
+                                <div class="text-lg font-bold" id="scan-skipped-limit">0</div>
+                            </div>
+                            <div class="bg p-3 border">
+                                <div class="text-xs text-secondary">Failed</div>
+                                <div class="text-lg font-bold text-red-500" id="scan-failed">0</div>
+                            </div>
+                        </div>
+
+                        <div id="local-scan-failures" style="display: none;">
+                            <h3 class="text-sm font-bold mb-2">Failed Files</h3>
+                            <div class="overflow-x-auto max-h-60 overflow-y-auto border">
+                                <table class="bg w-full text-left border-collapse">
+                                    <thead class="border-b">
+                                        <tr class="text-secondary text-xs">
+                                            <th class="sticky top-0 z-10 bg py-2 px-3 font-medium">Path</th>
+                                            <th class="sticky top-0 z-10 bg py-2 px-3 font-medium">Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="local-scan-failures-tbody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tags Management Section -->
             <div class="surface p-2 sm:p-6 border mb-4">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tags_management.title') }}</h2>

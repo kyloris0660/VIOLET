@@ -187,3 +187,77 @@ C:\Users\kyloris\Pictures\iCloud Photos
 - 不做实时 watcher（仅手动触发）
 - 不支持 HEIC（需要额外依赖 pillow-heif）
 - Copy Mode 会占用额外磁盘空间
+
+---
+
+## Phase 1.5：Scan Safety & UX
+
+**日期：** 2026-05-03
+
+### 目标
+
+增强 Local Library Scan 的安全性和可用性，为后续安全测试真实 iCloud Photos 目录做准备。
+
+### 新增功能
+
+1. **dry-run 模式**
+   - `dry_run=true` 时只扫描和统计，不复制文件，不写入数据库
+   - 仍然计算 MD5 hash 以检测重复
+   - `imported` 字段表示"如果真实执行会导入多少"
+   - 用于安全预览大型目录
+
+2. **max_files 限制**
+   - `max_files` 参数限制最多处理多少个候选文件
+   - "候选文件"指通过扩展名/symlink/大小过滤的文件
+   - 超出限制的文件计入 `skipped_limit`
+   - dry_run 和真实扫描都支持
+   - 用于安全测试真实目录的前 N 个文件
+
+3. **Admin UI**
+   - Admin Panel → Content tab 新增 Local Library Scan 区域
+   - 可输入扫描路径（留空则使用 .env 配置）
+   - 可设置 max_files 上限
+   - 可勾选 dry-run 模式
+   - 点击 Start Scan 触发扫描
+   - 展示扫描结果 summary（total_seen, imported, skipped_duplicate, skipped_unsupported, skipped_limit, failed）
+   - 展示 failed_files 表格（path + reason）
+
+4. **API 改进**
+   - `POST /api/admin/scan-local-library` 支持完整 JSON body：
+     ```json
+     {
+       "paths": ["C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest"],
+       "dry_run": true,
+       "max_files": 100
+     }
+     ```
+   - 响应新增 `dry_run`、`max_files`、`skipped_limit` 字段
+   - 保持向后兼容：不传 dry_run/max_files 时行为与 Phase 1 一致
+
+### 修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/utils/local_library_scanner.py` | 修改 | 新增 `dry_run` 和 `max_files` 参数，dry_run 跳过复制和导入，max_files 限制候选文件数 |
+| `backend/app/routes/admin/media.py` | 修改 | `ScanLocalLibraryRequest` 新增 `dry_run` 和 `max_files` 字段，传递给 scanner |
+| `frontend/templates/admin.html` | 修改 | Content tab 新增 Local Library Scan UI 区域 |
+| `frontend/static/js/admin.js` | 修改 | 新增 `scanLocalLibrary()` 方法处理扫描请求和结果展示 |
+| `docs/local-library-scan.md` | 修改 | 更新 API 文档、新增 dry-run 和 max_files 说明、新增 Admin UI 说明 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+| `docs/current-handoff.md` | 修改 | 更新到 Phase 1.5 完成状态 |
+
+### 关键设计决策
+
+1. **dry_run 不改变现有行为**：不传 `dry_run` 参数时（默认 `false`），行为与 Phase 1 完全一致
+2. **max_files 统计口径**：限制的是"候选文件"（通过扩展名过滤的文件），不是 `total_seen`。未通过过滤的文件（不支持的格式、symlink 等）不计入限制
+3. **无数据库迁移**：不需要新增列或表
+4. **响应增加元数据**：`dry_run`、`max_files`、`skipped_limit` 作为新字段返回，方便前端展示
+
+### 已知限制
+
+- Admin UI 路径输入只支持单个路径（多路径通过 .env 或直接 API 调用支持）
+- 无进度条/实时反馈（扫描仍是同步的，大目录可能需要较长时间）
+- 无扫描历史记录
+- 不做 AI tagging
+- 不做 anime filtering
+- 不做实时 watcher

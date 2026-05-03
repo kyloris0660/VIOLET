@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,9 @@ def _is_scannable_file(file_path: Path) -> str | None:
 def scan_and_import(
     db: Session,
     paths: List[Path],
+    *,
+    dry_run: bool = False,
+    max_files: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Scan external directories and import supported images into Blombooru.
 
@@ -53,18 +56,32 @@ def scan_and_import(
     deleted.  Duplicates are detected by MD5 hash (``Media.hash`` unique
     constraint).
 
+    When *dry_run* is ``True`` the scan still walks directories, hashes files,
+    and checks for duplicates, but **no files are copied and no database rows
+    are created**.  The returned statistics show what *would* happen.
+
+    When *max_files* is set, at most that many **candidate** files (files that
+    pass the extension/symlink/size filter) will be processed.  Files beyond
+    the cap are not hashed or imported.
+
     Returns a statistics dict suitable for direct JSON serialisation.
     """
-    from ..routes.media import process_and_save_media
+    if not dry_run:
+        from ..routes.media import process_and_save_media
 
     stats: Dict[str, Any] = {
+        "dry_run": dry_run,
+        "max_files": max_files,
         "total_seen": 0,
         "imported": 0,
         "skipped_duplicate": 0,
         "skipped_unsupported": 0,
+        "skipped_limit": 0,
         "failed": 0,
         "failed_files": [],
     }
+
+    candidates_processed = 0
 
     existing_hashes: set = set()
     for row in db.query(Media.hash).all():
@@ -81,8 +98,13 @@ def scan_and_import(
             continue
         valid_paths.append(p)
 
+    limit_reached = False
+
     for scan_dir in valid_paths:
-        logger.info(f"Scanning local library: {scan_dir}")
+        if limit_reached:
+            break
+
+        logger.info(f"Scanning local library: {scan_dir} (dry_run={dry_run})")
 
         try:
             entries = list(scan_dir.rglob("*"))
@@ -98,6 +120,12 @@ def scan_and_import(
                 stats["skipped_unsupported"] += 1
                 continue
 
+            if max_files is not None and candidates_processed >= max_files:
+                stats["skipped_limit"] += 1
+                continue
+
+            candidates_processed += 1
+
             copied_path: Path | None = None
             try:
                 file_hash = calculate_file_hash(file_path)
@@ -109,6 +137,12 @@ def scan_and_import(
                 if db.query(Media.id).filter(Media.hash == file_hash).first():
                     existing_hashes.add(file_hash)
                     stats["skipped_duplicate"] += 1
+                    continue
+
+                if dry_run:
+                    existing_hashes.add(file_hash)
+                    stats["imported"] += 1
+                    logger.debug(f"Dry-run would import: {file_path.name}")
                     continue
 
                 unique_name = get_unique_filename(
