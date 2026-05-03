@@ -32,17 +32,9 @@ Add `LOCAL_LIBRARY_PATHS` to your `.env` file. Use `|` (pipe) to separate multip
 LOCAL_LIBRARY_PATHS=C:\Users\kyloris\Pictures\iCloud Photos
 ```
 
-Multiple paths:
-
-```env
-LOCAL_LIBRARY_PATHS=C:\Users\kyloris\Pictures\iCloud Photos|D:\Art\Collection
-```
-
-> **Note:** Spaces in paths are fully supported — do **not** add quotes around paths.
-
 ### Via API Request Body
 
-You can also pass paths directly in the request, which overrides the `.env` setting:
+Pass paths directly in the request, which overrides the `.env` setting:
 
 ```json
 {
@@ -50,104 +42,110 @@ You can also pass paths directly in the request, which overrides the `.env` sett
 }
 ```
 
-## API Usage
+## API — Synchronous Scan (Legacy)
 
-### Endpoint
+The original synchronous endpoint from Phase 1/1.5. Blocks until the scan completes.
 
 ```
 POST /api/admin/scan-local-library
 ```
 
-Requires admin authentication (JWT token + `admin_mode=true` cookie).
+Good for small directories or scripted use. For large directories, use the Job API instead.
 
-### Request Body (JSON)
+### Request Body
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `paths` | `string[]` | `.env` paths | Directories to scan |
-| `dry_run` | `boolean` | `false` | When `true`, scan and report without importing anything |
-| `max_files` | `integer` | no limit | Cap the number of candidate files to process |
+| `dry_run` | `boolean` | `false` | Scan only, no import |
+| `max_files` | `integer` | no limit | Cap candidate files to process |
 
-### curl Example — Dry Run with Max Files
+## API — Background Scan Jobs (Recommended)
 
-```bash
-curl -X POST http://localhost:8000/api/admin/scan-local-library \
-  -H "Authorization: Bearer <token>" \
-  -H "Cookie: admin_mode=true" \
-  -H "Content-Type: application/json" \
-  -d '{"paths": ["C:\\\\Users\\\\kyloris\\\\Pictures\\\\iCloud Photos"], "dry_run": true, "max_files": 100}'
+The job-based API returns immediately with a `job_id`. The scan runs in a background thread. Poll for progress or check history.
+
+### Create a Scan Job
+
+```
+POST /api/admin/scan-local-library/jobs
 ```
 
-### curl Example — Using `.env` Paths
+Returns immediately with the job object (status = `pending`).
 
-```bash
-curl -X POST http://localhost:8000/api/admin/scan-local-library \
-  -H "Authorization: Bearer <token>" \
-  -H "Cookie: admin_mode=true"
-```
+Only one scan job can run at a time. Returns `409` if another job is already running.
 
-### curl Example — With Explicit Path (Real Import)
+#### Request Body
 
-```bash
-curl -X POST http://localhost:8000/api/admin/scan-local-library \
-  -H "Authorization: Bearer <token>" \
-  -H "Cookie: admin_mode=true" \
-  -H "Content-Type: application/json" \
-  -d "{\"paths\": [\"C:\\\\Users\\\\kyloris\\\\Pictures\\\\AnimeLocalBooruTest\"]}"
-```
-
-### PowerShell Example — Dry Run
-
-```powershell
-$token = "your_jwt_token_here"
-$headers = @{
-    "Authorization" = "Bearer $token"
-    "Content-Type"  = "application/json"
-    "Cookie"        = "admin_mode=true"
-}
-$body = '{"paths": ["C:\\Users\\kyloris\\Pictures\\iCloud Photos"], "dry_run": true, "max_files": 50}'
-Invoke-RestMethod -Uri "http://localhost:8000/api/admin/scan-local-library" `
-    -Method POST -Headers $headers -Body $body
-```
-
-### Response
+Same as the synchronous endpoint:
 
 ```json
 {
+  "paths": ["C:\\Users\\kyloris\\Pictures\\iCloud Photos"],
   "dry_run": true,
-  "max_files": 100,
-  "total_seen": 1500,
-  "imported": 42,
-  "skipped_duplicate": 100,
-  "skipped_unsupported": 350,
-  "skipped_limit": 1008,
-  "failed": 0,
-  "failed_files": []
+  "max_files": 100
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `dry_run` | Whether this was a dry-run (no files copied, no DB writes) |
-| `max_files` | The max_files cap that was applied (null if no limit) |
-| `total_seen` | Total regular files encountered during recursive scan |
-| `imported` | Successfully imported (or *would be* imported if dry_run) |
-| `skipped_duplicate` | Skipped because MD5 hash already exists in database |
-| `skipped_unsupported` | Skipped due to unsupported extension, symlinks, `.icloud` placeholders, etc. |
-| `skipped_limit` | Skipped because the max_files cap was reached |
-| `failed` | Files that failed during read, copy, or processing |
-| `failed_files` | Up to 50 failed entries with path and reason |
+### Get Job Status
 
-## Admin UI
+```
+GET /api/admin/scan-local-library/jobs/{job_id}
+```
 
-The Admin Panel → Content tab includes a **Local Library Scan** section where you can:
+Returns the current status and progress counters. Poll every 1–2 seconds for real-time progress.
 
-1. Enter a scan path (or leave empty to use `.env` paths)
-2. Set a max_files limit
-3. Toggle dry-run mode
-4. Click "Start Scan" to begin
-5. View a summary of results (imported, skipped, failed counts)
-6. Inspect failed files with path and error reason
+### List Recent Jobs
+
+```
+GET /api/admin/scan-local-library/jobs
+```
+
+Returns the 20 most recent scan jobs, newest first. Includes completed, failed, cancelled, and interrupted jobs.
+
+### Cancel a Running Job
+
+```
+POST /api/admin/scan-local-library/jobs/{job_id}/cancel
+```
+
+Requests cancellation. The scanner checks the cancel flag after each file and stops gracefully. **Already-imported files are kept** — cancel does not roll back imports.
+
+### Job Response
+
+```json
+{
+  "id": 1,
+  "status": "completed",
+  "paths": ["C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest"],
+  "dry_run": true,
+  "max_files": 100,
+  "started_at": "2026-05-03T15:00:00+00:00",
+  "finished_at": "2026-05-03T15:00:05+00:00",
+  "created_at": "2026-05-03T15:00:00+00:00",
+  "total_seen": 1500,
+  "processed": 100,
+  "imported": 42,
+  "skipped_duplicate": 58,
+  "skipped_unsupported": 350,
+  "skipped_limit": 0,
+  "failed": 0,
+  "limit_reached": true,
+  "failed_files": [],
+  "error_message": null
+}
+```
+
+### Job Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Job created, waiting to start |
+| `running` | Scan in progress |
+| `cancelling` | Cancel requested, stopping soon |
+| `completed` | Scan finished successfully |
+| `cancelled` | Scan was cancelled by user |
+| `failed` | Scan failed with an error |
+| `interrupted` | Application stopped while job was running |
 
 ## Dry Run Mode
 
@@ -157,29 +155,68 @@ When `dry_run` is enabled:
 - **No** database records are created
 - MD5 hashes are still calculated and checked for duplicates
 - The `imported` count shows how many files **would** be imported
-- Use this to safely preview what a real scan would do before committing
 
-**Recommended workflow for new directories:**
+## max_files Semantics
 
-1. Start with `dry_run: true` to see the scan report
-2. Use `max_files: 50` or `100` for controlled testing
-3. Run a real scan with a small `max_files` to verify imports work correctly
-4. Run a full scan when confident
+`max_files` limits the number of **candidate files** processed — files that pass the extension/symlink/size filter (.jpg, .jpeg, .png, .webp, .gif).
+
+- Unsupported files (.heic, .txt, directories, symlinks, .icloud) do **not** count against the limit
+- When the limit is reached, the scanner stops immediately (does not continue walking the directory)
+- `limit_reached` is set to `true` in the response
+- Both dry-run and real scans support `max_files`
+
+## Recommended Workflow for New Directories
+
+1. **Dry-run + max_files=100**: Preview what would happen
+   ```json
+   {"paths": ["..."], "dry_run": true, "max_files": 100}
+   ```
+2. **Real scan + max_files=100**: Import a small batch and verify
+   ```json
+   {"paths": ["..."], "max_files": 100}
+   ```
+3. **Full scan**: When confident, remove max_files
+   ```json
+   {"paths": ["..."]}
+   ```
+
+**Never scan the real iCloud Photos directory without a prior dry-run.**
+
+## Path Safety
+
+The scanner refuses to scan project-internal directories:
+
+- Project root directory
+- `venv/`, `data/`, `media/`, `storage/`, `.git/`, `__pycache__/`
+
+This prevents accidental scanning of application files.
+
+## Admin UI
+
+The Admin Panel → Content tab includes a **Local Library Scan** section:
+
+1. Enter a scan path (or leave empty to use `.env` paths)
+2. Set a max_files limit
+3. Toggle dry-run mode
+4. Click **Start Scan** to create a background job
+5. Watch real-time progress (polling every 1.5 seconds)
+6. Click **Cancel** to stop a running scan
+7. View scan results (imported, skipped, failed counts, failed file details)
+8. Browse **Scan History** — click any row to view its details
+9. If a job is running when you open the page, polling auto-resumes
+
+## Stale Job Recovery
+
+If the application stops while a scan is running (crash, restart, etc.), any `pending`/`running`/`cancelling` jobs are automatically marked as `interrupted` on the next startup. This prevents the Admin UI from showing a permanently "running" job.
 
 ## Important Notes
 
 - **Originals are never touched.** Files are always *copied*, never moved or deleted.
-- **Disk space:** Since files are copied, you need enough free space in the Blombooru `media/` directory to hold copies of all imported images.
-- **Duplicate detection** uses MD5 hashing. Re-running the scan against the same directory is safe and will skip all previously imported files.
-- **Error isolation:** A failure on one file does not stop the scan. Every file is processed independently with its own error handling.
-- **max_files counts candidate files** — files that pass the extension/symlink/size filter. Unsupported files are still counted in `total_seen` and `skipped_unsupported` but do not count against the limit.
+- **Duplicate detection** uses MD5 hashing. Re-running the scan is safe.
+- **Error isolation:** A failure on one file does not stop the scan.
+- **Cancel does not roll back:** Already-imported files are kept.
+- **Single job limit:** Only one scan can run at a time to prevent conflicts.
 
 ## Data Model Note
 
-Phase 1 stores the original external file path in the `Media.source` field using a `file://` URI prefix (e.g. `file://C:\Users\...\photo.jpg`). This allows distinguishing locally-scanned imports from web sources.
-
-This is **not the final data model**. In a future phase, a dedicated `original_path` column and database migration may be introduced to support:
-
-- Sync/re-scan workflows
-- Audit trails
-- Detecting whether the original file has been moved or deleted
+Imported files store the original path in `Media.source` as a `file://` URI. Scan jobs are persisted in the `blombooru_scan_jobs` table.

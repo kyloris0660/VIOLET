@@ -1,3 +1,5 @@
+import json
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -8,9 +10,16 @@ from pydantic import BaseModel
 from ...auth import get_current_admin_user, require_admin_mode
 from ...config import settings
 from ...database import get_db
-from ...models import Media, User
+from ...models import Media, ScanJob, User
 from ...utils.file_scanner import find_untracked_media
-from ...utils.local_library_scanner import scan_and_import
+from ...utils.local_library_scanner import (
+    is_job_active,
+    mark_stale_jobs,
+    request_cancel,
+    run_scan_job,
+    scan_and_import,
+    validate_scan_paths,
+)
 from ...utils.logger import logger
 from ...utils.thumbnail_generator import generate_thumbnail
 from sqlalchemy.orm import Session
@@ -36,21 +45,8 @@ class ScanLocalLibraryRequest(BaseModel):
     max_files: Optional[int] = None
 
 
-@router.post("/scan-local-library")
-async def scan_local_library(
-    body: Optional[ScanLocalLibraryRequest] = None,
-    current_user: User = Depends(require_admin_mode),
-    db: Session = Depends(get_db),
-):
-    """Scan external local directories and import supported images.
-
-    Files are copied into Blombooru storage; originals are never moved or
-    deleted.  Accepts an optional JSON body with:
-
-    - ``paths``: list of directory paths (falls back to ``LOCAL_LIBRARY_PATHS``)
-    - ``dry_run``: when true, only scan and report — no files copied, no DB writes
-    - ``max_files``: cap the number of candidate files to process
-    """
+def _resolve_scan_params(body: Optional[ScanLocalLibraryRequest]):
+    """Extract and validate scan parameters from request body."""
     if body and body.paths:
         scan_paths = [Path(p) for p in body.paths]
     else:
@@ -62,16 +58,164 @@ async def scan_local_library(
             detail="No scan paths configured. Set LOCAL_LIBRARY_PATHS in .env or pass paths in request body.",
         )
 
+    path_err = validate_scan_paths(scan_paths)
+    if path_err:
+        raise HTTPException(status_code=400, detail=path_err)
+
     dry_run = body.dry_run if body else False
     max_files = body.max_files if body else None
 
     if max_files is not None and max_files < 1:
         raise HTTPException(status_code=400, detail="max_files must be >= 1")
 
+    return scan_paths, dry_run, max_files
+
+
+@router.post("/scan-local-library")
+async def scan_local_library(
+    body: Optional[ScanLocalLibraryRequest] = None,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Legacy synchronous scan endpoint (Phase 1.5 compatible)."""
+    scan_paths, dry_run, max_files = _resolve_scan_params(body)
+
     result = await run_in_threadpool(
         scan_and_import, db, scan_paths, dry_run=dry_run, max_files=max_files
     )
     return result
+
+
+def _serialize_job(job: ScanJob) -> dict:
+    """Convert a ScanJob ORM object to a JSON-safe dict."""
+    failed_files = []
+    if job.failed_files_json:
+        try:
+            failed_files = json.loads(job.failed_files_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    paths = []
+    if job.paths_json:
+        try:
+            paths = json.loads(job.paths_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return {
+        "id": job.id,
+        "status": job.status,
+        "paths": paths,
+        "dry_run": job.dry_run,
+        "max_files": job.max_files,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "total_seen": job.total_seen,
+        "processed": job.processed,
+        "imported": job.imported,
+        "skipped_duplicate": job.skipped_duplicate,
+        "skipped_unsupported": job.skipped_unsupported,
+        "skipped_limit": job.skipped_limit,
+        "failed": job.failed,
+        "limit_reached": job.limit_reached,
+        "failed_files": failed_files,
+        "error_message": job.error_message,
+    }
+
+
+@router.post("/scan-local-library/jobs")
+async def create_scan_job(
+    body: Optional[ScanLocalLibraryRequest] = None,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Create a background scan job. Returns immediately with a job_id."""
+    scan_paths, dry_run, max_files = _resolve_scan_params(body)
+
+    active = (
+        db.query(ScanJob)
+        .filter(ScanJob.status.in_(["pending", "running", "cancelling"]))
+        .first()
+    )
+    if active or is_job_active():
+        raise HTTPException(
+            status_code=409,
+            detail="Another scan job is already running",
+        )
+
+    job = ScanJob(
+        status="pending",
+        paths_json=json.dumps([str(p) for p in scan_paths]),
+        dry_run=dry_run,
+        max_files=max_files,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    t = threading.Thread(target=run_scan_job, args=(job.id,), daemon=True)
+    t.start()
+
+    return _serialize_job(job)
+
+
+@router.get("/scan-local-library/jobs")
+async def list_scan_jobs(
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Return the 20 most recent scan jobs (newest first)."""
+    mark_stale_jobs(db)
+
+    jobs = (
+        db.query(ScanJob)
+        .order_by(ScanJob.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return [_serialize_job(j) for j in jobs]
+
+
+@router.get("/scan-local-library/jobs/{job_id}")
+async def get_scan_job(
+    job_id: int,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Return the status and progress of a single scan job."""
+    job = db.query(ScanJob).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scan job not found")
+    return _serialize_job(job)
+
+
+@router.post("/scan-local-library/jobs/{job_id}/cancel")
+async def cancel_scan_job(
+    job_id: int,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Request cancellation of a running scan job.
+
+    Already-imported files are kept; cancellation does not roll back imports.
+    """
+    job = db.query(ScanJob).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scan job not found")
+
+    if job.status not in ("pending", "running"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel a job with status '{job.status}'",
+        )
+
+    job.status = "cancelling"
+    db.commit()
+
+    request_cancel(job_id)
+
+    return _serialize_job(job)
 
 
 @router.get("/get-untracked-file")

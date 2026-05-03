@@ -261,3 +261,99 @@ C:\Users\kyloris\Pictures\iCloud Photos
 - 不做 AI tagging
 - 不做 anime filtering
 - 不做实时 watcher
+
+---
+
+## Phase 1.6：Scan Job System / Progress / History
+
+**日期：** 2026-05-03
+
+### 目标
+
+将 Local Library Scan 从同步请求升级为可靠的后台任务系统，支持进度查询、取消、历史记录，为真实 iCloud Photos 扫描和未来 AI auto tagging 打基础。
+
+### 新增功能
+
+1. **后台 Scan Job 系统**
+   - `POST /api/admin/scan-local-library/jobs` — 创建后台扫描任务，立即返回 job_id
+   - `GET /api/admin/scan-local-library/jobs/{id}` — 查询单个任务状态和进度
+   - `GET /api/admin/scan-local-library/jobs` — 返回最近 20 条扫描历史
+   - `POST /api/admin/scan-local-library/jobs/{id}/cancel` — 取消正在运行的任务
+   - 旧同步 API `POST /api/admin/scan-local-library` 保持不变，向后兼容
+
+2. **数据持久化**
+   - 新增 `blombooru_scan_jobs` 数据库表
+   - 记录 status、paths、dry_run、max_files、所有统计字段、failed_files、error_message
+   - 通过 DIY 迁移函数 `migrate_add_scan_jobs_table` 创建
+
+3. **后台执行**
+   - 使用 Python `threading.Thread(daemon=True)` 执行扫描
+   - 后台线程使用独立 DB session（不复用请求线程的 session）
+   - 每处理 10 个文件刷新一次进度到数据库
+   - 前端通过 1.5 秒轮询获取进度
+
+4. **单任务限制**
+   - 同一时间最多 1 个 pending/running/cancelling 任务
+   - 重复创建返回 409 "Another scan job is already running"
+
+5. **Cancel 支持**
+   - 设置 job status 为 cancelling
+   - scanner 每处理一个文件前检查 cancel flag
+   - 检测到取消后停止扫描，最终 status=cancelled
+   - 已导入文件保留，不回滚
+
+6. **max_files 语义改进**
+   - 只计算候选图片文件（.jpg/.jpeg/.png/.webp/.gif）
+   - 不支持的格式不消耗 max_files 配额
+   - 达到限制后立即停止，不继续遍历目录
+   - 返回 `limit_reached=true`
+
+7. **进度语义**
+   - 有 max_files 时：progress = processed / max_files
+   - 无 max_files 时：显示 indeterminate spinner + 实时统计
+   - 返回字段：total_seen, processed, imported, skipped_duplicate, skipped_unsupported, failed, limit_reached
+
+8. **Stale job recovery**
+   - 应用启动时自动检查残留 pending/running/cancelling 任务
+   - 标记为 interrupted，写入 error_message
+   - 防止 Admin UI 永远显示 running
+
+9. **路径安全**
+   - 拒绝扫描项目内部目录：根目录、venv、data、media、storage、.git
+   - 返回明确错误消息
+
+10. **Admin UI 升级**
+    - Start Scan 创建后台 job
+    - Cancel 按钮取消运行中的 job
+    - 进度条（有 max_files 时有百分比，无时为 indeterminate）
+    - 实时统计数字
+    - Scan History 表格（最近 20 条）
+    - 点击历史行查看详情
+    - 页面刷新后自动恢复轮询 running job
+
+### 修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/models.py` | 修改 | 新增 `ScanJob` 模型 |
+| `backend/app/database.py` | 修改 | 新增 `migrate_add_scan_jobs_table` 迁移函数 |
+| `backend/app/utils/local_library_scanner.py` | 重写 | 新增 cancel_check、progress_callback、validate_scan_paths、run_scan_job、mark_stale_jobs |
+| `backend/app/routes/admin/media.py` | 修改 | 新增 4 个 job API 端点 + 路径安全检查 |
+| `backend/app/main.py` | 修改 | 启动时调用 mark_stale_jobs |
+| `frontend/templates/admin.html` | 修改 | 新 UI：进度条、cancel、history 表格 |
+| `frontend/static/js/admin.js` | 修改 | 新增 startScanJob、cancelScanJob、loadScanHistory、轮询逻辑 |
+| `docs/local-library-scan.md` | 重写 | 完整 API 文档 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+| `docs/current-handoff.md` | 修改 | 更新到 Phase 1.6 |
+
+### 数据库迁移
+
+新增表 `blombooru_scan_jobs`（通过 `Base.metadata.create_all` + DIY 迁移函数双重保障）。不修改任何现有表。
+
+### 已知限制
+
+- 无 WebSocket 实时推送（使用轮询）
+- 无扫描进度百分比（无 max_files 时）
+- Cancel 不回滚已导入文件
+- Admin UI 路径输入只支持单个路径
+- 不做 AI tagging / anime filtering / watcher

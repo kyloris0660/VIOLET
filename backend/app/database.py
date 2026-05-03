@@ -183,6 +183,7 @@ def check_and_migrate_schema(engine):
         migrate_add_parent_id,
         migrate_add_share_language,
         migrate_add_description,
+        migrate_add_scan_jobs_table,
     ]
     
     for migration in migrations:
@@ -248,5 +249,48 @@ def migrate_add_description(engine, inspector):
     with engine.connect() as conn:
         conn.execute(text(
             "ALTER TABLE blombooru_media ADD COLUMN description TEXT"
+        ))
+        conn.commit()
+
+
+def migrate_add_scan_jobs_table(engine, inspector):
+    """Create blombooru_scan_jobs table for scan job tracking"""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_scan_jobs' in tables:
+        return
+
+    logger.info("Creating blombooru_scan_jobs table...")
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE blombooru_scan_jobs (
+                id SERIAL PRIMARY KEY,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                paths_json TEXT NOT NULL,
+                dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+                max_files INTEGER,
+                started_at TIMESTAMP WITH TIME ZONE,
+                finished_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                total_seen INTEGER NOT NULL DEFAULT 0,
+                processed INTEGER NOT NULL DEFAULT 0,
+                imported INTEGER NOT NULL DEFAULT 0,
+                skipped_duplicate INTEGER NOT NULL DEFAULT 0,
+                skipped_unsupported INTEGER NOT NULL DEFAULT 0,
+                skipped_limit INTEGER NOT NULL DEFAULT 0,
+                failed INTEGER NOT NULL DEFAULT 0,
+                limit_reached BOOLEAN NOT NULL DEFAULT FALSE,
+                failed_files_json TEXT,
+                error_message TEXT
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_scan_jobs_status ON blombooru_scan_jobs(status)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_scan_jobs_created_at ON blombooru_scan_jobs(created_at)"
         ))
         conn.commit()

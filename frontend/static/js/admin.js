@@ -312,11 +312,19 @@ class AdminPanel {
             syncSharedTagsBtn.addEventListener('click', () => this.syncSharedTags());
         }
 
-        // Local library scan button
+        // Local library scan buttons
         const localScanBtn = document.getElementById('local-scan-btn');
         if (localScanBtn) {
-            localScanBtn.addEventListener('click', () => this.scanLocalLibrary());
+            localScanBtn.addEventListener('click', () => this.startScanJob());
         }
+        const localScanCancelBtn = document.getElementById('local-scan-cancel-btn');
+        if (localScanCancelBtn) {
+            localScanCancelBtn.addEventListener('click', () => this.cancelScanJob());
+        }
+
+        this._scanPollTimer = null;
+        this._currentJobId = null;
+        this.loadScanHistory();
     }
 
     setupTabs() {
@@ -1078,86 +1086,209 @@ class AdminPanel {
         }
     }
 
-    async scanLocalLibrary() {
-        const btn = document.getElementById('local-scan-btn');
-        const statusDiv = document.getElementById('local-scan-status');
-        const loadingDiv = document.getElementById('local-scan-loading');
-        const resultDiv = document.getElementById('local-scan-result');
-        const originalText = btn.textContent;
+    // ---- Local Library Scan (job-based) ----
 
-        btn.disabled = true;
-        btn.textContent = 'Scanning...';
-        statusDiv.style.display = 'block';
-        loadingDiv.style.display = 'block';
-        resultDiv.style.display = 'none';
-
+    async startScanJob() {
         const pathInput = document.getElementById('local-scan-path').value.trim();
         const maxFilesInput = document.getElementById('local-scan-max-files').value;
         const dryRun = document.getElementById('local-scan-dry-run').checked;
 
         const body = {};
-        if (pathInput) {
-            body.paths = [pathInput];
-        }
-        if (dryRun) {
-            body.dry_run = true;
-        }
-        if (maxFilesInput && parseInt(maxFilesInput) > 0) {
-            body.max_files = parseInt(maxFilesInput);
-        }
+        if (pathInput) body.paths = [pathInput];
+        if (dryRun) body.dry_run = true;
+        if (maxFilesInput && parseInt(maxFilesInput) > 0) body.max_files = parseInt(maxFilesInput);
+
+        const btn = document.getElementById('local-scan-btn');
+        btn.disabled = true;
 
         try {
-            const result = await app.apiCall('/api/admin/scan-local-library', {
+            const job = await app.apiCall('/api/admin/scan-local-library/jobs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
-
-            loadingDiv.style.display = 'none';
-            resultDiv.style.display = 'block';
-
-            const dryRunBadge = document.getElementById('local-scan-dry-run-badge');
-            dryRunBadge.style.display = result.dry_run ? 'inline-block' : 'none';
-
-            document.getElementById('scan-total-seen').textContent = result.total_seen;
-            document.getElementById('scan-imported').textContent = result.imported;
-            document.getElementById('scan-skipped-dup').textContent = result.skipped_duplicate;
-            document.getElementById('scan-skipped-unsup').textContent = result.skipped_unsupported;
-            document.getElementById('scan-skipped-limit').textContent = result.skipped_limit || 0;
-            document.getElementById('scan-failed').textContent = result.failed;
-
-            const failuresDiv = document.getElementById('local-scan-failures');
-            const failuresTbody = document.getElementById('local-scan-failures-tbody');
-            if (result.failed_files && result.failed_files.length > 0) {
-                failuresDiv.style.display = 'block';
-                failuresTbody.innerHTML = result.failed_files.map(f =>
-                    `<tr class="border-b text-xs">
-                        <td class="py-2 px-3 font-mono break-all">${this.escapeHtml(f.path)}</td>
-                        <td class="py-2 px-3">${this.escapeHtml(f.reason)}</td>
-                    </tr>`
-                ).join('');
-            } else {
-                failuresDiv.style.display = 'none';
-                failuresTbody.innerHTML = '';
-            }
-
-            const label = result.dry_run ? 'would import' : 'imported';
-            app.showNotification(
-                `Scan complete: ${result.imported} ${label}, ${result.skipped_duplicate} duplicates skipped, ${result.failed} failed`,
-                result.failed > 0 ? 'warning' : 'success'
-            );
-
-            if (!result.dry_run && result.imported > 0) {
-                this.loadMediaStats();
-            }
-
+            this._currentJobId = job.id;
+            this._showJobProgress(job);
+            this._startPolling(job.id);
         } catch (error) {
-            loadingDiv.style.display = 'none';
-            console.error('Local library scan error:', error);
-            app.showNotification(error.message || 'Scan failed', 'error');
-        } finally {
+            console.error('Failed to start scan job:', error);
+            app.showNotification(error.message || 'Failed to start scan', 'error');
             btn.disabled = false;
-            btn.textContent = originalText;
+        }
+    }
+
+    async cancelScanJob() {
+        if (!this._currentJobId) return;
+        const cancelBtn = document.getElementById('local-scan-cancel-btn');
+        cancelBtn.disabled = true;
+        try {
+            await app.apiCall(`/api/admin/scan-local-library/jobs/${this._currentJobId}/cancel`, {
+                method: 'POST'
+            });
+            app.showNotification('Cancel requested — scan will stop shortly', 'info');
+        } catch (error) {
+            console.error('Failed to cancel scan job:', error);
+            app.showNotification(error.message || 'Failed to cancel', 'error');
+        } finally {
+            cancelBtn.disabled = false;
+        }
+    }
+
+    _startPolling(jobId) {
+        this._stopPolling();
+        this._scanPollTimer = setInterval(() => this._pollJob(jobId), 1500);
+    }
+
+    _stopPolling() {
+        if (this._scanPollTimer) {
+            clearInterval(this._scanPollTimer);
+            this._scanPollTimer = null;
+        }
+    }
+
+    async _pollJob(jobId) {
+        try {
+            const job = await app.apiCall(`/api/admin/scan-local-library/jobs/${jobId}`, { method: 'GET' });
+            this._showJobProgress(job);
+            if (['completed', 'failed', 'cancelled', 'interrupted'].includes(job.status)) {
+                this._stopPolling();
+                this._onJobFinished(job);
+            }
+        } catch (err) {
+            console.error('Poll error:', err);
+        }
+    }
+
+    _showJobProgress(job) {
+        const progressDiv = document.getElementById('local-scan-progress');
+        progressDiv.style.display = 'block';
+
+        const btn = document.getElementById('local-scan-btn');
+        const cancelBtn = document.getElementById('local-scan-cancel-btn');
+        const isActive = ['pending', 'running', 'cancelling'].includes(job.status);
+        btn.disabled = isActive;
+        cancelBtn.style.display = isActive ? 'inline-block' : 'none';
+
+        const badge = document.getElementById('local-scan-status-badge');
+        const colors = {
+            pending: 'text-secondary border-secondary',
+            running: 'text-primary border-primary',
+            cancelling: 'text-warning border-warning',
+            completed: 'text-green-500 border-green-500',
+            failed: 'text-red-500 border-red-500',
+            cancelled: 'text-warning border-warning',
+            interrupted: 'text-red-400 border-red-400',
+        };
+        badge.className = `text-xs font-bold px-2 py-1 border ${colors[job.status] || ''}`;
+        badge.textContent = job.status.toUpperCase();
+
+        const dryBadge = document.getElementById('local-scan-dry-badge');
+        dryBadge.style.display = job.dry_run ? 'inline-block' : 'none';
+
+        const bar = document.getElementById('local-scan-progress-bar');
+        if (job.max_files && job.max_files > 0) {
+            const pct = Math.min(100, Math.round((job.processed / job.max_files) * 100));
+            bar.style.width = pct + '%';
+        } else if (['completed', 'failed', 'cancelled', 'interrupted'].includes(job.status)) {
+            bar.style.width = '100%';
+        } else {
+            bar.style.width = '';
+            bar.classList.add('animate-pulse');
+        }
+        if (!['pending', 'running', 'cancelling'].includes(job.status)) {
+            bar.classList.remove('animate-pulse');
+        }
+
+        document.getElementById('scan-total-seen').textContent = job.total_seen;
+        document.getElementById('scan-processed').textContent = job.processed;
+        document.getElementById('scan-imported').textContent = job.imported;
+        document.getElementById('scan-skipped-dup').textContent = job.skipped_duplicate;
+        document.getElementById('scan-skipped-unsup').textContent = job.skipped_unsupported;
+        document.getElementById('scan-failed').textContent = job.failed;
+        document.getElementById('scan-limit-reached').textContent = job.limit_reached ? 'Yes' : '—';
+
+        const errorEl = document.getElementById('scan-error');
+        errorEl.textContent = job.error_message || '—';
+        errorEl.title = job.error_message || '';
+
+        const failuresDiv = document.getElementById('local-scan-failures');
+        const failuresTbody = document.getElementById('local-scan-failures-tbody');
+        if (job.failed_files && job.failed_files.length > 0) {
+            failuresDiv.style.display = 'block';
+            failuresTbody.innerHTML = job.failed_files.map(f =>
+                `<tr class="border-b text-[10px]">
+                    <td class="py-1 px-2 font-mono break-all">${this.escapeHtml(f.path)}</td>
+                    <td class="py-1 px-2">${this.escapeHtml(f.reason)}</td>
+                </tr>`
+            ).join('');
+        } else {
+            failuresDiv.style.display = 'none';
+            failuresTbody.innerHTML = '';
+        }
+    }
+
+    _onJobFinished(job) {
+        const label = job.dry_run ? 'would import' : 'imported';
+        const statusLabel = job.status === 'completed' ? 'complete' : job.status;
+        app.showNotification(
+            `Scan ${statusLabel}: ${job.imported} ${label}, ${job.skipped_duplicate} dup skipped, ${job.failed} failed`,
+            job.status === 'completed' ? (job.failed > 0 ? 'warning' : 'success') : 'warning'
+        );
+        if (!job.dry_run && job.imported > 0) this.loadMediaStats();
+        this.loadScanHistory();
+    }
+
+    async loadScanHistory() {
+        try {
+            const jobs = await app.apiCall('/api/admin/scan-local-library/jobs', { method: 'GET' });
+            const tbody = document.getElementById('local-scan-history-tbody');
+            if (!jobs || jobs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-xs text-secondary">No scan history</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = jobs.map(j => {
+                const mode = j.dry_run ? 'dry-run' : 'import';
+                const time = j.created_at ? new Date(j.created_at).toLocaleString() : '—';
+                const statusCls = {
+                    completed: 'text-green-500', failed: 'text-red-500',
+                    cancelled: 'text-warning', interrupted: 'text-red-400',
+                    running: 'text-primary', pending: 'text-secondary',
+                    cancelling: 'text-warning',
+                }[j.status] || '';
+                return `<tr class="border-b text-[10px] cursor-pointer hover:surface" data-job-id="${j.id}">
+                    <td class="py-1 px-2">${j.id}</td>
+                    <td class="py-1 px-2 font-bold ${statusCls}">${j.status}</td>
+                    <td class="py-1 px-2">${mode}${j.max_files ? ' (' + j.max_files + ')' : ''}</td>
+                    <td class="py-1 px-2">${j.imported}</td>
+                    <td class="py-1 px-2">${j.skipped_duplicate}</td>
+                    <td class="py-1 px-2">${j.failed}</td>
+                    <td class="py-1 px-2">${time}</td>
+                </tr>`;
+            }).join('');
+
+            tbody.querySelectorAll('tr[data-job-id]').forEach(row => {
+                row.addEventListener('click', () => {
+                    const jid = parseInt(row.dataset.jobId);
+                    const job = jobs.find(j => j.id === jid);
+                    if (job) {
+                        this._currentJobId = job.id;
+                        this._showJobProgress(job);
+                        if (['pending', 'running', 'cancelling'].includes(job.status)) {
+                            this._startPolling(job.id);
+                        }
+                    }
+                });
+            });
+
+            const activeJob = jobs.find(j => ['pending', 'running', 'cancelling'].includes(j.status));
+            if (activeJob) {
+                this._currentJobId = activeJob.id;
+                this._showJobProgress(activeJob);
+                this._startPolling(activeJob.id);
+            }
+        } catch (err) {
+            console.error('Failed to load scan history:', err);
         }
     }
 
