@@ -116,3 +116,74 @@ Blombooru 使用自定义 DIY 迁移系统（`backend/app/database.py` 中的 `c
    - 来源补全
    - 重复图/相似图检测
    - 角色聚类
+
+---
+
+## Phase 1：Local Library Scan MVP
+
+**日期：** 2026-05-03
+
+### 目标
+
+支持扫描外部本地图片目录（如 Windows iCloud Photos），将支持的图片文件导入 AnimeLocalBooru gallery。
+
+### 实际使用场景
+
+```
+C:\Users\kyloris\Pictures\iCloud Photos
+```
+
+该目录由 iCloud 持续同步，可能包含：未下载的占位文件（`.icloud`）、HEIC 图片、视频、损坏文件、重复文件。Phase 1 需要对这些情况保持稳健。
+
+### 实现方式
+
+**Copy Mode**：将外部目录中的图片复制到 `media/original/`，然后复用现有的 `process_and_save_media()` 流程完成导入。
+
+选择 Copy Mode 而非 Symlink/直接引用的原因：
+- Blombooru 架构要求 `media.path` 是 `BASE_DIR` 的相对路径
+- `scanned_path` 导入模式有安全检查，拒绝 `ORIGINAL_DIR` 以外的路径
+- 文件 serve 通过 `settings.BASE_DIR / media.path`，不支持外部绝对路径
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/utils/local_library_scanner.py` | 新增 | 核心扫描逻辑：递归遍历、扩展名过滤、hash 去重、copy + import、错误隔离 |
+| `backend/app/routes/admin/media.py` | 修改 | 新增 `POST /api/admin/scan-local-library` 端点，支持 JSON body 传路径 |
+| `backend/app/config.py` | 修改 | 新增 `LOCAL_LIBRARY_PATHS` property，从 `.env` 解析 `|` 分隔的路径列表 |
+| `example.env` | 修改 | 添加 `LOCAL_LIBRARY_PATHS` 配置示例及注释 |
+| `docs/local-library-scan.md` | 新增 | 完整功能文档：配置方法、API 用法、curl/PowerShell 示例、统计字段说明 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+
+### 关键设计决策
+
+1. **不做数据库迁移**：原始路径暂存于 `Media.source` 字段（`file://` 前缀），复用已有列
+2. **`|` 分隔多路径**：避免 `:` 和 `;` 与 Windows 驱动器号/PATH 分隔符冲突
+3. **API 优先支持 JSON body**：避免 query string 传 Windows 路径的编码问题
+4. **错误隔离**：单文件失败不影响其他文件扫描，failed_files 最多返回 50 条
+5. **复制失败清理**：若文件已复制到 `media/original` 但 `process_and_save_media` 失败，自动清理副本
+
+### 扫描统计字段
+
+| 字段 | 含义 |
+|------|------|
+| `total_seen` | 递归遍历到的普通文件数 |
+| `imported` | 成功导入 |
+| `skipped_duplicate` | hash 已存在，跳过 |
+| `skipped_unsupported` | 扩展名不支持 / symlink / .icloud 占位文件等 |
+| `failed` | 处理失败（读取、复制、或导入异常） |
+| `failed_files` | 失败详情列表（path + reason），最多 50 条 |
+
+### 支持的格式（v1）
+
+`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`
+
+暂不支持：`.heic`, `.mp4`, `.webm`, `.mov`, `.bmp`, `.tiff`
+
+### 已知限制
+
+- 不做 AI tagging
+- 不做 anime filtering
+- 不做实时 watcher（仅手动触发）
+- 不支持 HEIC（需要额外依赖 pillow-heif）
+- Copy Mode 会占用额外磁盘空间

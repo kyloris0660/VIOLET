@@ -253,6 +253,18 @@ class Settings:
         return self.settings.get("media_type_tags", {"image": [], "gif": [], "video": []})
     
     @property
+    def LOCAL_LIBRARY_PATHS(self) -> List[Path]:
+        raw = os.getenv("LOCAL_LIBRARY_PATHS", "")
+        if not raw:
+            return []
+        paths = []
+        for p in raw.split("|"):
+            p = p.strip()
+            if p:
+                paths.append(Path(p))
+        return paths
+
+    @property
     def SHARED_TAGS_ENABLED(self) -> bool:
         """Check if shared tag database is enabled"""
         file_enabled = self.file_settings.get("shared_tags", {}).get("enabled")
