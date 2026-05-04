@@ -253,6 +253,35 @@ class Settings:
         return self.settings.get("media_type_tags", {"image": [], "gif": [], "video": []})
     
     @property
+    def AI_TAGGING_ENABLED(self) -> bool:
+        val = os.getenv("AI_TAGGING_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def AI_GENERAL_THRESHOLD(self) -> float:
+        return float(os.getenv("AI_GENERAL_THRESHOLD", "0.35"))
+
+    @property
+    def AI_CHARACTER_THRESHOLD(self) -> float:
+        return float(os.getenv("AI_CHARACTER_THRESHOLD", "0.65"))
+
+    @property
+    def AI_RATING_THRESHOLD(self) -> float:
+        return float(os.getenv("AI_RATING_THRESHOLD", "0.50"))
+
+    @property
+    def AI_SUGGESTION_THRESHOLD(self) -> float:
+        return float(os.getenv("AI_SUGGESTION_THRESHOLD", "0.20"))
+
+    @property
+    def AI_TAGGING_BATCH_MAX_ITEMS(self) -> int:
+        return int(os.getenv("AI_TAGGING_BATCH_MAX_ITEMS", "10"))
+
+    @property
+    def AI_MODEL_NAME(self) -> str:
+        return os.getenv("AI_MODEL_NAME", "wd-swinv2-tagger-v3")
+
+    @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:
         raw = os.getenv("LOCAL_LIBRARY_PATHS", "")
         if not raw:

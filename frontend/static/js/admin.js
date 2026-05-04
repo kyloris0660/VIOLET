@@ -325,6 +325,21 @@ class AdminPanel {
         this._scanPollTimer = null;
         this._currentJobId = null;
         this.loadScanHistory();
+
+        // AI Tagging buttons
+        const aiTagRefreshBtn = document.getElementById('ai-tag-refresh-status');
+        if (aiTagRefreshBtn) {
+            aiTagRefreshBtn.addEventListener('click', () => this.loadAITagStatus());
+        }
+        const aiTagSingleBtn = document.getElementById('ai-tag-single-btn');
+        if (aiTagSingleBtn) {
+            aiTagSingleBtn.addEventListener('click', () => this.runAITagSingle());
+        }
+        const aiTagBatchBtn = document.getElementById('ai-tag-batch-btn');
+        if (aiTagBatchBtn) {
+            aiTagBatchBtn.addEventListener('click', () => this.runAITagBatch());
+        }
+        this.loadAITagStatus();
     }
 
     setupTabs() {
@@ -1289,6 +1304,180 @@ class AdminPanel {
             }
         } catch (err) {
             console.error('Failed to load scan history:', err);
+        }
+    }
+
+    // ---- AI Auto Tagging ----
+
+    async loadAITagStatus() {
+        const el = document.getElementById('ai-tag-status-content');
+        if (!el) return;
+        el.textContent = 'Checking...';
+        try {
+            const data = await app.apiCall('/api/admin/ai-tagging/model-status', { method: 'GET' });
+            const enabledBadge = data.enabled
+                ? '<span class="text-green-500 font-bold">Enabled</span>'
+                : '<span class="text-red-500 font-bold">Disabled</span>';
+            const availableBadge = data.available
+                ? '<span class="text-green-500">Available</span>'
+                : '<span class="text-red-500">Unavailable</span>';
+            const loadedBadge = data.loaded
+                ? '<span class="text-green-500">Loaded</span>'
+                : '<span class="text-secondary">Not loaded</span>';
+            const downloadedBadge = data.model_downloaded
+                ? '<span class="text-green-500">Downloaded</span>'
+                : '<span class="text-warning">Not downloaded (will download on first use)</span>';
+
+            let html = `<div class="space-y-1">
+                <div>AI Tagging: ${enabledBadge}</div>
+                <div>Model: <span class="font-bold">${data.model_name || '—'}</span></div>
+                <div>Dependencies: ${availableBadge} | Model: ${downloadedBadge} | Runtime: ${loadedBadge}</div>`;
+            if (data.config) {
+                html += `<div class="mt-2 text-[10px] text-secondary">
+                    Thresholds — General: ${data.config.general_threshold} | Character: ${data.config.character_threshold}
+                    | Rating: ${data.config.rating_threshold} | Suggestion: ${data.config.suggestion_threshold}
+                    | Batch max: ${data.config.batch_max_items}
+                </div>`;
+            }
+            if (data.error) {
+                html += `<div class="text-red-500 mt-1">Error: ${data.error}</div>`;
+            }
+            html += '</div>';
+            el.innerHTML = html;
+        } catch (err) {
+            el.innerHTML = `<span class="text-red-500">Failed to check: ${err.message || err}</span>`;
+        }
+    }
+
+    _showAITagResults(data, isBatch) {
+        const resultsDiv = document.getElementById('ai-tag-results');
+        const summaryDiv = document.getElementById('ai-tag-summary');
+        const tbody = document.getElementById('ai-tag-details-tbody');
+        resultsDiv.style.display = '';
+
+        const results = isBatch ? (data.results || []) : [data];
+        const summary = isBatch ? data : {
+            processed: 1,
+            tags_added: data.tags_added || 0,
+            suggestions_added: data.suggestions_added || 0,
+            skipped_locked: data.skipped_locked || 0,
+            ignored_low_confidence: data.ignored_low_confidence || 0,
+            failed: data.error ? 1 : 0,
+            dry_run: data.dry_run || false,
+        };
+
+        const dryLabel = summary.dry_run ? ' <span class="text-warning font-bold">(DRY RUN)</span>' : '';
+        summaryDiv.innerHTML = `
+            <div class="bg p-2 border text-center">
+                <div class="text-[10px] text-secondary">Processed</div>
+                <div class="text-sm font-bold">${summary.processed || results.length}${dryLabel}</div>
+            </div>
+            <div class="bg p-2 border text-center">
+                <div class="text-[10px] text-secondary">Tags Added</div>
+                <div class="text-sm font-bold text-green-500">${summary.tags_added}</div>
+            </div>
+            <div class="bg p-2 border text-center">
+                <div class="text-[10px] text-secondary">Suggestions</div>
+                <div class="text-sm font-bold text-blue-500">${summary.suggestions_added}</div>
+            </div>
+            <div class="bg p-2 border text-center">
+                <div class="text-[10px] text-secondary">Skipped (Locked)</div>
+                <div class="text-sm font-bold">${summary.skipped_locked}</div>
+            </div>
+            <div class="bg p-2 border text-center">
+                <div class="text-[10px] text-secondary">Ignored (Low)</div>
+                <div class="text-sm font-bold">${summary.ignored_low_confidence}</div>
+            </div>
+            <div class="bg p-2 border text-center">
+                <div class="text-[10px] text-secondary">Failed</div>
+                <div class="text-sm font-bold text-red-500">${summary.failed || 0}</div>
+            </div>
+        `;
+
+        tbody.innerHTML = results.map(r => `
+            <tr class="border-b text-[10px]">
+                <td class="py-1 px-2"><a href="/media/${r.media_id}" class="text-primary hover:underline">${r.media_id}</a></td>
+                <td class="py-1 px-2 text-green-500">${r.tags_added || 0}</td>
+                <td class="py-1 px-2 text-blue-500">${r.suggestions_added || 0}</td>
+                <td class="py-1 px-2">${r.skipped_locked || 0}</td>
+                <td class="py-1 px-2">${r.ignored_low_confidence || 0}</td>
+                <td class="py-1 px-2 text-red-500">${r.error || '—'}</td>
+            </tr>
+        `).join('');
+    }
+
+    async runAITagSingle() {
+        const mediaIdInput = document.getElementById('ai-tag-media-id');
+        const mediaId = parseInt(mediaIdInput.value);
+        if (!mediaId || mediaId < 1) {
+            app.showNotification('Please enter a valid Media ID', 'error');
+            return;
+        }
+        const dryRun = document.getElementById('ai-tag-single-dryrun').checked;
+        const btn = document.getElementById('ai-tag-single-btn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+
+        try {
+            const data = await app.apiCall(
+                `/api/admin/ai-tagging/media/${mediaId}?dry_run=${dryRun}`,
+                { method: 'POST' }
+            );
+            this._showAITagResults(data, false);
+            const label = dryRun ? 'Dry-run' : 'Tagging';
+            app.showNotification(
+                `${label} complete: ${data.tags_added} added, ${data.suggestions_added} suggestions`,
+                'success'
+            );
+        } catch (err) {
+            app.showNotification(`AI tagging failed: ${err.message || err}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    }
+
+    async runAITagBatch() {
+        const idsInput = document.getElementById('ai-tag-batch-ids').value.trim();
+        const maxItems = parseInt(document.getElementById('ai-tag-batch-max').value) || 5;
+        const dryRun = document.getElementById('ai-tag-batch-dryrun').checked;
+
+        const body = {
+            max_items: maxItems,
+            dry_run: dryRun,
+            only_without_ai_tags: true,
+        };
+        if (idsInput) {
+            body.media_ids = idsInput.split(',').map(s => parseInt(s.trim())).filter(n => n > 0);
+            if (body.media_ids.length === 0) {
+                app.showNotification('Invalid Media IDs', 'error');
+                return;
+            }
+        }
+
+        const btn = document.getElementById('ai-tag-batch-btn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+
+        try {
+            const data = await app.apiCall('/api/admin/ai-tagging/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            this._showAITagResults(data, true);
+            const label = dryRun ? 'Dry-run' : 'Batch tagging';
+            app.showNotification(
+                `${label} complete: ${data.processed} processed, ${data.tags_added} added, ${data.suggestions_added} suggestions`,
+                'success'
+            );
+        } catch (err) {
+            app.showNotification(`Batch AI tagging failed: ${err.message || err}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
         }
     }
 

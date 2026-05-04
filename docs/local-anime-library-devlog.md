@@ -484,3 +484,82 @@ C:\Users\kyloris\Pictures\iCloud Photos
 - paths=[] 返回 400
 - Invalid root failed > 0，failed_files 有记录
 - Search/media list 等现有功能正常
+
+---
+
+## Phase 2.1：WDv3 AI Auto Tagging MVP
+
+**日期：** 2026-05-04
+
+### 目标
+
+实现手动触发的 WDv3 AI 自动标签，通过 Admin UI 对导入的图片运行模型推理，自动创建和关联 tag 并记录 provenance。
+
+### 设计决策
+
+1. **复用现有 WDTagger**：`backend/app/services/wd_tagger.py` 已有完整的 ONNX 推理能力（单图、批量、流式），只需封装调用层
+2. **新增 AI Tagging Service 层**：`ai_tagging_service.py` 负责阈值判断、tag 创建、provenance 写入的完整流程
+3. **双阈值系统**：confirm_threshold（确认）和 suggestion_threshold（建议），低于 suggestion_threshold 完全忽略
+4. **分类感知阈值**：character tag 阈值 (0.65) 高于 general tag (0.35)，减少角色误识别
+5. **手动触发**：不自动接入 local library scan，避免误对大量非动漫图片跑模型
+6. **默认使用 wd-swinv2-tagger-v3**：速度和质量的平衡选择
+7. **优雅降级**：模型不可用时应用正常启动，API 返回明确错误
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/services/ai_tagging_service.py` | 新增 | AI tagging 编排服务：推理 → 阈值判断 → tag 创建 → provenance 写入 |
+| `backend/app/routes/admin/ai_tagging.py` | 新增 | Admin API：model-status、single tag、batch tag |
+| `backend/app/routes/admin/__init__.py` | 修改 | 注册 AI tagging 路由 |
+| `backend/app/config.py` | 修改 | 新增 AI_TAGGING_* 配置属性 |
+| `example.env` | 修改 | 新增 AI tagging 配置示例 |
+| `frontend/templates/admin.html` | 修改 | Content tab 新增 AI Auto Tagging 区域 |
+| `frontend/static/js/admin.js` | 修改 | AI tagging UI 逻辑（状态检查、单图/批量触发、结果展示） |
+| `.gitignore` | 修改 | 新增 *.onnx、models/、.cache/ |
+| `docs/ai-auto-tagging.md` | 新增 | 完整技术文档 |
+| `docs/current-handoff.md` | 修改 | 更新到 Phase 2.1 |
+| `docs/project-roadmap.md` | 修改 | Phase 2.1 移到已完成 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/ai-tagging/model-status` | 检查模型可用性、配置 |
+| POST | `/api/admin/ai-tagging/media/{id}?dry_run=bool` | 对单张图片运行 AI tagging |
+| POST | `/api/admin/ai-tagging/batch` | 批量 AI tagging（支持 media_ids、max_items、dry_run） |
+
+### 阈值配置
+
+| 配置 | 默认值 | 说明 |
+|------|--------|------|
+| AI_TAGGING_ENABLED | false | 总开关 |
+| AI_GENERAL_THRESHOLD | 0.35 | general tag 确认阈值 |
+| AI_CHARACTER_THRESHOLD | 0.65 | character tag 确认阈值 |
+| AI_RATING_THRESHOLD | 0.50 | rating tag 确认阈值 |
+| AI_SUGGESTION_THRESHOLD | 0.20 | 建议阈值，低于此值忽略 |
+| AI_TAGGING_BATCH_MAX_ITEMS | 10 | 批量最大数量 |
+| AI_MODEL_NAME | wd-swinv2-tagger-v3 | 使用的模型 |
+
+### 安全控制
+
+- 默认 AI_TAGGING_ENABLED=false，需要手动开启
+- batch max_items 受 AI_TAGGING_BATCH_MAX_ITEMS 限制
+- dry_run 模式不写数据库
+- 不自动接入 scan 流程
+- manual/locked tag 不被覆盖
+- 模型文件不提交到 git
+
+### 已知限制
+
+- 不自动在 scan 后运行 AI tagging
+- 没有 tag review UI（Phase 2.2）
+- 没有 suggestion 搜索语法
+- 没有 anime/photo 过滤
+- 首次运行需要联网下载模型文件（~350-1200 MB）
+- rating tag 名称（general/sensitive/questionable/explicit）映射为 meta 类别，不修改 media.rating 字段
+
+### 下一阶段建议
+
+**Phase 2.2 — AI Tag Review UI**：在 media detail 中添加 suggestion 确认/拒绝按钮，suggestion 搜索语法，批量 suggestion 管理。
