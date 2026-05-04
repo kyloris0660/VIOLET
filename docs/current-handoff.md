@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 2.1.1 docs refresh (2026-05-04).
+> Last updated after Phase 2.1.2 session/rollback hotfix (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -93,6 +93,13 @@ Manually triggered AI tagging using the WDv3 ONNX tagger:
 | `frontend/templates/admin.html` | AI Tagging section in Content tab |
 | `frontend/static/js/admin.js` | AI tagging UI logic |
 | `docs/ai-auto-tagging.md` | Full technical documentation |
+
+### Phase 2.1.2 — AI Tagging Session / Rollback Hotfix
+
+Fixed two reliability issues in the AI tagging code:
+
+1. **Independent DB sessions**: API endpoints no longer pass the request-scoped SQLAlchemy session into `run_in_threadpool`. Worker functions create, use, and close their own sessions via `SessionLocal`.
+2. **Per-item batch rollback**: If a single `run_ai_tagging` call raises during batch processing, the session is rolled back before proceeding to the next item, preventing `PendingRollbackError` cascades.
 
 ## What Has NOT Been Built
 

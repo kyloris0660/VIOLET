@@ -600,3 +600,39 @@ C:\Users\kyloris\Pictures\iCloud Photos
 - 不做数据库迁移
 - 不接入自动 tagging
 - 不做 tag review UI
+
+---
+
+## Phase 2.1.2：AI Tagging Session / Rollback Hotfix
+
+**日期：** 2026-05-04
+
+### 目标
+
+修复 Codex 识别的两个 AI tagging 可靠性问题：跨线程 session 使用和 batch 失败级联。
+
+### 修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/routes/admin/ai_tagging.py` | 修改 | 不再传递 request-scoped session 到 threadpool；新增 `_single_tag_worker`/`_batch_tag_worker` 使用独立 session |
+| `backend/app/services/ai_tagging_service.py` | 修改 | batch 循环中异常后 `db.rollback()`，防止 PendingRollbackError 级联 |
+| `docs/ai-auto-tagging.md` | 修改 | 添加 Session Reliability 章节 |
+| `docs/current-handoff.md` | 修改 | 添加 Phase 2.1.2 条目 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+
+### Issue A — Batch failure should rollback session
+
+**问题：** `run_ai_tagging_batch` 中单个 media 失败后不 rollback，导致 SQLAlchemy session 处于 failed state，后续所有 media 都会因 `PendingRollbackError` 失败。
+
+**修复：** 在 batch 循环的 except 块中加入 `db.rollback()`。
+
+### Issue B — Do not pass request DB session into run_in_threadpool
+
+**问题：** `ai_tagging.py` 的 endpoint 将 FastAPI request-scoped session 传入 `run_in_threadpool`，Session 非线程安全。
+
+**修复：** endpoint 不再依赖 `get_db`；新增 `_get_session()` 和 worker 函数，在 threadpool 内创建独立 session，使用后在 finally 中关闭。`model-status` endpoint 不创建 DB session。
+
+### 下一阶段建议
+
+**Phase 2.2 — AI Tag Review UI**

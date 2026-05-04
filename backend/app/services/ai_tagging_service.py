@@ -274,6 +274,10 @@ def run_ai_tagging_batch(
             batch_summary["results"].append(result)
         except Exception as exc:
             logger.error("AI tagging failed for media %d: %s", mid, exc, exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
             batch_summary["failed"] += 1
             batch_summary["processed"] += 1
             batch_summary["results"].append({
