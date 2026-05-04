@@ -1,6 +1,6 @@
 # Local Library Scan
 
-Scan one or more local image directories and import supported files into AnimeLocalBooru.
+Scan one or more local image directories and import supported files into V.I.O.L.E.T.
 
 ## How It Works
 

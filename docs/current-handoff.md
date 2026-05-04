@@ -1,13 +1,13 @@
-# Current Handoff — AnimeLocalBooru
+# 当前交接文档 — V.I.O.L.E.T.
 
-> Last updated after Phase 2.2 AI Tag Review UI (2026-05-04).
+> Last updated after Phase 2.2.1 V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
 
 | Item | Value |
 |------|-------|
-| **Repo** | `kyloris0660/AnimeLocalBooru` |
+| **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
 | **Branch** | `main` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
@@ -132,6 +132,7 @@ Added suggestion review capabilities:
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
 - No WebSocket (uses polling)
+- 中文标签搜索仅覆盖常用标签（~80 个），大规模词典待后续扩展
 
 ## Phase 2.0.1 — Review Findings Hotfix
 
@@ -152,6 +153,20 @@ Fixed six reliability issues from Codex automated review:
 4. **Polling-based progress** — 1.5s interval; WebSocket would be more efficient but adds complexity
 5. **`Media.tags` relationship uses SQLAlchemy secondary** — tag reads via relationship don't filter suggestions; AI tagging now creates suggestions so Phase 2.2 should add search filtering
 6. **First AI model download requires internet** — ~350-1200 MB from HuggingFace Hub; no offline fallback
+
+### Phase 2.2.1 — V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation
+
+项目正式重命名为 V.I.O.L.E.T.（Visual Image Organizer for Local Evaluation & Tagging）。
+
+- 项目名称统一为 V.I.O.L.E.T.
+- UI 全面中文化（Local Library Scan、AI Tagging、AI Tag Review 等）
+- 标签中文显示：常见 Danbooru tag 显示中文名，鼠标悬停显示 canonical tag
+- 中文标签搜索别名：用户搜索"蓝眼睛"→ blue_eyes，"长发"→ long_hair
+- 标签翻译词典：`frontend/static/data/tag_translations_zh.json`
+- Logo 集成到导航栏和文档
+- README 重写为中文
+- 所有文档更新为 V.I.O.L.E.T. 命名
+- 新增 `docs/tag-localization-zh.md` 标签本地化方案文档
 
 ## Recommended Next Phase: 2.3
 

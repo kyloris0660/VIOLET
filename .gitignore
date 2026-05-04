@@ -1,7 +1,7 @@
 venv
 .env
 __pycache__
-data/
+/data/
 media/
 storage/
 backups/

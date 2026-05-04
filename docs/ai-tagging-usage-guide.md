@@ -1,12 +1,12 @@
 # AI Tagging Usage Guide
 
-Complete guide to using the WDv3 AI Auto Tagging feature in AnimeLocalBooru: what it can do, how to use it, what its limits are, and how to verify everything works.
+Complete guide to using the WDv3 AI Auto Tagging feature in V.I.O.L.E.T.: what it can do, how to use it, what its limits are, and how to verify everything works.
 
 ---
 
 ## What the AI Tagger Can Do
 
-AnimeLocalBooru uses the **WDv3 (SmilingWolf) ONNX tagger** — a Danbooru-trained image classification model that predicts visual tags from anime/illustration images. It is **not** a reverse image search engine, not an internet source identifier, and not a character database lookup tool.
+V.I.O.L.E.T. uses the **WDv3 (SmilingWolf) ONNX tagger** — a Danbooru-trained image classification model that predicts visual tags from anime/illustration images. It is **not** a reverse image search engine, not an internet source identifier, and not a character database lookup tool.
 
 ### What It IS
 
@@ -186,7 +186,7 @@ If a media already has a manual tag with the same name, the AI silently skips it
 ### A. Starting the Application (Windows)
 
 ```powershell
-cd C:\Users\kyloris\Documents\AnimeLocalBooru
+cd C:\Users\kyloris\Documents\AnimeLocalBooru  # V.I.O.L.E.T. 项目目录
 git checkout main
 git pull origin main
 .\venv\Scripts\Activate.ps1
@@ -372,6 +372,14 @@ Write-Output "Processed: $($data.processed), Added: $($data.tags_added), Failed:
 - **Per-item failure isolation**: single-item failures are rolled back and do not cascade — the `failed` count is recorded in the summary and the batch continues
 - Thread-pool workers use independent DB sessions (not the request-scoped session)
 - Always dry-run first when testing new settings
+
+**Batch 限制说明：**
+- UI 中的"Max Items"不是无限值
+- 后端通过 `AI_TAGGING_BATCH_MAX_ITEMS` 限制最大 batch（默认 10）
+- 此限制防止误操作导致全库 AI 打标
+- 可在 `.env` 中调整：`AI_TAGGING_BATCH_MAX_ITEMS=50`
+- 不建议完全移除上限
+- 大批量处理应通过后台任务、进度跟踪和取消功能完成
 
 ### G. Searching AI Tags
 

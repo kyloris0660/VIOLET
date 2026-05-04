@@ -1,5 +1,7 @@
+import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import (Date, Float, and_, asc, case, cast, desc, exists, func,
@@ -8,6 +10,31 @@ from sqlalchemy.orm import Query, Session, aliased
 
 from ..models import (Album, Media, RatingEnum, Tag, TagCategoryEnum,
                       blombooru_album_media, blombooru_media_tags)
+
+_TAG_ZH_REVERSE = None
+
+
+def _load_zh_tag_reverse():
+    """Load Chinese → English tag reverse mapping for search alias support."""
+    global _TAG_ZH_REVERSE
+    if _TAG_ZH_REVERSE is not None:
+        return _TAG_ZH_REVERSE
+
+    dict_path = Path(__file__).parent.parent.parent.parent / "frontend" / "static" / "data" / "tag_translations_zh.json"
+    try:
+        with open(dict_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            _TAG_ZH_REVERSE = data.get("reverse", {})
+    except (FileNotFoundError, json.JSONDecodeError, IOError):
+        _TAG_ZH_REVERSE = {}
+    return _TAG_ZH_REVERSE
+
+
+def resolve_zh_alias(tag_name: str) -> str:
+    """Resolve a Chinese tag alias to its canonical English tag name.
+    Returns the original name if no alias found."""
+    reverse = _load_zh_tag_reverse()
+    return reverse.get(tag_name, tag_name)
 
 TOKEN_PATTERN = re.compile(r'(-?)(?:([a-zA-Z0-9_]+):)?("[^"]*"|[^\s"]+)')
 
@@ -39,16 +66,17 @@ def parse_search_query(query_string: str) -> Dict[str, Any]:
                 result['meta'][key] = []
             result['meta'][key].append({'value': value, 'negated': is_negated})
         else:
-            if '*' in value or '?' in value:
+            resolved = resolve_zh_alias(value)
+            if '*' in resolved or '?' in resolved:
                 if is_negated:
-                    result['tags']['wildcards'].append(('exclude', value))
+                    result['tags']['wildcards'].append(('exclude', resolved))
                 else:
-                    result['tags']['wildcards'].append(('include', value))
+                    result['tags']['wildcards'].append(('include', resolved))
             else:
                 if is_negated:
-                    result['tags']['exclude'].append(value)
+                    result['tags']['exclude'].append(resolved)
                 else:
-                    result['tags']['include'].append(value)
+                    result['tags']['include'].append(resolved)
 
     return result
 

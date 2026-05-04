@@ -787,53 +787,52 @@
 
             <!-- Local Library Scan Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="local-library-scan">
-                <h2 class="text-base font-bold mb-4 pb-3 border-b">Local Library Scan</h2>
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.local_library_scan.title') }}</h2>
 
                 <!-- New scan form -->
                 <div class="bg p-4 border mb-4">
                     <p class="text-xs text-secondary mb-4">
-                        Scan external local directories and import supported images (.jpg, .jpeg, .png, .webp, .gif).
-                        Files are copied into Blombooru storage; originals are never moved or deleted.
+                        {{ t('admin.local_library_scan.description') }}
                     </p>
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-xs font-bold mb-2">Scan Path</label>
+                            <label class="block text-xs font-bold mb-2">{{ t('admin.local_library_scan.scan_path') }}</label>
                             <input type="text" id="local-scan-path"
-                                placeholder="C:\Users\kyloris\Pictures\AnimeLocalBooruTest"
+                                placeholder="{{ t('admin.local_library_scan.scan_path_placeholder') }}"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                             <p class="text-xs text-secondary opacity-70 mt-1 ml-1">
-                                Leave empty to use paths from .env LOCAL_LIBRARY_PATHS
+                                {{ t('admin.local_library_scan.scan_path_hint') }}
                             </p>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs font-bold mb-2">Max Files</label>
+                                <label class="block text-xs font-bold mb-2">{{ t('admin.local_library_scan.max_files') }}</label>
                                 <input type="number" id="local-scan-max-files" min="1"
-                                    placeholder="No limit"
+                                    placeholder="{{ t('admin.local_library_scan.no_limit') }}"
                                     class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                                 <p class="text-xs text-secondary opacity-70 mt-1 ml-1">
-                                    Limit the number of candidate files to process
+                                    {{ t('admin.local_library_scan.max_files_hint') }}
                                 </p>
                             </div>
                             <div class="flex items-end pb-1">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="local-scan-dry-run" class="w-4 h-4 accent-primary">
-                                    <span class="text-xs font-bold">Dry Run</span>
+                                    <span class="text-xs font-bold">{{ t('admin.local_library_scan.dry_run') }}</span>
                                 </label>
                                 <span class="text-xs text-secondary opacity-70 ml-2">
-                                    (scan only, no import)
+                                    ({{ t('admin.local_library_scan.dry_run_hint') }})
                                 </span>
                             </div>
                         </div>
 
                         <div class="flex gap-2">
                             <button id="local-scan-btn" class="btn-primary flex-1">
-                                Start Scan
+                                {{ t('admin.local_library_scan.start_scan') }}
                             </button>
                             <button id="local-scan-cancel-btn" class="btn-danger" style="display: none;">
-                                Cancel
+                                {{ t('admin.local_library_scan.cancel') }}
                             </button>
                         </div>
                     </div>
@@ -841,13 +840,13 @@
 
                 <!-- Current job progress -->
                 <div id="local-scan-progress" style="display: none;" class="mb-4">
-                    <h3 class="text-sm font-bold mb-3">Current Scan</h3>
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.local_library_scan.current_scan') }}</h3>
                     <div class="bg p-4 border">
                         <div class="flex items-center justify-between mb-2">
                             <span id="local-scan-status-badge" class="text-xs font-bold px-2 py-1 border"></span>
                             <span id="local-scan-dry-badge" style="display: none;"
                                 class="text-xs font-bold px-2 py-1 border border-warning text-warning">
-                                DRY RUN
+                                {{ t('admin.local_library_scan.dry_run_badge') }}
                             </span>
                         </div>
                         <div id="local-scan-progress-bar-wrap" class="w-full bg border mb-3" style="height: 6px;">
@@ -855,46 +854,46 @@
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Total Seen</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.total_seen') }}</div>
                                 <div class="text-sm font-bold" id="scan-total-seen">0</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Processed</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.processed') }}</div>
                                 <div class="text-sm font-bold" id="scan-processed">0</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Imported</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.imported') }}</div>
                                 <div class="text-sm font-bold text-green-500" id="scan-imported">0</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Duplicate</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.duplicate') }}</div>
                                 <div class="text-sm font-bold" id="scan-skipped-dup">0</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Unsupported</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.unsupported') }}</div>
                                 <div class="text-sm font-bold" id="scan-skipped-unsup">0</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Failed</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.failed') }}</div>
                                 <div class="text-sm font-bold text-red-500" id="scan-failed">0</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Limit Reached</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.limit_reached') }}</div>
                                 <div class="text-sm font-bold" id="scan-limit-reached">—</div>
                             </div>
                             <div class="bg p-2 border text-center">
-                                <div class="text-[10px] text-secondary">Error</div>
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.error') }}</div>
                                 <div class="text-sm font-bold text-red-500 truncate" id="scan-error" title="">—</div>
                             </div>
                         </div>
                         <div id="local-scan-failures" style="display: none;">
-                            <h3 class="text-xs font-bold mb-2">Failed Files</h3>
+                            <h3 class="text-xs font-bold mb-2">{{ t('admin.local_library_scan.failed_files') }}</h3>
                             <div class="overflow-x-auto max-h-40 overflow-y-auto border">
                                 <table class="bg w-full text-left border-collapse">
                                     <thead class="border-b">
                                         <tr class="text-secondary text-[10px]">
-                                            <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Path</th>
-                                            <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Reason</th>
+                                            <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.local_library_scan.path') }}</th>
+                                            <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.local_library_scan.reason') }}</th>
                                         </tr>
                                     </thead>
                                     <tbody id="local-scan-failures-tbody"></tbody>
@@ -906,22 +905,22 @@
 
                 <!-- Scan history -->
                 <div id="local-scan-history">
-                    <h3 class="text-sm font-bold mb-3">Scan History</h3>
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.local_library_scan.scan_history') }}</h3>
                     <div class="overflow-x-auto max-h-60 overflow-y-auto border">
                         <table class="bg w-full text-left border-collapse">
                             <thead class="border-b">
                                 <tr class="text-secondary text-[10px]">
                                     <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">#</th>
-                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">Status</th>
-                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">Mode</th>
-                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">Imported</th>
-                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">Dup</th>
-                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">Failed</th>
-                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">Time</th>
+                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">{{ t('admin.local_library_scan.status') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">{{ t('admin.local_library_scan.mode') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">{{ t('admin.local_library_scan.imported') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">{{ t('admin.local_library_scan.duplicate') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">{{ t('admin.local_library_scan.failed') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-2 px-2 font-medium">{{ t('admin.local_library_scan.time') }}</th>
                                 </tr>
                             </thead>
                             <tbody id="local-scan-history-tbody">
-                                <tr><td colspan="7" class="p-3 text-center text-xs text-secondary">No scan history</td></tr>
+                                <tr><td colspan="7" class="p-3 text-center text-xs text-secondary">{{ t('admin.local_library_scan.no_scan_history') }}</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -930,86 +929,86 @@
 
             <!-- AI Auto Tagging Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="ai-tagging-section">
-                <h2 class="text-base font-bold mb-4 pb-3 border-b">AI Auto Tagging</h2>
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.ai_tagging.title') }}</h2>
 
                 <!-- Model Status -->
                 <div class="bg p-4 border mb-4">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">Model Status</h3>
-                        <button id="ai-tag-refresh-status" class="btn-dark text-xs px-2 py-1">Refresh</button>
+                        <h3 class="text-sm font-bold">{{ t('admin.ai_tagging.model_status') }}</h3>
+                        <button id="ai-tag-refresh-status" class="btn-dark text-xs px-2 py-1">{{ t('admin.ai_tagging.refresh') }}</button>
                     </div>
                     <div id="ai-tag-status-content" class="text-xs text-secondary">
-                        Loading...
+                        {{ t('admin.ai_tagging.loading') }}
                     </div>
                 </div>
 
                 <!-- Single Image Tagging -->
                 <div class="bg p-4 border mb-4">
-                    <h3 class="text-sm font-bold mb-3">Single Image Tagging</h3>
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.single_image') }}</h3>
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-xs font-bold mb-2">Media ID</label>
-                            <input type="number" id="ai-tag-media-id" min="1" placeholder="e.g. 1"
+                            <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.media_id') }}</label>
+                            <input type="number" id="ai-tag-media-id" min="1" placeholder="{{ t('admin.ai_tagging.media_id_placeholder') }}"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div class="flex items-end gap-2">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" id="ai-tag-single-dryrun" class="w-4 h-4 accent-primary" checked>
-                                <span class="text-xs font-bold">Dry Run</span>
+                                <span class="text-xs font-bold">{{ t('admin.ai_tagging.dry_run') }}</span>
                             </label>
                         </div>
                         <button id="ai-tag-single-btn" class="btn-primary w-full">
-                            Run AI Tagging
+                            {{ t('admin.ai_tagging.run_ai_tagging') }}
                         </button>
                     </div>
                 </div>
 
                 <!-- Batch Tagging -->
                 <div class="bg p-4 border mb-4">
-                    <h3 class="text-sm font-bold mb-3">Batch AI Tagging</h3>
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.batch_title') }}</h3>
                     <p class="text-xs text-secondary mb-3">
-                        Tag multiple images at once. If no Media IDs are specified, selects images without existing AI tags.
+                        {{ t('admin.ai_tagging.batch_description') }}
                     </p>
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-xs font-bold mb-2">Media IDs (comma-separated, optional)</label>
-                            <input type="text" id="ai-tag-batch-ids" placeholder="e.g. 1,2,3 or leave empty"
+                            <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.batch_ids_label') }}</label>
+                            <input type="text" id="ai-tag-batch-ids" placeholder="{{ t('admin.ai_tagging.batch_ids_placeholder') }}"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs font-bold mb-2">Max Items</label>
+                                <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.max_items') }}</label>
                                 <input type="number" id="ai-tag-batch-max" min="1" value="5"
                                     class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                             </div>
                             <div class="flex items-end pb-1 gap-4">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="ai-tag-batch-dryrun" class="w-4 h-4 accent-primary" checked>
-                                    <span class="text-xs font-bold">Dry Run</span>
+                                    <span class="text-xs font-bold">{{ t('admin.ai_tagging.dry_run') }}</span>
                                 </label>
                             </div>
                         </div>
                         <button id="ai-tag-batch-btn" class="btn-primary w-full">
-                            Start Batch AI Tagging
+                            {{ t('admin.ai_tagging.start_batch') }}
                         </button>
                     </div>
                 </div>
 
                 <!-- Results -->
                 <div id="ai-tag-results" style="display: none;">
-                    <h3 class="text-sm font-bold mb-3">Results</h3>
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.results') }}</h3>
                     <div class="bg p-4 border">
                         <div id="ai-tag-summary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3"></div>
                         <div id="ai-tag-details" class="overflow-x-auto max-h-60 overflow-y-auto border">
                             <table class="bg w-full text-left border-collapse">
                                 <thead class="border-b">
                                     <tr class="text-secondary text-[10px]">
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Media</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Added</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Suggestions</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Locked</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Ignored</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Error</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.media') }}</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.added') }}</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.suggestions') }}</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.locked') }}</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.ignored') }}</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('common.error') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody id="ai-tag-details-tbody"></tbody>
@@ -1021,36 +1020,36 @@
 
             <!-- AI Tag Review Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="ai-tag-review-section">
-                <h2 class="text-base font-bold mb-4 pb-3 border-b">AI Tag Review</h2>
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.ai_tag_review.title') }}</h2>
 
                 <!-- Filters -->
                 <div class="bg p-4 border mb-4">
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
                         <div>
-                            <label class="block text-xs font-bold mb-1">Min Confidence</label>
+                            <label class="block text-xs font-bold mb-1">{{ t('admin.ai_tag_review.min_confidence') }}</label>
                             <input type="number" id="review-min-confidence" min="0" max="1" step="0.05" placeholder="0.0"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1">Max Confidence</label>
+                            <label class="block text-xs font-bold mb-1">{{ t('admin.ai_tag_review.max_confidence') }}</label>
                             <input type="number" id="review-max-confidence" min="0" max="1" step="0.05" placeholder="1.0"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1">Tag Name</label>
-                            <input type="text" id="review-tag-name" placeholder="Filter by tag..."
+                            <label class="block text-xs font-bold mb-1">{{ t('admin.ai_tag_review.tag_name') }}</label>
+                            <input type="text" id="review-tag-name" placeholder="{{ t('admin.ai_tag_review.filter_tag_placeholder') }}"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1">Media ID</label>
-                            <input type="number" id="review-media-id" min="1" placeholder="All"
+                            <label class="block text-xs font-bold mb-1">{{ t('admin.ai_tag_review.media_id') }}</label>
+                            <input type="number" id="review-media-id" min="1" placeholder="{{ t('admin.ai_tag_review.all') }}"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button id="review-load-btn" class="btn-primary px-4 py-2 text-xs">Load Suggestions</button>
-                        <button id="review-bulk-confirm-btn" class="btn px-3 py-2 text-xs" disabled>Bulk Confirm Selected</button>
-                        <button id="review-bulk-reject-btn" class="btn px-3 py-2 text-xs" disabled>Bulk Reject Selected</button>
+                        <button id="review-load-btn" class="btn-primary px-4 py-2 text-xs">{{ t('admin.ai_tag_review.load_suggestions') }}</button>
+                        <button id="review-bulk-confirm-btn" class="btn px-3 py-2 text-xs" disabled>{{ t('admin.ai_tag_review.bulk_confirm') }}</button>
+                        <button id="review-bulk-reject-btn" class="btn px-3 py-2 text-xs" disabled>{{ t('admin.ai_tag_review.bulk_reject') }}</button>
                         <span id="review-selection-count" class="text-xs text-secondary ml-auto">0 selected</span>
                     </div>
                 </div>
@@ -1065,25 +1064,25 @@
                                     <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">
                                         <input type="checkbox" id="review-select-all" class="w-3.5 h-3.5 accent-primary">
                                     </th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Thumb</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Media</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Tag</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Category</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Confidence</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Source</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Actions</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.thumb') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.media') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.tag') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.category') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.confidence') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.source') }}</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tag_review.actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody id="review-tbody"></tbody>
                         </table>
                     </div>
                     <div id="review-empty" class="text-center py-8 text-secondary" style="display:none;">
-                        No suggestions found. Run AI tagging first to generate suggestions.
+                        {{ t('admin.ai_tag_review.no_suggestions') }}
                     </div>
                     <div id="review-pagination" class="flex items-center justify-between mt-3" style="display:none;">
-                        <button id="review-prev-btn" class="btn px-3 py-1 text-xs" disabled>Previous</button>
+                        <button id="review-prev-btn" class="btn px-3 py-1 text-xs" disabled>{{ t('admin.ai_tag_review.previous') }}</button>
                         <span id="review-page-info" class="text-xs text-secondary"></span>
-                        <button id="review-next-btn" class="btn px-3 py-1 text-xs" disabled>Next</button>
+                        <button id="review-next-btn" class="btn px-3 py-1 text-xs" disabled>{{ t('admin.ai_tag_review.next') }}</button>
                     </div>
                 </div>
             </div>

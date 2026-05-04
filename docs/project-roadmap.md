@@ -1,4 +1,4 @@
-# AnimeLocalBooru — Project Roadmap
+# V.I.O.L.E.T. — 项目路线图
 
 ## Project Vision
 
@@ -23,7 +23,7 @@ The finished system should:
 
 **PR:** #1 · **Commit:** `cd69b27`
 
-- Imported Blombooru upstream into the AnimeLocalBooru repository
+- Imported Blombooru upstream into the V.I.O.L.E.T. repository
 - Verified local dev environment (Python venv + PostgreSQL)
 - Confirmed core functionality: upload, tag CRUD, search, thumbnails, scan-media, admin panel, onboarding
 
@@ -84,7 +84,7 @@ See [AI Tagging Usage Guide](ai-tagging-usage-guide.md) for complete usage instr
 ### Phase 2.1.1 — Documentation & Usage Guide
 
 - Complete AI Tagging Usage Guide with GUI walkthrough and PowerShell examples
-- README refresh for AnimeLocalBooru (replacing upstream Blombooru README)
+- README refresh for V.I.O.L.E.T. (replacing upstream Blombooru README)
 - Capability boundaries documentation (what AI can/cannot do)
 - Future auto-tagging architecture recommendation
 - Manual GUI verification procedures
@@ -101,6 +101,19 @@ See [AI Tagging Usage Guide](ai-tagging-usage-guide.md) for complete usage instr
 - Tag counts updated on confirm (makes tags searchable)
 
 See [AI Tag Review](ai-tag-review.md) for complete documentation.
+
+### Phase 2.2.1 — V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation
+
+**目标：** 项目重命名并建立中文本地化基础。
+
+- 项目正式名称：V.I.O.L.E.T.（Visual Image Organizer for Local Evaluation & Tagging）
+- UI 全面中文化：Local Library Scan、AI Auto Tagging、AI Tag Review 等区域
+- 标签中文显示：常见 Danbooru tag 在 UI 中显示中文名
+- 中文标签搜索别名：支持用中文搜索标签
+- 标签翻译词典：静态 JSON 文件，可扩展
+- Logo 集成：导航栏、README
+- README 和文档重写为中文
+- 新增标签本地化方案文档
 
 ---
 

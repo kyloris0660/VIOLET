@@ -2,9 +2,9 @@
 
 ## Project context
 
-This repository is **AnimeLocalBooru**, based on [Blombooru](https://github.com/mrblomblo/blombooru) — a self-hosted anime/illustration media tagging tool built with FastAPI + PostgreSQL + Jinja2/Tailwind.
+This repository is **V.I.O.L.E.T.** (Visual Image Organizer for Local Evaluation & Tagging), based on [Blombooru](https://github.com/mrblomblo/blombooru) — a self-hosted anime/illustration media tagging tool built with FastAPI + PostgreSQL + Jinja2/Tailwind.
 
-The project goal is a personal, local anime image library with Danbooru-style tag-based retrieval. See `docs/project-roadmap.md` for the full phase plan and `docs/current-handoff.md` for the latest state.
+The project goal is a personal, local anime image library with Danbooru-style tag-based retrieval and Chinese localization. See `docs/project-roadmap.md` for the full phase plan and `docs/current-handoff.md` for the latest state.
 
 ### Architecture overview
 
@@ -68,6 +68,7 @@ No automated test suite. Verify changes manually:
 | AI Tagger | `backend/app/services/wd_tagger.py` | WDv3 ONNX model (not yet integrated into scan flow) |
 | Booru import | `backend/app/routes/booru_import.py` | Danbooru/Gelbooru URL import |
 | Auth | `backend/app/auth.py` | JWT + admin_mode cookie |
+| Tag Localization | `frontend/static/data/tag_translations_zh.json`, `frontend/static/js/tag-localization.js` | Chinese display names for tags |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |
 
 ### Development workflow
