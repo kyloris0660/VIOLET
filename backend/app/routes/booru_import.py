@@ -15,6 +15,7 @@ from ..utils.request_helpers import safe_error_detail
 from ..database import get_db
 from ..models import Album, Media, Tag, User, blombooru_media_tags
 from ..services.booru import BooruPost, get_client_for_url
+from ..services.tag_service import add_booru_import_tag_to_media
 from ..utils.album_utils import update_album_last_modified
 from ..utils.cache import (invalidate_album_cache, invalidate_media_cache,
                            invalidate_tag_cache)
@@ -198,6 +199,9 @@ async def download_and_import(
             source=final_source if final_source else None,
         )
 
+        db.add(media)
+        db.flush()
+
         # Handle tags
         tag_ids_to_update = []
         if final_tags:
@@ -209,8 +213,10 @@ async def download_and_import(
                         category_hints[t.name.lower()] = t.category
 
             tag_list = [t.strip() for t in final_tags if t.strip()]
-            media.tags = get_or_create_tags(db, tag_list, category_hints=category_hints)
-            tag_ids_to_update = [tag.id for tag in media.tags]
+            tag_objects = get_or_create_tags(db, tag_list, category_hints=category_hints)
+            tag_ids_to_update = [tag.id for tag in tag_objects]
+            for tag in tag_objects:
+                add_booru_import_tag_to_media(db, media.id, tag.id)
 
         # Handle albums
         affected_album_ids = []
@@ -219,7 +225,6 @@ async def download_and_import(
             media.albums = albums
             affected_album_ids = [album.id for album in albums]
 
-        db.add(media)
         db.commit()
         db.refresh(media)
 

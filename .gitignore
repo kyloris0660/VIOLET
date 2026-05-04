@@ -3,5 +3,7 @@ venv
 __pycache__
 data/
 media/
+storage/
+backups/
 tailwind/tailwindcss*
 blombooru-upstream/

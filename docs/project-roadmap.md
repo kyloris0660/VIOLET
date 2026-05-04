@@ -41,36 +41,35 @@ The finished system should:
 - Original path stored in `Media.source` as `file://` URI
 - Full documentation in `docs/local-library-scan.md`
 
----
+### Phase 1.5 — Scan Safety & UX (PR #4)
 
-## Upcoming Phases
+**Commit:** `5d025aa`
 
-### Phase 1.5 — Scan Safety & UX (recommended next)
+- `dry_run` mode, `max_files` limit, Admin UI for scan
+- Safe preview of large directories before real import
 
-**Goal:** Make it safe to point the scanner at a real, large, continuously-syncing directory like iCloud Photos.
+### Phase 1.6 — Scan Job System / Progress / History (PR #5)
 
-| Feature | Why |
-|---------|-----|
-| **dry-run mode** | Preview what *would* be imported without writing anything |
-| **max_files limit** | Cap a single scan run (e.g. `max_files=100`) for controlled testing |
-| **Admin UI button** | Trigger scan from the browser instead of curl |
-| **Scan result summary in UI** | Show imported / skipped / failed counts after scan |
-| **failed_files display** | Surface error details in the admin panel |
+**Commit:** `ec2a9a0`
 
-**Milestone gate:** Successfully dry-run the real iCloud Photos directory and review the report before any full import.
+- Background scan jobs with progress polling, cancel, history
+- `blombooru_scan_jobs` table, stale recovery, path safety
 
 ### Phase 2 — Tag Metadata Foundation
 
-**Goal:** Extend the tag–media relationship to support AI-generated tags with provenance.
+Extended `blombooru_media_tags` with provenance tracking:
 
-| Change | Detail |
-|--------|--------|
-| Extend `blombooru_media_tags` junction table | Add `source` (enum: `manual`, `ai_wd`, `booru_import`), `confidence` (float 0–1), `is_locked` (bool) |
-| Migration function | Follow existing DIY migration pattern in `database.py` |
-| Priority rule | `is_locked = true` or `source = manual` → AI never overwrites |
-| Low-confidence handling | Tags below threshold stored as *suggestions*, not confirmed |
+- Added `source`, `confidence`, `is_locked`, `is_suggestion`, `created_at`, `updated_at` columns
+- Tag service (`backend/app/services/tag_service.py`) with helpers for manual, AI, and booru import tags
+- Priority rule: manual/locked tags never overwritten by AI
+- Suggestions excluded from search and tag counts
+- Existing tags backfilled as `manual/1.0/locked/confirmed`
+- Media detail API exposes `tag_provenance` dict
+- Full documentation in `docs/tag-metadata-foundation.md`
 
-**Important:** This is a database migration. Must be planned, reviewed, and tested on a copy of the DB before merging.
+---
+
+## Upcoming Phases
 
 ### Phase 2.1 — AI Auto Tagging
 

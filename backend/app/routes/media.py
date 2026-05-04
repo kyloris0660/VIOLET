@@ -18,6 +18,11 @@ from ..utils.request_helpers import safe_error_detail
 from ..database import get_db
 from ..models import (Album, Media, Tag, User, blombooru_album_media,
                       blombooru_media_tags)
+from ..services.tag_service import (
+    add_manual_tags_to_media,
+    get_media_tag_provenance,
+    set_media_tags_manual,
+)
 from ..schemas import (AlbumListResponse, MediaCreate, MediaResponse,
                        MediaUpdate, RatingEnum, ShareSettingsUpdate)
 from ..utils.album_utils import (get_album_rating, get_bulk_album_metrics,
@@ -37,14 +42,15 @@ from ..utils.thumbnail_generator import generate_thumbnail
 router = APIRouter(prefix="/api/media", tags=["media"])
 
 def update_tag_counts(db: Session, tag_ids: List[int]):
-    """Update post counts for given tags"""
+    """Update post counts for given tags (excludes suggestion tags)"""
     if not tag_ids:
         return
     counts = db.query(
         blombooru_media_tags.c.tag_id,
         func.count(blombooru_media_tags.c.media_id)
     ).filter(
-        blombooru_media_tags.c.tag_id.in_(tag_ids)
+        blombooru_media_tags.c.tag_id.in_(tag_ids),
+        blombooru_media_tags.c.is_suggestion == False,
     ).group_by(blombooru_media_tags.c.tag_id).all()
     count_map = dict(counts)
     for tag_id in tag_ids:
@@ -144,6 +150,9 @@ def process_and_save_media(
         source=source if source else None,
     )
 
+    db.add(media)
+    db.flush()
+
     tag_ids_to_update = []
     if tags:
         tag_list = [t.strip() for t in tags.split() if t.strip()]
@@ -153,8 +162,9 @@ def process_and_save_media(
                 parsed_hints = json.loads(category_hints)
             except (json.JSONDecodeError, TypeError):
                 pass
-        media.tags = get_or_create_tags(db, tag_list, category_hints=parsed_hints)
-        tag_ids_to_update = [tag.id for tag in media.tags]
+        tag_objects = get_or_create_tags(db, tag_list, category_hints=parsed_hints)
+        tag_ids_to_update = [tag.id for tag in tag_objects]
+        add_manual_tags_to_media(db, media.id, tag_ids_to_update)
         logger.debug(f"Tags added: {tag_list}")
 
     affected_album_ids = []
@@ -173,7 +183,6 @@ def process_and_save_media(
         except Exception as e:
             logger.error(f"Error parsing album_ids: {e}")
 
-    db.add(media)
     db.commit()
     db.refresh(media)
 
@@ -294,7 +303,11 @@ async def get_media(media_id: int, db: Session = Depends(get_db)):
     
     result = MediaResponse.model_validate(media).model_dump()
     result['share_ai_metadata'] = media.share_ai_metadata if hasattr(media, 'share_ai_metadata') else False
-    
+
+    provenance = get_media_tag_provenance(db, media_id)
+    prov_map = {p["tag_id"]: p for p in provenance}
+    result['tag_provenance'] = prov_map
+
     # Add parent and siblings info
     hierarchy = []
     if media.parent_id:
@@ -459,8 +472,9 @@ async def update_media(
     affected_tag_ids = []
     if updates.tags is not None:
         old_tag_ids = [tag.id for tag in media.tags]
-        media.tags = get_or_create_tags(db, updates.tags)
-        new_tag_ids = [tag.id for tag in media.tags]
+        new_tag_objects = get_or_create_tags(db, updates.tags)
+        new_tag_ids = [tag.id for tag in new_tag_objects]
+        set_media_tags_manual(db, media.id, new_tag_ids)
         affected_tag_ids = list(set(old_tag_ids + new_tag_ids))
 
     parent_id_changed = False
