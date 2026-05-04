@@ -563,3 +563,40 @@ C:\Users\kyloris\Pictures\iCloud Photos
 ### 下一阶段建议
 
 **Phase 2.2 — AI Tag Review UI**：在 media detail 中添加 suggestion 确认/拒绝按钮，suggestion 搜索语法，批量 suggestion 管理。
+
+---
+
+## Phase 2.1.1：文档更新 — AI Tagging Usage Guide + README Refresh
+
+**日期：** 2026-05-04
+
+### 目标
+
+为 AI tagging 功能编写完整的使用指南，刷新 README 为 AnimeLocalBooru 项目说明，明确当前能力边界和未来路线。
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `docs/ai-tagging-usage-guide.md` | 新增 | 完整 AI tagging 使用指南（GUI 操作、API 示例、能力边界、未来路线） |
+| `README.md` | 重写 | AnimeLocalBooru 项目 README（保留 Blombooru upstream credit） |
+| `docs/ai-auto-tagging.md` | 修改 | 添加能力边界章节、引用 usage guide、更新下一阶段建议 |
+| `docs/current-handoff.md` | 修改 | 更新时间戳、引用 usage guide |
+| `docs/project-roadmap.md` | 修改 | 添加 Phase 2.1.1、细化 Phase 2.2/2.3 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+
+### 关键内容
+
+1. **AI Tagging 能力说明**：明确 WDv3 擅长 general tags，部分 character tags，不支持 artist/source/copyright 识别
+2. **GUI 手动验证流程**：启动、登录、scan、AI tagging dry-run、real write、batch、搜索验证
+3. **PowerShell API 示例**：完整的 curl/PowerShell 测试脚本
+4. **安全建议**：不要全量扫描 iCloud Photos、总是先 dry-run、小批量测试
+5. **自动 tagging 建议**：应在 Phase 2.2 Review UI 后做，默认关闭，非阻塞，写为 suggestion
+6. **README 刷新**：项目目标、当前功能、Quick Start、安全建议、文档索引、路线图
+
+### 不包含
+
+- 不做代码修改（纯文档）
+- 不做数据库迁移
+- 不接入自动 tagging
+- 不做 tag review UI
