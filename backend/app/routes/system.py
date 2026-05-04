@@ -311,14 +311,14 @@ async def perform_update(
                                 output_log.append("Dependencies installed successfully!")
                                 post_update_actions.append(
                                     "Dependencies were automatically installed. "
-                                    "Please restart Blombooru to fully apply the changes."
+                                    "Please restart the application to fully apply the changes."
                                 )
                             else:
                                 output_log.append("Failed to install dependencies automatically.")
                                 post_update_actions.append(
                                     f"WARNING: Automatic dependency installation failed. "
                                     f"Please manually run '{sys.executable} -m pip install -r {requirements_path}' "
-                                    "and restart Blombooru."
+                                    "and restart the application."
                                 )
                         else:
                             post_update_actions.append(
@@ -330,14 +330,14 @@ async def perform_update(
                         post_update_actions.append(
                             "WARNING: Automatic dependency installation timed out. "
                             f"Please manually run '{sys.executable} -m pip install -r {requirements_path}' "
-                            "and restart Blombooru."
+                            "and restart the application."
                         )
                     except Exception as e:
                         output_log.append(f"Error installing dependencies: {e}")
                         post_update_actions.append(
                             "WARNING: Could not automatically install dependencies. "
                             f"Please manually run '{sys.executable} -m pip install -r {requirements_path}' "
-                            "and restart Blombooru."
+                            "and restart the application."
                         )
 
             except subprocess.CalledProcessError:
@@ -346,7 +346,7 @@ async def perform_update(
         message = (
             "\n\n".join(post_update_actions)
             if post_update_actions
-            else "Update successful. Please restart Blombooru to apply the changes!"
+            else "Update successful. Please restart the application to apply the changes!"
         )
 
         return {

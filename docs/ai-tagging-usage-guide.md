@@ -186,7 +186,7 @@ If a media already has a manual tag with the same name, the AI silently skips it
 ### A. Starting the Application (Windows)
 
 ```powershell
-cd C:\Users\kyloris\Documents\AnimeLocalBooru  # V.I.O.L.E.T. 项目目录
+cd C:\path\to\AnimeLocalBooru  # V.I.O.L.E.T. project directory
 git checkout main
 git pull origin main
 .\venv\Scripts\Activate.ps1
@@ -373,13 +373,13 @@ Write-Output "Processed: $($data.processed), Added: $($data.tags_added), Failed:
 - Thread-pool workers use independent DB sessions (not the request-scoped session)
 - Always dry-run first when testing new settings
 
-**Batch 限制说明：**
-- UI 中的"Max Items"不是无限值
-- 后端通过 `AI_TAGGING_BATCH_MAX_ITEMS` 限制最大 batch（默认 10）
-- 此限制防止误操作导致全库 AI 打标
-- 可在 `.env` 中调整：`AI_TAGGING_BATCH_MAX_ITEMS=50`
-- 不建议完全移除上限
-- 大批量处理应通过后台任务、进度跟踪和取消功能完成
+**Batch limit notes:**
+- The "Max Items" field in the UI is not unlimited
+- Backend enforces `AI_TAGGING_BATCH_MAX_ITEMS` (default 10)
+- This prevents accidental full-library AI tagging
+- Adjustable in `.env`: `AI_TAGGING_BATCH_MAX_ITEMS=50`
+- Not recommended to remove the limit entirely
+- Large batches should use background jobs with progress tracking and cancel
 
 ### G. Searching AI Tags
 

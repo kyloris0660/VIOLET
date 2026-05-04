@@ -15,7 +15,7 @@ if __name__ == "__main__":
         os.environ["BLOMBOORU_DEBUG"] = "true"
 
     from backend.app.utils.logger import logger
-    logger.info("Starting Blombooru" + (" with debug mode enabled" if args.debug else ""))
+    logger.info("Starting V.I.O.L.E.T." + (" with debug mode enabled" if args.debug else ""))
 
     port = int(os.getenv("APP_PORT", 8000))
     uvicorn.run(

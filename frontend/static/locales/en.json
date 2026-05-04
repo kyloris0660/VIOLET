@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "_comment": "This file contains English translations for Blombooru.",
+        "_comment": "This file contains English translations for V.I.O.L.E.T.",
         "translators": [
             "mrblomblo"
         ],
@@ -84,7 +84,7 @@
         "shared_tags": {
             "title": "Shared Tag Database",
             "enable": "Enable Shared Tag Database",
-            "description": "Share tags across multiple Blombooru instances. Local tags take precedence in case of conflicts.",
+            "description": "Share tags across multiple V.I.O.L.E.T. instances. Local tags take precedence in case of conflicts.",
             "sync_now": "Sync Now",
             "syncing": "Syncing...",
             "sync_complete": "Sync complete!",
@@ -304,7 +304,7 @@
             "title": "Local Library Scan",
             "description": "Scan external local directories and import supported images (.jpg, .jpeg, .png, .webp, .gif). Files are copied into storage; originals are never moved or deleted.",
             "scan_path": "Scan Path",
-            "scan_path_placeholder": "C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest",
+            "scan_path_placeholder": "C:\\Users\\you\\Pictures\\MyImages",
             "scan_path_hint": "Leave empty to use paths from .env LOCAL_LIBRARY_PATHS",
             "max_files": "Max Files",
             "max_files_hint": "Limit the number of candidate files to process",
@@ -915,7 +915,7 @@
         "setup_intro": "Let's get your instance configured. This will only take a minute.",
         "setup_title": "Initial Setup",
         "skip": "Skip",
-        "welcome": "Welcome to Blombooru!"
+        "welcome": "Welcome to V.I.O.L.E.T.!"
     },
     "search": {
         "basic_desc_both": "Find media with both tags",

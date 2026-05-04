@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "_comment": "此文件包含 Blombooru 的中文翻译。",
+        "_comment": "此文件包含 V.I.O.L.E.T. 的中文翻译。",
         "translators": [
             "2455DD"
         ],
@@ -84,7 +84,7 @@
         "shared_tags": {
             "title": "共享标签数据库",
             "enable": "启用共享标签数据库",
-            "description": "在多个 Blombooru 实例之间共享标签。发生冲突时，本地标签优先。",
+            "description": "在多个 V.I.O.L.E.T. 实例之间共享标签。发生冲突时，本地标签优先。",
             "sync_now": "立即同步",
             "syncing": "正在同步...",
             "sync_complete": "同步完成！",
@@ -304,7 +304,7 @@
             "title": "本地图库扫描",
             "description": "扫描外部本地目录并导入支持的图片文件（.jpg、.jpeg、.png、.webp、.gif）。文件会被复制到存储目录，原始文件不会被移动或删除。",
             "scan_path": "扫描路径",
-            "scan_path_placeholder": "C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest",
+            "scan_path_placeholder": "C:\\Users\\you\\Pictures\\MyImages",
             "scan_path_hint": "留空则使用 .env 中的 LOCAL_LIBRARY_PATHS 配置",
             "max_files": "最大文件数",
             "max_files_hint": "限制处理的候选文件数量",
@@ -915,7 +915,7 @@
         "setup_intro": "让我们开始配置您的实例。只需一分钟。",
         "setup_title": "初始设置",
         "skip": "跳过",
-        "welcome": "欢迎使用 Blombooru！"
+        "welcome": "欢迎使用 V.I.O.L.E.T.！"
     },
     "search": {
         "basic_desc_both": "查找同时包含两个标签的媒体",
