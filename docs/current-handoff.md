@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 2.1 AI Auto Tagging merge (2026-05-04).
+> Last updated after Phase 2.1.1 docs refresh (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -143,10 +143,12 @@ Fixed six reliability issues from Codex automated review:
 
 | Document | Purpose |
 |----------|---------|
+| `README.md` | Project overview and quick start |
 | `AGENTS.md` | Cursor agent instructions |
+| `docs/ai-tagging-usage-guide.md` | Complete AI tagging usage guide with GUI walkthrough |
+| `docs/ai-auto-tagging.md` | Phase 2.1 AI tagging technical reference |
 | `docs/project-roadmap.md` | Full phase plan |
 | `docs/tag-metadata-foundation.md` | Phase 2 technical documentation |
-| `docs/ai-auto-tagging.md` | Phase 2.1 AI tagging documentation |
 | `docs/local-anime-library-devlog.md` | Per-phase technical log |
 | `docs/local-library-scan.md` | Feature documentation and API usage |
 | `example.env` | Available environment variables |

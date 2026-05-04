@@ -2,6 +2,8 @@
 
 Automatically tag imported images using the WDv3 (SmilingWolf) ONNX tagger. Tags are written with full provenance tracking (source, confidence, suggestion state) and respect manual/locked tag priority.
 
+> **For usage instructions, GUI walkthrough, and examples, see [AI Tagging Usage Guide](ai-tagging-usage-guide.md).**
+
 ## Dependencies
 
 | Package | Purpose |
@@ -182,6 +184,26 @@ Suggestion tags are **excluded from normal search** (consistent with Phase 2 des
 | `.gitignore` | Exclude *.onnx, models/, .cache/ |
 | `docs/ai-auto-tagging.md` | **New** — this document |
 
+## Capability Boundaries
+
+### Reliable (General Visual Tags)
+
+The model excels at Danbooru general tags: `1girl`, `solo`, `long_hair`, `blue_eyes`, `smile`, `school_uniform`, `looking_at_viewer`, `white_background`, `blush`, `open_mouth`, and thousands of other visual descriptors.
+
+### Partial (Character Tags)
+
+Can identify some popular Danbooru characters (top ~2000 by post count) in typical appearances. Unreliable for obscure characters, alternate outfits, cropped images, or characters from works released after the training data cutoff.
+
+### Not Supported
+
+- Artist identification
+- Source URL lookup
+- Reverse image search
+- Copyright/work classification
+- Character/work database building
+
+For full details on what the model can and cannot do, see [AI Tagging Usage Guide § Capability Boundaries](ai-tagging-usage-guide.md#6-capability-boundaries).
+
 ## Known Limitations
 
 - No scheduled or automatic AI tagging — manual trigger only
@@ -191,9 +213,22 @@ Suggestion tags are **excluded from normal search** (consistent with Phase 2 des
 - Rating tags from WDv3 use names like `general`, `sensitive`, `questionable`, `explicit` which map to the `meta` category, not the media `rating` field
 - First run requires internet access to download model files (~350-1200 MB)
 
-## Next Steps (Phase 2.2)
+## Next Steps
 
-- **AI Tag Review UI**: Inline suggestion review (confirm/reject) in media detail
-- **Suggestion search syntax**: e.g. `suggestion:tag_name`
-- **Tag alias support**: Resolve aliases before AI tag lookup
-- **Tag implication chains**: Auto-apply implications when AI tags are confirmed
+### Phase 2.2 — AI Tag Review UI
+
+- Inline confirm/reject buttons for suggestion tags in media detail
+- Suggestion search syntax (e.g. `suggestion:tag_name`)
+- Bulk confirm/reject by confidence threshold
+- Lock correct tags, delete incorrect AI tags
+- Sort suggestions by confidence
+
+### Phase 2.3 — Optional Auto Tagging After Import
+
+- Scan job completion triggers optional AI tagging job
+- Default OFF, configurable in Admin UI
+- Non-blocking (separate background job)
+- Writes as suggestions, not confirmed (requires review)
+- Respects max_items / dry-run / only_without_ai_tags
+
+See [AI Tagging Usage Guide § Future Roadmap](ai-tagging-usage-guide.md#8-future-roadmap) for full details.

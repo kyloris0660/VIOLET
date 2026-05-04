@@ -79,20 +79,48 @@ Extended `blombooru_media_tags` with provenance tracking:
 - Safety: batch capped, dry-run mode, manual trigger only, no auto-scan integration
 - Graceful degradation: app starts when model unavailable
 
+See [AI Tagging Usage Guide](ai-tagging-usage-guide.md) for complete usage instructions.
+
+### Phase 2.1.1 — Documentation & Usage Guide
+
+- Complete AI Tagging Usage Guide with GUI walkthrough and PowerShell examples
+- README refresh for AnimeLocalBooru (replacing upstream Blombooru README)
+- Capability boundaries documentation (what AI can/cannot do)
+- Future auto-tagging architecture recommendation
+- Manual GUI verification procedures
+
 ---
 
 ## Upcoming Phases
 
-### Phase 2.2 — AI Tag Review UI & Enrichment
+### Phase 2.2 — AI Tag Review UI
 
-**Goal:** Add suggestion review UI and richer tag relationships.
+**Goal:** Add suggestion review UI for AI-generated tags.
 
-- Inline confirm/reject for AI suggestion tags in media detail
-- Suggestion search syntax (e.g. `suggestion:tag_name`)
+- View all suggestion tags per media item
+- Confirm individual suggestions (→ becomes confirmed tag, searchable)
+- Reject individual suggestions (→ deleted from DB)
+- Lock correct tags (→ AI cannot overwrite in future runs)
+- Delete incorrect AI tags
+- Sort suggestions by confidence
+- Bulk confirm / bulk reject above threshold
+- Suggestion search syntax (`suggestion:tag_name`)
 - Tag alias support (e.g. `miku` → `hatsune_miku`)
 - Tag implication support (e.g. `hatsune_miku` → `vocaloid`)
-- Character–copyright linking
-- Bulk suggestion management
+
+### Phase 2.3 — Optional Auto Tagging After Import
+
+**Goal:** Allow AI tagging to run automatically after import (default OFF).
+
+- Scan job completion creates optional AI tagging background job
+- Default OFF, configurable in Admin UI
+- Non-blocking (separate job, does not slow down import)
+- Writes as suggestions (requires Phase 2.2 review to confirm)
+- Respects max_items / dry-run / only_without_ai_tags
+- Only processes newly imported or un-tagged images
+- Has dedicated progress tracking and history
+- Clear Admin UI toggle with safety warnings
+- Protects manual/locked tags
 
 ### Phase 3 — Anime Filtering
 
