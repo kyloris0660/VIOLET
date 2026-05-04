@@ -67,31 +67,32 @@ Extended `blombooru_media_tags` with provenance tracking:
 - Media detail API exposes `tag_provenance` dict
 - Full documentation in `docs/tag-metadata-foundation.md`
 
+### Phase 2.1 — WDv3 AI Auto Tagging MVP
+
+**Goal:** Manually triggered AI tagging using the WDv3 ONNX tagger.
+
+- AI Tagging Service orchestrates WDv3 predictions → tag provenance writes
+- Admin API: model status, single-image tagging, batch tagging with dry-run
+- Admin UI: model status display, single/batch tagging controls, results summary
+- Dual thresholds: confirmed (≥ confirm), suggestion (≥ suggestion), ignored (< suggestion)
+- Category-aware: character threshold (0.65) higher than general (0.35)
+- Safety: batch capped, dry-run mode, manual trigger only, no auto-scan integration
+- Graceful degradation: app starts when model unavailable
+
 ---
 
 ## Upcoming Phases
 
-### Phase 2.1 — AI Auto Tagging
+### Phase 2.2 — AI Tag Review UI & Enrichment
 
-**Goal:** Automatically tag imported images using the existing WDv3 (SmilingWolf) ONNX tagger.
+**Goal:** Add suggestion review UI and richer tag relationships.
 
-| Feature | Detail |
-|---------|--------|
-| Reuse `backend/app/services/wd_tagger.py` | Already integrated in Blombooru |
-| Call tagger during or after import | Generate `general`, `character`, `rating` tags |
-| Stricter character threshold | Character tags need higher confidence than general tags |
-| Tag source tracking | All AI tags marked `source=ai_wd` with confidence score |
-| Low-confidence = suggestion | Below threshold → stored but not displayed as confirmed |
-
-### Phase 2.2 — Character & Copyright Enrichment
-
-**Goal:** Build richer tag relationships using Danbooru-style data.
-
+- Inline confirm/reject for AI suggestion tags in media detail
+- Suggestion search syntax (e.g. `suggestion:tag_name`)
 - Tag alias support (e.g. `miku` → `hatsune_miku`)
 - Tag implication support (e.g. `hatsune_miku` → `vocaloid`)
-- Character–copyright linking (Blombooru already has basic infrastructure)
-- CSV/external data import for bulk tag enrichment
-- Tag descriptions, usage counts, and category metadata
+- Character–copyright linking
+- Bulk suggestion management
 
 ### Phase 3 — Anime Filtering
 

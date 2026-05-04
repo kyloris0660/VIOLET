@@ -928,6 +928,97 @@
                 </div>
             </div>
 
+            <!-- AI Auto Tagging Section -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="ai-tagging-section">
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">AI Auto Tagging</h2>
+
+                <!-- Model Status -->
+                <div class="bg p-4 border mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold">Model Status</h3>
+                        <button id="ai-tag-refresh-status" class="btn-dark text-xs px-2 py-1">Refresh</button>
+                    </div>
+                    <div id="ai-tag-status-content" class="text-xs text-secondary">
+                        Loading...
+                    </div>
+                </div>
+
+                <!-- Single Image Tagging -->
+                <div class="bg p-4 border mb-4">
+                    <h3 class="text-sm font-bold mb-3">Single Image Tagging</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-2">Media ID</label>
+                            <input type="number" id="ai-tag-media-id" min="1" placeholder="e.g. 1"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div class="flex items-end gap-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="ai-tag-single-dryrun" class="w-4 h-4 accent-primary" checked>
+                                <span class="text-xs font-bold">Dry Run</span>
+                            </label>
+                        </div>
+                        <button id="ai-tag-single-btn" class="btn-primary w-full">
+                            Run AI Tagging
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Batch Tagging -->
+                <div class="bg p-4 border mb-4">
+                    <h3 class="text-sm font-bold mb-3">Batch AI Tagging</h3>
+                    <p class="text-xs text-secondary mb-3">
+                        Tag multiple images at once. If no Media IDs are specified, selects images without existing AI tags.
+                    </p>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-2">Media IDs (comma-separated, optional)</label>
+                            <input type="text" id="ai-tag-batch-ids" placeholder="e.g. 1,2,3 or leave empty"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold mb-2">Max Items</label>
+                                <input type="number" id="ai-tag-batch-max" min="1" value="5"
+                                    class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                            </div>
+                            <div class="flex items-end pb-1 gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="ai-tag-batch-dryrun" class="w-4 h-4 accent-primary" checked>
+                                    <span class="text-xs font-bold">Dry Run</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button id="ai-tag-batch-btn" class="btn-primary w-full">
+                            Start Batch AI Tagging
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div id="ai-tag-results" style="display: none;">
+                    <h3 class="text-sm font-bold mb-3">Results</h3>
+                    <div class="bg p-4 border">
+                        <div id="ai-tag-summary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3"></div>
+                        <div id="ai-tag-details" class="overflow-x-auto max-h-60 overflow-y-auto border">
+                            <table class="bg w-full text-left border-collapse">
+                                <thead class="border-b">
+                                    <tr class="text-secondary text-[10px]">
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Media</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Added</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Suggestions</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Locked</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Ignored</th>
+                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Error</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ai-tag-details-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tags Management Section -->
             <div class="surface p-2 sm:p-6 border mb-4">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tags_management.title') }}</h2>

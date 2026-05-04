@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 2.0.1 hotfix merge (2026-05-04).
+> Last updated after Phase 2.1 AI Auto Tagging merge (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -70,12 +70,36 @@ Extended the `blombooru_media_tags` junction table with provenance tracking:
 | `backend/app/utils/search_parser.py` | Excludes suggestions from search/counts |
 | `docs/tag-metadata-foundation.md` | Full technical documentation |
 
+### Phase 2.1 — WDv3 AI Auto Tagging
+
+Manually triggered AI tagging using the WDv3 ONNX tagger:
+
+- **AI Tagging Service**: `backend/app/services/ai_tagging_service.py` — orchestrates WDv3 predictions → tag provenance writes
+- **Admin API**: `GET /api/admin/ai-tagging/model-status`, `POST /api/admin/ai-tagging/media/{id}`, `POST /api/admin/ai-tagging/batch`
+- **Admin UI**: Model status, single-image tagging, batch tagging with dry-run, results summary
+- **Dual thresholds**: confirmed (>= confirm_threshold), suggestion (>= suggestion_threshold), ignored (< suggestion_threshold)
+- **Category-aware thresholds**: Character tags require higher confidence (0.65) than general tags (0.35)
+- **Safety**: Batch capped by `AI_TAGGING_BATCH_MAX_ITEMS`, dry-run mode, manual trigger only
+- **Manual/locked priority**: AI never overwrites `is_locked=true` or `source='manual'` tags
+- **Graceful degradation**: App starts normally when model is unavailable; API returns clear errors
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/services/ai_tagging_service.py` | AI tagging orchestration |
+| `backend/app/routes/admin/ai_tagging.py` | Admin API endpoints |
+| `backend/app/config.py` | AI threshold/model configuration |
+| `frontend/templates/admin.html` | AI Tagging section in Content tab |
+| `frontend/static/js/admin.js` | AI tagging UI logic |
+| `docs/ai-auto-tagging.md` | Full technical documentation |
+
 ## What Has NOT Been Built
 
-- No AI tagging integration (Phase 2.1)
+- No automatic AI tagging during scan (manual trigger only)
+- No AI tag review UI for suggestions (Phase 2.2)
 - No anime/photo filtering (Phase 3)
 - No filesystem watcher or scheduled scan (Phase 4)
-- No tag review UI for suggestions
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No HEIC or video import support
 - No WebSocket (uses polling)
@@ -97,17 +121,17 @@ Fixed six reliability issues from Codex automated review:
 2. **Copy mode disk cost** — every imported image is duplicated on disk
 3. **No scan progress percentage without max_files** — indeterminate progress only
 4. **Polling-based progress** — 1.5s interval; WebSocket would be more efficient but adds complexity
-5. **`Media.tags` relationship uses SQLAlchemy secondary** — tag reads via relationship don't filter suggestions; safe because no suggestions are created yet
+5. **`Media.tags` relationship uses SQLAlchemy secondary** — tag reads via relationship don't filter suggestions; AI tagging now creates suggestions so Phase 2.2 should add search filtering
+6. **First AI model download requires internet** — ~350-1200 MB from HuggingFace Hub; no offline fallback
 
-## Recommended Next Phase: 2.1
+## Recommended Next Phase: 2.2
 
-**AI Auto Tagging** — automatically tag imported images using the existing WDv3 (SmilingWolf) ONNX tagger:
+**AI Tag Review UI** — add suggestion review capabilities:
 
-1. Reuse `backend/app/services/wd_tagger.py` (already in codebase)
-2. Call `add_ai_tag_to_media()` from `tag_service.py` for each predicted tag
-3. Tags above threshold → confirmed; below → suggestion
-4. Manual/locked tags preserved automatically
-5. Can run on existing library or during import
+1. Inline confirm/reject buttons for suggestion tags in media detail
+2. Suggestion search syntax (e.g. `suggestion:tag_name`)
+3. Bulk suggestion management
+4. Tag alias support for AI tag resolution
 
 ## Test Directory
 
@@ -122,6 +146,7 @@ Fixed six reliability issues from Codex automated review:
 | `AGENTS.md` | Cursor agent instructions |
 | `docs/project-roadmap.md` | Full phase plan |
 | `docs/tag-metadata-foundation.md` | Phase 2 technical documentation |
+| `docs/ai-auto-tagging.md` | Phase 2.1 AI tagging documentation |
 | `docs/local-anime-library-devlog.md` | Per-phase technical log |
 | `docs/local-library-scan.md` | Feature documentation and API usage |
 | `example.env` | Available environment variables |

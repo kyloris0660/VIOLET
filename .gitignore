@@ -7,3 +7,6 @@ storage/
 backups/
 tailwind/tailwindcss*
 blombooru-upstream/
+*.onnx
+models/
+.cache/
