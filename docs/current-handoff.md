@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 2 merge (2026-05-04).
+> Last updated after Phase 2.0.1 hotfix merge (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -79,6 +79,17 @@ Extended the `blombooru_media_tags` junction table with provenance tracking:
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No HEIC or video import support
 - No WebSocket (uses polling)
+
+## Phase 2.0.1 — Review Findings Hotfix
+
+Fixed six reliability issues from Codex automated review:
+
+1. **Provenance index creation on fresh databases** — migration now ensures indexes exist regardless of whether columns were created by `create_all()` or `ALTER TABLE`
+2. **History API stale job pollution** — `mark_stale_jobs()` removed from `GET /jobs` endpoint; only runs at startup
+3. **Cancel race for pending jobs** — `request_cancel()` pre-sets the cancel flag; worker checks DB status before starting
+4. **max_files full directory traversal** — replaced `list(rglob)` with generator; stops immediately at limit across all directories
+5. **Empty paths env fallback** — `{"paths": []}` now returns 400 instead of silently falling back to env
+6. **Invalid root failed count** — non-existent/non-directory paths now increment `failed` counter
 
 ## Known Technical Debt
 

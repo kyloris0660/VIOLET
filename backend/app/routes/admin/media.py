@@ -14,7 +14,6 @@ from ...models import Media, ScanJob, User
 from ...utils.file_scanner import find_untracked_media
 from ...utils.local_library_scanner import (
     is_job_active,
-    mark_stale_jobs,
     request_cancel,
     run_scan_job,
     scan_and_import,
@@ -46,8 +45,19 @@ class ScanLocalLibraryRequest(BaseModel):
 
 
 def _resolve_scan_params(body: Optional[ScanLocalLibraryRequest]):
-    """Extract and validate scan parameters from request body."""
-    if body and body.paths:
+    """Extract and validate scan parameters from request body.
+
+    Path resolution semantics:
+    - body.paths is a non-empty list → use those paths
+    - body.paths is explicitly [] → reject with 400 (prevents silent env fallback)
+    - body.paths is None / body is None → fallback to LOCAL_LIBRARY_PATHS
+    """
+    if body and body.paths is not None:
+        if len(body.paths) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="paths must not be empty. Omit the field to use configured LOCAL_LIBRARY_PATHS.",
+            )
         scan_paths = [Path(p) for p in body.paths]
     else:
         scan_paths = settings.LOCAL_LIBRARY_PATHS
@@ -165,9 +175,12 @@ async def list_scan_jobs(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
-    """Return the 20 most recent scan jobs (newest first)."""
-    mark_stale_jobs(db)
+    """Return the 20 most recent scan jobs (newest first).
 
+    NOTE: stale job recovery runs only at application startup (in main.py),
+    not here, to avoid marking actively-running jobs as interrupted during
+    normal UI polling.
+    """
     jobs = (
         db.query(ScanJob)
         .order_by(ScanJob.created_at.desc())

@@ -426,3 +426,61 @@ C:\Users\kyloris\Pictures\iCloud Photos
 ### 下一阶段建议
 
 **Phase 2.1 — AI Auto Tagging**：使用已有的 WDv3 tagger 自动标签，通过 `add_ai_tag_to_media()` 写入带 provenance 的 tag。
+
+---
+
+## Phase 2.0.1：Review Findings Hotfix
+
+**日期：** 2026-05-04
+
+### 目标
+
+处理 Codex 自动 review 发现的 6 个可靠性问题，不引入新功能。
+
+### 修复内容
+
+1. **Provenance indexes on fresh databases**
+   - 问题：`migrate_add_media_tags_provenance` 在 `source` 列存在时直接 return，导致 fresh install（`create_all` 已创建列）不创建 named indexes
+   - 修复：拆分逻辑，columns 添加和 index 创建独立执行，index 始终用 `CREATE INDEX IF NOT EXISTS` 确保存在
+
+2. **History API 不再 interrupt active jobs**
+   - 问题：`GET /scan-local-library/jobs` 中调用 `mark_stale_jobs(db)` 会把当前 running 的 job 标记为 interrupted
+   - 修复：移除该调用，`mark_stale_jobs` 只在应用启动时执行（`main.py` lifespan）
+
+3. **Cancel 请求持久化 + pending job 支持**
+   - 问题：`request_cancel` 只在 worker 已注册后才能设置 cancel flag；若 cancel 发生在 worker 启动前，job 仍会正常运行
+   - 修复：`request_cancel` 改为无条件 pre-set flag；`run_scan_job` 启动前检查 DB status 和内存 flag，已被 cancel 则立即退出
+
+4. **max_files 不再全量遍历目录**
+   - 问题：`list(scan_dir.rglob("*"))` 预展开整个目录树；达到 limit 后内层 break 但外层继续下一个目录
+   - 修复：改用 generator（不预展开）；达到 limit 后设置 `limit_reached=True` 并在外层循环也检查，立即停止
+
+5. **paths=[] 不再 fallback 到 env**
+   - 问题：`if body and body.paths:` 将空数组视为 falsy，导致静默回退到 LOCAL_LIBRARY_PATHS
+   - 修复：改用 `body.paths is not None` 检查；空数组返回 400
+
+6. **Invalid scan roots 增加 failed 计数**
+   - 问题：`_record_failure` 只记录 failed_files 但不增加 `stats["failed"]` counter
+   - 修复：在 `_record_failure` 调用前增加 `stats["failed"] += 1`
+
+### 修改的文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/app/database.py` | 拆分 migration 逻辑，index 创建独立于 column 添加 |
+| `backend/app/routes/admin/media.py` | 移除 history API 中的 `mark_stale_jobs`；修复 paths 空数组语义 |
+| `backend/app/utils/local_library_scanner.py` | 修复 cancel race、max_files generator、invalid root counter |
+| `docs/local-library-scan.md` | 更新 stale recovery、cancel、paths 行为文档 |
+| `docs/current-handoff.md` | 新增 Phase 2.0.1 说明 |
+| `docs/local-anime-library-devlog.md` | 本条目 |
+
+### 测试验证
+
+- Migration 幂等：重复运行不报错
+- Provenance indexes 存在
+- History API 不 interrupt active job
+- Cancel pre-set flag 正常工作
+- max_files=3 只处理 3 个候选文件，limit_reached=true
+- paths=[] 返回 400
+- Invalid root failed > 0，failed_files 有记录
+- Search/media list 等现有功能正常
