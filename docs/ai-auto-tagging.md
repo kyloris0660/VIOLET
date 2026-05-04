@@ -213,7 +213,6 @@ For full details on what the model can and cannot do, see [AI Tagging Usage Guid
 ## Known Limitations
 
 - No scheduled or automatic AI tagging — manual trigger only
-- No tag review UI for suggestions (Phase 2.2)
 - No anime/photo filtering (Phase 3)
 - Character identification depends on model training data; novel characters will not be recognized
 - Rating tags from WDv3 use names like `general`, `sensitive`, `questionable`, `explicit` which map to the `meta` category, not the media `rating` field
@@ -221,13 +220,14 @@ For full details on what the model can and cannot do, see [AI Tagging Usage Guid
 
 ## Next Steps
 
-### Phase 2.2 — AI Tag Review UI
+### Phase 2.2 — AI Tag Review UI ✅
 
-- Inline confirm/reject buttons for suggestion tags in media detail
-- Suggestion search syntax (e.g. `suggestion:tag_name`)
-- Bulk confirm/reject by confidence threshold
-- Lock correct tags, delete incorrect AI tags
-- Sort suggestions by confidence
+Completed. See [AI Tag Review](ai-tag-review.md) for full documentation.
+
+- Review API with list, confirm, reject, lock, delete, bulk endpoints
+- Admin UI review panel with filters and bulk operations
+- Media detail provenance-aware tag display
+- Confirm preserves AI source/confidence
 
 ### Phase 2.3 — Optional Auto Tagging After Import
 

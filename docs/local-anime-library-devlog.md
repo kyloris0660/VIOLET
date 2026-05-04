@@ -633,6 +633,55 @@ C:\Users\kyloris\Pictures\iCloud Photos
 
 **修复：** endpoint 不再依赖 `get_db`；新增 `_get_session()` 和 worker 函数，在 threadpool 内创建独立 session，使用后在 finally 中关闭。`model-status` endpoint 不创建 DB session。
 
+---
+
+## Phase 2.2：AI Tag Review UI
+
+**日期：** 2026-05-04
+
+### 目标
+
+实现 AI 标签审核界面和 API，让用户可以确认、拒绝、锁定和删除 AI 生成的 suggestion tags。
+
+### 设计决策
+
+1. **Confirm 保留 AI 来源**：确认 suggestion 时保留 `source=ai_wd` 和原始 confidence，而非改为 `source=manual`。原因：保留标签来源追踪，方便统计分析。
+2. **Reject = 删除**：当前 MVP 中 reject 直接删除 association。不持久记录拒绝决策。原因：避免数据库迁移；未来可通过 `rejected_decisions` 表改进。
+3. **Manual/locked 保护**：所有 review 操作不允许误删 manual+locked tag（除非 force=true）。
+4. **复用现有 tag_service**：`confirm_suggestion` 增加 `preserve_source` 参数，最小化改动。
+5. **不做数据库迁移**：本阶段无新表、无新列。
+6. **Admin UI 风格复用**：Review 面板复用现有 admin.html/admin.js 风格。
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/routes/admin/ai_tag_review.py` | 新增 | Review API：list、confirm、reject、lock、delete、bulk |
+| `backend/app/routes/admin/__init__.py` | 修改 | 注册 review 路由 |
+| `backend/app/services/tag_service.py` | 修改 | `confirm_suggestion` 新增 `preserve_source` 参数 |
+| `frontend/templates/admin.html` | 修改 | Content tab 新增 AI Tag Review 区域 |
+| `frontend/static/js/admin.js` | 修改 | Review UI 逻辑：加载、过滤、单项/批量操作、分页 |
+| `frontend/static/js/media-viewer-base.js` | 修改 | `renderTags` 区分 confirmed/suggestion 显示 |
+| `docs/ai-tag-review.md` | 新增 | 完整技术文档 |
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/ai-tags/review` | 列出待审核 suggestions |
+| POST | `/api/admin/ai-tags/{media_id}/{tag_id}/confirm` | 确认一个 suggestion |
+| POST | `/api/admin/ai-tags/{media_id}/{tag_id}/reject` | 拒绝（删除）一个 suggestion |
+| POST | `/api/admin/ai-tags/{media_id}/{tag_id}/lock` | 锁定一个 tag |
+| DELETE | `/api/admin/ai-tags/{media_id}/{tag_id}` | 删除一个 tag（manual+locked 需 force） |
+| POST | `/api/admin/ai-tags/bulk` | 批量操作（confirm/reject/lock/delete） |
+
+### 已知限制
+
+- Reject 不持久记录，重新 AI tagging 可能再次生成同一 suggestion
+- 没有 `suggestion:tag_name` 搜索语法
+- 没有 undo 功能
+- 不做 auto-tag after import（Phase 2.3）
+
 ### 下一阶段建议
 
-**Phase 2.2 — AI Tag Review UI**
+**Phase 2.3 — Optional Auto Tagging After Import**

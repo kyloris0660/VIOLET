@@ -340,6 +340,53 @@ class AdminPanel {
             aiTagBatchBtn.addEventListener('click', () => this.runAITagBatch());
         }
         this.loadAITagStatus();
+
+        // AI Tag Review
+        const reviewLoadBtn = document.getElementById('review-load-btn');
+        if (reviewLoadBtn) {
+            reviewLoadBtn.addEventListener('click', () => this.loadReviewSuggestions());
+        }
+        const reviewBulkConfirmBtn = document.getElementById('review-bulk-confirm-btn');
+        if (reviewBulkConfirmBtn) {
+            reviewBulkConfirmBtn.addEventListener('click', () => this.bulkReviewAction('confirm'));
+        }
+        const reviewBulkRejectBtn = document.getElementById('review-bulk-reject-btn');
+        if (reviewBulkRejectBtn) {
+            reviewBulkRejectBtn.addEventListener('click', () => this.bulkReviewAction('reject'));
+        }
+        const reviewSelectAll = document.getElementById('review-select-all');
+        if (reviewSelectAll) {
+            reviewSelectAll.addEventListener('change', (e) => this._toggleReviewSelectAll(e.target.checked));
+        }
+        const reviewPrevBtn = document.getElementById('review-prev-btn');
+        if (reviewPrevBtn) {
+            reviewPrevBtn.addEventListener('click', () => this._reviewPageNav(-1));
+        }
+        const reviewNextBtn = document.getElementById('review-next-btn');
+        if (reviewNextBtn) {
+            reviewNextBtn.addEventListener('click', () => this._reviewPageNav(1));
+        }
+        this._reviewOffset = 0;
+        this._reviewLimit = 50;
+        this._reviewTotal = 0;
+
+        const reviewTbody = document.getElementById('review-tbody');
+        if (reviewTbody) {
+            reviewTbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.review-action-btn');
+                if (btn) {
+                    const action = btn.dataset.action;
+                    const mediaId = parseInt(btn.dataset.mediaId);
+                    const tagId = parseInt(btn.dataset.tagId);
+                    this.reviewSingleAction(action, mediaId, tagId);
+                }
+            });
+            reviewTbody.addEventListener('change', (e) => {
+                if (e.target.classList.contains('review-item-cb')) {
+                    this._updateReviewSelectionCount();
+                }
+            });
+        }
     }
 
     setupTabs() {
@@ -1478,6 +1525,169 @@ class AdminPanel {
         } finally {
             btn.disabled = false;
             btn.textContent = origText;
+        }
+    }
+
+    // ---- AI Tag Review ----
+
+    async loadReviewSuggestions() {
+        const tbody = document.getElementById('review-tbody');
+        const emptyDiv = document.getElementById('review-empty');
+        const statsDiv = document.getElementById('review-stats');
+        const paginationDiv = document.getElementById('review-pagination');
+        if (!tbody) return;
+
+        const params = new URLSearchParams();
+        params.set('limit', this._reviewLimit);
+        params.set('offset', this._reviewOffset);
+
+        const minConf = document.getElementById('review-min-confidence')?.value;
+        const maxConf = document.getElementById('review-max-confidence')?.value;
+        const tagName = document.getElementById('review-tag-name')?.value?.trim();
+        const mediaId = document.getElementById('review-media-id')?.value;
+
+        if (minConf) params.set('min_confidence', minConf);
+        if (maxConf) params.set('max_confidence', maxConf);
+        if (tagName) params.set('tag_name', tagName);
+        if (mediaId) params.set('media_id', mediaId);
+        params.set('order', 'confidence_desc');
+
+        try {
+            const data = await app.apiCall(`/api/admin/ai-tags/review?${params}`, { method: 'GET' });
+            this._reviewTotal = data.total || 0;
+
+            if (data.items && data.items.length > 0) {
+                emptyDiv.style.display = 'none';
+                statsDiv.style.display = '';
+                statsDiv.textContent = `Showing ${data.items.length} of ${data.total} suggestions`;
+                tbody.innerHTML = data.items.map(item => this._renderReviewRow(item)).join('');
+                paginationDiv.style.display = '';
+                this._updateReviewPagination();
+            } else {
+                tbody.innerHTML = '';
+                emptyDiv.style.display = '';
+                statsDiv.style.display = 'none';
+                paginationDiv.style.display = 'none';
+            }
+            this._updateReviewSelectionCount();
+        } catch (err) {
+            app.showNotification(`Failed to load suggestions: ${err.message || err}`, 'error');
+        }
+    }
+
+    _renderReviewRow(item) {
+        const thumbHtml = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" class="w-8 h-8 object-cover border" loading="lazy">`
+            : '<div class="w-8 h-8 bg border flex items-center justify-center text-[8px] text-secondary">N/A</div>';
+        const conf = item.confidence !== null ? (item.confidence * 100).toFixed(1) + '%' : '—';
+        return `<tr class="border-b text-[10px] hover:bg-primary/5" data-media-id="${item.media_id}" data-tag-id="${item.tag_id}">
+            <td class="py-1 px-2">
+                <input type="checkbox" class="review-item-cb w-3.5 h-3.5 accent-primary" data-media-id="${item.media_id}" data-tag-id="${item.tag_id}">
+            </td>
+            <td class="py-1 px-2">${thumbHtml}</td>
+            <td class="py-1 px-2"><a href="/media/${item.media_id}" class="text-primary hover:underline">${item.media_id}</a></td>
+            <td class="py-1 px-2 font-medium">${this.escapeHtml(item.tag_name)}</td>
+            <td class="py-1 px-2"><span class="tag-category-${item.tag_category}">${item.tag_category}</span></td>
+            <td class="py-1 px-2 font-mono">${conf}</td>
+            <td class="py-1 px-2 text-secondary">${item.source || '—'}</td>
+            <td class="py-1 px-2">
+                <div class="flex gap-1">
+                    <button class="review-action-btn text-green-600 hover:text-green-800 font-bold px-1" data-action="confirm" data-media-id="${item.media_id}" data-tag-id="${item.tag_id}" title="Confirm">✓</button>
+                    <button class="review-action-btn text-red-600 hover:text-red-800 font-bold px-1" data-action="reject" data-media-id="${item.media_id}" data-tag-id="${item.tag_id}" title="Reject">✗</button>
+                    <button class="review-action-btn text-blue-600 hover:text-blue-800 font-bold px-1" data-action="lock" data-media-id="${item.media_id}" data-tag-id="${item.tag_id}" title="Lock">🔒</button>
+                </div>
+            </td>
+        </tr>`;
+    }
+
+    _updateReviewPagination() {
+        const prevBtn = document.getElementById('review-prev-btn');
+        const nextBtn = document.getElementById('review-next-btn');
+        const pageInfo = document.getElementById('review-page-info');
+        if (!prevBtn || !nextBtn) return;
+
+        const currentPage = Math.floor(this._reviewOffset / this._reviewLimit) + 1;
+        const totalPages = Math.max(1, Math.ceil(this._reviewTotal / this._reviewLimit));
+
+        prevBtn.disabled = this._reviewOffset === 0;
+        nextBtn.disabled = (this._reviewOffset + this._reviewLimit) >= this._reviewTotal;
+        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    }
+
+    _reviewPageNav(direction) {
+        if (direction < 0) {
+            this._reviewOffset = Math.max(0, this._reviewOffset - this._reviewLimit);
+        } else {
+            this._reviewOffset += this._reviewLimit;
+        }
+        this.loadReviewSuggestions();
+    }
+
+    _toggleReviewSelectAll(checked) {
+        document.querySelectorAll('.review-item-cb').forEach(cb => { cb.checked = checked; });
+        this._updateReviewSelectionCount();
+    }
+
+    _updateReviewSelectionCount() {
+        const checked = document.querySelectorAll('.review-item-cb:checked');
+        const countEl = document.getElementById('review-selection-count');
+        const bulkConfirm = document.getElementById('review-bulk-confirm-btn');
+        const bulkReject = document.getElementById('review-bulk-reject-btn');
+        if (countEl) countEl.textContent = `${checked.length} selected`;
+        if (bulkConfirm) bulkConfirm.disabled = checked.length === 0;
+        if (bulkReject) bulkReject.disabled = checked.length === 0;
+    }
+
+    _getSelectedReviewItems() {
+        const items = [];
+        document.querySelectorAll('.review-item-cb:checked').forEach(cb => {
+            items.push({ media_id: parseInt(cb.dataset.mediaId), tag_id: parseInt(cb.dataset.tagId) });
+        });
+        return items;
+    }
+
+    async reviewSingleAction(action, mediaId, tagId) {
+        try {
+            let url, method;
+            if (action === 'delete') {
+                url = `/api/admin/ai-tags/${mediaId}/${tagId}`;
+                method = 'DELETE';
+            } else {
+                url = `/api/admin/ai-tags/${mediaId}/${tagId}/${action}`;
+                method = 'POST';
+            }
+            await app.apiCall(url, { method });
+            app.showNotification(`Tag ${action}ed successfully`, 'success');
+            this.loadReviewSuggestions();
+        } catch (err) {
+            app.showNotification(`Action failed: ${err.message || err}`, 'error');
+        }
+    }
+
+    async bulkReviewAction(action) {
+        const items = this._getSelectedReviewItems();
+        if (items.length === 0) {
+            app.showNotification('No items selected', 'error');
+            return;
+        }
+        if (items.length > 100) {
+            app.showNotification('Max 100 items per bulk operation', 'error');
+            return;
+        }
+
+        try {
+            const data = await app.apiCall('/api/admin/ai-tags/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, items }),
+            });
+            app.showNotification(
+                `Bulk ${action}: ${data.success} succeeded, ${data.failed} failed`,
+                data.failed > 0 ? 'warning' : 'success'
+            );
+            this.loadReviewSuggestions();
+        } catch (err) {
+            app.showNotification(`Bulk action failed: ${err.message || err}`, 'error');
         }
     }
 

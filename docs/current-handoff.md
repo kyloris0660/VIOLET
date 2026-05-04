@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 2.1.2 session/rollback hotfix (2026-05-04).
+> Last updated after Phase 2.2 AI Tag Review UI (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -101,13 +101,35 @@ Fixed two reliability issues in the AI tagging code:
 1. **Independent DB sessions**: API endpoints no longer pass the request-scoped SQLAlchemy session into `run_in_threadpool`. Worker functions create, use, and close their own sessions via `SessionLocal`.
 2. **Per-item batch rollback**: If a single `run_ai_tagging` call raises during batch processing, the session is rolled back before proceeding to the next item, preventing `PendingRollbackError` cascades.
 
+### Phase 2.2 — AI Tag Review UI
+
+Added suggestion review capabilities:
+
+- **Review API**: `GET /api/admin/ai-tags/review`, `POST .../confirm`, `POST .../reject`, `POST .../lock`, `DELETE .../`, `POST .../bulk`
+- **Admin UI**: Review panel with filters, table, single-action buttons, multi-select, bulk confirm/reject, pagination
+- **Media Detail**: Provenance-aware tag rendering — distinguishes confirmed, locked, and suggestion tags visually
+- **Confirm preserves AI provenance**: source=ai_wd and confidence retained after confirmation
+- **Manual/locked protection**: Bulk/single delete refuses to remove manual+locked tags without force=true
+- **Tag counts updated**: Confirming a suggestion updates `post_count` so it appears in search
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/routes/admin/ai_tag_review.py` | Review API endpoints |
+| `backend/app/services/tag_service.py` | Updated `confirm_suggestion` with `preserve_source` |
+| `frontend/templates/admin.html` | AI Tag Review section |
+| `frontend/static/js/admin.js` | Review UI logic |
+| `frontend/static/js/media-viewer-base.js` | Provenance-aware tag display |
+| `docs/ai-tag-review.md` | Full documentation |
+
 ## What Has NOT Been Built
 
-- No automatic AI tagging during scan (manual trigger only)
-- No AI tag review UI for suggestions (Phase 2.2)
+- No automatic AI tagging during scan (manual trigger only, Phase 2.3)
 - No anime/photo filtering (Phase 3)
 - No filesystem watcher or scheduled scan (Phase 4)
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
+- No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
 - No WebSocket (uses polling)
 
@@ -131,14 +153,15 @@ Fixed six reliability issues from Codex automated review:
 5. **`Media.tags` relationship uses SQLAlchemy secondary** — tag reads via relationship don't filter suggestions; AI tagging now creates suggestions so Phase 2.2 should add search filtering
 6. **First AI model download requires internet** — ~350-1200 MB from HuggingFace Hub; no offline fallback
 
-## Recommended Next Phase: 2.2
+## Recommended Next Phase: 2.3
 
-**AI Tag Review UI** — add suggestion review capabilities:
+**Optional Auto Tagging After Import** — allow AI tagging to run after scan jobs:
 
-1. Inline confirm/reject buttons for suggestion tags in media detail
-2. Suggestion search syntax (e.g. `suggestion:tag_name`)
-3. Bulk suggestion management
-4. Tag alias support for AI tag resolution
+1. Scan job completion creates optional AI tagging background job
+2. Default OFF, configurable in Admin UI
+3. Non-blocking (separate job, does not slow down import)
+4. Writes as suggestions (requires Phase 2.2 review to confirm)
+5. Respects max_items / dry-run / only_without_ai_tags
 
 ## Test Directory
 
@@ -153,6 +176,7 @@ Fixed six reliability issues from Codex automated review:
 | `README.md` | Project overview and quick start |
 | `AGENTS.md` | Cursor agent instructions |
 | `docs/ai-tagging-usage-guide.md` | Complete AI tagging usage guide with GUI walkthrough |
+| `docs/ai-tag-review.md` | Phase 2.2 review UI and API documentation |
 | `docs/ai-auto-tagging.md` | Phase 2.1 AI tagging technical reference |
 | `docs/project-roadmap.md` | Full phase plan |
 | `docs/tag-metadata-foundation.md` | Phase 2 technical documentation |

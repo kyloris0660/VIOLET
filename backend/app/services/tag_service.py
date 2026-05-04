@@ -169,12 +169,27 @@ def confirm_suggestion(
     db: Session,
     media_id: int,
     tag_id: int,
+    *,
+    preserve_source: bool = False,
 ) -> bool:
     """Confirm a suggestion tag — mark it as non-suggestion and locked.
+
+    If *preserve_source* is True, keeps the original source and confidence
+    (useful for AI tag review where we want to retain provenance).
 
     Returns ``True`` if a row was updated.
     """
     now = datetime.now(timezone.utc)
+
+    values: dict = {
+        "is_suggestion": False,
+        "is_locked": True,
+        "updated_at": now,
+    }
+    if not preserve_source:
+        values["source"] = TAG_SOURCE_MANUAL
+        values["confidence"] = 1.0
+
     result = db.execute(
         blombooru_media_tags.update()
         .where(
@@ -184,13 +199,7 @@ def confirm_suggestion(
                 blombooru_media_tags.c.is_suggestion == True,
             )
         )
-        .values(
-            is_suggestion=False,
-            is_locked=True,
-            source=TAG_SOURCE_MANUAL,
-            confidence=1.0,
-            updated_at=now,
-        )
+        .values(**values)
     )
     return result.rowcount > 0
 
