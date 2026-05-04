@@ -13,7 +13,13 @@ blombooru_media_tags = Table(
     'blombooru_media_tags',
     Base.metadata,
     Column('media_id', Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), primary_key=True),
-    Column('tag_id', Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), primary_key=True)
+    Column('tag_id', Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), primary_key=True),
+    Column('source', String(50), nullable=False, server_default='manual'),
+    Column('confidence', Float, nullable=True),
+    Column('is_locked', Boolean, nullable=False, server_default='true'),
+    Column('is_suggestion', Boolean, nullable=False, server_default='false'),
+    Column('created_at', DateTime(timezone=True), server_default=func.now()),
+    Column('updated_at', DateTime(timezone=True), server_default=func.now()),
 )
 
 class User(Base):

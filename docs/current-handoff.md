@@ -1,6 +1,6 @@
 # Current Handoff — AnimeLocalBooru
 
-> Last updated after Phase 1.6 merge (2026-05-03).
+> Last updated after Phase 2 merge (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -30,7 +30,7 @@ Blombooru source code imported. All core features verified.
 
 Added `dry_run`, `max_files`, and Admin UI for the synchronous scan endpoint.
 
-### Phase 1.6 — Scan Job System / Progress / History
+### Phase 1.6 — Scan Job System / Progress / History (PR #5)
 
 Upgraded Local Library Scan from synchronous to background job system:
 
@@ -46,27 +46,39 @@ Upgraded Local Library Scan from synchronous to background job system:
 - **Admin UI**: Progress bar, cancel button, scan history table, auto-resume polling
 - **Backward compatible**: Legacy synchronous `POST /api/admin/scan-local-library` still works
 
+### Phase 2 — Tag Metadata Foundation
+
+Extended the `blombooru_media_tags` junction table with provenance tracking:
+
+- **New columns**: `source`, `confidence`, `is_locked`, `is_suggestion`, `created_at`, `updated_at`
+- **Tag service**: `backend/app/services/tag_service.py` — centralized helpers for all tag association operations
+- **Priority rule**: Manual/locked tags are never overwritten by AI
+- **Suggestion support**: Low-confidence AI tags (future) stored as suggestions, excluded from search
+- **Backward compatible**: All existing features (upload, search, tag edit, scan jobs, booru import) work unchanged
+- **Migration**: Idempotent `migrate_add_media_tags_provenance` — existing tags backfilled as `manual/1.0/locked/confirmed`
+- **Media detail API**: Now includes `tag_provenance` dict with per-tag metadata
+
 **Key files:**
 
 | File | Role |
 |------|------|
-| `backend/app/models.py` | `ScanJob` model |
-| `backend/app/database.py` | `migrate_add_scan_jobs_table` migration |
-| `backend/app/utils/local_library_scanner.py` | Scanner with job runner, cancel, progress |
-| `backend/app/routes/admin/media.py` | Job API endpoints + path safety |
-| `backend/app/main.py` | Stale job recovery at startup |
-| `frontend/templates/admin.html` | Job-based scan UI |
-| `frontend/static/js/admin.js` | Polling, cancel, history JS |
+| `backend/app/models.py` | Extended `blombooru_media_tags` with provenance columns |
+| `backend/app/database.py` | `migrate_add_media_tags_provenance` migration |
+| `backend/app/services/tag_service.py` | Tag provenance service (add/update/remove/query) |
+| `backend/app/routes/media.py` | Uses tag service for upload/update, exposes provenance in detail |
+| `backend/app/routes/booru_import.py` | Uses tag service for booru imports |
+| `backend/app/utils/search_parser.py` | Excludes suggestions from search/counts |
+| `docs/tag-metadata-foundation.md` | Full technical documentation |
 
 ## What Has NOT Been Built
 
-- No AI tagging integration
-- No anime/photo filtering
-- No tag provenance (source, confidence, lock)
-- No filesystem watcher or scheduled scan
+- No AI tagging integration (Phase 2.1)
+- No anime/photo filtering (Phase 3)
+- No filesystem watcher or scheduled scan (Phase 4)
+- No tag review UI for suggestions
+- No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No HEIC or video import support
 - No WebSocket (uses polling)
-- No database migrations to existing tables
 
 ## Known Technical Debt
 
@@ -74,19 +86,17 @@ Upgraded Local Library Scan from synchronous to background job system:
 2. **Copy mode disk cost** — every imported image is duplicated on disk
 3. **No scan progress percentage without max_files** — indeterminate progress only
 4. **Polling-based progress** — 1.5s interval; WebSocket would be more efficient but adds complexity
+5. **`Media.tags` relationship uses SQLAlchemy secondary** — tag reads via relationship don't filter suggestions; safe because no suggestions are created yet
 
-## Recommended Next Phase: 2
+## Recommended Next Phase: 2.1
 
-**Tag Metadata Foundation** — extend the tag–media relationship to support AI-generated tags with provenance:
+**AI Auto Tagging** — automatically tag imported images using the existing WDv3 (SmilingWolf) ONNX tagger:
 
-1. Extend `blombooru_media_tags` junction table with `source` (enum: `manual`, `ai_wd`, `booru_import`), `confidence` (float 0–1), `is_locked` (bool)
-2. Database migration function following existing DIY pattern
-3. Priority rule: `is_locked = true` or `source = manual` → AI never overwrites
-4. Low-confidence tags stored as suggestions, not confirmed
-
-**Important:** This is a database migration. Must be planned and reviewed first.
-
-After Phase 2, proceed to Phase 2.1 (AI Auto Tagging using existing WDv3/SmilingWolf ONNX tagger).
+1. Reuse `backend/app/services/wd_tagger.py` (already in codebase)
+2. Call `add_ai_tag_to_media()` from `tag_service.py` for each predicted tag
+3. Tags above threshold → confirmed; below → suggestion
+4. Manual/locked tags preserved automatically
+5. Can run on existing library or during import
 
 ## Test Directory
 
@@ -100,6 +110,7 @@ After Phase 2, proceed to Phase 2.1 (AI Auto Tagging using existing WDv3/Smiling
 |----------|---------|
 | `AGENTS.md` | Cursor agent instructions |
 | `docs/project-roadmap.md` | Full phase plan |
+| `docs/tag-metadata-foundation.md` | Phase 2 technical documentation |
 | `docs/local-anime-library-devlog.md` | Per-phase technical log |
 | `docs/local-library-scan.md` | Feature documentation and API usage |
 | `example.env` | Available environment variables |

@@ -357,3 +357,72 @@ C:\Users\kyloris\Pictures\iCloud Photos
 - Cancel 不回滚已导入文件
 - Admin UI 路径输入只支持单个路径
 - 不做 AI tagging / anime filtering / watcher
+
+---
+
+## Phase 2：Tag Metadata Foundation
+
+**日期：** 2026-05-04
+
+### 目标
+
+扩展 media-tag 关联关系，新增来源（source）、置信度（confidence）、锁定（is_locked）、建议（is_suggestion）元数据，为 Phase 2.1 AI 自动标签做准备。
+
+### 设计决策
+
+1. **保留 SQLAlchemy Table 模式**：`blombooru_media_tags` 仍然作为 `Table` 对象使用 `secondary=` relationship，不改为 Association Object。原因：整个项目有十几处使用 `Media.tags` relationship，改为 Association Object 会导致大规模重构，违反"不破坏现有功能"原则。
+2. **直接 SQL 写入 provenance**：新增列通过 tag_service.py 的 helper 函数操作（使用 PostgreSQL `ON CONFLICT DO UPDATE`），不经过 ORM relationship。
+3. **现有数据 backfill**：所有旧 tag 关系迁移为 `source=manual, confidence=1.0, is_locked=true, is_suggestion=false`。
+4. **搜索过滤**：wildcard 搜索和 tag count 搜索添加 `is_suggestion=false` 过滤。由于 Phase 2 不创建 suggestion tag，实际行为不变。
+5. **`update_tag_counts` 排除 suggestion**：suggestion tag 不计入 `post_count`。
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/models.py` | 修改 | `blombooru_media_tags` Table 新增 6 列 |
+| `backend/app/database.py` | 修改 | 新增 `migrate_add_media_tags_provenance` 迁移函数 |
+| `backend/app/services/tag_service.py` | 新增 | Tag provenance service：add/update/remove/query helpers |
+| `backend/app/routes/media.py` | 修改 | `process_and_save_media` 和 `update_media` 使用 tag service；media detail 返回 `tag_provenance`；`update_tag_counts` 排除 suggestion |
+| `backend/app/routes/booru_import.py` | 修改 | 使用 `add_booru_import_tag_to_media` |
+| `backend/app/utils/search_parser.py` | 修改 | wildcard 和 tag count 搜索排除 suggestion |
+| `.gitignore` | 修改 | 新增 `storage/`、`backups/` |
+| `docs/tag-metadata-foundation.md` | 新增 | 完整技术文档 |
+| `docs/current-handoff.md` | 修改 | 更新到 Phase 2 |
+| `docs/project-roadmap.md` | 修改 | Phase 2 移到已完成 |
+| `docs/local-anime-library-devlog.md` | 修改 | 本条目 |
+
+### 数据库迁移
+
+- 迁移函数：`migrate_add_media_tags_provenance`
+- 在 `blombooru_media_tags` 表上新增 6 列
+- 幂等：检查 `source` 列是否存在，已存在则跳过
+- backfill：所有现有行设为 `manual/1.0/locked/confirmed`
+- 新增索引：`ix_blombooru_media_tags_source`、`ix_blombooru_media_tags_is_suggestion`
+- 备份要求：迁移前需要 `pg_dump` 备份
+
+### Tag Service API
+
+`backend/app/services/tag_service.py` 提供：
+
+- `add_manual_tag_to_media` — 手动添加/升级 tag
+- `add_manual_tags_to_media` — 批量手动添加
+- `add_booru_import_tag_to_media` — Booru 导入 tag
+- `add_ai_tag_to_media` — AI tag（遵守 locked/manual 优先级）
+- `set_media_tags_manual` — 替换全部 tag（PATCH 更新）
+- `confirm_suggestion` / `reject_suggestion` — 确认/拒绝建议
+- `update_tag_provenance` — 更新 provenance 字段
+- `remove_tag_from_media` — 删除 tag 关联
+- `get_media_tag_provenance` — 查询 provenance 数据
+
+### 已知限制
+
+- Phase 2 不创建 suggestion tag，仅提供基础设施
+- `Media.tags` relationship 不过滤 suggestion（安全，因为没有 suggestion）
+- 没有 tag review UI
+- 没有 suggestion 搜索语法
+- 没有 AI 推理集成
+
+### 下一阶段建议
+
+**Phase 2.1 — AI Auto Tagging**：使用已有的 WDv3 tagger 自动标签，通过 `add_ai_tag_to_media()` 写入带 provenance 的 tag。

@@ -287,6 +287,7 @@ def apply_search_criteria(query: Query, parsed_query: Dict[str, Any], db: Sessio
             and_(
                 blombooru_media_tags.c.media_id == Media.id,
                 blombooru_media_tags.c.tag_id == Tag.id,
+                blombooru_media_tags.c.is_suggestion == False,
                 Tag.name.op('~*')(regex_pattern)
             )
         )
@@ -468,11 +469,11 @@ def apply_search_criteria(query: Query, parsed_query: Dict[str, Any], db: Sessio
                 where_clause = [blombooru_media_tags.c.media_id == Media.id]
                 
                 if category is not None:
-                     # Join Tag to check category
                      subq = (
                          db.query(func.count(blombooru_media_tags.c.tag_id))
                          .join(Tag, blombooru_media_tags.c.tag_id == Tag.id)
                          .filter(blombooru_media_tags.c.media_id == Media.id)
+                         .filter(blombooru_media_tags.c.is_suggestion == False)
                          .filter(Tag.category == category)
                          .scalar_subquery()
                      )
@@ -480,6 +481,7 @@ def apply_search_criteria(query: Query, parsed_query: Dict[str, Any], db: Sessio
                     subq = (
                         db.query(func.count(blombooru_media_tags.c.tag_id))
                         .filter(blombooru_media_tags.c.media_id == Media.id)
+                        .filter(blombooru_media_tags.c.is_suggestion == False)
                         .scalar_subquery()
                     )
                 
