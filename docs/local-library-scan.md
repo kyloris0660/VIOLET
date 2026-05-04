@@ -207,15 +207,19 @@ The Admin Panel → Content tab includes a **Local Library Scan** section:
 
 ## Stale Job Recovery
 
-If the application stops while a scan is running (crash, restart, etc.), any `pending`/`running`/`cancelling` jobs are automatically marked as `interrupted` on the next startup. This prevents the Admin UI from showing a permanently "running" job.
+If the application stops while a scan is running (crash, restart, etc.), any `pending`/`running`/`cancelling` jobs are automatically marked as `interrupted` on the next application startup. This prevents the Admin UI from showing a permanently "running" job.
+
+**Important:** Stale recovery runs only at startup, not during normal API calls. The history listing endpoint (`GET /jobs`) does not trigger stale recovery, so actively running jobs are never incorrectly marked as interrupted during UI polling.
 
 ## Important Notes
 
 - **Originals are never touched.** Files are always *copied*, never moved or deleted.
 - **Duplicate detection** uses MD5 hashing. Re-running the scan is safe.
 - **Error isolation:** A failure on one file does not stop the scan.
-- **Cancel does not roll back:** Already-imported files are kept.
+- **Cancel does not roll back:** Already-imported files are kept. Cancel is honored even if requested before the worker starts processing.
 - **Single job limit:** Only one scan can run at a time to prevent conflicts.
+- **Invalid scan roots** (non-existent or non-directory paths) are counted as `failed` and reported in `failed_files`.
+- **Empty `paths` array** (`{"paths": []}`) returns 400. Omit the field entirely (or pass `null`) to use the configured `LOCAL_LIBRARY_PATHS` from `.env`.
 
 ## Data Model Note
 

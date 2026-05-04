@@ -115,9 +115,11 @@ def scan_and_import(
     valid_paths: List[Path] = []
     for p in paths:
         if not p.exists():
+            stats["failed"] += 1
             _record_failure(stats, str(p), "directory does not exist")
             continue
         if not p.is_dir():
+            stats["failed"] += 1
             _record_failure(stats, str(p), "path is not a directory")
             continue
         valid_paths.append(p)
@@ -135,17 +137,24 @@ def scan_and_import(
     for scan_dir in valid_paths:
         if _should_cancel():
             break
+        if stats["limit_reached"]:
+            break
 
         logger.info(f"Scanning local library: {scan_dir} (dry_run={dry_run})")
 
         try:
-            entries = list(scan_dir.rglob("*"))
+            entries = scan_dir.rglob("*")
         except OSError as e:
             _record_failure(stats, str(scan_dir), f"rglob error: {e}")
+            stats["failed"] += 1
             continue
 
         for file_path in entries:
             if _should_cancel():
+                break
+
+            if max_files is not None and candidates_processed >= max_files:
+                stats["limit_reached"] = True
                 break
 
             stats["total_seen"] += 1
@@ -155,10 +164,6 @@ def scan_and_import(
                 stats["skipped_unsupported"] += 1
                 _maybe_flush_progress()
                 continue
-
-            if max_files is not None and candidates_processed >= max_files:
-                stats["limit_reached"] = True
-                break
 
             candidates_processed += 1
             stats["processed"] = candidates_processed
@@ -254,10 +259,13 @@ def is_job_active() -> bool:
 
 
 def request_cancel(job_id: int) -> None:
-    """Signal a running job to stop."""
+    """Signal a running job to stop.
+
+    Works even if the worker hasn't registered yet — the flag is pre-set
+    so that when the worker registers it will see the cancellation immediately.
+    """
     with _active_job_lock:
-        if job_id in _active_job_cancel:
-            _active_job_cancel[job_id] = True
+        _active_job_cancel[job_id] = True
 
 
 def run_scan_job(job_id: int) -> None:
@@ -271,8 +279,19 @@ def run_scan_job(job_id: int) -> None:
             logger.error(f"Scan job {job_id} not found")
             return
 
+        # Check if cancel was requested before the worker started (race fix).
+        # The cancel endpoint persists status='cancelling' to DB and pre-sets
+        # the in-memory flag via request_cancel().
         with _active_job_lock:
-            _active_job_cancel[job_id] = False
+            already_cancelled = _active_job_cancel.get(job_id, False)
+            _active_job_cancel[job_id] = already_cancelled
+
+        if already_cancelled or job.status == "cancelling":
+            job.status = "cancelled"
+            job.finished_at = datetime.now(timezone.utc)
+            job.error_message = "Cancelled before scan started"
+            db.commit()
+            return
 
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)

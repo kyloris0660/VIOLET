@@ -256,7 +256,12 @@ def migrate_add_description(engine, inspector):
 
 def migrate_add_media_tags_provenance(engine, inspector):
     """Add provenance columns (source, confidence, is_locked, is_suggestion,
-    created_at, updated_at) to blombooru_media_tags for tag metadata tracking."""
+    created_at, updated_at) to blombooru_media_tags for tag metadata tracking.
+
+    Idempotent: safe to run repeatedly. Columns are added only if missing;
+    indexes are ensured regardless of whether columns already existed (handles
+    the fresh-install case where create_all() adds columns but not named indexes).
+    """
     from sqlalchemy import text
 
     tables = inspector.get_table_names()
@@ -265,44 +270,51 @@ def migrate_add_media_tags_provenance(engine, inspector):
 
     columns = [c['name'] for c in inspector.get_columns('blombooru_media_tags')]
 
-    if 'source' in columns:
-        return
+    columns_added = False
+    if 'source' not in columns:
+        logger.info("Adding provenance columns to blombooru_media_tags...")
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE blombooru_media_tags "
+                "ADD COLUMN source VARCHAR(50) NOT NULL DEFAULT 'manual'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media_tags "
+                "ADD COLUMN confidence FLOAT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media_tags "
+                "ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT TRUE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media_tags "
+                "ADD COLUMN is_suggestion BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media_tags "
+                "ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media_tags "
+                "ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
+            ))
+            conn.commit()
+        columns_added = True
 
-    logger.info("Adding provenance columns to blombooru_media_tags...")
+    # Backfill existing rows (idempotent — only touches rows still at defaults)
+    if columns_added:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "UPDATE blombooru_media_tags SET "
+                "confidence = 1.0 "
+                "WHERE confidence IS NULL"
+            ))
+            conn.commit()
 
+    # Ensure indexes exist regardless of whether columns were just created or
+    # already present (fixes fresh-install where create_all adds columns but
+    # not these named indexes).
     with engine.connect() as conn:
-        conn.execute(text(
-            "ALTER TABLE blombooru_media_tags "
-            "ADD COLUMN source VARCHAR(50) NOT NULL DEFAULT 'manual'"
-        ))
-        conn.execute(text(
-            "ALTER TABLE blombooru_media_tags "
-            "ADD COLUMN confidence FLOAT"
-        ))
-        conn.execute(text(
-            "ALTER TABLE blombooru_media_tags "
-            "ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT TRUE"
-        ))
-        conn.execute(text(
-            "ALTER TABLE blombooru_media_tags "
-            "ADD COLUMN is_suggestion BOOLEAN NOT NULL DEFAULT FALSE"
-        ))
-        conn.execute(text(
-            "ALTER TABLE blombooru_media_tags "
-            "ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
-        ))
-        conn.execute(text(
-            "ALTER TABLE blombooru_media_tags "
-            "ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
-        ))
-
-        conn.execute(text(
-            "UPDATE blombooru_media_tags SET "
-            "source = 'manual', confidence = 1.0, "
-            "is_locked = TRUE, is_suggestion = FALSE "
-            "WHERE source = 'manual'"
-        ))
-
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_blombooru_media_tags_source "
             "ON blombooru_media_tags(source)"
@@ -313,7 +325,10 @@ def migrate_add_media_tags_provenance(engine, inspector):
         ))
         conn.commit()
 
-    logger.info("blombooru_media_tags provenance columns added successfully.")
+    if columns_added:
+        logger.info("blombooru_media_tags provenance columns added successfully.")
+    else:
+        logger.debug("blombooru_media_tags provenance indexes verified.")
 
 
 def migrate_add_scan_jobs_table(engine, inspector):
