@@ -75,33 +75,56 @@ class MediaViewerBase {
     renderTags(media, options = {}) {
         const { clickable = true } = options;
         const container = this.el('tags-container');
+        const provenance = media.tag_provenance || {};
         const groups = { artist: [], character: [], copyright: [], general: [], meta: [] };
+        const suggestionGroups = { artist: [], character: [], copyright: [], general: [], meta: [] };
 
         (media.tags || []).forEach(tag => {
-            if (groups[tag.category]) {
-                groups[tag.category].push(tag);
+            const prov = provenance[String(tag.id)];
+            const isSuggestion = prov && prov.is_suggestion;
+            const target = isSuggestion ? suggestionGroups : groups;
+            if (target[tag.category]) {
+                target[tag.category].push({ ...tag, _prov: prov });
             }
         });
 
         let html = '';
         Object.entries(groups).forEach(([category, tags]) => {
             if (!tags.length) return;
-
             tags.sort((a, b) => a.name.localeCompare(b.name));
-
-            html += `
-                <div class="tag-category">
-                    <h4>${category}</h4>
-                    <div class="tag-list">
-                        ${tags.map(tag =>
-                clickable
-                    ? `<a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${category} tag-text">${tag.name}</a>`
-                    : `<span class="tag ${category} tag-text">${tag.name}</span>`
-            ).join('')}
-                    </div>
-                </div>
-            `;
+            html += `<div class="tag-category"><h4>${category}</h4><div class="tag-list">`;
+            html += tags.map(tag => {
+                const prov = tag._prov;
+                let title = '';
+                if (prov) {
+                    const parts = [];
+                    if (prov.source && prov.source !== 'manual') parts.push(`source: ${prov.source}`);
+                    if (prov.confidence != null && prov.confidence < 1.0) parts.push(`conf: ${(prov.confidence * 100).toFixed(0)}%`);
+                    if (prov.is_locked) parts.push('locked');
+                    title = parts.join(', ');
+                }
+                const lockIcon = prov && prov.is_locked ? '<span class="text-[8px] opacity-60">🔒</span>' : '';
+                const tagContent = `${tag.name}${lockIcon}`;
+                return clickable
+                    ? `<a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${category} tag-text" title="${title}">${tagContent}</a>`
+                    : `<span class="tag ${category} tag-text" title="${title}">${tagContent}</span>`;
+            }).join('');
+            html += '</div></div>';
         });
+
+        const hasSuggestions = Object.values(suggestionGroups).some(arr => arr.length > 0);
+        if (hasSuggestions) {
+            html += `<div class="tag-category mt-3 pt-2 border-t"><h4 class="text-warning">Suggestions (AI)</h4><div class="tag-list">`;
+            Object.entries(suggestionGroups).forEach(([category, tags]) => {
+                tags.sort((a, b) => a.name.localeCompare(b.name));
+                tags.forEach(tag => {
+                    const prov = tag._prov;
+                    const conf = prov && prov.confidence != null ? ` (${(prov.confidence * 100).toFixed(0)}%)` : '';
+                    html += `<span class="tag ${category} tag-text opacity-70 border-dashed" title="suggestion${conf}" data-media-id="${media.id}" data-tag-id="${tag.id}">${tag.name}${conf}</span>`;
+                });
+            });
+            html += '</div></div>';
+        }
 
         container.innerHTML = html || '<p class="text-xs text-secondary mb-3">' + window.i18n.t('common.no_tags') + '</p>';
     }

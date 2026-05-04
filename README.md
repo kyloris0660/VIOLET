@@ -16,7 +16,7 @@ Based on [Blombooru](https://github.com/mrblomblo/blombooru) by mrblomblo.
 | WDv3 AI auto tagging MVP | Done | Manual trigger, dry-run, batch, Admin UI |
 | Confirmed / suggestion tags | Done | Dual threshold system |
 | Manual/locked tag protection | Done | AI never overwrites human tags |
-| AI tag review UI | Phase 2.2 | Confirm/reject suggestions |
+| AI tag review UI | Done | Confirm/reject/lock/delete suggestions |
 | Auto-tag after import | Phase 2.3 | Optional, non-blocking |
 | Anime/photo filtering | Phase 3 | Distinguish anime from photos |
 | Reverse image search | Phase 3 | SauceNAO/IQDB integration |
@@ -112,6 +112,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for complete usage 
 | Document | Contents |
 |----------|----------|
 | [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) | Complete usage guide with examples |
+| [AI Tag Review](docs/ai-tag-review.md) | Review UI and API documentation |
 | [AI Auto Tagging Technical](docs/ai-auto-tagging.md) | Architecture, API reference, data model |
 | [Local Library Scan](docs/local-library-scan.md) | Scan feature documentation |
 | [Tag Metadata Foundation](docs/tag-metadata-foundation.md) | Provenance system design |
@@ -121,7 +122,8 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for complete usage 
 
 ## Roadmap
 
-- **Phase 2.2** — AI Tag Review UI (confirm/reject suggestions, bulk operations)
+- **Phase 2.2** — AI Tag Review UI (done)
+
 - **Phase 2.3** — Optional Auto Tagging After Import (background job, default off)
 - **Phase 3** — Anime Filtering & Source Identification (SauceNAO, IQDB)
 - **Phase 4** — Filesystem Watcher & Scheduled Scan

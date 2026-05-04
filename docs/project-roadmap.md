@@ -89,24 +89,22 @@ See [AI Tagging Usage Guide](ai-tagging-usage-guide.md) for complete usage instr
 - Future auto-tagging architecture recommendation
 - Manual GUI verification procedures
 
----
-
-## Upcoming Phases
-
 ### Phase 2.2 — AI Tag Review UI
 
 **Goal:** Add suggestion review UI for AI-generated tags.
 
-- View all suggestion tags per media item
-- Confirm individual suggestions (→ becomes confirmed tag, searchable)
-- Reject individual suggestions (→ deleted from DB)
-- Lock correct tags (→ AI cannot overwrite in future runs)
-- Delete incorrect AI tags
-- Sort suggestions by confidence
-- Bulk confirm / bulk reject above threshold
-- Suggestion search syntax (`suggestion:tag_name`)
-- Tag alias support (e.g. `miku` → `hatsune_miku`)
-- Tag implication support (e.g. `hatsune_miku` → `vocaloid`)
+- Review API: list, confirm, reject, lock, delete, bulk operations
+- Admin UI: review panel with filters, table, single/bulk actions, pagination
+- Media detail: provenance-aware tag rendering (confirmed vs suggestion)
+- Confirm preserves AI source and confidence for provenance tracking
+- Manual/locked tag protection in all review operations
+- Tag counts updated on confirm (makes tags searchable)
+
+See [AI Tag Review](ai-tag-review.md) for complete documentation.
+
+---
+
+## Upcoming Phases
 
 ### Phase 2.3 — Optional Auto Tagging After Import
 

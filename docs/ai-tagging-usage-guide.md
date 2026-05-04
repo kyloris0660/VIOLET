@@ -397,14 +397,13 @@ These work exactly like manually-added tags in search.
 - `GET /api/media/{id}` → `tag_provenance` dict shows `is_suggestion: true`
 - They are stored in the database with full provenance
 
-**Why no review UI yet:**
-Phase 2.1 focused on the core AI tagging pipeline. A proper review UI requires:
-- Per-tag confirm/reject buttons in the media detail page
-- Bulk operations (confirm all above X confidence)
-- Undo capability
-- Visual distinction between confirmed and suggestion tags
-
-This is planned for Phase 2.2.
+**Review UI (Phase 2.2):**
+The AI Tag Review UI is now available in Admin Panel → Content → AI Tag Review:
+- View all suggestions with confidence scores
+- Confirm/reject individual suggestions
+- Bulk confirm/reject selected suggestions
+- Filter by confidence, tag name, media ID
+- See [AI Tag Review documentation](ai-tag-review.md) for full details
 
 ---
 
@@ -499,16 +498,14 @@ Key design principles:
 
 ## 8. Future Roadmap
 
-### Phase 2.2 — AI Tag Review UI
+### Phase 2.2 — AI Tag Review UI ✅
 
-- View all suggestion tags per media item
-- Confirm individual suggestions (→ becomes confirmed tag)
-- Reject individual suggestions (→ deleted)
-- Lock correct tags (→ AI cannot overwrite)
-- Delete incorrect AI tags
-- Sort suggestions by confidence
-- Bulk confirm / bulk reject above threshold
-- Suggestion search syntax (`suggestion:tag_name`)
+Completed. Full review capabilities available:
+- List, confirm, reject, lock, delete AI suggestions via API and Admin UI
+- Bulk confirm/reject with multi-select
+- Confidence and tag name filtering
+- Provenance-aware display in media detail
+- See [AI Tag Review](ai-tag-review.md) for documentation
 
 ### Phase 2.3 — Optional Auto Tagging After Import
 

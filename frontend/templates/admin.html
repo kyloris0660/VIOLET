@@ -1019,6 +1019,75 @@
                 </div>
             </div>
 
+            <!-- AI Tag Review Section -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="ai-tag-review-section">
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">AI Tag Review</h2>
+
+                <!-- Filters -->
+                <div class="bg p-4 border mb-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-1">Min Confidence</label>
+                            <input type="number" id="review-min-confidence" min="0" max="1" step="0.05" placeholder="0.0"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1">Max Confidence</label>
+                            <input type="number" id="review-max-confidence" min="0" max="1" step="0.05" placeholder="1.0"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1">Tag Name</label>
+                            <input type="text" id="review-tag-name" placeholder="Filter by tag..."
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1">Media ID</label>
+                            <input type="number" id="review-media-id" min="1" placeholder="All"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button id="review-load-btn" class="btn-primary px-4 py-2 text-xs">Load Suggestions</button>
+                        <button id="review-bulk-confirm-btn" class="btn px-3 py-2 text-xs" disabled>Bulk Confirm Selected</button>
+                        <button id="review-bulk-reject-btn" class="btn px-3 py-2 text-xs" disabled>Bulk Reject Selected</button>
+                        <span id="review-selection-count" class="text-xs text-secondary ml-auto">0 selected</span>
+                    </div>
+                </div>
+
+                <!-- Review List -->
+                <div id="review-list-container">
+                    <div id="review-stats" class="text-xs text-secondary mb-2" style="display:none;"></div>
+                    <div id="review-list" class="overflow-x-auto max-h-[500px] overflow-y-auto border">
+                        <table class="bg w-full text-left border-collapse">
+                            <thead class="border-b">
+                                <tr class="text-secondary text-[10px]">
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">
+                                        <input type="checkbox" id="review-select-all" class="w-3.5 h-3.5 accent-primary">
+                                    </th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Thumb</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Media</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Tag</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Category</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Confidence</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Source</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="review-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="review-empty" class="text-center py-8 text-secondary" style="display:none;">
+                        No suggestions found. Run AI tagging first to generate suggestions.
+                    </div>
+                    <div id="review-pagination" class="flex items-center justify-between mt-3" style="display:none;">
+                        <button id="review-prev-btn" class="btn px-3 py-1 text-xs" disabled>Previous</button>
+                        <span id="review-page-info" class="text-xs text-secondary"></span>
+                        <button id="review-next-btn" class="btn px-3 py-1 text-xs" disabled>Next</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tags Management Section -->
             <div class="surface p-2 sm:p-6 border mb-4">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tags_management.title') }}</h2>
