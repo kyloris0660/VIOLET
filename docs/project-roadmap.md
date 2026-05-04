@@ -1,4 +1,4 @@
-# V.I.O.L.E.T. — 项目路线图
+# V.I.O.L.E.T. — Project Roadmap
 
 ## Project Vision
 
@@ -104,16 +104,15 @@ See [AI Tag Review](ai-tag-review.md) for complete documentation.
 
 ### Phase 2.2.1 — V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation
 
-**目标：** 项目重命名并建立中文本地化基础。
+**Goal:** Formal project rebrand and zh-CN localization foundation.
 
-- 项目正式名称：V.I.O.L.E.T.（Visual Image Organizer for Local Evaluation & Tagging）
-- UI 全面中文化：Local Library Scan、AI Auto Tagging、AI Tag Review 等区域
-- 标签中文显示：常见 Danbooru tag 在 UI 中显示中文名
-- 中文标签搜索别名：支持用中文搜索标签
-- 标签翻译词典：静态 JSON 文件，可扩展
-- Logo 集成：导航栏、README
-- README 和文档重写为中文
-- 新增标签本地化方案文档
+- Project renamed to V.I.O.L.E.T. (Visual Image Organizer for Local Evaluation & Tagging)
+- Admin UI fully localized to zh-CN: Local Library Scan, AI Auto Tagging, AI Tag Review
+- Tag Chinese display: ~80 common Danbooru tags show Chinese names in UI
+- Chinese tag search aliases: users can search with Chinese tag names
+- Tag translation dictionary: static JSON file, extensible
+- Logo integrated into navbar and README
+- Added tag localization design document
 
 ---
 

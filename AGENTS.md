@@ -79,6 +79,15 @@ See `docs/project-roadmap.md` § Development Standards. In short:
 2. Push → PR → squash merge → pull main
 3. **Stop after merge.** Do not auto-start the next phase.
 
+### Language policy
+
+| Layer | Language |
+|-------|----------|
+| User interface | zh-CN first (English fallback) |
+| Internal code, API paths, config keys, canonical tags, DB fields | English |
+| Core technical docs (AGENTS.md, handoff, roadmap, API docs) | English primary |
+| Optional user-facing Chinese docs | Separate supplements (e.g. `docs/tag-localization-zh.md`) |
+
 ### Safety rules
 
 **Never commit:** `.env`, `venv/`, `data/`, `media/`, `storage/`, test images, cache files, tokens, passwords

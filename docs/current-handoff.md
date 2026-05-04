@@ -1,4 +1,4 @@
-# 当前交接文档 — V.I.O.L.E.T.
+# Current Handoff — V.I.O.L.E.T.
 
 > Last updated after Phase 2.2.1 V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation (2026-05-04).
 > Read this file at the start of any new Cursor conversation to resume development.
@@ -15,6 +15,15 @@
 | **DB** | `blombooru` on `localhost:5432`, user `postgres` |
 | **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
 | **Admin credentials** | `admin` / `admin123` |
+
+## Language Policy
+
+| Layer | Language |
+|-------|----------|
+| User interface | zh-CN first (English fallback) |
+| Internal code / API / config / canonical tags | English |
+| Core technical docs | English primary |
+| Optional user-facing Chinese docs | Separate supplements |
 
 ## What Has Been Built
 
@@ -132,7 +141,7 @@ Added suggestion review capabilities:
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
 - No WebSocket (uses polling)
-- 中文标签搜索仅覆盖常用标签（~80 个），大规模词典待后续扩展
+- Chinese tag search aliases cover ~80 common tags only; larger dictionary pending future expansion
 
 ## Phase 2.0.1 — Review Findings Hotfix
 
@@ -156,17 +165,16 @@ Fixed six reliability issues from Codex automated review:
 
 ### Phase 2.2.1 — V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation
 
-项目正式重命名为 V.I.O.L.E.T.（Visual Image Organizer for Local Evaluation & Tagging）。
+Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organizer for Local Evaluation & Tagging).
 
-- 项目名称统一为 V.I.O.L.E.T.
-- UI 全面中文化（Local Library Scan、AI Tagging、AI Tag Review 等）
-- 标签中文显示：常见 Danbooru tag 显示中文名，鼠标悬停显示 canonical tag
-- 中文标签搜索别名：用户搜索"蓝眼睛"→ blue_eyes，"长发"→ long_hair
-- 标签翻译词典：`frontend/static/data/tag_translations_zh.json`
-- Logo 集成到导航栏和文档
-- README 重写为中文
-- 所有文档更新为 V.I.O.L.E.T. 命名
-- 新增 `docs/tag-localization-zh.md` 标签本地化方案文档
+- Unified project name to V.I.O.L.E.T. across UI, docs, and config
+- Admin UI fully localized to zh-CN (Local Library Scan, AI Tagging, AI Tag Review)
+- Tag Chinese display: ~80 common Danbooru tags show Chinese names in UI, canonical tag in tooltip
+- Chinese tag search aliases: search "蓝眼睛" → `blue_eyes`, "长发" → `long_hair`
+- Tag translation dictionary: `frontend/static/data/tag_translations_zh.json`
+- Logo integrated into navbar and README
+- Documentation updated with V.I.O.L.E.T. naming
+- Added `docs/tag-localization-zh.md` for tag localization design
 
 ## Recommended Next Phase: 2.3
 

@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "_comment": "Denna fil innehåller svenska översättningar för Blombooru.",
+        "_comment": "Denna fil innehåller svenska översättningar för V.I.O.L.E.T.",
         "translators": [
             "mrblomblo"
         ],
@@ -84,7 +84,7 @@
         "shared_tags": {
             "title": "Delad taggdatabas",
             "enable": "Aktivera delad taggdatabas",
-            "description": "Dela taggar mellan flera Blombooru-instanser. Lokala taggar har företräde vid konflikter.",
+            "description": "Dela taggar mellan flera V.I.O.L.E.T.-instanser. Lokala taggar har företräde vid konflikter.",
             "sync_now": "Synkronisera nu",
             "syncing": "Synkroniserar...",
             "sync_complete": "Synkronisering slutförd!",

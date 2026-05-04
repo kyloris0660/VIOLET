@@ -56,7 +56,7 @@ class Settings:
         
     def _get_default_settings(self) -> dict:
         return {
-            "app_name": "Blombooru",
+            "app_name": "V.I.O.L.E.T.",
             "first_run": True,
             "database": {
                 "host": "db",
@@ -186,12 +186,16 @@ class Settings:
         # env var > settings file > generated default
         return os.getenv("BLOMBOORU_SECRET_KEY") or self.settings["secret_key"]
     
+    _OLD_DEFAULT_NAMES = {"Blombooru", "AnimeLocalBooru", "Anime Local Booru"}
+
     @property
     def APP_NAME(self) -> str:
         val = self.file_settings.get("app_name")
         if val is not None:
+            if val in self._OLD_DEFAULT_NAMES:
+                return "V.I.O.L.E.T."
             return val
-        return os.getenv("APP_NAME", self.settings.get("app_name", "Blombooru"))
+        return os.getenv("APP_NAME", self.settings.get("app_name", "V.I.O.L.E.T."))
     
     @property
     def CURRENT_THEME(self) -> str:

@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
 
             asyncio.create_task(periodic_upload_chunks_cleanup())
 
-            logger.info("Blombooru started successfully")
+            logger.info("V.I.O.L.E.T. started successfully")
         except Exception as e:
             logger.error(f"Error during startup: {e}")
     else:
@@ -102,7 +102,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 
-app = FastAPI(title="Blombooru", version=APP_VERSION, lifespan=lifespan)
+app = FastAPI(title="V.I.O.L.E.T.", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
