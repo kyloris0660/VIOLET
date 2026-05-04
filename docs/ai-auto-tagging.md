@@ -115,7 +115,7 @@ Content-Type: application/json
 - `max_items` is clamped to `AI_TAGGING_BATCH_MAX_ITEMS` (default 10)
 - If `media_ids` is omitted, selects only images without existing AI tags
 - `dry_run=true` returns predictions without writing
-- Single-item failures do not stop the batch
+- **Per-item failure isolation**: single-item failures are rolled back and do not cascade to subsequent items; `failed` count is recorded in the summary
 
 ## Admin UI
 
@@ -203,6 +203,12 @@ Can identify some popular Danbooru characters (top ~2000 by post count) in typic
 - Character/work database building
 
 For full details on what the model can and cannot do, see [AI Tagging Usage Guide § Capability Boundaries](ai-tagging-usage-guide.md#6-capability-boundaries).
+
+## Session Reliability (Phase 2.1.2)
+
+- **Independent DB sessions**: API endpoints offload tagging work to a thread-pool worker that creates its own SQLAlchemy session, avoiding cross-thread use of the request-scoped session.
+- **Per-item rollback in batch**: If a single image fails during batch processing, the transaction is rolled back before proceeding to the next item, preventing `PendingRollbackError` cascades.
+- **Session lifecycle**: Worker sessions are always closed in a `finally` block regardless of success or failure.
 
 ## Known Limitations
 

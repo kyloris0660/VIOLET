@@ -369,7 +369,8 @@ Write-Output "Processed: $($data.processed), Added: $($data.tags_added), Failed:
 - `max_items` is capped by `AI_TAGGING_BATCH_MAX_ITEMS` (default 10)
 - Requesting more than the cap returns HTTP 400
 - If `media_ids` is omitted, only selects images without existing AI tags
-- Single-item failures don't stop the batch
+- **Per-item failure isolation**: single-item failures are rolled back and do not cascade — the `failed` count is recorded in the summary and the batch continues
+- Thread-pool workers use independent DB sessions (not the request-scoped session)
 - Always dry-run first when testing new settings
 
 ### G. Searching AI Tags
