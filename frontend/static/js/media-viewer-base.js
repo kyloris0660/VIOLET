@@ -95,16 +95,17 @@ class MediaViewerBase {
             html += `<div class="tag-category"><h4>${category}</h4><div class="tag-list">`;
             html += tags.map(tag => {
                 const prov = tag._prov;
-                let title = '';
+                const zhName = window.TagLocalization ? window.TagLocalization.getDisplayName(tag.name) : tag.name;
+                let titleParts = [];
+                if (zhName !== tag.name) titleParts.push(tag.name);
                 if (prov) {
-                    const parts = [];
-                    if (prov.source && prov.source !== 'manual') parts.push(`source: ${prov.source}`);
-                    if (prov.confidence != null && prov.confidence < 1.0) parts.push(`conf: ${(prov.confidence * 100).toFixed(0)}%`);
-                    if (prov.is_locked) parts.push('locked');
-                    title = parts.join(', ');
+                    if (prov.source && prov.source !== 'manual') titleParts.push(`source: ${prov.source}`);
+                    if (prov.confidence != null && prov.confidence < 1.0) titleParts.push(`conf: ${(prov.confidence * 100).toFixed(0)}%`);
+                    if (prov.is_locked) titleParts.push('locked');
                 }
+                const title = titleParts.join(', ');
                 const lockIcon = prov && prov.is_locked ? '<span class="text-[8px] opacity-60">🔒</span>' : '';
-                const tagContent = `${tag.name}${lockIcon}`;
+                const tagContent = `${zhName}${lockIcon}`;
                 return clickable
                     ? `<a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${category} tag-text" title="${title}">${tagContent}</a>`
                     : `<span class="tag ${category} tag-text" title="${title}">${tagContent}</span>`;
@@ -114,13 +115,16 @@ class MediaViewerBase {
 
         const hasSuggestions = Object.values(suggestionGroups).some(arr => arr.length > 0);
         if (hasSuggestions) {
-            html += `<div class="tag-category mt-3 pt-2 border-t"><h4 class="text-warning">Suggestions (AI)</h4><div class="tag-list">`;
+            const sugHeader = window.i18n ? window.i18n.t('admin.ai_tag_review.suggestions_ai') : 'Suggestions (AI)';
+            html += `<div class="tag-category mt-3 pt-2 border-t"><h4 class="text-warning">${sugHeader}</h4><div class="tag-list">`;
             Object.entries(suggestionGroups).forEach(([category, tags]) => {
                 tags.sort((a, b) => a.name.localeCompare(b.name));
                 tags.forEach(tag => {
                     const prov = tag._prov;
                     const conf = prov && prov.confidence != null ? ` (${(prov.confidence * 100).toFixed(0)}%)` : '';
-                    html += `<span class="tag ${category} tag-text opacity-70 border-dashed" title="suggestion${conf}" data-media-id="${media.id}" data-tag-id="${tag.id}">${tag.name}${conf}</span>`;
+                    const zhSugName = window.TagLocalization ? window.TagLocalization.getDisplayName(tag.name) : tag.name;
+                    const sugTitle = (zhSugName !== tag.name ? tag.name + ', ' : '') + 'suggestion' + conf;
+                    html += `<span class="tag ${category} tag-text opacity-70 border-dashed" title="${sugTitle}" data-media-id="${media.id}" data-tag-id="${tag.id}">${zhSugName}${conf}</span>`;
                 });
             });
             html += '</div></div>';

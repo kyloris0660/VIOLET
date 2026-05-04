@@ -1,4 +1,6 @@
-# AnimeLocalBooru 开发日志
+# V.I.O.L.E.T. 开发日志
+
+> V.I.O.L.E.T.（原 AnimeLocalBooru）— Visual Image Organizer for Local Evaluation & Tagging
 
 ## Phase 0：项目启动与原版跑通
 
@@ -8,7 +10,7 @@
 
 1. **项目克隆与整合**
    - 从 https://github.com/mrblomblo/blombooru 克隆上游 Blombooru 项目
-   - 将源码整合到 AnimeLocalBooru 仓库中
+   - 将源码整合到 V.I.O.L.E.T. 仓库中
 
 2. **环境搭建**
    - Python 3.12.3（系统自带）
@@ -24,7 +26,7 @@
 4. **应用启动与 Onboarding**
    - `python run.py --debug` 启动，端口 8000
    - 通过 API 完成 onboarding（admin/admin123）
-   - 站点名称设为 "AnimeLocalBooru"
+   - 站点名称设为 "V.I.O.L.E.T."
 
 5. **核心功能验证**
 
@@ -125,7 +127,7 @@ Blombooru 使用自定义 DIY 迁移系统（`backend/app/database.py` 中的 `c
 
 ### 目标
 
-支持扫描外部本地图片目录（如 Windows iCloud Photos），将支持的图片文件导入 AnimeLocalBooru gallery。
+支持扫描外部本地图片目录（如 Windows iCloud Photos），将支持的图片文件导入 V.I.O.L.E.T. gallery。
 
 ### 实际使用场景
 
@@ -572,14 +574,14 @@ C:\Users\kyloris\Pictures\iCloud Photos
 
 ### 目标
 
-为 AI tagging 功能编写完整的使用指南，刷新 README 为 AnimeLocalBooru 项目说明，明确当前能力边界和未来路线。
+为 AI tagging 功能编写完整的使用指南，刷新 README 为 V.I.O.L.E.T. 项目说明，明确当前能力边界和未来路线。
 
 ### 新增/修改的文件
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `docs/ai-tagging-usage-guide.md` | 新增 | 完整 AI tagging 使用指南（GUI 操作、API 示例、能力边界、未来路线） |
-| `README.md` | 重写 | AnimeLocalBooru 项目 README（保留 Blombooru upstream credit） |
+| `README.md` | 重写 | V.I.O.L.E.T. 项目 README（保留 Blombooru upstream credit） |
 | `docs/ai-auto-tagging.md` | 修改 | 添加能力边界章节、引用 usage guide、更新下一阶段建议 |
 | `docs/current-handoff.md` | 修改 | 更新时间戳、引用 usage guide |
 | `docs/project-roadmap.md` | 修改 | 添加 Phase 2.1.1、细化 Phase 2.2/2.3 |
@@ -681,6 +683,60 @@ C:\Users\kyloris\Pictures\iCloud Photos
 - 没有 `suggestion:tag_name` 搜索语法
 - 没有 undo 功能
 - 不做 auto-tag after import（Phase 2.3）
+
+### 下一阶段建议
+
+**Phase 2.3 — Optional Auto Tagging After Import**
+
+---
+
+## Phase 2.2.1：V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation
+
+**日期：** 2026-05-04
+
+### 目标
+
+将项目正式重命名为 V.I.O.L.E.T.（Visual Image Organizer for Local Evaluation & Tagging），并为用户界面建立完整的中文本地化基础。
+
+### 设计决策
+
+1. **不改变内部代码结构**：Python 包名、数据库表名、API 路径均保持英文不变
+2. **不改变 canonical tag**：数据库中的 tag.name 保持 Danbooru 英文名，中文仅用于 UI 显示层
+3. **静态词典方案**：使用 JSON 静态文件而非数据库存储中文翻译，避免数据库迁移
+4. **搜索兼容**：中文 alias 搜索在搜索解析器层面转换，不影响数据库查询
+5. **渐进式覆盖**：初始词典覆盖约 80 个常用 tag，可后续扩展
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `frontend/static/data/tag_translations_zh.json` | 新增 | 标签中文翻译词典 |
+| `frontend/static/js/tag-localization.js` | 新增 | 前端标签中文显示 helper |
+| `frontend/static/locales/zh-cn.json` | 修改 | 新增 Local Library Scan、AI Tagging、AI Tag Review 翻译 |
+| `frontend/static/locales/en.json` | 修改 | 同步新增翻译键 |
+| `frontend/templates/admin.html` | 修改 | 硬编码英文替换为 i18n 调用 |
+| `frontend/templates/base.html` | 修改 | Logo 集成到导航栏 |
+| `backend/app/utils/search_parser.py` | 修改 | 中文 alias 搜索支持 |
+| `frontend/static/js/media-viewer-base.js` | 修改 | 标签中文显示 |
+| `README.md` | 重写 | 中文 README |
+| `AGENTS.md` | 修改 | 更新项目名称和说明 |
+| `example.env` | 修改 | 更新注释 |
+| `docs/tag-localization-zh.md` | 新增 | 标签本地化方案文档 |
+| `docs/current-handoff.md` | 修改 | 更新到 Phase 2.2.1 |
+| `docs/project-roadmap.md` | 修改 | 新增 Phase 2.2.1 |
+| `docs/ai-auto-tagging.md` | 修改 | 更新项目名 |
+| `docs/ai-tagging-usage-guide.md` | 修改 | 更新项目名 + batch 限制说明 |
+| `docs/ai-tag-review.md` | 修改 | 更新项目名 |
+| `docs/tag-metadata-foundation.md` | 修改 | 更新项目名 |
+| `docs/local-library-scan.md` | 修改 | 更新项目名 |
+| `docs/local-anime-library-devlog.md` | 修改 | 新增 Phase 2.2.1 条目 |
+
+### 已知限制
+
+- 中文标签搜索仅覆盖约 80 个常用 tag
+- 未覆盖的 tag 使用英文 canonical name 显示
+- character / copyright / artist tag 暂无中文翻译
+- 不做全量 Danbooru tag 翻译（需要外部词典导入，计划后续阶段）
 
 ### 下一阶段建议
 
