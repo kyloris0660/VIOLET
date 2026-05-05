@@ -71,7 +71,8 @@ No automated test suite. Verify changes manually:
 | Tag Localization | `frontend/static/data/tag_translations_zh.json`, `frontend/static/js/tag-localization.js` | Chinese display names for tags |
 | Tag Localization Service | `backend/app/services/tag_localization_service.py` | DB-backed translation management, seeding, batch/auto translate |
 | LLM Translation Provider | `backend/app/services/llm_translation_provider.py` | Abstract LLM provider (OpenAI-compatible, disabled) |
-| Tag Localization Admin | `backend/app/routes/admin/tag_localization.py` | Admin API for translation CRUD + batch LLM |
+| Tag Localization Admin | `backend/app/routes/admin/tag_localization.py` | Admin API for translation CRUD + batch LLM + worker control |
+| Tag Translation Worker | `backend/app/services/tag_translation_worker.py` | Background continuous tag translation worker |
 | AI Tagging Jobs | `backend/app/services/ai_tagging_job_service.py` | Background AI tagging job worker |
 | AI Tagging Jobs API | `backend/app/routes/admin/ai_tagging_jobs.py` | AI job CRUD + cancel endpoints |
 | Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics, E2E reset |
@@ -85,6 +86,21 @@ See `docs/project-roadmap.md` § Development Standards. In short:
 1. Branch from `main` → plan → implement → test → commit
 2. Push → PR → squash merge → pull main
 3. **Stop after merge.** Do not auto-start the next phase.
+
+### Git and PR verification rules
+
+1. **Never claim a PR exists** unless you have an actual GitHub PR URL (e.g. from `gh pr view` or `gh pr create` output).
+2. **Never claim a PR is merged** unless `origin/main` contains the merged commit AND `gh pr view` confirms the merged state.
+3. A local commit is not the same as a PR. A commit message containing `(#N)` is not proof that PR #N exists.
+4. Before starting a new phase, verify: current branch, `git status`, `origin/main` latest commit, previous phase is actually merged into `origin/main`.
+5. Do not mix multiple phases in one branch or one PR.
+6. The final delivery report must include the real GitHub PR URL.
+
+### Windows local development notes
+
+- **GitHub CLI** is installed at `C:\Program Files\GitHub CLI\gh.exe`. If `gh` is not found in Cursor's shell PATH, use the absolute path or run `$env:Path += ";C:\Program Files\GitHub CLI"` in the current session.
+- Do not say "gh is unavailable" unless both `where gh` and `& "C:\Program Files\GitHub CLI\gh.exe" --version` fail.
+- If `gh auth status` fails, stop and ask the user for manual login before proceeding.
 
 ### Language policy
 

@@ -188,6 +188,7 @@ def check_and_migrate_schema(engine):
         migrate_add_tag_translations_table,
         migrate_add_scan_job_media_table,
         migrate_add_ai_tag_jobs_table,
+        migrate_add_tag_translation_jobs_table,
     ]
     
     for migration in migrations:
@@ -500,5 +501,50 @@ def migrate_add_ai_tag_jobs_table(engine, inspector):
         conn.execute(text(
             "CREATE INDEX ix_blombooru_ai_tag_jobs_scan_job_id "
             "ON blombooru_ai_tag_jobs(scan_job_id)"
+        ))
+        conn.commit()
+
+
+def migrate_add_tag_translation_jobs_table(engine, inspector):
+    """Create blombooru_tag_translation_jobs table for background translation tracking"""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_tag_translation_jobs' in tables:
+        return
+
+    logger.info("Creating blombooru_tag_translation_jobs table...")
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE blombooru_tag_translation_jobs (
+                id SERIAL PRIMARY KEY,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                source VARCHAR(20) NOT NULL DEFAULT 'background',
+                language VARCHAR(10) NOT NULL DEFAULT 'zh-CN',
+                category VARCHAR(50),
+                batch_size INTEGER NOT NULL DEFAULT 100,
+                max_per_run INTEGER NOT NULL DEFAULT 500,
+                processed INTEGER NOT NULL DEFAULT 0,
+                translated INTEGER NOT NULL DEFAULT 0,
+                failed INTEGER NOT NULL DEFAULT 0,
+                skipped INTEGER NOT NULL DEFAULT 0,
+                remaining_before INTEGER NOT NULL DEFAULT 0,
+                remaining_after INTEGER,
+                last_error TEXT,
+                error_message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                started_at TIMESTAMP WITH TIME ZONE,
+                finished_at TIMESTAMP WITH TIME ZONE,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_tag_translation_jobs_status "
+            "ON blombooru_tag_translation_jobs(status)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_tag_translation_jobs_created_at "
+            "ON blombooru_tag_translation_jobs(created_at)"
         ))
         conn.commit()

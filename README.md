@@ -54,6 +54,7 @@ Core capabilities:
 | AI Tag Review UI | ✅ Done | Confirm / reject / lock / delete suggestions |
 | zh-CN localization foundation | ✅ Done | Chinese UI, tag Chinese display, search aliases |
 | Dynamic tag localization | ✅ Done | DB-backed translations, optional LLM, admin management |
+| Background tag translation | ✅ Done | Continuous auto-translation of all missing tags via LLM |
 | Auto AI tagging after import | ✅ Done | Optional, disabled by default |
 | AI tagging background jobs | ✅ Done | Progress tracking, cancel, history |
 | Anime / photo filtering | Phase 3 | Distinguish anime from photos |
@@ -186,6 +187,8 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.2.2** — Dynamic tag localization / LLM translation cache (done)
 - **Phase 2.3** — AI tagging jobs + auto-tag after import (done)
 - **Phase 2.3a** — Developer E2E tools + config diagnostics (done)
+- **Phase 2.3c** — Full real browser E2E acceptance testing (done)
+- **Phase 2.3d** — Continuous background tag translation worker (done)
 - **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
 - **Phase 4** — Filesystem watcher & scheduled scans
 

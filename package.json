@@ -4,7 +4,7 @@
   "private": true,
   "description": "E2E tests for V.I.O.L.E.T. (Visual Image Organizer for Local Evaluation & Tagging)",
   "scripts": {
-    "e2e": "npx playwright test --project=edge --ignore-snapshots tests/e2e/admin-content.spec.ts tests/e2e/dev-tools-config.spec.ts tests/e2e/tag-localization.spec.ts tests/e2e/ai-tagging-jobs.spec.ts tests/e2e/ai-tag-review.spec.ts tests/e2e/chinese-search.spec.ts tests/e2e/media-detail-provenance.spec.ts tests/e2e/reset-e2e-dry-run.spec.ts tests/e2e/local-library-scan.spec.ts",
+    "e2e": "npx playwright test --project=edge --ignore-snapshots tests/e2e/admin-content.spec.ts tests/e2e/dev-tools-config.spec.ts tests/e2e/tag-localization.spec.ts tests/e2e/tag-translation-worker.spec.ts tests/e2e/ai-tagging-jobs.spec.ts tests/e2e/ai-tag-review.spec.ts tests/e2e/chinese-search.spec.ts tests/e2e/media-detail-provenance.spec.ts tests/e2e/reset-e2e-dry-run.spec.ts tests/e2e/local-library-scan.spec.ts",
     "e2e:all": "npx playwright test --project=edge",
     "e2e:edge": "npx playwright test --project=edge",
     "e2e:chrome": "npx playwright test --project=chrome",

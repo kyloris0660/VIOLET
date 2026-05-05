@@ -416,6 +416,7 @@ class AdminPanel {
         this._tlReviewTotal = 0;
         this.loadTagLocalizationStats();
         this.loadLLMStatus();
+        this.loadWorkerStatus();
 
         const tlSaveBtn = document.getElementById('tl-save-btn');
         if (tlSaveBtn) {
@@ -449,6 +450,23 @@ class AdminPanel {
         if (tlReviewNextBtn) {
             tlReviewNextBtn.addEventListener('click', () => this._tlReviewPageNav(1));
         }
+        const tlWorkerRunNow = document.getElementById('tl-worker-run-now-btn');
+        if (tlWorkerRunNow) {
+            tlWorkerRunNow.addEventListener('click', () => this.workerRunNow());
+        }
+        const tlWorkerPause = document.getElementById('tl-worker-pause-btn');
+        if (tlWorkerPause) {
+            tlWorkerPause.addEventListener('click', () => this.workerPause());
+        }
+        const tlWorkerResume = document.getElementById('tl-worker-resume-btn');
+        if (tlWorkerResume) {
+            tlWorkerResume.addEventListener('click', () => this.workerResume());
+        }
+        const tlWorkerRefresh = document.getElementById('tl-worker-refresh-btn');
+        if (tlWorkerRefresh) {
+            tlWorkerRefresh.addEventListener('click', () => this.loadWorkerStatus());
+        }
+
         const tlMissingTbody = document.getElementById('tl-missing-tbody');
         if (tlMissingTbody) {
             tlMissingTbody.addEventListener('click', (e) => {
@@ -3851,6 +3869,132 @@ class AdminPanel {
         }
     }
 
+    // ---- Background Translation Worker (Phase 2.3d) ----
+
+    async loadWorkerStatus() {
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/worker/status');
+            const el = (id) => document.getElementById(id);
+            const statusMap = {
+                disabled: t('admin.tag_localization.worker_status_disabled'),
+                idle: t('admin.tag_localization.worker_status_idle'),
+                running: t('admin.tag_localization.worker_status_running'),
+                paused: t('admin.tag_localization.worker_status_paused'),
+                stopped: t('admin.tag_localization.worker_status_stopped'),
+            };
+            const statusEl = el('tl-worker-status');
+            if (statusEl) {
+                const statusText = statusMap[data.status] || data.status;
+                const cls = data.status === 'running' ? 'text-green-400' :
+                            data.status === 'paused' ? 'text-yellow-400' :
+                            data.status === 'disabled' ? 'text-secondary' : '';
+                statusEl.innerHTML = `<span class="${cls}">${statusText}</span>`;
+            }
+            if (el('tl-worker-missing')) el('tl-worker-missing').textContent = data.missing_count ?? '-';
+            if (el('tl-worker-today')) el('tl-worker-today').textContent = `${data.processed_today ?? 0} / ${data.daily_limit ?? '-'}`;
+            if (el('tl-worker-daily-limit')) el('tl-worker-daily-limit').textContent = data.daily_limit ?? '-';
+            const cfg = data.config || {};
+            if (el('tl-worker-batch-size')) el('tl-worker-batch-size').textContent = cfg.batch_size ?? '-';
+            if (el('tl-worker-max-per-run')) el('tl-worker-max-per-run').textContent = cfg.max_per_run ?? '-';
+            if (el('tl-worker-last-run')) el('tl-worker-last-run').textContent = data.last_run_at ? new Date(data.last_run_at).toLocaleString() : '-';
+            if (el('tl-worker-next-run')) el('tl-worker-next-run').textContent = data.next_run_at ? new Date(data.next_run_at).toLocaleString() : '-';
+
+            const errEl = el('tl-worker-error');
+            if (errEl) {
+                if (data.last_error) {
+                    errEl.textContent = data.last_error;
+                    errEl.classList.remove('hidden');
+                } else {
+                    errEl.classList.add('hidden');
+                }
+            }
+
+            const pauseBtn = el('tl-worker-pause-btn');
+            const resumeBtn = el('tl-worker-resume-btn');
+            if (pauseBtn && resumeBtn) {
+                if (data.paused) {
+                    pauseBtn.classList.add('hidden');
+                    resumeBtn.classList.remove('hidden');
+                } else {
+                    pauseBtn.classList.remove('hidden');
+                    resumeBtn.classList.add('hidden');
+                }
+            }
+
+            this.loadWorkerJobs();
+        } catch (e) {
+            console.error('Failed to load worker status:', e);
+        }
+    }
+
+    async loadWorkerJobs() {
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/worker/jobs?limit=10');
+            const container = document.getElementById('tl-worker-jobs');
+            if (!container) return;
+            if (!data.jobs || data.jobs.length === 0) {
+                container.innerHTML = '<span class="text-secondary">-</span>';
+                return;
+            }
+            let html = '<table class="w-full text-xs"><thead><tr class="border-b">';
+            html += '<th class="py-1 px-2 text-left">ID</th>';
+            html += '<th class="py-1 px-2 text-left">' + t('admin.tag_localization.status') + '</th>';
+            html += '<th class="py-1 px-2 text-left">' + t('admin.tag_localization.source') + '</th>';
+            html += '<th class="py-1 px-2 text-right">' + t('admin.tag_localization.batch_translated') + '</th>';
+            html += '<th class="py-1 px-2 text-right">' + t('admin.tag_localization.batch_failed') + '</th>';
+            html += '<th class="py-1 px-2 text-right">' + t('admin.tag_localization.batch_skipped') + '</th>';
+            html += '<th class="py-1 px-2 text-left">' + t('admin.tag_localization.worker_last_run') + '</th>';
+            html += '</tr></thead><tbody>';
+            for (const j of data.jobs) {
+                const cls = j.status === 'completed' ? 'text-green-400' :
+                            j.status === 'failed' || j.status === 'rate_limited' ? 'text-red-400' : '';
+                html += `<tr class="border-b border-dashed">`;
+                html += `<td class="py-1 px-2">${j.id}</td>`;
+                html += `<td class="py-1 px-2 ${cls}">${j.status}</td>`;
+                html += `<td class="py-1 px-2">${j.source}</td>`;
+                html += `<td class="py-1 px-2 text-right">${j.translated}</td>`;
+                html += `<td class="py-1 px-2 text-right">${j.failed}</td>`;
+                html += `<td class="py-1 px-2 text-right">${j.skipped}</td>`;
+                html += `<td class="py-1 px-2">${j.started_at ? new Date(j.started_at).toLocaleString() : '-'}</td>`;
+                html += `</tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('Failed to load worker jobs:', e);
+        }
+    }
+
+    async workerRunNow() {
+        try {
+            await app.apiCall('/api/admin/tag-localization/worker/run-now', { method: 'POST' });
+            app.showNotification(t('admin.tag_localization.worker_run_triggered'), 'success');
+            setTimeout(() => this.loadWorkerStatus(), 2000);
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    async workerPause() {
+        try {
+            await app.apiCall('/api/admin/tag-localization/worker/pause', { method: 'POST' });
+            app.showNotification(t('admin.tag_localization.worker_paused_msg'), 'success');
+            this.loadWorkerStatus();
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    async workerResume() {
+        try {
+            await app.apiCall('/api/admin/tag-localization/worker/resume', { method: 'POST' });
+            app.showNotification(t('admin.tag_localization.worker_resumed_msg'), 'success');
+            this.loadWorkerStatus();
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
     // ---- Developer / E2E Tools (Phase 2.3a) ----
 
     async loadDevConfigDiagnostics() {
@@ -3894,6 +4038,18 @@ class AdminPanel {
                         <div>批量上限：<span class="font-bold">${loc.batch_max_items}</span></div>
                         <div>API Key：${badge(loc.api_key_configured)}</div>
                         <div>模型：${loc.model || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="font-bold text-xs mb-1 text-primary">后台自动翻译</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                        <div>启用：${badge(loc.background_enabled)}</div>
+                        <div>间隔：<span class="font-bold">${loc.background_interval || '-'}s</span></div>
+                        <div>批量大小：<span class="font-bold">${loc.background_batch_size || '-'}</span></div>
+                        <div>每轮上限：<span class="font-bold">${loc.background_max_per_run || '-'}</span></div>
+                        <div>每日上限：<span class="font-bold">${loc.background_daily_limit || '-'}</span></div>
+                        <div>错误阈值：<span class="font-bold">${loc.background_error_limit || '-'}</span></div>
+                        <div>优先级：<span class="font-bold">${loc.background_priority || '-'}</span></div>
                     </div>
                 </div>
                 <div class="mb-2">

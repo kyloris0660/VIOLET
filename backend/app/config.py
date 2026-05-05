@@ -403,4 +403,33 @@ class Settings:
             database=self.SHARED_TAG_DB_NAME
         )
 
+    @property
+    def TAG_TRANSLATION_BG_ENABLED(self) -> bool:
+        val = os.getenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def TAG_TRANSLATION_BG_INTERVAL(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_BACKGROUND_INTERVAL_SECONDS", "300"))
+
+    @property
+    def TAG_TRANSLATION_BG_BATCH_SIZE(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_BACKGROUND_BATCH_SIZE", "100"))
+
+    @property
+    def TAG_TRANSLATION_BG_MAX_PER_RUN(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_BACKGROUND_MAX_PER_RUN", "500"))
+
+    @property
+    def TAG_TRANSLATION_BG_DAILY_LIMIT(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_BACKGROUND_DAILY_LIMIT", "5000"))
+
+    @property
+    def TAG_TRANSLATION_BG_ERROR_LIMIT(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_BACKGROUND_ERROR_LIMIT", "5"))
+
+    @property
+    def TAG_TRANSLATION_BG_PRIORITY(self) -> str:
+        return os.getenv("TAG_TRANSLATION_BACKGROUND_PRIORITY", "post_count")
+
 settings = Settings()

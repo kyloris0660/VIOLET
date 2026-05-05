@@ -166,6 +166,30 @@ See [AI Tagging Jobs](ai-tagging-jobs.md) and [E2E Validation Guide](e2e-violet-
 - Added E2E test data reset API + CLI script
 - Added Developer Tools UI in Admin Panel (System tab)
 
+### Phase 2.3c — Full Real Browser E2E Acceptance
+
+- Playwright E2E test suite: 26 smoke tests + 5 real workflow tests
+- Real browser testing (Edge/Chrome), Chromium for CI
+- Fixed 8+ backend/frontend bugs discovered during E2E
+- Verified full pipeline: scan → AI tag → auto-localize → search
+
+### Phase 2.3d — Continuous Background Tag Translation
+
+**Goal:** Background worker that automatically and continuously translates all missing tags via LLM.
+
+- New `tag_translation_worker.py` background daemon thread
+- Periodic check for missing tags with configurable interval (default 300s)
+- Batch LLM translation with daily limit, error limit, backoff
+- New `blombooru_tag_translation_jobs` table for job history
+- Admin API: worker/status, worker/run-now, worker/pause, worker/resume, worker/jobs
+- Admin UI: Background Auto Translation panel with status, controls, job history
+- AI job integration: completed AI jobs trigger run-now on the worker
+- Config diagnostics updated with all background worker settings
+- Playwright tests: 6 smoke + 3 real E2E for worker
+- All 1844 tags translated to zh-CN with 0 failures
+
+See [Tag Localization LLM](tag-localization-llm.md) for configuration details.
+
 ---
 
 ## Upcoming Phases

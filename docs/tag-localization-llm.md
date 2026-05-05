@@ -233,11 +233,44 @@ From highest to lowest:
 - **UX**: Users should not wait for translations on every render
 - **Correct approach**: Admin triggers batch translation OR auto-translate on creation → results cached in DB → instant lookup
 
+## Background Continuous Translation (Phase 2.3d)
+
+When `TAG_TRANSLATION_BACKGROUND_ENABLED=true`, a background worker automatically translates all missing tags:
+
+- Runs periodically (default every 300s)
+- Processes tags in batches via LLM (default batch_size=100)
+- Respects daily limit (default 5000) to control API costs
+- Auto-pauses after consecutive errors (default 5)
+- Supports manual Run Now, Pause, Resume via Admin UI
+- AI tagging jobs trigger immediate worker runs for new tags
+- Job history tracked in `blombooru_tag_translation_jobs` table
+
+**Configuration:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TAG_TRANSLATION_BACKGROUND_ENABLED` | false | Enable background worker |
+| `TAG_TRANSLATION_BACKGROUND_INTERVAL_SECONDS` | 300 | Check interval |
+| `TAG_TRANSLATION_BACKGROUND_BATCH_SIZE` | 100 | Tags per LLM call |
+| `TAG_TRANSLATION_BACKGROUND_MAX_PER_RUN` | 500 | Max per cycle |
+| `TAG_TRANSLATION_BACKGROUND_DAILY_LIMIT` | 5000 | Daily cap (cost control) |
+| `TAG_TRANSLATION_BACKGROUND_ERROR_LIMIT` | 5 | Auto-pause threshold |
+| `TAG_TRANSLATION_BACKGROUND_PRIORITY` | post_count | Sort order |
+
+**Why you may still see missing tags:**
+- The worker processes in batches — it takes time to translate all tags
+- Daily limit caps spending per day
+- LLM errors temporarily pause the worker
+- This is by design: cost control takes priority over speed
+
+**Manual batch translation** is retained for debugging/immediate fixes but is not needed for normal operation.
+
 ## Known Limitations
 
-- Auto-translate requires explicit opt-in (`TAG_TRANSLATION_AUTO_ENABLED=true`)
-- character/copyright/artist translations need human review
-- Search alias cache refreshes every 5 minutes (immediate after Admin UI / auto-translate changes)
+- character/copyright/artist translations may need human review
+- Search alias cache refreshes every 5 minutes (immediate after Admin UI / worker changes)
 - Only `zh-CN` language supported currently
-- Auto-translate throttled to `TAG_TRANSLATION_AUTO_MAX_ITEMS` per trigger
-- Phase 2.3 AI tagging jobs automatically schedule localization for new tags after completion
+- Background worker requires `TAG_TRANSLATION_LLM_ENABLED=true`
+- Real LLM translation incurs API costs — use daily_limit to control
+- Changes to .env require server restart
+- Phase 2.3 AI tagging jobs trigger worker run-now for new tags

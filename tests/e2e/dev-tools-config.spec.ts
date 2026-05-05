@@ -20,6 +20,13 @@ test.describe('Developer / E2E Tools Config Diagnostics', () => {
     expect(d.tag_localization.batch_max_items).toBe(200);
     expect(d.tag_localization.auto_max_items).toBe(200);
     expect(d.tag_localization.api_key_configured).toBe(true);
+    expect(typeof d.tag_localization.background_enabled).toBe('boolean');
+    expect(typeof d.tag_localization.background_interval).toBe('number');
+    expect(typeof d.tag_localization.background_batch_size).toBe('number');
+    expect(typeof d.tag_localization.background_max_per_run).toBe('number');
+    expect(typeof d.tag_localization.background_daily_limit).toBe('number');
+    expect(typeof d.tag_localization.background_error_limit).toBe('number');
+    expect(typeof d.tag_localization.background_priority).toBe('string');
     expect(JSON.stringify(d.paths.local_library_paths)).toContain('VioletTest100');
   });
 
