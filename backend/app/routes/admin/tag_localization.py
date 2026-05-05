@@ -124,7 +124,7 @@ async def upsert_translation_endpoint(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
-    """Create or update a tag translation."""
+    """Create or update a tag translation. Admin manual operations use force=True."""
     from ...services.tag_localization_service import upsert_translation
     from ...utils.search_parser import invalidate_translation_cache
 
@@ -138,9 +138,13 @@ async def upsert_translation_endpoint(
         source=req.source,
         status=req.status,
         needs_review=req.needs_review,
+        force=True,
     )
 
     invalidate_translation_cache()
+
+    if trans is None:
+        raise HTTPException(status_code=409, detail="Translation update blocked by priority")
 
     return {
         "id": trans.id,
@@ -211,8 +215,42 @@ async def get_llm_status(
         "provider": provider.get_provider_name(),
         "available": provider.is_available(),
         "model": settings.TAG_TRANSLATION_LLM_MODEL or None,
+        "base_url_configured": bool(settings.TAG_TRANSLATION_LLM_BASE_URL),
+        "api_key_configured": bool(settings.TAG_TRANSLATION_LLM_API_KEY),
         "batch_max_items": settings.TAG_TRANSLATION_BATCH_MAX_ITEMS,
+        "auto_enabled": settings.TAG_TRANSLATION_AUTO_ENABLED,
+        "auto_max_items": settings.TAG_TRANSLATION_AUTO_MAX_ITEMS,
     }
+
+
+@router.post("/test-llm")
+async def test_llm_translation(
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Test LLM by translating a single known tag (dry-run style)."""
+    from ...services.llm_translation_provider import get_llm_provider
+
+    provider = get_llm_provider()
+    if not provider.is_available():
+        return {"success": False, "error": "LLM provider not available or not configured"}
+
+    try:
+        results = await provider.translate_tags([{"name": "blue_eyes", "category": "general"}])
+        if results:
+            r = results[0]
+            return {
+                "success": True,
+                "result": {
+                    "canonical_name": r.canonical_name,
+                    "display_name_zh": r.display_name_zh,
+                    "aliases_zh": r.aliases_zh,
+                    "needs_review": r.needs_review,
+                },
+            }
+        return {"success": False, "error": "LLM returned empty results"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @router.post("/translations/{translation_id}/review")

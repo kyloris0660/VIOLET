@@ -311,6 +311,15 @@ class Settings:
         return int(os.getenv("TAG_TRANSLATION_BATCH_MAX_ITEMS", "50"))
 
     @property
+    def TAG_TRANSLATION_AUTO_ENABLED(self) -> bool:
+        val = os.getenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def TAG_TRANSLATION_AUTO_MAX_ITEMS(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_AUTO_MAX_ITEMS", "20"))
+
+    @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:
         raw = os.getenv("LOCAL_LIBRARY_PATHS", "")
         if not raw:

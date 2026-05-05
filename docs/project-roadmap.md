@@ -131,6 +131,17 @@ See [AI Tag Review](ai-tag-review.md) for complete documentation.
 
 See [Tag Localization LLM](tag-localization-llm.md) and [Tag Localization zh-CN](tag-localization-zh.md) for documentation.
 
+### Phase 2.2.2a — Auto Tag Localization + Priority Hotfix
+
+**Goal:** Fix priority bug, add automatic translation on new tag creation, verify real LLM.
+
+- Fixed `upsert_translation` to enforce strict source priority (Codex issue)
+- Auto-translate new tags via background thread when LLM + auto are enabled
+- Enhanced Admin UI: Test LLM, Refresh Stats, detailed LLM status
+- Real LLM verified with OpenAI-compatible API
+- Added `TAG_TRANSLATION_AUTO_ENABLED` and `TAG_TRANSLATION_AUTO_MAX_ITEMS` config
+- Added `httpx` dependency for async LLM API calls
+
 ---
 
 ## Upcoming Phases

@@ -403,6 +403,14 @@ class AdminPanel {
         if (tlBatchBtn) {
             tlBatchBtn.addEventListener('click', () => this.runBatchTranslation());
         }
+        const tlTestLlmBtn = document.getElementById('tl-test-llm-btn');
+        if (tlTestLlmBtn) {
+            tlTestLlmBtn.addEventListener('click', () => this.testLLMTranslation());
+        }
+        const tlRefreshMissingBtn = document.getElementById('tl-refresh-missing-btn');
+        if (tlRefreshMissingBtn) {
+            tlRefreshMissingBtn.addEventListener('click', () => { this.loadTagLocalizationStats(); this.loadLLMStatus(); });
+        }
         const tlLoadMissingBtn = document.getElementById('tl-load-missing-btn');
         if (tlLoadMissingBtn) {
             tlLoadMissingBtn.addEventListener('click', () => this.loadMissingTranslations());
@@ -3353,11 +3361,40 @@ class AdminPanel {
             } else {
                 const statusText = data.available ? t('admin.tag_localization.llm_available') : t('admin.tag_localization.llm_unavailable');
                 const statusClass = data.available ? 'text-success' : 'text-warning';
-                el.innerHTML = `${t('admin.tag_localization.llm_status')}: <span class="${statusClass}">${statusText}</span>` +
-                    (data.model ? ` | Model: ${this.escapeHtml(data.model)}` : '');
+                const apiKeyStatus = data.api_key_configured
+                    ? `<span class="text-success">${t('admin.tag_localization.api_key_yes')}</span>`
+                    : `<span class="text-warning">${t('admin.tag_localization.api_key_no')}</span>`;
+                const autoStatus = data.auto_enabled
+                    ? `<span class="text-success">${t('admin.tag_localization.auto_enabled_yes')}</span>`
+                    : `<span class="text-secondary">${t('admin.tag_localization.auto_enabled_no')}</span>`;
+                el.innerHTML = `
+                    <div>${t('admin.tag_localization.llm_status')}: <span class="${statusClass}">${statusText}</span></div>
+                    ${data.model ? `<div>Model: ${this.escapeHtml(data.model)}</div>` : ''}
+                    <div>${t('admin.tag_localization.api_key_configured')}: ${apiKeyStatus}</div>
+                    <div>${t('admin.tag_localization.auto_enabled')}: ${autoStatus}${data.auto_enabled ? ` (max: ${data.auto_max_items})` : ''}</div>
+                `;
             }
         } catch (e) {
             console.error('Failed to load LLM status:', e);
+        }
+    }
+
+    async testLLMTranslation() {
+        const resultEl = document.getElementById('tl-test-result');
+        if (!resultEl) return;
+        resultEl.classList.remove('hidden');
+        resultEl.innerHTML = '<span class="text-secondary">Testing...</span>';
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/test-llm', {method: 'POST'});
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            if (data.success) {
+                const r = data.result;
+                resultEl.innerHTML = `<span class="text-success">${t('admin.tag_localization.test_success')}</span>: ${this.escapeHtml(r.canonical_name)} → ${this.escapeHtml(r.display_name_zh)} (aliases: ${this.escapeHtml(JSON.stringify(r.aliases_zh))})`;
+            } else {
+                resultEl.innerHTML = `<span class="text-warning">${t('admin.tag_localization.test_failed')}</span>: ${this.escapeHtml(data.error || 'Unknown error')}`;
+            }
+        } catch (e) {
+            resultEl.innerHTML = `<span class="text-error">Error: ${this.escapeHtml(e.message)}</span>`;
         }
     }
 

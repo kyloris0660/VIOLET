@@ -153,15 +153,34 @@ TAG_TRANSLATION_BATCH_MAX_ITEMS=50
 - 频繁调用增加成本
 - LLM 可能不可用
 - 每次页面渲染调用 LLM 会严重影响用户体验
-- 正确做法：Admin 手动触发批量翻译 → 结果缓存到 DB → 后续 UI 从缓存读取
+- 正确做法：Admin 手动触发批量翻译 或 自动翻译新 tag → 结果缓存到 DB → 后续 UI 从缓存读取
+
+### 自动翻译（Phase 2.2.2a）
+
+当 `TAG_TRANSLATION_AUTO_ENABLED=true` 且 LLM 已启用时，新创建的 tag 会自动在后台翻译：
+
+- 非阻塞：后台线程执行，不影响主操作
+- 节流：每次最多 `TAG_TRANSLATION_AUTO_MAX_ITEMS` 个 tag
+- 安全：使用独立 DB session，异常不影响主应用
+- 不修改 canonical tag.name
+
+### 覆盖规则（Phase 2.2.2a 修复）
+
+低优先级 source 不能覆盖高优先级 source：
+- `llm` 不能覆盖 `static` 或 `manual`
+- `static` 不能覆盖 `manual`
+- 相同 source 可以更新
+- Admin 手动操作使用 `force=True` 可以强制覆盖
 
 ### Admin UI
 
 在 Admin Panel 的「标签本地化」部分可以：
 1. 查看翻译统计
-2. 手动编辑翻译
-3. 批量 LLM 翻译（支持 dry-run）
-4. 审核 LLM 翻译结果
+2. 查看 LLM 状态（provider、model、API key 配置状态、自动翻译状态）
+3. 测试 LLM 翻译连接
+4. 手动编辑翻译
+5. 批量 LLM 翻译（支持 dry-run）
+6. 审核 LLM 翻译结果
 
 详见 `docs/tag-localization-llm.md`。
 
@@ -235,7 +254,8 @@ TAG_TRANSLATION_BATCH_MAX_ITEMS=50
 ## 已知限制
 
 - 静态词典目前覆盖约 80 个最常见 general tags
-- LLM 翻译需要手动在 Admin UI 触发
+- 自动翻译需要显式开启（`TAG_TRANSLATION_AUTO_ENABLED=true`）
 - character/copyright/artist tag 翻译质量依赖 LLM 或人工
-- 搜索 alias 缓存每 5 分钟刷新，新翻译可能有短暂延迟（Admin UI 操作后会立即刷新）
+- 搜索 alias 缓存每 5 分钟刷新（Admin/自动翻译操作后立即刷新）
 - 不支持多语言同时显示（当前只支持 zh-CN）
+- 低优先级 source 不能覆盖高优先级 source

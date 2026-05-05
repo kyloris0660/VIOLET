@@ -2,9 +2,18 @@
 Tag Localization Service — manages tag translations (zh-CN display names and search aliases).
 
 Priority: manual/reviewed DB > static dictionary > LLM translated cache > fallback canonical tag
+
+Overwrite rules (upsert_translation):
+  - A lower-priority source NEVER overwrites a higher-priority source.
+    e.g. llm (priority 2) cannot overwrite static (priority 1) or manual (priority 0).
+  - Same source: always updates (refreshes display_name, aliases, etc.).
+  - Higher-priority source can overwrite lower-priority source.
+  - To force-overwrite regardless of priority, pass force=True (Admin explicit action only).
 """
+import asyncio
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -17,6 +26,7 @@ from ..models import Tag, TagTranslation
 logger = logging.getLogger(__name__)
 
 _STATIC_DICT_CACHE: Optional[Dict] = None
+_auto_translate_lock = threading.Lock()
 
 SOURCE_PRIORITY = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
 STATUS_PRIORITY = {"reviewed": 0, "translated": 1, "pending": 2}
@@ -205,8 +215,19 @@ def upsert_translation(
     confidence: Optional[float] = None,
     needs_review: bool = False,
     provider: Optional[str] = None,
-) -> TagTranslation:
-    """Insert or update a translation. Manual/reviewed takes priority."""
+    force: bool = False,
+) -> Optional[TagTranslation]:
+    """Insert or update a translation with strict priority enforcement.
+
+    Returns the translation record, or None if the update was blocked by priority.
+
+    Priority rules:
+      - Lower-priority source CANNOT overwrite higher-priority source.
+        e.g. llm(2) cannot overwrite static(1) or manual(0).
+      - Same source: always updates.
+      - Higher-priority source can overwrite lower-priority source.
+      - force=True bypasses priority check (Admin explicit action only).
+    """
     existing = (
         db.query(TagTranslation)
         .filter(
@@ -220,9 +241,15 @@ def upsert_translation(
     tag_id = tag.id if tag else None
 
     if existing:
-        if SOURCE_PRIORITY.get(source, 99) > SOURCE_PRIORITY.get(existing.source, 99):
-            if existing.status == "reviewed":
-                return existing
+        new_src_pri = SOURCE_PRIORITY.get(source, 99)
+        old_src_pri = SOURCE_PRIORITY.get(existing.source, 99)
+
+        if not force and new_src_pri > old_src_pri:
+            logger.debug(
+                f"Blocked: {source}(pri={new_src_pri}) cannot overwrite "
+                f"{existing.source}(pri={old_src_pri}) for '{canonical_name}'"
+            )
+            return None
 
         existing.display_name = display_name
         existing.aliases_json = json.dumps(aliases or [], ensure_ascii=False)
@@ -316,7 +343,7 @@ async def batch_translate_missing_tags(
             result["translated"] += 1
         else:
             try:
-                upsert_translation(
+                saved = upsert_translation(
                     db,
                     canonical_name=tr.canonical_name,
                     display_name=tr.display_name_zh,
@@ -328,14 +355,19 @@ async def batch_translate_missing_tags(
                     needs_review=tr.needs_review,
                     provider=provider.get_provider_name(),
                 )
-                result["translations"].append(entry)
-                result["translated"] += 1
+                if saved is None:
+                    result["skipped"] += 1
+                    result["errors"].append(f"{tr.canonical_name}: blocked by higher-priority translation")
+                else:
+                    result["translations"].append(entry)
+                    result["translated"] += 1
             except Exception as e:
                 logger.error(f"Failed to save translation for {tr.canonical_name}: {e}")
                 result["errors"].append(f"{tr.canonical_name}: {str(e)}")
                 result["failed"] += 1
 
-    result["skipped"] = result["requested"] - result["translated"] - result["failed"]
+    if dry_run:
+        result["skipped"] = result["requested"] - result["translated"] - result["failed"]
     return result
 
 
@@ -439,3 +471,126 @@ def get_translation_stats(db: Session, lang: str = "zh-CN") -> Dict[str, Any]:
         "needs_review": needs_review,
         "source_breakdown": source_counts,
     }
+
+
+def schedule_auto_translate(tag_names: List[str], lang: str = "zh-CN"):
+    """Schedule background auto-translation for newly created tags.
+
+    Non-blocking: spawns a daemon thread that creates its own DB session.
+    Only runs if both TAG_TRANSLATION_LLM_ENABLED and TAG_TRANSLATION_AUTO_ENABLED
+    are true.  Respects TAG_TRANSLATION_AUTO_MAX_ITEMS throttle.
+    """
+    from ..config import settings
+
+    if not settings.TAG_TRANSLATION_LLM_ENABLED:
+        return
+    if not settings.TAG_TRANSLATION_AUTO_ENABLED:
+        return
+    if not tag_names:
+        return
+
+    thread = threading.Thread(
+        target=_auto_translate_worker,
+        args=(list(tag_names), lang),
+        daemon=True,
+    )
+    thread.start()
+
+
+def _auto_translate_worker(tag_names: List[str], lang: str):
+    """Background worker: translate tags missing zh-CN translations via LLM.
+
+    Uses independent DB session (not request-scoped).  Catches all exceptions
+    to avoid crashing the thread.
+    """
+    if not _auto_translate_lock.acquire(blocking=False):
+        logger.info("Auto-translate already running, skipping")
+        return
+
+    try:
+        from ..config import settings
+        from ..database import SessionLocal
+        from .llm_translation_provider import get_llm_provider
+
+        if SessionLocal is None:
+            return
+
+        provider = get_llm_provider()
+        if not provider.is_available():
+            return
+
+        db = SessionLocal()
+        try:
+            static = _load_static_dict()
+            max_items = settings.TAG_TRANSLATION_AUTO_MAX_ITEMS
+
+            candidates = []
+            for name in tag_names:
+                if len(candidates) >= max_items:
+                    break
+                if name in static["tags"]:
+                    continue
+                existing = (
+                    db.query(TagTranslation)
+                    .filter(
+                        TagTranslation.canonical_name == name,
+                        TagTranslation.language == lang,
+                        TagTranslation.status != "rejected",
+                    )
+                    .first()
+                )
+                if existing:
+                    continue
+
+                tag = db.query(Tag).filter(Tag.name == name).first()
+                cat = "general"
+                if tag and hasattr(tag.category, "value"):
+                    cat = tag.category.value
+                candidates.append({"name": name, "category": cat})
+
+            skipped = len(tag_names) - len(candidates)
+            if skipped > 0:
+                logger.info(f"Auto-translate: {skipped} tags already translated or in static dict")
+
+            if not candidates:
+                return
+
+            logger.info(f"Auto-translate: translating {len(candidates)} new tags via LLM")
+
+            loop = asyncio.new_event_loop()
+            try:
+                results = loop.run_until_complete(provider.translate_tags(candidates))
+            finally:
+                loop.close()
+
+            translated = 0
+            for tr in results:
+                try:
+                    saved = upsert_translation(
+                        db,
+                        canonical_name=tr.canonical_name,
+                        display_name=tr.display_name_zh,
+                        lang=lang,
+                        aliases=tr.aliases_zh,
+                        category=tr.category,
+                        source="llm",
+                        status="translated",
+                        needs_review=tr.needs_review,
+                        provider=provider.get_provider_name(),
+                    )
+                    if saved:
+                        translated += 1
+                except Exception as e:
+                    logger.error(f"Auto-translate save failed for {tr.canonical_name}: {e}")
+                    db.rollback()
+
+            if translated > 0:
+                from ..utils.search_parser import invalidate_translation_cache
+                invalidate_translation_cache()
+                logger.info(f"Auto-translate: saved {translated} translations, cache invalidated")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Auto-translate worker error: {e}")
+    finally:
+        _auto_translate_lock.release()

@@ -153,7 +153,13 @@ async def create_tag(
     db.commit()
     db.refresh(tag)
     invalidate_tag_cache()
-    
+
+    try:
+        from ..services.tag_localization_service import schedule_auto_translate
+        schedule_auto_translate([tag.name])
+    except Exception:
+        pass
+
     return tag
 
 @router.patch("/{tag_id}")

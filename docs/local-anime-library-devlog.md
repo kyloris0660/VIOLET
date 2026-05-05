@@ -762,6 +762,20 @@ C:\Users\kyloris\Pictures\iCloud Photos
 
 详见 `docs/tag-localization-llm.md`。
 
+---
+
+## Phase 2.2.2a — Auto Tag Localization + Priority Hotfix
+
+**日期**：2026-05-05
+
+### 核心变更
+
+1. **Priority 修复**：`upsert_translation` 严格执行 source 优先级，低优先级不能覆盖高优先级
+2. **自动翻译**：新 tag 创建时自动触发 LLM 翻译（后台线程，非阻塞）
+3. **LLM 增强**：Test LLM 按钮、详细状态显示（API key 配置状态、自动翻译状态）
+4. **真实 LLM 验证**：通过 OpenAI-compatible API 成功翻译 tag
+5. **httpx 依赖**：添加异步 HTTP 客户端
+
 ### 下一阶段建议
 
 **Phase 2.3 — Optional Auto Tagging After Import**
