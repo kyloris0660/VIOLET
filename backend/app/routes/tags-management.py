@@ -59,6 +59,7 @@ async def import_tags_csv(
             "aliases_created": 0,
             "errors": []
         }
+        new_tag_names = []
         
         for row_num, row in enumerate(csv_reader, 1):
             try:
@@ -87,8 +88,9 @@ async def import_tags_csv(
                         post_count=0
                     )
                     db.add(tag)
-                    db.flush()  # Get the ID
+                    db.flush()
                     stats["tags_created"] += 1
+                    new_tag_names.append(tag_name)
                 
                 alias_names = parse_aliases(aliases_str)
                 
@@ -113,7 +115,14 @@ async def import_tags_csv(
         
         db.commit()
         invalidate_tag_cache()
-        
+
+        if new_tag_names:
+            try:
+                from ..services.tag_localization_service import schedule_auto_translate
+                schedule_auto_translate(new_tag_names)
+            except Exception:
+                pass
+
         return {
             "success": True,
             "stats": stats

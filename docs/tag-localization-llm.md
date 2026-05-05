@@ -6,6 +6,17 @@ Phase 2.2.2 adds a dynamic tag localization system that supplements the static C
 
 **Key principle:** Canonical `tag.name` in the database always remains in English (Danbooru-style). Chinese display names and search aliases are stored separately in the `blombooru_tag_translations` table.
 
+## Dependencies
+
+LLM translation requires `httpx` for async HTTP calls. This is declared in `requirements.txt`:
+
+```
+httpx==0.28.1
+httpcore==1.0.9
+```
+
+Install with: `pip install -r requirements.txt`
+
 ## Architecture
 
 ```
