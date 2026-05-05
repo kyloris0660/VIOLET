@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.2.1 V.I.O.L.E.T. Rebrand + zh-CN Localization Foundation (2026-05-04).
+> Last updated after Phase 2.2.2 Dynamic Tag Localization / LLM Translation Cache (2026-05-05).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -132,6 +132,34 @@ Added suggestion review capabilities:
 | `frontend/static/js/media-viewer-base.js` | Provenance-aware tag display |
 | `docs/ai-tag-review.md` | Full documentation |
 
+### Phase 2.2.2 — Dynamic Tag Localization / LLM Translation Cache
+
+Dynamic tag localization system with database-backed translations:
+
+- **Translation table**: `blombooru_tag_translations` — persistent storage for all tag translations with source, status, confidence, and review tracking
+- **Priority system**: manual/reviewed DB > static dictionary > LLM cache > canonical fallback
+- **Static seeding**: App startup imports ~79 static JSON translations into DB
+- **LLM integration**: Optional OpenAI-compatible LLM provider for batch translation (disabled by default)
+- **Admin UI**: Tag localization section with stats, manual edit, batch LLM translate, review panel
+- **Public API**: `GET /api/tags/translations/batch?names=...` for efficient frontend batching
+- **Search enhancement**: DB-backed Chinese alias resolution with 5-minute cache, priority-based conflict resolution
+- **Frontend batching**: `tag-localization.js` pre-fetches translations via batch API, falls back to static JSON
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/models.py` | `TagTranslation` model |
+| `backend/app/database.py` | `migrate_add_tag_translations_table` migration |
+| `backend/app/services/tag_localization_service.py` | Core translation service |
+| `backend/app/services/llm_translation_provider.py` | LLM provider abstraction |
+| `backend/app/routes/admin/tag_localization.py` | Admin API endpoints |
+| `backend/app/routes/tags.py` | Public batch translations endpoint |
+| `backend/app/utils/search_parser.py` | DB-backed alias resolution |
+| `frontend/static/js/tag-localization.js` | Frontend batch API integration |
+| `backend/app/config.py` | `TAG_TRANSLATION_LLM_*` settings |
+| `docs/tag-localization-llm.md` | Full LLM integration documentation |
+
 ## What Has NOT Been Built
 
 - No automatic AI tagging during scan (manual trigger only, Phase 2.3)
@@ -141,7 +169,7 @@ Added suggestion review capabilities:
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
 - No WebSocket (uses polling)
-- Chinese tag search aliases cover ~80 common tags only; larger dictionary pending future expansion
+- No automatic LLM translation on new tag creation (manual trigger only)
 
 ## Phase 2.0.1 — Review Findings Hotfix
 
@@ -176,7 +204,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 2.3
+## Recommended Next Phase: 2.3 (after 2.2.2)
 
 **Optional Auto Tagging After Import** — allow AI tagging to run after scan jobs:
 
@@ -205,4 +233,6 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 | `docs/tag-metadata-foundation.md` | Phase 2 technical documentation |
 | `docs/local-anime-library-devlog.md` | Per-phase technical log |
 | `docs/local-library-scan.md` | Feature documentation and API usage |
+| `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
+| `docs/tag-localization-zh.md` | Tag localization design (zh-CN) |
 | `example.env` | Available environment variables |

@@ -114,6 +114,23 @@ See [AI Tag Review](ai-tag-review.md) for complete documentation.
 - Logo integrated into navbar and README
 - Added tag localization design document
 
+### Phase 2.2.2 — Dynamic Tag Localization / LLM Translation Cache
+
+**Goal:** Sustainable dynamic Chinese tag localization with DB-backed translations and optional LLM.
+
+- New `blombooru_tag_translations` table for persistent translation storage
+- Translation priority: manual/reviewed > static dict > LLM cache > canonical fallback
+- Static dictionary seeded into DB on startup (79 tags)
+- Optional LLM provider (OpenAI-compatible) for batch tag translation
+- LLM disabled by default; API key from `.env` only
+- Admin UI section: stats, manual edit, batch LLM, review panel
+- Public batch API: `GET /api/tags/translations/batch`
+- Search parser DB-backed alias cache with 5-minute refresh
+- Frontend batch prefetch for efficient translation loading
+- Admin operations immediately invalidate search cache
+
+See [Tag Localization LLM](tag-localization-llm.md) and [Tag Localization zh-CN](tag-localization-zh.md) for documentation.
+
 ---
 
 ## Upcoming Phases

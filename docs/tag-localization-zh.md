@@ -29,6 +29,34 @@
 
 ## 实现方案
 
+### 翻译优先级
+
+Phase 2.2.2 引入了多层翻译来源，优先级从高到低：
+
+1. **手动/已审核 DB 翻译** (`source=manual`, `status=reviewed`)
+2. **静态词典** (`frontend/static/data/tag_translations_zh.json`)
+3. **LLM 翻译缓存** (`source=llm`, `status=translated`)
+4. **Fallback 到 canonical tag**（英文原名）
+
+### 数据库持久化翻译（Phase 2.2.2）
+
+**数据表：** `blombooru_tag_translations`
+
+| 字段 | 说明 |
+|------|------|
+| `canonical_name` | Danbooru canonical tag（英文） |
+| `language` | 语言代码，如 `zh-CN` |
+| `display_name` | 中文显示名 |
+| `aliases_json` | 中文搜索别名 JSON 数组 |
+| `category` | general/character/copyright/artist/meta |
+| `source` | static/llm/manual/imported |
+| `status` | pending/translated/reviewed/rejected |
+| `needs_review` | 是否需要人工审核 |
+| `confidence` | 置信度（可空） |
+| `provider` | 翻译来源提供者 |
+
+**启动时自动 seed：** 应用启动时会将静态 JSON 中的 79 个翻译导入 DB（`source=static`），不会覆盖已有的高优先级翻译。
+
 ### 静态翻译词典
 
 **文件位置：** `frontend/static/data/tag_translations_zh.json`
@@ -52,6 +80,7 @@
 
 - `tags`：canonical name → 中文显示名
 - `reverse`：中文显示名 → canonical name（用于搜索 alias）
+- 仍然作为 fallback 保留，但 DB 翻译优先
 
 ### 前端显示
 
@@ -59,23 +88,27 @@
 
 - `TagLocalization.getDisplayName(canonicalName)` → 返回中文名或原名
 - `TagLocalization.getDisplayWithCanonical(canonicalName)` → 返回"中文名 (canonical)"
-- 在 `media-viewer-base.js` 的 `renderTags` 中调用
+- `TagLocalization.fetchBatchTranslations(names)` → 批量从后端 API 获取翻译
+- 在 `media-viewer-base.js` 的 `renderTags` 中先批量预取翻译再逐个显示
 - 鼠标悬停（tooltip）显示 canonical tag
+- 翻译查找优先级：后端 API 缓存 → 静态 JSON → canonical
 
 ### 搜索 alias
 
 **文件：** `backend/app/utils/search_parser.py`
 
-- 加载 `tag_translations_zh.json` 的 `reverse` 映射
+- 使用 DB 翻译缓存（每 5 分钟刷新）进行中文 alias 解析
+- Fallback 到静态 `tag_translations_zh.json` 的 `reverse` 映射
 - 在 `parse_search_query` 中，对每个 tag token 调用 `resolve_zh_alias()`
 - 用户搜索"蓝眼睛" → 转换为 `blue_eyes` → 正常查询数据库
 - 不影响英文搜索和负向搜索
+- Alias 冲突时按 source 优先级解决（manual > static > llm > imported）
 
 ### Fallback 策略
 
 - 有中文翻译：显示中文名，tooltip 显示 canonical
 - 无中文翻译：直接显示 canonical name（英文）
-- 搜索时：先查中文 alias，无匹配则按英文 canonical 搜索
+- 搜索时：先查 DB 缓存，再查静态 alias，无匹配则按英文 canonical 搜索
 
 ## 当前覆盖范围
 
@@ -91,23 +124,54 @@
 - 动作：sitting, standing, holding, running, sleeping 等
 - 风格：chibi, monochrome, comic 等
 
-## 未来扩展
+## LLM 翻译集成（Phase 2.2.2）
 
-### 大规模词典导入
+### 配置
 
-未来可以从 Danbooru 标签 wiki 批量导入中文翻译。步骤：
+在 `.env` 中配置（默认关闭）：
 
-1. 从 Danbooru 导出标签列表和 wiki 页面
-2. 使用翻译 API 或人工翻译
-3. 格式化为 JSON 词典格式
-4. 合并到现有词典文件
+```
+TAG_TRANSLATION_LLM_ENABLED=false
+TAG_TRANSLATION_LLM_PROVIDER=openai_compatible
+TAG_TRANSLATION_LLM_API_KEY=your-api-key
+TAG_TRANSLATION_LLM_MODEL=gpt-4o-mini
+TAG_TRANSLATION_LLM_BASE_URL=https://api.openai.com/v1
+TAG_TRANSLATION_BATCH_MAX_ITEMS=50
+```
 
-### Character / Copyright / Artist tag 处理
+### 翻译策略
+
+- **general tag**：翻译成自然中文（如 blue_eyes → 蓝眼睛）
+- **character tag**：优先给常见中文译名；不确定时保留原名，标记 `needs_review=true`
+- **copyright tag**：优先作品中文名；不确定时保留原名，标记 `needs_review=true`
+- **artist tag**：通常保留原名不翻译，标记 `needs_review=true`
+- **meta/rating tag**：使用中文说明
+
+### 为什么不实时调用 LLM？
+
+- LLM API 调用有延迟（数百毫秒到数秒）
+- 频繁调用增加成本
+- LLM 可能不可用
+- 每次页面渲染调用 LLM 会严重影响用户体验
+- 正确做法：Admin 手动触发批量翻译 → 结果缓存到 DB → 后续 UI 从缓存读取
+
+### Admin UI
+
+在 Admin Panel 的「标签本地化」部分可以：
+1. 查看翻译统计
+2. 手动编辑翻译
+3. 批量 LLM 翻译（支持 dry-run）
+4. 审核 LLM 翻译结果
+
+详见 `docs/tag-localization-llm.md`。
+
+## Character / Copyright / Artist tag 处理
 
 - **Character tag**：角色名通常有中文通用译名（如 初音ミク → 初音未来），但也有争议性翻译
 - **Copyright tag**：作品名通常有官方或通用中文译名
 - **Artist tag**：艺术家名称通常保持原文不翻译
-- 建议：character/copyright tag 的中文翻译单独管理，不混入 general tag 词典
+- 这三类 tag 的 LLM 翻译会自动标记 `needs_review=true`
+- 手动翻译（`source=manual`, `status=reviewed`）优先级最高
 
 ### 角色名 / 中文译名 / 罗马音 / 原文名
 
@@ -123,11 +187,11 @@
 - 搜索同时支持 canonical 和中文名
 - 未来可添加日文名 alias
 
-### 中文搜索与 Danbooru 风格搜索共存
+## 中文搜索与 Danbooru 风格搜索共存
 
 当前实现：
 - Danbooru 风格搜索完全保留（英文 tag、通配符、负向搜索、meta qualifier）
-- 中文 alias 在搜索解析层面转换为英文 canonical name
+- 中文 alias 优先查 DB 缓存（每 5 分钟刷新），再查静态 JSON
 - 两者不冲突，中文搜索是英文搜索的补充
 
 示例：
@@ -140,16 +204,38 @@
 
 ## 词典维护
 
-### 添加新翻译
+### 方法 1：Admin UI（推荐）
+
+在 Admin Panel → 标签本地化 中：
+1. 手动输入翻译并保存
+2. 翻译立即生效（搜索缓存自动刷新）
+
+### 方法 2：批量 LLM 翻译
+
+1. 在 `.env` 中配置 LLM API
+2. 在 Admin Panel → 标签本地化 → 批量 LLM 翻译
+3. 先 dry-run 预览，确认后执行
+4. 审核 LLM 结果，标记为 reviewed 或 rejected
+
+### 方法 3：静态词典
 
 编辑 `frontend/static/data/tag_translations_zh.json`：
 
 1. 在 `tags` 中添加 `"canonical_name": "中文名"`
 2. 在 `reverse` 中添加 `"中文名": "canonical_name"`
-3. 重启应用（前端会重新加载词典，后端搜索 alias 缓存会重置）
+3. 重启应用（前端会重新加载词典，启动时会自动 seed 到 DB）
 
 ### 注意事项
 
 - 中文名应唯一（不能有两个不同的 canonical tag 映射到同一个中文名）
-- reverse 映射必须与 tags 映射一致
 - 不要修改数据库中的 tag.name
+- LLM API key 不要提交到版本控制
+- character/copyright/artist tag 翻译建议人工确认
+
+## 已知限制
+
+- 静态词典目前覆盖约 80 个最常见 general tags
+- LLM 翻译需要手动在 Admin UI 触发
+- character/copyright/artist tag 翻译质量依赖 LLM 或人工
+- 搜索 alias 缓存每 5 分钟刷新，新翻译可能有短暂延迟（Admin UI 操作后会立即刷新）
+- 不支持多语言同时显示（当前只支持 zh-CN）

@@ -108,6 +108,23 @@ async def autocomplete_tags(
     
     return results
 
+@router.get("/translations/batch")
+async def get_translations_batch(
+    request: Request,
+    names: str = Query(..., description="Comma-separated tag names"),
+    db: Session = Depends(get_db),
+):
+    """Get Chinese display names for a batch of tags. Public endpoint for frontend."""
+    from ..services.tag_localization_service import get_tag_display_names_batch
+
+    tag_names = [n.strip() for n in names.split(",") if n.strip()]
+    if not tag_names:
+        return {}
+    if len(tag_names) > 500:
+        raise HTTPException(status_code=400, detail="Too many tag names (max 500)")
+    return get_tag_display_names_batch(db, tag_names)
+
+
 @router.get("/{tag_name}", response_model=TagResponse)
 @cache_response(expire=3600, key_prefix="tag_detail")
 async def get_tag(request: Request, tag_name: str, db: Session = Depends(get_db)):

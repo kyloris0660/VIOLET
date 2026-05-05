@@ -72,10 +72,16 @@ class MediaViewerBase {
         }
     }
 
-    renderTags(media, options = {}) {
+    async renderTags(media, options = {}) {
         const { clickable = true } = options;
         const container = this.el('tags-container');
         const provenance = media.tag_provenance || {};
+
+        const allTagNames = (media.tags || []).map(t => t.name);
+        if (window.TagLocalization && allTagNames.length > 0) {
+            await window.TagLocalization.fetchBatchTranslations(allTagNames);
+        }
+
         const groups = { artist: [], character: [], copyright: [], general: [], meta: [] };
         const suggestionGroups = { artist: [], character: [], copyright: [], general: [], meta: [] };
 

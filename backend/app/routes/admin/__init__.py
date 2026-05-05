@@ -19,6 +19,7 @@ from .shared_tags import router as _shared_tags_router
 from .tags import import_tags_csv_logic, router as _tags_router
 from .ai_tagging import router as _ai_tagging_router
 from .ai_tag_review import router as _ai_tag_review_router
+from .tag_localization import router as _tag_localization_router
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -32,3 +33,4 @@ router.include_router(_api_keys_router)
 router.include_router(_shared_tags_router)
 router.include_router(_ai_tagging_router)
 router.include_router(_ai_tag_review_router)
+router.include_router(_tag_localization_router)

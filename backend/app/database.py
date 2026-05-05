@@ -185,6 +185,7 @@ def check_and_migrate_schema(engine):
         migrate_add_description,
         migrate_add_scan_jobs_table,
         migrate_add_media_tags_provenance,
+        migrate_add_tag_translations_table,
     ]
     
     for migration in migrations:
@@ -370,5 +371,50 @@ def migrate_add_scan_jobs_table(engine, inspector):
         ))
         conn.execute(text(
             "CREATE INDEX ix_blombooru_scan_jobs_created_at ON blombooru_scan_jobs(created_at)"
+        ))
+        conn.commit()
+
+
+def migrate_add_tag_translations_table(engine, inspector):
+    """Create blombooru_tag_translations table for tag localization cache"""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_tag_translations' in tables:
+        return
+
+    logger.info("Creating blombooru_tag_translations table...")
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE blombooru_tag_translations (
+                id SERIAL PRIMARY KEY,
+                tag_id INTEGER REFERENCES blombooru_tags(id) ON DELETE CASCADE,
+                canonical_name VARCHAR(255) NOT NULL,
+                language VARCHAR(10) NOT NULL DEFAULT 'zh-CN',
+                display_name VARCHAR(500) NOT NULL,
+                aliases_json TEXT,
+                category VARCHAR(50),
+                source VARCHAR(50) NOT NULL DEFAULT 'static',
+                status VARCHAR(50) NOT NULL DEFAULT 'translated',
+                confidence FLOAT,
+                needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+                provider VARCHAR(100),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                CONSTRAINT uq_tag_translation_canonical_lang UNIQUE (canonical_name, language)
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_tag_translations_tag_id "
+            "ON blombooru_tag_translations(tag_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_tag_translations_canonical_name "
+            "ON blombooru_tag_translations(canonical_name)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_tag_translations_language "
+            "ON blombooru_tag_translations(language)"
         ))
         conn.commit()

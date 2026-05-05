@@ -740,4 +740,28 @@ C:\Users\kyloris\Pictures\iCloud Photos
 
 ### 下一阶段建议
 
+**Phase 2.2.2 — Dynamic Tag Localization / LLM Translation Cache** ✅ (已完成)
+
+---
+
+## Phase 2.2.2 — Dynamic Tag Localization / LLM Translation Cache
+
+**日期**：2026-05-05
+**目标**：在 Phase 2.2.1 的静态词典基础上，实现可持续的动态 tag 中文化机制
+
+### 核心变更
+
+1. **数据模型**：新增 `blombooru_tag_translations` 表
+2. **翻译优先级**：manual/reviewed DB > static dictionary > LLM cache > canonical fallback
+3. **静态 Seed**：启动时自动将 79 个静态 JSON 翻译导入 DB
+4. **LLM 集成**：可选 OpenAI-compatible provider，默认关闭
+5. **Admin UI**：标签本地化管理面板
+6. **公共 API**：`GET /api/tags/translations/batch` 批量翻译查询
+7. **搜索增强**：DB-backed 中文 alias 缓存
+8. **前端优化**：批量预取翻译
+
+详见 `docs/tag-localization-llm.md`。
+
+### 下一阶段建议
+
 **Phase 2.3 — Optional Auto Tagging After Import**

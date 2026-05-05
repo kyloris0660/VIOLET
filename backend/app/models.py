@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (Boolean, Column, DateTime, Enum, Float, ForeignKey,
-                        Index, Integer, String, Table, Text)
+                        Index, Integer, String, Table, Text, UniqueConstraint)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -196,3 +196,27 @@ class ScanJob(Base):
 
     failed_files_json = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
+
+
+class TagTranslation(Base):
+    __tablename__ = 'blombooru_tag_translations'
+    __table_args__ = (
+        UniqueConstraint('canonical_name', 'language', name='uq_tag_translation_canonical_lang'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tag_id = Column(Integer, ForeignKey('blombooru_tags.id', ondelete='CASCADE'), nullable=True, index=True)
+    canonical_name = Column(String(255), nullable=False, index=True)
+    language = Column(String(10), nullable=False, default='zh-CN', index=True)
+    display_name = Column(String(500), nullable=False)
+    aliases_json = Column(Text, nullable=True)
+    category = Column(String(50), nullable=True)
+    source = Column(String(50), nullable=False, default='static')
+    status = Column(String(50), nullable=False, default='translated')
+    confidence = Column(Float, nullable=True)
+    needs_review = Column(Boolean, nullable=False, default=False)
+    provider = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    tag = relationship('Tag', foreign_keys=[tag_id], backref='translations')

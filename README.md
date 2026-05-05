@@ -53,6 +53,7 @@ Core capabilities:
 | Manual / locked tag protection | ✅ Done | AI never overwrites human tags |
 | AI Tag Review UI | ✅ Done | Confirm / reject / lock / delete suggestions |
 | zh-CN localization foundation | ✅ Done | Chinese UI, tag Chinese display, search aliases |
+| Dynamic tag localization | ✅ Done | DB-backed translations, optional LLM, admin management |
 | Auto AI tagging after import | Phase 2.3 | Optional, non-blocking |
 | Anime / photo filtering | Phase 3 | Distinguish anime from photos |
 | Reverse image search | Phase 3 | SauceNAO/IQDB integration |
@@ -172,6 +173,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [Local Library Scan](docs/local-library-scan.md) | Scan feature documentation |
 | [Tag Metadata Foundation](docs/tag-metadata-foundation.md) | Provenance tracking system design |
 | [Tag Localization (zh-CN)](docs/tag-localization-zh.md) | Chinese display names and search design |
+| [Tag Localization LLM](docs/tag-localization-llm.md) | Dynamic LLM translation cache documentation |
 | [Project Roadmap](docs/project-roadmap.md) | Full phase plan |
 | [Current Handoff](docs/current-handoff.md) | Latest state for resuming development |
 | [Development Log](docs/local-anime-library-devlog.md) | Per-phase technical notes |
@@ -179,6 +181,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 ## Roadmap
 
 - **Phase 2.2.1** — V.I.O.L.E.T. rebrand + zh-CN localization foundation (done)
+- **Phase 2.2.2** — Dynamic tag localization / LLM translation cache (done)
 - **Phase 2.3** — Optional auto-tagging after import (background job, disabled by default)
 - **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
 - **Phase 4** — Filesystem watcher & scheduled scans

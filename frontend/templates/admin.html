@@ -1087,6 +1087,179 @@
                 </div>
             </div>
 
+            <!-- Tag Localization Section -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="tag-localization-section">
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tag_localization.title') }}</h2>
+
+                <!-- Stats -->
+                <div id="tl-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary">{{ t('admin.tag_localization.total_tags') }}</div>
+                        <div class="text-lg font-bold" id="tl-total-tags">0</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary">{{ t('admin.tag_localization.translated') }}</div>
+                        <div class="text-lg font-bold" id="tl-translated">0</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary">{{ t('admin.tag_localization.missing') }}</div>
+                        <div class="text-lg font-bold" id="tl-missing">0</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary">{{ t('admin.tag_localization.needs_review') }}</div>
+                        <div class="text-lg font-bold" id="tl-needs-review">0</div>
+                    </div>
+                </div>
+                <div id="tl-source-breakdown" class="text-xs text-secondary mb-4"></div>
+
+                <!-- Manual Edit -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.tag_localization.manual_edit') }}</h3>
+                    <div class="bg p-4 border">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="text-xs text-secondary block mb-1">{{ t('admin.tag_localization.canonical_tag') }}</label>
+                                <input type="text" id="tl-edit-canonical" class="input w-full" placeholder="blue_eyes">
+                            </div>
+                            <div>
+                                <label class="text-xs text-secondary block mb-1">{{ t('admin.tag_localization.display_name_zh') }}</label>
+                                <input type="text" id="tl-edit-display" class="input w-full" placeholder="蓝眼睛">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="text-xs text-secondary block mb-1">{{ t('admin.tag_localization.aliases_zh') }}</label>
+                                <input type="text" id="tl-edit-aliases" class="input w-full" placeholder="{{ t('admin.tag_localization.aliases_hint') }}">
+                            </div>
+                            <div>
+                                <label class="text-xs text-secondary block mb-1">{{ t('admin.tag_localization.category') }}</label>
+                                <select id="tl-edit-category" class="input w-full">
+                                    <option value="">{{ t('admin.tag_localization.all_categories') }}</option>
+                                    <option value="general">general</option>
+                                    <option value="character">character</option>
+                                    <option value="copyright">copyright</option>
+                                    <option value="artist">artist</option>
+                                    <option value="meta">meta</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="flex items-center gap-2 text-xs">
+                                <input type="checkbox" id="tl-edit-reviewed" checked> {{ t('admin.tag_localization.mark_reviewed') }}
+                            </label>
+                            <button id="tl-save-btn" class="btn btn-primary px-4 py-1 text-xs">{{ t('admin.tag_localization.save_translation') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Batch LLM Translation -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.tag_localization.batch_translate') }}</h3>
+                    <div class="bg p-4 border">
+                        <p class="text-xs text-secondary mb-3">{{ t('admin.tag_localization.batch_description') }}</p>
+                        <div id="tl-llm-status" class="text-xs mb-3"></div>
+                        <div class="flex flex-wrap items-center gap-3 mb-3">
+                            <label class="flex items-center gap-2 text-xs">
+                                <input type="checkbox" id="tl-batch-dryrun" checked> {{ t('admin.tag_localization.dry_run') }}
+                            </label>
+                            <div>
+                                <label class="text-xs text-secondary">{{ t('admin.tag_localization.max_items') }}</label>
+                                <input type="number" id="tl-batch-max" class="input w-20 ml-1" value="20" min="1" max="100">
+                            </div>
+                            <div>
+                                <label class="text-xs text-secondary">{{ t('admin.tag_localization.category_filter') }}</label>
+                                <select id="tl-batch-category" class="input ml-1">
+                                    <option value="">{{ t('admin.tag_localization.all_categories') }}</option>
+                                    <option value="general">general</option>
+                                    <option value="character">character</option>
+                                    <option value="copyright">copyright</option>
+                                    <option value="artist">artist</option>
+                                    <option value="meta">meta</option>
+                                </select>
+                            </div>
+                            <button id="tl-batch-btn" class="btn btn-primary px-4 py-1 text-xs">{{ t('admin.tag_localization.start_translation') }}</button>
+                        </div>
+                        <div id="tl-batch-result" class="hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Missing Translations List -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.tag_localization.missing_translations') }}</h3>
+                    <div class="flex items-center gap-3 mb-3">
+                        <select id="tl-missing-category" class="input">
+                            <option value="">{{ t('admin.tag_localization.all_categories') }}</option>
+                            <option value="general">general</option>
+                            <option value="character">character</option>
+                            <option value="copyright">copyright</option>
+                            <option value="artist">artist</option>
+                            <option value="meta">meta</option>
+                        </select>
+                        <button id="tl-load-missing-btn" class="btn px-3 py-1 text-xs">{{ t('admin.tag_localization.load_missing') }}</button>
+                    </div>
+                    <div id="tl-missing-empty" class="text-xs text-secondary hidden">{{ t('admin.tag_localization.no_missing') }}</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs" id="tl-missing-table">
+                            <thead class="hidden" id="tl-missing-thead">
+                                <tr>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.canonical_tag') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.category') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.post_count') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.actions') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tl-missing-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Review Translations -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.tag_localization.review_translations') }}</h3>
+                    <div class="flex flex-wrap items-center gap-3 mb-3">
+                        <input type="text" id="tl-review-search" class="input w-40" placeholder="{{ t('admin.tag_localization.search_placeholder') }}">
+                        <select id="tl-review-source" class="input">
+                            <option value="">{{ t('admin.tag_localization.all_sources') }}</option>
+                            <option value="static">static</option>
+                            <option value="llm">llm</option>
+                            <option value="manual">manual</option>
+                            <option value="imported">imported</option>
+                        </select>
+                        <select id="tl-review-status" class="input">
+                            <option value="">{{ t('admin.tag_localization.all_statuses') }}</option>
+                            <option value="translated">translated</option>
+                            <option value="reviewed">reviewed</option>
+                            <option value="pending">pending</option>
+                        </select>
+                        <label class="flex items-center gap-1 text-xs">
+                            <input type="checkbox" id="tl-review-needs-review"> {{ t('admin.tag_localization.filter_needs_review') }}
+                        </label>
+                        <button id="tl-load-translations-btn" class="btn px-3 py-1 text-xs">{{ t('admin.tag_localization.load_translations') }}</button>
+                    </div>
+                    <div id="tl-review-empty" class="text-xs text-secondary hidden">{{ t('admin.tag_localization.no_translations') }}</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs" id="tl-review-table">
+                            <thead class="hidden" id="tl-review-thead">
+                                <tr>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.canonical_tag') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.display_name') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.aliases') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.source') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.status') }}</th>
+                                    <th class="text-left p-2">{{ t('admin.tag_localization.actions') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tl-review-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-between items-center mt-3" id="tl-review-pagination" style="display:none;">
+                        <button id="tl-review-prev-btn" class="btn px-3 py-1 text-xs" disabled>{{ t('admin.tag_localization.previous') }}</button>
+                        <span id="tl-review-page-info" class="text-xs text-secondary"></span>
+                        <button id="tl-review-next-btn" class="btn px-3 py-1 text-xs" disabled>{{ t('admin.tag_localization.next') }}</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tags Management Section -->
             <div class="surface p-2 sm:p-6 border mb-4">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tags_management.title') }}</h2>
