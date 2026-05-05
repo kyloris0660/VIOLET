@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.3 Auto Tagging Jobs + E2E Validation (2026-05-05).
+> Last updated after Phase 2.3d Continuous Background Tag Translation (2026-05-06).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -221,6 +221,40 @@ Config fix and developer tooling for E2E validation:
 | `frontend/templates/admin.html` | Developer Tools UI section |
 | `frontend/static/js/admin.js` | Developer Tools frontend logic |
 | `scripts/reset_e2e_test_data.py` | CLI reset script |
+
+### Phase 2.3c — Full Real Browser E2E Acceptance
+
+Full Playwright E2E test suite with real browser testing:
+
+- 26 smoke tests + 5 real workflow tests covering scan → AI tag → localize → search
+- Real browser testing via system Edge/Chrome (Chromium for CI)
+- Fixed 8+ backend/frontend bugs found during E2E (API paths, auth, path validation, LIKE escaping)
+- Dangerous path rejection verified for C:\, data/, media/original/, project root
+
+### Phase 2.3d — Continuous Background Tag Translation
+
+Background worker that automatically translates all missing tags via LLM:
+
+- **Background worker**: `tag_translation_worker.py` — daemon thread, periodic check, batch LLM
+- **Job history**: `blombooru_tag_translation_jobs` table — tracks every translation run
+- **Admin API**: `worker/status`, `worker/run-now`, `worker/pause`, `worker/resume`, `worker/jobs`
+- **Admin UI**: Background Auto Translation panel with status, controls, cost warning, job history
+- **AI job integration**: Completed AI jobs trigger run-now on the worker
+- **Stale recovery**: Startup marks leftover running jobs as interrupted
+- **Configuration**: `TAG_TRANSLATION_BACKGROUND_*` settings (enabled, interval, batch_size, max_per_run, daily_limit, error_limit, priority)
+- **Verified**: All 1844 tags translated to zh-CN (missing=0, failed=0)
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/services/tag_translation_worker.py` | Background translation worker |
+| `backend/app/models.py` | `TagTranslationJob` model |
+| `backend/app/database.py` | `migrate_add_tag_translation_jobs_table` |
+| `backend/app/routes/admin/tag_localization.py` | Worker API endpoints |
+| `frontend/templates/admin.html` | Worker status panel |
+| `frontend/static/js/admin.js` | Worker UI logic |
+| `tests/e2e/tag-translation-worker.spec.ts` | Worker Playwright tests |
 
 ## What Has NOT Been Built
 

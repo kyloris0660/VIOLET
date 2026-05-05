@@ -75,6 +75,9 @@ async def lifespan(app: FastAPI):
 
                     from .services.ai_tagging_job_service import mark_stale_ai_jobs
                     mark_stale_ai_jobs(_sdb)
+
+                    from .services.tag_translation_worker import mark_stale_translation_jobs
+                    mark_stale_translation_jobs(_sdb)
                 finally:
                     _sdb.close()
 
@@ -101,6 +104,13 @@ async def lifespan(app: FastAPI):
 
             asyncio.create_task(periodic_upload_chunks_cleanup())
 
+            # Start background tag translation worker
+            try:
+                from .services.tag_translation_worker import start_worker as start_translation_worker
+                start_translation_worker()
+            except Exception as e:
+                logger.warning(f"Background tag translation worker start skipped: {e}")
+
             logger.info("V.I.O.L.E.T. started successfully")
         except Exception as e:
             logger.error(f"Error during startup: {e}")
@@ -110,6 +120,11 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    try:
+        from .services.tag_translation_worker import stop_worker as stop_translation_worker
+        stop_translation_worker()
+    except Exception:
+        pass
     try:
         from .routes.ai_tagger import shutdown_tagger_resources
         shutdown_tagger_resources()

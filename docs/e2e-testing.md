@@ -77,6 +77,7 @@ This runs the full workflow: reset data → scan library → wait for AI tagging
 | `admin-content.spec.ts` | Smoke | Admin panel sections, thumbnail buttons, upload area |
 | `dev-tools-config.spec.ts` | Smoke | Config diagnostics, API key masking |
 | `tag-localization.spec.ts` | Smoke | LLM status, translation stats, dry-run batch |
+| `tag-translation-worker.spec.ts` | Smoke + Real | Worker status, pause/resume, run-now, UI panel |
 | `ai-tagging-jobs.spec.ts` | Smoke | Job listing, auto-config |
 | `ai-tag-review.spec.ts` | Smoke | Review endpoint |
 | `chinese-search.spec.ts` | Smoke | V.I.O.L.E.T. branding, tag search, Chinese search |

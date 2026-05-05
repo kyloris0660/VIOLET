@@ -83,6 +83,13 @@ async def get_config_diagnostics(
             "model": settings.TAG_TRANSLATION_LLM_MODEL or "(not configured)",
             "api_key_configured": bool(settings.TAG_TRANSLATION_LLM_API_KEY),
             "base_url_configured": bool(settings.TAG_TRANSLATION_LLM_BASE_URL),
+            "background_enabled": settings.TAG_TRANSLATION_BG_ENABLED,
+            "background_interval": settings.TAG_TRANSLATION_BG_INTERVAL,
+            "background_batch_size": settings.TAG_TRANSLATION_BG_BATCH_SIZE,
+            "background_max_per_run": settings.TAG_TRANSLATION_BG_MAX_PER_RUN,
+            "background_daily_limit": settings.TAG_TRANSLATION_BG_DAILY_LIMIT,
+            "background_error_limit": settings.TAG_TRANSLATION_BG_ERROR_LIMIT,
+            "background_priority": settings.TAG_TRANSLATION_BG_PRIORITY,
         },
         "paths": {
             "local_library_paths": [str(p) for p in settings.LOCAL_LIBRARY_PATHS],

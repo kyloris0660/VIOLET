@@ -235,7 +235,11 @@ def _flush_progress(db: Session, job: AITagJob, failed_items: List[Dict]) -> Non
 
 
 def _schedule_localization(job: AITagJob, new_tag_names: List[str]) -> None:
-    """Schedule auto-translation for new tags created during the job."""
+    """Queue missing tags for background translation after an AI tagging job.
+
+    If the background worker is running, triggers an immediate run.
+    Falls back to the legacy schedule_auto_translate for compatibility.
+    """
     if not new_tag_names or job.dry_run:
         job.localization_status = "skipped_dry_run" if job.dry_run else "skipped_no_new_tags"
         return
@@ -243,15 +247,26 @@ def _schedule_localization(job: AITagJob, new_tag_names: List[str]) -> None:
     unique_names = list(set(new_tag_names))
 
     try:
-        if settings.TAG_TRANSLATION_AUTO_ENABLED and settings.TAG_TRANSLATION_LLM_ENABLED:
+        if settings.TAG_TRANSLATION_BG_ENABLED and settings.TAG_TRANSLATION_LLM_ENABLED:
+            from ..services.tag_translation_worker import trigger_run_now, _worker_thread
+            if _worker_thread and _worker_thread.is_alive():
+                trigger_run_now()
+                job.localization_status = f"queued_{len(unique_names)}_tags_worker_running"
+            else:
+                from ..services.tag_translation_worker import start_worker
+                start_worker()
+                trigger_run_now()
+                job.localization_status = f"queued_{len(unique_names)}_tags_worker_started"
+            logger.info(f"AI tag job {job.id}: queued {len(unique_names)} tags for background worker")
+        elif settings.TAG_TRANSLATION_AUTO_ENABLED and settings.TAG_TRANSLATION_LLM_ENABLED:
             from ..services.tag_localization_service import schedule_auto_translate
             schedule_auto_translate(unique_names)
             job.localization_status = f"scheduled_{len(unique_names)}_tags"
             logger.info(f"AI tag job {job.id}: scheduled localization for {len(unique_names)} tags")
-        elif settings.TAG_TRANSLATION_AUTO_ENABLED:
-            job.localization_status = "skipped_llm_disabled"
+        elif settings.TAG_TRANSLATION_LLM_ENABLED:
+            job.localization_status = f"queued_{len(unique_names)}_tags_auto_disabled"
         else:
-            job.localization_status = "skipped_auto_disabled"
+            job.localization_status = "skipped_llm_disabled"
     except Exception as e:
         logger.error(f"AI tag job {job.id}: localization scheduling failed: {e}")
         job.localization_status = f"error: {str(e)[:200]}"

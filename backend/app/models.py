@@ -263,3 +263,30 @@ class AITagJob(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     scan_job = relationship('ScanJob', backref='ai_tag_jobs')
+
+
+class TagTranslationJob(Base):
+    __tablename__ = 'blombooru_tag_translation_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String(20), nullable=False, default='pending', index=True)
+    source = Column(String(20), nullable=False, default='background')
+    language = Column(String(10), nullable=False, default='zh-CN')
+    category = Column(String(50), nullable=True)
+    batch_size = Column(Integer, default=100)
+    max_per_run = Column(Integer, default=500)
+
+    processed = Column(Integer, default=0)
+    translated = Column(Integer, default=0)
+    failed = Column(Integer, default=0)
+    skipped = Column(Integer, default=0)
+    remaining_before = Column(Integer, default=0)
+    remaining_after = Column(Integer, nullable=True)
+
+    last_error = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

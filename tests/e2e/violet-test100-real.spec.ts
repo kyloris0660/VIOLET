@@ -105,4 +105,32 @@ test.describe('VioletTest100 Real E2E', () => {
       expect(after.data.total_covered).toBeGreaterThanOrEqual(before.data.total_covered);
     }
   });
+
+  test('background worker run-now works', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    const beforeStats = await apiCall(page, '/api/admin/tag-localization/stats');
+    const beforeMissing = beforeStats.data.missing;
+
+    if (beforeMissing === 0) {
+      test.skip();
+      return;
+    }
+
+    const runResp = await apiCall(page, '/api/admin/tag-localization/worker/run-now', {
+      method: 'POST',
+    });
+    expect(runResp.status).toBe(200);
+
+    for (let i = 0; i < 60; i++) {
+      await page.waitForTimeout(3000);
+      const s = await apiCall(page, '/api/admin/tag-localization/worker/status');
+      if (!s.data.running) break;
+    }
+
+    const afterStats = await apiCall(page, '/api/admin/tag-localization/stats');
+    if (beforeMissing > 0) {
+      expect(afterStats.data.missing).toBeLessThan(beforeMissing);
+    }
+  });
 });

@@ -281,6 +281,89 @@ async def review_translation(
     return {"message": f"Translation {action}d", "id": translation_id, "status": trans.status}
 
 
+@router.get("/worker/status")
+async def get_worker_status_endpoint(
+    current_user: User = Depends(require_admin_mode),
+):
+    """Get background tag translation worker status."""
+    from ...services.tag_translation_worker import get_worker_status
+    return get_worker_status()
+
+
+@router.post("/worker/run-now")
+async def trigger_worker_run_now(
+    current_user: User = Depends(require_admin_mode),
+):
+    """Trigger an immediate background translation run."""
+    from ...services.tag_translation_worker import trigger_run_now, _worker_thread
+    if not _worker_thread or not _worker_thread.is_alive():
+        from ...services.tag_translation_worker import start_worker
+        start_worker()
+    trigger_run_now()
+    return {"message": "Run-now triggered", "status": "ok"}
+
+
+@router.post("/worker/pause")
+async def pause_worker_endpoint(
+    current_user: User = Depends(require_admin_mode),
+):
+    """Pause the background translation worker."""
+    from ...services.tag_translation_worker import pause_worker
+    pause_worker()
+    return {"message": "Worker paused", "paused": True}
+
+
+@router.post("/worker/resume")
+async def resume_worker_endpoint(
+    current_user: User = Depends(require_admin_mode),
+):
+    """Resume the background translation worker."""
+    from ...services.tag_translation_worker import resume_worker
+    resume_worker()
+    return {"message": "Worker resumed", "paused": False}
+
+
+@router.get("/worker/jobs")
+async def list_worker_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """List recent background translation jobs."""
+    from ...models import TagTranslationJob
+
+    jobs = (
+        db.query(TagTranslationJob)
+        .order_by(TagTranslationJob.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "jobs": [
+            {
+                "id": j.id,
+                "status": j.status,
+                "source": j.source,
+                "language": j.language,
+                "batch_size": j.batch_size,
+                "max_per_run": j.max_per_run,
+                "processed": j.processed,
+                "translated": j.translated,
+                "failed": j.failed,
+                "skipped": j.skipped,
+                "remaining_before": j.remaining_before,
+                "remaining_after": j.remaining_after,
+                "last_error": j.last_error,
+                "started_at": j.started_at.isoformat() if j.started_at else None,
+                "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+            }
+            for j in jobs
+        ],
+        "total": len(jobs),
+    }
+
+
 def _parse_aliases(aliases_json: Optional[str]) -> List[str]:
     if not aliases_json:
         return []
