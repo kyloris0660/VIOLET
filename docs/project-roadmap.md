@@ -142,23 +142,26 @@ See [Tag Localization LLM](tag-localization-llm.md) and [Tag Localization zh-CN]
 - Added `TAG_TRANSLATION_AUTO_ENABLED` and `TAG_TRANSLATION_AUTO_MAX_ITEMS` config
 - Added `httpx` dependency for async LLM API calls
 
+### Phase 2.3 — AI Tagging Jobs + Auto-Tag After Import
+
+**Goal:** Background AI tagging job system with optional auto-tag after import.
+
+- AI tagging job system with background execution, progress tracking, cancel, and history
+- New `blombooru_ai_tag_jobs` table for persistent job state
+- New `blombooru_scan_job_media` table records imported media IDs per scan job
+- Auto-tag after import: scan completion optionally triggers AI tagging job (default OFF)
+- `force_suggestions` mode: write all AI tags as suggestions for manual review
+- Admin API: create/list/poll/cancel AI tagging jobs, auto-config endpoint
+- Admin UI: AI Tagging Jobs section with config display, create job, progress, history
+- Tag localization integration: AI jobs schedule auto-translate for newly created tags
+- E2E validation: `scripts/e2e_validate_violet_workflow.py` + `docs/e2e-violet-test-100.md`
+- Configuration: `AI_AUTO_TAG_AFTER_IMPORT_*` settings (all default OFF)
+
+See [AI Tagging Jobs](ai-tagging-jobs.md) and [E2E Validation Guide](e2e-violet-test-100.md) for documentation.
+
 ---
 
 ## Upcoming Phases
-
-### Phase 2.3 — Optional Auto Tagging After Import
-
-**Goal:** Allow AI tagging to run automatically after import (default OFF).
-
-- Scan job completion creates optional AI tagging background job
-- Default OFF, configurable in Admin UI
-- Non-blocking (separate job, does not slow down import)
-- Writes as suggestions (requires Phase 2.2 review to confirm)
-- Respects max_items / dry-run / only_without_ai_tags
-- Only processes newly imported or un-tagged images
-- Has dedicated progress tracking and history
-- Clear Admin UI toggle with safety warnings
-- Protects manual/locked tags
 
 ### Phase 3 — Anime Filtering
 

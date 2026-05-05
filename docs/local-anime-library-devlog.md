@@ -686,7 +686,7 @@ C:\Users\kyloris\Pictures\iCloud Photos
 
 ### 下一阶段建议
 
-**Phase 2.3 — Optional Auto Tagging After Import**
+**Phase 2.3 — AI Tagging Jobs + Auto-Tag After Import** ✅ (已完成)
 
 ---
 
@@ -778,4 +778,80 @@ C:\Users\kyloris\Pictures\iCloud Photos
 
 ### 下一阶段建议
 
-**Phase 2.3 — Optional Auto Tagging After Import**
+**Phase 2.3 — AI Tagging Jobs + Auto-Tag After Import** ✅ (已完成)
+
+---
+
+## Phase 2.3：AI Tagging Jobs + Auto-Tag After Import
+
+**日期：** 2026-05-05
+
+### 目标
+
+实现后台 AI 标签任务系统，支持进度跟踪、取消、历史记录，并在扫描导入完成后可选自动创建 AI 标签任务。
+
+### 设计决策
+
+1. **独立 Job 系统**：AI tagging job 与 scan job 解耦，互不阻塞
+2. **新表 `blombooru_ai_tag_jobs`**：持久化 AI tagging job 状态（status、progress、config、error）
+3. **新表 `blombooru_scan_job_media`**：记录每次扫描导入的 media ID，供 auto-tag 使用
+4. **默认关闭**：`AI_AUTO_TAG_AFTER_IMPORT=false`，需要用户显式开启
+5. **force_suggestions 模式**：可选将所有 AI tag 写为 suggestion，强制人工审核
+6. **Tag localization 集成**：AI tagging job 完成后自动触发新 tag 的中文翻译
+7. **E2E 验证**：提供脚本和文档验证完整工作流（scan → auto-tag → review）
+
+### 新增/修改的文件
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/services/ai_tagging_job_service.py` | 新增 | AI tagging job 后台 worker：执行推理、进度更新、cancel 检查 |
+| `backend/app/routes/admin/ai_tagging_jobs.py` | 新增 | AI tagging jobs API：create、list、poll、cancel、auto-config |
+| `backend/app/routes/admin/__init__.py` | 修改 | 注册 AI tagging jobs 路由 |
+| `backend/app/models.py` | 修改 | 新增 `AITagJob` 和 `ScanJobMedia` 模型 |
+| `backend/app/database.py` | 修改 | 新增 `migrate_add_ai_tag_jobs_table` 和 `migrate_add_scan_job_media_table` |
+| `backend/app/config.py` | 修改 | 新增 `AI_AUTO_TAG_AFTER_IMPORT_*` 配置属性 |
+| `backend/app/main.py` | 修改 | 启动时标记 stale AI tagging jobs |
+| `backend/app/utils/local_library_scanner.py` | 修改 | 扫描完成后触发 auto-tag job 创建 |
+| `backend/app/services/ai_tagging_service.py` | 修改 | 支持 force_suggestions 和 job 回调 |
+| `frontend/templates/admin.html` | 修改 | 新增 AI Tagging Jobs 区域 |
+| `frontend/static/js/admin.js` | 修改 | AI tagging jobs UI 逻辑 |
+| `example.env` | 修改 | 新增 AI_AUTO_TAG_AFTER_IMPORT_* 配置示例 |
+| `scripts/e2e_validate_violet_workflow.py` | 新增 | E2E 验证脚本 |
+| `docs/ai-tagging-jobs.md` | 新增 | AI tagging jobs 完整文档 |
+| `docs/e2e-violet-test-100.md` | 新增 | E2E 验证指南 |
+
+### 数据库迁移
+
+- 新增表 `blombooru_ai_tag_jobs`：AI tagging job 持久化（status、media_ids、config、progress counters、error_message）
+- 新增表 `blombooru_scan_job_media`：记录 scan job 导入的 media ID 列表
+- 两个迁移函数均幂等，检查表是否存在
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/admin/ai-tagging/jobs` | 创建 AI tagging job |
+| GET | `/api/admin/ai-tagging/jobs` | 列出最近的 AI tagging jobs |
+| GET | `/api/admin/ai-tagging/jobs/{id}` | 查询单个 job 状态和进度 |
+| POST | `/api/admin/ai-tagging/jobs/{id}/cancel` | 取消运行中的 job |
+| GET | `/api/admin/ai-tagging/auto-config` | 获取 auto-tag 配置状态 |
+
+### 配置项
+
+| 配置 | 默认值 | 说明 |
+|------|--------|------|
+| AI_AUTO_TAG_AFTER_IMPORT | false | 扫描完成后自动创建 AI tagging job |
+| AI_AUTO_TAG_AFTER_IMPORT_THRESHOLD | 0.35 | 自动 tagging 的置信度阈值 |
+| AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS | 100 | 自动 tagging 的最大 media 数量 |
+| AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS | false | 所有 AI tag 写为 suggestion |
+
+### 已知限制
+
+- AI tagging job 单线程执行，同一时间最多一个 job 运行
+- Auto-tag 默认关闭，需要手动在 `.env` 中开启
+- 不支持 WebSocket 推送（使用轮询）
+- 不做 anime/photo 过滤（Phase 3）
+
+### 下一阶段建议
+
+**Phase 3 — Anime Filtering**

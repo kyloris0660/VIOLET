@@ -286,6 +286,30 @@ class Settings:
         return os.getenv("AI_MODEL_NAME", "wd-swinv2-tagger-v3")
 
     @property
+    def AI_AUTO_TAG_AFTER_IMPORT(self) -> bool:
+        val = os.getenv("AI_AUTO_TAG_AFTER_IMPORT", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS(self) -> int:
+        return int(os.getenv("AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS", "20"))
+
+    @property
+    def AI_AUTO_TAG_AFTER_IMPORT_ONLY_NEW(self) -> bool:
+        val = os.getenv("AI_AUTO_TAG_AFTER_IMPORT_ONLY_NEW", "true")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def AI_AUTO_TAG_AFTER_IMPORT_DRY_RUN(self) -> bool:
+        val = os.getenv("AI_AUTO_TAG_AFTER_IMPORT_DRY_RUN", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS(self) -> bool:
+        val = os.getenv("AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
     def TAG_TRANSLATION_LLM_ENABLED(self) -> bool:
         val = os.getenv("TAG_TRANSLATION_LLM_ENABLED", "false")
         return val.lower() in ("true", "1", "yes")

@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Media, ScanJob
+from ..models import Media, ScanJob, ScanJobMedia
 from ..schemas import RatingEnum
 from .logger import logger
 from .media_helpers import get_unique_filename
@@ -86,6 +86,9 @@ def scan_and_import(
 
     *cancel_check*: callable returning True when the job should abort.
     *progress_callback*: called periodically with the current stats dict.
+
+    The returned stats dict includes ``imported_media_ids`` — a list of
+    Media.id values for successfully imported items (empty during dry-run).
     """
     if not dry_run:
         from ..routes.media import process_and_save_media
@@ -102,6 +105,7 @@ def scan_and_import(
         "failed": 0,
         "limit_reached": False,
         "failed_files": [],
+        "imported_media_ids": [],
     }
 
     candidates_processed = 0
@@ -199,7 +203,7 @@ def scan_and_import(
 
                 source_uri = f"file://{file_path}"
 
-                process_and_save_media(
+                media_resp = process_and_save_media(
                     db=db,
                     file_path=copied_path,
                     unique_filename=unique_name,
@@ -212,6 +216,8 @@ def scan_and_import(
 
                 existing_hashes.add(file_hash)
                 stats["imported"] += 1
+                if hasattr(media_resp, "id") and media_resp.id:
+                    stats["imported_media_ids"].append(media_resp.id)
                 logger.debug(f"Imported: {file_path.name}")
 
             except Exception as e:
@@ -347,7 +353,22 @@ def run_scan_job(job_id: int) -> None:
         job.failed_files_json = json.dumps(result["failed_files"][:MAX_FAILED_REPORT])
         job.finished_at = datetime.now(timezone.utc)
         job.status = "cancelled" if was_cancelled else "completed"
+
+        imported_media_ids = result.get("imported_media_ids", [])
+        for mid in imported_media_ids:
+            db.add(ScanJobMedia(scan_job_id=job_id, media_id=mid))
+
         db.commit()
+
+        if job.status == "completed" and imported_media_ids and not job.dry_run:
+            try:
+                from ..services.ai_tagging_job_service import create_auto_tag_job_after_scan
+                create_auto_tag_job_after_scan(job_id, imported_media_ids)
+            except Exception as auto_exc:
+                logger.error(
+                    f"Scan job {job_id}: auto-tag trigger failed (scan still completed): {auto_exc}",
+                    exc_info=True,
+                )
 
     except Exception as exc:
         logger.error(f"Scan job {job_id} failed: {exc}", exc_info=True)

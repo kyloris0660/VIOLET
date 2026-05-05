@@ -104,6 +104,7 @@ def run_ai_tagging(
     media_id: int,
     *,
     dry_run: bool = False,
+    force_suggestions: bool = False,
 ) -> Dict[str, Any]:
     """Run WDv3 inference on a single media item and write tags.
 
@@ -153,6 +154,9 @@ def run_ai_tagging(
         elif confidence >= suggest_thresh:
             action = "suggestion"
 
+        if force_suggestions and action == "confirmed":
+            action = "suggestion"
+
         pred_entry = {
             "name": tag_name,
             "category": wd_category,
@@ -180,13 +184,14 @@ def run_ai_tagging(
             continue
         tag_obj = tag_objects[0]
 
+        effective_confirm_threshold = 1.1 if force_suggestions else confirm_thresh
         added = add_ai_tag_to_media(
             db,
             media_id=media_id,
             tag_id=tag_obj.id,
             confidence=confidence,
             source="ai_wd",
-            confirm_threshold=confirm_thresh,
+            confirm_threshold=effective_confirm_threshold,
         )
 
         if added:

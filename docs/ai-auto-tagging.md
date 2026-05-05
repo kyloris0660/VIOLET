@@ -136,12 +136,14 @@ When `dry_run=true`:
 
 ## Why Default Is Not Full Library
 
-AI tagging is **manually triggered only** — it does NOT run automatically during local library scan. Reasons:
+AI tagging does NOT auto-run during local library scan by default. Reasons:
 
 1. iCloud Photos directories may contain thousands of non-anime images
 2. Model inference is CPU-intensive (~1-5 seconds per image)
 3. Accidental full-library tagging could create thousands of incorrect tags
 4. Manual control lets you verify results before scaling up
+
+> **Phase 2.3 update:** Optional auto-tagging after import is now available via `AI_AUTO_TAG_AFTER_IMPORT=true`, but remains disabled by default. See [AI Tagging Jobs](ai-tagging-jobs.md) for details.
 
 ### Recommended Testing Workflow
 
@@ -212,7 +214,6 @@ For full details on what the model can and cannot do, see [AI Tagging Usage Guid
 
 ## Known Limitations
 
-- No scheduled or automatic AI tagging — manual trigger only
 - No anime/photo filtering (Phase 3)
 - Character identification depends on model training data; novel characters will not be recognized
 - Rating tags from WDv3 use names like `general`, `sensitive`, `questionable`, `explicit` which map to the `meta` category, not the media `rating` field
@@ -229,12 +230,44 @@ Completed. See [AI Tag Review](ai-tag-review.md) for full documentation.
 - Media detail provenance-aware tag display
 - Confirm preserves AI source/confidence
 
-### Phase 2.3 — Optional Auto Tagging After Import
+### Phase 2.3 — AI Tagging Jobs + Auto-Tag After Import ✅
 
-- Scan job completion triggers optional AI tagging job
-- Default OFF, configurable in Admin UI
-- Non-blocking (separate background job)
-- Writes as suggestions, not confirmed (requires review)
-- Respects max_items / dry-run / only_without_ai_tags
+Completed. See [AI Tagging Jobs](ai-tagging-jobs.md) for full documentation.
 
-See [AI Tagging Usage Guide § Future Roadmap](ai-tagging-usage-guide.md#8-future-roadmap) for full details.
+- Background AI tagging job system with progress tracking, cancel, and history
+- Auto-tag after import: scan completion optionally triggers AI tagging job (disabled by default)
+- `force_suggestions` mode: write all AI tags as suggestions for review
+- New `blombooru_ai_tag_jobs` table for persistent job state
+- New `blombooru_scan_job_media` table tracks imported media per scan
+- Admin API and UI for AI tagging jobs
+- Tag localization integration for newly created tags
+- E2E validation script and guide
+
+## Phase 2.3 Auto-Tagging Integration
+
+Phase 2.3 adds a background job system that extends the manual AI tagging from Phase 2.1 into a managed, persistent workflow:
+
+### AI Tagging Jobs
+
+Instead of synchronous batch tagging, Phase 2.3 introduces **AI Tagging Jobs** — background tasks that process media items with progress tracking, cancel support, and persistent history. Jobs are created via the Admin API or automatically after scan completion.
+
+### Auto-Tag After Import
+
+When `AI_AUTO_TAG_AFTER_IMPORT=true`, completing a scan job automatically creates an AI tagging job targeting the newly imported media. The scan job is never blocked — the AI tagging job runs independently.
+
+```env
+AI_AUTO_TAG_AFTER_IMPORT=true
+AI_AUTO_TAG_AFTER_IMPORT_THRESHOLD=0.35
+AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS=100
+AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS=false
+```
+
+### force_suggestions Mode
+
+When enabled (`force_suggestions=true` on job creation or `AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS=true`), all AI-generated tags are written as suggestions regardless of confidence, requiring explicit review before becoming searchable.
+
+### Tag Localization
+
+AI tagging jobs automatically schedule tag localization (auto-translate via LLM) for newly created tags, if `TAG_TRANSLATION_AUTO_ENABLED=true`.
+
+See [AI Tagging Jobs](ai-tagging-jobs.md) for complete API reference, configuration, and Admin UI documentation.

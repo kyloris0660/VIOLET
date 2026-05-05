@@ -220,3 +220,46 @@ class TagTranslation(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     tag = relationship('Tag', foreign_keys=[tag_id], backref='translations')
+
+
+class ScanJobMedia(Base):
+    __tablename__ = 'blombooru_scan_job_media'
+
+    id = Column(Integer, primary_key=True, index=True)
+    scan_job_id = Column(Integer, ForeignKey('blombooru_scan_jobs.id', ondelete='CASCADE'), nullable=False, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    scan_job = relationship('ScanJob', backref='imported_media')
+    media = relationship('Media')
+
+
+class AITagJob(Base):
+    __tablename__ = 'blombooru_ai_tag_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String(20), nullable=False, default='pending', index=True)
+    trigger_source = Column(String(20), nullable=False, default='manual')
+    scan_job_id = Column(Integer, ForeignKey('blombooru_scan_jobs.id', ondelete='SET NULL'), nullable=True, index=True)
+    media_ids_json = Column(Text, nullable=True)
+    max_items = Column(Integer, default=10)
+    dry_run = Column(Boolean, default=False)
+    only_without_ai_tags = Column(Boolean, default=True)
+    force_suggestions = Column(Boolean, default=False)
+
+    processed = Column(Integer, default=0)
+    tags_added = Column(Integer, default=0)
+    suggestions_added = Column(Integer, default=0)
+    skipped_locked = Column(Integer, default=0)
+    ignored_low_confidence = Column(Integer, default=0)
+    failed = Column(Integer, default=0)
+    failed_items_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    localization_status = Column(String(50), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    scan_job = relationship('ScanJob', backref='ai_tag_jobs')

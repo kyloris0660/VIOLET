@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.2.2a Auto Tag Localization + Priority Hotfix (2026-05-05).
+> Last updated after Phase 2.3 Auto Tagging Jobs + E2E Validation (2026-05-05).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -171,9 +171,37 @@ Fixed priority bug and added automatic translation:
 - **Real LLM verified**: Successfully translated tags via OpenAI-compatible API
 - **httpx dependency**: Added for async LLM API calls
 
+### Phase 2.3 — AI Tagging Jobs + Auto-Tag After Import
+
+Background AI tagging job system with optional auto-tag after import:
+
+- **AI Tagging Job system**: Background jobs with progress tracking, cancel, and history — persisted in new `blombooru_ai_tag_jobs` table
+- **Scan job media tracking**: New `blombooru_scan_job_media` table records which media IDs were imported per scan job
+- **Auto-tag after import**: When `AI_AUTO_TAG_AFTER_IMPORT=true`, scan job completion automatically creates an AI tagging job for newly imported media (disabled by default)
+- **Admin API**: `POST /api/admin/ai-tagging/jobs` (create), `GET /api/admin/ai-tagging/jobs` (list), `GET /api/admin/ai-tagging/jobs/{id}` (poll), `POST /api/admin/ai-tagging/jobs/{id}/cancel`, `GET /api/admin/ai-tagging/auto-config` (auto-tag config)
+- **Admin UI**: AI Tagging Jobs section — create job, progress polling, cancel, job history, auto-tag config display
+- **force_suggestions**: Option to write all AI tags as suggestions for manual review (regardless of confidence)
+- **Tag localization integration**: AI tagging jobs schedule auto-translate for newly created tags
+- **E2E validation**: `scripts/e2e_validate_violet_workflow.py` script + `docs/e2e-violet-test-100.md` guide for VioletTest100 workflow testing
+- **Non-blocking**: Auto-tag job runs independently after scan; scan job is never delayed
+- **Configuration**: `AI_AUTO_TAG_AFTER_IMPORT`, `AI_AUTO_TAG_AFTER_IMPORT_THRESHOLD`, `AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS`, `AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS` (all default OFF)
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/services/ai_tagging_job_service.py` | AI tagging job background worker |
+| `backend/app/routes/admin/ai_tagging_jobs.py` | AI tagging jobs API endpoints |
+| `backend/app/models.py` | `AITagJob` and `ScanJobMedia` models |
+| `backend/app/database.py` | `migrate_add_ai_tag_jobs_table`, `migrate_add_scan_job_media_table` |
+| `frontend/templates/admin.html` | AI Tagging Jobs section in Content tab |
+| `frontend/static/js/admin.js` | AI tagging jobs UI logic |
+| `scripts/e2e_validate_violet_workflow.py` | E2E validation script |
+| `docs/ai-tagging-jobs.md` | AI tagging jobs documentation |
+| `docs/e2e-violet-test-100.md` | E2E validation guide |
+
 ## What Has NOT Been Built
 
-- No automatic AI tagging during scan (manual trigger only, Phase 2.3)
 - No anime/photo filtering (Phase 3)
 - No filesystem watcher or scheduled scan (Phase 4)
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
@@ -214,15 +242,13 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 2.3 (after 2.2.2)
+## Recommended Next Phase: 3
 
-**Optional Auto Tagging After Import** — allow AI tagging to run after scan jobs:
+**Anime Filtering** — automatically detect and optionally skip non-anime images during import:
 
-1. Scan job completion creates optional AI tagging background job
-2. Default OFF, configurable in Admin UI
-3. Non-blocking (separate job, does not slow down import)
-4. Writes as suggestions (requires Phase 2.2 review to confirm)
-5. Respects max_items / dry-run / only_without_ai_tags
+1. Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
+2. Or introduce a dedicated anime/photo classifier
+3. AI tagging infrastructure from Phase 2.3 provides the execution pipeline
 
 ## Test Directory
 
@@ -239,6 +265,8 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 | `docs/ai-tagging-usage-guide.md` | Complete AI tagging usage guide with GUI walkthrough |
 | `docs/ai-tag-review.md` | Phase 2.2 review UI and API documentation |
 | `docs/ai-auto-tagging.md` | Phase 2.1 AI tagging technical reference |
+| `docs/ai-tagging-jobs.md` | Phase 2.3 AI tagging jobs documentation |
+| `docs/e2e-violet-test-100.md` | E2E validation guide (VioletTest100) |
 | `docs/project-roadmap.md` | Full phase plan |
 | `docs/tag-metadata-foundation.md` | Phase 2 technical documentation |
 | `docs/local-anime-library-devlog.md` | Per-phase technical log |
