@@ -388,6 +388,28 @@ class AdminPanel {
             });
         }
 
+        // AI Tagging Jobs (Phase 2.3)
+        this._aiJobPollTimer = null;
+        this._currentAiJobId = null;
+        const aiJobCreateBtn = document.getElementById('ai-job-create-btn');
+        if (aiJobCreateBtn) {
+            aiJobCreateBtn.addEventListener('click', () => this.createAITagJob());
+        }
+        const aiJobCancelBtn = document.getElementById('ai-job-cancel-btn');
+        if (aiJobCancelBtn) {
+            aiJobCancelBtn.addEventListener('click', () => this.cancelAITagJob());
+        }
+        const aiJobsRefreshConfig = document.getElementById('ai-jobs-refresh-config');
+        if (aiJobsRefreshConfig) {
+            aiJobsRefreshConfig.addEventListener('click', () => this.loadAutoTagConfig());
+        }
+        const aiJobsRefreshHistory = document.getElementById('ai-jobs-refresh-history');
+        if (aiJobsRefreshHistory) {
+            aiJobsRefreshHistory.addEventListener('click', () => this.loadAIJobHistory());
+        }
+        this.loadAutoTagConfig();
+        this.loadAIJobHistory();
+
         // Tag Localization
         this._tlReviewOffset = 0;
         this._tlReviewLimit = 50;
@@ -3325,6 +3347,208 @@ class AdminPanel {
             );
         }
     }
+    // ---- AI Tagging Jobs (Phase 2.3) ----
+
+    async loadAutoTagConfig() {
+        const el = document.getElementById('ai-jobs-config-content');
+        if (!el) return;
+        try {
+            const data = await app.apiCall('/api/admin/ai-tagging/auto-config', { method: 'GET' });
+            const badge = (val) => val
+                ? '<span class="text-green-400 font-bold">开启</span>'
+                : '<span class="text-red-400 font-bold">关闭</span>';
+            el.innerHTML = `
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div>AI 打标总开关：${badge(data.ai_tagging_enabled)}</div>
+                    <div>导入后自动打标：${badge(data.auto_tag_after_import)}</div>
+                    <div>自动打标最大数量：<span class="font-bold">${data.auto_tag_max_items}</span></div>
+                    <div>仅处理新导入：${badge(data.auto_tag_only_new)}</div>
+                    <div>Dry Run 模式：${badge(data.auto_tag_dry_run)}</div>
+                    <div>强制为建议：${badge(data.auto_tag_force_suggestions)}</div>
+                    <div>Batch 上限：<span class="font-bold">${data.batch_max_items}</span></div>
+                    <div>自动翻译：${badge(data.tag_translation_auto)}</div>
+                    <div>LLM 翻译：${badge(data.tag_translation_llm)}</div>
+                </div>
+                <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，此处仅只读显示。</p>
+            `;
+        } catch (e) {
+            el.textContent = `加载失败: ${e.message || e}`;
+        }
+    }
+
+    async createAITagJob() {
+        const btn = document.getElementById('ai-job-create-btn');
+        const idsInput = document.getElementById('ai-job-media-ids').value.trim();
+        const maxItems = parseInt(document.getElementById('ai-job-max-items').value) || 10;
+        const dryRun = document.getElementById('ai-job-dry-run').checked;
+        const forceSuggestions = document.getElementById('ai-job-force-suggestions').checked;
+        const onlyUntagged = document.getElementById('ai-job-only-untagged').checked;
+
+        let mediaIds = null;
+        if (idsInput) {
+            mediaIds = idsInput.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+            if (mediaIds.length === 0) {
+                app.showNotification('无效的 Media IDs', 'error');
+                return;
+            }
+        }
+
+        btn.disabled = true;
+        btn.textContent = '创建中…';
+        try {
+            const body = {
+                max_items: maxItems,
+                dry_run: dryRun,
+                only_without_ai_tags: onlyUntagged,
+                force_suggestions: forceSuggestions,
+            };
+            if (mediaIds) body.media_ids = mediaIds;
+
+            const data = await app.apiCall('/api/admin/ai-tagging/jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            app.showNotification(`AI 打标任务 #${data.id} 已创建`, 'success');
+            this._currentAiJobId = data.id;
+            this._startAiJobPolling(data.id);
+        } catch (e) {
+            app.showNotification(`创建失败: ${e.message || e}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '创建任务';
+        }
+    }
+
+    async cancelAITagJob() {
+        if (!this._currentAiJobId) return;
+        try {
+            await app.apiCall(`/api/admin/ai-tagging/jobs/${this._currentAiJobId}/cancel`, { method: 'POST' });
+            app.showNotification('取消请求已发送', 'success');
+        } catch (e) {
+            app.showNotification(`取消失败: ${e.message || e}`, 'error');
+        }
+    }
+
+    _startAiJobPolling(jobId) {
+        if (this._aiJobPollTimer) clearInterval(this._aiJobPollTimer);
+        const container = document.getElementById('ai-job-progress-container');
+        if (container) container.style.display = '';
+        this._aiJobPollTimer = setInterval(() => this._pollAiJob(jobId), 1500);
+        this._pollAiJob(jobId);
+    }
+
+    async _pollAiJob(jobId) {
+        try {
+            const data = await app.apiCall(`/api/admin/ai-tagging/jobs/${jobId}`, { method: 'GET' });
+            this._renderAiJobProgress(data);
+            if (['completed', 'failed', 'cancelled', 'interrupted'].includes(data.status)) {
+                clearInterval(this._aiJobPollTimer);
+                this._aiJobPollTimer = null;
+                this._currentAiJobId = null;
+                this.loadAIJobHistory();
+            }
+        } catch (e) {
+            clearInterval(this._aiJobPollTimer);
+            this._aiJobPollTimer = null;
+        }
+    }
+
+    _renderAiJobProgress(job) {
+        const statsEl = document.getElementById('ai-job-progress-stats');
+        const statusEl = document.getElementById('ai-job-progress-status');
+        const fillEl = document.getElementById('ai-job-progress-fill');
+        const cancelBtn = document.getElementById('ai-job-cancel-btn');
+
+        if (!statsEl) return;
+
+        const total = job.max_items || 1;
+        const pct = Math.min(100, Math.round((job.processed / total) * 100));
+        if (fillEl) fillEl.style.width = pct + '%';
+        if (cancelBtn) cancelBtn.disabled = !['pending', 'running'].includes(job.status);
+
+        const statusMap = {
+            pending: '等待中', running: '运行中', completed: '已完成',
+            failed: '失败', cancelled: '已取消', cancelling: '取消中', interrupted: '已中断'
+        };
+
+        statsEl.innerHTML = `
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">已处理</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.tags_added}</div><div class="text-secondary">确认标签</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.suggestions_added}</div><div class="text-secondary">建议标签</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.skipped_locked}</div><div class="text-secondary">跳过锁定</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.ignored_low_confidence}</div><div class="text-secondary">忽略低信度</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">失败</div></div>
+        `;
+        let statusText = `状态: ${statusMap[job.status] || job.status}`;
+        if (job.trigger_source === 'scan_job' && job.scan_job_id) {
+            statusText += ` | 关联 Scan #${job.scan_job_id}`;
+        }
+        if (job.dry_run) statusText += ' | Dry Run';
+        if (job.force_suggestions) statusText += ' | 强制建议';
+        if (job.localization_status) statusText += ` | 本地化: ${job.localization_status}`;
+        if (job.error_message) statusText += ` | ${job.error_message}`;
+        if (statusEl) statusEl.textContent = statusText;
+    }
+
+    async loadAIJobHistory() {
+        const tbody = document.getElementById('ai-jobs-history-tbody');
+        const emptyEl = document.getElementById('ai-jobs-history-empty');
+        if (!tbody) return;
+        try {
+            const jobs = await app.apiCall('/api/admin/ai-tagging/jobs', { method: 'GET' });
+            if (!jobs || jobs.length === 0) {
+                tbody.innerHTML = '';
+                if (emptyEl) emptyEl.style.display = '';
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            // Auto-resume polling if a job is running
+            const runningJob = jobs.find(j => ['pending', 'running', 'cancelling'].includes(j.status));
+            if (runningJob && !this._aiJobPollTimer) {
+                this._currentAiJobId = runningJob.id;
+                this._startAiJobPolling(runningJob.id);
+            }
+
+            const statusMap = {
+                pending: '⏳ 等待', running: '▶️ 运行', completed: '✅ 完成',
+                failed: '❌ 失败', cancelled: '⏹ 取消', cancelling: '⏸ 取消中', interrupted: '⚠️ 中断'
+            };
+            tbody.innerHTML = jobs.map(j => `
+                <tr class="border-b hover:bg-gray-800/30 text-[11px] cursor-pointer" onclick="adminPanel._showAiJobDetail(${j.id})">
+                    <td class="py-1 px-2">${j.id}</td>
+                    <td class="py-1 px-2">${statusMap[j.status] || j.status}</td>
+                    <td class="py-1 px-2">${j.trigger_source === 'scan_job' ? '扫描触发' : '手动'}</td>
+                    <td class="py-1 px-2">${j.scan_job_id || '-'}</td>
+                    <td class="py-1 px-2">${j.processed}</td>
+                    <td class="py-1 px-2 text-green-400">${j.tags_added}</td>
+                    <td class="py-1 px-2 text-yellow-400">${j.suggestions_added}</td>
+                    <td class="py-1 px-2 text-red-400">${j.failed}</td>
+                    <td class="py-1 px-2 text-xs">${j.localization_status || '-'}</td>
+                    <td class="py-1 px-2">${j.created_at ? new Date(j.created_at).toLocaleString('zh-CN') : '-'}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="10" class="py-2 px-2 text-red-400">加载失败: ${e.message || e}</td></tr>`;
+        }
+    }
+
+    async _showAiJobDetail(jobId) {
+        try {
+            const job = await app.apiCall(`/api/admin/ai-tagging/jobs/${jobId}`, { method: 'GET' });
+            this._renderAiJobProgress(job);
+            const container = document.getElementById('ai-job-progress-container');
+            if (container) container.style.display = '';
+            if (['pending', 'running', 'cancelling'].includes(job.status)) {
+                this._currentAiJobId = job.id;
+                this._startAiJobPolling(job.id);
+            }
+        } catch (e) {
+            app.showNotification(`加载任务详情失败: ${e.message || e}`, 'error');
+        }
+    }
+
     // ---- Tag Localization ----
 
     async loadTagLocalizationStats() {

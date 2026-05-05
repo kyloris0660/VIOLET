@@ -186,6 +186,8 @@ def check_and_migrate_schema(engine):
         migrate_add_scan_jobs_table,
         migrate_add_media_tags_provenance,
         migrate_add_tag_translations_table,
+        migrate_add_scan_job_media_table,
+        migrate_add_ai_tag_jobs_table,
     ]
     
     for migration in migrations:
@@ -416,5 +418,87 @@ def migrate_add_tag_translations_table(engine, inspector):
         conn.execute(text(
             "CREATE INDEX ix_blombooru_tag_translations_language "
             "ON blombooru_tag_translations(language)"
+        ))
+        conn.commit()
+
+
+def migrate_add_scan_job_media_table(engine, inspector):
+    """Create blombooru_scan_job_media table for tracking imported media per scan job"""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_scan_job_media' in tables:
+        return
+
+    logger.info("Creating blombooru_scan_job_media table...")
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE blombooru_scan_job_media (
+                id SERIAL PRIMARY KEY,
+                scan_job_id INTEGER NOT NULL REFERENCES blombooru_scan_jobs(id) ON DELETE CASCADE,
+                media_id INTEGER NOT NULL REFERENCES blombooru_media(id) ON DELETE CASCADE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_scan_job_media_scan_job_id "
+            "ON blombooru_scan_job_media(scan_job_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_scan_job_media_media_id "
+            "ON blombooru_scan_job_media(media_id)"
+        ))
+        conn.commit()
+
+
+def migrate_add_ai_tag_jobs_table(engine, inspector):
+    """Create blombooru_ai_tag_jobs table for AI tagging job tracking"""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_ai_tag_jobs' in tables:
+        return
+
+    logger.info("Creating blombooru_ai_tag_jobs table...")
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE blombooru_ai_tag_jobs (
+                id SERIAL PRIMARY KEY,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                trigger_source VARCHAR(20) NOT NULL DEFAULT 'manual',
+                scan_job_id INTEGER REFERENCES blombooru_scan_jobs(id) ON DELETE SET NULL,
+                media_ids_json TEXT,
+                max_items INTEGER NOT NULL DEFAULT 10,
+                dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+                only_without_ai_tags BOOLEAN NOT NULL DEFAULT TRUE,
+                force_suggestions BOOLEAN NOT NULL DEFAULT FALSE,
+                processed INTEGER NOT NULL DEFAULT 0,
+                tags_added INTEGER NOT NULL DEFAULT 0,
+                suggestions_added INTEGER NOT NULL DEFAULT 0,
+                skipped_locked INTEGER NOT NULL DEFAULT 0,
+                ignored_low_confidence INTEGER NOT NULL DEFAULT 0,
+                failed INTEGER NOT NULL DEFAULT 0,
+                failed_items_json TEXT,
+                error_message TEXT,
+                localization_status VARCHAR(50),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                started_at TIMESTAMP WITH TIME ZONE,
+                finished_at TIMESTAMP WITH TIME ZONE,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_ai_tag_jobs_status "
+            "ON blombooru_ai_tag_jobs(status)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_ai_tag_jobs_created_at "
+            "ON blombooru_ai_tag_jobs(created_at)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_blombooru_ai_tag_jobs_scan_job_id "
+            "ON blombooru_ai_tag_jobs(scan_job_id)"
         ))
         conn.commit()

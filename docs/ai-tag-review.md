@@ -191,16 +191,17 @@ The review system enforces these safety rules:
 1. **Reject is not persistent** — No `rejected_decisions` table. Re-running AI tagging may regenerate rejected suggestions.
 2. **No suggestion search syntax** — Cannot search `suggestion:tag_name`. Planned for future.
 3. **No undo** — Rejecting a suggestion deletes it permanently.
-4. **No auto-tag after import** — AI tagging remains manual-trigger only (Phase 2.3).
+4. **Auto-tag after import** — Available since Phase 2.3 (disabled by default). See [AI Tagging Jobs](ai-tagging-jobs.md).
 5. **Media detail review buttons** — Suggestions are shown visually but confirm/reject must be done in Admin panel or API.
 
-## Why Phase 2.3 Does Auto-Tagging After Import
+## Auto-Tagging After Import (Phase 2.3)
 
-Auto-tagging after import is intentionally deferred because:
-1. Without review UI (Phase 2.2), incorrect auto-tags cannot be efficiently corrected
-2. iCloud Photos contains non-anime images that would generate garbage tags
-3. The review workflow must be validated on real data first
-4. Phase 2.3 will write auto-tags as suggestions (not confirmed), requiring Phase 2.2 review
+Phase 2.3 added optional auto-tagging after import:
+
+1. Review UI (Phase 2.2) is available for correcting incorrect auto-tags
+2. Auto-tags are written as suggestions by default (`force_suggestions`), requiring review
+3. Disabled by default; enable via `AI_AUTO_TAG_AFTER_IMPORT=true` in `.env`
+4. See [AI Tagging Jobs](ai-tagging-jobs.md) for full documentation
 
 ## Files Added/Modified
 

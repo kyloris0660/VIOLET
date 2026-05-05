@@ -221,6 +221,36 @@ If the application stops while a scan is running (crash, restart, etc.), any `pe
 - **Invalid scan roots** (non-existent or non-directory paths) are counted as `failed` and reported in `failed_files`.
 - **Empty `paths` array** (`{"paths": []}`) returns 400. Omit the field entirely (or pass `null`) to use the configured `LOCAL_LIBRARY_PATHS` from `.env`.
 
+## Auto-Tag After Import (Phase 2.3)
+
+When `AI_AUTO_TAG_AFTER_IMPORT=true` in `.env`, completing a scan job automatically creates an AI tagging background job for the newly imported media.
+
+### How It Works
+
+1. During a scan job, every successfully imported media ID is recorded in the `blombooru_scan_job_media` table (linked to the scan job).
+2. When the scan job completes (status = `completed`), the system checks whether auto-tag is enabled.
+3. If enabled, an AI tagging job is created targeting only the media IDs imported by this scan.
+4. The scan job itself is **never blocked** by the AI tagging job — it completes normally and the AI job runs independently in the background.
+
+### Configuration
+
+```env
+AI_AUTO_TAG_AFTER_IMPORT=true                    # Enable auto-tag (default: false)
+AI_AUTO_TAG_AFTER_IMPORT_THRESHOLD=0.35           # Confidence threshold
+AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS=100            # Max media to tag per trigger
+AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS=false  # Write all as suggestions
+```
+
+### Default: Disabled
+
+Auto-tag after import is **disabled by default**. This is intentional:
+
+- iCloud Photos directories may contain thousands of non-anime images
+- AI inference is CPU-intensive and may not be desired on every scan
+- Users should validate the AI tagging workflow manually before enabling automation
+
+See [AI Tagging Jobs](ai-tagging-jobs.md) for the full AI tagging job system documentation.
+
 ## Data Model Note
 
-Imported files store the original path in `Media.source` as a `file://` URI. Scan jobs are persisted in the `blombooru_scan_jobs` table.
+Imported files store the original path in `Media.source` as a `file://` URI. Scan jobs are persisted in the `blombooru_scan_jobs` table. Imported media IDs per scan are tracked in `blombooru_scan_job_media`.

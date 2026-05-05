@@ -1087,6 +1087,104 @@
                 </div>
             </div>
 
+            <!-- AI Tagging Jobs Section (Phase 2.3) -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="ai-tagging-jobs-section">
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">AI 打标任务</h2>
+
+                <!-- Auto-tag Config Status -->
+                <div class="bg p-4 border mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold">自动打标配置</h3>
+                        <button id="ai-jobs-refresh-config" class="btn-dark text-xs px-2 py-1">刷新</button>
+                    </div>
+                    <div id="ai-jobs-config-content" class="text-xs text-secondary">
+                        加载中…
+                    </div>
+                </div>
+
+                <!-- Create Manual Job -->
+                <div class="bg p-4 border mb-4">
+                    <h3 class="text-sm font-bold mb-3">创建 AI 打标任务</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-2">Media IDs（逗号分隔，留空自动选择未打标图片）</label>
+                            <input type="text" id="ai-job-media-ids" placeholder="如 1,2,3 或留空"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold mb-2">最大数量</label>
+                                <input type="number" id="ai-job-max-items" min="1" value="10"
+                                    class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                            </div>
+                            <div class="flex items-end pb-1">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="ai-job-dry-run" class="w-4 h-4 accent-primary">
+                                    <span class="text-xs font-bold">Dry Run</span>
+                                </label>
+                            </div>
+                            <div class="flex items-end pb-1">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="ai-job-force-suggestions" class="w-4 h-4 accent-primary">
+                                    <span class="text-xs font-bold">全部为建议</span>
+                                </label>
+                            </div>
+                            <div class="flex items-end pb-1">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="ai-job-only-untagged" class="w-4 h-4 accent-primary" checked>
+                                    <span class="text-xs font-bold">仅未打标</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button id="ai-job-create-btn" class="btn-primary w-full">创建任务</button>
+                    </div>
+                </div>
+
+                <!-- Current Job Progress -->
+                <div id="ai-job-progress-container" class="bg p-4 border mb-4" style="display:none;">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold">当前任务进度</h3>
+                        <button id="ai-job-cancel-btn" class="btn text-xs px-3 py-1 text-red-400 border-red-400 hover:bg-red-400/10">取消</button>
+                    </div>
+                    <div id="ai-job-progress-bar" class="w-full bg-gray-700 h-2 mb-3 overflow-hidden">
+                        <div id="ai-job-progress-fill" class="h-full bg-primary transition-all duration-300" style="width:0%"></div>
+                    </div>
+                    <div id="ai-job-progress-stats" class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+                    </div>
+                    <div id="ai-job-progress-status" class="text-xs text-secondary mt-2"></div>
+                </div>
+
+                <!-- Job History -->
+                <div class="bg p-4 border">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold">任务历史</h3>
+                        <button id="ai-jobs-refresh-history" class="btn-dark text-xs px-2 py-1">刷新</button>
+                    </div>
+                    <div class="overflow-x-auto max-h-60 overflow-y-auto border">
+                        <table class="bg w-full text-left border-collapse">
+                            <thead class="border-b">
+                                <tr class="text-secondary text-[10px]">
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">ID</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">状态</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">来源</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Scan</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">已处理</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">标签</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">建议</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">失败</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">本地化</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">创建时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ai-jobs-history-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="ai-jobs-history-empty" class="text-center py-4 text-secondary text-xs" style="display:none;">
+                        暂无任务历史
+                    </div>
+                </div>
+            </div>
+
             <!-- Tag Localization Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="tag-localization-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tag_localization.title') }}</h2>

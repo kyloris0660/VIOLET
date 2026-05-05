@@ -189,7 +189,7 @@ TAG_TRANSLATION_AUTO_MAX_ITEMS=20
 
 ### How it works
 
-1. New tag created (via upload, AI tagging, admin, booru import, etc.)
+1. New tag created (via upload, AI tagging, AI tagging jobs, admin, booru import, etc.)
 2. System checks: is `TAG_TRANSLATION_AUTO_ENABLED=true` AND `TAG_TRANSLATION_LLM_ENABLED=true`?
 3. If yes: spawns a background thread with independent DB session
 4. Thread filters out tags that already have translations (DB or static dict)
@@ -205,6 +205,10 @@ TAG_TRANSLATION_AUTO_MAX_ITEMS=20
 - Exception isolation: worker catches all errors
 - Throttled by `TAG_TRANSLATION_AUTO_MAX_ITEMS`
 - Does NOT modify canonical `tag.name`
+
+### AI Tagging Job Integration (Phase 2.3)
+
+AI tagging jobs (background jobs created manually or automatically after scan import) also trigger auto-translation. When an AI tagging job creates new tags, it schedules a localization pass for those tags, following the same auto-translate rules above. This means newly AI-tagged media will have Chinese display names available shortly after tagging completes, without manual intervention.
 
 ## Translation Priority & Overwrite Rules
 
@@ -236,3 +240,4 @@ From highest to lowest:
 - Search alias cache refreshes every 5 minutes (immediate after Admin UI / auto-translate changes)
 - Only `zh-CN` language supported currently
 - Auto-translate throttled to `TAG_TRANSLATION_AUTO_MAX_ITEMS` per trigger
+- Phase 2.3 AI tagging jobs automatically schedule localization for new tags after completion

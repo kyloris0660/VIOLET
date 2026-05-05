@@ -54,7 +54,8 @@ Core capabilities:
 | AI Tag Review UI | ✅ Done | Confirm / reject / lock / delete suggestions |
 | zh-CN localization foundation | ✅ Done | Chinese UI, tag Chinese display, search aliases |
 | Dynamic tag localization | ✅ Done | DB-backed translations, optional LLM, admin management |
-| Auto AI tagging after import | Phase 2.3 | Optional, non-blocking |
+| Auto AI tagging after import | ✅ Done | Optional, disabled by default |
+| AI tagging background jobs | ✅ Done | Progress tracking, cancel, history |
 | Anime / photo filtering | Phase 3 | Distinguish anime from photos |
 | Reverse image search | Phase 3 | SauceNAO/IQDB integration |
 | Character / copyright database | Future | External data enrichment |
@@ -62,7 +63,6 @@ Core capabilities:
 
 ## Current Limitations
 
-- AI tagging is manual-trigger only (no auto-run after import)
 - No anime/photo filtering
 - No reverse image search
 - No source URL auto-detection
@@ -134,7 +134,7 @@ V.I.O.L.E.T. uses the WDv3 (SmilingWolf) model to predict Danbooru-style tags.
 
 ### Key Points
 
-- Manually triggered from Admin Panel; never auto-runs
+- Manually triggered from Admin Panel, or automatically after import when enabled
 - First use downloads the model from HuggingFace Hub (~450 MB)
 - Dual-threshold system: tags are marked as "confirmed" (searchable) or "suggestion" (pending review)
 - Never overwrites manually added or locked tags
@@ -147,8 +147,8 @@ V.I.O.L.E.T. uses the WDv3 (SmilingWolf) model to predict Danbooru-style tags.
 - This prevents accidental full-library AI tagging
 - Adjustable in `.env`: `AI_TAGGING_BATCH_MAX_ITEMS=50`
 - Not recommended to remove the limit entirely
-- Large batches should use background jobs with progress tracking and cancel
-- Phase 2.3 will add optional auto-tagging after import (disabled by default)
+- Large batches should use background AI tagging jobs with progress tracking and cancel
+- Auto-tagging after import is available via `AI_AUTO_TAG_AFTER_IMPORT=true` (disabled by default)
 
 See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 
@@ -170,6 +170,8 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) | Complete usage guide with examples |
 | [AI Tag Review](docs/ai-tag-review.md) | Review UI and API documentation |
 | [AI Auto Tagging Technical Doc](docs/ai-auto-tagging.md) | Architecture, API reference, data model |
+| [AI Tagging Jobs](docs/ai-tagging-jobs.md) | Background AI tagging job system |
+| [E2E Validation Guide](docs/e2e-violet-test-100.md) | VioletTest100 end-to-end testing |
 | [Local Library Scan](docs/local-library-scan.md) | Scan feature documentation |
 | [Tag Metadata Foundation](docs/tag-metadata-foundation.md) | Provenance tracking system design |
 | [Tag Localization (zh-CN)](docs/tag-localization-zh.md) | Chinese display names and search design |
@@ -180,9 +182,8 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 
 ## Roadmap
 
-- **Phase 2.2.1** — V.I.O.L.E.T. rebrand + zh-CN localization foundation (done)
 - **Phase 2.2.2** — Dynamic tag localization / LLM translation cache (done)
-- **Phase 2.3** — Optional auto-tagging after import (background job, disabled by default)
+- **Phase 2.3** — AI tagging jobs + auto-tag after import (done)
 - **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
 - **Phase 4** — Filesystem watcher & scheduled scans
 

@@ -72,6 +72,9 @@ async def lifespan(app: FastAPI):
                 try:
                     from .utils.local_library_scanner import mark_stale_jobs
                     mark_stale_jobs(_sdb)
+
+                    from .services.ai_tagging_job_service import mark_stale_ai_jobs
+                    mark_stale_ai_jobs(_sdb)
                 finally:
                     _sdb.close()
 
