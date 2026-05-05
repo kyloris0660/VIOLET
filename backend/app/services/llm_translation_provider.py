@@ -1,6 +1,10 @@
 """
 LLM Translation Provider abstraction for tag localization.
 Supports OpenAI-compatible APIs. Defaults to disabled when no API key is configured.
+
+Chunking: large batches are split into chunks of CHUNK_SIZE tags per API call
+to avoid exceeding LLM token limits.  Errors in individual chunks are collected
+and re-raised so callers can report them properly.
 """
 import json
 import logging
@@ -8,6 +12,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, List
 
 logger = logging.getLogger(__name__)
+
+CHUNK_SIZE = 25
 
 
 class TranslationResult:
@@ -61,9 +67,33 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         return "openai_compatible"
 
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
+        """Translate tags in chunks to avoid token limits.
+        Raises on failure so callers can report errors properly."""
         if not self.is_available():
             return []
 
+        all_results: List[TranslationResult] = []
+        errors: List[str] = []
+
+        for i in range(0, len(tags), CHUNK_SIZE):
+            chunk = tags[i:i + CHUNK_SIZE]
+            try:
+                chunk_results = await self._translate_chunk(chunk)
+                all_results.extend(chunk_results)
+            except Exception as e:
+                logger.error(f"LLM chunk {i // CHUNK_SIZE + 1} failed: {e}")
+                errors.append(f"Chunk {i // CHUNK_SIZE + 1} ({len(chunk)} tags): {e}")
+
+        if errors and not all_results:
+            raise RuntimeError(f"All LLM chunks failed: {'; '.join(errors)}")
+
+        if errors:
+            logger.warning(f"LLM translation partially failed: {'; '.join(errors)}")
+
+        return all_results
+
+    async def _translate_chunk(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
+        """Translate a single chunk via the LLM API. Raises on failure."""
         import httpx
 
         tags_text = json.dumps(tags, ensure_ascii=False)
@@ -81,60 +111,59 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         )
         user_prompt = f"Translate these Danbooru tags to Chinese:\n{tags_text}"
 
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 4096,
-                    }
-                )
-                resp.raise_for_status()
-                data = resp.json()
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 4096,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-            content = data["choices"][0]["message"]["content"].strip()
-            if content.startswith("```"):
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        content = data["choices"][0]["message"]["content"].strip()
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(
+                lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+            )
 
-            results_raw = json.loads(content)
-            if not isinstance(results_raw, list):
-                logger.error("LLM returned non-array response")
-                return []
+        results_raw = json.loads(content)
+        if not isinstance(results_raw, list):
+            raise ValueError(f"LLM returned non-array response: {content[:200]}")
 
-            results = []
-            for item in results_raw:
-                if not isinstance(item, dict):
-                    continue
-                cn = item.get("canonical_name", "")
-                dn = item.get("display_name_zh", "")
-                if not cn or not dn:
-                    continue
-                cat = "general"
-                for t in tags:
-                    if t["name"] == cn:
-                        cat = t.get("category", "general")
-                        break
-                results.append(TranslationResult(
-                    canonical_name=cn,
-                    display_name_zh=dn,
-                    aliases_zh=item.get("aliases_zh", []),
-                    notes=item.get("notes", ""),
-                    needs_review=item.get("needs_review", True),
-                    category=cat,
-                ))
-            return results
-
-        except Exception as e:
-            logger.error(f"LLM translation failed: {e}")
-            return []
+        results = []
+        for item in results_raw:
+            if not isinstance(item, dict):
+                continue
+            cn = item.get("canonical_name", "")
+            dn = item.get("display_name_zh", "")
+            if not cn or not dn:
+                continue
+            cat = "general"
+            for t in tags:
+                if t["name"] == cn:
+                    cat = t.get("category", "general")
+                    break
+            results.append(TranslationResult(
+                canonical_name=cn,
+                display_name_zh=dn,
+                aliases_zh=item.get("aliases_zh", []),
+                notes=item.get("notes", ""),
+                needs_review=item.get("needs_review", True),
+                category=cat,
+            ))
+        return results
 
 
 def get_llm_provider() -> BaseLLMProvider:

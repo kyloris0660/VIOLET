@@ -16,23 +16,23 @@ from ..models import (
 from ..utils.logger import logger
 
 
-def _source_prefix(source_path: str) -> str:
-    """Build the source URI prefix for matching."""
-    normalized = source_path.replace("\\", "/")
-    if not normalized.endswith("/"):
-        normalized += "/"
-    return f"file://{normalized}"
-
-
 def _find_media_by_source(db: Session, source_path: str) -> List[Media]:
-    """Find all media imported from the given source path."""
-    prefix = _source_prefix(source_path)
-    exact_prefix = f"file://{source_path.replace(chr(92), '/')}"
+    """Find all media imported from the given source path.
+
+    Matches both forward-slash and backslash variants since the scanner
+    may store either form depending on OS. Backslashes are doubled in
+    LIKE patterns because PostgreSQL treats \\ as an escape character.
+    """
+    fwd = source_path.replace("\\", "/").rstrip("/")
+    bck = source_path.replace("/", "\\").rstrip("\\")
+    bck_escaped = bck.replace("\\", "\\\\")
     return (
         db.query(Media)
         .filter(
-            (Media.source.like(f"{prefix}%")) |
-            (Media.source.like(f"{exact_prefix}%"))
+            (Media.source.like(f"file://{fwd}/%")) |
+            (Media.source.like(f"file://{fwd}%")) |
+            (Media.source.like(f"file://{bck_escaped}\\\\%")) |
+            (Media.source.like(f"file://{bck_escaped}%"))
         )
         .all()
     )

@@ -129,7 +129,9 @@ class TranslationHelper:
             else:
                 return None
 
-        return value if isinstance(value, str) else None
+        if isinstance(value, str) and value:
+            return value
+        return None
 
     def get(self, key: str, lang: str = None, **kwargs) -> str:
         """

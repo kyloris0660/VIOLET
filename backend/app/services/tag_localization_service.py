@@ -297,11 +297,14 @@ async def batch_translate_missing_tags(
     from ..config import settings
 
     provider = get_llm_provider()
+    effective_max = min(max_items, settings.TAG_TRANSLATION_BATCH_MAX_ITEMS)
     result = {
         "dry_run": dry_run,
         "provider": provider.get_provider_name(),
         "provider_available": provider.is_available(),
-        "requested": 0,
+        "requested_max": max_items,
+        "effective_max": effective_max,
+        "candidates": 0,
         "translated": 0,
         "failed": 0,
         "skipped": 0,
@@ -313,11 +316,14 @@ async def batch_translate_missing_tags(
         result["errors"].append("LLM provider not available or not configured")
         return result
 
-    effective_max = min(max_items, settings.TAG_TRANSLATION_BATCH_MAX_ITEMS)
     missing = list_missing_translations(db, lang=lang, limit=effective_max, category=category)
-    result["requested"] = len(missing)
+    result["candidates"] = len(missing)
 
     if not missing:
+        result["errors"].append(
+            "No untranslated tags found matching the criteria. "
+            "All tags may already have translations in DB or static dictionary."
+        )
         return result
 
     tag_inputs = [{"name": t["canonical_name"], "category": t["category"]} for t in missing]
@@ -327,6 +333,14 @@ async def batch_translate_missing_tags(
     except Exception as e:
         logger.error(f"Batch translation failed: {e}")
         result["errors"].append(str(e))
+        result["failed"] = len(missing)
+        return result
+
+    if not translations and missing:
+        result["errors"].append(
+            f"LLM returned 0 translations for {len(missing)} candidates. "
+            "The LLM response may have been empty or malformed."
+        )
         result["failed"] = len(missing)
         return result
 
@@ -367,7 +381,7 @@ async def batch_translate_missing_tags(
                 result["failed"] += 1
 
     if dry_run:
-        result["skipped"] = result["requested"] - result["translated"] - result["failed"]
+        result["skipped"] = result["candidates"] - result["translated"] - result["failed"]
     return result
 
 

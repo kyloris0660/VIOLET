@@ -16,27 +16,32 @@ from ...utils.logger import logger
 router = APIRouter()
 
 
-BLOCKED_PATHS = [
-    "", "C:\\", "C:/", "/",
-    "C:\\Users", "C:/Users",
-]
+BLOCKED_ROOTS = {"", "c:", "c:/", "/", "c:/users"}
 
 
 def _is_dangerous_path(source_path: str) -> bool:
-    """Block dangerous paths."""
-    normalized = source_path.strip().rstrip("/\\")
-    if not normalized:
+    """Block dangerous or restricted paths from E2E reset."""
+    stripped = source_path.strip()
+    if not stripped:
         return True
-    lowered = normalized.lower().replace("\\", "/")
-    for bp in BLOCKED_PATHS:
-        if lowered == bp.lower().replace("\\", "/"):
-            return True
+    lowered = stripped.lower().replace("\\", "/").rstrip("/")
+    if not lowered:
+        return True
+    if lowered in BLOCKED_ROOTS:
+        logger.debug("Blocked by BLOCKED_ROOTS: %s -> %s", source_path, lowered)
+        return True
     if "icloud" in lowered and "photos" in lowered:
         return True
-    project_root = str(_PROJECT_ROOT).lower().replace("\\", "/")
+    project_root = str(_PROJECT_ROOT).lower().replace("\\", "/").rstrip("/")
     if lowered == project_root:
+        logger.debug("Blocked by project_root match: %s == %s", lowered, project_root)
         return True
-    if lowered.endswith("/media/original") or lowered.endswith("/data"):
+    if lowered.startswith(project_root + "/"):
+        logger.debug("Blocked by project_root prefix: %s starts with %s/", lowered, project_root)
+        return True
+    if lowered == "data" or lowered.endswith("/data"):
+        return True
+    if lowered == "media/original" or lowered.endswith("/media/original"):
         return True
     return False
 

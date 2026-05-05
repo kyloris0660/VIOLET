@@ -3679,7 +3679,7 @@ class AdminPanel {
 
     async runBatchTranslation() {
         const dryRun = document.getElementById('tl-batch-dryrun').checked;
-        const maxItems = parseInt(document.getElementById('tl-batch-max').value) || 20;
+        const maxItems = parseInt(document.getElementById('tl-batch-max').value) || 200;
         const category = document.getElementById('tl-batch-category').value || null;
 
         const resultDiv = document.getElementById('tl-batch-result');
@@ -3696,18 +3696,30 @@ class AdminPanel {
             const t = (k) => window.i18n ? window.i18n.t(k) : k;
             let html = `<div class="bg p-3 border text-xs">`;
             html += `<p class="font-bold mb-2">${t('admin.tag_localization.batch_result')}</p>`;
-            html += `<p>${t('admin.tag_localization.batch_translated')}: ${data.translated || 0} | `;
+            if (data.effective_max !== undefined && data.requested_max !== undefined && data.requested_max > data.effective_max) {
+                html += `<p class="text-warning mb-1">请求: ${data.requested_max} → 实际上限: ${data.effective_max} (受后端 TAG_TRANSLATION_BATCH_MAX_ITEMS 限制)</p>`;
+            }
+            html += `<p>候选: ${data.candidates || 0} | `;
+            html += `${t('admin.tag_localization.batch_translated')}: ${data.translated || 0} | `;
             html += `${t('admin.tag_localization.batch_failed')}: ${data.failed || 0} | `;
             html += `${t('admin.tag_localization.batch_skipped')}: ${data.skipped || 0}</p>`;
+            if (data.dry_run) {
+                html += `<p class="text-secondary mt-1">🔍 模拟运行 — 不会写入数据库</p>`;
+            }
             if (data.errors && data.errors.length) {
                 html += `<p class="text-warning mt-1">Errors: ${data.errors.map(e => this.escapeHtml(e)).join('; ')}</p>`;
             }
             if (data.translations && data.translations.length) {
                 html += `<table class="w-full mt-2"><thead><tr><th class="text-left p-1">Tag</th><th class="text-left p-1">中文名</th><th class="text-left p-1">Review</th></tr></thead><tbody>`;
-                for (const tr of data.translations) {
+                const displayLimit = Math.min(data.translations.length, 50);
+                for (let idx = 0; idx < displayLimit; idx++) {
+                    const tr = data.translations[idx];
                     html += `<tr><td class="p-1">${this.escapeHtml(tr.canonical_name)}</td>`;
                     html += `<td class="p-1">${this.escapeHtml(tr.display_name_zh)}</td>`;
                     html += `<td class="p-1">${tr.needs_review ? '⚠️' : '✓'}</td></tr>`;
+                }
+                if (data.translations.length > displayLimit) {
+                    html += `<tr><td colspan="3" class="p-1 text-secondary">... 和其他 ${data.translations.length - displayLimit} 条翻译</td></tr>`;
                 }
                 html += `</tbody></table>`;
             }

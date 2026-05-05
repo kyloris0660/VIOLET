@@ -107,14 +107,14 @@
             "upload_hint": "您可以上传图片、视频或压缩包（ZIP, TAR.GZ）。",
             "upload_media": "上传媒体",
             "thumbnails": {
-                "title": "",
-                "hint": "",
-                "generate_missing": "",
-                "regenerate_all": "",
-                "generating": "",
-                "done_missing": "",
-                "done_all": "",
-                "confirm_regenerate_all": ""
+                "title": "缩略图管理",
+                "hint": "使用以下操作修复损坏或缺失的缩略图。重新生成所有缩略图在大型媒体库中可能需要较长时间。",
+                "generate_missing": "生成缺失缩略图",
+                "regenerate_all": "重新生成所有缩略图",
+                "generating": "正在生成...",
+                "done_missing": "完成！清理孤立文件: {orphans_deleted}。已生成: {generated}。已跳过（正常）: {skipped}。失败: {failed}。",
+                "done_all": "完成！已删除旧缩略图: {deleted}。已生成: {generated}。失败: {failed}。",
+                "confirm_regenerate_all": "此操作将删除所有现有缩略图并从头重新生成。对于大型媒体库可能需要较长时间。是否继续？"
             },
             "booru_import": {
                 "title": "从外部 Booru 导入",
@@ -196,11 +196,11 @@
             "button_tags": "标签（仅显示带有这些标签的媒体）",
             "theme": "主题",
             "upload_date": "上传日期",
-            "media_type_tags": "",
-            "media_type_tags_hint": "",
-            "media_type_tags_images": "",
-            "media_type_tags_gifs": "",
-            "media_type_tags_videos": "",
+            "media_type_tags": "按媒体类型自动添加标签",
+            "media_type_tags_hint": "根据媒体类型自动为上传队列中的每个项目添加标签。",
+            "media_type_tags_images": "图片标签",
+            "media_type_tags_gifs": "GIF 标签",
+            "media_type_tags_videos": "视频标签",
             "booru_config": {
                 "action": "操作",
                 "api_key": "API 密钥 / 密码",
@@ -269,13 +269,13 @@
             "total_tags": "标签总数"
         },
         "tags_implications": {
-            "title": "",
-            "target_tags": "",
-            "implies_tags": "",
-            "target_tags_placeholder": "",
-            "implies_tags_placeholder": "",
-            "configured_implications": "",
-            "description": ""
+            "title": "标签关联",
+            "target_tags": "目标标签",
+            "implies_tags": "关联标签",
+            "target_tags_placeholder": "输入目标标签...",
+            "implies_tags_placeholder": "输入关联标签...",
+            "configured_implications": "已配置的关联",
+            "description": "标签关联允许定义标签之间的关系。当目标标签应用于媒体时，关联标签将自动添加。如果有多个目标标签，仅当所有目标标签都存在时才会添加关联标签。"
         },
         "update": {
             "backup_warning": "如果不小心，更新可能会导致数据丢失。更新前请务必进行备份。",
@@ -508,9 +508,9 @@
         },
         "manual": {
             "empty_message": "未选择任何项目。",
-            "quick_apply_placeholder": "",
-            "add_tags": "",
-            "remove_tags": ""
+            "quick_apply_placeholder": "输入要批量添加/移除的标签...",
+            "add_tags": "添加",
+            "remove_tags": "移除"
         },
         "ai_tags": {
             "default_media_name": "媒体 {id}",
@@ -699,9 +699,9 @@
             "uploaded": "上传时间",
             "duration": "时长",
             "source": "来源",
-            "description": "",
-            "description_placeholder": "",
-            "save_description": ""
+            "description": "描述",
+            "description_placeholder": "添加个人备注或说明...",
+            "save_description": "保存描述"
         },
         "progress": {
             "downloading": "正在下载...",
@@ -848,9 +848,9 @@
             "title": "撤销 API 密钥"
         },
         "regenerate_thumbnails": {
-            "confirm": "",
-            "message": "",
-            "title": ""
+            "confirm": "确认重新生成",
+            "message": "此操作将删除所有现有缩略图并从头重新生成。对于大型媒体库可能需要较长时间。",
+            "title": "重新生成所有缩略图"
         },
         "system_update": {
             "confirm": "立即更新",
@@ -970,8 +970,8 @@
             "parent_set": "父项设置成功",
             "removed_from_album": "已从相册移除",
             "source_updated": "来源更新成功",
-            "description_updated": "",
-            "error_updating_description": "",
+            "description_updated": "描述更新成功",
+            "error_updating_description": "更新描述时出错",
             "rating_updated": "分级更新成功",
             "tags_added": "已添加 {count} 个预测标签"
         },
