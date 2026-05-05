@@ -286,6 +286,31 @@ class Settings:
         return os.getenv("AI_MODEL_NAME", "wd-swinv2-tagger-v3")
 
     @property
+    def TAG_TRANSLATION_LLM_ENABLED(self) -> bool:
+        val = os.getenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def TAG_TRANSLATION_LLM_PROVIDER(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_PROVIDER", "openai_compatible")
+
+    @property
+    def TAG_TRANSLATION_LLM_API_KEY(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_API_KEY", "")
+
+    @property
+    def TAG_TRANSLATION_LLM_MODEL(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_MODEL", "")
+
+    @property
+    def TAG_TRANSLATION_LLM_BASE_URL(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_BASE_URL", "")
+
+    @property
+    def TAG_TRANSLATION_BATCH_MAX_ITEMS(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_BATCH_MAX_ITEMS", "50"))
+
+    @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:
         raw = os.getenv("LOCAL_LIBRARY_PATHS", "")
         if not raw:

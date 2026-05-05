@@ -12,10 +12,12 @@ from ..models import (Album, Media, RatingEnum, Tag, TagCategoryEnum,
                       blombooru_album_media, blombooru_media_tags)
 
 _TAG_ZH_REVERSE = None
+_DB_ALIAS_CACHE = None
+_DB_ALIAS_CACHE_TIME = None
 
 
 def _load_zh_tag_reverse():
-    """Load Chinese → English tag reverse mapping for search alias support."""
+    """Load Chinese → English tag reverse mapping from static file."""
     global _TAG_ZH_REVERSE
     if _TAG_ZH_REVERSE is not None:
         return _TAG_ZH_REVERSE
@@ -30,11 +32,82 @@ def _load_zh_tag_reverse():
     return _TAG_ZH_REVERSE
 
 
+def _load_db_alias_cache():
+    """Load translation aliases from DB into a cache. Refreshes every 5 minutes."""
+    import time
+    global _DB_ALIAS_CACHE, _DB_ALIAS_CACHE_TIME
+
+    now = time.time()
+    if _DB_ALIAS_CACHE is not None and _DB_ALIAS_CACHE_TIME and (now - _DB_ALIAS_CACHE_TIME) < 300:
+        return _DB_ALIAS_CACHE
+
+    try:
+        from ..database import SessionLocal
+        if SessionLocal is None:
+            return {}
+
+        db = SessionLocal()
+        try:
+            from ..models import TagTranslation
+            rows = (
+                db.query(TagTranslation)
+                .filter(
+                    TagTranslation.language == "zh-CN",
+                    TagTranslation.status != "rejected",
+                )
+                .all()
+            )
+
+            cache = {}
+            source_priority = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
+
+            for row in rows:
+                key = row.display_name
+                existing_priority = source_priority.get(cache.get(key, {}).get("_source", ""), 99)
+                new_priority = source_priority.get(row.source, 99)
+
+                if key not in cache or new_priority < existing_priority:
+                    cache[key] = {"canonical": row.canonical_name, "_source": row.source}
+
+                if row.aliases_json:
+                    try:
+                        aliases = json.loads(row.aliases_json)
+                        for alias in aliases:
+                            if not alias:
+                                continue
+                            alias_existing = source_priority.get(cache.get(alias, {}).get("_source", ""), 99)
+                            if alias not in cache or new_priority < alias_existing:
+                                cache[alias] = {"canonical": row.canonical_name, "_source": row.source}
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            _DB_ALIAS_CACHE = {k: v["canonical"] for k, v in cache.items()}
+            _DB_ALIAS_CACHE_TIME = now
+        finally:
+            db.close()
+    except Exception:
+        _DB_ALIAS_CACHE = {}
+        _DB_ALIAS_CACHE_TIME = now
+
+    return _DB_ALIAS_CACHE
+
+
 def resolve_zh_alias(tag_name: str) -> str:
     """Resolve a Chinese tag alias to its canonical English tag name.
-    Returns the original name if no alias found."""
+    Priority: DB translations > static dict > original name."""
+    db_cache = _load_db_alias_cache()
+    if tag_name in db_cache:
+        return db_cache[tag_name]
+
     reverse = _load_zh_tag_reverse()
     return reverse.get(tag_name, tag_name)
+
+
+def invalidate_translation_cache():
+    """Invalidate the DB alias cache so next search picks up new translations."""
+    global _DB_ALIAS_CACHE, _DB_ALIAS_CACHE_TIME
+    _DB_ALIAS_CACHE = None
+    _DB_ALIAS_CACHE_TIME = None
 
 TOKEN_PATTERN = re.compile(r'(-?)(?:([a-zA-Z0-9_]+):)?("[^"]*"|[^\s"]+)')
 

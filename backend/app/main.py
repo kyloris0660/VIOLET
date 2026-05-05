@@ -75,6 +75,17 @@ async def lifespan(app: FastAPI):
                 finally:
                     _sdb.close()
 
+            # Seed static tag translations into DB
+            if _StartupSession is not None:
+                _seed_db = _StartupSession()
+                try:
+                    from .services.tag_localization_service import seed_static_translations
+                    seed_static_translations(_seed_db)
+                except Exception as e:
+                    logger.warning(f"Tag translation seeding skipped: {e}")
+                finally:
+                    _seed_db.close()
+
             # Start periodic cleanup task for abandoned uploads
             async def periodic_upload_chunks_cleanup():
                 while True:

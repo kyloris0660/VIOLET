@@ -387,6 +387,70 @@ class AdminPanel {
                 }
             });
         }
+
+        // Tag Localization
+        this._tlReviewOffset = 0;
+        this._tlReviewLimit = 50;
+        this._tlReviewTotal = 0;
+        this.loadTagLocalizationStats();
+        this.loadLLMStatus();
+
+        const tlSaveBtn = document.getElementById('tl-save-btn');
+        if (tlSaveBtn) {
+            tlSaveBtn.addEventListener('click', () => this.saveTagTranslation());
+        }
+        const tlBatchBtn = document.getElementById('tl-batch-btn');
+        if (tlBatchBtn) {
+            tlBatchBtn.addEventListener('click', () => this.runBatchTranslation());
+        }
+        const tlLoadMissingBtn = document.getElementById('tl-load-missing-btn');
+        if (tlLoadMissingBtn) {
+            tlLoadMissingBtn.addEventListener('click', () => this.loadMissingTranslations());
+        }
+        const tlLoadTransBtn = document.getElementById('tl-load-translations-btn');
+        if (tlLoadTransBtn) {
+            tlLoadTransBtn.addEventListener('click', () => this.loadTranslationReview());
+        }
+        const tlReviewPrevBtn = document.getElementById('tl-review-prev-btn');
+        if (tlReviewPrevBtn) {
+            tlReviewPrevBtn.addEventListener('click', () => this._tlReviewPageNav(-1));
+        }
+        const tlReviewNextBtn = document.getElementById('tl-review-next-btn');
+        if (tlReviewNextBtn) {
+            tlReviewNextBtn.addEventListener('click', () => this._tlReviewPageNav(1));
+        }
+        const tlMissingTbody = document.getElementById('tl-missing-tbody');
+        if (tlMissingTbody) {
+            tlMissingTbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.tl-edit-btn');
+                if (btn) {
+                    document.getElementById('tl-edit-canonical').value = btn.dataset.name || '';
+                    document.getElementById('tl-edit-display').value = '';
+                    document.getElementById('tl-edit-aliases').value = '';
+                    document.getElementById('tl-edit-category').value = btn.dataset.category || '';
+                    document.getElementById('tl-edit-canonical').scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+        const tlReviewTbody = document.getElementById('tl-review-tbody');
+        if (tlReviewTbody) {
+            tlReviewTbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.tl-action-btn');
+                if (btn) {
+                    const action = btn.dataset.action;
+                    const id = parseInt(btn.dataset.id);
+                    this.tagTranslationAction(action, id);
+                }
+                const editBtn = e.target.closest('.tl-review-edit-btn');
+                if (editBtn) {
+                    document.getElementById('tl-edit-canonical').value = editBtn.dataset.name || '';
+                    document.getElementById('tl-edit-display').value = editBtn.dataset.display || '';
+                    document.getElementById('tl-edit-aliases').value = editBtn.dataset.aliases || '';
+                    document.getElementById('tl-edit-category').value = editBtn.dataset.category || '';
+                    document.getElementById('tl-edit-canonical').scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
     }
 
     setupTabs() {
@@ -3251,6 +3315,247 @@ class AdminPanel {
                 window.i18n ? window.i18n.t('notifications.admin.update_failed', { error: e.message }) : `Update failed: ${e.message}`,
                 'error'
             );
+        }
+    }
+    // ---- Tag Localization ----
+
+    async loadTagLocalizationStats() {
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/stats');
+            const el = (id) => document.getElementById(id);
+            if (el('tl-total-tags')) el('tl-total-tags').textContent = data.total_tags || 0;
+            if (el('tl-translated')) el('tl-translated').textContent = data.total_covered || 0;
+            if (el('tl-missing')) el('tl-missing').textContent = data.missing || 0;
+            if (el('tl-needs-review')) el('tl-needs-review').textContent = data.needs_review || 0;
+
+            const breakdown = data.source_breakdown || {};
+            const parts = [];
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            if (breakdown.static) parts.push(`${t('admin.tag_localization.source_static')}: ${breakdown.static}`);
+            if (breakdown.manual) parts.push(`${t('admin.tag_localization.source_manual')}: ${breakdown.manual}`);
+            if (breakdown.llm) parts.push(`${t('admin.tag_localization.source_llm')}: ${breakdown.llm}`);
+            if (breakdown.imported) parts.push(`${t('admin.tag_localization.source_imported')}: ${breakdown.imported}`);
+            const bd = el('tl-source-breakdown');
+            if (bd) bd.textContent = parts.length ? `${t('admin.tag_localization.source_breakdown')}: ${parts.join(' | ')}` : '';
+        } catch (e) {
+            console.error('Failed to load tag localization stats:', e);
+        }
+    }
+
+    async loadLLMStatus() {
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/llm-status');
+            const el = document.getElementById('tl-llm-status');
+            if (!el) return;
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            if (!data.enabled) {
+                el.innerHTML = `<span class="text-warning">${t('admin.tag_localization.llm_not_configured')}</span>`;
+            } else {
+                const statusText = data.available ? t('admin.tag_localization.llm_available') : t('admin.tag_localization.llm_unavailable');
+                const statusClass = data.available ? 'text-success' : 'text-warning';
+                el.innerHTML = `${t('admin.tag_localization.llm_status')}: <span class="${statusClass}">${statusText}</span>` +
+                    (data.model ? ` | Model: ${this.escapeHtml(data.model)}` : '');
+            }
+        } catch (e) {
+            console.error('Failed to load LLM status:', e);
+        }
+    }
+
+    async saveTagTranslation() {
+        const canonical = document.getElementById('tl-edit-canonical').value.trim();
+        const display = document.getElementById('tl-edit-display').value.trim();
+        if (!canonical || !display) {
+            app.showNotification('Please fill in canonical tag and display name', 'error');
+            return;
+        }
+        const aliasStr = document.getElementById('tl-edit-aliases').value.trim();
+        const aliases = aliasStr ? aliasStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const category = document.getElementById('tl-edit-category').value || null;
+        const reviewed = document.getElementById('tl-edit-reviewed').checked;
+
+        try {
+            await app.apiCall('/api/admin/tag-localization/translations', {
+                method: 'POST',
+                body: JSON.stringify({
+                    canonical_name: canonical,
+                    display_name: display,
+                    aliases: aliases,
+                    category: category,
+                    source: 'manual',
+                    status: reviewed ? 'reviewed' : 'translated',
+                    needs_review: !reviewed,
+                })
+            });
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            app.showNotification(t('admin.tag_localization.translation_saved'), 'success');
+            document.getElementById('tl-edit-canonical').value = '';
+            document.getElementById('tl-edit-display').value = '';
+            document.getElementById('tl-edit-aliases').value = '';
+            this.loadTagLocalizationStats();
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    async runBatchTranslation() {
+        const dryRun = document.getElementById('tl-batch-dryrun').checked;
+        const maxItems = parseInt(document.getElementById('tl-batch-max').value) || 20;
+        const category = document.getElementById('tl-batch-category').value || null;
+
+        const resultDiv = document.getElementById('tl-batch-result');
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = '<span class="text-secondary text-xs">Processing...</span>';
+
+        try {
+            const body = { dry_run: dryRun, max_items: maxItems };
+            if (category) body.category = category;
+            const data = await app.apiCall('/api/admin/tag-localization/batch-translate', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            let html = `<div class="bg p-3 border text-xs">`;
+            html += `<p class="font-bold mb-2">${t('admin.tag_localization.batch_result')}</p>`;
+            html += `<p>${t('admin.tag_localization.batch_translated')}: ${data.translated || 0} | `;
+            html += `${t('admin.tag_localization.batch_failed')}: ${data.failed || 0} | `;
+            html += `${t('admin.tag_localization.batch_skipped')}: ${data.skipped || 0}</p>`;
+            if (data.errors && data.errors.length) {
+                html += `<p class="text-warning mt-1">Errors: ${data.errors.map(e => this.escapeHtml(e)).join('; ')}</p>`;
+            }
+            if (data.translations && data.translations.length) {
+                html += `<table class="w-full mt-2"><thead><tr><th class="text-left p-1">Tag</th><th class="text-left p-1">中文名</th><th class="text-left p-1">Review</th></tr></thead><tbody>`;
+                for (const tr of data.translations) {
+                    html += `<tr><td class="p-1">${this.escapeHtml(tr.canonical_name)}</td>`;
+                    html += `<td class="p-1">${this.escapeHtml(tr.display_name_zh)}</td>`;
+                    html += `<td class="p-1">${tr.needs_review ? '⚠️' : '✓'}</td></tr>`;
+                }
+                html += `</tbody></table>`;
+            }
+            html += `</div>`;
+            resultDiv.innerHTML = html;
+            this.loadTagLocalizationStats();
+        } catch (e) {
+            resultDiv.innerHTML = `<span class="text-warning text-xs">Error: ${this.escapeHtml(e.message || String(e))}</span>`;
+        }
+    }
+
+    async loadMissingTranslations() {
+        const category = document.getElementById('tl-missing-category').value || '';
+        const tbody = document.getElementById('tl-missing-tbody');
+        const thead = document.getElementById('tl-missing-thead');
+        const emptyDiv = document.getElementById('tl-missing-empty');
+
+        try {
+            let url = '/api/admin/tag-localization/missing?limit=100';
+            if (category) url += `&category=${category}`;
+            const items = await app.apiCall(url);
+            tbody.innerHTML = '';
+            if (!items || items.length === 0) {
+                thead.classList.add('hidden');
+                emptyDiv.classList.remove('hidden');
+                return;
+            }
+            thead.classList.remove('hidden');
+            emptyDiv.classList.add('hidden');
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            for (const item of items) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2">${this.escapeHtml(item.canonical_name)}</td>
+                    <td class="p-2"><span class="tag ${this.escapeHtml(item.category)} tag-text text-xs">${this.escapeHtml(item.category)}</span></td>
+                    <td class="p-2">${item.post_count}</td>
+                    <td class="p-2"><button class="btn btn-sm px-2 py-0.5 text-xs tl-edit-btn" data-name="${this.escapeHtml(item.canonical_name)}" data-category="${this.escapeHtml(item.category)}">${t('admin.tag_localization.edit')}</button></td>
+                `;
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    async loadTranslationReview() {
+        const search = document.getElementById('tl-review-search').value.trim();
+        const source = document.getElementById('tl-review-source').value;
+        const status = document.getElementById('tl-review-status').value;
+        const needsReview = document.getElementById('tl-review-needs-review').checked;
+        const tbody = document.getElementById('tl-review-tbody');
+        const thead = document.getElementById('tl-review-thead');
+        const emptyDiv = document.getElementById('tl-review-empty');
+        const pagination = document.getElementById('tl-review-pagination');
+
+        try {
+            let url = `/api/admin/tag-localization/translations?limit=${this._tlReviewLimit}&offset=${this._tlReviewOffset}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (source) url += `&source=${source}`;
+            if (status) url += `&status=${status}`;
+            if (needsReview) url += `&needs_review=true`;
+            const data = await app.apiCall(url);
+            this._tlReviewTotal = data.total || 0;
+            tbody.innerHTML = '';
+            if (!data.items || data.items.length === 0) {
+                thead.classList.add('hidden');
+                emptyDiv.classList.remove('hidden');
+                pagination.style.display = 'none';
+                return;
+            }
+            thead.classList.remove('hidden');
+            emptyDiv.classList.add('hidden');
+            pagination.style.display = 'flex';
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            for (const item of data.items) {
+                const aliases = (item.aliases || []).join(', ');
+                const reviewBadge = item.needs_review ? ' <span class="text-warning" title="needs review">⚠️</span>' : '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2">${this.escapeHtml(item.canonical_name)}</td>
+                    <td class="p-2">${this.escapeHtml(item.display_name)}${reviewBadge}</td>
+                    <td class="p-2 text-secondary">${this.escapeHtml(aliases)}</td>
+                    <td class="p-2"><span class="text-xs">${this.escapeHtml(item.source)}</span></td>
+                    <td class="p-2"><span class="text-xs">${this.escapeHtml(item.status)}</span></td>
+                    <td class="p-2">
+                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="approve" data-id="${item.id}" title="${t('admin.tag_localization.approve')}">✓</button>
+                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="reject" data-id="${item.id}" title="${t('admin.tag_localization.reject')}">✗</button>
+                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="delete" data-id="${item.id}" title="${t('admin.tag_localization.delete')}">🗑</button>
+                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-review-edit-btn" data-name="${this.escapeHtml(item.canonical_name)}" data-display="${this.escapeHtml(item.display_name)}" data-aliases="${this.escapeHtml(aliases)}" data-category="${this.escapeHtml(item.category || '')}" title="${t('admin.tag_localization.edit')}">✏</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+            const pageInfo = document.getElementById('tl-review-page-info');
+            const start = this._tlReviewOffset + 1;
+            const end = Math.min(this._tlReviewOffset + data.items.length, this._tlReviewTotal);
+            pageInfo.textContent = `${start}-${end} / ${this._tlReviewTotal}`;
+            document.getElementById('tl-review-prev-btn').disabled = this._tlReviewOffset === 0;
+            document.getElementById('tl-review-next-btn').disabled = end >= this._tlReviewTotal;
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    _tlReviewPageNav(dir) {
+        if (dir < 0) {
+            this._tlReviewOffset = Math.max(0, this._tlReviewOffset - this._tlReviewLimit);
+        } else {
+            this._tlReviewOffset += this._tlReviewLimit;
+        }
+        this.loadTranslationReview();
+    }
+
+    async tagTranslationAction(action, id) {
+        const t = (k) => window.i18n ? window.i18n.t(k) : k;
+        try {
+            if (action === 'approve' || action === 'reject') {
+                await app.apiCall(`/api/admin/tag-localization/translations/${id}/review?action=${action}`, { method: 'POST' });
+                const msg = action === 'approve' ? t('admin.tag_localization.translation_approved') : t('admin.tag_localization.translation_rejected');
+                app.showNotification(msg, 'success');
+            } else if (action === 'delete') {
+                await app.apiCall(`/api/admin/tag-localization/translations/${id}`, { method: 'DELETE' });
+                app.showNotification(t('admin.tag_localization.translation_deleted'), 'success');
+            }
+            this.loadTranslationReview();
+            this.loadTagLocalizationStats();
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
         }
     }
 }
