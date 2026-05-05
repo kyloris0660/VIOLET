@@ -172,6 +172,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [AI Auto Tagging Technical Doc](docs/ai-auto-tagging.md) | Architecture, API reference, data model |
 | [AI Tagging Jobs](docs/ai-tagging-jobs.md) | Background AI tagging job system |
 | [E2E Validation Guide](docs/e2e-violet-test-100.md) | VioletTest100 end-to-end testing |
+| `scripts/reset_e2e_test_data.py` | CLI tool to reset E2E test data |
 | [Local Library Scan](docs/local-library-scan.md) | Scan feature documentation |
 | [Tag Metadata Foundation](docs/tag-metadata-foundation.md) | Provenance tracking system design |
 | [Tag Localization (zh-CN)](docs/tag-localization-zh.md) | Chinese display names and search design |
@@ -184,6 +185,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 
 - **Phase 2.2.2** — Dynamic tag localization / LLM translation cache (done)
 - **Phase 2.3** — AI tagging jobs + auto-tag after import (done)
+- **Phase 2.3a** — Developer E2E tools + config diagnostics (done)
 - **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
 - **Phase 4** — Filesystem watcher & scheduled scans
 

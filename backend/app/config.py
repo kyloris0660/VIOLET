@@ -6,7 +6,8 @@ from typing import List, Optional
 from dotenv import load_dotenv
 from sqlalchemy.engine import URL
 
-load_dotenv()
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=True)
 
 APP_VERSION = "1.39.0"
 SCHEMA_VERSION = 5

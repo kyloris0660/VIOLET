@@ -693,6 +693,64 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Developer / E2E Tools Section (Phase 2.3a) -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="dev-tools-section">
+                <h2 class="text-base font-bold mb-4 pb-3 border-b">
+                    开发者 / E2E 工具
+                    <span class="text-xs font-normal text-yellow-400 ml-2">仅限本地开发</span>
+                </h2>
+
+                <!-- Config Diagnostics -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-bold">配置诊断</h3>
+                        <button id="dev-refresh-config" class="text-xs text-primary hover:underline">刷新</button>
+                    </div>
+                    <p class="text-xs text-secondary mb-2">显示后端实际读取的 .env 配置值。修改 .env 后需重启服务。</p>
+                    <div id="dev-config-content" class="bg p-3 border text-xs">
+                        <span class="text-secondary">加载中...</span>
+                    </div>
+                </div>
+
+                <!-- Recommended E2E Config -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-bold">推荐 E2E 测试配置</h3>
+                        <button id="dev-show-recommended" class="text-xs text-primary hover:underline">显示</button>
+                    </div>
+                    <div id="dev-recommended-config" class="bg p-3 border text-xs hidden">
+                        <p class="text-secondary mb-2">将以下内容复制到 .env 文件，并重启服务：</p>
+                        <pre id="dev-recommended-snippet" class="bg-black bg-opacity-20 p-2 border font-mono text-[10px] whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+
+                <!-- Reset E2E Test Data -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-2">重置 E2E 测试数据</h3>
+                    <div class="bg-red-900 bg-opacity-20 border border-red-700 p-3 mb-3 text-xs">
+                        <strong class="text-red-400">⚠ 警告：</strong>
+                        仅用于 VioletTest100 等测试目录。不要用于真实 iCloud Photos 数据。
+                        此操作将删除从指定目录导入的所有媒体、标签关联、扫描任务和 AI 打标任务。
+                        <strong>原始测试目录中的文件不会被删除。</strong>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-1">源目录路径</label>
+                            <input type="text" id="dev-reset-source-path"
+                                value="C:\Users\kyloris\Pictures\VioletTest100"
+                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                        </div>
+                        <div class="flex items-end gap-2">
+                            <button id="dev-reset-dryrun-btn" class="btn-primary text-xs px-4 py-2">Dry Run 预览</button>
+                            <button id="dev-reset-real-btn" class="text-xs px-4 py-2 bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors">执行重置</button>
+                        </div>
+                    </div>
+                    <div id="dev-reset-result" class="hidden bg p-3 border text-xs mt-2">
+                        <span class="text-secondary">等待操作...</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Content Tab -->
