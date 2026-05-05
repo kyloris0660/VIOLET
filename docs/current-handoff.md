@@ -200,6 +200,28 @@ Background AI tagging job system with optional auto-tag after import:
 | `docs/ai-tagging-jobs.md` | AI tagging jobs documentation |
 | `docs/e2e-violet-test-100.md` | E2E validation guide |
 
+### Phase 2.3a — Developer E2E Tools + Config Diagnostics
+
+Config fix and developer tooling for E2E validation:
+
+- **Config fix**: `load_dotenv()` now uses explicit project-root path with `override=True`
+- **Config diagnostics API**: `GET /api/admin/dev/config-diagnostics` returns all runtime config values (no secrets)
+- **E2E reset API**: `POST /api/admin/dev/reset-e2e-test-data` with dry-run support
+- **Developer Tools UI**: Admin → System → "Developer / E2E Tools" section
+- **Reset CLI**: `scripts/reset_e2e_test_data.py`
+- **Runtime override**: Not implemented — use `.env` + restart instead
+
+#### Key files changed
+
+| File | Change |
+|------|--------|
+| `backend/app/config.py` | `load_dotenv(override=True)` with explicit path |
+| `backend/app/routes/admin/dev_tools.py` | Config diagnostics, reset, recommended config APIs |
+| `backend/app/services/e2e_reset_service.py` | Reset logic (summary + execute) |
+| `frontend/templates/admin.html` | Developer Tools UI section |
+| `frontend/static/js/admin.js` | Developer Tools frontend logic |
+| `scripts/reset_e2e_test_data.py` | CLI reset script |
+
 ## What Has NOT Been Built
 
 - No anime/photo filtering (Phase 3)

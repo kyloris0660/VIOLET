@@ -159,6 +159,13 @@ See [Tag Localization LLM](tag-localization-llm.md) and [Tag Localization zh-CN]
 
 See [AI Tagging Jobs](ai-tagging-jobs.md) and [E2E Validation Guide](e2e-violet-test-100.md) for documentation.
 
+### Phase 2.3a — Developer E2E Tools + Config Diagnostics
+
+- Fixed `load_dotenv()` to use explicit project-root path with `override=True`
+- Added config diagnostics API (`GET /api/admin/dev/config-diagnostics`)
+- Added E2E test data reset API + CLI script
+- Added Developer Tools UI in Admin Panel (System tab)
+
 ---
 
 ## Upcoming Phases

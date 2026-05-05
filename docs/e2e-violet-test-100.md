@@ -313,3 +313,63 @@ DELETE FROM blombooru_media;
 ```
 
 > **⚠️ 注意：** 上面的 SQL 会删除所有媒体数据。仅在测试环境使用。
+
+## Reset Test Data
+
+When you need to re-run the full E2E pipeline from scratch, reset test data first.
+
+### GUI Reset
+
+1. Go to **Admin → System → Developer / E2E Tools**
+2. In the "Reset E2E Test Data" section, enter the source path:
+   `C:\Users\kyloris\Pictures\VioletTest100`
+3. Click **Dry Run Preview** to see what will be deleted
+4. Review the summary (media count, files, thumbnails, scan jobs, AI jobs)
+5. Click **Execute Reset** and confirm
+
+### API Reset
+
+```powershell
+# Dry-run (preview only)
+$body = @{ source_path = "C:\Users\kyloris\Pictures\VioletTest100"; dry_run = $true; confirm = $false } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:8000/api/admin/dev/reset-e2e-test-data" -Method POST -Body $body -ContentType "application/json" -Headers @{Authorization = "Bearer $token"; Cookie = "admin_mode=true"}
+
+# Real reset
+$body = @{ source_path = "C:\Users\kyloris\Pictures\VioletTest100"; dry_run = $false; confirm = $true } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:8000/api/admin/dev/reset-e2e-test-data" -Method POST -Body $body -ContentType "application/json" -Headers @{Authorization = "Bearer $token"; Cookie = "admin_mode=true"}
+```
+
+### CLI Reset
+
+```bash
+# Dry-run (default)
+python scripts/reset_e2e_test_data.py --source-path "C:\Users\kyloris\Pictures\VioletTest100"
+
+# Real deletion
+python scripts/reset_e2e_test_data.py --source-path "C:\Users\kyloris\Pictures\VioletTest100" --yes
+```
+
+### What Gets Deleted
+
+- Media records imported from the specified source path
+- Copied files in `media/original/` and thumbnails
+- Tag associations (media-tag links)
+- Related scan jobs and scan-job-media links
+- Related AI tagging jobs
+- Tag `post_count` is recalculated
+
+### What Is NOT Deleted
+
+- Original files in `C:\Users\kyloris\Pictures\VioletTest100\`
+- Tags themselves (they remain in the database)
+- Tag translations
+- Other media not from this source path
+
+### Config Diagnostics
+
+If config values seem wrong (e.g., batch_max_items shows 20 when you set 200), use the config diagnostics tool:
+
+1. **Admin → System → Developer / E2E Tools → Config Diagnostics**
+2. Or call: `GET /api/admin/dev/config-diagnostics`
+
+Important: After changing `.env`, you **must restart the server** for changes to take effect.

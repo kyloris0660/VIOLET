@@ -341,6 +341,25 @@ The Admin Panel → Content tab includes an **AI Tagging Jobs** section:
 | `frontend/templates/admin.html` | Admin UI (AI Tagging Jobs section) |
 | `frontend/static/js/admin.js` | UI polling and job management logic |
 
+## Config Diagnostics
+
+If config values appear incorrect (e.g., `batch_max_items` shows a wrong value), use the config diagnostics endpoint:
+
+```
+GET /api/admin/dev/config-diagnostics
+```
+
+This returns all runtime config values including AI tagging, auto-tag, tag localization, and path settings. No secrets are exposed.
+
+### Why Config Values Might Be Wrong
+
+Phase 2.3a fixed an issue where `load_dotenv()` could load an `.env` file from the wrong location or fail to override existing environment variables. The fix:
+
+- Before: `load_dotenv()` (searches from `backend/app/` upward, `override=False`)
+- After: `load_dotenv(dotenv_path=<project_root>/.env, override=True)`
+
+Always restart the server after changing `.env`.
+
 ## Related Documentation
 
 - [AI Auto Tagging (Phase 2.1)](ai-auto-tagging.md) — model, thresholds, single/batch API

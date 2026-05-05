@@ -74,6 +74,8 @@ No automated test suite. Verify changes manually:
 | Tag Localization Admin | `backend/app/routes/admin/tag_localization.py` | Admin API for translation CRUD + batch LLM |
 | AI Tagging Jobs | `backend/app/services/ai_tagging_job_service.py` | Background AI tagging job worker |
 | AI Tagging Jobs API | `backend/app/routes/admin/ai_tagging_jobs.py` | AI job CRUD + cancel endpoints |
+| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics, E2E reset |
+| E2E Reset Service | `backend/app/services/e2e_reset_service.py` | Test data reset logic |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |
 
 ### Development workflow

@@ -481,6 +481,25 @@ class AdminPanel {
                 }
             });
         }
+
+        // Developer / E2E Tools (Phase 2.3a)
+        const devRefreshConfig = document.getElementById('dev-refresh-config');
+        if (devRefreshConfig) {
+            devRefreshConfig.addEventListener('click', () => this.loadDevConfigDiagnostics());
+        }
+        const devShowRecommended = document.getElementById('dev-show-recommended');
+        if (devShowRecommended) {
+            devShowRecommended.addEventListener('click', () => this.loadRecommendedE2EConfig());
+        }
+        const devResetDryrunBtn = document.getElementById('dev-reset-dryrun-btn');
+        if (devResetDryrunBtn) {
+            devResetDryrunBtn.addEventListener('click', () => this.resetE2ETestData(true));
+        }
+        const devResetRealBtn = document.getElementById('dev-reset-real-btn');
+        if (devResetRealBtn) {
+            devResetRealBtn.addEventListener('click', () => this.resetE2ETestData(false));
+        }
+        this.loadDevConfigDiagnostics();
     }
 
     setupTabs() {
@@ -3361,15 +3380,15 @@ class AdminPanel {
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <div>AI 打标总开关：${badge(data.ai_tagging_enabled)}</div>
                     <div>导入后自动打标：${badge(data.auto_tag_after_import)}</div>
-                    <div>自动打标最大数量：<span class="font-bold">${data.auto_tag_max_items}</span></div>
+                    <div>自动打标最大数量：<span class="font-bold text-yellow-300">${data.auto_tag_max_items}</span></div>
                     <div>仅处理新导入：${badge(data.auto_tag_only_new)}</div>
                     <div>Dry Run 模式：${badge(data.auto_tag_dry_run)}</div>
                     <div>强制为建议：${badge(data.auto_tag_force_suggestions)}</div>
-                    <div>Batch 上限：<span class="font-bold">${data.batch_max_items}</span></div>
+                    <div>Batch 上限 (AI_TAGGING_BATCH_MAX_ITEMS)：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
                     <div>自动翻译：${badge(data.tag_translation_auto)}</div>
                     <div>LLM 翻译：${badge(data.tag_translation_llm)}</div>
                 </div>
-                <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，此处仅只读显示。</p>
+                <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，修改后需重启服务。详细诊断见 System → 开发者工具。</p>
             `;
         } catch (e) {
             el.textContent = `加载失败: ${e.message || e}`;
@@ -3817,6 +3836,153 @@ class AdminPanel {
             this.loadTagLocalizationStats();
         } catch (e) {
             app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    // ---- Developer / E2E Tools (Phase 2.3a) ----
+
+    async loadDevConfigDiagnostics() {
+        const el = document.getElementById('dev-config-content');
+        if (!el) return;
+        try {
+            const data = await app.apiCall('/api/admin/dev/config-diagnostics', { method: 'GET' });
+            const badge = (val) => val
+                ? '<span class="text-green-400 font-bold">ON</span>'
+                : '<span class="text-red-400 font-bold">OFF</span>';
+            const ai = data.ai_tagging || {};
+            const auto = data.auto_tag_after_import || {};
+            const loc = data.tag_localization || {};
+            const paths = data.paths || {};
+
+            el.innerHTML = `
+                <div class="mb-3">
+                    <div class="font-bold text-xs mb-1 text-primary">AI Tagging</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                        <div>启用：${badge(ai.enabled)}</div>
+                        <div>Batch 上限：<span class="font-bold text-yellow-300">${ai.batch_max_items}</span></div>
+                        <div>模型：${ai.model_name || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="font-bold text-xs mb-1 text-primary">导入后自动打标</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                        <div>启用：${badge(auto.enabled)}</div>
+                        <div>最大数量：<span class="font-bold text-yellow-300">${auto.max_items}</span></div>
+                        <div>仅新导入：${badge(auto.only_new)}</div>
+                        <div>Dry Run：${badge(auto.dry_run)}</div>
+                        <div>强制建议：${badge(auto.force_suggestions)}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="font-bold text-xs mb-1 text-primary">标签本地化</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                        <div>LLM 翻译：${badge(loc.llm_enabled)}</div>
+                        <div>自动翻译：${badge(loc.auto_enabled)}</div>
+                        <div>自动上限：<span class="font-bold">${loc.auto_max_items}</span></div>
+                        <div>批量上限：<span class="font-bold">${loc.batch_max_items}</span></div>
+                        <div>API Key：${badge(loc.api_key_configured)}</div>
+                        <div>模型：${loc.model || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="font-bold text-xs mb-1 text-primary">路径</div>
+                    <div>LOCAL_LIBRARY_PATHS：<span class="font-mono">${(paths.local_library_paths || []).join(', ') || '(未配置)'}</span></div>
+                </div>
+                <div class="text-[10px] text-secondary mt-2">
+                    .env 路径：${data.env_file || '(unknown)'}　|　修改 .env 后需重启服务
+                </div>
+            `;
+        } catch (e) {
+            el.textContent = `加载失败: ${e.message || e}`;
+        }
+    }
+
+    async loadRecommendedE2EConfig() {
+        const container = document.getElementById('dev-recommended-config');
+        const snippet = document.getElementById('dev-recommended-snippet');
+        if (!container || !snippet) return;
+
+        if (!container.classList.contains('hidden')) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        try {
+            const data = await app.apiCall('/api/admin/dev/recommended-e2e-config', { method: 'GET' });
+            snippet.textContent = data.snippet || '';
+            container.classList.remove('hidden');
+        } catch (e) {
+            snippet.textContent = `加载失败: ${e.message || e}`;
+            container.classList.remove('hidden');
+        }
+    }
+
+    async resetE2ETestData(dryRun) {
+        const sourcePath = document.getElementById('dev-reset-source-path')?.value?.trim();
+        const resultDiv = document.getElementById('dev-reset-result');
+        if (!sourcePath) {
+            app.showNotification('请输入源目录路径', 'error');
+            return;
+        }
+        if (!resultDiv) return;
+
+        if (!dryRun) {
+            if (!confirm('确定要执行真实重置吗？这将删除所有从该目录导入的数据。原始文件不受影响。')) {
+                return;
+            }
+        }
+
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = '<span class="text-secondary">处理中...</span>';
+
+        try {
+            const data = await app.apiCall('/api/admin/dev/reset-e2e-test-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_path: sourcePath,
+                    dry_run: dryRun,
+                    confirm: !dryRun,
+                }),
+            });
+            const s = data.summary || {};
+            const label = dryRun ? '🔍 Dry Run 预览' : '✅ 重置完成';
+            let html = `<div class="font-bold mb-2">${label}</div>`;
+
+            if (dryRun) {
+                html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-1">
+                    <div>媒体：${s.media_count || 0}</div>
+                    <div>复制文件：${s.copied_files_count || 0}</div>
+                    <div>缩略图：${s.thumbnail_files_count || 0}</div>
+                    <div>标签关联：${s.tag_associations_count || 0}</div>
+                    <div>受影响标签：${s.affected_tags_count || 0}</div>
+                    <div>扫描任务：${s.scan_job_count || 0}</div>
+                    <div>AI 打标任务：${s.ai_tag_job_count || 0}</div>
+                    <div>导入链接：${s.scan_job_media_count || 0}</div>
+                </div>`;
+                if (s.media_count === 0) {
+                    html += '<div class="text-secondary mt-2">未找到从该目录导入的数据。</div>';
+                }
+            } else {
+                html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-1">
+                    <div>删除媒体：${s.media_deleted || 0}</div>
+                    <div>删除文件：${s.files_deleted || 0}</div>
+                    <div>删除缩略图：${s.thumbnails_deleted || 0}</div>
+                    <div>删除标签关联：${s.tag_associations_deleted || 0}</div>
+                    <div>删除扫描任务：${s.scan_jobs_deleted || 0}</div>
+                    <div>删除 AI 任务：${s.ai_tag_jobs_deleted || 0}</div>
+                    <div>标签重算：${s.tags_recalculated || 0}</div>
+                </div>`;
+                html += '<div class="text-green-400 mt-2">重置完成，可以重新运行 E2E 测试。</div>';
+            }
+
+            resultDiv.innerHTML = html;
+            if (!dryRun) {
+                app.showNotification('E2E 测试数据已重置', 'success');
+            }
+        } catch (e) {
+            resultDiv.innerHTML = `<span class="text-red-500">失败: ${e.message || e}</span>`;
+            app.showNotification(`重置失败: ${e.message || e}`, 'error');
         }
     }
 }
