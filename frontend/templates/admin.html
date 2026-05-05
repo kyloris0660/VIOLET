@@ -1157,7 +1157,12 @@
                     <h3 class="text-sm font-bold mb-3">{{ t('admin.tag_localization.batch_translate') }}</h3>
                     <div class="bg p-4 border">
                         <p class="text-xs text-secondary mb-3">{{ t('admin.tag_localization.batch_description') }}</p>
-                        <div id="tl-llm-status" class="text-xs mb-3"></div>
+                        <div id="tl-llm-status" class="text-xs mb-3 bg p-3 border"></div>
+                        <div class="flex flex-wrap items-center gap-3 mb-2">
+                            <button id="tl-test-llm-btn" class="btn px-3 py-1 text-xs">{{ t('admin.tag_localization.test_llm') }}</button>
+                            <button id="tl-refresh-missing-btn" class="btn px-3 py-1 text-xs">{{ t('admin.tag_localization.refresh_missing') }}</button>
+                        </div>
+                        <div id="tl-test-result" class="text-xs mb-3 hidden"></div>
                         <div class="flex flex-wrap items-center gap-3 mb-3">
                             <label class="flex items-center gap-2 text-xs">
                                 <input type="checkbox" id="tl-batch-dryrun" checked> {{ t('admin.tag_localization.dry_run') }}

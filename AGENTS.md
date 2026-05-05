@@ -69,7 +69,7 @@ No automated test suite. Verify changes manually:
 | Booru import | `backend/app/routes/booru_import.py` | Danbooru/Gelbooru URL import |
 | Auth | `backend/app/auth.py` | JWT + admin_mode cookie |
 | Tag Localization | `frontend/static/data/tag_translations_zh.json`, `frontend/static/js/tag-localization.js` | Chinese display names for tags |
-| Tag Localization Service | `backend/app/services/tag_localization_service.py` | DB-backed translation management, seeding, batch translate |
+| Tag Localization Service | `backend/app/services/tag_localization_service.py` | DB-backed translation management, seeding, batch/auto translate |
 | LLM Translation Provider | `backend/app/services/llm_translation_provider.py` | Abstract LLM provider (OpenAI-compatible, disabled) |
 | Tag Localization Admin | `backend/app/routes/admin/tag_localization.py` | Admin API for translation CRUD + batch LLM |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |

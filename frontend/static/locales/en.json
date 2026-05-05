@@ -425,7 +425,17 @@
             "load_translations": "Load Translations",
             "previous": "Previous",
             "next": "Next",
-            "search_placeholder": "Search tags..."
+            "search_placeholder": "Search tags...",
+            "test_llm": "Test LLM Translation",
+            "test_success": "LLM test successful",
+            "test_failed": "LLM test failed",
+            "refresh_missing": "Refresh Stats",
+            "auto_enabled": "Auto Translation",
+            "auto_enabled_yes": "Enabled",
+            "auto_enabled_no": "Disabled",
+            "api_key_configured": "API Key",
+            "api_key_yes": "Configured",
+            "api_key_no": "Not configured"
         },
         "ai_tag_review": {
             "title": "AI Tag Review",

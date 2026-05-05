@@ -357,7 +357,8 @@ async def bulk_create_tags(
     created = 0
     skipped = 0
     errors = []
-    
+    new_tag_names = []
+
     for tag_data in tags_to_create:
         try:
             tag_name = tag_data['name'].lower().strip()
@@ -379,16 +380,24 @@ async def bulk_create_tags(
             tag = Tag(name=tag_name, category=category)
             db.add(tag)
             created += 1
-            
+            new_tag_names.append(tag_name)
+
         except Exception as e:
             errors.append({"key": "notifications.admin.error_creating_tag", "tag": tag_data.get('name'), "error": str(e)})
-            
+
     try:
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=safe_error_detail("Database error", e))
-        
+
+    if new_tag_names:
+        try:
+            from ...services.tag_localization_service import schedule_auto_translate
+            schedule_auto_translate(new_tag_names)
+        except Exception:
+            pass
+
     return {
         "message_key": "notifications.admin.bulk_tag_creation_complete",
         "created": created,

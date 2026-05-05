@@ -425,7 +425,17 @@
             "load_translations": "加载翻译",
             "previous": "上一页",
             "next": "下一页",
-            "search_placeholder": "搜索标签..."
+            "search_placeholder": "搜索标签...",
+            "test_llm": "测试 LLM 翻译",
+            "test_success": "LLM 测试成功",
+            "test_failed": "LLM 测试失败",
+            "refresh_missing": "刷新统计",
+            "auto_enabled": "自动翻译",
+            "auto_enabled_yes": "已开启",
+            "auto_enabled_no": "未开启",
+            "api_key_configured": "API Key",
+            "api_key_yes": "已配置",
+            "api_key_no": "未配置"
         },
         "ai_tag_review": {
             "title": "AI 标签审核",

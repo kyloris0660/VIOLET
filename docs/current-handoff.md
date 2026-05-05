@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.2.2 Dynamic Tag Localization / LLM Translation Cache (2026-05-05).
+> Last updated after Phase 2.2.2a Auto Tag Localization + Priority Hotfix (2026-05-05).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -160,6 +160,17 @@ Dynamic tag localization system with database-backed translations:
 | `backend/app/config.py` | `TAG_TRANSLATION_LLM_*` settings |
 | `docs/tag-localization-llm.md` | Full LLM integration documentation |
 
+### Phase 2.2.2a — Auto Tag Localization + Priority Hotfix
+
+Fixed priority bug and added automatic translation:
+
+- **Priority fix**: `upsert_translation` now enforces strict source priority — lower-priority sources (e.g., `llm`) cannot overwrite higher-priority sources (e.g., `static`, `manual`)
+- **Auto-translate**: New tags automatically translated via LLM when `TAG_TRANSLATION_AUTO_ENABLED=true` (non-blocking background thread)
+- **Enhanced LLM status**: API key configured (yes/no), auto-translate status, test LLM button
+- **Admin UI**: Test LLM Translation button, Refresh Stats button, detailed LLM status display
+- **Real LLM verified**: Successfully translated tags via OpenAI-compatible API
+- **httpx dependency**: Added for async LLM API calls
+
 ## What Has NOT Been Built
 
 - No automatic AI tagging during scan (manual trigger only, Phase 2.3)
@@ -169,7 +180,6 @@ Dynamic tag localization system with database-backed translations:
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
 - No WebSocket (uses polling)
-- No automatic LLM translation on new tag creation (manual trigger only)
 
 ## Phase 2.0.1 — Review Findings Hotfix
 

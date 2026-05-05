@@ -137,16 +137,19 @@ The LLM prompt instructs the model to:
 | POST | `/api/admin/tag-localization/batch-translate` | Batch LLM translate |
 | GET | `/api/admin/tag-localization/llm-status` | Check LLM provider status |
 | POST | `/api/admin/tag-localization/translations/{id}/review` | Approve/reject |
+| POST | `/api/admin/tag-localization/test-llm` | Test LLM with a known tag |
 
 ## Admin UI
 
 The Admin Panel includes a "Tag Localization" section with:
 
 1. **Statistics** — total tags, translated count, missing, needs review, source breakdown
-2. **Manual edit** — input canonical tag name, Chinese display name, aliases, save
-3. **Batch LLM translate** — dry-run toggle, max items, category filter
-4. **Missing translations list** — browse untranslated tags by category
-5. **Review translations** — filter, search, approve/reject LLM results
+2. **LLM Status** — provider, model, API key configured (yes/no, never shows the key), auto-translate status
+3. **Test LLM** — translate a known tag to verify LLM connectivity
+4. **Manual edit** — input canonical tag name, Chinese display name, aliases, save
+5. **Batch LLM translate** — dry-run toggle, max items, category filter
+6. **Missing translations list** — browse untranslated tags by category
+7. **Review translations** — filter, search, approve/reject LLM results
 
 ## Search Enhancement
 
@@ -158,18 +161,67 @@ Chinese search aliases work through the search parser:
 - Does not break English search or meta qualifiers (`rating:safe`, `width:>1920`)
 - Alias conflicts resolved by source priority
 
+## Auto-Translation (Phase 2.2.2a)
+
+New tags can be automatically translated when created, if both LLM and auto-translate are enabled.
+
+### Configuration
+
+```env
+# Both must be true for auto-translation
+TAG_TRANSLATION_LLM_ENABLED=true
+TAG_TRANSLATION_AUTO_ENABLED=true
+
+# Throttle: max tags per auto-translate trigger
+TAG_TRANSLATION_AUTO_MAX_ITEMS=20
+```
+
+### How it works
+
+1. New tag created (via upload, AI tagging, admin, booru import, etc.)
+2. System checks: is `TAG_TRANSLATION_AUTO_ENABLED=true` AND `TAG_TRANSLATION_LLM_ENABLED=true`?
+3. If yes: spawns a background thread with independent DB session
+4. Thread filters out tags that already have translations (DB or static dict)
+5. Sends remaining tags (up to `TAG_TRANSLATION_AUTO_MAX_ITEMS`) to LLM
+6. Saves results to DB, invalidates search cache
+7. If LLM fails: main operation is NOT affected, tags remain with canonical fallback
+
+### Safety
+
+- Non-blocking: runs in background daemon thread
+- Independent DB session (not request-scoped)
+- Thread-safe: only one auto-translate worker runs at a time
+- Exception isolation: worker catches all errors
+- Throttled by `TAG_TRANSLATION_AUTO_MAX_ITEMS`
+- Does NOT modify canonical `tag.name`
+
+## Translation Priority & Overwrite Rules
+
+From highest to lowest:
+
+1. **Manual/reviewed** (`source=manual`, `status=reviewed`) — human-confirmed
+2. **Static dictionary** — `tag_translations_zh.json` entries (seeded as `source=static`)
+3. **LLM cache** (`source=llm`, `status=translated`) — auto-generated, may need review
+4. **Canonical fallback** — English tag name
+
+**Overwrite rules:**
+- Lower-priority source CANNOT overwrite higher-priority source (e.g., `llm` cannot overwrite `static` or `manual`)
+- Same source: always updates
+- Higher-priority source can overwrite lower-priority source
+- Admin manual operations use `force=True` to bypass priority (explicit admin intent)
+
 ## Why Not Real-Time LLM?
 
 - **Latency**: LLM API calls take 100ms–5s
 - **Cost**: Per-token billing adds up with every page view
 - **Availability**: LLM services can be down
 - **UX**: Users should not wait for translations on every render
-- **Correct approach**: Admin triggers batch translation → results cached in DB → instant lookup
+- **Correct approach**: Admin triggers batch translation OR auto-translate on creation → results cached in DB → instant lookup
 
 ## Known Limitations
 
-- LLM translation requires manual trigger from Admin UI
+- Auto-translate requires explicit opt-in (`TAG_TRANSLATION_AUTO_ENABLED=true`)
 - character/copyright/artist translations need human review
-- Search alias cache refreshes every 5 minutes (immediate after Admin UI changes)
+- Search alias cache refreshes every 5 minutes (immediate after Admin UI / auto-translate changes)
 - Only `zh-CN` language supported currently
-- No automatic translation on new tag creation (planned for future)
+- Auto-translate throttled to `TAG_TRANSLATION_AUTO_MAX_ITEMS` per trigger

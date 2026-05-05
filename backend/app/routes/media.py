@@ -80,6 +80,7 @@ def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Option
         unique_names.append(name)
 
     tags = []
+    new_tag_names = []
     for name in unique_names:
         tag = db.query(Tag).filter(Tag.name == name).first()
         if not tag:
@@ -89,8 +90,16 @@ def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Option
             tag = Tag(name=name, post_count=0, category=category)
             db.add(tag)
             db.flush()
+            new_tag_names.append(name)
         tags.append(tag)
-    
+
+    if new_tag_names:
+        try:
+            from ..services.tag_localization_service import schedule_auto_translate
+            schedule_auto_translate(new_tag_names)
+        except Exception:
+            pass
+
     return tags
 
 def process_and_save_media(
