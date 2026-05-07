@@ -17,9 +17,8 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
     });
     expect(resp.status).toBe(200);
     const data = resp.data;
-    expect(data.job).toBeDefined();
-    expect(data.job.is_preflight).toBe(true);
-    expect(data.job.status).toBe('completed');
+    expect(data.is_preflight).toBe(true);
+    expect(data.status).toBe('completed');
     expect(typeof data.estimated_size_bytes).toBe('number');
     expect(typeof data.largest_file_bytes).toBe('number');
     expect(typeof data.extensions).toBe('object');
@@ -75,7 +74,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
   });
 
   test('admin UI shows preflight button and hydrated-only checkbox', async ({ page }) => {
-    await switchToTab(page, '本地图库');
+    await switchToTab(page, '内容');
     await page.waitForTimeout(500);
 
     const hydratedCheckbox = page.locator('#local-scan-hydrated-only');
@@ -87,7 +86,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
   });
 
   test('preflight button runs and shows results in UI', async ({ page }) => {
-    await switchToTab(page, '本地图库');
+    await switchToTab(page, '内容');
     await page.waitForTimeout(500);
 
     const pathInput = page.locator('#local-scan-path');
@@ -118,7 +117,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
       }),
     });
 
-    await switchToTab(page, '本地图库');
+    await switchToTab(page, '内容');
     await page.waitForTimeout(1000);
 
     const historyTable = page.locator('#local-scan-history-tbody');

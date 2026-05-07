@@ -1361,9 +1361,9 @@ class AdminPanel {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
-            if (result.job) {
-                this._currentJobId = result.job.id;
-                this._showJobProgress(result.job, {
+            if (result && result.id) {
+                this._currentJobId = result.id;
+                this._showJobProgress(result, {
                     estimated_size_bytes: result.estimated_size_bytes,
                     largest_file_bytes: result.largest_file_bytes,
                     extensions: result.extensions,
