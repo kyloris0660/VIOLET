@@ -207,6 +207,16 @@ See [Entity Alias Resolver](entity-alias-resolver.md) for documentation.
 
 ## Upcoming Phases
 
+### Phase 2.4 — iCloud Large Library Readiness / Safe Ingestion
+
+**Goal:** Prepare the system for real-world large library import and add developer service control.
+
+- Validate iCloud Photos edge cases (partial downloads, .icloud placeholders, file locks)
+- Incremental scan (skip already-imported files efficiently)
+- Performance profiling at scale (1000+ images)
+- Thumbnail generation reliability under load
+- Developer service control panel: server PID/port display, safe stop/restart, background worker status, port conflict diagnostics
+
 ### Phase 3 — Anime Filtering
 
 **Goal:** Automatically detect and optionally skip non-anime images during import.

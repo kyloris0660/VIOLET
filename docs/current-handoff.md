@@ -322,13 +322,27 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 3
+## Recommended Next Phase: 2.4
 
-**Anime Filtering** — automatically detect and optionally skip non-anime images during import:
+**iCloud Large Library Readiness / Safe Ingestion** — prepare the system for real-world large library import:
 
-1. Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
-2. Or introduce a dedicated anime/photo classifier
-3. AI tagging infrastructure from Phase 2.3 provides the execution pipeline
+1. Validate iCloud Photos edge cases (partial downloads, .icloud placeholders, file locks)
+2. Incremental scan (skip already-imported files efficiently)
+3. Performance profiling at scale (1000+ images)
+4. Thumbnail generation reliability under load
+
+### Next-Phase Requirement: Service Control UI
+
+The next development phase should include a developer/service control panel:
+
+- Show current local dev/background services status (running, stopped, port, PID)
+- Show server PID and listening port
+- Allow safe stop/restart of V.I.O.L.E.T. dev server (without killing unrelated Python processes)
+- Show background workers status (tag translation worker, entity alias resolver)
+- One-click restart after config changes (optional)
+- Diagnostics for port conflicts and stale server processes (optional)
+
+This addresses a recurring pain point: manually managing dev server processes is error-prone and led to confusion during PR validation (stale servers on wrong ports, zombie processes).
 
 ## Test Directory
 
