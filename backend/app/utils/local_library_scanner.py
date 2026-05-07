@@ -1,6 +1,9 @@
 import json
+import os
+import platform
 import shutil
 import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -24,6 +27,60 @@ _PROGRESS_FLUSH_INTERVAL = 10
 
 _BLOCKED_DIR_NAMES = {"venv", "data", "media", "storage", ".git", "__pycache__"}
 
+_IS_WINDOWS = platform.system() == "Windows"
+
+_FILE_ATTRIBUTE_OFFLINE = 0x1000
+_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
+_FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x40000
+_FILE_ATTRIBUTE_HIDDEN = 0x2
+_CLOUD_ATTR_MASK = (
+    _FILE_ATTRIBUTE_OFFLINE
+    | _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+    | _FILE_ATTRIBUTE_RECALL_ON_OPEN
+)
+
+_SKIP_REASON_STAT_MAP = {
+    "icloud_placeholder": "skipped_cloud_placeholder",
+    "cloud_placeholder": "skipped_cloud_placeholder",
+    "zero_byte_file": "skipped_zero_byte",
+    "hidden": "skipped_hidden",
+    "too_large": "skipped_too_large",
+}
+
+
+def _is_cloud_only(file_path: Path) -> bool:
+    """Check if a file is cloud-only (not locally hydrated) on Windows.
+
+    Uses GetFileAttributesW via ctypes to check for OFFLINE,
+    RECALL_ON_DATA_ACCESS, and RECALL_ON_OPEN attributes.
+    Returns False on non-Windows or on any error.
+    """
+    if not _IS_WINDOWS:
+        return False
+    try:
+        import ctypes
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(file_path))
+        if attrs == -1:
+            return False
+        return bool(attrs & _CLOUD_ATTR_MASK)
+    except Exception:
+        return False
+
+
+def _is_hidden(file_path: Path) -> bool:
+    """Check if a file is hidden (dotfile or Windows hidden attribute)."""
+    if file_path.name.startswith("."):
+        return True
+    if _IS_WINDOWS:
+        try:
+            import ctypes
+            attrs = ctypes.windll.kernel32.GetFileAttributesW(str(file_path))
+            if attrs != -1 and (attrs & _FILE_ATTRIBUTE_HIDDEN):
+                return True
+        except Exception:
+            pass
+    return False
+
 
 def validate_scan_paths(paths: List[Path]) -> Optional[str]:
     """Return an error message if any path is unsafe, else None."""
@@ -45,7 +102,7 @@ def validate_scan_paths(paths: List[Path]) -> Optional[str]:
     return None
 
 
-def _is_scannable_file(file_path: Path) -> str | None:
+def _is_scannable_file(file_path: Path, *, hydrated_only: bool = True) -> str | None:
     """Return None if the file is scannable, or a skip-reason string."""
     if file_path.is_symlink():
         return "symlink"
@@ -53,11 +110,17 @@ def _is_scannable_file(file_path: Path) -> str | None:
     if not file_path.is_file():
         return "not_a_file"
 
+    if _is_hidden(file_path):
+        return "hidden"
+
     if file_path.suffix.lower() in SKIP_EXTENSIONS:
         return "icloud_placeholder"
 
     if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         return "unsupported_extension"
+
+    if hydrated_only and _is_cloud_only(file_path):
+        return "cloud_placeholder"
 
     try:
         size = file_path.stat().st_size
@@ -67,7 +130,22 @@ def _is_scannable_file(file_path: Path) -> str | None:
     if size == 0:
         return "zero_byte_file"
 
+    max_bytes = settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024
+    if size > max_bytes:
+        return "too_large"
+
     return None
+
+
+def _map_skip_reason(stats: Dict[str, Any], reason: str) -> None:
+    """Increment the appropriate skip counter based on the reason string."""
+    stat_key = _SKIP_REASON_STAT_MAP.get(reason)
+    if stat_key and stat_key in stats:
+        stats[stat_key] += 1
+    elif reason.startswith("stat_error"):
+        stats["skipped_unreadable"] += 1
+    else:
+        stats["skipped_unsupported"] += 1
 
 
 def scan_and_import(
@@ -76,6 +154,7 @@ def scan_and_import(
     *,
     dry_run: bool = False,
     max_files: Optional[int] = None,
+    hydrated_only: bool = True,
     cancel_check: Optional[Callable[[], bool]] = None,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
@@ -102,6 +181,12 @@ def scan_and_import(
         "skipped_duplicate": 0,
         "skipped_unsupported": 0,
         "skipped_limit": 0,
+        "skipped_cloud_placeholder": 0,
+        "skipped_zero_byte": 0,
+        "skipped_timeout": 0,
+        "skipped_unreadable": 0,
+        "skipped_hidden": 0,
+        "skipped_too_large": 0,
         "failed": 0,
         "limit_reached": False,
         "failed_files": [],
@@ -163,9 +248,9 @@ def scan_and_import(
 
             stats["total_seen"] += 1
 
-            skip_reason = _is_scannable_file(file_path)
+            skip_reason = _is_scannable_file(file_path, hydrated_only=hydrated_only)
             if skip_reason:
-                stats["skipped_unsupported"] += 1
+                _map_skip_reason(stats, skip_reason)
                 _maybe_flush_progress()
                 continue
 
@@ -174,7 +259,21 @@ def scan_and_import(
 
             copied_path: Path | None = None
             try:
-                file_hash = calculate_file_hash(file_path)
+                timeout_sec = settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(calculate_file_hash, file_path)
+                        file_hash = future.result(timeout=timeout_sec)
+                except FutureTimeoutError:
+                    stats["skipped_timeout"] += 1
+                    _record_failure(stats, str(file_path), f"hash timed out after {timeout_sec}s")
+                    _maybe_flush_progress()
+                    continue
+                except OSError as e:
+                    stats["skipped_unreadable"] += 1
+                    _record_failure(stats, str(file_path), f"read error: {e}")
+                    _maybe_flush_progress()
+                    continue
 
                 if file_hash in existing_hashes:
                     stats["skipped_duplicate"] += 1
@@ -250,6 +349,121 @@ def _record_failure(stats: Dict[str, Any], path: str, reason: str):
         stats["failed_files"].append({"path": path, "reason": reason})
 
 
+def preflight_analyze(
+    paths: List[Path],
+    *,
+    hydrated_only: bool = True,
+    max_files: Optional[int] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> Dict[str, Any]:
+    """Stat-only analysis of scan directories.  Never calls open().
+
+    Returns the same-shape stats dict as scan_and_import (minus import fields)
+    plus ``estimated_size_bytes``, ``extensions``, and ``largest_file_bytes``.
+    """
+    stats: Dict[str, Any] = {
+        "dry_run": True,
+        "max_files": max_files,
+        "total_seen": 0,
+        "processed": 0,
+        "imported": 0,
+        "skipped_duplicate": 0,
+        "skipped_unsupported": 0,
+        "skipped_limit": 0,
+        "skipped_cloud_placeholder": 0,
+        "skipped_zero_byte": 0,
+        "skipped_timeout": 0,
+        "skipped_unreadable": 0,
+        "skipped_hidden": 0,
+        "skipped_too_large": 0,
+        "failed": 0,
+        "limit_reached": False,
+        "failed_files": [],
+        "imported_media_ids": [],
+        "estimated_size_bytes": 0,
+        "largest_file_bytes": 0,
+        "extensions": {},
+    }
+
+    candidates_processed = 0
+    files_since_flush = 0
+
+    def _should_cancel() -> bool:
+        return cancel_check is not None and cancel_check()
+
+    def _maybe_flush():
+        nonlocal files_since_flush
+        files_since_flush += 1
+        if files_since_flush >= _PROGRESS_FLUSH_INTERVAL and progress_callback:
+            progress_callback(stats)
+            files_since_flush = 0
+
+    valid_paths: List[Path] = []
+    for p in paths:
+        if not p.exists():
+            stats["failed"] += 1
+            _record_failure(stats, str(p), "directory does not exist")
+            continue
+        if not p.is_dir():
+            stats["failed"] += 1
+            _record_failure(stats, str(p), "path is not a directory")
+            continue
+        valid_paths.append(p)
+
+    for scan_dir in valid_paths:
+        if _should_cancel():
+            break
+        if stats["limit_reached"]:
+            break
+
+        try:
+            entries = scan_dir.rglob("*")
+        except OSError as e:
+            _record_failure(stats, str(scan_dir), f"rglob error: {e}")
+            stats["failed"] += 1
+            continue
+
+        for file_path in entries:
+            if _should_cancel():
+                break
+
+            if max_files is not None and candidates_processed >= max_files:
+                stats["limit_reached"] = True
+                break
+
+            stats["total_seen"] += 1
+
+            skip_reason = _is_scannable_file(file_path, hydrated_only=hydrated_only)
+            if skip_reason:
+                _map_skip_reason(stats, skip_reason)
+                _maybe_flush()
+                continue
+
+            candidates_processed += 1
+            stats["processed"] = candidates_processed
+
+            try:
+                size = file_path.stat().st_size
+            except OSError:
+                size = 0
+
+            stats["estimated_size_bytes"] += size
+            if size > stats["largest_file_bytes"]:
+                stats["largest_file_bytes"] = size
+
+            ext = file_path.suffix.lower()
+            stats["extensions"][ext] = stats["extensions"].get(ext, 0) + 1
+
+            stats["imported"] += 1
+            _maybe_flush()
+
+    if progress_callback:
+        progress_callback(stats)
+
+    return stats
+
+
 # ---------------------------------------------------------------------------
 # Background job runner
 # ---------------------------------------------------------------------------
@@ -320,6 +534,12 @@ def run_scan_job(job_id: int) -> None:
                 j.skipped_duplicate = stats["skipped_duplicate"]
                 j.skipped_unsupported = stats["skipped_unsupported"]
                 j.skipped_limit = stats["skipped_limit"]
+                j.skipped_cloud_placeholder = stats["skipped_cloud_placeholder"]
+                j.skipped_zero_byte = stats["skipped_zero_byte"]
+                j.skipped_timeout = stats["skipped_timeout"]
+                j.skipped_unreadable = stats["skipped_unreadable"]
+                j.skipped_hidden = stats["skipped_hidden"]
+                j.skipped_too_large = stats["skipped_too_large"]
                 j.failed = stats["failed"]
                 j.limit_reached = stats.get("limit_reached", False)
                 j.failed_files_json = json.dumps(stats["failed_files"][:MAX_FAILED_REPORT])
@@ -335,6 +555,7 @@ def run_scan_job(job_id: int) -> None:
             db, paths,
             dry_run=job.dry_run,
             max_files=job.max_files,
+            hydrated_only=job.hydrated_only if job.hydrated_only is not None else True,
             cancel_check=cancel_check,
             progress_callback=progress_callback,
         )
@@ -348,6 +569,12 @@ def run_scan_job(job_id: int) -> None:
         job.skipped_duplicate = result["skipped_duplicate"]
         job.skipped_unsupported = result["skipped_unsupported"]
         job.skipped_limit = result["skipped_limit"]
+        job.skipped_cloud_placeholder = result["skipped_cloud_placeholder"]
+        job.skipped_zero_byte = result["skipped_zero_byte"]
+        job.skipped_timeout = result["skipped_timeout"]
+        job.skipped_unreadable = result["skipped_unreadable"]
+        job.skipped_hidden = result["skipped_hidden"]
+        job.skipped_too_large = result["skipped_too_large"]
         job.failed = result["failed"]
         job.limit_reached = result.get("limit_reached", False)
         job.failed_files_json = json.dumps(result["failed_files"][:MAX_FAILED_REPORT])

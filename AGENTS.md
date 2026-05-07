@@ -56,10 +56,10 @@ No automated test suite. Verify changes manually:
 
 | Module | Path | Notes |
 |--------|------|-------|
-| Models | `backend/app/models.py` | `Media`, `Tag`, `TagAlias`, `TagImplication`, `Album`, `User`, `ApiKey`, `TagTranslation` |
+| Models | `backend/app/models.py` | `Media`, `Tag`, `TagAlias`, `TagImplication`, `Album`, `User`, `ApiKey`, `TagTranslation`, `ScanJob` (with iCloud stats) |
 | Media routes | `backend/app/routes/media.py` | Upload, search, serve files, `process_and_save_media()` |
-| Admin routes | `backend/app/routes/admin/` | `media.py` (scan-media, scan-local-library), `tags.py`, `settings.py`, `onboarding.py` |
-| Local library scanner | `backend/app/utils/local_library_scanner.py` | Phase 1: external directory scan + import |
+| Admin routes | `backend/app/routes/admin/` | `media.py` (scan-media, scan-local-library, preflight), `tags.py`, `settings.py`, `onboarding.py` |
+| Local library scanner | `backend/app/utils/local_library_scanner.py` | Phase 1: external directory scan + import; Phase 2.4: preflight, iCloud detection, timeout, extended stats |
 | File scanner | `backend/app/utils/file_scanner.py` | Original Blombooru scan of `media/original` |
 | Media processor | `backend/app/utils/media_processor.py` | Hash, MIME, dimensions, duration extraction |
 | Thumbnail generator | `backend/app/utils/thumbnail_generator.py` | PIL image + OpenCV video thumbnails |
@@ -75,7 +75,7 @@ No automated test suite. Verify changes manually:
 | Tag Translation Worker | `backend/app/services/tag_translation_worker.py` | Background continuous tag translation worker |
 | AI Tagging Jobs | `backend/app/services/ai_tagging_job_service.py` | Background AI tagging job worker |
 | AI Tagging Jobs API | `backend/app/routes/admin/ai_tagging_jobs.py` | AI job CRUD + cancel endpoints |
-| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics, E2E reset |
+| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics (incl. server info, scan config), E2E reset |
 | E2E Reset Service | `backend/app/services/e2e_reset_service.py` | Test data reset logic |
 | Entity Alias Resolver | `backend/app/services/entity_alias_resolver.py` | Proper-noun alias resolution (character/copyright/artist) |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |

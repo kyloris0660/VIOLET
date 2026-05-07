@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.3e Proper Noun Alias Resolver Foundation (2026-05-07).
+> Last updated after Phase 2.4 iCloud Large Library Readiness / Safe Ingestion (2026-05-08).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -280,6 +280,35 @@ Separated proper-noun tag handling from visual tag translation:
 | `tests/e2e/entity-alias-resolver.spec.ts` | Playwright E2E tests |
 | `docs/entity-alias-resolver.md` | Full documentation |
 
+### Phase 2.4 — iCloud Large Library Readiness / Safe Ingestion
+
+Made the scan pipeline safe for large iCloud-synced directories:
+
+- **Preflight scan**: `POST /scan-local-library/preflight` — stat-only analysis, no `open()` calls, returns file counts, extension breakdown, estimated size, largest file
+- **Hydrated-only mode**: Default ON, skips cloud-only files detected via Windows `GetFileAttributesW` (FILE_ATTRIBUTE_OFFLINE, RECALL_ON_DATA_ACCESS, RECALL_ON_OPEN)
+- **Per-file timeout**: ThreadPoolExecutor wraps `calculate_file_hash` with configurable timeout (default 30s), prevents hanging on cloud files
+- **Extended skip counters**: 6 new per-reason stat columns replace blanket `skipped_unsupported` — cloud_placeholder, zero_byte, timeout, unreadable, hidden, too_large
+- **Max file size**: Configurable `SCAN_MAX_FILE_SIZE_MB` (default 200 MB)
+- **Config diagnostics extended**: Server info (PID, Python version, app version, platform) and scan settings
+- **Admin UI**: Preflight button, hydrated-only checkbox, iCloud safety note, 6 extended stat cards, preflight results (estimated size, largest file, extension breakdown)
+- **22 unit tests + 7 Playwright E2E tests**
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/config.py` | `SCAN_HYDRATED_ONLY_DEFAULT`, `SCAN_FILE_OPEN_TIMEOUT_SECONDS`, `SCAN_MAX_FILE_SIZE_MB` |
+| `backend/app/models.py` | 8 new `ScanJob` columns (6 skip counters + hydrated_only + is_preflight) |
+| `backend/app/database.py` | `migrate_add_scan_job_icloud_stats` migration |
+| `backend/app/utils/local_library_scanner.py` | `_is_cloud_only`, `_is_hidden`, enhanced `_is_scannable_file`, `preflight_analyze`, timeout wrapping |
+| `backend/app/routes/admin/media.py` | Preflight endpoint, hydrated_only param, extended serializer |
+| `backend/app/routes/admin/dev_tools.py` | Server diagnostics section |
+| `frontend/templates/admin.html` | Preflight UI, hydrated-only, extended stats, safety note |
+| `frontend/static/js/admin.js` | `startPreflightJob()`, extended progress, server info rendering |
+| `tests/test_scanner_icloud.py` | 22 unit tests (scanner, preflight, skip mapping) |
+| `tests/e2e/test_icloud_scan.spec.ts` | 7 Playwright E2E tests |
+| `docs/icloud-safe-ingestion.md` | Full documentation |
+
 ## What Has NOT Been Built
 
 - No anime/photo filtering (Phase 3)
@@ -322,14 +351,13 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 2.4
+## Recommended Next Phase: 3
 
-**iCloud Large Library Readiness / Safe Ingestion** — prepare the system for real-world large library import:
+**Anime Filtering & Source Detection** — automatically detect and optionally skip non-anime images during import:
 
-1. Validate iCloud Photos edge cases (partial downloads, .icloud placeholders, file locks)
-2. Incremental scan (skip already-imported files efficiently)
-3. Performance profiling at scale (1000+ images)
-4. Thumbnail generation reliability under load
+1. Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
+2. Or introduce a dedicated anime/photo classifier
+3. Reverse image search integration (SauceNAO, IQDB)
 
 ### Next-Phase Requirement: Service Control UI
 
@@ -367,5 +395,6 @@ This addresses a recurring pain point: manually managing dev server processes is
 | `docs/local-library-scan.md` | Feature documentation and API usage |
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
 | `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
+| `docs/icloud-safe-ingestion.md` | Phase 2.4 iCloud safe ingestion documentation |
 | `docs/tag-localization-zh.md` | Tag localization design (zh-CN) |
 | `example.env` | Available environment variables |

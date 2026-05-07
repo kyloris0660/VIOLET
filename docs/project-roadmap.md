@@ -203,19 +203,24 @@ See [Tag Localization LLM](tag-localization-llm.md) for configuration details.
 
 See [Entity Alias Resolver](entity-alias-resolver.md) for documentation.
 
+### Phase 2.4 — iCloud Large Library Readiness / Safe Ingestion
+
+**Goal:** Make the scan pipeline safe for large iCloud-synced directories on Windows — never trigger mass downloads, never hang on a single file.
+
+- Preflight scan endpoint (`POST /scan-local-library/preflight`): stat-only, no `open()`, completes in seconds on 100K files
+- Hydrated-only mode (default ON): skips cloud-only files detected via Windows `GetFileAttributesW` (`FILE_ATTRIBUTE_OFFLINE`, `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`)
+- Per-file timeout via ThreadPoolExecutor: wraps `calculate_file_hash` with configurable timeout (default 30s)
+- Extended skip-reason counters: `skipped_cloud_placeholder`, `skipped_zero_byte`, `skipped_timeout`, `skipped_unreadable`, `skipped_hidden`, `skipped_too_large`
+- Max file size limit: configurable via `SCAN_MAX_FILE_SIZE_MB` (default 200 MB)
+- Config diagnostics extended with server info (PID, Python version, app version, platform) and scan config
+- Admin UI: preflight button, hydrated-only checkbox, iCloud safety note, 6 extended stat cards, preflight results display
+- 22 unit tests + 7 Playwright E2E tests
+
+See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
+
 ---
 
 ## Upcoming Phases
-
-### Phase 2.4 — iCloud Large Library Readiness / Safe Ingestion
-
-**Goal:** Prepare the system for real-world large library import and add developer service control.
-
-- Validate iCloud Photos edge cases (partial downloads, .icloud placeholders, file locks)
-- Incremental scan (skip already-imported files efficiently)
-- Performance profiling at scale (1000+ images)
-- Thumbnail generation reliability under load
-- Developer service control panel: server PID/port display, safe stop/restart, background worker status, port conflict diagnostics
 
 ### Phase 3 — Anime Filtering
 

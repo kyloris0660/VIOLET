@@ -14,6 +14,7 @@ from ...models import Media, ScanJob, User
 from ...utils.file_scanner import find_untracked_media
 from ...utils.local_library_scanner import (
     is_job_active,
+    preflight_analyze,
     request_cancel,
     run_scan_job,
     scan_and_import,
@@ -42,6 +43,7 @@ class ScanLocalLibraryRequest(BaseModel):
     paths: Optional[List[str]] = None
     dry_run: bool = False
     max_files: Optional[int] = None
+    hydrated_only: Optional[bool] = None
 
 
 def _resolve_scan_params(body: Optional[ScanLocalLibraryRequest]):
@@ -74,11 +76,12 @@ def _resolve_scan_params(body: Optional[ScanLocalLibraryRequest]):
 
     dry_run = body.dry_run if body else False
     max_files = body.max_files if body else None
+    hydrated_only = body.hydrated_only if body and body.hydrated_only is not None else settings.SCAN_HYDRATED_ONLY_DEFAULT
 
     if max_files is not None and max_files < 1:
         raise HTTPException(status_code=400, detail="max_files must be >= 1")
 
-    return scan_paths, dry_run, max_files
+    return scan_paths, dry_run, max_files, hydrated_only
 
 
 @router.post("/scan-local-library")
@@ -88,10 +91,10 @@ async def scan_local_library(
     db: Session = Depends(get_db),
 ):
     """Legacy synchronous scan endpoint (Phase 1.5 compatible)."""
-    scan_paths, dry_run, max_files = _resolve_scan_params(body)
+    scan_paths, dry_run, max_files, hydrated_only = _resolve_scan_params(body)
 
     result = await run_in_threadpool(
-        scan_and_import, db, scan_paths, dry_run=dry_run, max_files=max_files
+        scan_and_import, db, scan_paths, dry_run=dry_run, max_files=max_files, hydrated_only=hydrated_only
     )
     return result
 
@@ -118,6 +121,8 @@ def _serialize_job(job: ScanJob) -> dict:
         "paths": paths,
         "dry_run": job.dry_run,
         "max_files": job.max_files,
+        "hydrated_only": job.hydrated_only if job.hydrated_only is not None else True,
+        "is_preflight": job.is_preflight if job.is_preflight is not None else False,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
         "created_at": job.created_at.isoformat() if job.created_at else None,
@@ -127,6 +132,12 @@ def _serialize_job(job: ScanJob) -> dict:
         "skipped_duplicate": job.skipped_duplicate,
         "skipped_unsupported": job.skipped_unsupported,
         "skipped_limit": job.skipped_limit,
+        "skipped_cloud_placeholder": job.skipped_cloud_placeholder or 0,
+        "skipped_zero_byte": job.skipped_zero_byte or 0,
+        "skipped_timeout": job.skipped_timeout or 0,
+        "skipped_unreadable": job.skipped_unreadable or 0,
+        "skipped_hidden": job.skipped_hidden or 0,
+        "skipped_too_large": job.skipped_too_large or 0,
         "failed": job.failed,
         "limit_reached": job.limit_reached,
         "failed_files": failed_files,
@@ -141,7 +152,7 @@ async def create_scan_job(
     db: Session = Depends(get_db),
 ):
     """Create a background scan job. Returns immediately with a job_id."""
-    scan_paths, dry_run, max_files = _resolve_scan_params(body)
+    scan_paths, dry_run, max_files, hydrated_only = _resolve_scan_params(body)
 
     active = (
         db.query(ScanJob)
@@ -159,6 +170,7 @@ async def create_scan_job(
         paths_json=json.dumps([str(p) for p in scan_paths]),
         dry_run=dry_run,
         max_files=max_files,
+        hydrated_only=hydrated_only,
     )
     db.add(job)
     db.commit()
@@ -229,6 +241,55 @@ async def cancel_scan_job(
     request_cancel(job_id)
 
     return _serialize_job(job)
+
+
+@router.post("/scan-local-library/preflight")
+async def preflight_scan(
+    body: Optional[ScanLocalLibraryRequest] = None,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Stat-only preflight analysis. Never opens files, never triggers hydration."""
+    scan_paths, dry_run, max_files, hydrated_only = _resolve_scan_params(body)
+
+    result = await run_in_threadpool(
+        preflight_analyze,
+        scan_paths,
+        hydrated_only=hydrated_only,
+        max_files=max_files,
+    )
+
+    job = ScanJob(
+        status="completed",
+        paths_json=json.dumps([str(p) for p in scan_paths]),
+        dry_run=True,
+        max_files=max_files,
+        hydrated_only=hydrated_only,
+        is_preflight=True,
+        total_seen=result.get("total_seen", 0),
+        processed=result.get("processed", 0),
+        imported=0,
+        skipped_duplicate=result.get("skipped_duplicate", 0),
+        skipped_unsupported=result.get("skipped_unsupported", 0),
+        skipped_limit=result.get("skipped_limit", 0),
+        skipped_cloud_placeholder=result.get("skipped_cloud_placeholder", 0),
+        skipped_zero_byte=result.get("skipped_zero_byte", 0),
+        skipped_timeout=0,
+        skipped_unreadable=result.get("skipped_unreadable", 0),
+        skipped_hidden=result.get("skipped_hidden", 0),
+        skipped_too_large=result.get("skipped_too_large", 0),
+        failed=result.get("failed", 0),
+        limit_reached=result.get("limit_reached", False),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    serialized = _serialize_job(job)
+    serialized["estimated_size_bytes"] = result.get("estimated_size_bytes", 0)
+    serialized["largest_file_bytes"] = result.get("largest_file_bytes", 0)
+    serialized["extensions"] = result.get("extensions", {})
+    return serialized
 
 
 @router.get("/get-untracked-file")

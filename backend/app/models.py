@@ -194,6 +194,16 @@ class ScanJob(Base):
     failed = Column(Integer, default=0)
     limit_reached = Column(Boolean, default=False)
 
+    skipped_cloud_placeholder = Column(Integer, default=0)
+    skipped_zero_byte = Column(Integer, default=0)
+    skipped_timeout = Column(Integer, default=0)
+    skipped_unreadable = Column(Integer, default=0)
+    skipped_hidden = Column(Integer, default=0)
+    skipped_too_large = Column(Integer, default=0)
+
+    hydrated_only = Column(Boolean, default=True)
+    is_preflight = Column(Boolean, default=False)
+
     failed_files_json = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
 

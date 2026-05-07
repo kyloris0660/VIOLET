@@ -357,6 +357,19 @@ class Settings:
         return paths
 
     @property
+    def SCAN_HYDRATED_ONLY_DEFAULT(self) -> bool:
+        val = os.getenv("SCAN_HYDRATED_ONLY_DEFAULT", "true")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def SCAN_FILE_OPEN_TIMEOUT_SECONDS(self) -> int:
+        return int(os.getenv("SCAN_FILE_OPEN_TIMEOUT_SECONDS", "30"))
+
+    @property
+    def SCAN_MAX_FILE_SIZE_MB(self) -> int:
+        return int(os.getenv("SCAN_MAX_FILE_SIZE_MB", "200"))
+
+    @property
     def SHARED_TAGS_ENABLED(self) -> bool:
         """Check if shared tag database is enabled"""
         file_enabled = self.file_settings.get("shared_tags", {}).get("enabled")

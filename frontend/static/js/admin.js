@@ -321,6 +321,10 @@ class AdminPanel {
         if (localScanCancelBtn) {
             localScanCancelBtn.addEventListener('click', () => this.cancelScanJob());
         }
+        const localScanPreflightBtn = document.getElementById('local-scan-preflight-btn');
+        if (localScanPreflightBtn) {
+            localScanPreflightBtn.addEventListener('click', () => this.startPreflightJob());
+        }
 
         this._scanPollTimer = null;
         this._currentJobId = null;
@@ -1294,15 +1298,21 @@ class AdminPanel {
 
     // ---- Local Library Scan (job-based) ----
 
-    async startScanJob() {
+    _readScanFormParams() {
         const pathInput = document.getElementById('local-scan-path').value.trim();
         const maxFilesInput = document.getElementById('local-scan-max-files').value;
         const dryRun = document.getElementById('local-scan-dry-run').checked;
-
+        const hydratedOnly = document.getElementById('local-scan-hydrated-only')?.checked ?? true;
         const body = {};
         if (pathInput) body.paths = [pathInput];
         if (dryRun) body.dry_run = true;
         if (maxFilesInput && parseInt(maxFilesInput) > 0) body.max_files = parseInt(maxFilesInput);
+        body.hydrated_only = hydratedOnly;
+        return body;
+    }
+
+    async startScanJob() {
+        const body = this._readScanFormParams();
 
         const btn = document.getElementById('local-scan-btn');
         btn.disabled = true;
@@ -1340,6 +1350,35 @@ class AdminPanel {
         }
     }
 
+    async startPreflightJob() {
+        const body = this._readScanFormParams();
+        const btn = document.getElementById('local-scan-preflight-btn');
+        if (btn) btn.disabled = true;
+
+        try {
+            const result = await app.apiCall('/api/admin/scan-local-library/preflight', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (result.job) {
+                this._currentJobId = result.job.id;
+                this._showJobProgress(result.job, {
+                    estimated_size_bytes: result.estimated_size_bytes,
+                    largest_file_bytes: result.largest_file_bytes,
+                    extensions: result.extensions,
+                });
+            }
+            app.showNotification('Preflight analysis complete', 'success');
+            this.loadScanHistory();
+        } catch (error) {
+            console.error('Failed to run preflight:', error);
+            app.showNotification(error.message || 'Preflight failed', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     _startPolling(jobId) {
         this._stopPolling();
         this._scanPollTimer = setInterval(() => this._pollJob(jobId), 1500);
@@ -1365,14 +1404,16 @@ class AdminPanel {
         }
     }
 
-    _showJobProgress(job) {
+    _showJobProgress(job, preflightExtra) {
         const progressDiv = document.getElementById('local-scan-progress');
         progressDiv.style.display = 'block';
 
         const btn = document.getElementById('local-scan-btn');
         const cancelBtn = document.getElementById('local-scan-cancel-btn');
+        const preflightBtn = document.getElementById('local-scan-preflight-btn');
         const isActive = ['pending', 'running', 'cancelling'].includes(job.status);
         btn.disabled = isActive;
+        if (preflightBtn) preflightBtn.disabled = isActive;
         cancelBtn.style.display = isActive ? 'inline-block' : 'none';
 
         const badge = document.getElementById('local-scan-status-badge');
@@ -1390,6 +1431,11 @@ class AdminPanel {
 
         const dryBadge = document.getElementById('local-scan-dry-badge');
         dryBadge.style.display = job.dry_run ? 'inline-block' : 'none';
+
+        const preflightBadge = document.getElementById('local-scan-preflight-badge');
+        if (preflightBadge) {
+            preflightBadge.style.display = job.is_preflight ? 'inline-block' : 'none';
+        }
 
         const bar = document.getElementById('local-scan-progress-bar');
         if (job.max_files && job.max_files > 0) {
@@ -1431,16 +1477,67 @@ class AdminPanel {
             failuresDiv.style.display = 'none';
             failuresTbody.innerHTML = '';
         }
+
+        const extStats = document.getElementById('scan-extended-stats');
+        if (extStats) {
+            const hasAny = (job.skipped_cloud_placeholder || 0) + (job.skipped_zero_byte || 0)
+                + (job.skipped_timeout || 0) + (job.skipped_unreadable || 0)
+                + (job.skipped_hidden || 0) + (job.skipped_too_large || 0) > 0;
+            extStats.style.display = hasAny || job.is_preflight ? 'grid' : 'none';
+            const set = (id, val) => {
+                const e = document.getElementById(id);
+                if (e) e.textContent = val ?? 0;
+            };
+            set('scan-cloud-placeholder', job.skipped_cloud_placeholder);
+            set('scan-zero-byte', job.skipped_zero_byte);
+            set('scan-timeout', job.skipped_timeout);
+            set('scan-unreadable', job.skipped_unreadable);
+            set('scan-hidden', job.skipped_hidden);
+            set('scan-too-large', job.skipped_too_large);
+        }
+
+        const pfExtra = document.getElementById('scan-preflight-extra');
+        if (pfExtra) {
+            const extra = preflightExtra || {};
+            const hasPf = job.is_preflight && (extra.estimated_size_bytes != null);
+            pfExtra.style.display = hasPf ? 'grid' : 'none';
+            if (hasPf) {
+                const fmtSize = (bytes) => {
+                    if (bytes == null) return '—';
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+                    return (bytes / 1073741824).toFixed(2) + ' GB';
+                };
+                const esEl = document.getElementById('scan-estimated-size');
+                if (esEl) esEl.textContent = fmtSize(extra.estimated_size_bytes);
+                const lfEl = document.getElementById('scan-largest-file');
+                if (lfEl) lfEl.textContent = fmtSize(extra.largest_file_bytes);
+                const extEl = document.getElementById('scan-extensions');
+                if (extEl) {
+                    const exts = extra.extensions || {};
+                    const sorted = Object.entries(exts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+                    extEl.textContent = sorted.map(([k, v]) => `${k}: ${v}`).join(', ') || '—';
+                }
+            }
+        }
     }
 
     _onJobFinished(job) {
-        const label = job.dry_run ? 'would import' : 'imported';
-        const statusLabel = job.status === 'completed' ? 'complete' : job.status;
-        app.showNotification(
-            `Scan ${statusLabel}: ${job.imported} ${label}, ${job.skipped_duplicate} dup skipped, ${job.failed} failed`,
-            job.status === 'completed' ? (job.failed > 0 ? 'warning' : 'success') : 'warning'
-        );
-        if (!job.dry_run && job.imported > 0) this.loadMediaStats();
+        if (job.is_preflight) {
+            app.showNotification(
+                `Preflight ${job.status}: ${job.total_seen} files found`,
+                job.status === 'completed' ? 'success' : 'warning'
+            );
+        } else {
+            const label = job.dry_run ? 'would import' : 'imported';
+            const statusLabel = job.status === 'completed' ? 'complete' : job.status;
+            app.showNotification(
+                `Scan ${statusLabel}: ${job.imported} ${label}, ${job.skipped_duplicate} dup skipped, ${job.failed} failed`,
+                job.status === 'completed' ? (job.failed > 0 ? 'warning' : 'success') : 'warning'
+            );
+        }
+        if (!job.dry_run && !job.is_preflight && job.imported > 0) this.loadMediaStats();
         this.loadScanHistory();
     }
 
@@ -1454,7 +1551,7 @@ class AdminPanel {
             }
 
             tbody.innerHTML = jobs.map(j => {
-                const mode = j.dry_run ? 'dry-run' : 'import';
+                const mode = j.is_preflight ? 'preflight' : (j.dry_run ? 'dry-run' : 'import');
                 const time = j.created_at ? new Date(j.created_at).toLocaleString() : '—';
                 const statusCls = {
                     completed: 'text-green-500', failed: 'text-red-500',
@@ -4162,6 +4259,26 @@ class AdminPanel {
                     .env 路径：${data.env_file || '(unknown)'}　|　修改 .env 后需重启服务
                 </div>
             `;
+
+            const serverInfoDiv = document.getElementById('dev-server-info');
+            const serverGrid = document.getElementById('dev-server-info-grid');
+            if (serverInfoDiv && serverGrid && data.server) {
+                const srv = data.server;
+                const scn = data.scan || {};
+                serverInfoDiv.style.display = 'block';
+                serverGrid.innerHTML = `
+                    <div>PID：<span class="font-bold">${srv.pid || '—'}</span></div>
+                    <div>Python：<span class="font-bold">${srv.python_version ? srv.python_version.split(' ')[0] : '—'}</span></div>
+                    <div>版本：<span class="font-bold">${srv.app_version || '—'}</span></div>
+                    <div>平台：<span class="font-bold">${srv.platform || '—'}</span></div>
+                    <div>Debug：<span class="font-bold">${srv.debug ? 'ON' : 'OFF'}</span></div>
+                    <div>根目录：<span class="font-mono text-[10px]">${srv.base_dir || '—'}</span></div>
+                    <div class="col-span-full border-t border-base mt-1 pt-1 font-bold text-xs text-primary">扫描配置</div>
+                    <div>仅已下载：<span class="font-bold">${scn.hydrated_only_default ? 'ON' : 'OFF'}</span></div>
+                    <div>超时：<span class="font-bold">${scn.file_open_timeout_seconds ?? '—'}s</span></div>
+                    <div>文件上限：<span class="font-bold">${scn.max_file_size_mb ?? '—'} MB</span></div>
+                `;
+            }
         } catch (e) {
             el.textContent = `加载失败: ${e.message || e}`;
         }
