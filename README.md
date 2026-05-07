@@ -57,6 +57,7 @@ Core capabilities:
 | Background tag translation | ✅ Done | Continuous auto-translation of all missing tags via LLM |
 | Auto AI tagging after import | ✅ Done | Optional, disabled by default |
 | AI tagging background jobs | ✅ Done | Progress tracking, cancel, history |
+| Proper noun alias resolver | ✅ Done | Character/copyright/artist alias resolution with LLM + manual review |
 | Anime / photo filtering | Phase 3 | Distinguish anime from photos |
 | Reverse image search | Phase 3 | SauceNAO/IQDB integration |
 | Character / copyright database | Future | External data enrichment |
@@ -68,7 +69,7 @@ Core capabilities:
 - No reverse image search
 - No source URL auto-detection
 - No character/copyright database
-- Chinese tag search covers ~80 common tags; uncovered tags use English canonical names
+- Chinese tag search covers all general/meta tags via LLM translation; character/copyright/artist aliases require manual review
 
 ## Quick Start (Windows Local Development)
 
@@ -178,6 +179,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [Tag Metadata Foundation](docs/tag-metadata-foundation.md) | Provenance tracking system design |
 | [Tag Localization (zh-CN)](docs/tag-localization-zh.md) | Chinese display names and search design |
 | [Tag Localization LLM](docs/tag-localization-llm.md) | Dynamic LLM translation cache documentation |
+| [Entity Alias Resolver](docs/entity-alias-resolver.md) | Proper-noun alias resolution for character/copyright/artist tags |
 | [Project Roadmap](docs/project-roadmap.md) | Full phase plan |
 | [Current Handoff](docs/current-handoff.md) | Latest state for resuming development |
 | [Development Log](docs/local-anime-library-devlog.md) | Per-phase technical notes |
@@ -189,6 +191,8 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.3a** — Developer E2E tools + config diagnostics (done)
 - **Phase 2.3c** — Full real browser E2E acceptance testing (done)
 - **Phase 2.3d** — Continuous background tag translation worker (done)
+- **Phase 2.3e** — Proper noun alias resolver foundation (done)
+- **Phase 2.4** — iCloud large library readiness / safe ingestion (next)
 - **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
 - **Phase 4** — Filesystem watcher & scheduled scans
 
