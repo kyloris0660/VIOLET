@@ -8,13 +8,25 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` |
+| **Branch** | `main` (Phase 2.4 on `phase2.4-icloud-safe-ingestion`, PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) open, **not merged**) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
 | **DB** | `blombooru` on `localhost:5432`, user `postgres` |
 | **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
 | **Admin credentials** | `admin` / `admin123` |
+| **Phase 2.4 status** | Code complete, tested, PR open — awaiting user manual review and merge |
+
+## Mandatory Workflow Rules
+
+These rules are permanent and apply to all future phases. See `CLAUDE.md` and `AGENTS.md` for full details.
+
+1. **GitHub PR / main protection** — Agents may NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user manually reviews and merges on GitHub.
+2. **Real browser validation** — Every feature phase or UI-affecting change requires real browser validation (Playwright with system Edge preferred). Delivery reports must include a **真实浏览器验收** section.
+3. **Chinese reporting** — Final delivery reports and stage summaries must be written in Chinese (zh-CN). Technical identifiers remain English.
+4. **Test report accuracy** — Never claim "all tests passed" if any test failed. Report exact commands, exact results, and document any skipped/pre-existing failures.
+5. **Service / dev environment safety** — Never kill arbitrary processes. Only stop clearly identified V.I.O.L.E.T. dev server processes with PID/port reported first.
+6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 
 ## Language Policy
 
@@ -23,6 +35,7 @@
 | User interface | zh-CN first (English fallback) |
 | Internal code / API / config / canonical tags | English |
 | Core technical docs | English primary |
+| Delivery reports / stage summaries | Chinese (zh-CN) |
 | Optional user-facing Chinese docs | Separate supplements |
 
 ## What Has Been Built
@@ -358,6 +371,11 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 1. Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
 2. Or introduce a dedicated anime/photo classifier
 3. Reverse image search integration (SauceNAO, IQDB)
+
+**Prerequisites before starting Phase 3:**
+- PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) (Phase 2.4) must be manually merged by the user
+- Verify `origin/main` contains the merged commit
+- Do not auto-start Phase 3
 
 ### Next-Phase Requirement: Service Control UI
 

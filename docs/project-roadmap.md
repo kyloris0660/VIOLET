@@ -260,9 +260,31 @@ Every phase follows this workflow:
 3. Verify: all new features work, no existing features broken, no sensitive files staged
 4. Commit with conventional commit message (`feat:`, `fix:`, `docs:`, etc.)
 5. Push branch, create PR with summary / scope / testing / limitations
-6. Squash merge, delete branch
+6. **User manually reviews and merges** (squash merge, delete branch)
 7. Checkout `main`, pull
 8. **Stop.** Output delivery report. Do not auto-start the next phase.
+
+### GitHub PR / Main Protection
+
+Agents may create branches, commit, push, create PRs, and run tests. Agents must NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user reviews and merges on GitHub.
+
+**Recommended**: Enable GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
+
+### Real Browser Validation (Mandatory)
+
+Every feature phase or UI-affecting change requires real browser validation before delivery (Playwright with system Edge preferred). The delivery report must include a **真实浏览器验收** section with: 验收方式, browser/Playwright project, URL tested, pages/flows validated, pass/fail, skipped items.
+
+### Chinese Reporting
+
+Final delivery reports and stage summaries must be written in Chinese (zh-CN). Technical identifiers (file paths, branch names, PR URLs, API routes, config keys, commands) remain English.
+
+### Test Report Accuracy
+
+Do not claim "all tests passed" if any test failed. Report exact commands and results. Pre-existing or unrelated failures must be documented with evidence.
+
+### Service / Dev Environment Safety
+
+Never kill arbitrary processes. Only stop identified V.I.O.L.E.T. dev server processes (report PID/port first). Restrict stop/restart UI to local debug mode only.
 
 ### Safety Rules
 
