@@ -403,7 +403,7 @@ async def run_entity_resolution_endpoint(
     if not settings.ENTITY_ALIAS_RESOLVER_ENABLED:
         raise HTTPException(status_code=400, detail="Entity alias resolver is disabled")
 
-    return run_entity_resolution(db, limit=limit)
+    return await run_entity_resolution(db, limit=limit)
 
 
 def _parse_aliases(aliases_json: Optional[str]) -> List[str]:

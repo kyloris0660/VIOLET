@@ -8,7 +8,6 @@ This is fundamentally different from visual tag translation:
 The LLM prompt explicitly forbids inventing names — if the entity's Chinese name
 is not well-known, the canonical tag is returned unchanged with needs_review=true.
 """
-import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -19,8 +18,6 @@ from sqlalchemy.orm import Session
 from .llm_translation_provider import TranslationResult, get_llm_provider
 
 logger = logging.getLogger(__name__)
-
-ENTITY_CHUNK_SIZE = 10
 
 ENTITY_SYSTEM_PROMPT = (
     "You are an anime/manga entity name resolver. Your task is to find the ESTABLISHED "
@@ -120,6 +117,8 @@ async def resolve_entity_aliases(
 
     Uses the entity-specific prompt that forbids inventing names.
     """
+    from ..config import settings
+
     provider = get_llm_provider()
     if not provider.is_available():
         raise RuntimeError("LLM provider not available")
@@ -127,17 +126,18 @@ async def resolve_entity_aliases(
     if not hasattr(provider, "api_key"):
         raise RuntimeError("Entity alias resolver requires OpenAI-compatible provider")
 
+    chunk_size = settings.ENTITY_ALIAS_BATCH_SIZE
     all_results: List[TranslationResult] = []
     errors: List[str] = []
 
-    for i in range(0, len(tags), ENTITY_CHUNK_SIZE):
-        chunk = tags[i:i + ENTITY_CHUNK_SIZE]
+    for i in range(0, len(tags), chunk_size):
+        chunk = tags[i:i + chunk_size]
         try:
             chunk_results = await _resolve_chunk(provider, chunk)
             all_results.extend(chunk_results)
         except Exception as e:
-            logger.error("Entity resolver chunk %d failed: %s", i // ENTITY_CHUNK_SIZE + 1, e)
-            errors.append(f"Chunk {i // ENTITY_CHUNK_SIZE + 1} ({len(chunk)} tags): {e}")
+            logger.error("Entity resolver chunk %d failed: %s", i // chunk_size + 1, e)
+            errors.append(f"Chunk {i // chunk_size + 1} ({len(chunk)} tags): {e}")
 
     if errors and not all_results:
         raise RuntimeError(f"All entity resolver chunks failed: {'; '.join(errors)}")
@@ -257,7 +257,7 @@ def get_entity_resolver_status(db: Session) -> Dict[str, Any]:
     }
 
 
-def run_entity_resolution(
+async def run_entity_resolution(
     db: Session,
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -278,11 +278,7 @@ def run_entity_resolution(
 
     tag_inputs = [{"name": p["canonical_name"], "category": p["category"]} for p in pending]
 
-    loop = asyncio.new_event_loop()
-    try:
-        results = loop.run_until_complete(resolve_entity_aliases(tag_inputs))
-    finally:
-        loop.close()
+    results = await resolve_entity_aliases(tag_inputs)
 
     resolved = 0
     kept_original = 0

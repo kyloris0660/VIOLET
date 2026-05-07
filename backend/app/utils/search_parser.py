@@ -69,7 +69,6 @@ def _load_db_alias_cache():
                 if is_proper_noun and row.source not in trusted_sources and row.needs_review:
                     continue
 
-            for row in rows:
                 key = row.display_name
                 existing_priority = source_priority.get(cache.get(key, {}).get("_source", ""), 99)
                 new_priority = source_priority.get(row.source, 99)

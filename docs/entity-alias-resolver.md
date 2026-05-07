@@ -24,17 +24,17 @@ A wrong entity alias (e.g., inventing a Chinese name for an obscure artist) is w
 ## Architecture
 
 ```
-Admin triggers "Resolve Entities"
+Admin triggers "Resolve Entities"  (POST /entity/resolve)
          ↓
   list_pending_proper_nouns(db)
          ↓
-  resolve_entity_aliases(tags)  ← dedicated LLM prompt
-         ↓
+  await resolve_entity_aliases(tags)  ← async, dedicated LLM prompt
+         ↓                               chunks by ENTITY_ALIAS_BATCH_SIZE
   upsert_translation(db, ...)  ← source=llm, provider=entity_resolver
          ↓
-  Trust policy gate:
-    - needs_review=true → excluded from search cache
-    - needs_review=false → included in search cache
+  Trust policy gate (single-pass filter in _build_alias_cache):
+    - needs_review=true AND source not in {manual, static} → excluded from search cache
+    - needs_review=false OR trusted source → included in search cache
 ```
 
 ## Components
@@ -47,7 +47,7 @@ Admin triggers "Resolve Entities"
 | Background worker | `backend/app/services/tag_translation_worker.py` | Category filtering (skips proper-nouns) |
 | Admin UI | `frontend/templates/admin.html` | Entity Alias Resolver section |
 | Admin JS | `frontend/static/js/admin.js` | `loadEntityStatus()`, `resolveEntities()`, `loadEntityPending()` |
-| E2E Tests | `tests/e2e/entity-alias-resolver.spec.ts` | 7 smoke + 3 real E2E tests |
+| E2E Tests | `tests/e2e/entity-alias-resolver.spec.ts` | 10 smoke + 3 real E2E tests |
 
 ## LLM Prompt Design
 
@@ -59,21 +59,24 @@ The entity resolver uses `ENTITY_SYSTEM_PROMPT` which differs from the general t
 - Copyright/series: use official or widely-used Chinese titles
 - Artist names: almost always keep original, only alias if widely known
 - Lower temperature (0.2) for more deterministic output
-- Smaller chunk size (10 tags) for better per-entity attention
+- Smaller chunk size (configurable via `ENTITY_ALIAS_BATCH_SIZE`, default 10) for better per-entity attention
+- Fully async — awaited directly from FastAPI route, no nested event loop
 
 ## Trust Policy
 
-The search alias cache in `search_parser.py` enforces a trust policy for proper-noun tags:
+The search alias cache in `search_parser.py` enforces a trust policy for proper-noun tags using a single-pass filter during cache construction:
 
 ```
 proper_noun_cats = {"character", "copyright", "artist"}
 trusted_sources = {"manual", "static"}
 
-For each translation row:
+For each translation row (single loop):
   if category in proper_noun_cats
      AND source not in trusted_sources
      AND needs_review == true:
        → SKIP (excluded from search)
+  else:
+       → include in cache (with source-priority dedup)
 ```
 
 This means:
@@ -184,19 +187,21 @@ The background translation worker (`tag_translation_worker.py`) reads `TAG_TRANS
 
 ## Tests
 
-10 Playwright tests in `tests/e2e/entity-alias-resolver.spec.ts`:
+13 Playwright tests in `tests/e2e/entity-alias-resolver.spec.ts`:
 
 **Smoke tests (always run):**
 1. Entity status API returns valid structure
 2. Entity pending API returns array with correct fields
 3. Entity pending only returns proper-noun categories
-4. Entity resolve requires admin authentication
+4. Entity resolve requires admin authentication (uses fresh HTTP context, no session cookies)
 5. Worker status includes categories config (excludes proper-nouns)
 6. Entity status does not expose API key
 7. Entity section exists in admin UI
 8. Proper-noun LLM translations marked needs_review in search trust
+9. Search cache excludes untrusted proper-noun LLM aliases
+10. Entity status config matches ENTITY_ALIAS_BATCH_SIZE setting
 
 **Real E2E tests (require `VIOLET_RUN_REAL_E2E=1`):**
-9. Entity resolve processes pending tags
-10. Entity resolve with limit respects max
-11. Resolved entity has translation in DB with provider=entity_resolver
+11. Entity resolve processes pending tags
+12. Entity resolve with limit respects max
+13. Resolved entity has translation in DB with provider=entity_resolver

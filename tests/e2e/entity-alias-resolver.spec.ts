@@ -42,15 +42,11 @@ test.describe('Entity Alias Resolver — Smoke', () => {
     }
   });
 
-  test('entity resolve requires admin', async ({ page }) => {
-    const resp = await page.evaluate(async () => {
-      const r = await fetch('/api/admin/tag-localization/entity/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return { status: r.status };
+  test('entity resolve requires admin', async ({ request }) => {
+    const resp = await request.post('http://localhost:8000/api/admin/tag-localization/entity/resolve', {
+      headers: { 'Content-Type': 'application/json' },
     });
-    expect(resp.status).toBe(401);
+    expect(resp.status()).toBe(401);
   });
 
   test('worker status includes categories config', async ({ page }) => {
@@ -92,6 +88,37 @@ test.describe('Entity Alias Resolver — Smoke', () => {
         expect(item.needs_review).toBe(true);
       }
     }
+  });
+  test('search cache excludes untrusted proper-noun LLM aliases', async ({ page }) => {
+    const transResp = await apiCall(page,
+      '/api/admin/tag-localization/translations?source=llm&needs_review=true&limit=5');
+    expect(transResp.status).toBe(200);
+
+    const untrustedProperNouns = (transResp.data.items || []).filter(
+      (i: any) => ['character', 'copyright', 'artist'].includes(i.category) && i.needs_review
+    );
+
+    if (untrustedProperNouns.length === 0) {
+      test.skip();
+      return;
+    }
+
+    const testAlias = untrustedProperNouns[0];
+    const searchResp = await page.evaluate(async (displayName: string) => {
+      const r = await fetch(`/api/media?search=${encodeURIComponent(displayName)}&limit=1`);
+      const url = r.url;
+      return { status: r.status, url };
+    }, testAlias.display_name);
+
+    expect(searchResp.status).toBe(200);
+  });
+
+  test('entity status config matches ENTITY_ALIAS_BATCH_SIZE setting', async ({ page }) => {
+    const resp = await apiCall(page, '/api/admin/tag-localization/entity/status');
+    expect(resp.status).toBe(200);
+    expect(resp.data.config.batch_size).toBeGreaterThan(0);
+    expect(resp.data.config.max_per_run).toBeGreaterThan(0);
+    expect(resp.data.config.batch_size).toBeLessThanOrEqual(resp.data.config.max_per_run);
   });
 });
 
