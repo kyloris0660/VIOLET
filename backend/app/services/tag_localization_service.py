@@ -159,7 +159,8 @@ def resolve_tag_alias(db: Session, query_token: str, lang: str = "zh-CN") -> str
 
 
 def list_missing_translations(db: Session, lang: str = "zh-CN", limit: int = 100,
-                              category: Optional[str] = None) -> List[Dict[str, Any]]:
+                              category: Optional[str] = None,
+                              categories: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """Find tags that have no translation in the given language."""
     static = _load_static_dict()
 
@@ -177,15 +178,20 @@ def list_missing_translations(db: Session, lang: str = "zh-CN", limit: int = 100
     if static_names:
         query = query.filter(~Tag.name.in_(static_names))
 
-    if category:
-        from ..enums import TagCategoryEnum
-        cat_map = {
-            "general": TagCategoryEnum.general,
-            "character": TagCategoryEnum.character,
-            "copyright": TagCategoryEnum.copyright,
-            "artist": TagCategoryEnum.artist,
-            "meta": TagCategoryEnum.meta,
-        }
+    from ..enums import TagCategoryEnum
+    cat_map = {
+        "general": TagCategoryEnum.general,
+        "character": TagCategoryEnum.character,
+        "copyright": TagCategoryEnum.copyright,
+        "artist": TagCategoryEnum.artist,
+        "meta": TagCategoryEnum.meta,
+    }
+
+    if categories:
+        enums = [cat_map[c] for c in categories if c in cat_map]
+        if enums:
+            query = query.filter(Tag.category.in_(enums))
+    elif category:
         if category in cat_map:
             query = query.filter(Tag.category == cat_map[category])
 
@@ -560,6 +566,11 @@ def _auto_translate_worker(tag_names: List[str], lang: str):
                 cat = "general"
                 if tag and hasattr(tag.category, "value"):
                     cat = tag.category.value
+
+                proper_noun_cats = {"character", "copyright", "artist"}
+                if cat in proper_noun_cats:
+                    continue
+
                 candidates.append({"name": name, "category": cat})
 
             skipped = len(tag_names) - len(candidates)

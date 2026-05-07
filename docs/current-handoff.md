@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.3d Continuous Background Tag Translation (2026-05-06).
+> Last updated after Phase 2.3e Proper Noun Alias Resolver Foundation (2026-05-07).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -256,6 +256,30 @@ Background worker that automatically translates all missing tags via LLM:
 | `frontend/static/js/admin.js` | Worker UI logic |
 | `tests/e2e/tag-translation-worker.spec.ts` | Worker Playwright tests |
 
+### Phase 2.3e — Proper Noun Alias Resolver Foundation
+
+Separated proper-noun tag handling from visual tag translation:
+
+- **Category policy**: Background worker now skips character/copyright/artist tags (`TAG_TRANSLATION_BG_CATEGORIES=general,meta`)
+- **Entity alias resolver**: Dedicated LLM prompt for resolving established Chinese names (not inventing translations)
+- **Trust policy**: Untrusted proper-noun LLM aliases (`needs_review=true`) excluded from Chinese search cache
+- **Admin API**: `entity/status`, `entity/pending`, `entity/resolve` endpoints
+- **Admin UI**: Separate "Entity Alias Resolver" section with status, pending list, resolve button
+- **10 Playwright tests**: 7 smoke + 3 real E2E for entity resolution workflow
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/services/entity_alias_resolver.py` | Entity alias resolver service + LLM prompt |
+| `backend/app/routes/admin/tag_localization.py` | Entity API endpoints (status/pending/resolve) |
+| `backend/app/utils/search_parser.py` | Trust policy for proper-noun aliases |
+| `backend/app/services/tag_translation_worker.py` | Category filtering (skip proper-nouns) |
+| `frontend/templates/admin.html` | Entity Alias Resolver UI section |
+| `frontend/static/js/admin.js` | Entity resolver UI logic |
+| `tests/e2e/entity-alias-resolver.spec.ts` | Playwright E2E tests |
+| `docs/entity-alias-resolver.md` | Full documentation |
+
 ## What Has NOT Been Built
 
 - No anime/photo filtering (Phase 3)
@@ -328,5 +352,6 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 | `docs/local-anime-library-devlog.md` | Per-phase technical log |
 | `docs/local-library-scan.md` | Feature documentation and API usage |
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
+| `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
 | `docs/tag-localization-zh.md` | Tag localization design (zh-CN) |
 | `example.env` | Available environment variables |

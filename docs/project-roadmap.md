@@ -190,6 +190,19 @@ See [AI Tagging Jobs](ai-tagging-jobs.md) and [E2E Validation Guide](e2e-violet-
 
 See [Tag Localization LLM](tag-localization-llm.md) for configuration details.
 
+### Phase 2.3e — Proper Noun Alias Resolver Foundation
+
+**Goal:** Separate proper-noun alias resolution from visual tag translation, with dedicated LLM prompt and trust policy.
+
+- Background worker now skips character/copyright/artist tags (new `TAG_TRANSLATION_BG_CATEGORIES` setting)
+- New entity alias resolver service with dedicated LLM prompt (forbids inventing names)
+- Trust policy: unreviewed proper-noun LLM aliases excluded from Chinese search cache
+- Admin API: entity/status, entity/pending, entity/resolve
+- Admin UI: separate Entity Alias Resolver section with status, pending list, resolve controls
+- 10 Playwright tests (7 smoke + 3 real E2E)
+
+See [Entity Alias Resolver](entity-alias-resolver.md) for documentation.
+
 ---
 
 ## Upcoming Phases

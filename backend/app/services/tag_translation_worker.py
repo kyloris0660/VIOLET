@@ -84,6 +84,7 @@ def get_worker_status() -> Dict[str, Any]:
             "max_per_run": settings.TAG_TRANSLATION_BG_MAX_PER_RUN,
             "error_limit": settings.TAG_TRANSLATION_BG_ERROR_LIMIT,
             "priority": settings.TAG_TRANSLATION_BG_PRIORITY,
+            "categories": settings.TAG_TRANSLATION_BG_CATEGORIES,
         },
     }
 
@@ -222,7 +223,8 @@ def _run_one_cycle():
         db.close()
         return
 
-    missing = list_missing_translations(db, limit=max_this_run)
+    missing = list_missing_translations(db, limit=max_this_run,
+                                        categories=settings.TAG_TRANSLATION_BG_CATEGORIES)
     if not missing:
         _worker_running = False
         db.close()
@@ -231,6 +233,7 @@ def _run_one_cycle():
     job = TagTranslationJob(
         status="running",
         source="background",
+        category=",".join(settings.TAG_TRANSLATION_BG_CATEGORIES),
         batch_size=settings.TAG_TRANSLATION_BG_BATCH_SIZE,
         max_per_run=max_this_run,
         remaining_before=len(missing),

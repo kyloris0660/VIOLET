@@ -189,6 +189,7 @@ def check_and_migrate_schema(engine):
         migrate_add_scan_job_media_table,
         migrate_add_ai_tag_jobs_table,
         migrate_add_tag_translation_jobs_table,
+        migrate_audit_proper_noun_translations,
     ]
     
     for migration in migrations:
@@ -548,3 +549,32 @@ def migrate_add_tag_translation_jobs_table(engine, inspector):
             "ON blombooru_tag_translation_jobs(created_at)"
         ))
         conn.commit()
+
+
+def migrate_audit_proper_noun_translations(engine, inspector):
+    """Mark LLM-generated proper-noun translations as needs_review (Phase 2.3e safety audit).
+
+    Proper noun categories (character, copyright, artist) were previously translated by the
+    same generic LLM prompt as visual tags. Those translations need human review before they
+    should be trusted in search aliases.
+    """
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_tag_translations' not in tables:
+        return
+
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            UPDATE blombooru_tag_translations
+            SET needs_review = true, updated_at = NOW()
+            WHERE source = 'llm'
+              AND category IN ('character', 'copyright', 'artist')
+              AND needs_review = false
+              AND status != 'reviewed'
+        """))
+        count = result.rowcount
+        conn.commit()
+
+    if count:
+        logger.info("Phase 2.3e audit: marked %d proper-noun LLM translations as needs_review", count)

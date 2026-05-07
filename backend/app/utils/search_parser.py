@@ -58,8 +58,16 @@ def _load_db_alias_cache():
                 .all()
             )
 
+            proper_noun_cats = {"character", "copyright", "artist"}
+            trusted_sources = {"manual", "static"}
+
             cache = {}
             source_priority = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
+
+            for row in rows:
+                is_proper_noun = row.category in proper_noun_cats
+                if is_proper_noun and row.source not in trusted_sources and row.needs_review:
+                    continue
 
             for row in rows:
                 key = row.display_name

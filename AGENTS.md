@@ -77,6 +77,7 @@ No automated test suite. Verify changes manually:
 | AI Tagging Jobs API | `backend/app/routes/admin/ai_tagging_jobs.py` | AI job CRUD + cancel endpoints |
 | Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics, E2E reset |
 | E2E Reset Service | `backend/app/services/e2e_reset_service.py` | Test data reset logic |
+| Entity Alias Resolver | `backend/app/services/entity_alias_resolver.py` | Proper-noun alias resolution (character/copyright/artist) |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |
 
 ### Development workflow

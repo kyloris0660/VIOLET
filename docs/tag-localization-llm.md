@@ -149,6 +149,14 @@ The LLM prompt instructs the model to:
 | GET | `/api/admin/tag-localization/llm-status` | Check LLM provider status |
 | POST | `/api/admin/tag-localization/translations/{id}/review` | Approve/reject |
 | POST | `/api/admin/tag-localization/test-llm` | Test LLM with a known tag |
+| GET | `/api/admin/tag-localization/worker/status` | Background worker status |
+| POST | `/api/admin/tag-localization/worker/run-now` | Trigger immediate worker run |
+| POST | `/api/admin/tag-localization/worker/pause` | Pause worker |
+| POST | `/api/admin/tag-localization/worker/resume` | Resume worker |
+| GET | `/api/admin/tag-localization/worker/jobs` | List worker job history |
+| GET | `/api/admin/tag-localization/entity/status` | Entity resolver status |
+| GET | `/api/admin/tag-localization/entity/pending` | List pending proper-noun tags |
+| POST | `/api/admin/tag-localization/entity/resolve` | Run entity alias resolution |
 
 ## Admin UI
 
@@ -265,9 +273,56 @@ When `TAG_TRANSLATION_BACKGROUND_ENABLED=true`, a background worker automaticall
 
 **Manual batch translation** is retained for debugging/immediate fixes but is not needed for normal operation.
 
+## Entity Alias Resolver (Phase 2.3e)
+
+Proper-noun tags (character, copyright, artist) require **alias resolution**, not translation. The entity alias resolver uses a dedicated LLM prompt that explicitly forbids inventing names — if the entity's Chinese name is not well-known, the canonical tag is returned unchanged with `needs_review=true`.
+
+### How it differs from visual tag translation
+
+| Aspect | Visual Tags (general, meta) | Proper Nouns (character, copyright, artist) |
+|--------|----------------------------|---------------------------------------------|
+| Task | Translate meaning | Resolve established alias |
+| Example | `blue_eyes` → `蓝眼睛` | `hatsune_miku` → `初音未来` |
+| LLM prompt | General translation | Entity-specific (forbids inventing) |
+| Trust | Auto-trusted in search | Requires review before search inclusion |
+| Background worker | Handles automatically | Skipped (requires explicit admin trigger) |
+
+### Category policy
+
+The background translation worker (`tag_translation_worker.py`) now respects `TAG_TRANSLATION_BG_CATEGORIES` (default: `general,meta`). Character, copyright, and artist tags are excluded from automatic background translation and must be resolved through the entity alias resolver.
+
+### Trust policy
+
+Untrusted proper-noun LLM aliases are excluded from the Chinese search cache. The search parser (`search_parser.py`) skips translations where:
+- Category is `character`, `copyright`, or `artist`
+- Source is not `manual` or `static`
+- `needs_review` is `true`
+
+This prevents a hallucinated entity name from polluting search results. Only manually reviewed or static-dictionary aliases are trusted for search.
+
+### Admin API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/tag-localization/entity/status` | Resolver status and statistics |
+| GET | `/api/admin/tag-localization/entity/pending` | List pending proper-noun tags |
+| POST | `/api/admin/tag-localization/entity/resolve` | Run entity alias resolution |
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENTITY_ALIAS_RESOLVER_ENABLED` | true | Enable entity alias resolution |
+| `ENTITY_ALIAS_BATCH_SIZE` | 10 | Tags per LLM chunk |
+| `ENTITY_ALIAS_MAX_PER_RUN` | 50 | Max tags per resolution run |
+| `TAG_TRANSLATION_BG_CATEGORIES` | general,meta | Categories for background worker |
+
+See [Entity Alias Resolver](entity-alias-resolver.md) for full documentation.
+
 ## Known Limitations
 
-- character/copyright/artist translations may need human review
+- Proper-noun aliases (character/copyright/artist) require explicit admin trigger — not auto-translated by background worker
+- Unreviewed proper-noun aliases are excluded from Chinese search until manually approved
 - Search alias cache refreshes every 5 minutes (immediate after Admin UI / worker changes)
 - Only `zh-CN` language supported currently
 - Background worker requires `TAG_TRANSLATION_LLM_ENABLED=true`
