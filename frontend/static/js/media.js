@@ -416,6 +416,8 @@ class MediaViewer extends MediaViewerBase {
         img.onerror = () => {
             console.error(window.i18n.t('media.errors.failed_load_thumbnail', { id: media.id }));
             img.src = '/static/images/no-thumbnail.png';
+            img.alt = '缩略图不可用';
+            img.title = '缩略图不可用';
         };
 
         link.appendChild(img);
@@ -1460,6 +1462,8 @@ class MediaViewer extends MediaViewerBase {
         img.draggable = false;
         img.onerror = () => {
             img.src = '/static/images/no-thumbnail.png';
+            img.alt = '缩略图不可用';
+            img.title = '缩略图不可用';
         };
 
         // Selection overlay

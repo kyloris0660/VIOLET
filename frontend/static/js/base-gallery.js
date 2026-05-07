@@ -969,7 +969,7 @@ class BaseGallery {
         });
     }
 
-    renderPopularTags(tags = null) {
+    async renderPopularTags(tags = null) {
         if (!this.elements.popularTags) return;
 
         let sortedTags;
@@ -1001,6 +1001,11 @@ class BaseGallery {
             return;
         }
 
+        if (window.TagLocalization) {
+            const tagNames = sortedTags.map(([name]) => name);
+            await window.TagLocalization.fetchBatchTranslations(tagNames);
+        }
+
         const currentParams = new URLSearchParams(window.location.search);
         const currentQuery = currentParams.get('q') || '';
         const currentTags = currentQuery.split(/\s+/).filter(t => t.length > 0);
@@ -1014,11 +1019,16 @@ class BaseGallery {
             params.set('q', newQuery);
             params.delete('page');
 
+            const displayName = window.TagLocalization
+                ? window.TagLocalization.getDisplayName(tagName)
+                : tagName;
+
             return `
                 <div class="${isInQuery ? 'popular-tag-item opacity-50' : 'popular-tag-item'}">
-                    <a href="/?${params.toString()}" class="popular-tag-name tag ${data.category || 'general'} tag-text" 
+                    <a href="/?${params.toString()}" class="popular-tag-name tag ${data.category || 'general'} tag-text"
+                       title="${tagName}"
                        ${isInQuery ? 'style="pointer-events: none;"' : ''}>
-                        ${tagName}
+                        ${displayName}
                         <span class="popular-tag-count">${data.count}</span>
                     </a>
                 </div>
@@ -1177,6 +1187,8 @@ class BaseGallery {
         img.onerror = () => {
             img.classList.add('loaded');
             img.src = '/static/images/no-thumbnail.png';
+            img.alt = '缩略图不可用';
+            img.title = '缩略图不可用';
         };
 
         img.src = `/api/media/${media.id}/thumbnail`;
