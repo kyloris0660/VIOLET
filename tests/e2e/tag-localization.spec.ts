@@ -1,12 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, apiCall } from './helpers/auth';
 
+const REAL_LLM = process.env.VIOLET_RUN_REAL_LLM_TESTS === '1';
+
 test.describe('Tag Localization', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
   });
 
   test('LLM status shows available', async ({ page }) => {
+    test.skip(!REAL_LLM, 'Skipped: set VIOLET_RUN_REAL_LLM_TESTS=1 to run');
     const resp = await apiCall(page, '/api/admin/tag-localization/llm-status');
     expect(resp.status).toBe(200);
     expect(resp.data.enabled).toBe(true);
@@ -25,6 +28,7 @@ test.describe('Tag Localization', () => {
   });
 
   test('test LLM translation works', async ({ page }) => {
+    test.skip(!REAL_LLM, 'Skipped: set VIOLET_RUN_REAL_LLM_TESTS=1 to run');
     const resp = await apiCall(page, '/api/admin/tag-localization/test-llm', {
       method: 'POST',
     });
@@ -34,6 +38,7 @@ test.describe('Tag Localization', () => {
   });
 
   test('batch translate dry-run returns candidates', async ({ page }) => {
+    test.skip(!REAL_LLM, 'Skipped: set VIOLET_RUN_REAL_LLM_TESTS=1 to run');
     const resp = await apiCall(page, '/api/admin/tag-localization/batch-translate', {
       method: 'POST',
       body: JSON.stringify({ dry_run: true, max_items: 5 }),

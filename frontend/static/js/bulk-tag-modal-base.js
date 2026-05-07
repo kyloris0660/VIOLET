@@ -546,7 +546,7 @@ class BulkTagModalBase {
                         <img src="/api/media/${item.mediaId}/thumbnail" 
                              alt="" 
                              class="w-16 h-16 sm:w-20 sm:h-20 object-cover flex-shrink-0 item-thumbnail cursor-pointer"
-                             onerror="this.src='/static/images/no-thumbnail.png'">
+                             onerror="this.src='/static/images/no-thumbnail.png';this.alt='缩略图不可用';this.title='缩略图不可用'">
                         
                         <!-- Mobile: Info next to thumbnail -->
                         <div class="flex-1 sm:hidden min-w-0">

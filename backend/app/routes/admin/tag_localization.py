@@ -364,6 +364,48 @@ async def list_worker_jobs(
     }
 
 
+# ── Entity Alias Resolver (Phase 2.3e) ──────────────────────────
+
+
+@router.get("/entity/status")
+async def get_entity_resolver_status_endpoint(
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Get entity alias resolver status and statistics."""
+    from ...services.entity_alias_resolver import get_entity_resolver_status
+
+    return get_entity_resolver_status(db)
+
+
+@router.get("/entity/pending")
+async def list_pending_entity_tags(
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """List proper-noun tags pending alias resolution."""
+    from ...services.entity_alias_resolver import list_pending_proper_nouns
+
+    return list_pending_proper_nouns(db, limit=limit)
+
+
+@router.post("/entity/resolve")
+async def run_entity_resolution_endpoint(
+    limit: Optional[int] = Query(None, ge=1, le=500),
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Run entity alias resolution for pending proper-noun tags."""
+    from ...config import settings
+    from ...services.entity_alias_resolver import run_entity_resolution
+
+    if not settings.ENTITY_ALIAS_RESOLVER_ENABLED:
+        raise HTTPException(status_code=400, detail="Entity alias resolver is disabled")
+
+    return await run_entity_resolution(db, limit=limit)
+
+
 def _parse_aliases(aliases_json: Optional[str]) -> List[str]:
     if not aliases_json:
         return []

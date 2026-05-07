@@ -132,7 +132,7 @@ class AlbumViewer extends BaseGallery {
             const data = await response.json();
 
             if (data.tags && data.tags.length > 0) {
-                this.renderPopularTags(data.tags);
+                await this.renderPopularTags(data.tags);
             } else {
                 this.elements.popularTags.innerHTML = `<p class="text-secondary">${window.i18n.t('albums.no_tags_found')}</p>`;
             }
@@ -231,7 +231,7 @@ class AlbumViewer extends BaseGallery {
                     ${thumbnails.slice(0, 4).map(thumb => `
                         <div class="relative overflow-hidden">
                             <img src="${thumb}" class="w-full h-full object-cover" loading="lazy" 
-                                 onerror="this.src='/static/images/no-thumbnail.png'">
+                                 onerror="this.src='/static/images/no-thumbnail.png';this.alt='缩略图不可用';this.title='缩略图不可用'">
                         </div>
                     `).join('')}
                 </div>

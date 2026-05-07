@@ -432,4 +432,23 @@ class Settings:
     def TAG_TRANSLATION_BG_PRIORITY(self) -> str:
         return os.getenv("TAG_TRANSLATION_BACKGROUND_PRIORITY", "post_count")
 
+    @property
+    def TAG_TRANSLATION_BG_CATEGORIES(self) -> list:
+        raw = os.getenv("TAG_TRANSLATION_BACKGROUND_CATEGORIES", "general,meta")
+        return [c.strip() for c in raw.split(",") if c.strip()]
+
+    # Entity Alias Resolver (Phase 2.3e)
+    @property
+    def ENTITY_ALIAS_RESOLVER_ENABLED(self) -> bool:
+        val = os.getenv("ENTITY_ALIAS_RESOLVER_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def ENTITY_ALIAS_BATCH_SIZE(self) -> int:
+        return int(os.getenv("ENTITY_ALIAS_BATCH_SIZE", "20"))
+
+    @property
+    def ENTITY_ALIAS_MAX_PER_RUN(self) -> int:
+        return int(os.getenv("ENTITY_ALIAS_MAX_PER_RUN", "100"))
+
 settings = Settings()

@@ -417,6 +417,7 @@ class AdminPanel {
         this.loadTagLocalizationStats();
         this.loadLLMStatus();
         this.loadWorkerStatus();
+        this.loadEntityStatus();
 
         const tlSaveBtn = document.getElementById('tl-save-btn');
         if (tlSaveBtn) {
@@ -465,6 +466,18 @@ class AdminPanel {
         const tlWorkerRefresh = document.getElementById('tl-worker-refresh-btn');
         if (tlWorkerRefresh) {
             tlWorkerRefresh.addEventListener('click', () => this.loadWorkerStatus());
+        }
+        const tlEntityResolveBtn = document.getElementById('tl-entity-resolve-btn');
+        if (tlEntityResolveBtn) {
+            tlEntityResolveBtn.addEventListener('click', () => this.resolveEntities());
+        }
+        const tlEntityRefreshBtn = document.getElementById('tl-entity-refresh-btn');
+        if (tlEntityRefreshBtn) {
+            tlEntityRefreshBtn.addEventListener('click', () => this.loadEntityStatus());
+        }
+        const tlEntityLoadPendingBtn = document.getElementById('tl-entity-load-pending-btn');
+        if (tlEntityLoadPendingBtn) {
+            tlEntityLoadPendingBtn.addEventListener('click', () => this.loadEntityPending());
         }
 
         const tlMissingTbody = document.getElementById('tl-missing-tbody');
@@ -3991,6 +4004,95 @@ class AdminPanel {
             app.showNotification(t('admin.tag_localization.worker_resumed_msg'), 'success');
             this.loadWorkerStatus();
         } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    // ---- Entity Alias Resolver (Phase 2.3e) ----
+
+    async loadEntityStatus() {
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/entity/status', { method: 'GET' });
+            const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            const statusEl = document.getElementById('tl-entity-status');
+            if (statusEl) {
+                statusEl.textContent = data.enabled ? t('admin.tag_localization.entity_enabled') : t('admin.tag_localization.entity_disabled');
+                statusEl.className = data.enabled ? 'text-green-400 font-bold' : 'text-red-400 font-bold';
+            }
+            setEl('tl-entity-total', data.total_proper_noun_tags);
+            setEl('tl-entity-resolved', data.resolved);
+            setEl('tl-entity-needs-review', data.needs_review);
+            setEl('tl-entity-no-translation', data.no_translation);
+            if (data.config) {
+                setEl('tl-entity-batch-size', data.config.batch_size);
+                setEl('tl-entity-max-per-run', data.config.max_per_run);
+            }
+            const llmEl = document.getElementById('tl-entity-llm');
+            if (llmEl) {
+                llmEl.textContent = data.llm_available ? t('admin.tag_localization.entity_enabled') : t('admin.tag_localization.entity_disabled');
+                llmEl.className = data.llm_available ? 'text-green-400 font-bold' : 'text-red-400 font-bold';
+            }
+        } catch (e) {
+            console.error('Failed to load entity status:', e);
+        }
+    }
+
+    async resolveEntities() {
+        const btn = document.getElementById('tl-entity-resolve-btn');
+        if (btn) btn.disabled = true;
+        const resultEl = document.getElementById('tl-entity-result');
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/entity/resolve', { method: 'POST' });
+            app.showNotification(t('admin.tag_localization.entity_resolve_triggered'), 'success');
+            if (resultEl) {
+                const msg = t('admin.tag_localization.entity_result')
+                    .replace('{resolved}', data.resolved || 0)
+                    .replace('{kept}', data.kept_original || 0)
+                    .replace('{failed}', data.failed || 0);
+                resultEl.textContent = msg;
+                resultEl.classList.remove('hidden');
+            }
+            this.loadEntityStatus();
+            this.loadTagLocalizationStats();
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async loadEntityPending() {
+        const tbody = document.getElementById('tl-entity-pending-tbody');
+        const thead = document.getElementById('tl-entity-pending-thead');
+        const emptyEl = document.getElementById('tl-entity-pending-empty');
+        if (!tbody) return;
+        try {
+            const data = await app.apiCall('/api/admin/tag-localization/entity/pending?limit=100', { method: 'GET' });
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '';
+                if (thead) thead.classList.add('hidden');
+                if (emptyEl) emptyEl.classList.remove('hidden');
+                return;
+            }
+            if (thead) thead.classList.remove('hidden');
+            if (emptyEl) emptyEl.classList.add('hidden');
+            tbody.innerHTML = data.map(item => {
+                const catBadge = `<span class="px-1.5 py-0.5 rounded text-xs bg-gray-700">${item.category}</span>`;
+                const reviewBadge = item.has_unreviewed_llm
+                    ? `<span class="text-yellow-400 text-xs">${t('admin.tag_localization.entity_has_unreviewed')}</span>`
+                    : '';
+                const currentDisplay = item.current_display
+                    ? `<span class="text-xs text-gray-400">${t('admin.tag_localization.entity_current_display')}: ${item.current_display}</span>`
+                    : '';
+                return `<tr class="border-t border-gray-700">
+                    <td class="py-1 px-2 font-mono text-sm">${item.canonical_name}</td>
+                    <td class="py-1 px-2">${catBadge}</td>
+                    <td class="py-1 px-2 text-right">${item.post_count}</td>
+                    <td class="py-1 px-2">${reviewBadge} ${currentDisplay}</td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            console.error('Failed to load entity pending:', e);
             app.showNotification(`Error: ${e.message || e}`, 'error');
         }
     }
