@@ -91,12 +91,13 @@ When `hydrated_only=True` (the default), files with any of these attributes are 
 
 ## Per-File Timeout
 
-Even with hydrated-only mode, some files may take unexpectedly long to read (slow disk, network-mounted storage, partially-hydrated cloud files). The scanner wraps `calculate_file_hash()` in a `ThreadPoolExecutor.submit()` + `Future.result(timeout=N)`.
+Even with hydrated-only mode, some files may take unexpectedly long to read (slow disk, network-mounted storage, partially-hydrated cloud files). The scanner runs `calculate_file_hash()` in a separate **subprocess** (`multiprocessing.Process`) with a hard timeout.
 
 On timeout:
+- The subprocess is terminated (`proc.terminate()` / `proc.kill()`)
 - The file is skipped and counted as `skipped_timeout`
-- The scan continues to the next file
-- On Windows, the stuck thread leaks (Python cannot kill native I/O), but this is bounded and documented
+- The scan continues to the next file immediately
+- No thread leaks — the terminated subprocess releases all resources
 
 ## Extended Skip Statistics
 

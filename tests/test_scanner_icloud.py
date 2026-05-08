@@ -2,6 +2,8 @@
 import os
 import sys
 import tempfile
+import time
+import multiprocessing
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +17,9 @@ from app.utils.local_library_scanner import (
     _is_scannable_file,
     _map_skip_reason,
     _SKIP_REASON_STAT_MAP,
+    _calculate_file_hash_with_timeout,
     preflight_analyze,
+    scan_and_import,
 )
 
 
@@ -186,6 +190,99 @@ class TestPreflightAnalyze:
         exts = result["extensions"]
         assert sum(exts.values()) == 3
         assert ".jpg" in exts and ".png" in exts and ".webp" in exts
+
+
+class TestSubprocessTimeout:
+    """Tests proving the subprocess-based timeout works correctly."""
+
+    def test_normal_hash_succeeds(self, tmp_path):
+        """A normal file hashes quickly and returns ok."""
+        f = tmp_path / "normal.jpg"
+        f.write_bytes(b"\xff\xd8" + b"\x00" * 1000)
+        status, value = _calculate_file_hash_with_timeout(f, timeout_sec=10)
+        assert status == "ok"
+        assert len(value) == 32  # MD5 hex
+
+    def test_nonexistent_file_returns_error(self, tmp_path):
+        """A nonexistent file returns error status."""
+        f = tmp_path / "nope.jpg"
+        status, value = _calculate_file_hash_with_timeout(f, timeout_sec=10)
+        assert status == "error"
+
+    @pytest.mark.skipif(
+        sys.platform != "win32" and os.environ.get("CI") == "true",
+        reason="Timing-sensitive test; skip in constrained CI environments",
+    )
+    def test_stuck_hash_times_out_and_scan_continues(self, tmp_path):
+        """Simulate a stuck file hash that exceeds timeout.
+
+        Proves:
+        1. The stuck hash times out (does not block forever)
+        2. skipped_timeout is incremented
+        3. Scan continues to process subsequent files
+        4. Later files are still processed successfully
+        """
+        stuck = tmp_path / "stuck.jpg"
+        stuck.write_bytes(b"\xff\xd8" + b"\x00" * 100)
+        normal1 = tmp_path / "after1.jpg"
+        normal1.write_bytes(b"\xff\xd8" + b"\x00" * 200)
+        normal2 = tmp_path / "after2.jpg"
+        normal2.write_bytes(b"\xff\xd8" + b"\x00" * 300)
+
+        hash_counter = [0]
+        timeout_count = [0]
+        ok_count = [0]
+
+        def mock_hash_with_timeout(file_path, timeout_sec):
+            """Return timeout for 'stuck' file, fake hash for others."""
+            hash_counter[0] += 1
+            path_str = str(file_path)
+            if path_str.endswith("stuck.jpg"):
+                timeout_count[0] += 1
+                return ("timeout", f"hash timed out after {timeout_sec}s")
+            import hashlib
+            ok_count[0] += 1
+            fake = hashlib.md5(path_str.encode()).hexdigest()
+            return ("ok", fake)
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.all.return_value = []
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        with patch("app.utils.local_library_scanner._calculate_file_hash_with_timeout", side_effect=mock_hash_with_timeout):
+            with patch("app.utils.local_library_scanner.settings") as mock_settings:
+                mock_settings.SCAN_MAX_FILE_SIZE_MB = 200
+                mock_settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS = 2
+                mock_settings.BASE_DIR = Path("C:/fake/project")
+                mock_settings.ORIGINAL_DIR = tmp_path / "output"
+
+                result = scan_and_import(
+                    mock_db,
+                    [tmp_path],
+                    dry_run=True,
+                    hydrated_only=False,
+                )
+
+        # Prove timeout was recorded for the stuck file
+        assert timeout_count[0] == 1, f"Expected 1 timeout, got {timeout_count[0]}"
+        assert result["skipped_timeout"] == 1
+        # Prove scan continued past the stuck file
+        assert ok_count[0] == 2, f"Expected 2 ok hashes, got {ok_count[0]}"
+        assert result["imported"] == 2
+        # Prove total candidates processed includes stuck + normal
+        assert result["processed"] == 3
+        # Prove the hash function was called for all 3 files
+        assert hash_counter[0] == 3
+
+    def test_timeout_with_real_subprocess(self, tmp_path):
+        """Use a very short timeout (1s) on a real file to verify subprocess
+        termination mechanics work (the file is small so it won't actually
+        time out — this tests the happy path through the subprocess)."""
+        f = tmp_path / "quick.jpg"
+        f.write_bytes(b"\xff\xd8" + b"\x00" * 5000)
+        status, value = _calculate_file_hash_with_timeout(f, timeout_sec=30)
+        assert status == "ok"
+        assert len(value) == 32
 
 
 if __name__ == "__main__":

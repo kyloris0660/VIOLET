@@ -1,9 +1,9 @@
 import json
+import multiprocessing
 import os
 import platform
 import shutil
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -46,6 +46,51 @@ _SKIP_REASON_STAT_MAP = {
     "hidden": "skipped_hidden",
     "too_large": "skipped_too_large",
 }
+
+
+def _hash_file_in_subprocess(file_path: str, result_queue: multiprocessing.Queue):
+    """Target function for subprocess-based hash calculation."""
+    import hashlib
+    try:
+        hash_md5 = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        result_queue.put(("ok", hash_md5.hexdigest()))
+    except Exception as e:
+        result_queue.put(("error", str(e)))
+
+
+def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tuple:
+    """Calculate file hash with hard timeout via subprocess.
+
+    Returns ("ok", hash_str) on success, ("timeout", msg) on timeout,
+    or ("error", msg) on read error. The subprocess is terminated on timeout
+    so no stuck I/O thread can block the scan.
+    """
+    result_queue = multiprocessing.Queue()
+    proc = multiprocessing.Process(
+        target=_hash_file_in_subprocess,
+        args=(str(file_path), result_queue),
+        daemon=True,
+    )
+    proc.start()
+    proc.join(timeout=timeout_sec)
+
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=2)
+        return ("timeout", f"hash timed out after {timeout_sec}s")
+
+    try:
+        status, value = result_queue.get_nowait()
+        return (status, value)
+    except Exception:
+        exit_code = proc.exitcode
+        return ("error", f"subprocess exited unexpectedly (code={exit_code})")
 
 
 def _is_cloud_only(file_path: Path) -> bool:
@@ -260,20 +305,20 @@ def scan_and_import(
             copied_path: Path | None = None
             try:
                 timeout_sec = settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS
-                try:
-                    with ThreadPoolExecutor(max_workers=1) as executor:
-                        future = executor.submit(calculate_file_hash, file_path)
-                        file_hash = future.result(timeout=timeout_sec)
-                except FutureTimeoutError:
+                hash_status, hash_value = _calculate_file_hash_with_timeout(
+                    file_path, timeout_sec
+                )
+                if hash_status == "timeout":
                     stats["skipped_timeout"] += 1
-                    _record_failure(stats, str(file_path), f"hash timed out after {timeout_sec}s")
+                    _record_failure(stats, str(file_path), hash_value)
                     _maybe_flush_progress()
                     continue
-                except OSError as e:
+                elif hash_status == "error":
                     stats["skipped_unreadable"] += 1
-                    _record_failure(stats, str(file_path), f"read error: {e}")
+                    _record_failure(stats, str(file_path), f"read error: {hash_value}")
                     _maybe_flush_progress()
                     continue
+                file_hash = hash_value
 
                 if file_hash in existing_hashes:
                     stats["skipped_duplicate"] += 1
