@@ -777,6 +777,12 @@
             "uploaded": "上传时间",
             "duration": "时长",
             "source": "来源",
+            "content_class": "内容分类",
+            "content_class_anime": "动漫",
+            "content_class_illustration": "插画",
+            "content_class_non_anime": "非动漫",
+            "content_class_unknown": "未知",
+            "content_class_none": "未分类",
             "description": "描述",
             "description_placeholder": "添加个人备注或说明...",
             "save_description": "保存描述"

@@ -518,6 +518,29 @@ class AdminPanel {
             });
         }
 
+        // Content Classification (Phase 3)
+        this._clsJobPollTimer = null;
+        this._currentClsJobId = null;
+        const clsJobCreateBtn = document.getElementById('cls-job-create-btn');
+        if (clsJobCreateBtn) {
+            clsJobCreateBtn.addEventListener('click', () => this.createClassificationJob());
+        }
+        const clsJobCancelBtn = document.getElementById('cls-job-cancel-btn');
+        if (clsJobCancelBtn) {
+            clsJobCancelBtn.addEventListener('click', () => this.cancelClassificationJob());
+        }
+        const clsRefreshConfig = document.getElementById('cls-refresh-config');
+        if (clsRefreshConfig) {
+            clsRefreshConfig.addEventListener('click', () => this.loadClassificationConfig());
+        }
+        const clsJobsRefreshHistory = document.getElementById('cls-jobs-refresh-history');
+        if (clsJobsRefreshHistory) {
+            clsJobsRefreshHistory.addEventListener('click', () => this.loadClsJobHistory());
+        }
+        this.loadClassificationStats();
+        this.loadClassificationConfig();
+        this.loadClsJobHistory();
+
         // Developer / E2E Tools (Phase 2.3a)
         const devRefreshConfig = document.getElementById('dev-refresh-config');
         if (devRefreshConfig) {
@@ -3705,6 +3728,219 @@ class AdminPanel {
             if (['pending', 'running', 'cancelling'].includes(job.status)) {
                 this._currentAiJobId = job.id;
                 this._startAiJobPolling(job.id);
+            }
+        } catch (e) {
+            app.showNotification(`加载任务详情失败: ${e.message || e}`, 'error');
+        }
+    }
+
+    // ---- Content Classification (Phase 3) ----
+
+    async loadClassificationStats() {
+        try {
+            const data = await app.apiCall('/api/admin/content-classification/stats');
+            const el = (id) => document.getElementById(id);
+            if (el('cls-total')) el('cls-total').textContent = data.total_media || 0;
+            if (el('cls-classified')) el('cls-classified').textContent = data.classified || 0;
+            if (el('cls-unclassified')) el('cls-unclassified').textContent = data.unclassified || 0;
+            if (el('cls-locked')) el('cls-locked').textContent = data.locked || 0;
+
+            const breakdownEl = el('cls-breakdown');
+            if (breakdownEl && data.breakdown) {
+                const parts = [];
+                const labels = { anime: '动漫', non_anime: '非动漫', illustration: '插画', unknown: '未知' };
+                for (const [k, v] of Object.entries(data.breakdown)) {
+                    parts.push(`${labels[k] || k}: ${v}`);
+                }
+                breakdownEl.textContent = parts.length ? parts.join('  |  ') : '暂无数据';
+            }
+        } catch (e) {
+            console.error('Failed to load classification stats:', e);
+        }
+    }
+
+    async loadClassificationConfig() {
+        const el = document.getElementById('cls-config-content');
+        if (!el) return;
+        try {
+            const data = await app.apiCall('/api/admin/content-classification/config');
+            const badge = (v) => v
+                ? '<span class="text-green-400 font-bold">ON</span>'
+                : '<span class="text-secondary">OFF</span>';
+            el.innerHTML = `
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs">
+                    <div>功能启用：${badge(data.enabled)}</div>
+                    <div>Batch 上限：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
+                    <div>导入后自动分类：${badge(data.auto_after_import)}</div>
+                    <div>自动分类上限：<span class="font-bold text-yellow-300">${data.auto_max_items}</span></div>
+                    <div>动漫标签阈值：<span class="font-bold text-yellow-300">${data.anime_tag_threshold}</span></div>
+                    <div>动漫信度阈值：<span class="font-bold text-yellow-300">${data.anime_confidence_threshold}</span></div>
+                </div>
+                <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，修改后需重启服务。</p>
+            `;
+        } catch (e) {
+            el.textContent = `加载失败: ${e.message || e}`;
+        }
+    }
+
+    async createClassificationJob() {
+        const btn = document.getElementById('cls-job-create-btn');
+        const idsInput = document.getElementById('cls-job-media-ids').value.trim();
+        const maxItems = parseInt(document.getElementById('cls-job-max-items').value) || 100;
+        const onlyUnclassified = document.getElementById('cls-job-only-unclassified').checked;
+
+        let mediaIds = null;
+        if (idsInput) {
+            mediaIds = idsInput.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+            if (mediaIds.length === 0) {
+                app.showNotification('无效的 Media IDs', 'error');
+                return;
+            }
+        }
+
+        btn.disabled = true;
+        btn.textContent = '创建中…';
+        try {
+            const body = {
+                max_items: maxItems,
+                only_unclassified: onlyUnclassified,
+            };
+            if (mediaIds) body.media_ids = mediaIds;
+
+            const data = await app.apiCall('/api/admin/content-classification/jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            app.showNotification(`分类任务 #${data.id} 已创建`, 'success');
+            this._currentClsJobId = data.id;
+            this._startClsJobPolling(data.id);
+        } catch (e) {
+            app.showNotification(`创建失败: ${e.message || e}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '创建任务';
+        }
+    }
+
+    async cancelClassificationJob() {
+        if (!this._currentClsJobId) return;
+        try {
+            await app.apiCall(`/api/admin/content-classification/jobs/${this._currentClsJobId}/cancel`, { method: 'POST' });
+            app.showNotification('取消请求已发送', 'success');
+        } catch (e) {
+            app.showNotification(`取消失败: ${e.message || e}`, 'error');
+        }
+    }
+
+    _startClsJobPolling(jobId) {
+        if (this._clsJobPollTimer) clearInterval(this._clsJobPollTimer);
+        const container = document.getElementById('cls-job-progress-container');
+        if (container) container.style.display = '';
+        this._clsJobPollTimer = setInterval(() => this._pollClsJob(jobId), 1500);
+        this._pollClsJob(jobId);
+    }
+
+    async _pollClsJob(jobId) {
+        try {
+            const data = await app.apiCall(`/api/admin/content-classification/jobs/${jobId}`, { method: 'GET' });
+            this._renderClsJobProgress(data);
+            if (['completed', 'failed', 'cancelled', 'interrupted'].includes(data.status)) {
+                clearInterval(this._clsJobPollTimer);
+                this._clsJobPollTimer = null;
+                this._currentClsJobId = null;
+                this.loadClsJobHistory();
+                this.loadClassificationStats();
+            }
+        } catch (e) {
+            clearInterval(this._clsJobPollTimer);
+            this._clsJobPollTimer = null;
+        }
+    }
+
+    _renderClsJobProgress(job) {
+        const statsEl = document.getElementById('cls-job-progress-stats');
+        const statusEl = document.getElementById('cls-job-progress-status');
+        const fillEl = document.getElementById('cls-job-progress-fill');
+        const cancelBtn = document.getElementById('cls-job-cancel-btn');
+
+        if (!statsEl) return;
+
+        const total = job.max_items || 1;
+        const pct = Math.min(100, Math.round((job.processed / total) * 100));
+        if (fillEl) fillEl.style.width = pct + '%';
+        if (cancelBtn) cancelBtn.disabled = !['pending', 'running'].includes(job.status);
+
+        const statusMap = {
+            pending: '等待中', running: '运行中', completed: '已完成',
+            failed: '失败', cancelled: '已取消', cancelling: '取消中', interrupted: '已中断'
+        };
+
+        statsEl.innerHTML = `
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">已处理</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.classified_anime}</div><div class="text-secondary">动漫</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-blue-400">${job.classified_non_anime}</div><div class="text-secondary">非动漫</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.classified_unknown}</div><div class="text-secondary">未知</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">失败</div></div>
+        `;
+        let statusText = `状态: ${statusMap[job.status] || job.status}`;
+        if (job.trigger_source === 'scan_job' && job.scan_job_id) {
+            statusText += ` | 关联 Scan #${job.scan_job_id}`;
+        }
+        if (job.error_message) statusText += ` | ${job.error_message}`;
+        if (statusEl) statusEl.textContent = statusText;
+    }
+
+    async loadClsJobHistory() {
+        const tbody = document.getElementById('cls-jobs-history-tbody');
+        const emptyEl = document.getElementById('cls-jobs-history-empty');
+        if (!tbody) return;
+        try {
+            const jobs = await app.apiCall('/api/admin/content-classification/jobs', { method: 'GET' });
+            if (!jobs || jobs.length === 0) {
+                tbody.innerHTML = '';
+                if (emptyEl) emptyEl.style.display = '';
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            const runningJob = jobs.find(j => ['pending', 'running', 'cancelling'].includes(j.status));
+            if (runningJob && !this._clsJobPollTimer) {
+                this._currentClsJobId = runningJob.id;
+                this._startClsJobPolling(runningJob.id);
+            }
+
+            const statusMap = {
+                pending: '⏳ 等待', running: '▶️ 运行', completed: '✅ 完成',
+                failed: '❌ 失败', cancelled: '⏹ 取消', cancelling: '⏸ 取消中', interrupted: '⚠️ 中断'
+            };
+            tbody.innerHTML = jobs.map(j => `
+                <tr class="border-b hover:bg-gray-800/30 text-[11px] cursor-pointer" onclick="adminPanel._showClsJobDetail(${j.id})">
+                    <td class="py-1 px-2">${j.id}</td>
+                    <td class="py-1 px-2">${statusMap[j.status] || j.status}</td>
+                    <td class="py-1 px-2">${j.trigger_source === 'scan_job' ? '扫描触发' : '手动'}</td>
+                    <td class="py-1 px-2">${j.processed}</td>
+                    <td class="py-1 px-2 text-green-400">${j.classified_anime}</td>
+                    <td class="py-1 px-2 text-blue-400">${j.classified_non_anime}</td>
+                    <td class="py-1 px-2 text-yellow-400">${j.classified_unknown}</td>
+                    <td class="py-1 px-2 text-red-400">${j.failed}</td>
+                    <td class="py-1 px-2">${j.created_at ? new Date(j.created_at).toLocaleString('zh-CN') : '-'}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="9" class="py-2 px-2 text-red-400">加载失败: ${e.message || e}</td></tr>`;
+        }
+    }
+
+    async _showClsJobDetail(jobId) {
+        try {
+            const job = await app.apiCall(`/api/admin/content-classification/jobs/${jobId}`, { method: 'GET' });
+            this._renderClsJobProgress(job);
+            const container = document.getElementById('cls-job-progress-container');
+            if (container) container.style.display = '';
+            if (['pending', 'running', 'cancelling'].includes(job.status)) {
+                this._currentClsJobId = job.id;
+                this._startClsJobPolling(job.id);
             }
         } catch (e) {
             app.showNotification(`加载任务详情失败: ${e.message || e}`, 'error');

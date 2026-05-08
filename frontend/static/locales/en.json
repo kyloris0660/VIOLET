@@ -777,6 +777,12 @@
             "uploaded": "Uploaded",
             "duration": "Duration",
             "source": "Source",
+            "content_class": "Content Class",
+            "content_class_anime": "Anime",
+            "content_class_illustration": "Illustration",
+            "content_class_non_anime": "Non-Anime",
+            "content_class_unknown": "Unknown",
+            "content_class_none": "Unclassified",
             "description": "Description",
             "description_placeholder": "Add a personal note or caption...",
             "save_description": "Save Description"

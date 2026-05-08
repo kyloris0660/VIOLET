@@ -8,6 +8,7 @@ from sqlalchemy import (Date, Float, and_, asc, case, cast, desc, exists, func,
                         literal, not_, or_, text)
 from sqlalchemy.orm import Query, Session, aliased
 
+from ..enums import ContentClassEnum
 from ..models import (Album, Media, RatingEnum, Tag, TagCategoryEnum,
                       blombooru_album_media, blombooru_media_tags)
 
@@ -509,6 +510,22 @@ def apply_search_criteria(query: Query, parsed_query: Dict[str, Any], db: Sessio
         for item in meta['filetype']:
             ext = item['value'].lower()
             cond = Media.filename.ilike(f"%.{ext}")
+            if item['negated']:
+                query = query.filter(not_(cond))
+            else:
+                query = query.filter(cond)
+
+    if 'class' in meta or 'content_class' in meta:
+        items = meta.get('class', []) + meta.get('content_class', [])
+        valid_classes = {e.value for e in ContentClassEnum}
+        for item in items:
+            val = item['value'].lower()
+            if val == 'none':
+                cond = Media.content_class.is_(None)
+            elif val in valid_classes:
+                cond = Media.content_class == ContentClassEnum(val)
+            else:
+                continue
             if item['negated']:
                 query = query.filter(not_(cond))
             else:

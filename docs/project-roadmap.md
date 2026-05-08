@@ -218,17 +218,24 @@ See [Entity Alias Resolver](entity-alias-resolver.md) for documentation.
 
 See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
 
+### Phase 3 — Content Classification Foundation (Anime / Non-Anime Filtering)
+
+**Goal:** Heuristic-based content classification using existing WD tagger output to distinguish anime from non-anime images.
+
+- `ContentClassEnum`: anime, illustration, non_anime, unknown
+- 6 new Media columns: content_class, confidence, source, model, locked, reviewed
+- Heuristic classifier: counts AI tags above confidence threshold to determine content type
+- Classification job system: background jobs with progress, cancel, history
+- Inline classification: AI tagging jobs classify after tagging (when enabled)
+- Auto-classify after scan: scan completion optionally triggers classification
+- Admin UI: stats, config panel, create job, progress, job history
+- Search filter: `class:anime`, `class:non_anime`, `class:illustration`, `class:unknown`, `class:none`
+- Media detail: content class info row with localized labels (zh-CN / en)
+- Disabled by default; all `CONTENT_CLASSIFICATION_*` settings default OFF
+
 ---
 
 ## Upcoming Phases
-
-### Phase 3 — Anime Filtering
-
-**Goal:** Automatically detect and optionally skip non-anime images during import.
-
-- Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
-- Or introduce a dedicated anime/photo classifier
-- Depends on Phase 2.1 (AI inference pipeline must exist first)
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 

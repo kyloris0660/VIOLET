@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.4 iCloud Large Library Readiness / Safe Ingestion (2026-05-08).
+> Last updated after Phase 3 Content Classification Foundation (2026-05-08).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -27,6 +27,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 4. **Test report accuracy** — Never claim "all tests passed" if any test failed. Report exact commands, exact results, and document any skipped/pre-existing failures.
 5. **Service / dev environment safety** — Never kill arbitrary processes. Only stop clearly identified V.I.O.L.E.T. dev server processes with PID/port reported first.
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
+7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 
 ## Language Policy
 
@@ -322,9 +323,48 @@ Made the scan pipeline safe for large iCloud-synced directories:
 | `tests/e2e/test_icloud_scan.spec.ts` | 7 Playwright E2E tests |
 | `docs/icloud-safe-ingestion.md` | Full documentation |
 
+### Phase 3 — Content Classification Foundation (Anime / Non-Anime Filtering)
+
+Heuristic-based content classification using existing WD tagger output:
+
+- **Content type schema**: `ContentClassEnum` with values: `anime`, `illustration`, `non_anime`, `unknown`
+- **Media metadata**: 6 new columns — `content_class`, `content_class_confidence`, `content_class_source`, `content_class_model`, `content_class_locked`, `content_class_reviewed`
+- **Classifier service**: Heuristic approach counting AI tags above confidence threshold — if count ≥ `ANIME_TAG_THRESHOLD` → anime, elif count > 0 → non_anime, else → unknown
+- **Inline classification**: AI tagging jobs automatically classify media after tagging (when enabled)
+- **Classification job system**: Background jobs with progress, cancel, history — reuses AI tagging job patterns
+- **Auto-classify after scan**: Scan completion optionally triggers classification job (when enabled)
+- **Admin UI**: Content Classification section — stats grid, breakdown, config panel, create job, progress, history
+- **Search filter**: `class:anime`, `class:non_anime`, `class:illustration`, `class:unknown`, `class:none` (and negation `-class:...`)
+- **Media detail**: Content class info row with localized label in media viewer
+- **i18n**: Chinese and English localization for all content class labels
+- **Startup recovery**: Stale classification jobs marked as interrupted on startup
+- **Disabled by default**: All `CONTENT_CLASSIFICATION_*` settings default to off
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/enums.py` | `ContentClassEnum` |
+| `backend/app/models.py` | 6 `content_class_*` columns on `Media`, `ClassificationJob` model |
+| `backend/app/database.py` | `migrate_add_content_classification` migration |
+| `backend/app/config.py` | `CONTENT_CLASSIFICATION_*` settings (6 config properties) |
+| `backend/app/schemas.py` | `content_class` in `MediaUpdate` and `MediaResponse` |
+| `backend/app/services/content_classifier.py` | Heuristic classifier (`classify_media`, `classify_from_predictions`) |
+| `backend/app/services/classification_job_service.py` | Classification job lifecycle |
+| `backend/app/services/ai_tagging_job_service.py` | Inline classification after AI tagging |
+| `backend/app/routes/admin/content_classification.py` | Admin API endpoints |
+| `backend/app/utils/search_parser.py` | `class:` / `content_class:` meta filter |
+| `backend/app/utils/local_library_scanner.py` | Auto-classify after scan hook |
+| `backend/app/main.py` | Stale classification job recovery at startup |
+| `frontend/templates/admin.html` | Content Classification admin section |
+| `frontend/static/js/admin.js` | Classification UI logic |
+| `frontend/static/js/media-viewer-base.js` | Content class info row + label helper |
+| `frontend/static/locales/zh-cn.json` | Chinese content class labels |
+| `frontend/static/locales/en.json` | English content class labels |
+| `example.env` | Phase 3 configuration variables |
+
 ## What Has NOT Been Built
 
-- No anime/photo filtering (Phase 3)
 - No filesystem watcher or scheduled scan (Phase 4)
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No persistent rejected decision tracking (reject = delete)
@@ -364,17 +404,13 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 3
+## Recommended Next Phase: 4
 
-**Anime Filtering & Source Detection** — automatically detect and optionally skip non-anime images during import:
+**iCloud Photos Watcher / Scheduled Scan** — eliminate manual scan triggers:
 
-1. Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
-2. Or introduce a dedicated anime/photo classifier
-3. Reverse image search integration (SauceNAO, IQDB)
-
-**Prerequisites before starting Phase 3:**
-- Verify `origin/main` contains the Phase 2.4 merged commit (PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) — merged)
-- Do not auto-start Phase 3
+1. Filesystem watcher or periodic cron-style scan
+2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
+3. Requires Phase 1.5 safety controls already in place
 
 ### Next-Phase Requirement: Service Control UI
 
@@ -386,8 +422,6 @@ The next development phase should include a developer/service control panel:
 - Show background workers status (tag translation worker, entity alias resolver)
 - One-click restart after config changes (optional)
 - Diagnostics for port conflicts and stale server processes (optional)
-
-This addresses a recurring pain point: manually managing dev server processes is error-prone and led to confusion during PR validation (stale servers on wrong ports, zombie processes).
 
 ## Test Directory
 

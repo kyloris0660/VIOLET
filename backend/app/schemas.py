@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import FileTypeEnum, RatingEnum, TagCategoryEnum
+from .enums import ContentClassEnum, FileTypeEnum, RatingEnum, TagCategoryEnum
 
 class TagBase(BaseModel):
     name: str
@@ -32,6 +32,7 @@ class MediaUpdate(BaseModel):
     source: Optional[str] = None
     description: Optional[str] = None
     parent_id: Optional[int] = None
+    content_class: Optional[ContentClassEnum] = None
 
 class MediaResponse(MediaBase):
     id: int
@@ -53,6 +54,9 @@ class MediaResponse(MediaBase):
     description: Optional[str] = None
     parent_id: Optional[int] = None
     has_children: bool = False
+    content_class: Optional[ContentClassEnum] = None
+    content_class_confidence: Optional[float] = None
+    content_class_source: Optional[str] = None
     tags: List[TagResponse] = []
     
     model_config = ConfigDict(from_attributes=True)

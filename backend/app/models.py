@@ -7,7 +7,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from .database import Base
-from .enums import FileTypeEnum, RatingEnum, TagCategoryEnum
+from .enums import ContentClassEnum, FileTypeEnum, RatingEnum, TagCategoryEnum
 
 blombooru_media_tags = Table(
     'blombooru_media_tags',
@@ -53,6 +53,13 @@ class Media(Base):
     source = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
     parent_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+
+    content_class = Column(Enum(ContentClassEnum), nullable=True, index=True)
+    content_class_confidence = Column(Float, nullable=True)
+    content_class_source = Column(String(50), nullable=True)
+    content_class_model = Column(String(100), nullable=True)
+    content_class_locked = Column(Boolean, nullable=False, server_default='false')
+    content_class_reviewed = Column(Boolean, nullable=False, server_default='false')
     
     tags = relationship('Tag', secondary=blombooru_media_tags, back_populates='media')
     parent = relationship('Media', remote_side=[id], backref='children')
@@ -273,6 +280,33 @@ class AITagJob(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     scan_job = relationship('ScanJob', backref='ai_tag_jobs')
+
+
+class ClassificationJob(Base):
+    __tablename__ = 'blombooru_classification_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String(20), nullable=False, default='pending', index=True)
+    trigger_source = Column(String(20), nullable=False, default='manual')
+    scan_job_id = Column(Integer, ForeignKey('blombooru_scan_jobs.id', ondelete='SET NULL'), nullable=True, index=True)
+    media_ids_json = Column(Text, nullable=True)
+    max_items = Column(Integer, default=100)
+    only_unclassified = Column(Boolean, default=True)
+
+    processed = Column(Integer, default=0)
+    classified_anime = Column(Integer, default=0)
+    classified_non_anime = Column(Integer, default=0)
+    classified_unknown = Column(Integer, default=0)
+    failed = Column(Integer, default=0)
+    failed_items_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    scan_job = relationship('ScanJob', backref='classification_jobs')
 
 
 class TagTranslationJob(Base):
