@@ -293,6 +293,15 @@ Do not claim "all tests passed" if any test failed. Report exact commands and re
 
 Never kill arbitrary processes. Only stop identified V.I.O.L.E.T. dev server processes (report PID/port first). Restrict stop/restart UI to local debug mode only.
 
+### Phase Plan Approval
+
+For every new major development phase or substantial feature scope, the agent must:
+
+1. **Produce an implementation plan first** — covering scope, key design decisions, new files/tables, and testing approach.
+2. **Wait for explicit user approval** before making substantial code changes.
+3. Bug fixes and small review-comment fixes may proceed without a separate plan.
+4. Major stage-level design changes (new classifiers, new models, new DB schemas, evaluation frameworks) require user-approved plan.
+
 ### Safety Rules
 
 **Never commit:**

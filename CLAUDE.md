@@ -45,6 +45,10 @@ For every feature phase, bug fix, or UI-affecting change, the agent must perform
 
 The delivery report must include a dedicated section: **真实浏览器验收**, containing: 验收方式, 浏览器/Playwright project, URL tested, pages/flows validated, pass/fail result, skipped or not covered items, fallback explanation if real browser validation could not be completed. A phase is not considered complete without this section.
 
+### Phase plan approval rule
+
+For every new major development phase or substantial feature scope, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes. Bug fixes and small review-comment fixes may proceed without a separate plan. Major stage-level design changes (classifiers, models, DB schemas, evaluation frameworks) require the plan first.
+
 ### Chinese reporting rule
 
 Final user-facing stage summaries and delivery reports must be written in Chinese. This includes: 阶段性总结, 交付报告, 测试结果总结, 风险说明, 本地验收步骤, 已知限制, 下一步建议.
