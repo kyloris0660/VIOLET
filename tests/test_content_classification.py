@@ -154,7 +154,12 @@ class TestClassifyFromPredictions:
         assert result["high_conf_tag_count"] == 2
         assert result["content_class"] == "non_anime"
 
-    def test_suggestions_count_toward_classification(self):
+    def test_suggestions_excluded_from_classification(self):
+        """Suggestions should NOT count toward classification — only confirmed tags do.
+
+        This matches the DB-based classify_media path which filters
+        ``is_suggestion == False``.
+        """
         from app.services.content_classifier import classify_from_predictions
 
         media = self._make_media()
@@ -167,8 +172,10 @@ class TestClassifyFromPredictions:
         ]
         result = classify_from_predictions(db, 1, preds)
 
-        assert result["content_class"] == "anime"
-        assert result["high_conf_tag_count"] == 6
+        # 0 confirmed tags with non-empty predictions → non_anime
+        assert result["content_class"] == "non_anime"
+        assert result["high_conf_tag_count"] == 0
+        assert result["confidence"] == 1.0
 
     def test_confidence_value_anime(self):
         from app.services.content_classifier import classify_from_predictions
@@ -195,6 +202,83 @@ class TestClassifyFromPredictions:
 
         assert result["content_class"] == "non_anime"
         assert result["confidence"] == 0.8
+
+
+# ---------------------------------------------------------------------------
+# Consistency: both classification paths must agree
+# ---------------------------------------------------------------------------
+
+class TestClassificationConsistency:
+    """Both classify_media (DB-based) and classify_from_predictions (inline)
+    must produce the same content_class for equivalent evidence."""
+
+    @pytest.fixture(autouse=True)
+    def patch_settings(self):
+        with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD = PropertyMock(return_value=0.5)
+            type(mock_s).CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD = PropertyMock(return_value=5)
+            self.mock_settings = mock_s
+            yield
+
+    def _make_media(self, content_class=None, locked=False):
+        m = MagicMock()
+        m.id = 1
+        m.content_class = content_class
+        m.content_class_locked = locked
+        m.content_class_confidence = None
+        m.content_class_source = None
+        m.content_class_model = None
+        return m
+
+    def _make_db_tags(self, n):
+        """Create mock DB tag rows (as returned by .all())."""
+        rows = []
+        for i in range(n):
+            row = MagicMock()
+            row.tag_id = i
+            row.confidence = 0.8
+            row.source = "ai_wd"
+            row.is_suggestion = False
+            rows.append(row)
+        return rows
+
+    def _make_predictions(self, n):
+        """Create prediction dicts equivalent to the DB tags above."""
+        return [
+            {"name": f"tag_{i}", "confidence": 0.8, "action": "confirmed"}
+            for i in range(n)
+        ]
+
+    @pytest.mark.parametrize("n_tags,expected_class", [
+        (0, "unknown"),
+        (2, "non_anime"),
+        (5, "anime"),
+        (10, "anime"),
+    ])
+    def test_both_paths_agree(self, n_tags, expected_class):
+        from app.services.content_classifier import classify_media, classify_from_predictions
+
+        # --- DB-based path ---
+        media_db = self._make_media()
+        db1 = MagicMock()
+        db1.query.return_value.filter.return_value.first.return_value = media_db
+        if n_tags == 0:
+            db1.query.return_value.filter.return_value.all.return_value = []
+        else:
+            db1.query.return_value.filter.return_value.all.return_value = self._make_db_tags(n_tags)
+        result_db = classify_media(db1, 1, dry_run=True)
+
+        # --- Inline path ---
+        media_inline = self._make_media()
+        db2 = MagicMock()
+        db2.query.return_value.filter.return_value.first.return_value = media_inline
+        preds = self._make_predictions(n_tags) if n_tags > 0 else []
+        result_inline = classify_from_predictions(db2, 1, preds, dry_run=True)
+
+        assert result_db["content_class"] == expected_class
+        assert result_inline["content_class"] == expected_class
+        assert result_db["content_class"] == result_inline["content_class"]
+        assert result_db["confidence"] == result_inline["confidence"]
 
 
 # ---------------------------------------------------------------------------

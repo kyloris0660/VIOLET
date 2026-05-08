@@ -119,7 +119,7 @@ def classify_from_predictions(
     high_conf_tags = [
         p for p in predictions
         if p.get("confidence", 0) >= confidence_threshold
-        and p.get("action") in ("confirmed", "suggestion")
+        and p.get("action") == "confirmed"
     ]
 
     if not predictions:

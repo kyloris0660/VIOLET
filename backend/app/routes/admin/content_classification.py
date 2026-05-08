@@ -10,8 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
-
 from ...auth import require_admin_mode
 from ...config import settings
 from ...database import get_db
@@ -203,7 +201,10 @@ async def classify_single_media(
 
     from ...services.content_classifier import classify_media
 
-    result = await run_in_threadpool(classify_media, db, media_id)
+    # Call directly — classify_media does lightweight DB queries + commit,
+    # safe to run in the request thread.  Do NOT use run_in_threadpool here
+    # because `db` is a request-scoped session and is not thread-safe.
+    result = classify_media(db, media_id)
     return result
 
 
