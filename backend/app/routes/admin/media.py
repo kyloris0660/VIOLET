@@ -279,6 +279,7 @@ async def preflight_scan(
         skipped_hidden=result.get("skipped_hidden", 0),
         skipped_too_large=result.get("skipped_too_large", 0),
         failed=result.get("failed", 0),
+        failed_files_json=json.dumps(result.get("failed_files", [])[:50]),
         limit_reached=result.get("limit_reached", False),
     )
     db.add(job)

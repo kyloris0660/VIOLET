@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, apiCall, switchToTab } from './helpers/auth';
 
+const TEST_SCAN_PATH = process.env.VIOLET_TEST_SCAN_PATH || 'C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest';
+
 test.describe('iCloud Safe Scan (Phase 2.4)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
@@ -10,7 +12,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
     const resp = await apiCall(page, '/api/admin/scan-local-library/preflight', {
       method: 'POST',
       body: JSON.stringify({
-        paths: ['C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest'],
+        paths: [TEST_SCAN_PATH],
         max_files: 10,
         hydrated_only: true,
       }),
@@ -28,7 +30,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
     const resp = await apiCall(page, '/api/admin/scan-local-library/jobs', {
       method: 'POST',
       body: JSON.stringify({
-        paths: ['C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest'],
+        paths: [TEST_SCAN_PATH],
         max_files: 3,
         dry_run: true,
         hydrated_only: true,
@@ -64,7 +66,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
     const resp = await apiCall(page, '/api/admin/scan-local-library/jobs', {
       method: 'POST',
       body: JSON.stringify({
-        paths: ['C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest'],
+        paths: [TEST_SCAN_PATH],
         max_files: 2,
         dry_run: true,
       }),
@@ -98,7 +100,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
     await page.waitForTimeout(500);
 
     const pathInput = page.locator('#local-scan-path');
-    await pathInput.fill('C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest');
+    await pathInput.fill(TEST_SCAN_PATH);
 
     const maxFiles = page.locator('#local-scan-max-files');
     await maxFiles.fill('5');
@@ -120,7 +122,7 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
     await apiCall(page, '/api/admin/scan-local-library/preflight', {
       method: 'POST',
       body: JSON.stringify({
-        paths: ['C:\\Users\\kyloris\\Pictures\\AnimeLocalBooruTest'],
+        paths: [TEST_SCAN_PATH],
         max_files: 3,
       }),
     });

@@ -25,12 +25,13 @@ def _find_media_by_source(db: Session, source_path: str) -> List[Media]:
     """
     fwd = source_path.replace("\\", "/").rstrip("/")
     bck = source_path.replace("/", "\\").rstrip("\\")
-    bck_escaped = bck.replace("\\", "\\\\")
+    fwd_escaped = fwd.replace("%", "\\%").replace("_", "\\_")
+    bck_escaped = bck.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return (
         db.query(Media)
         .filter(
-            (Media.source.like(f"file://{fwd}/%")) |
-            (Media.source.like(f"file://{fwd}%")) |
+            (Media.source.like(f"file://{fwd_escaped}/%")) |
+            (Media.source.like(f"file://{fwd_escaped}%")) |
             (Media.source.like(f"file://{bck_escaped}\\\\%")) |
             (Media.source.like(f"file://{bck_escaped}%"))
         )
@@ -206,14 +207,21 @@ def execute_reset(db: Session, source_path: str) -> Dict[str, Any]:
 
     scan_jobs_deleted = 0
     if related_scan_job_ids:
-        db.query(ScanJobMedia).filter(
-            ScanJobMedia.scan_job_id.in_(related_scan_job_ids)
-        ).delete(synchronize_session=False)
-        scan_jobs_deleted = (
-            db.query(ScanJob)
-            .filter(ScanJob.id.in_(related_scan_job_ids))
-            .delete(synchronize_session=False)
-        )
+        orphaned_job_ids = set()
+        for sj_id in related_scan_job_ids:
+            remaining = (
+                db.query(ScanJobMedia)
+                .filter(ScanJobMedia.scan_job_id == sj_id)
+                .count()
+            )
+            if remaining == 0:
+                orphaned_job_ids.add(sj_id)
+        if orphaned_job_ids:
+            scan_jobs_deleted = (
+                db.query(ScanJob)
+                .filter(ScanJob.id.in_(orphaned_job_ids))
+                .delete(synchronize_session=False)
+            )
 
     ai_jobs_deleted = 0
     if related_ai_job_ids:
