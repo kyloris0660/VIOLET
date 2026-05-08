@@ -328,6 +328,7 @@ class AdminPanel {
 
         this._scanPollTimer = null;
         this._currentJobId = null;
+        this._initHydratedOnlyDefault();
         this.loadScanHistory();
 
         // AI Tagging buttons
@@ -1297,6 +1298,20 @@ class AdminPanel {
     }
 
     // ---- Local Library Scan (job-based) ----
+
+    async _initHydratedOnlyDefault() {
+        const checkbox = document.getElementById('local-scan-hydrated-only');
+        if (!checkbox) return;
+        try {
+            const data = await app.apiCall('/api/admin/dev/config-diagnostics', { method: 'GET' });
+            const serverDefault = data?.scan?.hydrated_only_default;
+            if (typeof serverDefault === 'boolean') {
+                checkbox.checked = serverDefault;
+            }
+        } catch (_) {
+            // Fallback: keep checkbox as-is (HTML default)
+        }
+    }
 
     _readScanFormParams() {
         const pathInput = document.getElementById('local-scan-path').value.trim();

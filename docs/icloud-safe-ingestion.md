@@ -91,7 +91,7 @@ When `hydrated_only=True` (the default), files with any of these attributes are 
 
 ## Per-File Timeout
 
-Even with hydrated-only mode, some files may take unexpectedly long to read (slow disk, network-mounted storage, partially-hydrated cloud files). The scanner runs `calculate_file_hash()` in a separate **subprocess** (`multiprocessing.Process`) with a hard timeout.
+Even with hydrated-only mode, some files may take unexpectedly long to read (slow disk, network-mounted storage, partially-hydrated cloud files). The scanner runs `calculate_file_hash()` in a separate **subprocess** (`multiprocessing.Process`) with a hard timeout. Results are returned via `multiprocessing.Pipe` (not Queue) to avoid feeder-thread race conditions.
 
 On timeout:
 - The subprocess is terminated (`proc.terminate()` / `proc.kill()`)
@@ -118,7 +118,7 @@ The existing `skipped_unsupported` column remains for unsupported file extension
 
 The Local Library Scan section in the Admin Panel includes:
 
-- **Hydrated-only checkbox** (checked by default) — controls whether cloud-only files are skipped
+- **Hydrated-only checkbox** (initial state from `SCAN_HYDRATED_ONLY_DEFAULT` server config) — controls whether cloud-only files are skipped
 - **Preflight button** — runs stat-only analysis before committing to a full scan
 - **iCloud safety note** — explains the purpose of hydrated-only mode
 - **6 extended stat cards** — shown during/after scan with per-reason skip counts

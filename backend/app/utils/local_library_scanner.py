@@ -48,33 +48,43 @@ _SKIP_REASON_STAT_MAP = {
 }
 
 
-def _hash_file_in_subprocess(file_path: str, result_queue: multiprocessing.Queue):
-    """Target function for subprocess-based hash calculation."""
+def _hash_file_in_subprocess(file_path: str, conn):
+    """Target function for subprocess-based hash calculation.
+
+    Sends result via a multiprocessing.Connection (Pipe child end).
+    """
     import hashlib
     try:
         hash_md5 = hashlib.md5()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_md5.update(chunk)
-        result_queue.put(("ok", hash_md5.hexdigest()))
+        conn.send(("ok", hash_md5.hexdigest()))
     except Exception as e:
-        result_queue.put(("error", str(e)))
+        conn.send(("error", str(e)))
+    finally:
+        conn.close()
 
 
 def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tuple:
     """Calculate file hash with hard timeout via subprocess.
 
+    Uses multiprocessing.Pipe for reliable result delivery — unlike Queue,
+    Pipe.recv() is synchronous once the child has exited and closed its end,
+    so there is no feeder-thread race condition.
+
     Returns ("ok", hash_str) on success, ("timeout", msg) on timeout,
-    or ("error", msg) on read error. The subprocess is terminated on timeout
-    so no stuck I/O thread can block the scan.
+    or ("error", msg) on read error.
     """
-    result_queue = multiprocessing.Queue()
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
     proc = multiprocessing.Process(
         target=_hash_file_in_subprocess,
-        args=(str(file_path), result_queue),
+        args=(str(file_path), child_conn),
         daemon=True,
     )
     proc.start()
+    child_conn.close()
+
     proc.join(timeout=timeout_sec)
 
     if proc.is_alive():
@@ -83,14 +93,20 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
         if proc.is_alive():
             proc.kill()
             proc.join(timeout=2)
+        parent_conn.close()
         return ("timeout", f"hash timed out after {timeout_sec}s")
 
     try:
-        status, value = result_queue.get_nowait()
-        return (status, value)
-    except Exception:
-        exit_code = proc.exitcode
-        return ("error", f"subprocess exited unexpectedly (code={exit_code})")
+        if parent_conn.poll(timeout=2.0):
+            status, value = parent_conn.recv()
+            parent_conn.close()
+            return (status, value)
+        else:
+            parent_conn.close()
+            return ("error", f"subprocess exited but sent no result (code={proc.exitcode})")
+    except (EOFError, OSError):
+        parent_conn.close()
+        return ("error", f"subprocess exited unexpectedly (code={proc.exitcode})")
 
 
 def _is_cloud_only(file_path: Path) -> bool:

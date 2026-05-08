@@ -53,6 +53,14 @@ test.describe('iCloud Safe Scan (Phase 2.4)', () => {
   });
 
   test('serialized job includes extended stat fields', async ({ page }) => {
+    // Wait for any running job to complete before starting a new one
+    for (let i = 0; i < 10; i++) {
+      const listResp = await apiCall(page, '/api/admin/scan-local-library/jobs');
+      const jobs = listResp.data || [];
+      const running = jobs.find((j: any) => j.status === 'running' || j.status === 'pending');
+      if (!running) break;
+      await page.waitForTimeout(2000);
+    }
     const resp = await apiCall(page, '/api/admin/scan-local-library/jobs', {
       method: 'POST',
       body: JSON.stringify({
