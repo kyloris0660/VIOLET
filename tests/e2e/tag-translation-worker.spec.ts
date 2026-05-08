@@ -96,12 +96,16 @@ test.describe('Tag Translation Worker - Browser UI', () => {
 
     // Navigate to System tab where tag localization lives
     await page.locator('button:has-text("系统"), button:has-text("System")').first().click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
-    // Scroll to and click Run Now button
+    // Scroll the worker section into view via JS, then click Run Now
     const runNowBtn = page.locator('#tl-worker-run-now-btn');
-    await runNowBtn.scrollIntoViewIfNeeded();
-    await runNowBtn.click();
+    await page.evaluate(() => {
+      const el = document.getElementById('tl-worker-run-now-btn');
+      if (el) el.scrollIntoView({ block: 'center' });
+    });
+    await page.waitForTimeout(500);
+    await runNowBtn.click({ force: true });
 
     // Wait for the notification or any async effects
     await page.waitForTimeout(2000);

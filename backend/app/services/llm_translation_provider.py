@@ -63,6 +63,36 @@ def _is_transport_error(exc: Exception) -> bool:
     return type(exc).__name__ in _TRANSPORT_ERRORS
 
 
+def _sanitize_error_message(msg: str) -> str:
+    """Remove anything that looks like an API key from error messages."""
+    import re
+    return re.sub(r'(sk-|key-)[a-zA-Z0-9]{8,}', r'\1***', msg)
+
+
+class LLMChunkAggregateError(RuntimeError):
+    """Raised when all LLM chunks fail. Carries structured failure info."""
+
+    def __init__(self, failures: list, *, provider_label: str):
+        self.failures = failures
+        self.provider_label = provider_label
+        self._all_transport = all(_is_transport_error(f) for f in failures)
+        self._has_non_transport = any(not _is_transport_error(f) for f in failures)
+        sanitized = _sanitize_error_message(
+            "; ".join(f"{type(f).__name__}: {f}" for f in failures)
+        )
+        super().__init__(
+            f"All LLM chunks failed ({provider_label}): {sanitized}"
+        )
+
+    @property
+    def all_transport_errors(self) -> bool:
+        return self._all_transport
+
+    @property
+    def has_non_transport_errors(self) -> bool:
+        return self._has_non_transport
+
+
 class TranslationResult:
     def __init__(self, canonical_name: str, display_name_zh: str,
                  aliases_zh: List[str] = None, notes: str = "",
@@ -119,7 +149,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             return []
 
         all_results: List[TranslationResult] = []
-        errors: List[str] = []
+        chunk_exceptions: List[Exception] = []
 
         for i in range(0, len(tags), CHUNK_SIZE):
             chunk = tags[i:i + CHUNK_SIZE]
@@ -129,13 +159,13 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             except Exception as e:
                 msg = _format_error(e, provider_label=self.label, base_url=self.base_url, model=self.model)
                 logger.error(f"LLM chunk {i // CHUNK_SIZE + 1} failed: {msg}")
-                errors.append(f"Chunk {i // CHUNK_SIZE + 1} ({len(chunk)} tags): {msg}")
+                chunk_exceptions.append(e)
 
-        if errors and not all_results:
-            raise RuntimeError(f"All LLM chunks failed ({self.label}): {'; '.join(errors)}")
+        if chunk_exceptions and not all_results:
+            raise LLMChunkAggregateError(chunk_exceptions, provider_label=self.label)
 
-        if errors:
-            logger.warning(f"LLM translation partially failed ({self.label}): {len(errors)} chunk(s)")
+        if chunk_exceptions:
+            logger.warning(f"LLM translation partially failed ({self.label}): {len(chunk_exceptions)} chunk(s)")
 
         return all_results
 
@@ -230,9 +260,11 @@ class FallbackProvider(BaseLLMProvider):
             try:
                 return await self.primary.translate_tags(tags)
             except Exception as primary_exc:
-                if _is_transport_error(primary_exc) or (
-                    isinstance(primary_exc, RuntimeError) and "All LLM chunks failed" in str(primary_exc)
-                ):
+                should_fallback = (
+                    _is_transport_error(primary_exc) or
+                    (isinstance(primary_exc, LLMChunkAggregateError) and primary_exc.all_transport_errors)
+                )
+                if should_fallback:
                     logger.warning(
                         f"Primary provider ({self.primary.label}) transport failure, "
                         f"trying fallback ({self.fallback.label}): {type(primary_exc).__name__}"
