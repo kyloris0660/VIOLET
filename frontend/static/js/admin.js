@@ -3868,7 +3868,7 @@ class AdminPanel {
             }
             html += `</div>`;
             resultDiv.innerHTML = html;
-            this.loadTagLocalizationStats();
+            this._refreshAfterTranslation();
         } catch (e) {
             resultDiv.innerHTML = `<span class="text-warning text-xs">Error: ${this.escapeHtml(e.message || String(e))}</span>`;
         }
@@ -3988,7 +3988,7 @@ class AdminPanel {
                 app.showNotification(t('admin.tag_localization.translation_deleted'), 'success');
             }
             this.loadTranslationReview();
-            this.loadTagLocalizationStats();
+            this._refreshAfterTranslation();
         } catch (e) {
             app.showNotification(`Error: ${e.message || e}`, 'error');
         }
@@ -3996,7 +3996,40 @@ class AdminPanel {
 
     // ---- Background Translation Worker (Phase 2.3d) ----
 
+    _refreshAfterTranslation() {
+        if (window.TagLocalization) {
+            window.TagLocalization._apiCache = {};
+        }
+        this.loadTagLocalizationStats();
+        this.loadWorkerStatus();
+        this.loadMissingTranslations();
+    }
+
+    _startWorkerPolling() {
+        this._stopWorkerPolling();
+        this._workerPollTimer = setInterval(async () => {
+            try {
+                const data = await app.apiCall('/api/admin/tag-localization/worker/status');
+                this.loadWorkerStatus();
+                if (data.status !== 'running') {
+                    this._stopWorkerPolling();
+                    this._refreshAfterTranslation();
+                }
+            } catch (e) {
+                this._stopWorkerPolling();
+            }
+        }, 3000);
+    }
+
+    _stopWorkerPolling() {
+        if (this._workerPollTimer) {
+            clearInterval(this._workerPollTimer);
+            this._workerPollTimer = null;
+        }
+    }
+
     async loadWorkerStatus() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         try {
             const data = await app.apiCall('/api/admin/tag-localization/worker/status');
             const el = (id) => document.getElementById(id);
@@ -4053,6 +4086,7 @@ class AdminPanel {
     }
 
     async loadWorkerJobs() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         try {
             const data = await app.apiCall('/api/admin/tag-localization/worker/jobs?limit=10');
             const container = document.getElementById('tl-worker-jobs');
@@ -4091,16 +4125,19 @@ class AdminPanel {
     }
 
     async workerRunNow() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         try {
             await app.apiCall('/api/admin/tag-localization/worker/run-now', { method: 'POST' });
             app.showNotification(t('admin.tag_localization.worker_run_triggered'), 'success');
-            setTimeout(() => this.loadWorkerStatus(), 2000);
+            setTimeout(() => this.loadWorkerStatus(), 1000);
+            this._startWorkerPolling();
         } catch (e) {
             app.showNotification(`Error: ${e.message || e}`, 'error');
         }
     }
 
     async workerPause() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         try {
             await app.apiCall('/api/admin/tag-localization/worker/pause', { method: 'POST' });
             app.showNotification(t('admin.tag_localization.worker_paused_msg'), 'success');
@@ -4111,6 +4148,7 @@ class AdminPanel {
     }
 
     async workerResume() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         try {
             await app.apiCall('/api/admin/tag-localization/worker/resume', { method: 'POST' });
             app.showNotification(t('admin.tag_localization.worker_resumed_msg'), 'success');
@@ -4123,6 +4161,7 @@ class AdminPanel {
     // ---- Entity Alias Resolver (Phase 2.3e) ----
 
     async loadEntityStatus() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         try {
             const data = await app.apiCall('/api/admin/tag-localization/entity/status', { method: 'GET' });
             const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -4150,6 +4189,7 @@ class AdminPanel {
     }
 
     async resolveEntities() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         const btn = document.getElementById('tl-entity-resolve-btn');
         if (btn) btn.disabled = true;
         const resultEl = document.getElementById('tl-entity-result');
@@ -4165,7 +4205,7 @@ class AdminPanel {
                 resultEl.classList.remove('hidden');
             }
             this.loadEntityStatus();
-            this.loadTagLocalizationStats();
+            this._refreshAfterTranslation();
         } catch (e) {
             app.showNotification(`Error: ${e.message || e}`, 'error');
         } finally {
@@ -4174,6 +4214,7 @@ class AdminPanel {
     }
 
     async loadEntityPending() {
+        const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         const tbody = document.getElementById('tl-entity-pending-tbody');
         const thead = document.getElementById('tl-entity-pending-thead');
         const emptyEl = document.getElementById('tl-entity-pending-empty');

@@ -83,6 +83,53 @@ test.describe('Tag Translation Worker - Smoke', () => {
   });
 });
 
+test.describe('Tag Translation Worker - Browser UI', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdmin(page);
+  });
+
+  test('Run Now button does not throw JS errors (Bug #1 regression)', async ({ page }) => {
+    const jsErrors: string[] = [];
+    page.on('pageerror', (err) => {
+      jsErrors.push(err.message);
+    });
+
+    // Navigate to System tab where tag localization lives
+    await page.locator('button:has-text("系统"), button:has-text("System")').first().click();
+    await page.waitForTimeout(1000);
+
+    // Scroll to and click Run Now button
+    const runNowBtn = page.locator('#tl-worker-run-now-btn');
+    await runNowBtn.scrollIntoViewIfNeeded();
+    await runNowBtn.click();
+
+    // Wait for the notification or any async effects
+    await page.waitForTimeout(2000);
+
+    // Assert no JS errors (specifically no "t is not defined" or "T is not defined")
+    const tErrors = jsErrors.filter(e => /ReferenceError.*\bt\b.*not defined/i.test(e));
+    expect(tErrors).toHaveLength(0);
+
+    // Also check no other ReferenceErrors
+    const refErrors = jsErrors.filter(e => /ReferenceError/i.test(e));
+    expect(refErrors).toHaveLength(0);
+  });
+
+  test('worker status loads without JS errors in System tab', async ({ page }) => {
+    const jsErrors: string[] = [];
+    page.on('pageerror', (err) => {
+      jsErrors.push(err.message);
+    });
+
+    await page.locator('button:has-text("系统"), button:has-text("System")').first().click();
+    await page.waitForTimeout(2000);
+
+    // Worker status section should load without errors
+    const refErrors = jsErrors.filter(e => /ReferenceError/i.test(e));
+    expect(refErrors).toHaveLength(0);
+  });
+});
+
 const REAL_E2E = process.env.VIOLET_RUN_REAL_E2E === '1';
 
 test.describe('Tag Translation Worker - Real E2E', () => {
