@@ -1,14 +1,17 @@
-"""Developer / E2E tools API endpoints (Phase 2.3a).
+"""Developer / E2E tools API endpoints (Phase 2.3a+).
 
 Config diagnostics, E2E test data reset, and recommended config.
 Admin-only, requires admin_mode.
 """
+import os
+import sys
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...auth import require_admin_mode
-from ...config import settings, _PROJECT_ROOT
+from ...config import settings, _PROJECT_ROOT, APP_VERSION
 from ...database import get_db
 from ...models import User
 from ...utils.logger import logger
@@ -93,6 +96,19 @@ async def get_config_diagnostics(
         },
         "paths": {
             "local_library_paths": [str(p) for p in settings.LOCAL_LIBRARY_PATHS],
+        },
+        "scan": {
+            "hydrated_only_default": settings.SCAN_HYDRATED_ONLY_DEFAULT,
+            "file_open_timeout_seconds": settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS,
+            "max_file_size_mb": settings.SCAN_MAX_FILE_SIZE_MB,
+        },
+        "server": {
+            "pid": os.getpid(),
+            "python_version": sys.version,
+            "app_version": APP_VERSION,
+            "base_dir": str(settings.BASE_DIR),
+            "platform": sys.platform,
+            "debug": settings.DEBUG,
         },
         "env_file": str(_PROJECT_ROOT / ".env"),
     }

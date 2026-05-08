@@ -330,7 +330,23 @@
             "status": "状态",
             "mode": "模式",
             "time": "时间",
-            "no_scan_history": "暂无扫描历史"
+            "no_scan_history": "暂无扫描历史",
+            "hydrated_only": "仅已下载文件",
+            "hydrated_only_hint": "跳过仅存在于云端的文件（iCloud、OneDrive）。避免触发大量下载。",
+            "preflight": "预检分析",
+            "preflight_badge": "预检",
+            "preflight_hint": "仅统计文件信息，不打开文件，对云目录安全。",
+            "start_preflight": "运行预检",
+            "cloud_placeholder": "云端占位符",
+            "zero_byte": "零字节",
+            "timeout": "超时",
+            "unreadable": "不可读",
+            "hidden": "隐藏文件",
+            "too_large": "文件过大",
+            "icloud_safety_note": "iCloud 安全提示：启用「仅已下载文件」时将跳过仅存在于云端的文件。预检模式永远不会打开文件。",
+            "estimated_size": "预估大小",
+            "largest_file": "最大文件",
+            "extensions": "文件类型"
         },
         "ai_tagging": {
             "title": "AI 自动打标",
@@ -509,6 +525,19 @@
             "previous": "上一页",
             "next": "下一页",
             "suggestions_ai": "建议（AI）"
+        },
+        "dev_tools": {
+            "server_info": "服务器信息",
+            "pid": "进程 ID",
+            "python_version": "Python 版本",
+            "app_version": "应用版本",
+            "base_dir": "根目录",
+            "platform": "平台",
+            "debug_mode": "调试模式",
+            "scan_config": "扫描配置",
+            "hydrated_only_default": "默认仅已下载",
+            "file_open_timeout": "文件打开超时 (秒)",
+            "max_file_size": "最大文件大小 (MB)"
         }
     },
     "album_picker": {

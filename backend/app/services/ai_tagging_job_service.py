@@ -153,12 +153,14 @@ def run_ai_tag_job(job_id: int) -> None:
 
             except Exception as exc:
                 logger.error(f"AI tag job {job_id}: failed on media {media_id}: {exc}", exc_info=True)
+                saved_processed = job.processed
+                saved_failed = job.failed
                 try:
                     db.rollback()
                 except Exception:
                     pass
-                job.processed += 1
-                job.failed += 1
+                job.processed = saved_processed + 1
+                job.failed = saved_failed + 1
                 if len(failed_items) < 50:
                     failed_items.append({
                         "media_id": media_id,
@@ -310,6 +312,10 @@ def create_auto_tag_job_after_scan(
 
     if not imported_media_ids:
         logger.info(f"Scan job {scan_job_id}: auto-tag skipped (no new imports)")
+        return None
+
+    if is_ai_job_active():
+        logger.info(f"Scan job {scan_job_id}: auto-tag skipped (another AI job is already running)")
         return None
 
     from ..database import SessionLocal

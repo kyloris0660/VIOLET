@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -523,6 +524,8 @@ def _auto_translate_worker(tag_names: List[str], lang: str):
     Uses independent DB session (not request-scoped).  Catches all exceptions
     to avoid crashing the thread.
     """
+    time.sleep(2)
+
     if not _auto_translate_lock.acquire(blocking=False):
         logger.info("Auto-translate already running, skipping")
         return

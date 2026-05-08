@@ -56,10 +56,10 @@ No automated test suite. Verify changes manually:
 
 | Module | Path | Notes |
 |--------|------|-------|
-| Models | `backend/app/models.py` | `Media`, `Tag`, `TagAlias`, `TagImplication`, `Album`, `User`, `ApiKey`, `TagTranslation` |
+| Models | `backend/app/models.py` | `Media`, `Tag`, `TagAlias`, `TagImplication`, `Album`, `User`, `ApiKey`, `TagTranslation`, `ScanJob` (with iCloud stats) |
 | Media routes | `backend/app/routes/media.py` | Upload, search, serve files, `process_and_save_media()` |
-| Admin routes | `backend/app/routes/admin/` | `media.py` (scan-media, scan-local-library), `tags.py`, `settings.py`, `onboarding.py` |
-| Local library scanner | `backend/app/utils/local_library_scanner.py` | Phase 1: external directory scan + import |
+| Admin routes | `backend/app/routes/admin/` | `media.py` (scan-media, scan-local-library, preflight), `tags.py`, `settings.py`, `onboarding.py` |
+| Local library scanner | `backend/app/utils/local_library_scanner.py` | Phase 1: external directory scan + import; Phase 2.4: preflight, iCloud detection, timeout, extended stats |
 | File scanner | `backend/app/utils/file_scanner.py` | Original Blombooru scan of `media/original` |
 | Media processor | `backend/app/utils/media_processor.py` | Hash, MIME, dimensions, duration extraction |
 | Thumbnail generator | `backend/app/utils/thumbnail_generator.py` | PIL image + OpenCV video thumbnails |
@@ -75,7 +75,7 @@ No automated test suite. Verify changes manually:
 | Tag Translation Worker | `backend/app/services/tag_translation_worker.py` | Background continuous tag translation worker |
 | AI Tagging Jobs | `backend/app/services/ai_tagging_job_service.py` | Background AI tagging job worker |
 | AI Tagging Jobs API | `backend/app/routes/admin/ai_tagging_jobs.py` | AI job CRUD + cancel endpoints |
-| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics, E2E reset |
+| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics (incl. server info, scan config), E2E reset |
 | E2E Reset Service | `backend/app/services/e2e_reset_service.py` | Test data reset logic |
 | Entity Alias Resolver | `backend/app/services/entity_alias_resolver.py` | Proper-noun alias resolution (character/copyright/artist) |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |
@@ -88,14 +88,67 @@ See `docs/project-roadmap.md` § Development Standards. In short:
 2. Push → PR → squash merge → pull main
 3. **Stop after merge.** Do not auto-start the next phase.
 
-### Git and PR verification rules
+### GitHub PR / main protection
 
-1. **Never claim a PR exists** unless you have an actual GitHub PR URL (e.g. from `gh pr view` or `gh pr create` output).
-2. **Never claim a PR is merged** unless `origin/main` contains the merged commit AND `gh pr view` confirms the merged state.
-3. A local commit is not the same as a PR. A commit message containing `(#N)` is not proof that PR #N exists.
-4. Before starting a new phase, verify: current branch, `git status`, `origin/main` latest commit, previous phase is actually merged into `origin/main`.
-5. Do not mix multiple phases in one branch or one PR.
-6. The final delivery report must include the real GitHub PR URL.
+Agents may:
+- Create feature branches, commit changes, push feature branches
+- Create GitHub PRs, update existing PR branches
+- Run tests, prepare local validation servers
+
+Agents must NOT:
+- Merge PRs (user manually reviews and merges on GitHub)
+- Push directly to `main`
+- Force-push `main`
+- Delete `main`
+- Treat local commits as PRs
+- Claim a PR exists without a real GitHub PR URL (e.g. from `gh pr view` or `gh pr create`)
+- Claim a PR is merged without GitHub or `origin/main` verification
+
+Additional PR rules:
+1. A local commit is not the same as a PR. A commit message containing `(#N)` is not proof that PR #N exists.
+2. Before starting a new phase, verify: current branch, `git status`, `origin/main` latest commit, previous phase is actually merged into `origin/main`.
+3. Do not mix multiple phases in one branch or one PR.
+4. The final delivery report must include the real GitHub PR URL.
+
+**Recommended**: Enable GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges and prevent accidental direct pushes. See GitHub docs for setup.
+
+### Real browser validation (mandatory)
+
+For every feature phase, bug fix, or UI-affecting change, the agent must perform real browser validation before delivery. This applies to changes involving: Admin UI, gallery/media grid, media detail page, search behavior, tag localization, AI tagging/review UI, local library scan workflow, settings/developer tools, user-visible text, thumbnails/fallback images, routing/navigation, any frontend JavaScript behavior.
+
+**Required standard:**
+
+1. Prefer Playwright with system Edge on Windows.
+2. Do not rely only on API tests or unit tests when UI behavior is affected.
+3. Use a real running local server.
+4. Use the actual app page, not only mocked DOM tests.
+5. Verify the relevant user flow end-to-end.
+6. If the feature touches local files, scan, thumbnails, or media display, validate with a real local test folder when safe.
+7. If real browser validation cannot be run, the agent must explicitly explain why and provide the closest fallback validation.
+
+The delivery report must include a dedicated section: **真实浏览器验收**, containing: 验收方式, 浏览器/Playwright project, URL tested, pages/flows validated, pass/fail result, skipped or not covered items, fallback explanation if real browser validation could not be completed. A phase is not considered complete without this section.
+
+### Chinese reporting rule
+
+Final user-facing stage summaries and delivery reports must be written in Chinese (zh-CN). This includes: 阶段性总结, 交付报告, 测试结果总结, 风险说明, 本地验收步骤, 已知限制, 下一步建议.
+
+Keep technical identifiers in English: file paths, branch names, PR URLs, API routes, config keys, class/function names, commands, commit messages, PR titles. Code comments may remain English when appropriate.
+
+### Test report accuracy
+
+- Do not claim "all tests passed" if any test failed.
+- If some tests are skipped, gated, unavailable, or unrelated, the report must say so clearly.
+- The final delivery report must include exact commands and exact results.
+- If a failing test is pre-existing or unrelated, the agent must either: (1) fix it; (2) gate/skip it intentionally with a clear reason; or (3) document it as non-blocking with evidence.
+
+### Service / dev environment safety
+
+- Never kill arbitrary Python or Node processes.
+- Only stop clearly identified V.I.O.L.E.T. / AnimeLocalBooru dev server processes.
+- Report PID, command line, and port before stopping.
+- Prefer diagnostics-first UI.
+- If adding stop/restart UI, restrict it to local debug mode only.
+- Do not expose dangerous controls in production mode.
 
 ### Windows local development notes
 
@@ -110,6 +163,7 @@ See `docs/project-roadmap.md` § Development Standards. In short:
 | User interface | zh-CN first (English fallback) |
 | Internal code, API paths, config keys, canonical tags, DB fields | English |
 | Core technical docs (AGENTS.md, handoff, roadmap, API docs) | English primary |
+| Delivery reports / stage summaries | Chinese (zh-CN) |
 | Optional user-facing Chinese docs | Separate supplements (e.g. `docs/tag-localization-zh.md`) |
 
 ### Safety rules

@@ -58,6 +58,7 @@ Core capabilities:
 | Auto AI tagging after import | ✅ Done | Optional, disabled by default |
 | AI tagging background jobs | ✅ Done | Progress tracking, cancel, history |
 | Proper noun alias resolver | ✅ Done | Character/copyright/artist alias resolution with LLM + manual review |
+| iCloud large library safety | ✅ Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
 | Anime / photo filtering | Phase 3 | Distinguish anime from photos |
 | Reverse image search | Phase 3 | SauceNAO/IQDB integration |
 | Character / copyright database | Future | External data enrichment |
@@ -158,7 +159,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 
 | Operation | Recommendation |
 |-----------|----------------|
-| Scanning iCloud Photos | **Always** dry-run + max_files=100 first |
+| Scanning iCloud Photos | **Always** preflight first, then dry-run + hydrated-only |
 | AI tagging | **Always** dry-run a single image first |
 | Batch AI tagging | Start with max_items=3-5, never full library directly |
 | Model files | Do not commit to git (.gitignore handles this) |
@@ -180,6 +181,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [Tag Localization (zh-CN)](docs/tag-localization-zh.md) | Chinese display names and search design |
 | [Tag Localization LLM](docs/tag-localization-llm.md) | Dynamic LLM translation cache documentation |
 | [Entity Alias Resolver](docs/entity-alias-resolver.md) | Proper-noun alias resolution for character/copyright/artist tags |
+| [iCloud Safe Ingestion](docs/icloud-safe-ingestion.md) | Preflight scan, hydrated-only, timeout protection |
 | [Project Roadmap](docs/project-roadmap.md) | Full phase plan |
 | [Current Handoff](docs/current-handoff.md) | Latest state for resuming development |
 | [Development Log](docs/local-anime-library-devlog.md) | Per-phase technical notes |
@@ -192,7 +194,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.3c** — Full real browser E2E acceptance testing (done)
 - **Phase 2.3d** — Continuous background tag translation worker (done)
 - **Phase 2.3e** — Proper noun alias resolver foundation (done)
-- **Phase 2.4** — iCloud large library readiness / safe ingestion (next)
+- **Phase 2.4** — iCloud large library readiness / safe ingestion (done)
 - **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
 - **Phase 4** — Filesystem watcher & scheduled scans
 

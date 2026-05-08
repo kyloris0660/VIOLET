@@ -203,19 +203,24 @@ See [Tag Localization LLM](tag-localization-llm.md) for configuration details.
 
 See [Entity Alias Resolver](entity-alias-resolver.md) for documentation.
 
+### Phase 2.4 — iCloud Large Library Readiness / Safe Ingestion
+
+**Goal:** Make the scan pipeline safe for large iCloud-synced directories on Windows — never trigger mass downloads, never hang on a single file.
+
+- Preflight scan endpoint (`POST /scan-local-library/preflight`): stat-only, no `open()`, completes in seconds on 100K files
+- Hydrated-only mode (default ON): skips cloud-only files detected via Windows `GetFileAttributesW` (`FILE_ATTRIBUTE_OFFLINE`, `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`)
+- Per-file timeout via ThreadPoolExecutor: wraps `calculate_file_hash` with configurable timeout (default 30s)
+- Extended skip-reason counters: `skipped_cloud_placeholder`, `skipped_zero_byte`, `skipped_timeout`, `skipped_unreadable`, `skipped_hidden`, `skipped_too_large`
+- Max file size limit: configurable via `SCAN_MAX_FILE_SIZE_MB` (default 200 MB)
+- Config diagnostics extended with server info (PID, Python version, app version, platform) and scan config
+- Admin UI: preflight button, hydrated-only checkbox, iCloud safety note, 6 extended stat cards, preflight results display
+- 22 unit tests + 7 Playwright E2E tests
+
+See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
+
 ---
 
 ## Upcoming Phases
-
-### Phase 2.4 — iCloud Large Library Readiness / Safe Ingestion
-
-**Goal:** Prepare the system for real-world large library import and add developer service control.
-
-- Validate iCloud Photos edge cases (partial downloads, .icloud placeholders, file locks)
-- Incremental scan (skip already-imported files efficiently)
-- Performance profiling at scale (1000+ images)
-- Thumbnail generation reliability under load
-- Developer service control panel: server PID/port display, safe stop/restart, background worker status, port conflict diagnostics
 
 ### Phase 3 — Anime Filtering
 
@@ -255,9 +260,31 @@ Every phase follows this workflow:
 3. Verify: all new features work, no existing features broken, no sensitive files staged
 4. Commit with conventional commit message (`feat:`, `fix:`, `docs:`, etc.)
 5. Push branch, create PR with summary / scope / testing / limitations
-6. Squash merge, delete branch
+6. **User manually reviews and merges** (squash merge, delete branch)
 7. Checkout `main`, pull
 8. **Stop.** Output delivery report. Do not auto-start the next phase.
+
+### GitHub PR / Main Protection
+
+Agents may create branches, commit, push, create PRs, and run tests. Agents must NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user reviews and merges on GitHub.
+
+**Recommended**: Enable GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
+
+### Real Browser Validation (Mandatory)
+
+Every feature phase or UI-affecting change requires real browser validation before delivery (Playwright with system Edge preferred). The delivery report must include a **真实浏览器验收** section with: 验收方式, browser/Playwright project, URL tested, pages/flows validated, pass/fail, skipped items.
+
+### Chinese Reporting
+
+Final delivery reports and stage summaries must be written in Chinese (zh-CN). Technical identifiers (file paths, branch names, PR URLs, API routes, config keys, commands) remain English.
+
+### Test Report Accuracy
+
+Do not claim "all tests passed" if any test failed. Report exact commands and results. Pre-existing or unrelated failures must be documented with evidence.
+
+### Service / Dev Environment Safety
+
+Never kill arbitrary processes. Only stop identified V.I.O.L.E.T. dev server processes (report PID/port first). Restrict stop/restart UI to local debug mode only.
 
 ### Safety Rules
 

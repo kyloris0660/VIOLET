@@ -190,6 +190,7 @@ def check_and_migrate_schema(engine):
         migrate_add_ai_tag_jobs_table,
         migrate_add_tag_translation_jobs_table,
         migrate_audit_proper_noun_translations,
+        migrate_add_scan_job_icloud_stats,
     ]
     
     for migration in migrations:
@@ -578,3 +579,53 @@ def migrate_audit_proper_noun_translations(engine, inspector):
 
     if count:
         logger.info("Phase 2.3e audit: marked %d proper-noun LLM translations as needs_review", count)
+
+
+def migrate_add_scan_job_icloud_stats(engine, inspector):
+    """Add iCloud safety columns to blombooru_scan_jobs (Phase 2.4)."""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_scan_jobs' not in tables:
+        return
+
+    columns = [c['name'] for c in inspector.get_columns('blombooru_scan_jobs')]
+
+    if 'skipped_cloud_placeholder' in columns:
+        return
+
+    logger.info("Adding iCloud safety columns to blombooru_scan_jobs...")
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN skipped_cloud_placeholder INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN skipped_zero_byte INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN skipped_timeout INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN skipped_unreadable INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN skipped_hidden INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN skipped_too_large INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN hydrated_only BOOLEAN NOT NULL DEFAULT TRUE"
+        ))
+        conn.execute(text(
+            "ALTER TABLE blombooru_scan_jobs "
+            "ADD COLUMN is_preflight BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        conn.commit()

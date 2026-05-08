@@ -330,7 +330,23 @@
             "status": "Status",
             "mode": "Mode",
             "time": "Time",
-            "no_scan_history": "No scan history"
+            "no_scan_history": "No scan history",
+            "hydrated_only": "Hydrated Only",
+            "hydrated_only_hint": "Skip cloud-only files (iCloud, OneDrive). Prevents triggering mass downloads.",
+            "preflight": "Preflight Analysis",
+            "preflight_badge": "PREFLIGHT",
+            "preflight_hint": "Stat-only scan — never opens files, safe for cloud directories.",
+            "start_preflight": "Run Preflight",
+            "cloud_placeholder": "Cloud Placeholder",
+            "zero_byte": "Zero Byte",
+            "timeout": "Timeout",
+            "unreadable": "Unreadable",
+            "hidden": "Hidden",
+            "too_large": "Too Large",
+            "icloud_safety_note": "iCloud Safety: Files with cloud-only attributes are skipped when Hydrated Only is enabled. Preflight never opens files.",
+            "estimated_size": "Estimated Size",
+            "largest_file": "Largest File",
+            "extensions": "Extensions"
         },
         "ai_tagging": {
             "title": "AI Auto Tagging",
@@ -509,6 +525,19 @@
             "previous": "Previous",
             "next": "Next",
             "suggestions_ai": "Suggestions (AI)"
+        },
+        "dev_tools": {
+            "server_info": "Server Info",
+            "pid": "Process ID",
+            "python_version": "Python Version",
+            "app_version": "App Version",
+            "base_dir": "Base Directory",
+            "platform": "Platform",
+            "debug_mode": "Debug Mode",
+            "scan_config": "Scan Configuration",
+            "hydrated_only_default": "Hydrated Only Default",
+            "file_open_timeout": "File Open Timeout (s)",
+            "max_file_size": "Max File Size (MB)"
         }
     },
     "album_picker": {

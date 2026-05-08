@@ -711,6 +711,10 @@
                     <div id="dev-config-content" class="bg p-3 border text-xs">
                         <span class="text-secondary">加载中...</span>
                     </div>
+                    <div id="dev-server-info" class="mt-3 bg p-3 border text-xs" style="display: none;">
+                        <h4 class="text-xs font-bold mb-2">{{ t('admin.dev_tools.server_info') }}</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="dev-server-info-grid"></div>
+                    </div>
                 </div>
 
                 <!-- Recommended E2E Config -->
@@ -874,18 +878,32 @@
                                     {{ t('admin.local_library_scan.max_files_hint') }}
                                 </p>
                             </div>
-                            <div class="flex items-end pb-1">
+                            <div class="flex flex-col gap-2 pb-1">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="local-scan-dry-run" class="w-4 h-4 accent-primary">
                                     <span class="text-xs font-bold">{{ t('admin.local_library_scan.dry_run') }}</span>
+                                    <span class="text-xs text-secondary opacity-70">
+                                        ({{ t('admin.local_library_scan.dry_run_hint') }})
+                                    </span>
                                 </label>
-                                <span class="text-xs text-secondary opacity-70 ml-2">
-                                    ({{ t('admin.local_library_scan.dry_run_hint') }})
-                                </span>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="local-scan-hydrated-only" class="w-4 h-4 accent-primary" checked>
+                                    <span class="text-xs font-bold">{{ t('admin.local_library_scan.hydrated_only') }}</span>
+                                    <span class="text-xs text-secondary opacity-70">
+                                        ({{ t('admin.local_library_scan.hydrated_only_hint') }})
+                                    </span>
+                                </label>
                             </div>
                         </div>
 
+                        <div class="bg-blue-900 bg-opacity-20 border border-blue-700 p-2 text-xs text-blue-300">
+                            {{ t('admin.local_library_scan.icloud_safety_note') }}
+                        </div>
+
                         <div class="flex gap-2">
+                            <button id="local-scan-preflight-btn" class="btn-primary flex-1" style="opacity: 0.85;">
+                                {{ t('admin.local_library_scan.start_preflight') }}
+                            </button>
                             <button id="local-scan-btn" class="btn-primary flex-1">
                                 {{ t('admin.local_library_scan.start_scan') }}
                             </button>
@@ -902,10 +920,16 @@
                     <div class="bg p-4 border">
                         <div class="flex items-center justify-between mb-2">
                             <span id="local-scan-status-badge" class="text-xs font-bold px-2 py-1 border"></span>
-                            <span id="local-scan-dry-badge" style="display: none;"
-                                class="text-xs font-bold px-2 py-1 border border-warning text-warning">
-                                {{ t('admin.local_library_scan.dry_run_badge') }}
-                            </span>
+                            <div class="flex gap-2">
+                                <span id="local-scan-preflight-badge" style="display: none;"
+                                    class="text-xs font-bold px-2 py-1 border border-blue-500 text-blue-400">
+                                    {{ t('admin.local_library_scan.preflight_badge') }}
+                                </span>
+                                <span id="local-scan-dry-badge" style="display: none;"
+                                    class="text-xs font-bold px-2 py-1 border border-warning text-warning">
+                                    {{ t('admin.local_library_scan.dry_run_badge') }}
+                                </span>
+                            </div>
                         </div>
                         <div id="local-scan-progress-bar-wrap" class="w-full bg border mb-3" style="height: 6px;">
                             <div id="local-scan-progress-bar" class="h-full bg-primary transition-all" style="width: 0%;"></div>
@@ -942,6 +966,46 @@
                             <div class="bg p-2 border text-center">
                                 <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.error') }}</div>
                                 <div class="text-sm font-bold text-red-500 truncate" id="scan-error" title="">—</div>
+                            </div>
+                        </div>
+                        <div id="scan-extended-stats" style="display: none;" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-3">
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.cloud_placeholder') }}</div>
+                                <div class="text-sm font-bold" id="scan-cloud-placeholder">0</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.zero_byte') }}</div>
+                                <div class="text-sm font-bold" id="scan-zero-byte">0</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.timeout') }}</div>
+                                <div class="text-sm font-bold text-yellow-500" id="scan-timeout">0</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.unreadable') }}</div>
+                                <div class="text-sm font-bold text-red-500" id="scan-unreadable">0</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.hidden') }}</div>
+                                <div class="text-sm font-bold" id="scan-hidden">0</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.too_large') }}</div>
+                                <div class="text-sm font-bold" id="scan-too-large">0</div>
+                            </div>
+                        </div>
+                        <div id="scan-preflight-extra" style="display: none;" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.estimated_size') }}</div>
+                                <div class="text-sm font-bold" id="scan-estimated-size">—</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.largest_file') }}</div>
+                                <div class="text-sm font-bold" id="scan-largest-file">—</div>
+                            </div>
+                            <div class="bg p-2 border text-center">
+                                <div class="text-[10px] text-secondary">{{ t('admin.local_library_scan.extensions') }}</div>
+                                <div class="text-sm font-bold truncate" id="scan-extensions" title="">—</div>
                             </div>
                         </div>
                         <div id="local-scan-failures" style="display: none;">
