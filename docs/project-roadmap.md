@@ -218,9 +218,9 @@ See [Entity Alias Resolver](entity-alias-resolver.md) for documentation.
 
 See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
 
-### Phase 3 — Content Classification Foundation (Anime / Non-Anime Filtering)
+### Phase 3 — Content Classification Foundation + Evaluation Harness
 
-**Goal:** Heuristic-based content classification using existing WD tagger output to distinguish anime from non-anime images.
+**Goal:** Build content classification infrastructure (schema, job system, admin UI, search filters) and an evaluation harness to measure classifier accuracy. The heuristic classifier serves as a baseline placeholder — **not a production-ready filter**.
 
 - `ContentClassEnum`: anime, illustration, non_anime, unknown
 - 6 new Media columns: content_class, confidence, source, model, locked, reviewed
@@ -228,14 +228,41 @@ See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
 - Classification job system: background jobs with progress, cancel, history
 - Inline classification: AI tagging jobs classify after tagging (when enabled)
 - Auto-classify after scan: scan completion optionally triggers classification
-- Admin UI: stats, config panel, create job, progress, job history
+- Admin UI: stats, config panel, create job, progress, job history (with limitation warning)
 - Search filter: `class:anime`, `class:non_anime`, `class:illustration`, `class:unknown`, `class:none`
 - Media detail: content class info row with localized labels (zh-CN / en)
+- Evaluation harness: `scripts/evaluate_content_classification.py` — imports, tags, classifies, measures accuracy
 - Disabled by default; all `CONTENT_CLASSIFICATION_*` settings default OFF
+
+**Evaluation results (heuristic classifier):**
+
+| Dataset | Ground Truth | Total | Result | Metric |
+|---------|-------------|-------|--------|--------|
+| VioletTest100 | mixed | 145 | 100% anime | distribution only |
+| VioletTest100_2 | anime | 81 | 100% anime recall | PASS (≥ 80%) |
+| VioletPhase3Eval | non_anime | 39 | 97.4% FP rate | FAIL (≤ 15%) |
+
+**Conclusion:** The heuristic tag-count approach has a 97.4% non-anime false positive rate. The WD tagger generates many tags with high confidence for ANY image type, making simple tag-count thresholds ineffective for non-anime rejection. A model-backed classifier (Phase 3.1) is required before this feature can be used for production filtering or iCloud import gating.
 
 ---
 
 ## Upcoming Phases
+
+### Phase 3.1 — Model-Backed Content Classifier
+
+**Goal:** Replace the heuristic tag-count classifier with a model-backed approach that achieves non-anime FP rate ≤ 10-15%.
+
+**Why:** Phase 3 evaluation showed the heuristic classifier has a 97.4% non-anime false positive rate. The WD tagger generates many confident tags for any image type, so counting tags above a threshold cannot distinguish anime from non-anime.
+
+**Candidate approaches:**
+
+1. **CLIP zero-shot / embedding-based**: Use CLIP to encode images and compare similarity to "anime illustration" vs "photograph" text prompts. No training data needed.
+2. **Lightweight dedicated anime-vs-photo CNN**: Train or fine-tune a small binary classifier (e.g., MobileNet) on anime vs photo datasets. Fast inference, high accuracy expected.
+3. **WD tagger raw prediction distribution**: Analyze the full WD prediction vector (tag distribution pattern, total probability mass, presence of art-style-specific tags) rather than simple confirmed tag count.
+
+**Evaluation:** Must test against VioletTest100_2 (anime recall ≥ 80%) and VioletPhase3Eval (non-anime FP ≤ 10-15%). Phase 3 evaluation harness (`scripts/evaluate_content_classification.py`) is reusable.
+
+**Infrastructure reuse:** Phase 3 schema (ContentClassEnum, 6 media columns), job system, search filters, admin UI, and evaluation harness are all reusable — only the classifier service needs replacement.
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 

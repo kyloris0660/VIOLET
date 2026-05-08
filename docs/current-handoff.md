@@ -323,9 +323,11 @@ Made the scan pipeline safe for large iCloud-synced directories:
 | `tests/e2e/test_icloud_scan.spec.ts` | 7 Playwright E2E tests |
 | `docs/icloud-safe-ingestion.md` | Full documentation |
 
-### Phase 3 — Content Classification Foundation (Anime / Non-Anime Filtering)
+### Phase 3 — Content Classification Foundation + Evaluation Harness
 
-Heuristic-based content classification using existing WD tagger output:
+> **⚠️ Scope clarification:** Phase 3 delivers the content classification **infrastructure and evaluation harness** only. The heuristic classifier has a 97.4% non-anime false positive rate and is **not suitable for production filtering or iCloud import gating**. A model-backed classifier (Phase 3.1) is required. All classification features default to OFF.
+
+Content classification infrastructure using existing WD tagger output:
 
 - **Content type schema**: `ContentClassEnum` with values: `anime`, `illustration`, `non_anime`, `unknown`
 - **Media metadata**: 6 new columns — `content_class`, `content_class_confidence`, `content_class_source`, `content_class_model`, `content_class_locked`, `content_class_reviewed`
@@ -383,15 +385,25 @@ Real dataset evaluation using `scripts/evaluate_content_classification.py`:
 - Auth cookie fix: evaluation script now uses `admin_token` cookie (not `access_token`)
 - Test isolation fix: pytest config tests properly mock `dotenv.load_dotenv` to avoid `.env` pollution
 
-### Phase 3.1 — Recommended: Model-Backed Classifier
+### Phase 3.1 — Required: Model-Backed Classifier
 
-The heuristic tag-count approach is insufficient for non-anime rejection. Recommended Phase 3.1:
+The heuristic tag-count approach has a **97.4% non-anime false positive rate** and is insufficient for any production use. Phase 3.1 must replace it with a model-backed classifier.
 
-1. **Primary approach**: Train or use a pre-trained anime/illustration vs photo classifier (e.g., a lightweight CNN or use WD tagger's genre predictions directly)
-2. **Alternative**: Use WD tagger raw prediction vector (tag distribution pattern) instead of simple count — anime images have characteristic tag patterns (e.g., specific art-style tags) that photos lack
-3. **Fallback**: Expose manual `content_class` override as the primary workflow until a model is available
+**Why the heuristic fails:** The WD tagger generates many tags with confidence ≥ 0.5 for ANY image type (photos, screenshots, etc.), so the tag-count threshold of 5 is trivially exceeded. The classifier cannot distinguish anime from non-anime based on tag count alone.
 
-The Phase 3 infrastructure (enum, schema, job system, search, UI) is fully reusable for Phase 3.1.
+**Candidate approaches (in order of recommendation):**
+
+1. **CLIP zero-shot / embedding-based classification**: Use CLIP to encode images and compare cosine similarity to text prompts like "anime illustration" vs "photograph". No training data required, good generalization expected. Can run on CPU.
+2. **Lightweight dedicated anime-vs-photo CNN**: Train or fine-tune a small binary classifier (e.g., MobileNet, EfficientNet-B0) on anime vs photo datasets. Fast inference, potentially highest accuracy, but requires curating training data.
+3. **WD tagger raw prediction distribution analysis**: Instead of counting confirmed tags, analyze the full WD prediction vector — total probability mass, presence of art-style-specific tags (e.g., `1girl`, `solo`, `highres` patterns), distribution shape. Photos may show different prediction patterns than anime. Requires no additional model download.
+4. **Manual override workflow**: Expose `content_class` manual override as the primary workflow until a model is available (already supported via PUT endpoint).
+
+**Evaluation targets:**
+- VioletTest100_2 (anime): recall ≥ 80%
+- VioletPhase3Eval (non_anime): false positive rate ≤ 10-15%
+- Evaluation harness (`scripts/evaluate_content_classification.py`) is fully reusable
+
+**Infrastructure reuse:** Phase 3 schema (ContentClassEnum, 6 media columns), classification job system, search filters (`class:`), admin UI, inline classification hook, and evaluation harness are all reusable — only the classifier service (`backend/app/services/content_classifier.py`) needs replacement.
 
 ## What Has NOT Been Built
 
@@ -435,14 +447,15 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 3.1 or 4
+## Recommended Next Phase: 3.1 (then 4)
 
-**Phase 3.1 — Model-Backed Content Classifier** (if filtering is a priority):
-1. Replace heuristic tag-count classifier with a model-backed approach
-2. Reuse Phase 3 infrastructure (schema, job system, search, admin UI)
+**Phase 3.1 — Model-Backed Content Classifier** (required before relying on classification):
+1. Replace heuristic tag-count classifier with a model-backed approach (CLIP, lightweight CNN, or WD distribution analysis)
+2. Reuse Phase 3 infrastructure (schema, job system, search, admin UI, evaluation harness)
 3. Target: non-anime FP rate ≤ 10-15%
+4. **Do NOT gate iCloud import on content classification until Phase 3.1 passes evaluation**
 
-**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (if ingestion automation is a priority):
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (after Phase 3.1 or independently):
 
 1. Filesystem watcher or periodic cron-style scan
 2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
@@ -483,6 +496,7 @@ The next development phase should include a developer/service control panel:
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
 | `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
 | `docs/icloud-safe-ingestion.md` | Phase 2.4 iCloud safe ingestion documentation |
+| `docs/content-classification.md` | Phase 3 content classification documentation (limitations + Phase 3.1 plan) |
 | `scripts/evaluate_content_classification.py` | Phase 3 evaluation script for classifier accuracy |
 
 ### Fix: LLM Proxy Diagnostics + DeepSeek Fallback

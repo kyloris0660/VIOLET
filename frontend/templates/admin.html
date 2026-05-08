@@ -1793,6 +1793,14 @@
             <div class="surface p-2 sm:p-6 border mb-4" id="content-classification-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">内容分类</h2>
 
+                <!-- Heuristic Limitation Warning -->
+                <div class="bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 mb-4 text-sm" style="background-color: #fefce8; border-color: #fde047; color: #854d0e;">
+                    <div class="font-bold mb-1">⚠️ 启发式分类器限制</div>
+                    <div>当前分类器基于 WD 标签计数启发式方法，<strong>非动漫图片误判率高达 97.4%</strong>（评估数据集 VioletPhase3Eval）。</div>
+                    <div class="mt-1">该分类器<strong>不适合</strong>用于：iCloud 导入过滤、全库自动分类、或任何需要可靠非动漫拒绝能力的场景。</div>
+                    <div class="mt-1">请等待 Phase 3.1 模型驱动分类器完成后再依赖分类结果。当前功能仅作为基础设施验证和评估框架使用。</div>
+                </div>
+
                 <!-- Classification Stats -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                     <div class="bg p-3 border">
