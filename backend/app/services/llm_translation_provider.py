@@ -1,6 +1,7 @@
 """
 LLM Translation Provider abstraction for tag localization.
-Supports OpenAI-compatible APIs. Defaults to disabled when no API key is configured.
+Supports OpenAI-compatible APIs with optional fallback provider.
+Defaults to disabled when no API key is configured.
 
 Chunking: large batches are split into chunks of CHUNK_SIZE tags per API call
 to avoid exceeding LLM token limits.  Errors in individual chunks are collected
@@ -8,12 +9,88 @@ and re-raised so callers can report them properly.
 """
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 25
+
+
+def _safe_url_host(url: str) -> str:
+    try:
+        return urlparse(url).hostname or url
+    except Exception:
+        return url
+
+
+def _detect_proxy() -> Optional[str]:
+    for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        val = os.environ.get(key)
+        if val:
+            try:
+                parsed = urlparse(val)
+                return f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+            except Exception:
+                return val
+    return None
+
+
+def _format_error(exc: Exception, *, provider_label: str, base_url: str, model: str) -> str:
+    proxy = _detect_proxy()
+    parts = [
+        f"[{type(exc).__name__}]",
+        f"provider={provider_label}",
+        f"host={_safe_url_host(base_url)}",
+        f"model={model}",
+    ]
+    if proxy:
+        parts.append(f"proxy={proxy}")
+    parts.append(str(exc))
+    return " ".join(parts)
+
+
+_TRANSPORT_ERRORS = (
+    "ConnectError", "ConnectTimeout", "ReadTimeout", "WriteTimeout",
+    "PoolTimeout", "RemoteProtocolError", "LocalProtocolError",
+    "NetworkError", "TimeoutException",
+)
+
+
+def _is_transport_error(exc: Exception) -> bool:
+    return type(exc).__name__ in _TRANSPORT_ERRORS
+
+
+def _sanitize_error_message(msg: str) -> str:
+    """Remove anything that looks like an API key from error messages."""
+    import re
+    return re.sub(r'(sk-|key-)[a-zA-Z0-9]{8,}', r'\1***', msg)
+
+
+class LLMChunkAggregateError(RuntimeError):
+    """Raised when all LLM chunks fail. Carries structured failure info."""
+
+    def __init__(self, failures: list, *, provider_label: str):
+        self.failures = failures
+        self.provider_label = provider_label
+        self._all_transport = all(_is_transport_error(f) for f in failures)
+        self._has_non_transport = any(not _is_transport_error(f) for f in failures)
+        sanitized = _sanitize_error_message(
+            "; ".join(f"{type(f).__name__}: {f}" for f in failures)
+        )
+        super().__init__(
+            f"All LLM chunks failed ({provider_label}): {sanitized}"
+        )
+
+    @property
+    def all_transport_errors(self) -> bool:
+        return self._all_transport
+
+    @property
+    def has_non_transport_errors(self) -> bool:
+        return self._has_non_transport
 
 
 class TranslationResult:
@@ -55,25 +132,24 @@ class DisabledProvider(BaseLLMProvider):
 
 
 class OpenAICompatibleProvider(BaseLLMProvider):
-    def __init__(self, api_key: str, model: str, base_url: str):
+    def __init__(self, api_key: str, model: str, base_url: str, *, label: str = "primary"):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.label = label
 
     def is_available(self) -> bool:
         return bool(self.api_key and self.model and self.base_url)
 
     def get_provider_name(self) -> str:
-        return "openai_compatible"
+        return f"openai_compatible({self.label})"
 
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
-        """Translate tags in chunks to avoid token limits.
-        Raises on failure so callers can report errors properly."""
         if not self.is_available():
             return []
 
         all_results: List[TranslationResult] = []
-        errors: List[str] = []
+        chunk_exceptions: List[Exception] = []
 
         for i in range(0, len(tags), CHUNK_SIZE):
             chunk = tags[i:i + CHUNK_SIZE]
@@ -81,26 +157,26 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 chunk_results = await self._translate_chunk(chunk)
                 all_results.extend(chunk_results)
             except Exception as e:
-                logger.error(f"LLM chunk {i // CHUNK_SIZE + 1} failed: {e}")
-                errors.append(f"Chunk {i // CHUNK_SIZE + 1} ({len(chunk)} tags): {e}")
+                msg = _format_error(e, provider_label=self.label, base_url=self.base_url, model=self.model)
+                logger.error(f"LLM chunk {i // CHUNK_SIZE + 1} failed: {msg}")
+                chunk_exceptions.append(e)
 
-        if errors and not all_results:
-            raise RuntimeError(f"All LLM chunks failed: {'; '.join(errors)}")
+        if chunk_exceptions and not all_results:
+            raise LLMChunkAggregateError(chunk_exceptions, provider_label=self.label)
 
-        if errors:
-            logger.warning(f"LLM translation partially failed: {'; '.join(errors)}")
+        if chunk_exceptions:
+            logger.warning(f"LLM translation partially failed ({self.label}): {len(chunk_exceptions)} chunk(s)")
 
         return all_results
 
     async def _translate_chunk(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
-        """Translate a single chunk via the LLM API. Raises on failure."""
         import httpx
 
         tags_text = json.dumps(tags, ensure_ascii=False)
         system_prompt = (
             "You are a Danbooru anime tag translator. Translate the given tags to Chinese (zh-CN).\n"
             "Rules:\n"
-            "- general tags: translate to natural Chinese (e.g. blue_eyes \u2192 \u84dd\u773c\u775b)\n"
+            "- general tags: translate to natural Chinese (e.g. blue_eyes → 蓝眼睛)\n"
             "- character tags: use the commonly known Chinese name if exists; if unsure, keep original and set needs_review=true\n"
             "- copyright tags: use the Chinese title if exists; if unsure, keep original and set needs_review=true\n"
             "- artist tags: usually keep original name, set needs_review=true\n"
@@ -166,18 +242,75 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         return results
 
 
+class FallbackProvider(BaseLLMProvider):
+    """Wraps a primary and fallback provider. On transport errors, retries with fallback."""
+
+    def __init__(self, primary: OpenAICompatibleProvider, fallback: OpenAICompatibleProvider):
+        self.primary = primary
+        self.fallback = fallback
+
+    def is_available(self) -> bool:
+        return self.primary.is_available() or self.fallback.is_available()
+
+    def get_provider_name(self) -> str:
+        return f"fallback({self.primary.label}->{self.fallback.label})"
+
+    async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
+        if self.primary.is_available():
+            try:
+                return await self.primary.translate_tags(tags)
+            except Exception as primary_exc:
+                should_fallback = (
+                    _is_transport_error(primary_exc) or
+                    (isinstance(primary_exc, LLMChunkAggregateError) and primary_exc.all_transport_errors)
+                )
+                if should_fallback:
+                    logger.warning(
+                        f"Primary provider ({self.primary.label}) transport failure, "
+                        f"trying fallback ({self.fallback.label}): {type(primary_exc).__name__}"
+                    )
+                    if self.fallback.is_available():
+                        return await self.fallback.translate_tags(tags)
+                raise
+
+        if self.fallback.is_available():
+            return await self.fallback.translate_tags(tags)
+
+        return []
+
+
 def get_llm_provider() -> BaseLLMProvider:
     from ..config import settings
     if not settings.TAG_TRANSLATION_LLM_ENABLED:
         return DisabledProvider()
 
     provider_type = settings.TAG_TRANSLATION_LLM_PROVIDER
-    if provider_type == "openai_compatible":
-        return OpenAICompatibleProvider(
-            api_key=settings.TAG_TRANSLATION_LLM_API_KEY,
-            model=settings.TAG_TRANSLATION_LLM_MODEL,
-            base_url=settings.TAG_TRANSLATION_LLM_BASE_URL,
-        )
+    if provider_type != "openai_compatible":
+        logger.warning(f"Unknown LLM provider: {provider_type}, using disabled")
+        return DisabledProvider()
 
-    logger.warning(f"Unknown LLM provider: {provider_type}, using disabled")
-    return DisabledProvider()
+    primary = OpenAICompatibleProvider(
+        api_key=settings.TAG_TRANSLATION_LLM_API_KEY,
+        model=settings.TAG_TRANSLATION_LLM_MODEL,
+        base_url=settings.TAG_TRANSLATION_LLM_BASE_URL,
+        label="primary",
+    )
+
+    fallback_key = settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
+    fallback_model = settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
+    fallback_url = settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+
+    if fallback_key and fallback_model and fallback_url:
+        fallback = OpenAICompatibleProvider(
+            api_key=fallback_key,
+            model=fallback_model,
+            base_url=fallback_url,
+            label="fallback",
+        )
+        logger.info(
+            f"LLM fallback configured: {_safe_url_host(settings.TAG_TRANSLATION_LLM_BASE_URL)} "
+            f"-> {_safe_url_host(fallback_url)}"
+        )
+        return FallbackProvider(primary, fallback)
+
+    return primary
