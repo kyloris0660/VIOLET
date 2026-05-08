@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3 Content Classification Foundation (2026-05-08).
+> Last updated after Phase 3 Content Classification Foundation — evaluation complete (2026-05-09).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -363,9 +363,40 @@ Heuristic-based content classification using existing WD tagger output:
 | `frontend/static/locales/en.json` | English content class labels |
 | `example.env` | Phase 3 configuration variables |
 
+### Phase 3 — Evaluation Results
+
+Real dataset evaluation using `scripts/evaluate_content_classification.py`:
+
+| Dataset | Ground Truth | Total | Result | Metric |
+|---------|-------------|-------|--------|--------|
+| VioletTest100 | mixed | 145 | 100% anime | distribution only |
+| VioletTest100_2 | anime | 81 | 100% anime recall | **PASS** (threshold ≥ 80%) |
+| VioletPhase3Eval | non_anime | 39 | 97.4% FP rate | **FAIL** (threshold ≤ 15%) |
+
+**Root cause of high FP rate**: The WD tagger generates many tags with confidence ≥ 0.5 for ANY image type (photos, screenshots, etc.), so the tag-count threshold of 5 is trivially exceeded. The heuristic classifier (count confirmed AI tags above threshold) cannot distinguish anime from non-anime effectively.
+
+**Conclusion**: PR #23 delivers the **content classification foundation + evaluation harness** — the infrastructure (schema, job system, admin UI, search filters, inline classification) is solid, but the heuristic classifier needs a model-backed approach in Phase 3.1 to achieve acceptable non-anime rejection.
+
+**Bug fixes included in PR #23**:
+- Codex Issue A: Thread-safety — classification job `_active` flag race condition (commit `06e60f5`)
+- Codex Issue B: Suggestion-policy — `classify_from_predictions` now filters `is_suggestion=False` (commit `06e60f5`)
+- Auth cookie fix: evaluation script now uses `admin_token` cookie (not `access_token`)
+- Test isolation fix: pytest config tests properly mock `dotenv.load_dotenv` to avoid `.env` pollution
+
+### Phase 3.1 — Recommended: Model-Backed Classifier
+
+The heuristic tag-count approach is insufficient for non-anime rejection. Recommended Phase 3.1:
+
+1. **Primary approach**: Train or use a pre-trained anime/illustration vs photo classifier (e.g., a lightweight CNN or use WD tagger's genre predictions directly)
+2. **Alternative**: Use WD tagger raw prediction vector (tag distribution pattern) instead of simple count — anime images have characteristic tag patterns (e.g., specific art-style tags) that photos lack
+3. **Fallback**: Expose manual `content_class` override as the primary workflow until a model is available
+
+The Phase 3 infrastructure (enum, schema, job system, search, UI) is fully reusable for Phase 3.1.
+
 ## What Has NOT Been Built
 
 - No filesystem watcher or scheduled scan (Phase 4)
+- No model-backed content classifier (Phase 3.1 recommended)
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
@@ -404,9 +435,14 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 4
+## Recommended Next Phase: 3.1 or 4
 
-**iCloud Photos Watcher / Scheduled Scan** — eliminate manual scan triggers:
+**Phase 3.1 — Model-Backed Content Classifier** (if filtering is a priority):
+1. Replace heuristic tag-count classifier with a model-backed approach
+2. Reuse Phase 3 infrastructure (schema, job system, search, admin UI)
+3. Target: non-anime FP rate ≤ 10-15%
+
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (if ingestion automation is a priority):
 
 1. Filesystem watcher or periodic cron-style scan
 2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
@@ -447,6 +483,7 @@ The next development phase should include a developer/service control panel:
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
 | `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
 | `docs/icloud-safe-ingestion.md` | Phase 2.4 iCloud safe ingestion documentation |
+| `scripts/evaluate_content_classification.py` | Phase 3 evaluation script for classifier accuracy |
 
 ### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
 

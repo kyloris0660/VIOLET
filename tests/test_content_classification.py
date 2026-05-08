@@ -1,5 +1,6 @@
 """Unit tests for Phase 3 content classification."""
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -517,7 +518,12 @@ class TestSearchParserClassFilter:
 class TestContentClassificationConfig:
 
     def test_default_disabled(self):
-        with patch.dict("os.environ", {}, clear=False):
+        env_overrides = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("CONTENT_CLASSIFICATION_")
+        }
+        with patch.dict("os.environ", env_overrides, clear=True), \
+             patch("dotenv.load_dotenv"):
             from importlib import reload
             import app.config
             reload(app.config)
@@ -525,7 +531,12 @@ class TestContentClassificationConfig:
             assert s.CONTENT_CLASSIFICATION_ENABLED is False
 
     def test_default_batch_max(self):
-        with patch.dict("os.environ", {}, clear=False):
+        env_overrides = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("CONTENT_CLASSIFICATION_")
+        }
+        with patch.dict("os.environ", env_overrides, clear=True), \
+             patch("dotenv.load_dotenv"):
             from importlib import reload
             import app.config
             reload(app.config)
