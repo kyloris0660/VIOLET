@@ -8,14 +8,14 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` (Phase 2.4 on `phase2.4-icloud-safe-ingestion`, PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) open, **not merged**) |
+| **Branch** | `main` (Phase 2.4 merged via PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21)) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
 | **DB** | `blombooru` on `localhost:5432`, user `postgres` |
 | **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
 | **Admin credentials** | `admin` / `admin123` |
-| **Phase 2.4 status** | Code complete, tested, PR open — awaiting user manual review and merge |
+| **Phase 2.4 status** | Merged on `main` |
 
 ## Mandatory Workflow Rules
 
@@ -373,8 +373,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 3. Reverse image search integration (SauceNAO, IQDB)
 
 **Prerequisites before starting Phase 3:**
-- PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) (Phase 2.4) must be manually merged by the user
-- Verify `origin/main` contains the merged commit
+- Verify `origin/main` contains the Phase 2.4 merged commit (PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) — merged)
 - Do not auto-start Phase 3
 
 ### Next-Phase Requirement: Service Control UI
@@ -414,5 +413,24 @@ This addresses a recurring pain point: manually managing dev server processes is
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
 | `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
 | `docs/icloud-safe-ingestion.md` | Phase 2.4 iCloud safe ingestion documentation |
+
+### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
+
+Post-Phase 2.4 infrastructure fix for LLM connectivity issues behind GFW:
+
+- **Root cause**: OpenAI API (`api.openai.com`) unreachable through local proxy (SSL EOF) — blocked by GFW
+- **DeepSeek fallback provider**: New `FallbackProvider` class wraps primary + fallback `OpenAICompatibleProvider`. Transport errors (ConnectError, timeout, etc.) on the primary automatically retry through the fallback. Non-transport errors (HTTP 4xx, bad JSON) are raised immediately.
+- **Improved error diagnostics**: Error messages now include structured context: `[ExceptionClass] provider=label host=hostname model=name proxy=host:port`. API keys and Authorization headers are never included.
+- **Proxy detection**: `_detect_proxy()` reads `HTTPS_PROXY`/`HTTP_PROXY` env vars and includes proxy info in error messages for debugging.
+- **Configuration**: 3 new env vars: `TAG_TRANSLATION_LLM_FALLBACK_API_KEY`, `TAG_TRANSLATION_LLM_FALLBACK_MODEL`, `TAG_TRANSLATION_LLM_FALLBACK_BASE_URL`
+
+**Key files:**
+
+| File | Change |
+|------|--------|
+| `backend/app/services/llm_translation_provider.py` | `FallbackProvider`, error formatting, proxy detection, transport error classification |
+| `backend/app/config.py` | 3 fallback provider config properties |
+| `example.env` | Fallback LLM configuration section |
+| `docs/tag-localization-llm.md` | Fallback Provider, Proxy Configuration, Error Diagnostics docs |
 | `docs/tag-localization-zh.md` | Tag localization design (zh-CN) |
 | `example.env` | Available environment variables |

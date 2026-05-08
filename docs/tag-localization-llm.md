@@ -116,7 +116,47 @@ The `BaseLLMProvider` abstract class defines the interface:
 
 Built-in providers:
 - `DisabledProvider` — returns empty results (default when LLM is disabled)
-- `OpenAICompatibleProvider` — works with OpenAI, Azure, local LLM servers
+- `OpenAICompatibleProvider` — works with OpenAI, Azure, DeepSeek, local LLM servers
+- `FallbackProvider` — wraps primary + fallback; retries on transport errors (see below)
+
+### Fallback Provider
+
+When all three fallback env vars are set, `get_llm_provider()` returns a `FallbackProvider` that wraps the primary and fallback `OpenAICompatibleProvider` instances.
+
+```env
+TAG_TRANSLATION_LLM_FALLBACK_API_KEY=sk-your-fallback-key
+TAG_TRANSLATION_LLM_FALLBACK_MODEL=deepseek-v4-flash
+TAG_TRANSLATION_LLM_FALLBACK_BASE_URL=https://api.deepseek.com
+```
+
+**Behavior:**
+- Primary provider is tried first
+- On **transport errors** (ConnectError, ConnectTimeout, ReadTimeout, etc.) or when all chunks fail, the fallback provider is tried automatically
+- On **non-transport errors** (HTTP 4xx, invalid JSON, etc.) from the primary, the error is raised immediately — no fallback
+- If only the primary is configured (no fallback env vars), the system works exactly as before
+
+**Use case:** Primary API is unreachable (e.g., OpenAI blocked by GFW), but a fallback API (e.g., DeepSeek) is reachable.
+
+### Proxy Configuration
+
+The LLM provider uses `httpx.AsyncClient` which respects standard proxy environment variables:
+
+```env
+HTTPS_PROXY=http://127.0.0.1:7897
+HTTP_PROXY=http://127.0.0.1:7897
+```
+
+These are typically set in the OS/terminal environment, not in `.env`. Error messages include detected proxy information for debugging.
+
+### Error Diagnostics
+
+Error messages include structured context for debugging:
+
+```
+[ConnectError] provider=primary host=api.openai.com model=gpt-4o-mini proxy=127.0.0.1:7897 <original error>
+```
+
+Fields: exception class, provider label, API host (never full URL), model name, proxy (if detected). API keys and Authorization headers are **never** included.
 
 ### Translation Strategy
 

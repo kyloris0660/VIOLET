@@ -450,6 +450,19 @@ class Settings:
         raw = os.getenv("TAG_TRANSLATION_BACKGROUND_CATEGORIES", "general,meta")
         return [c.strip() for c in raw.split(",") if c.strip()]
 
+    # LLM Fallback Provider
+    @property
+    def TAG_TRANSLATION_LLM_FALLBACK_API_KEY(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_FALLBACK_API_KEY", "")
+
+    @property
+    def TAG_TRANSLATION_LLM_FALLBACK_MODEL(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_FALLBACK_MODEL", "")
+
+    @property
+    def TAG_TRANSLATION_LLM_FALLBACK_BASE_URL(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_FALLBACK_BASE_URL", "")
+
     # Entity Alias Resolver (Phase 2.3e)
     @property
     def ENTITY_ALIAS_RESOLVER_ENABLED(self) -> bool:
