@@ -173,10 +173,29 @@ class TestClassifyFromPredictions:
         ]
         result = classify_from_predictions(db, 1, preds)
 
-        # 0 confirmed tags with non-empty predictions → non_anime
-        assert result["content_class"] == "non_anime"
+        # 0 confirmed high-confidence tags → unknown (not non_anime)
+        assert result["content_class"] == "unknown"
         assert result["high_conf_tag_count"] == 0
-        assert result["confidence"] == 1.0
+        assert result["confidence"] == 0.0
+
+    def test_all_below_threshold_returns_unknown(self):
+        """Predictions exist but all below confidence threshold → unknown."""
+        from app.services.content_classifier import classify_from_predictions
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        # All tags confirmed but below 0.5 threshold
+        preds = [
+            {"name": f"tag_{i}", "confidence": 0.3, "action": "confirmed"}
+            for i in range(10)
+        ]
+        result = classify_from_predictions(db, 1, preds)
+
+        assert result["content_class"] == "unknown"
+        assert result["high_conf_tag_count"] == 0
+        assert result["confidence"] == 0.0
 
     def test_confidence_value_anime(self):
         from app.services.content_classifier import classify_from_predictions
@@ -279,6 +298,33 @@ class TestClassificationConsistency:
         assert result_db["content_class"] == expected_class
         assert result_inline["content_class"] == expected_class
         assert result_db["content_class"] == result_inline["content_class"]
+        assert result_db["confidence"] == result_inline["confidence"]
+
+    def test_both_paths_agree_zero_confirmed_from_suggestions(self):
+        """DB path: no confirmed AI tags → unknown.
+        Inline path: predictions exist but all suggestions → unknown.
+        Both must agree on unknown."""
+        from app.services.content_classifier import classify_media, classify_from_predictions
+
+        # --- DB-based path (no confirmed high-conf tags in DB) ---
+        media_db = self._make_media()
+        db1 = MagicMock()
+        db1.query.return_value.filter.return_value.first.return_value = media_db
+        db1.query.return_value.filter.return_value.all.return_value = []
+        result_db = classify_media(db1, 1, dry_run=True)
+
+        # --- Inline path (predictions exist but all suggestions) ---
+        media_inline = self._make_media()
+        db2 = MagicMock()
+        db2.query.return_value.filter.return_value.first.return_value = media_inline
+        preds = [
+            {"name": f"tag_{i}", "confidence": 0.8, "action": "suggestion"}
+            for i in range(6)
+        ]
+        result_inline = classify_from_predictions(db2, 1, preds, dry_run=True)
+
+        assert result_db["content_class"] == "unknown"
+        assert result_inline["content_class"] == "unknown"
         assert result_db["confidence"] == result_inline["confidence"]
 
 
@@ -559,3 +605,70 @@ class TestContentClassificationConfig:
             s = app.config.Settings()
             assert s.CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD == 5
             assert s.CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD == 0.5
+
+
+# ---------------------------------------------------------------------------
+# UpdateMediaClassRequest — lock field semantics
+# ---------------------------------------------------------------------------
+
+class TestUpdateMediaClassRequestLock:
+    """Verify that the lock field supports true / false / omitted (None)."""
+
+    def test_schema_lock_true(self):
+        from app.routes.admin.content_classification import UpdateMediaClassRequest
+
+        body = UpdateMediaClassRequest(content_class="anime", lock=True)
+        assert body.lock is True
+
+    def test_schema_lock_false(self):
+        from app.routes.admin.content_classification import UpdateMediaClassRequest
+
+        body = UpdateMediaClassRequest(content_class="anime", lock=False)
+        assert body.lock is False
+
+    def test_schema_lock_omitted(self):
+        from app.routes.admin.content_classification import UpdateMediaClassRequest
+
+        body = UpdateMediaClassRequest(content_class="anime")
+        assert body.lock is None
+
+    def test_lock_true_sets_locked(self):
+        """When lock=true, media.content_class_locked becomes True."""
+        media = MagicMock()
+        media.content_class_locked = False
+
+        from app.routes.admin.content_classification import UpdateMediaClassRequest
+
+        body = UpdateMediaClassRequest(content_class="anime", lock=True)
+        # Simulate endpoint logic
+        if body.lock is not None:
+            media.content_class_locked = body.lock
+
+        assert media.content_class_locked is True
+
+    def test_lock_false_unlocks(self):
+        """When lock=false, media.content_class_locked becomes False."""
+        media = MagicMock()
+        media.content_class_locked = True
+
+        from app.routes.admin.content_classification import UpdateMediaClassRequest
+
+        body = UpdateMediaClassRequest(content_class="anime", lock=False)
+        if body.lock is not None:
+            media.content_class_locked = body.lock
+
+        assert media.content_class_locked is False
+
+    def test_lock_omitted_preserves_state(self):
+        """When lock is omitted, existing lock state is preserved."""
+        media = MagicMock()
+        media.content_class_locked = True
+
+        from app.routes.admin.content_classification import UpdateMediaClassRequest
+
+        body = UpdateMediaClassRequest(content_class="non_anime")
+        if body.lock is not None:
+            media.content_class_locked = body.lock
+
+        # Lock was not touched — stays True
+        assert media.content_class_locked is True

@@ -28,7 +28,7 @@ class CreateClassificationJobRequest(BaseModel):
 
 class UpdateMediaClassRequest(BaseModel):
     content_class: ContentClassEnum
-    lock: bool = False
+    lock: Optional[bool] = None
 
 
 def _serialize_classification_job(job: ClassificationJob) -> dict:
@@ -224,8 +224,8 @@ async def update_media_class(
     media.content_class_model = None
     media.content_class_confidence = 1.0
     media.content_class_reviewed = True
-    if body.lock:
-        media.content_class_locked = True
+    if body.lock is not None:
+        media.content_class_locked = body.lock
     db.commit()
 
     return {

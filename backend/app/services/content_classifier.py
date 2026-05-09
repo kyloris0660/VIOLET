@@ -122,7 +122,7 @@ def classify_from_predictions(
         and p.get("action") == "confirmed"
     ]
 
-    if not predictions:
+    if not predictions or not high_conf_tags:
         new_class = ContentClassEnum.unknown
         conf = 0.0
     elif len(high_conf_tags) >= tag_threshold:
