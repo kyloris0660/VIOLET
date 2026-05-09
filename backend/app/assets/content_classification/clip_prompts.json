@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "description": "CLIP zero-shot classification prompts for anime/non-anime content classification",
+    "model": "openai/clip-vit-base-patch32",
+    "onnx_source": "Xenova/clip-vit-base-patch32",
+    "embedding_dim": 512,
+    "version": "1.0.0"
+  },
+  "categories": {
+    "anime": {
+      "prompts": [
+        "anime illustration",
+        "manga drawing",
+        "anime character artwork",
+        "2D digital anime art",
+        "Japanese animation style image"
+      ],
+      "maps_to": "anime"
+    },
+    "real_photo": {
+      "prompts": [
+        "real photograph",
+        "camera photo of a real scene",
+        "real world photo",
+        "landscape photograph",
+        "product photograph"
+      ],
+      "maps_to": "non_anime"
+    },
+    "screenshot": {
+      "prompts": [
+        "computer screenshot",
+        "user interface screenshot",
+        "mobile app screenshot"
+      ],
+      "maps_to": "non_anime"
+    },
+    "document": {
+      "prompts": [
+        "scanned document",
+        "text document page"
+      ],
+      "maps_to": "non_anime"
+    }
+  }
+}
