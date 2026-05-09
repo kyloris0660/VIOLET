@@ -102,6 +102,16 @@ async def get_config_diagnostics(
             "file_open_timeout_seconds": settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS,
             "max_file_size_mb": settings.SCAN_MAX_FILE_SIZE_MB,
         },
+        "content_classification": {
+            "enabled": settings.CONTENT_CLASSIFICATION_ENABLED,
+            "method": settings.CONTENT_CLASSIFICATION_METHOD,
+            "batch_max_items": settings.CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS,
+            "auto_after_import": settings.CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT,
+            "auto_max_items": settings.CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS,
+            "clip_unknown_margin": settings.CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN,
+            "heuristic_anime_tag_threshold": settings.CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD,
+            "heuristic_anime_confidence_threshold": settings.CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD,
+        },
         "server": {
             "pid": os.getpid(),
             "python_version": sys.version,

@@ -60,14 +60,13 @@ Core capabilities:
 | Proper noun alias resolver | Done | Character/copyright/artist alias resolution with LLM + manual review |
 | iCloud large library safety | Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
 | Content classification foundation | Done | Infrastructure + evaluation harness (heuristic baseline only) |
-| Model-backed content classifier | Phase 3.1 | CLIP / lightweight CNN / WD distribution analysis |
+| CLIP zero-shot content classifier | Done | Anime vs non-anime via CLIP ViT-B/32 ONNX (Phase 3.1) |
 | Reverse image search | Future | SauceNAO/IQDB integration |
 | Character / copyright database | Future | External data enrichment |
 | Filesystem watcher | Future | Auto-detect new files |
 
 ## Current Limitations
 
-- **No reliable anime/photo filtering.** The heuristic content classifier has a 97.4% false-positive rate on non-anime images (nearly all photos are misclassified as anime). Phase 3.1 will introduce a model-backed classifier (CLIP, lightweight CNN, or WD tag distribution analysis) to address this.
 - No reverse image search
 - No source URL auto-detection
 - No character/copyright database
@@ -213,8 +212,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.3e** — Proper noun alias resolver foundation (done)
 - **Phase 2.4** — iCloud large library readiness / safe ingestion (done)
 - **Phase 3** — Content classification foundation + evaluation harness (done — heuristic baseline only)
-- **Phase 3.0.1** — Repository hygiene / upstream cleanup (current)
-- **Phase 3.1** — Model-backed content classifier (CLIP / lightweight CNN / WD distribution)
+- **Phase 3.1** — CLIP zero-shot content classifier (done — anime recall >= 80%, non-anime FP <= 15%)
 - **Phase 4** — Filesystem watcher & scheduled scans
 
 ## Tech Stack
@@ -224,7 +222,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | Backend | FastAPI (Python 3.12) |
 | Frontend | Jinja2 + Tailwind CSS + Vanilla JS |
 | Database | PostgreSQL 17 |
-| AI Model | WDv3 ONNX (SmilingWolf) via onnxruntime |
+| AI Model | WDv3 ONNX (SmilingWolf) + CLIP ViT-B/32 ONNX (Xenova) via onnxruntime |
 | Cache | Redis 7+ (optional) |
 
 ## Upstream Attribution

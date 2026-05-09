@@ -56,12 +56,11 @@ test.describe('Tag Translation Worker - Smoke', () => {
     expect(statusAfterResume.data.paused).toBe(false);
   });
 
-  test.skip('worker status panel exists in admin UI', async ({ page }) => {
-    // Skipped: #tl-worker-section is rendered inside a tab that requires
-    // navigation to the System tab. Pre-existing visibility issue — the
-    // element exists but is not visible without tab interaction.
+  test('worker status panel exists in admin UI', async ({ page }) => {
     await page.goto('http://localhost:8000/admin');
     await page.waitForLoadState('domcontentloaded');
+    await page.locator('button:has-text("内容"), button:has-text("Content")').first().click();
+    await page.waitForTimeout(1000);
     const section = page.locator('#tl-worker-section');
     await expect(section).toBeVisible();
     await expect(page.locator('#tl-worker-run-now-btn')).toBeVisible();
@@ -94,8 +93,8 @@ test.describe('Tag Translation Worker - Browser UI', () => {
       jsErrors.push(err.message);
     });
 
-    // Navigate to System tab where tag localization lives
-    await page.locator('button:has-text("系统"), button:has-text("System")').first().click();
+    // Navigate to Content tab where tag localization lives
+    await page.locator('button:has-text("内容"), button:has-text("Content")').first().click();
     await page.waitForTimeout(1500);
 
     // Scroll the worker section into view via JS, then click Run Now
@@ -125,7 +124,7 @@ test.describe('Tag Translation Worker - Browser UI', () => {
       jsErrors.push(err.message);
     });
 
-    await page.locator('button:has-text("系统"), button:has-text("System")').first().click();
+    await page.locator('button:has-text("内容"), button:has-text("Content")').first().click();
     await page.waitForTimeout(2000);
 
     // Worker status section should load without errors
