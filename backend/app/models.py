@@ -292,6 +292,7 @@ class ClassificationJob(Base):
     media_ids_json = Column(Text, nullable=True)
     max_items = Column(Integer, default=100)
     only_unclassified = Column(Boolean, default=True)
+    force_reclassify = Column(Boolean, default=False)
 
     processed = Column(Integer, default=0)
     classified_anime = Column(Integer, default=0)

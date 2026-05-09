@@ -24,6 +24,7 @@ class CreateClassificationJobRequest(BaseModel):
     media_ids: Optional[List[int]] = None
     max_items: int = Field(default=100, ge=1)
     only_unclassified: bool = True
+    force_reclassify: bool = False
 
 
 class UpdateMediaClassRequest(BaseModel):
@@ -54,6 +55,7 @@ def _serialize_classification_job(job: ClassificationJob) -> dict:
         "media_ids": media_ids,
         "max_items": job.max_items,
         "only_unclassified": job.only_unclassified,
+        "force_reclassify": getattr(job, 'force_reclassify', False),
         "processed": job.processed,
         "classified_anime": job.classified_anime,
         "classified_non_anime": job.classified_non_anime,
@@ -111,6 +113,7 @@ async def create_classification_job(
         media_ids=body.media_ids,
         max_items=body.max_items,
         only_unclassified=body.only_unclassified,
+        force_reclassify=body.force_reclassify,
         trigger_source="manual",
     )
 
@@ -175,6 +178,7 @@ async def get_classification_config(
 ):
     return {
         "enabled": settings.CONTENT_CLASSIFICATION_ENABLED,
+        "method": settings.CONTENT_CLASSIFICATION_METHOD,
         "batch_max_items": settings.CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS,
         "auto_after_import": settings.CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT,
         "auto_max_items": settings.CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS,

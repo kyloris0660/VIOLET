@@ -754,6 +754,20 @@
                         <span class="text-secondary">等待操作...</span>
                     </div>
                 </div>
+
+                <!-- Missing Media Maintenance -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-2" data-i18n="admin.dev_tools.missing_media.title">缺失媒体维护</h3>
+                    <p class="text-xs text-secondary mb-2" data-i18n="admin.dev_tools.missing_media.description">扫描数据库中媒体文件缺失的记录，并可选择清理无效记录。不会删除源文件。</p>
+                    <div class="flex items-center gap-2 mb-3">
+                        <button id="dev-missing-media-scan-btn" class="btn-primary text-xs px-4 py-2" data-i18n="admin.dev_tools.missing_media.scan_btn">扫描</button>
+                        <button id="dev-missing-media-dryrun-btn" class="btn-dark text-xs px-4 py-2" disabled data-i18n="admin.dev_tools.missing_media.dry_run_btn">Dry Run 预览</button>
+                        <button id="dev-missing-media-cleanup-btn" class="text-xs px-4 py-2 bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors" disabled data-i18n="admin.dev_tools.missing_media.cleanup_btn">执行清理</button>
+                    </div>
+                    <div id="dev-missing-media-result" class="hidden bg p-3 border text-xs mt-2">
+                        <span class="text-secondary">等待操作...</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1793,12 +1807,18 @@
             <div class="surface p-2 sm:p-6 border mb-4" id="content-classification-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">内容分类</h2>
 
-                <!-- Heuristic Limitation Warning -->
-                <div class="bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 mb-4 text-sm" style="background-color: #fefce8; border-color: #fde047; color: #854d0e;">
-                    <div class="font-bold mb-1">⚠️ 启发式分类器限制</div>
-                    <div>当前分类器基于 WD 标签计数启发式方法，<strong>非动漫图片误判率高达 97.4%</strong>（评估数据集 VioletPhase3Eval）。</div>
-                    <div class="mt-1">该分类器<strong>不适合</strong>用于：iCloud 导入过滤、全库自动分类、或任何需要可靠非动漫拒绝能力的场景。</div>
-                    <div class="mt-1">请等待 Phase 3.1 模型驱动分类器完成后再依赖分类结果。当前功能仅作为基础设施验证和评估框架使用。</div>
+                <!-- Classification Method Banners (conditional, toggled by JS) -->
+                <div id="cls-banner-clip" class="px-4 py-3 mb-4 text-sm border" style="display:none; background-color: #f0fdf4; border-color: #86efac; color: #166534;">
+                    <div class="font-bold mb-1">✅ <span data-i18n="admin.content_classification.banner_clip_title">CLIP Classifier</span></div>
+                    <div data-i18n="admin.content_classification.banner_clip"></div>
+                </div>
+                <div id="cls-banner-heuristic" class="px-4 py-3 mb-4 text-sm border" style="display:none; background-color: #fefce8; border-color: #fde047; color: #854d0e;">
+                    <div class="font-bold mb-1">⚠️ <span data-i18n="admin.content_classification.banner_heuristic_title">Heuristic Classifier</span></div>
+                    <div data-i18n="admin.content_classification.banner_heuristic"></div>
+                </div>
+                <div id="cls-banner-disabled" class="px-4 py-3 mb-4 text-sm border" style="display:none; background-color: #f3f4f6; border-color: #d1d5db; color: #6b7280;">
+                    <div class="font-bold mb-1">ℹ️ <span data-i18n="admin.content_classification.banner_disabled_title">Disabled</span></div>
+                    <div data-i18n="admin.content_classification.banner_disabled"></div>
                 </div>
 
                 <!-- Classification Stats -->
@@ -1851,10 +1871,17 @@
                             <div class="flex items-end pb-1">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="cls-job-only-unclassified" class="w-4 h-4 accent-primary" checked>
-                                    <span class="text-xs font-bold">仅未分类</span>
+                                    <span class="text-xs font-bold" data-i18n="admin.content_classification.only_unclassified_label">仅未分类</span>
+                                </label>
+                            </div>
+                            <div class="flex items-end pb-1">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="cls-job-force-reclassify" class="w-4 h-4 accent-primary">
+                                    <span class="text-xs font-bold" data-i18n="admin.content_classification.force_reclassify_label">强制重分类</span>
                                 </label>
                             </div>
                         </div>
+                        <div class="text-xs text-secondary mb-2" data-i18n="admin.content_classification.force_reclassify_hint"></div>
                         <button id="cls-job-create-btn" class="btn-primary w-full">创建分类任务</button>
                     </div>
                 </div>

@@ -192,6 +192,7 @@ def check_and_migrate_schema(engine):
         migrate_audit_proper_noun_translations,
         migrate_add_scan_job_icloud_stats,
         migrate_add_content_classification,
+        migrate_add_classification_force_reclassify,
     ]
     
     for migration in migrations:
@@ -709,5 +710,24 @@ def migrate_add_content_classification(engine, inspector):
             conn.execute(text(
                 "CREATE INDEX ix_blombooru_classification_jobs_scan_job_id "
                 "ON blombooru_classification_jobs(scan_job_id)"
+            ))
+            conn.commit()
+
+
+def migrate_add_classification_force_reclassify(engine, inspector):
+    """Add force_reclassify column to blombooru_classification_jobs."""
+    from sqlalchemy import text
+
+    tables = inspector.get_table_names()
+    if 'blombooru_classification_jobs' not in tables:
+        return
+
+    columns = [c['name'] for c in inspector.get_columns('blombooru_classification_jobs')]
+    if 'force_reclassify' not in columns:
+        logger.info("Adding force_reclassify column to blombooru_classification_jobs...")
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE blombooru_classification_jobs "
+                "ADD COLUMN force_reclassify BOOLEAN NOT NULL DEFAULT FALSE"
             ))
             conn.commit()

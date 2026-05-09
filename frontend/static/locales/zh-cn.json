@@ -526,6 +526,18 @@
             "next": "下一页",
             "suggestions_ai": "建议（AI）"
         },
+        "content_classification": {
+            "banner_clip_title": "CLIP 视觉分类器",
+            "banner_clip": "CLIP ViT-B/32 视觉分类器 — 召回率 98.77%，误报率 4.88%。首次运行需下载模型 (~350 MB)，建议先批量验证。",
+            "banner_heuristic_title": "启发式分类器",
+            "banner_heuristic": "启发式分类器误报率高达 97.4%，建议切换到 CLIP 分类器。在 .env 中设置 CONTENT_CLASSIFICATION_METHOD=clip。",
+            "banner_disabled_title": "已禁用",
+            "banner_disabled": "内容分类已禁用。如需启用请在 .env 中设置 CONTENT_CLASSIFICATION_ENABLED=true。",
+            "only_unclassified_label": "仅未分类",
+            "force_reclassify_label": "强制重分类",
+            "force_reclassify_hint": "如果之前用旧分类器跑过，请取消「仅未分类」或启用强制重分类。已锁定的媒体仍会跳过。",
+            "method_label": "分类方法"
+        },
         "dev_tools": {
             "server_info": "服务器信息",
             "pid": "进程 ID",
@@ -537,7 +549,23 @@
             "scan_config": "扫描配置",
             "hydrated_only_default": "默认仅已下载",
             "file_open_timeout": "文件打开超时 (秒)",
-            "max_file_size": "最大文件大小 (MB)"
+            "max_file_size": "最大文件大小 (MB)",
+            "missing_media": {
+                "title": "缺失媒体维护",
+                "description": "扫描数据库中媒体文件缺失的记录，并可选择清理无效记录。不会删除源文件。",
+                "scan_btn": "扫描",
+                "dry_run_btn": "Dry Run 预览",
+                "cleanup_btn": "执行清理",
+                "total": "总媒体数",
+                "valid": "正常",
+                "missing_original": "原始文件缺失",
+                "missing_thumbnail_only": "仅缩略图缺失",
+                "missing_both": "原始和缩略图均缺失",
+                "deletable": "可清理",
+                "suggest_regenerate": "建议重新生成缩略图",
+                "cleanup_scope_note": "仅清理原始文件缺失的记录 (A+D 类)。仅缩略图缺失的记录不受影响。",
+                "confirm_msg": "确认要清理这些无效媒体记录吗？此操作不可撤销。不会删除源文件。"
+            }
         }
     },
     "album_picker": {
