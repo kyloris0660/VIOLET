@@ -658,6 +658,15 @@ def run_scan_job(job_id: int) -> None:
                     exc_info=True,
                 )
 
+            try:
+                from ..services.classification_job_service import create_auto_classification_job_after_scan
+                create_auto_classification_job_after_scan(job_id, imported_media_ids)
+            except Exception as cls_exc:
+                logger.error(
+                    f"Scan job {job_id}: auto-classify trigger failed (scan still completed): {cls_exc}",
+                    exc_info=True,
+                )
+
     except Exception as exc:
         logger.error(f"Scan job {job_id} failed: {exc}", exc_info=True)
         try:

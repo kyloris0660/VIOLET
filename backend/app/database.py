@@ -191,6 +191,7 @@ def check_and_migrate_schema(engine):
         migrate_add_tag_translation_jobs_table,
         migrate_audit_proper_noun_translations,
         migrate_add_scan_job_icloud_stats,
+        migrate_add_content_classification,
     ]
     
     for migration in migrations:
@@ -629,3 +630,84 @@ def migrate_add_scan_job_icloud_stats(engine, inspector):
             "ADD COLUMN is_preflight BOOLEAN NOT NULL DEFAULT FALSE"
         ))
         conn.commit()
+
+
+def migrate_add_content_classification(engine, inspector):
+    """Add content classification columns to blombooru_media and create
+    blombooru_classification_jobs table (Phase 3)."""
+    from sqlalchemy import text
+
+    columns = [c['name'] for c in inspector.get_columns('blombooru_media')]
+
+    if 'content_class' not in columns:
+        logger.info("Adding content classification columns to blombooru_media...")
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE blombooru_media "
+                "ADD COLUMN content_class VARCHAR(20)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media "
+                "ADD COLUMN content_class_confidence FLOAT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media "
+                "ADD COLUMN content_class_source VARCHAR(50)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media "
+                "ADD COLUMN content_class_model VARCHAR(100)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media "
+                "ADD COLUMN content_class_locked BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE blombooru_media "
+                "ADD COLUMN content_class_reviewed BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
+            conn.execute(text(
+                "CREATE INDEX ix_blombooru_media_content_class "
+                "ON blombooru_media(content_class)"
+            ))
+            conn.commit()
+
+    tables = inspector.get_table_names()
+    if 'blombooru_classification_jobs' not in tables:
+        logger.info("Creating blombooru_classification_jobs table...")
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE blombooru_classification_jobs (
+                    id SERIAL PRIMARY KEY,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    trigger_source VARCHAR(20) NOT NULL DEFAULT 'manual',
+                    scan_job_id INTEGER REFERENCES blombooru_scan_jobs(id) ON DELETE SET NULL,
+                    media_ids_json TEXT,
+                    max_items INTEGER NOT NULL DEFAULT 100,
+                    only_unclassified BOOLEAN NOT NULL DEFAULT TRUE,
+                    processed INTEGER NOT NULL DEFAULT 0,
+                    classified_anime INTEGER NOT NULL DEFAULT 0,
+                    classified_non_anime INTEGER NOT NULL DEFAULT 0,
+                    classified_unknown INTEGER NOT NULL DEFAULT 0,
+                    failed INTEGER NOT NULL DEFAULT 0,
+                    failed_items_json TEXT,
+                    error_message TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    started_at TIMESTAMP WITH TIME ZONE,
+                    finished_at TIMESTAMP WITH TIME ZONE,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX ix_blombooru_classification_jobs_status "
+                "ON blombooru_classification_jobs(status)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX ix_blombooru_classification_jobs_created_at "
+                "ON blombooru_classification_jobs(created_at)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX ix_blombooru_classification_jobs_scan_job_id "
+                "ON blombooru_classification_jobs(scan_job_id)"
+            ))
+            conn.commit()

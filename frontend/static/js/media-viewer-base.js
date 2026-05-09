@@ -47,6 +47,7 @@ class MediaViewerBase {
             <div class="info-row"><span class="flex-shrink-0">${window.i18n.t('media.info.rating')}</span><strong class="text-right">${media.rating}</strong></div>
             <div class="info-row"><span class="flex-shrink-0">${window.i18n.t('media.info.uploaded')}</span><strong class="text-right">${new Date(media.uploaded_at).toLocaleDateString()}</strong></div>
             ${media.duration ? `<div class="info-row"><span class="flex-shrink-0">${window.i18n.t('media.info.duration')}</span><strong class="text-right">${this.formatDuration(media.duration)}</strong></div>` : ''}
+            <div class="info-row"><span class="flex-shrink-0">${window.i18n.t('media.info.content_class')}</span><strong class="text-right">${this._contentClassLabel(media.content_class)}</strong></div>
         `;
 
         if (media.source) {
@@ -363,6 +364,17 @@ class MediaViewerBase {
         }
 
         return `<div class="ai-text-content">${escaped}</div>`;
+    }
+
+    _contentClassLabel(cls) {
+        if (!cls) return window.i18n.t('media.info.content_class_none');
+        const map = {
+            anime: 'media.info.content_class_anime',
+            illustration: 'media.info.content_class_illustration',
+            non_anime: 'media.info.content_class_non_anime',
+            unknown: 'media.info.content_class_unknown'
+        };
+        return window.i18n.t(map[cls] || 'media.info.content_class_unknown');
     }
 
     formatFileSize(bytes) {

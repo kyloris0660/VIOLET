@@ -80,6 +80,17 @@ No automated test suite. Verify changes manually:
 | Entity Alias Resolver | `backend/app/services/entity_alias_resolver.py` | Proper-noun alias resolution (character/copyright/artist) |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |
 
+### Phase plan approval rule
+
+For every new major development phase or substantial feature scope, the agent must:
+
+1. **Produce an implementation plan first** — covering scope, key design decisions, new files/tables, and testing approach.
+2. **Wait for explicit user approval** before making substantial code changes.
+3. Bug fixes, small review-comment fixes, and documentation updates may proceed without a separate plan.
+4. Major stage-level design changes (new classifiers, new models, new DB schemas, evaluation frameworks) require user-approved plan.
+
+This rule is permanent and applies to all future phases.
+
 ### Development workflow
 
 See `docs/project-roadmap.md` § Development Standards. In short:

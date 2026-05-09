@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 2.4 iCloud Large Library Readiness / Safe Ingestion (2026-05-08).
+> Last updated after Phase 3 Content Classification Foundation — evaluation complete (2026-05-09).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -27,6 +27,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 4. **Test report accuracy** — Never claim "all tests passed" if any test failed. Report exact commands, exact results, and document any skipped/pre-existing failures.
 5. **Service / dev environment safety** — Never kill arbitrary processes. Only stop clearly identified V.I.O.L.E.T. dev server processes with PID/port reported first.
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
+7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 
 ## Language Policy
 
@@ -322,10 +323,92 @@ Made the scan pipeline safe for large iCloud-synced directories:
 | `tests/e2e/test_icloud_scan.spec.ts` | 7 Playwright E2E tests |
 | `docs/icloud-safe-ingestion.md` | Full documentation |
 
+### Phase 3 — Content Classification Foundation + Evaluation Harness
+
+> **⚠️ Scope clarification:** Phase 3 delivers the content classification **infrastructure and evaluation harness** only. The heuristic classifier has a 97.4% non-anime false positive rate and is **not suitable for production filtering or iCloud import gating**. A model-backed classifier (Phase 3.1) is required. All classification features default to OFF.
+
+Content classification infrastructure using existing WD tagger output:
+
+- **Content type schema**: `ContentClassEnum` with values: `anime`, `illustration`, `non_anime`, `unknown`
+- **Media metadata**: 6 new columns — `content_class`, `content_class_confidence`, `content_class_source`, `content_class_model`, `content_class_locked`, `content_class_reviewed`
+- **Classifier service**: Heuristic approach counting AI tags above confidence threshold — if count ≥ `ANIME_TAG_THRESHOLD` → anime, elif count > 0 → non_anime, else → unknown
+- **Inline classification**: AI tagging jobs automatically classify media after tagging (when enabled)
+- **Classification job system**: Background jobs with progress, cancel, history — reuses AI tagging job patterns
+- **Auto-classify after scan**: Scan completion optionally triggers classification job (when enabled)
+- **Admin UI**: Content Classification section — stats grid, breakdown, config panel, create job, progress, history
+- **Search filter**: `class:anime`, `class:non_anime`, `class:illustration`, `class:unknown`, `class:none` (and negation `-class:...`)
+- **Media detail**: Content class info row with localized label in media viewer
+- **i18n**: Chinese and English localization for all content class labels
+- **Startup recovery**: Stale classification jobs marked as interrupted on startup
+- **Disabled by default**: All `CONTENT_CLASSIFICATION_*` settings default to off
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/enums.py` | `ContentClassEnum` |
+| `backend/app/models.py` | 6 `content_class_*` columns on `Media`, `ClassificationJob` model |
+| `backend/app/database.py` | `migrate_add_content_classification` migration |
+| `backend/app/config.py` | `CONTENT_CLASSIFICATION_*` settings (6 config properties) |
+| `backend/app/schemas.py` | `content_class` in `MediaUpdate` and `MediaResponse` |
+| `backend/app/services/content_classifier.py` | Heuristic classifier (`classify_media`, `classify_from_predictions`) |
+| `backend/app/services/classification_job_service.py` | Classification job lifecycle |
+| `backend/app/services/ai_tagging_job_service.py` | Inline classification after AI tagging |
+| `backend/app/routes/admin/content_classification.py` | Admin API endpoints |
+| `backend/app/utils/search_parser.py` | `class:` / `content_class:` meta filter |
+| `backend/app/utils/local_library_scanner.py` | Auto-classify after scan hook |
+| `backend/app/main.py` | Stale classification job recovery at startup |
+| `frontend/templates/admin.html` | Content Classification admin section |
+| `frontend/static/js/admin.js` | Classification UI logic |
+| `frontend/static/js/media-viewer-base.js` | Content class info row + label helper |
+| `frontend/static/locales/zh-cn.json` | Chinese content class labels |
+| `frontend/static/locales/en.json` | English content class labels |
+| `example.env` | Phase 3 configuration variables |
+
+### Phase 3 — Evaluation Results
+
+Real dataset evaluation using `scripts/evaluate_content_classification.py`:
+
+| Dataset | Ground Truth | Total | Result | Metric |
+|---------|-------------|-------|--------|--------|
+| VioletTest100 | mixed | 145 | 100% anime | distribution only |
+| VioletTest100_2 | anime | 81 | 100% anime recall | **PASS** (threshold ≥ 80%) |
+| VioletPhase3Eval | non_anime | 39 | 97.4% FP rate | **FAIL** (threshold ≤ 15%) |
+
+**Root cause of high FP rate**: The WD tagger generates many tags with confidence ≥ 0.5 for ANY image type (photos, screenshots, etc.), so the tag-count threshold of 5 is trivially exceeded. The heuristic classifier (count confirmed AI tags above threshold) cannot distinguish anime from non-anime effectively.
+
+**Conclusion**: PR #23 delivers the **content classification foundation + evaluation harness** — the infrastructure (schema, job system, admin UI, search filters, inline classification) is solid, but the heuristic classifier needs a model-backed approach in Phase 3.1 to achieve acceptable non-anime rejection.
+
+**Bug fixes included in PR #23**:
+- Codex Issue A: Thread-safety — classification job `_active` flag race condition (commit `06e60f5`)
+- Codex Issue B: Suggestion-policy — `classify_from_predictions` now filters `is_suggestion=False` (commit `06e60f5`)
+- Auth cookie fix: evaluation script now uses `admin_token` cookie (not `access_token`)
+- Test isolation fix: pytest config tests properly mock `dotenv.load_dotenv` to avoid `.env` pollution
+
+### Phase 3.1 — Required: Model-Backed Classifier
+
+The heuristic tag-count approach has a **97.4% non-anime false positive rate** and is insufficient for any production use. Phase 3.1 must replace it with a model-backed classifier.
+
+**Why the heuristic fails:** The WD tagger generates many tags with confidence ≥ 0.5 for ANY image type (photos, screenshots, etc.), so the tag-count threshold of 5 is trivially exceeded. The classifier cannot distinguish anime from non-anime based on tag count alone.
+
+**Candidate approaches (in order of recommendation):**
+
+1. **CLIP zero-shot / embedding-based classification**: Use CLIP to encode images and compare cosine similarity to text prompts like "anime illustration" vs "photograph". No training data required, good generalization expected. Can run on CPU.
+2. **Lightweight dedicated anime-vs-photo CNN**: Train or fine-tune a small binary classifier (e.g., MobileNet, EfficientNet-B0) on anime vs photo datasets. Fast inference, potentially highest accuracy, but requires curating training data.
+3. **WD tagger raw prediction distribution analysis**: Instead of counting confirmed tags, analyze the full WD prediction vector — total probability mass, presence of art-style-specific tags (e.g., `1girl`, `solo`, `highres` patterns), distribution shape. Photos may show different prediction patterns than anime. Requires no additional model download.
+4. **Manual override workflow**: Expose `content_class` manual override as the primary workflow until a model is available (already supported via PUT endpoint).
+
+**Evaluation targets:**
+- VioletTest100_2 (anime): recall ≥ 80%
+- VioletPhase3Eval (non_anime): false positive rate ≤ 10-15%
+- Evaluation harness (`scripts/evaluate_content_classification.py`) is fully reusable
+
+**Infrastructure reuse:** Phase 3 schema (ContentClassEnum, 6 media columns), classification job system, search filters (`class:`), admin UI, inline classification hook, and evaluation harness are all reusable — only the classifier service (`backend/app/services/content_classifier.py`) needs replacement.
+
 ## What Has NOT Been Built
 
-- No anime/photo filtering (Phase 3)
 - No filesystem watcher or scheduled scan (Phase 4)
+- No model-backed content classifier (Phase 3.1 recommended)
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
@@ -364,17 +447,19 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 3
+## Recommended Next Phase: 3.1 (then 4)
 
-**Anime Filtering & Source Detection** — automatically detect and optionally skip non-anime images during import:
+**Phase 3.1 — Model-Backed Content Classifier** (required before relying on classification):
+1. Replace heuristic tag-count classifier with a model-backed approach (CLIP, lightweight CNN, or WD distribution analysis)
+2. Reuse Phase 3 infrastructure (schema, job system, search, admin UI, evaluation harness)
+3. Target: non-anime FP rate ≤ 10-15%
+4. **Do NOT gate iCloud import on content classification until Phase 3.1 passes evaluation**
 
-1. Leverage WDv3 confidence as a proxy (very low confidence = likely not anime)
-2. Or introduce a dedicated anime/photo classifier
-3. Reverse image search integration (SauceNAO, IQDB)
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (after Phase 3.1 or independently):
 
-**Prerequisites before starting Phase 3:**
-- Verify `origin/main` contains the Phase 2.4 merged commit (PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21) — merged)
-- Do not auto-start Phase 3
+1. Filesystem watcher or periodic cron-style scan
+2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
+3. Requires Phase 1.5 safety controls already in place
 
 ### Next-Phase Requirement: Service Control UI
 
@@ -386,8 +471,6 @@ The next development phase should include a developer/service control panel:
 - Show background workers status (tag translation worker, entity alias resolver)
 - One-click restart after config changes (optional)
 - Diagnostics for port conflicts and stale server processes (optional)
-
-This addresses a recurring pain point: manually managing dev server processes is error-prone and led to confusion during PR validation (stale servers on wrong ports, zombie processes).
 
 ## Test Directory
 
@@ -413,6 +496,8 @@ This addresses a recurring pain point: manually managing dev server processes is
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
 | `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
 | `docs/icloud-safe-ingestion.md` | Phase 2.4 iCloud safe ingestion documentation |
+| `docs/content-classification.md` | Phase 3 content classification documentation (limitations + Phase 3.1 plan) |
+| `scripts/evaluate_content_classification.py` | Phase 3 evaluation script for classifier accuracy |
 
 ### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
 

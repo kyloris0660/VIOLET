@@ -78,6 +78,9 @@ async def lifespan(app: FastAPI):
 
                     from .services.tag_translation_worker import mark_stale_translation_jobs
                     mark_stale_translation_jobs(_sdb)
+
+                    from .services.classification_job_service import mark_stale_classification_jobs
+                    mark_stale_classification_jobs(_sdb)
                 finally:
                     _sdb.close()
 

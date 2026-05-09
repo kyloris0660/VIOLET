@@ -59,14 +59,14 @@ Core capabilities:
 | AI tagging background jobs | ✅ Done | Progress tracking, cancel, history |
 | Proper noun alias resolver | ✅ Done | Character/copyright/artist alias resolution with LLM + manual review |
 | iCloud large library safety | ✅ Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
-| Anime / photo filtering | Phase 3 | Distinguish anime from photos |
+| Content classification foundation | ✅ Done | Infrastructure + evaluation harness (heuristic classifier is baseline only; model-backed Phase 3.1 needed) |
 | Reverse image search | Phase 3 | SauceNAO/IQDB integration |
 | Character / copyright database | Future | External data enrichment |
 | Filesystem watcher | Phase 4 | Auto-detect new files |
 
 ## Current Limitations
 
-- No anime/photo filtering
+- No reliable anime/photo filtering (heuristic classifier has 97.4% non-anime FP rate; Phase 3.1 model-backed classifier needed)
 - No reverse image search
 - No source URL auto-detection
 - No character/copyright database
@@ -195,7 +195,8 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.3d** — Continuous background tag translation worker (done)
 - **Phase 2.3e** — Proper noun alias resolver foundation (done)
 - **Phase 2.4** — iCloud large library readiness / safe ingestion (done)
-- **Phase 3** — Anime filtering & source detection (SauceNAO, IQDB)
+- **Phase 3** — Content classification foundation + evaluation harness (done — heuristic baseline only)
+- **Phase 3.1** — Model-backed content classifier (CLIP / lightweight CNN / WD distribution)
 - **Phase 4** — Filesystem watcher & scheduled scans
 
 ## Tech Stack

@@ -79,6 +79,7 @@ def run_ai_tag_job(job_id: int) -> None:
     """Execute an AI tagging job in a background thread with its own DB session."""
     from ..database import SessionLocal
     from ..services.ai_tagging_service import run_ai_tagging
+    from ..services.content_classifier import classify_from_predictions
 
     db: Session = SessionLocal()
     try:
@@ -150,6 +151,17 @@ def run_ai_tag_job(job_id: int) -> None:
                     for pred in result.get("predictions", []):
                         if pred.get("action") in ("confirmed", "suggestion"):
                             new_tag_names.append(pred["name"])
+
+                    # Inline content classification from predictions
+                    if settings.CONTENT_CLASSIFICATION_ENABLED and not job.dry_run:
+                        try:
+                            classify_from_predictions(
+                                db, media_id, result.get("predictions", [])
+                            )
+                        except Exception as cls_exc:
+                            logger.warning(
+                                f"AI tag job {job_id}: classification failed for media {media_id}: {cls_exc}"
+                            )
 
             except Exception as exc:
                 logger.error(f"AI tag job {job_id}: failed on media {media_id}: {exc}", exc_info=True)

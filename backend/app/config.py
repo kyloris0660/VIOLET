@@ -9,8 +9,8 @@ from sqlalchemy.engine import URL
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=True)
 
-APP_VERSION = "1.39.0"
-SCHEMA_VERSION = 5
+APP_VERSION = "1.40.0"
+SCHEMA_VERSION = 6
 
 class Settings:
     def __init__(self):
@@ -476,5 +476,31 @@ class Settings:
     @property
     def ENTITY_ALIAS_MAX_PER_RUN(self) -> int:
         return int(os.getenv("ENTITY_ALIAS_MAX_PER_RUN", "100"))
+
+    @property
+    def CONTENT_CLASSIFICATION_ENABLED(self) -> bool:
+        val = os.getenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS(self) -> int:
+        return int(os.getenv("CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS", "100"))
+
+    @property
+    def CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT(self) -> bool:
+        val = os.getenv("CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT", "false")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
+    def CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS(self) -> int:
+        return int(os.getenv("CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS", "50"))
+
+    @property
+    def CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD(self) -> int:
+        return int(os.getenv("CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD", "5"))
+
+    @property
+    def CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD(self) -> float:
+        return float(os.getenv("CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD", "0.5"))
 
 settings = Settings()

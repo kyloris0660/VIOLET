@@ -1,0 +1,224 @@
+{
+  "timestamp": "2026-05-09T01:08:36.950673",
+  "classifier": "heuristic",
+  "model": "wd_tag_count",
+  "config": {
+    "enabled": true,
+    "batch_max_items": 500,
+    "auto_after_import": false,
+    "auto_max_items": 50,
+    "anime_tag_threshold": 5,
+    "anime_confidence_threshold": 0.5
+  },
+  "datasets": [
+    {
+      "label": "mixed:VioletTest100",
+      "ground_truth": null,
+      "total": 145,
+      "distribution": {
+        "anime": {
+          "count": 145,
+          "pct": "100.0%"
+        },
+        "illustration": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "non_anime": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "unknown": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "unclassified": {
+          "count": 0,
+          "pct": "0.0%"
+        }
+      },
+      "unknown_rate": "0.0%",
+      "note": "Mixed/unlabeled dataset -- distribution report only, no accuracy metrics"
+    },
+    {
+      "label": "anime:VioletTest100_2",
+      "ground_truth": "anime",
+      "total": 81,
+      "distribution": {
+        "anime": {
+          "count": 81,
+          "pct": "100.0%"
+        },
+        "illustration": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "non_anime": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "unknown": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "unclassified": {
+          "count": 0,
+          "pct": "0.0%"
+        }
+      },
+      "unknown_rate": "0.0%",
+      "anime_recall": "100.0%",
+      "anime_recall_raw": 1.0,
+      "false_negative_non_anime": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "false_negative_illustration": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "sample_misclassified": []
+    },
+    {
+      "label": "non_anime:VioletPhase3Eval",
+      "ground_truth": "non_anime",
+      "total": 39,
+      "distribution": {
+        "anime": {
+          "count": 38,
+          "pct": "97.4%"
+        },
+        "illustration": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "non_anime": {
+          "count": 1,
+          "pct": "2.6%"
+        },
+        "unknown": {
+          "count": 0,
+          "pct": "0.0%"
+        },
+        "unclassified": {
+          "count": 0,
+          "pct": "0.0%"
+        }
+      },
+      "unknown_rate": "0.0%",
+      "non_anime_accuracy": "2.6%",
+      "false_positive_rate_anime": "97.4%",
+      "false_positive_rate_anime_raw": 0.9743589743589743,
+      "false_positive_rate_illustration": "0.0%",
+      "false_positive_details": {
+        "anime": {
+          "count": 38,
+          "pct": "97.4%"
+        },
+        "illustration": {
+          "count": 0,
+          "pct": "0.0%"
+        }
+      },
+      "sample_misclassified": [
+        {
+          "media_id": 711,
+          "filename": "photo_2026-04-29_15-37-06.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 710,
+          "filename": "photo_2026-04-29_15-37-04.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 709,
+          "filename": "IMG_5471-20260503151018.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 708,
+          "filename": "IMG_5270.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 707,
+          "filename": "IMG_5251.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 706,
+          "filename": "IMG_5170-20260503151018.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 705,
+          "filename": "IMG_4684-20260503151018.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 704,
+          "filename": "IMG_1442-20260503151018.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 703,
+          "filename": "HHs7nLzaEAEhBiw.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        },
+        {
+          "media_id": 702,
+          "filename": "HHpKw1RboAA9qGG-20260507170702.jpg",
+          "expected": "non_anime",
+          "actual": "anime",
+          "confidence": 1.0,
+          "source": "heuristic"
+        }
+      ]
+    }
+  ],
+  "scan_results": [],
+  "ai_tag_result": null,
+  "classification_result": null,
+  "source_files_integrity": {
+    "C:/Users/kyloris/Pictures/VioletTest100": {
+      "before": true,
+      "after": true
+    },
+    "C:/Users/kyloris/Pictures/VioletTest100_2": {
+      "before": true,
+      "after": true
+    },
+    "C:/Users/kyloris/Pictures/VioletPhase3Eval": {
+      "before": true,
+      "after": true
+    }
+  }
+}

@@ -16,3 +16,9 @@ class FileTypeEnum(str, enum.Enum):
     image = "image"
     video = "video"
     gif = "gif"
+
+class ContentClassEnum(str, enum.Enum):
+    anime = "anime"
+    illustration = "illustration"
+    non_anime = "non_anime"
+    unknown = "unknown"
