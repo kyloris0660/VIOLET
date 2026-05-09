@@ -1,8 +1,8 @@
 """Content classifier — determines whether media is anime/illustration/non-anime.
 
-Uses a heuristic approach based on WD tagger predictions: if a media item has
-enough high-confidence anime-specific tags, it's classified as anime.  This
-avoids requiring a separate ONNX model download.
+Supports two methods (configurable via CONTENT_CLASSIFICATION_METHOD):
+  - "clip": CLIP ViT-B/32 zero-shot visual classifier (default, recommended)
+  - "heuristic": legacy WD tagger tag-count heuristic
 """
 
 import logging
@@ -18,30 +18,51 @@ from ..models import Media, blombooru_media_tags
 logger = logging.getLogger(__name__)
 
 
-def classify_media(
-    db: Session,
-    media_id: int,
-    *,
-    dry_run: bool = False,
-) -> Dict[str, Any]:
-    """Classify a single media item using the WD tagger heuristic.
+def _resolve_media_file(media: Media) -> Optional[Path]:
+    """Resolve the on-disk path for a media item."""
+    file_path = settings.BASE_DIR / media.path
+    if file_path.exists():
+        return file_path
+    direct = settings.ORIGINAL_DIR / media.filename
+    if direct.exists():
+        return direct
+    return None
 
-    Counts existing AI tags with confidence above threshold.  If the count
-    meets the anime tag threshold the media is classified as anime; otherwise
-    non_anime (or unknown when no AI tags exist at all).
-    """
-    media = db.query(Media).filter(Media.id == media_id).first()
-    if not media:
-        return {"media_id": media_id, "error": "Media not found"}
 
-    if media.content_class_locked:
-        return {
-            "media_id": media_id,
-            "skipped": True,
-            "reason": "locked",
-            "current_class": media.content_class.value if media.content_class else None,
-        }
+def _classify_clip(media: Media) -> Dict[str, Any]:
+    """Run CLIP zero-shot classification on a media item's image file."""
+    from .clip_classifier import CLIPClassifier
 
+    file_path = _resolve_media_file(media)
+    if not file_path:
+        return {"error": f"File not found: {media.filename}"}
+
+    classifier = CLIPClassifier()
+    margin = settings.CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN
+    result = classifier.classify_file(str(file_path), unknown_margin=margin)
+
+    if result.get("content_class") == "error":
+        return {"error": result.get("reason", "CLIP classification failed")}
+
+    raw_class = result["content_class"]
+    try:
+        content_class = ContentClassEnum(raw_class)
+    except ValueError:
+        content_class = ContentClassEnum.unknown
+
+    return {
+        "content_class": content_class,
+        "confidence": result.get("confidence", 0.0),
+        "source": "clip",
+        "model": "clip-vit-base-patch32",
+        "scores": result.get("scores", {}),
+        "margin": result.get("margin", 0),
+        "best_category": result.get("best_category", ""),
+    }
+
+
+def _classify_heuristic_from_db(db: Session, media_id: int) -> Dict[str, Any]:
+    """Legacy WD tag-count heuristic using existing DB tags."""
     confidence_threshold = settings.CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD
     tag_threshold = settings.CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD
 
@@ -56,26 +77,109 @@ def classify_media(
         .all()
     )
 
-    result: Dict[str, Any] = {
-        "media_id": media_id,
+    if not ai_tags:
+        content_class = ContentClassEnum.unknown
+        conf = 0.0
+    elif len(ai_tags) >= tag_threshold:
+        content_class = ContentClassEnum.anime
+        conf = min(1.0, len(ai_tags) / (tag_threshold * 2))
+    else:
+        content_class = ContentClassEnum.non_anime
+        conf = min(1.0, 1.0 - (len(ai_tags) / tag_threshold))
+
+    return {
+        "content_class": content_class,
+        "confidence": conf,
+        "source": "heuristic",
+        "model": "wd_tag_count",
         "ai_tag_count": len(ai_tags),
         "threshold": tag_threshold,
         "confidence_threshold": confidence_threshold,
     }
 
-    if not ai_tags:
-        new_class = ContentClassEnum.unknown
-        conf = 0.0
-    elif len(ai_tags) >= tag_threshold:
-        new_class = ContentClassEnum.anime
-        conf = min(1.0, len(ai_tags) / (tag_threshold * 2))
-    else:
-        new_class = ContentClassEnum.non_anime
-        conf = min(1.0, 1.0 - (len(ai_tags) / tag_threshold))
 
-    result["content_class"] = new_class.value
-    result["confidence"] = round(conf, 4)
-    result["changed"] = media.content_class != new_class
+def _classify_heuristic_from_predictions(predictions: list) -> Dict[str, Any]:
+    """Legacy WD tag-count heuristic using fresh predictions."""
+    confidence_threshold = settings.CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD
+    tag_threshold = settings.CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD
+
+    high_conf_tags = [
+        p for p in predictions
+        if p.get("confidence", 0) >= confidence_threshold
+        and p.get("action") == "confirmed"
+    ]
+
+    if not predictions or not high_conf_tags:
+        content_class = ContentClassEnum.unknown
+        conf = 0.0
+    elif len(high_conf_tags) >= tag_threshold:
+        content_class = ContentClassEnum.anime
+        conf = min(1.0, len(high_conf_tags) / (tag_threshold * 2))
+    else:
+        content_class = ContentClassEnum.non_anime
+        conf = min(1.0, 1.0 - (len(high_conf_tags) / tag_threshold))
+
+    return {
+        "content_class": content_class,
+        "confidence": conf,
+        "source": "heuristic",
+        "model": "wd_tag_count",
+        "high_conf_tag_count": len(high_conf_tags),
+    }
+
+
+def classify_media(
+    db: Session,
+    media_id: int,
+    *,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Classify a single media item.
+
+    Uses CLIP zero-shot or WD tag-count heuristic depending on
+    CONTENT_CLASSIFICATION_METHOD config.
+    """
+    media = db.query(Media).filter(Media.id == media_id).first()
+    if not media:
+        return {"media_id": media_id, "error": "Media not found"}
+
+    if media.content_class_locked:
+        return {
+            "media_id": media_id,
+            "skipped": True,
+            "reason": "locked",
+            "current_class": media.content_class.value if media.content_class else None,
+        }
+
+    method = settings.CONTENT_CLASSIFICATION_METHOD
+
+    if method == "clip":
+        cls_result = _classify_clip(media)
+    else:
+        cls_result = _classify_heuristic_from_db(db, media_id)
+
+    if "error" in cls_result:
+        return {"media_id": media_id, "error": cls_result["error"]}
+
+    new_class = cls_result["content_class"]
+    conf = cls_result["confidence"]
+
+    result: Dict[str, Any] = {
+        "media_id": media_id,
+        "content_class": new_class.value,
+        "confidence": round(conf, 4),
+        "method": method,
+        "changed": media.content_class != new_class,
+    }
+
+    if method == "clip":
+        result["scores"] = cls_result.get("scores", {})
+        result["margin"] = cls_result.get("margin", 0)
+        result["best_category"] = cls_result.get("best_category", "")
+    else:
+        result["ai_tag_count"] = cls_result.get("ai_tag_count", 0)
+        result["threshold"] = cls_result.get("threshold", 0)
+        result["confidence_threshold"] = cls_result.get("confidence_threshold", 0)
 
     if dry_run:
         result["dry_run"] = True
@@ -83,8 +187,8 @@ def classify_media(
 
     media.content_class = new_class
     media.content_class_confidence = conf
-    media.content_class_source = "heuristic"
-    media.content_class_model = "wd_tag_count"
+    media.content_class_source = cls_result["source"]
+    media.content_class_model = cls_result["model"]
     db.commit()
 
     return result
@@ -97,10 +201,11 @@ def classify_from_predictions(
     *,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
-    """Classify media using fresh WD tagger predictions (inline with AI tagging).
+    """Classify media inline during AI tagging.
 
-    Called from the AI tagging flow so that classification happens in the same
-    pass without needing a separate DB query.
+    With CLIP method: ignores predictions entirely and classifies from the
+    image file directly (CLIP doesn't need WD tags).
+    With heuristic method: uses the fresh WD tagger predictions.
     """
     media = db.query(Media).filter(Media.id == media_id).first()
     if not media:
@@ -113,31 +218,28 @@ def classify_from_predictions(
             "reason": "locked",
         }
 
-    confidence_threshold = settings.CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD
-    tag_threshold = settings.CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD
+    method = settings.CONTENT_CLASSIFICATION_METHOD
 
-    high_conf_tags = [
-        p for p in predictions
-        if p.get("confidence", 0) >= confidence_threshold
-        and p.get("action") == "confirmed"
-    ]
-
-    if not predictions or not high_conf_tags:
-        new_class = ContentClassEnum.unknown
-        conf = 0.0
-    elif len(high_conf_tags) >= tag_threshold:
-        new_class = ContentClassEnum.anime
-        conf = min(1.0, len(high_conf_tags) / (tag_threshold * 2))
+    if method == "clip":
+        cls_result = _classify_clip(media)
     else:
-        new_class = ContentClassEnum.non_anime
-        conf = min(1.0, 1.0 - (len(high_conf_tags) / tag_threshold))
+        cls_result = _classify_heuristic_from_predictions(predictions)
+
+    if "error" in cls_result:
+        return {"media_id": media_id, "error": cls_result["error"]}
+
+    new_class = cls_result["content_class"]
+    conf = cls_result["confidence"]
 
     result = {
         "media_id": media_id,
         "content_class": new_class.value,
         "confidence": round(conf, 4),
-        "high_conf_tag_count": len(high_conf_tags),
+        "method": method,
     }
+
+    if method != "clip":
+        result["high_conf_tag_count"] = cls_result.get("high_conf_tag_count", 0)
 
     if dry_run:
         result["dry_run"] = True
@@ -145,7 +247,7 @@ def classify_from_predictions(
 
     media.content_class = new_class
     media.content_class_confidence = conf
-    media.content_class_source = "heuristic"
-    media.content_class_model = "wd_tag_count"
+    media.content_class_source = cls_result["source"]
+    media.content_class_model = cls_result["model"]
 
     return result

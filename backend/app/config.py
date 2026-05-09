@@ -503,4 +503,12 @@ class Settings:
     def CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD(self) -> float:
         return float(os.getenv("CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD", "0.5"))
 
+    @property
+    def CONTENT_CLASSIFICATION_METHOD(self) -> str:
+        return os.getenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+
+    @property
+    def CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN(self) -> float:
+        return float(os.getenv("CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN", "0.005"))
+
 settings = Settings()
