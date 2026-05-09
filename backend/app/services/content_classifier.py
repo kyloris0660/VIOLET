@@ -38,6 +38,7 @@ def _classify_clip(media: Media) -> Dict[str, Any]:
             "content_class": ContentClassEnum.unknown,
             "confidence": 0.0,
             "source": "clip",
+            "model": "clip-vit-base-patch32",
             "reason": "Skipped: CLIP does not support video files",
             "skipped": True,
         }
@@ -170,6 +171,14 @@ def classify_media(
     if "error" in cls_result:
         return {"media_id": media_id, "error": cls_result["error"]}
 
+    if cls_result.get("skipped"):
+        return {
+            "media_id": media_id,
+            "skipped": True,
+            "reason": cls_result.get("reason", "skipped"),
+            "current_class": media.content_class.value if media.content_class else None,
+        }
+
     new_class = cls_result["content_class"]
     conf = cls_result["confidence"]
 
@@ -236,6 +245,13 @@ def classify_from_predictions(
 
     if "error" in cls_result:
         return {"media_id": media_id, "error": cls_result["error"]}
+
+    if cls_result.get("skipped"):
+        return {
+            "media_id": media_id,
+            "skipped": True,
+            "reason": cls_result.get("reason", "skipped"),
+        }
 
     new_class = cls_result["content_class"]
     conf = cls_result["confidence"]

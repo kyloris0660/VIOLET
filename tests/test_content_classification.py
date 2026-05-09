@@ -1021,6 +1021,61 @@ class TestCLIPVideoSkip:
         assert result["skipped"] is True
         assert "video" in result["reason"].lower()
 
+    def test_video_skip_includes_model_key(self):
+        from app.services.content_classifier import _classify_clip
+
+        media = MagicMock()
+        media.file_type = FileTypeEnum.video
+
+        result = _classify_clip(media)
+        assert "model" in result
+        assert result["model"] == "clip-vit-base-patch32"
+
+
+class TestCLIPSkipGuardInClassifyMedia:
+    """classify_media must return skipped result (no KeyError) for video."""
+
+    @pytest.fixture(autouse=True)
+    def patch_settings(self):
+        with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="clip")
+            type(mock_s).CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN = PropertyMock(return_value=0.005)
+            type(mock_s).BASE_DIR = PropertyMock(return_value=Path("/fake/base"))
+            type(mock_s).ORIGINAL_DIR = PropertyMock(return_value=Path("/fake/base/media/original"))
+            self.mock_settings = mock_s
+            yield
+
+    def test_classify_media_video_returns_skipped(self):
+        from app.services.content_classifier import classify_media
+
+        media = MagicMock()
+        media.id = 1
+        media.file_type = FileTypeEnum.video
+        media.content_class = None
+        media.content_class_locked = False
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        result = classify_media(db, 1)
+        assert result["skipped"] is True
+        db.commit.assert_not_called()
+
+    def test_classify_from_predictions_video_returns_skipped(self):
+        from app.services.content_classifier import classify_from_predictions
+
+        media = MagicMock()
+        media.id = 1
+        media.file_type = FileTypeEnum.video
+        media.content_class = None
+        media.content_class_locked = False
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        result = classify_from_predictions(db, 1, [])
+        assert result["skipped"] is True
+
 
 class TestCLIPGifNotSkipped:
     """_classify_clip must NOT skip gif media — gif is PIL-readable."""
