@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.enums import ContentClassEnum
+from app.enums import ContentClassEnum, FileTypeEnum
 
 
 # ---------------------------------------------------------------------------
@@ -998,3 +998,71 @@ class TestCLIPClassifierUnit:
         classifier = CLIPClassifier()
         pixels = classifier.preprocess_image(img)
         assert pixels.shape == (3, 224, 224)
+
+
+class TestCLIPVideoSkip:
+    """_classify_clip must skip video media and NOT instantiate CLIPClassifier."""
+
+    def test_video_media_skipped(self):
+        from app.services.content_classifier import _classify_clip
+
+        media = MagicMock()
+        media.path = "test/video.mp4"
+        media.filename = "video.mp4"
+        media.file_type = FileTypeEnum.video
+
+        with patch("app.services.clip_classifier.CLIPClassifier") as mock_clip_cls:
+            result = _classify_clip(media)
+            mock_clip_cls.assert_not_called()
+
+        assert result["content_class"] == ContentClassEnum.unknown
+        assert result["confidence"] == 0.0
+        assert result["source"] == "clip"
+        assert result["skipped"] is True
+        assert "video" in result["reason"].lower()
+
+
+class TestCLIPGifNotSkipped:
+    """_classify_clip must NOT skip gif media — gif is PIL-readable."""
+
+    def test_gif_media_goes_through_clip(self):
+        from app.services.content_classifier import _classify_clip
+
+        media = MagicMock()
+        media.path = "test/anim.gif"
+        media.filename = "anim.gif"
+        media.file_type = FileTypeEnum.gif
+
+        mock_clip_result = {
+            "content_class": "anime",
+            "confidence": 0.85,
+            "scores": {"anime_illustration": 0.28},
+            "margin": 0.05,
+            "best_category": "anime_illustration",
+            "reason": "test",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/anim.gif")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = _classify_clip(media)
+
+            mock_cls.assert_called_once()
+            mock_cls.return_value.classify_file.assert_called_once()
+        assert result["content_class"] == ContentClassEnum.anime
+
+
+class TestCLIPLoadFailureReturnsError:
+    """classify_image must return content_class='error' when model fails to load."""
+
+    def test_model_load_failure_returns_error(self):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        classifier = CLIPClassifier()
+        with patch.object(classifier, "ensure_loaded", return_value=False):
+            img = Image.new("RGB", (100, 100))
+            result = classifier.classify_image(img)
+
+        assert result["content_class"] == "error"
+        assert result["confidence"] == 0.0
+        assert "not loaded" in result["reason"].lower()

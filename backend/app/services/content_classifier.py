@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..enums import ContentClassEnum
+from ..enums import ContentClassEnum, FileTypeEnum
 from ..models import Media, blombooru_media_tags
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,15 @@ def _resolve_media_file(media: Media) -> Optional[Path]:
 def _classify_clip(media: Media) -> Dict[str, Any]:
     """Run CLIP zero-shot classification on a media item's image file."""
     from .clip_classifier import CLIPClassifier
+
+    if media.file_type == FileTypeEnum.video:
+        return {
+            "content_class": ContentClassEnum.unknown,
+            "confidence": 0.0,
+            "source": "clip",
+            "reason": "Skipped: CLIP does not support video files",
+            "skipped": True,
+        }
 
     file_path = _resolve_media_file(media)
     if not file_path:

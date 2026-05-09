@@ -109,6 +109,15 @@ test.describe('UX/Data-Hygiene Fix — Missing Media Maintenance', () => {
     await expect(page.locator('#dev-missing-media-cleanup-btn')).toBeAttached();
   });
 
+  test('11. result panel element exists and scan API works', async ({ page }) => {
+    const resultDiv = page.locator('#dev-missing-media-result');
+    await expect(resultDiv).toBeAttached();
+
+    const res = await apiCall(page, '/api/admin/dev/missing-media-scan');
+    expect(res.status).toBe(200);
+    expect(res.data).toHaveProperty('total_media');
+  });
+
   test('10. cleanup response never reports source file deletion', async ({ page }) => {
     const scanRes = await apiCall(page, '/api/admin/dev/missing-media-scan');
     expect(scanRes.status).toBe(200);

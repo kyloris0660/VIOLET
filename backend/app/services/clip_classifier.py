@@ -152,7 +152,7 @@ class CLIPClassifier:
     ) -> Dict:
         if not self.ensure_loaded():
             return {
-                "content_class": "unknown",
+                "content_class": "error",
                 "confidence": 0.0,
                 "scores": {},
                 "reason": "CLIP model not loaded",

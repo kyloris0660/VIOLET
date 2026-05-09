@@ -237,8 +237,8 @@ def main():
     parser.add_argument("--non-anime-dir", required=True, help="Directory of non-anime images")
     parser.add_argument("--mixed-dir", help="Directory of mixed images (optional)")
     parser.add_argument(
-        "--unknown-margin", type=float, default=0.04,
-        help="Margin threshold for unknown classification (default: 0.04)"
+        "--unknown-margin", type=float, default=0.005,
+        help="Margin threshold for unknown classification (default: 0.005)"
     )
     parser.add_argument(
         "--output-json", help="Path to save detailed JSON results"

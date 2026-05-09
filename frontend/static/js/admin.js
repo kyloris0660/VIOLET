@@ -4706,6 +4706,7 @@ class AdminPanel {
         const cleanupBtn = document.getElementById('dev-missing-media-cleanup-btn');
         if (!resultDiv) return;
 
+        resultDiv.classList.remove('hidden');
         resultDiv.innerHTML = '<span class="text-yellow-400">扫描中…</span>';
         try {
             const data = await app.apiCall('/api/admin/dev/missing-media-scan');
@@ -4737,6 +4738,8 @@ class AdminPanel {
     async cleanupMissingMedia(dryRun) {
         const resultDiv = document.getElementById('dev-missing-media-result');
         if (!resultDiv) return;
+
+        resultDiv.classList.remove('hidden');
 
         if (!dryRun) {
             const ok = confirm('确认执行清理？将删除缺失原件的媒体 DB 记录。源文件不会被删除。');
