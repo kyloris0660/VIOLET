@@ -20,3 +20,7 @@ blob-report/
 *.trace.zip
 tests/e2e/screenshots/
 .playwright/
+
+# Generated artifacts
+eval_results.json
+*.bak

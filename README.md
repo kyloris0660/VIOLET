@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/static/img/logo2.png" alt="V.I.O.L.E.T." width="400">
+  <img src="frontend/static/img/violet-logo.png" alt="V.I.O.L.E.T." width="400">
 </p>
 
 <h1 align="center">V.I.O.L.E.T.</h1>
@@ -43,30 +43,31 @@ Core capabilities:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Blombooru core (Gallery, upload, search, tags) | ✅ Done | Full upstream features |
-| Local Library Scan | ✅ Done | Import from external directories |
-| dry-run & max_files safety | ✅ Done | Preview before import |
-| Scan job progress / history / cancel | ✅ Done | Background jobs + Admin UI |
-| Tag Metadata Foundation | ✅ Done | Provenance tracking (source, confidence, locked, suggestion) |
-| WDv3 AI Auto Tagging MVP | ✅ Done | Manual trigger, dry-run, batch, Admin UI |
-| Confirmed / Suggestion tags | ✅ Done | Dual-threshold system |
-| Manual / locked tag protection | ✅ Done | AI never overwrites human tags |
-| AI Tag Review UI | ✅ Done | Confirm / reject / lock / delete suggestions |
-| zh-CN localization foundation | ✅ Done | Chinese UI, tag Chinese display, search aliases |
-| Dynamic tag localization | ✅ Done | DB-backed translations, optional LLM, admin management |
-| Background tag translation | ✅ Done | Continuous auto-translation of all missing tags via LLM |
-| Auto AI tagging after import | ✅ Done | Optional, disabled by default |
-| AI tagging background jobs | ✅ Done | Progress tracking, cancel, history |
-| Proper noun alias resolver | ✅ Done | Character/copyright/artist alias resolution with LLM + manual review |
-| iCloud large library safety | ✅ Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
-| Content classification foundation | ✅ Done | Infrastructure + evaluation harness (heuristic classifier is baseline only; model-backed Phase 3.1 needed) |
-| Reverse image search | Phase 3 | SauceNAO/IQDB integration |
+| Blombooru core (Gallery, upload, search, tags) | Done | Full upstream features |
+| Local Library Scan | Done | Import from external directories |
+| dry-run & max_files safety | Done | Preview before import |
+| Scan job progress / history / cancel | Done | Background jobs + Admin UI |
+| Tag Metadata Foundation | Done | Provenance tracking (source, confidence, locked, suggestion) |
+| WDv3 AI Auto Tagging MVP | Done | Manual trigger, dry-run, batch, Admin UI |
+| Confirmed / Suggestion tags | Done | Dual-threshold system |
+| Manual / locked tag protection | Done | AI never overwrites human tags |
+| AI Tag Review UI | Done | Confirm / reject / lock / delete suggestions |
+| zh-CN localization foundation | Done | Chinese UI, tag Chinese display, search aliases |
+| Dynamic tag localization | Done | DB-backed translations, optional LLM, admin management |
+| Background tag translation | Done | Continuous auto-translation of all missing tags via LLM |
+| Auto AI tagging after import | Done | Optional, disabled by default |
+| AI tagging background jobs | Done | Progress tracking, cancel, history |
+| Proper noun alias resolver | Done | Character/copyright/artist alias resolution with LLM + manual review |
+| iCloud large library safety | Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
+| Content classification foundation | Done | Infrastructure + evaluation harness (heuristic baseline only) |
+| Model-backed content classifier | Phase 3.1 | CLIP / lightweight CNN / WD distribution analysis |
+| Reverse image search | Future | SauceNAO/IQDB integration |
 | Character / copyright database | Future | External data enrichment |
-| Filesystem watcher | Phase 4 | Auto-detect new files |
+| Filesystem watcher | Future | Auto-detect new files |
 
 ## Current Limitations
 
-- No reliable anime/photo filtering (heuristic classifier has 97.4% non-anime FP rate; Phase 3.1 model-backed classifier needed)
+- **No reliable anime/photo filtering.** The heuristic content classifier has a 97.4% false-positive rate on non-anime images (nearly all photos are misclassified as anime). Phase 3.1 will introduce a model-backed classifier (CLIP, lightweight CNN, or WD tag distribution analysis) to address this.
 - No reverse image search
 - No source URL auto-detection
 - No character/copyright database
@@ -114,6 +115,21 @@ Open http://localhost:8000. First run shows the onboarding setup page.
 ### Default Dev Credentials
 
 After initial setup: `admin` / `admin123` (local dev only — never use in production).
+
+### Docker
+
+Docker deployment files (`Dockerfile`, `docker-compose.yml`, etc.) are inherited from upstream Blombooru and remain in the repository. However, V.I.O.L.E.T. is primarily developed and tested as a local Windows Python application. Docker is not the primary workflow and may not reflect all V.I.O.L.E.T.-specific features.
+
+## iCloud Photos Integration
+
+V.I.O.L.E.T. can scan iCloud Photos sync folders on Windows. Because iCloud uses on-demand file hydration, special safety measures are built in:
+
+- **Preflight scan** — checks file hydration status before import
+- **Hydrated-only mode** — skips cloud-only placeholder files to avoid triggering large downloads
+- **Per-file timeout** — prevents hangs on slow hydration
+- **Extended skip stats** — reports exactly which files were skipped and why
+
+**Recommended workflow:** Always run preflight scan first, then dry-run with hydrated-only mode, then import. See [iCloud Safe Ingestion](docs/icloud-safe-ingestion.md) for details.
 
 ## GUI Entry Points
 
@@ -182,6 +198,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [Tag Localization LLM](docs/tag-localization-llm.md) | Dynamic LLM translation cache documentation |
 | [Entity Alias Resolver](docs/entity-alias-resolver.md) | Proper-noun alias resolution for character/copyright/artist tags |
 | [iCloud Safe Ingestion](docs/icloud-safe-ingestion.md) | Preflight scan, hydrated-only, timeout protection |
+| [Content Classification](docs/content-classification.md) | Content classifier design and evaluation harness |
 | [Project Roadmap](docs/project-roadmap.md) | Full phase plan |
 | [Current Handoff](docs/current-handoff.md) | Latest state for resuming development |
 | [Development Log](docs/local-anime-library-devlog.md) | Per-phase technical notes |
@@ -196,6 +213,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.3e** — Proper noun alias resolver foundation (done)
 - **Phase 2.4** — iCloud large library readiness / safe ingestion (done)
 - **Phase 3** — Content classification foundation + evaluation harness (done — heuristic baseline only)
+- **Phase 3.0.1** — Repository hygiene / upstream cleanup (current)
 - **Phase 3.1** — Model-backed content classifier (CLIP / lightweight CNN / WD distribution)
 - **Phase 4** — Filesystem watcher & scheduled scans
 
@@ -216,4 +234,4 @@ Built on top of **Blombooru** — a self-hosted media tagging tool.
 - Upstream: https://github.com/mrblomblo/blombooru
 - License: MIT
 
-V.I.O.L.E.T. (formerly AnimeLocalBooru) extends Blombooru with local library scanning, AI auto-tagging, and tag provenance tracking, optimized for Danbooru-style tag retrieval of anime/illustration collections.
+V.I.O.L.E.T. extends Blombooru with local library scanning, AI auto-tagging, tag provenance tracking, Chinese localization, iCloud integration, and content classification, optimized for Danbooru-style tag retrieval of anime/illustration collections.
