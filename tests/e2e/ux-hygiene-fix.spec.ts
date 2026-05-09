@@ -119,12 +119,20 @@ test.describe('UX/Data-Hygiene Fix — Missing Media Maintenance', () => {
   });
 
   test('10. cleanup response never reports source file deletion', async ({ page }) => {
+    test.skip(
+      !process.env.VIOLET_ALLOW_DESTRUCTIVE_E2E,
+      'Destructive cleanup test requires VIOLET_ALLOW_DESTRUCTIVE_E2E=1'
+    );
     const scanRes = await apiCall(page, '/api/admin/dev/missing-media-scan');
     expect(scanRes.status).toBe(200);
     if (scanRes.data.deletable_count > 0) {
       const cleanupRes = await apiCall(page, '/api/admin/dev/missing-media-cleanup', {
         method: 'POST',
-        body: JSON.stringify({ dry_run: false, confirm: true }),
+        body: JSON.stringify({
+          dry_run: false,
+          confirm: true,
+          confirm_phrase: 'DELETE_ALL_MISSING_MEDIA',
+        }),
       });
       expect(cleanupRes.status).toBe(200);
       expect(cleanupRes.data.source_files_deleted).toBe(0);

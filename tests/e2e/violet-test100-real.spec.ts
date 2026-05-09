@@ -12,9 +12,18 @@ test.describe('VioletTest100 Real E2E', () => {
   });
 
   test('reset test data', async ({ page }) => {
+    test.skip(
+      !process.env.VIOLET_ALLOW_DESTRUCTIVE_E2E,
+      'Destructive reset requires VIOLET_ALLOW_DESTRUCTIVE_E2E=1'
+    );
     const resp = await apiCall(page, '/api/admin/dev/reset-e2e-test-data', {
       method: 'POST',
-      body: JSON.stringify({ source_path: LIB_PATH, dry_run: false, confirm: true }),
+      body: JSON.stringify({
+        source_path: LIB_PATH,
+        dry_run: false,
+        confirm: true,
+        confirm_phrase: 'RESET_E2E_DATA',
+      }),
     });
     expect(resp.status).toBe(200);
   });

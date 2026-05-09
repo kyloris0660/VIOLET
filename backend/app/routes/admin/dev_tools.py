@@ -56,6 +56,7 @@ def _is_dangerous_path(source_path: str) -> bool:
 class ResetE2ERequest(BaseModel):
     source_path: str
     confirm: bool = False
+    confirm_phrase: str = ""
     dry_run: bool = True
 
 
@@ -151,11 +152,27 @@ async def reset_e2e_test_data(
             "message": "No data was deleted. Set dry_run=false and confirm=true to execute.",
         }
 
+    _require_destructive_flag()
+
     if not body.confirm:
         raise HTTPException(
             status_code=400,
             detail="Must set confirm=true to execute real deletion",
         )
+
+    if body.confirm_phrase != RESET_CONFIRM_PHRASE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must set confirm_phrase='{RESET_CONFIRM_PHRASE}' to execute real deletion",
+        )
+
+    logger.warning(
+        "DESTRUCTIVE: reset-e2e-test-data executing for source_path='%s' "
+        "(BASE_DIR=%s, user=%s)",
+        body.source_path,
+        settings.BASE_DIR,
+        current_user.username if current_user else "unknown",
+    )
 
     result = execute_reset(db, body.source_path)
     return {
@@ -192,8 +209,28 @@ LOCAL_LIBRARY_PATHS=C:\\Users\\kyloris\\Pictures\\VioletTest100
     }
 
 
+DESTRUCTIVE_E2E_ENV_FLAG = "VIOLET_ALLOW_DESTRUCTIVE_E2E"
+
+CLEANUP_CONFIRM_PHRASE = "DELETE_ALL_MISSING_MEDIA"
+RESET_CONFIRM_PHRASE = "RESET_E2E_DATA"
+
+
+def _require_destructive_flag():
+    """Block destructive (non-dry-run) operations unless env flag is set."""
+    if os.environ.get(DESTRUCTIVE_E2E_ENV_FLAG, "").strip() != "1":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Destructive operations require environment variable "
+                f"{DESTRUCTIVE_E2E_ENV_FLAG}=1. "
+                f"This prevents accidental data loss from automated tests or worktree mismatches."
+            ),
+        )
+
+
 class MissingMediaCleanupRequest(BaseModel):
     confirm: bool = False
+    confirm_phrase: str = ""
     dry_run: bool = True
 
 
@@ -280,12 +317,27 @@ async def cleanup_missing_media(
             "message": "No data was deleted. Set dry_run=false and confirm=true to execute.",
         }
 
+    _require_destructive_flag()
+
     if not body.confirm:
         raise HTTPException(
             status_code=400,
             detail="Must set confirm=true to execute real deletion",
         )
 
+    if body.confirm_phrase != CLEANUP_CONFIRM_PHRASE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must set confirm_phrase='{CLEANUP_CONFIRM_PHRASE}' to execute real deletion",
+        )
+
+    logger.warning(
+        "DESTRUCTIVE: missing-media-cleanup executing with %d deletable items "
+        "(BASE_DIR=%s, user=%s)",
+        len(deletable_ids),
+        settings.BASE_DIR,
+        current_user.username if current_user else "unknown",
+    )
     logger.info("Source files are NEVER deleted by this operation")
 
     affected_tag_ids = [

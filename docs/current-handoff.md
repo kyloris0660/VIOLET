@@ -29,6 +29,22 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 5. **Service / dev environment safety** — Never kill arbitrary processes. Only stop clearly identified V.I.O.L.E.T. dev server processes with PID/port reported first.
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
+8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
+
+## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
+
+**What happened:** `ux-hygiene-fix.spec.ts` test #10 called `POST /api/admin/dev/missing-media-cleanup` with `dry_run: false` during a normal Playwright E2E run. The dev server was running from a git worktree, so `settings.BASE_DIR` resolved to the worktree path (not the main repo). All 284 media files live in the main repo's `media/original/` — they don't exist at the worktree path. The cleanup endpoint checked `settings.BASE_DIR / m.path` for each media item, found them all "missing," and deleted all 284 `blombooru_media` rows. CASCADE propagated to `blombooru_media_tags` (0 rows) and `blombooru_scan_job_media` (0 rows).
+
+**Evidence:** `blombooru_media` = 0, `blombooru_tags` = 1966 (survived, not cascade-dependent), `blombooru_scan_jobs` = 141 (survived), 284 original files + 283 thumbnails intact on disk.
+
+**Root cause:** No env-flag gate or confirm-phrase on destructive endpoints; E2E test ran destructive cleanup in the default test suite without any guard.
+
+**Remediation (all committed on `phase3.1-clip-anime-classifier`):**
+- `backend/app/routes/admin/dev_tools.py`: Added `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag gate, unique `confirm_phrase` per endpoint, `logger.warning(...)` audit logging
+- `tests/e2e/ux-hygiene-fix.spec.ts`: Gated test #10 with `VIOLET_ALLOW_DESTRUCTIVE_E2E` skip + added `confirm_phrase`
+- `tests/e2e/violet-test100-real.spec.ts`: Gated reset test with `VIOLET_ALLOW_DESTRUCTIVE_E2E` skip + added `confirm_phrase`
+- `frontend/static/js/admin.js`: Frontend destructive calls include `confirm_phrase`
+- Safety policy added to `AGENTS.md`, `CLAUDE.md`, `docs/project-roadmap.md`, `docs/current-handoff.md`
 
 ## Language Policy
 

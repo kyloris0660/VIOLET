@@ -4657,6 +4657,7 @@ class AdminPanel {
                     source_path: sourcePath,
                     dry_run: dryRun,
                     confirm: !dryRun,
+                    confirm_phrase: dryRun ? '' : 'RESET_E2E_DATA',
                 }),
             });
             const s = data.summary || {};
@@ -4751,7 +4752,7 @@ class AdminPanel {
             const data = await app.apiCall('/api/admin/dev/missing-media-cleanup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dry_run: dryRun, confirm: !dryRun }),
+                body: JSON.stringify({ dry_run: dryRun, confirm: !dryRun, confirm_phrase: dryRun ? '' : 'DELETE_ALL_MISSING_MEDIA' }),
             });
 
             if (data.dry_run) {
