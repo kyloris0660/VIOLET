@@ -143,8 +143,11 @@ class Settings:
             return None
         if ".." in probe.parts:
             return None
-        resolved = (self.STORAGE_ROOT / normalized).resolve()
-        if not str(resolved).startswith(str(self.STORAGE_ROOT.resolve())):
+        storage_resolved = self.STORAGE_ROOT.resolve()
+        resolved = (storage_resolved / normalized).resolve()
+        try:
+            resolved.relative_to(storage_resolved)
+        except ValueError:
             return None
         return resolved
 
