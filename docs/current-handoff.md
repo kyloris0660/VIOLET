@@ -17,7 +17,8 @@
 | **Admin credentials** | `admin` / `admin123` |
 | **Phase 2.4 status** | Merged on `main` |
 | **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) open, pending merge |
-| **Phase 3.1.1a status** | PR pending — environment/DB/storage safety foundation |
+| **Phase 3.1.1a status** | PR [#26](https://github.com/kyloris0660/AnimeLocalBooru/pull/26) merged |
+| **Phase 3.1.1b status** | PR pending — fixture-based test workflow foundation |
 
 ## Mandatory Workflow Rules
 
@@ -520,6 +521,7 @@ The next development phase should include a developer/service control panel:
 | `docs/content-classification.md` | Phase 3 + 3.1 content classification documentation |
 | `scripts/evaluate_content_classification.py` | Phase 3 server-based evaluation harness |
 | `scripts/evaluate_clip_content_classifier.py` | Phase 3.1 standalone CLIP evaluation (no DB) |
+| `docs/test-workflow.md` | Test workflow documentation and policy |
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
@@ -547,6 +549,33 @@ Hardened the environment, database, and storage separation to prevent worktree/D
 | `tests/test_env_safety.py` | 14 unit tests for env/DB/storage safety |
 | `scripts/setup_test_db.py` | Idempotent test DB creation |
 | `.env.*.example` | 5 env template files |
+
+### Phase 3.1.1b — Fixture-Based Test Workflow Foundation
+
+Established a reproducible, fixture-based E2E test workflow using isolated test DB + test storage:
+
+- **`setup_test_db.py --migrate`**: Enhanced script with `--migrate` flag that runs the app's full schema initialization (`Base.metadata.create_all()` + `check_and_migrate_schema()`) against the test database. Includes forbidden DB name safeguard and `VIOLET_ENV=test` enforcement.
+- **`inspect_test_fixture.py`**: Read-only fixture validation script. Counts supported images per subfolder (anime/non_anime/mixed), reports unsupported files, CLI with `--json` output.
+- **`tests/conftest.py`**: Shared pytest fixtures — `reload_settings`, `fixture_path` (gated by `VIOLET_TEST_FIXTURE_PATH`), `fixture_counts`.
+- **`tests/test_fixture_validation.py`**: 10 tests verifying VioletTestFixture directory structure and file counts (read-only, never modifies fixture files).
+- **`tests/test_destructive_gate.py`**: 12 tests covering destructive operation gate conditions (production refusal, test env pass, missing E2E flag, forbidden DB names) and storage path containment (traversal, absolute, UNC, empty rejection).
+- **`tests/e2e/fixture-import.spec.ts`**: 5 Playwright E2E tests — config diagnostics, preflight scan, dry-run scan, real import (max_files=5), duplicate idempotency. Gated by `VIOLET_RUN_REAL_E2E=1` + `VIOLET_TEST_FIXTURE_PATH`.
+- **`tests/e2e/gallery-browse.spec.ts`**: 4 Playwright E2E tests — gallery page load, API media listing, media detail page, thumbnail endpoint. Gated by `VIOLET_RUN_REAL_E2E=1`.
+- **`tests/e2e/config-diagnostics-e2e.spec.ts`**: 6 Playwright E2E tests — environment/database/storage/destructive-ops/secrets/server-info sections. Gated by `VIOLET_RUN_REAL_E2E=1`.
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `scripts/setup_test_db.py` | Idempotent test DB creation + schema migration |
+| `scripts/inspect_test_fixture.py` | Read-only fixture validation |
+| `tests/conftest.py` | Shared pytest fixtures |
+| `tests/test_fixture_validation.py` | Fixture structure validation (10 tests) |
+| `tests/test_destructive_gate.py` | Destructive gate + storage containment (12 tests) |
+| `tests/e2e/fixture-import.spec.ts` | Fixture import E2E (5 tests) |
+| `tests/e2e/gallery-browse.spec.ts` | Gallery browse E2E (4 tests) |
+| `tests/e2e/config-diagnostics-e2e.spec.ts` | Config diagnostics E2E (6 tests) |
+| `docs/test-workflow.md` | Test workflow documentation |
 
 ### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
 

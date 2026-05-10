@@ -281,6 +281,23 @@ See [Content Classification](content-classification.md) for full documentation.
 - 14 unit tests in `tests/test_env_safety.py`
 - 5 env template files + `scripts/setup_test_db.py`
 
+### Phase 3.1.1b — Fixture-Based Test Workflow Foundation
+
+**Goal:** Establish a reproducible, fixture-based E2E test workflow with isolated test database and test storage, enabling safe end-to-end validation without touching the production database.
+
+- Enhanced `setup_test_db.py` with `--migrate` flag for full schema initialization on test DB
+- Read-only `inspect_test_fixture.py` for fixture validation and file counting
+- Shared pytest fixtures (`conftest.py`): `reload_settings`, `fixture_path`, `fixture_counts`
+- 10 fixture validation tests (read-only, never modifies fixture files)
+- 12 destructive gate + storage containment tests (non-destructive verification)
+- 5 fixture import Playwright E2E tests (preflight, dry-run, real import, idempotency)
+- 4 gallery browse Playwright E2E tests (grid, API, detail, thumbnail)
+- 6 config diagnostics Playwright E2E tests (env, DB, storage, gate, secrets, server)
+- All Playwright E2E tests gated by `VIOLET_RUN_REAL_E2E=1`; fixture tests gated by `VIOLET_TEST_FIXTURE_PATH`
+- Test workflow documentation in `docs/test-workflow.md`
+
+See [Test Workflow](test-workflow.md) for documentation.
+
 ---
 
 ## Upcoming Phases
