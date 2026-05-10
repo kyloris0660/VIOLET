@@ -140,8 +140,11 @@ def process_and_save_media(
         )
         metadata["mime_type"] = "application/octet-stream"
 
-    thumbnail_filename = Path(unique_filename).stem + ".jpg"
+    # --- Collision-safe thumbnail filename (Codex P1 fix) ---
+    desired_thumb_name = Path(unique_filename).stem + ".jpg"
+    thumbnail_filename = get_unique_filename(settings.THUMBNAIL_DIR, desired_thumb_name)
     thumbnail_path = settings.THUMBNAIL_DIR / thumbnail_filename
+    thumbnail_existed_before = thumbnail_path.exists()
 
     logger.debug(f"Generating thumbnail: {thumbnail_filename}")
     thumbnail_generated = generate_thumbnail(file_path, thumbnail_path, metadata["file_type"])
@@ -151,59 +154,69 @@ def process_and_save_media(
     else:
         logger.warning("Thumbnail generation failed")
 
-    relative_path = settings.storage_relative_path(file_path)
-    relative_thumb = settings.storage_relative_path(thumbnail_path) if thumbnail_generated else None
+    try:
+        relative_path = settings.storage_relative_path(file_path)
+        relative_thumb = settings.storage_relative_path(thumbnail_path) if thumbnail_generated else None
+        media = Media(
+            filename=unique_filename,
+            path=str(relative_path),
+            thumbnail_path=str(relative_thumb) if relative_thumb else None,
+            hash=file_hash,
+            file_type=metadata["file_type"],
+            mime_type=metadata["mime_type"],
+            file_size=metadata["file_size"],
+            width=metadata["width"],
+            height=metadata["height"],
+            duration=metadata["duration"],
+            rating=rating,
+            source=source if source else None,
+        )
 
-    media = Media(
-        filename=unique_filename,
-        path=str(relative_path),
-        thumbnail_path=str(relative_thumb) if relative_thumb else None,
-        hash=file_hash,
-        file_type=metadata["file_type"],
-        mime_type=metadata["mime_type"],
-        file_size=metadata["file_size"],
-        width=metadata["width"],
-        height=metadata["height"],
-        duration=metadata["duration"],
-        rating=rating,
-        source=source if source else None,
-    )
+        db.add(media)
+        db.flush()
 
-    db.add(media)
-    db.flush()
+        tag_ids_to_update = []
+        if tags:
+            tag_list = [t.strip() for t in tags.split() if t.strip()]
+            parsed_hints = None
+            if category_hints:
+                try:
+                    parsed_hints = json.loads(category_hints)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            tag_objects = get_or_create_tags(db, tag_list, category_hints=parsed_hints)
+            tag_ids_to_update = [tag.id for tag in tag_objects]
+            add_manual_tags_to_media(db, media.id, tag_ids_to_update)
+            logger.debug(f"Tags added: {tag_list}")
 
-    tag_ids_to_update = []
-    if tags:
-        tag_list = [t.strip() for t in tags.split() if t.strip()]
-        parsed_hints = None
-        if category_hints:
+        affected_album_ids = []
+        if album_ids:
             try:
-                parsed_hints = json.loads(category_hints)
-            except (json.JSONDecodeError, TypeError):
+                a_ids = [
+                    int(id_str.strip())
+                    for id_str in album_ids.split(",")
+                    if id_str.strip().isdigit()
+                ]
+                if a_ids:
+                    albums = db.query(Album).filter(Album.id.in_(a_ids)).all()
+                    media.albums = albums
+                    affected_album_ids = [album.id for album in albums]
+                    logger.debug(f"Added to albums: {affected_album_ids}")
+            except Exception as e:
+                logger.error(f"Error parsing album_ids: {e}")
+
+        db.commit()
+        db.refresh(media)
+    except Exception:
+        # --- Clean up only thumbnails created by THIS call ---
+        if thumbnail_generated and not thumbnail_existed_before:
+            try:
+                if thumbnail_path.exists():
+                    thumbnail_path.unlink()
+                    logger.debug("Cleaned up orphan thumbnail: %s", thumbnail_path)
+            except OSError:
                 pass
-        tag_objects = get_or_create_tags(db, tag_list, category_hints=parsed_hints)
-        tag_ids_to_update = [tag.id for tag in tag_objects]
-        add_manual_tags_to_media(db, media.id, tag_ids_to_update)
-        logger.debug(f"Tags added: {tag_list}")
-
-    affected_album_ids = []
-    if album_ids:
-        try:
-            a_ids = [
-                int(id_str.strip())
-                for id_str in album_ids.split(",")
-                if id_str.strip().isdigit()
-            ]
-            if a_ids:
-                albums = db.query(Album).filter(Album.id.in_(a_ids)).all()
-                media.albums = albums
-                affected_album_ids = [album.id for album in albums]
-                logger.debug(f"Added to albums: {affected_album_ids}")
-        except Exception as e:
-            logger.error(f"Error parsing album_ids: {e}")
-
-    db.commit()
-    db.refresh(media)
+        raise
 
     if tag_ids_to_update:
         update_tag_counts(db, tag_ids_to_update)

@@ -441,13 +441,12 @@ def scan_and_import(
                     except OSError:
                         pass
 
-                if unique_name:
-                    thumb_path = settings.THUMBNAIL_DIR / (Path(unique_name).stem + ".jpg")
-                    if thumb_path.exists():
-                        try:
-                            thumb_path.unlink()
-                        except OSError:
-                            pass
+                # NOTE: Thumbnail cleanup is now handled inside
+                # process_and_save_media() which tracks whether it created the
+                # thumbnail and only deletes its own artifacts.  The scanner
+                # must NOT delete thumbnails because the naive
+                # stem + ".jpg" path may collide with an existing thumbnail
+                # belonging to a different media file.
 
                 # --- Robust error conversion (Fix C) ---
                 error_msg = _exception_to_message(e)

@@ -273,13 +273,13 @@ class TestJobFailureFinalization:
 
 
 # ---------------------------------------------------------------------------
-# Fix E: Orphan thumbnail cleanup
+# Fix E: Orphan file cleanup (scanner only cleans copied_path, NOT thumbnails)
 # ---------------------------------------------------------------------------
 
 class TestOrphanThumbnailCleanup:
 
-    def test_thumbnail_cleaned_on_failure(self, tmp_path):
-        """When import fails after file copy + thumbnail gen, both are cleaned."""
+    def test_copied_file_cleaned_on_failure(self, tmp_path):
+        """When import fails, the scanner cleans up the copied original file."""
         from app.utils.local_library_scanner import scan_and_import
 
         # Set up directories
@@ -306,12 +306,7 @@ class TestOrphanThumbnailCleanup:
         mock_settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS = 30
         mock_settings.SCAN_MAX_FILE_SIZE_MB = 500
 
-        # Make process_and_save_media raise after file copy
         def mock_process_and_save(**kwargs):
-            # Create a fake thumbnail to verify cleanup
-            unique_filename = kwargs.get("unique_filename", "test_image.png")
-            thumb_path = thumbnail_dir / (Path(unique_filename).stem + ".jpg")
-            thumb_path.write_bytes(b"fake_thumb")
             raise RuntimeError("Simulated DB error")
 
         with patch("app.utils.local_library_scanner.settings", mock_settings):
@@ -330,37 +325,329 @@ class TestOrphanThumbnailCleanup:
                         with patch(
                             "app.utils.local_library_scanner.shutil.copy2"
                         ) as mock_copy:
-                            # Make copy2 actually create the file
                             def do_copy(src, dst):
                                 Path(dst).write_bytes(Path(src).read_bytes())
 
                             mock_copy.side_effect = do_copy
 
-                            with patch.dict(
-                                "app.utils.local_library_scanner.__builtins__" if hasattr(__builtins__, '__getitem__') else {},
-                                {},
+                            with patch(
+                                "app.routes.media.process_and_save_media",
+                                side_effect=mock_process_and_save,
                             ):
-                                # We need process_and_save_media to be importable
-                                with patch(
-                                    "app.routes.media.process_and_save_media",
-                                    side_effect=mock_process_and_save,
-                                ):
-                                    result = scan_and_import(
-                                        mock_db,
-                                        [scan_dir],
-                                        dry_run=False,
-                                        max_files=1,
-                                    )
+                                result = scan_and_import(
+                                    mock_db,
+                                    [scan_dir],
+                                    dry_run=False,
+                                    max_files=1,
+                                )
 
-        # The copied file should be cleaned up
+        # The copied file should be cleaned up by the scanner
         copied = original_dir / "test_image.png"
         assert not copied.exists(), "Orphan copied file should be cleaned up"
 
-        # The thumbnail should also be cleaned up (Fix E)
-        thumb = thumbnail_dir / "test_image.jpg"
-        assert not thumb.exists(), "Orphan thumbnail should be cleaned up"
+        assert result["failed"] == 1
+
+    def test_scanner_does_not_delete_thumbnails(self, tmp_path):
+        """The scanner must NOT attempt thumbnail deletion (Codex P1).
+
+        Thumbnail cleanup is now owned by process_and_save_media(). The
+        scanner only cleans up the copied original file.  A pre-existing
+        thumbnail with the same stem must survive a failed import.
+        """
+        from app.utils.local_library_scanner import scan_and_import
+
+        scan_dir = tmp_path / "source"
+        scan_dir.mkdir()
+        original_dir = tmp_path / "storage" / "media" / "original"
+        original_dir.mkdir(parents=True)
+        thumbnail_dir = tmp_path / "storage" / "media" / "thumbnails"
+        thumbnail_dir.mkdir(parents=True)
+
+        # Pre-existing thumbnail belonging to another media file
+        existing_thumb = thumbnail_dir / "test_image.jpg"
+        existing_thumb.write_bytes(b"existing_thumbnail_data_for_other_media")
+
+        from PIL import Image as PILImage
+        test_file = scan_dir / "test_image.png"
+        img = PILImage.new("RGB", (10, 10), color="blue")
+        img.save(str(test_file), format="PNG")
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.all.return_value = []
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        mock_settings = MagicMock()
+        mock_settings.ORIGINAL_DIR = original_dir
+        mock_settings.THUMBNAIL_DIR = thumbnail_dir
+        mock_settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS = 30
+        mock_settings.SCAN_MAX_FILE_SIZE_MB = 500
+
+        def mock_process_and_save(**kwargs):
+            raise RuntimeError("Simulated DB error")
+
+        with patch("app.utils.local_library_scanner.settings", mock_settings):
+            with patch(
+                "app.utils.local_library_scanner._is_scannable_file",
+                return_value=None,
+            ):
+                with patch(
+                    "app.utils.local_library_scanner._calculate_file_hash_with_timeout",
+                    return_value=("ok", "abc123hash"),
+                ):
+                    with patch(
+                        "app.utils.local_library_scanner.get_unique_filename",
+                        return_value="test_image.png",
+                    ):
+                        with patch(
+                            "app.utils.local_library_scanner.shutil.copy2"
+                        ) as mock_copy:
+                            def do_copy(src, dst):
+                                Path(dst).write_bytes(Path(src).read_bytes())
+
+                            mock_copy.side_effect = do_copy
+
+                            with patch(
+                                "app.routes.media.process_and_save_media",
+                                side_effect=mock_process_and_save,
+                            ):
+                                result = scan_and_import(
+                                    mock_db,
+                                    [scan_dir],
+                                    dry_run=False,
+                                    max_files=1,
+                                )
+
+        # The pre-existing thumbnail MUST still exist
+        assert existing_thumb.exists(), (
+            "Pre-existing thumbnail was deleted by the scanner — Codex P1 regression!"
+        )
+        assert existing_thumb.read_bytes() == b"existing_thumbnail_data_for_other_media"
 
         assert result["failed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Codex P1: Thumbnail safety in process_and_save_media
+# ---------------------------------------------------------------------------
+
+class TestThumbnailSafetyInProcessAndSave:
+    """Tests for collision-safe thumbnail generation and conditional cleanup
+    inside process_and_save_media()."""
+
+    def test_existing_thumbnail_not_deleted_on_failure(self, tmp_path):
+        """If a thumbnail with the same stem already exists, it must NOT be
+        deleted when the current import fails."""
+        from app.routes.media import process_and_save_media
+
+        original_dir = tmp_path / "original"
+        original_dir.mkdir()
+        thumbnail_dir = tmp_path / "thumbnails"
+        thumbnail_dir.mkdir()
+
+        # Pre-existing thumbnail for another media (e.g. from "foo.gif")
+        pre_existing = thumbnail_dir / "foo.jpg"
+        pre_existing.write_bytes(b"DO_NOT_DELETE_THIS")
+
+        # Our new file: "foo.png" whose stem also maps to "foo.jpg"
+        from PIL import Image as PILImage
+        source = original_dir / "foo.png"
+        img = PILImage.new("RGB", (10, 10), color="red")
+        img.save(str(source), format="PNG")
+
+        mock_db = MagicMock()
+        # No duplicate hash match
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # Make db.flush() raise to simulate a DB error after thumbnail gen
+        mock_db.flush.side_effect = RuntimeError("Simulated DB error")
+
+        mock_settings = MagicMock()
+        mock_settings.THUMBNAIL_DIR = thumbnail_dir
+        mock_settings.storage_relative_path.side_effect = lambda p: Path("relative") / p.name
+
+        # get_unique_filename must return "foo_1.jpg" because "foo.jpg" exists
+        # (the real function does this; we verify via the collision-safe path)
+        with patch("app.routes.media.settings", mock_settings):
+            with patch("app.routes.media.calculate_file_hash", return_value="hashABC"):
+                with patch(
+                    "app.routes.media.process_media_file",
+                    return_value={
+                        "mime_type": "image/png",
+                        "file_type": "image",
+                        "file_size": 100,
+                        "width": 10,
+                        "height": 10,
+                        "duration": None,
+                    },
+                ):
+                    with patch(
+                        "app.routes.media.generate_thumbnail",
+                        side_effect=lambda src, dst, ft: dst.write_bytes(b"new_thumb") or True,
+                    ):
+                        # get_unique_filename on THUMBNAIL_DIR should produce "foo_1.jpg"
+                        with patch(
+                            "app.routes.media.get_unique_filename",
+                            return_value="foo_1.jpg",
+                        ):
+                            with pytest.raises(RuntimeError, match="Simulated DB error"):
+                                process_and_save_media(
+                                    db=mock_db,
+                                    file_path=source,
+                                    unique_filename="foo.png",
+                                    rating="safe",
+                                    tags="",
+                                    album_ids=None,
+                                    source=None,
+                                    category_hints=None,
+                                )
+
+        # Pre-existing thumbnail MUST survive
+        assert pre_existing.exists(), "Pre-existing thumbnail was deleted!"
+        assert pre_existing.read_bytes() == b"DO_NOT_DELETE_THIS"
+
+        # The NEW thumbnail (foo_1.jpg) should be cleaned up on failure
+        new_thumb = thumbnail_dir / "foo_1.jpg"
+        assert not new_thumb.exists(), "Orphan new thumbnail should be cleaned up"
+
+    def test_new_thumbnail_cleaned_on_failure(self, tmp_path):
+        """A thumbnail newly created by process_and_save_media is cleaned up
+        when the DB insert fails."""
+        from app.routes.media import process_and_save_media
+
+        original_dir = tmp_path / "original"
+        original_dir.mkdir()
+        thumbnail_dir = tmp_path / "thumbnails"
+        thumbnail_dir.mkdir()
+
+        from PIL import Image as PILImage
+        source = original_dir / "brand_new.png"
+        img = PILImage.new("RGB", (10, 10), color="green")
+        img.save(str(source), format="PNG")
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.flush.side_effect = RuntimeError("Simulated DB error")
+
+        mock_settings = MagicMock()
+        mock_settings.THUMBNAIL_DIR = thumbnail_dir
+        mock_settings.storage_relative_path.side_effect = lambda p: Path("relative") / p.name
+
+        with patch("app.routes.media.settings", mock_settings):
+            with patch("app.routes.media.calculate_file_hash", return_value="hashDEF"):
+                with patch(
+                    "app.routes.media.process_media_file",
+                    return_value={
+                        "mime_type": "image/png",
+                        "file_type": "image",
+                        "file_size": 200,
+                        "width": 10,
+                        "height": 10,
+                        "duration": None,
+                    },
+                ):
+                    with patch(
+                        "app.routes.media.generate_thumbnail",
+                        side_effect=lambda src, dst, ft: dst.write_bytes(b"thumb_data") or True,
+                    ):
+                        with patch(
+                            "app.routes.media.get_unique_filename",
+                            return_value="brand_new.jpg",
+                        ):
+                            with pytest.raises(RuntimeError, match="Simulated DB error"):
+                                process_and_save_media(
+                                    db=mock_db,
+                                    file_path=source,
+                                    unique_filename="brand_new.png",
+                                    rating="safe",
+                                    tags="",
+                                    album_ids=None,
+                                    source=None,
+                                    category_hints=None,
+                                )
+
+        thumb_path = thumbnail_dir / "brand_new.jpg"
+        assert not thumb_path.exists(), "Newly created thumbnail should be cleaned up"
+
+    def test_thumbnail_collision_avoidance(self, tmp_path):
+        """get_unique_filename is called for thumbnail names to avoid collisions."""
+        from app.routes.media import process_and_save_media
+        from app.utils.media_helpers import get_unique_filename as real_get_unique
+
+        original_dir = tmp_path / "original"
+        original_dir.mkdir()
+        thumbnail_dir = tmp_path / "thumbnails"
+        thumbnail_dir.mkdir()
+
+        # Pre-existing thumbnail: "bar.jpg"
+        (thumbnail_dir / "bar.jpg").write_bytes(b"existing")
+
+        from PIL import Image as PILImage
+        source = original_dir / "bar.png"
+        img = PILImage.new("RGB", (10, 10), color="yellow")
+        img.save(str(source), format="PNG")
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # Let flush succeed, but commit raises — still triggers cleanup
+        mock_db.commit.side_effect = RuntimeError("Simulated commit error")
+
+        mock_settings = MagicMock()
+        mock_settings.THUMBNAIL_DIR = thumbnail_dir
+        mock_settings.storage_relative_path.side_effect = lambda p: Path("relative") / p.name
+
+        generated_paths = []
+
+        def track_thumbnail_gen(src, dst, ft):
+            generated_paths.append(dst)
+            dst.write_bytes(b"new_thumb_data")
+            return True
+
+        # Use the REAL get_unique_filename so we can verify collision avoidance
+        with patch("app.routes.media.settings", mock_settings):
+            with patch("app.routes.media.calculate_file_hash", return_value="hashGHI"):
+                with patch(
+                    "app.routes.media.process_media_file",
+                    return_value={
+                        "mime_type": "image/png",
+                        "file_type": "image",
+                        "file_size": 150,
+                        "width": 10,
+                        "height": 10,
+                        "duration": None,
+                    },
+                ):
+                    with patch(
+                        "app.routes.media.generate_thumbnail",
+                        side_effect=track_thumbnail_gen,
+                    ):
+                        with patch(
+                            "app.routes.media.get_unique_filename",
+                            side_effect=lambda d, f: real_get_unique(d, f),
+                        ):
+                            with pytest.raises(RuntimeError, match="Simulated commit error"):
+                                process_and_save_media(
+                                    db=mock_db,
+                                    file_path=source,
+                                    unique_filename="bar.png",
+                                    rating="safe",
+                                    tags="",
+                                    album_ids=None,
+                                    source=None,
+                                    category_hints=None,
+                                )
+
+        # The generated thumbnail should have been "bar_1.jpg" (collision avoidance)
+        assert len(generated_paths) == 1
+        assert generated_paths[0].name == "bar_1.jpg", (
+            f"Expected bar_1.jpg due to collision avoidance, got {generated_paths[0].name}"
+        )
+
+        # Pre-existing thumbnail MUST be untouched
+        assert (thumbnail_dir / "bar.jpg").read_bytes() == b"existing"
+
+        # bar_1.jpg should be cleaned up since the import failed
+        assert not (thumbnail_dir / "bar_1.jpg").exists(), (
+            "Collision-safe thumbnail should be cleaned up on failure"
+        )
 
 
 # ---------------------------------------------------------------------------
