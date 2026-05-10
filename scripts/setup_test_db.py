@@ -3,14 +3,21 @@
 
 Usage:
     python scripts/setup_test_db.py
+    python scripts/setup_test_db.py --dry-run
 
 Creates the 'blombooru_test' database on localhost:5432 if it does not exist.
 Requires psycopg2 and a running PostgreSQL instance with the 'postgres' superuser.
 """
+import argparse
 import os
 import sys
 
 def main():
+    parser = argparse.ArgumentParser(description="Set up V.I.O.L.E.T. test database")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Check whether the test DB exists without creating it")
+    args = parser.parse_args()
+
     try:
         import psycopg2
         from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -37,7 +44,12 @@ def main():
     cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (test_db,))
     exists = cur.fetchone()
 
-    if exists:
+    if args.dry_run:
+        if exists:
+            print(f"[dry-run] Database '{test_db}' exists.")
+        else:
+            print(f"[dry-run] Database '{test_db}' does NOT exist — would create it.")
+    elif exists:
         print(f"Database '{test_db}' already exists — nothing to do.")
     else:
         cur.execute(f'CREATE DATABASE "{test_db}"')

@@ -27,9 +27,6 @@ router = APIRouter()
 
 BLOCKED_ROOTS = {"", "c:", "c:/", "/", "c:/users"}
 
-_MAIN_REPO_PATH = r"C:\Users\kyloris\Documents\AnimeLocalBooru"
-_RECOMMENDED_TEST_STORAGE_PREFIX = r"C:\Users\kyloris\VioletStorage\test"
-
 
 def _safe_db_name() -> str:
     try:
@@ -44,12 +41,19 @@ def _compute_gate_diagnostic() -> dict:
     storage_root = str(settings.STORAGE_ROOT)
     code_root = str(settings.CODE_ROOT)
     storage_explicit = settings.STORAGE_ROOT_EXPLICITLY_SET
+    test_storage_root = settings.VIOLET_TEST_STORAGE_ROOT
+    test_storage_explicit = settings.TEST_STORAGE_ROOT_EXPLICITLY_SET
     e2e_flag = os.environ.get(DESTRUCTIVE_E2E_ENV_FLAG, "").strip() == "1"
 
     sr_norm = storage_root.lower().replace("\\", "/").rstrip("/")
     cr_norm = code_root.lower().replace("\\", "/").rstrip("/")
-    main_norm = _MAIN_REPO_PATH.lower().replace("\\", "/").rstrip("/")
-    rec_norm = _RECOMMENDED_TEST_STORAGE_PREFIX.lower().replace("\\", "/").rstrip("/")
+
+    tsr_configured = test_storage_explicit and test_storage_root is not None
+    if tsr_configured:
+        tsr_norm = str(test_storage_root).lower().replace("\\", "/").rstrip("/")
+        storage_under_test_root = sr_norm == tsr_norm or sr_norm.startswith(tsr_norm + "/")
+    else:
+        storage_under_test_root = False
 
     conditions = {
         "0_production_refusal": env != "production",
@@ -57,8 +61,8 @@ def _compute_gate_diagnostic() -> dict:
         "2_db_is_test_db": db_name != "blombooru" and not db_name.startswith("<fail"),
         "3_storage_root_explicitly_set": storage_explicit,
         "4_storage_root_ne_code_root": sr_norm != cr_norm,
-        "5_storage_root_ne_main_repo": sr_norm != main_norm,
-        "6_storage_root_under_recommended_prefix": sr_norm.startswith(rec_norm),
+        "5_test_storage_root_configured": tsr_configured,
+        "6_storage_root_under_test_storage_root": storage_under_test_root,
         "7_destructive_e2e_flag_set": e2e_flag,
     }
     gate_would_pass = all(conditions.values())
@@ -71,8 +75,8 @@ def _compute_gate_diagnostic() -> dict:
             "STORAGE_ROOT": storage_root,
             "CODE_ROOT": code_root,
             "STORAGE_ROOT_EXPLICITLY_SET": storage_explicit,
-            "MAIN_REPO_PATH": _MAIN_REPO_PATH,
-            "RECOMMENDED_TEST_STORAGE_PREFIX": _RECOMMENDED_TEST_STORAGE_PREFIX,
+            "VIOLET_TEST_STORAGE_ROOT": str(test_storage_root) if test_storage_root else None,
+            "TEST_STORAGE_ROOT_EXPLICITLY_SET": test_storage_explicit,
             "DESTRUCTIVE_E2E_FLAG": e2e_flag,
         },
     }
@@ -340,7 +344,7 @@ def _require_destructive_gate(*, confirm: bool, confirm_phrase: str, expected_ph
         )
 
     logger.warning(
-        "DESTRUCTIVE GATE: all 10 conditions passed — allowing destructive operation "
+        "DESTRUCTIVE GATE: all conditions passed — allowing destructive operation "
         "(VIOLET_ENV=%s, DB_NAME=%s, STORAGE_ROOT=%s)",
         settings.VIOLET_ENV, _safe_db_name(), settings.STORAGE_ROOT,
     )

@@ -109,6 +109,17 @@ class Settings:
             return Path(val)
         return None
 
+    @property
+    def VIOLET_TEST_STORAGE_ROOT(self) -> Optional[Path]:
+        val = os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip()
+        if val:
+            return Path(val)
+        return None
+
+    @property
+    def TEST_STORAGE_ROOT_EXPLICITLY_SET(self) -> bool:
+        return bool(os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip())
+
     def _load_file_settings(self) -> dict:
         if self.SETTINGS_FILE.exists():
             with open(self.SETTINGS_FILE, 'r') as f:
@@ -188,14 +199,24 @@ class Settings:
     def DB_PORT(self) -> int:
         return int(self.file_settings.get("database", {}).get('port') or os.getenv("POSTGRES_PORT") or self.settings.get("database", {}).get('port', 5432))
 
+    _FORBIDDEN_TEST_DB_NAMES = frozenset({"blombooru", "production", "main", "postgres"})
+
     @property
     def DB_NAME(self) -> str:
         test_url = os.getenv("TEST_DATABASE_URL", "").strip()
         if self.IS_TEST_ENV:
             if test_url:
-                return self._parse_db_name_from_url(test_url)
+                name = self._parse_db_name_from_url(test_url)
+                if name.lower() in self._FORBIDDEN_TEST_DB_NAMES:
+                    raise RuntimeError(
+                        f"VIOLET_ENV=test but TEST_DATABASE_URL points to "
+                        f"production-like database {name!r}. "
+                        f"Use a test-specific name (e.g. 'blombooru_test'). "
+                        f"Refusing to start against production DB."
+                    )
+                return name
             env_db = os.getenv("POSTGRES_DB", "").strip()
-            if not env_db or env_db == "blombooru":
+            if not env_db or env_db.lower() in self._FORBIDDEN_TEST_DB_NAMES:
                 raise RuntimeError(
                     "VIOLET_ENV=test but no valid test DB configured. "
                     "Set TEST_DATABASE_URL or POSTGRES_DB to a test-specific name "
