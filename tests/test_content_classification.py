@@ -1243,3 +1243,83 @@ class TestCLIPClassifyFileHandleClosure:
             result = cls.classify_file(str(test_file))
         assert result["content_class"] == "anime"
         assert "file" in result
+
+
+class TestResolveStoredMediaPath:
+    """Tests for _resolve_stored_media_path() path normalization helper."""
+
+    def test_windows_backslash_path(self, tmp_path):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        test_file = tmp_path / "media" / "original" / "abc.jpg"
+        test_file.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            result = _resolve_stored_media_path("media\\original\\abc.jpg")
+
+        assert result is not None
+        assert result.exists()
+        assert result == tmp_path / "media/original/abc.jpg"
+
+    def test_posix_forward_slash_path(self, tmp_path):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        test_file = tmp_path / "media" / "original" / "abc.jpg"
+        test_file.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            result = _resolve_stored_media_path("media/original/abc.jpg")
+
+        assert result is not None
+        assert result.exists()
+        assert result == tmp_path / "media/original/abc.jpg"
+
+    def test_separator_mismatch_resolves_same(self, tmp_path):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        test_file = tmp_path / "media" / "original" / "abc.jpg"
+        test_file.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            win_result = _resolve_stored_media_path("media\\original\\abc.jpg")
+            posix_result = _resolve_stored_media_path("media/original/abc.jpg")
+
+        assert win_result is not None
+        assert posix_result is not None
+        assert win_result == posix_result
+        assert win_result.exists()
+
+    def test_absolute_path_returns_none(self):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        assert _resolve_stored_media_path("C:\\Users\\someone\\photo.jpg") is None
+        assert _resolve_stored_media_path("/home/user/photo.jpg") is None
+        assert _resolve_stored_media_path("") is None
+        assert _resolve_stored_media_path(None) is None
+
+    def test_thumbnail_only_missing_not_deletable(self, tmp_path):
+        """Verify scan categorises thumbnail-only-missing as non-deletable."""
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        original = tmp_path / "media" / "original" / "abc.jpg"
+        original.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            media_path = _resolve_stored_media_path("media\\original\\abc.jpg")
+            thumb_path = _resolve_stored_media_path("media\\thumbnails\\abc_thumb.jpg")
+
+        media_exists = media_path is not None and media_path.exists()
+        thumb_exists = thumb_path is not None and thumb_path.exists()
+
+        assert media_exists is True
+        assert thumb_exists is False
+        is_deletable = not media_exists
+        assert is_deletable is False

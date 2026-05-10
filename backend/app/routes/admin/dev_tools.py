@@ -6,6 +6,8 @@ and recommended config. Admin-only, requires admin_mode.
 import json
 import os
 import sys
+from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -24,6 +26,25 @@ router = APIRouter()
 
 
 BLOCKED_ROOTS = {"", "c:", "c:/", "/", "c:/users"}
+
+
+def _resolve_stored_media_path(stored_path: str) -> Optional[Path]:
+    """Normalize a DB-stored media path and resolve it against BASE_DIR.
+
+    Handles Windows backslash / POSIX forward-slash mismatches so that
+    ``media\\original\\abc.jpg`` and ``media/original/abc.jpg`` both
+    resolve to the same filesystem path.
+
+    Returns None for absolute paths (user source files stored in
+    Media.source — these are not app-managed and must never be
+    candidates for deletion).
+    """
+    if not stored_path:
+        return None
+    normalized = stored_path.replace("\\", "/")
+    if normalized.startswith("/") or Path(normalized).is_absolute():
+        return None
+    return settings.BASE_DIR / normalized
 
 
 def _is_dangerous_path(source_path: str) -> bool:
@@ -253,11 +274,11 @@ async def scan_missing_media(
     missing_both = []  # Category D: both missing
 
     for m in all_media:
-        media_path = settings.BASE_DIR / m.path if m.path else None
-        thumb_path = settings.BASE_DIR / m.thumbnail_path if m.thumbnail_path else None
+        media_path = _resolve_stored_media_path(m.path) if m.path else None
+        thumb_path = _resolve_stored_media_path(m.thumbnail_path) if m.thumbnail_path else None
 
-        media_exists = media_path and media_path.exists() if media_path else False
-        thumb_exists = thumb_path and thumb_path.exists() if thumb_path else False
+        media_exists = media_path is not None and media_path.exists()
+        thumb_exists = thumb_path is not None and thumb_path.exists()
 
         if media_exists and thumb_exists:
             valid.append(m.id)
@@ -297,8 +318,8 @@ async def cleanup_missing_media(
 
     deletable_ids = []
     for m in all_media:
-        media_path = settings.BASE_DIR / m.path if m.path else None
-        media_exists = media_path and media_path.exists() if media_path else False
+        media_path = _resolve_stored_media_path(m.path) if m.path else None
+        media_exists = media_path is not None and media_path.exists()
         if not media_exists:
             deletable_ids.append(m.id)
 
@@ -352,8 +373,8 @@ async def cleanup_missing_media(
     for mid in deletable_ids:
         m = db.query(Media).get(mid)
         if m and m.thumbnail_path:
-            thumb_path = settings.BASE_DIR / m.thumbnail_path
-            if thumb_path.exists() and str(thumb_path).startswith(str(settings.THUMBNAIL_DIR)):
+            thumb_path = _resolve_stored_media_path(m.thumbnail_path)
+            if thumb_path and thumb_path.exists() and str(thumb_path).startswith(str(settings.THUMBNAIL_DIR)):
                 try:
                     thumb_path.unlink()
                     thumbs_deleted += 1
