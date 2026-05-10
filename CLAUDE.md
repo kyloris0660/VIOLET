@@ -93,6 +93,20 @@ E2E tests that call destructive endpoints must be gated by `VIOLET_ALLOW_DESTRUC
 - Dev server: `python run.py --debug` → `http://localhost:8000`
 - Database: PostgreSQL 17, `blombooru` on `localhost:5432`
 
+## Test environment
+
+Load the standardized test environment (PowerShell):
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+```
+
+This sets `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH`, `VIOLET_RUN_REAL_E2E=1`, and `VIOLET_BASE_URL=http://localhost:8001`.
+
+Test server: `python run.py --debug --port 8001` (with test env loaded).
+
+See `docs/test-workflow.md` for test tiers and commands.
+
 ## Language policy
 
 | Layer | Language |

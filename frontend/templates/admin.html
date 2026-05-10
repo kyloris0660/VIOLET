@@ -697,19 +697,19 @@
             <!-- Developer / E2E Tools Section (Phase 2.3a) -->
             <div class="surface p-2 sm:p-6 border mb-4" id="dev-tools-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">
-                    开发者 / E2E 工具
-                    <span class="text-xs font-normal text-yellow-400 ml-2">仅限本地开发</span>
+                    <span data-i18n="admin.dev_tools.title">开发者 / E2E 工具</span>
+                    <span class="text-xs font-normal text-yellow-400 ml-2" data-i18n="admin.dev_tools.local_only">仅限本地开发</span>
                 </h2>
 
                 <!-- Config Diagnostics -->
                 <div class="mb-4">
                     <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-sm font-bold">配置诊断</h3>
-                        <button id="dev-refresh-config" class="text-xs text-primary hover:underline">刷新</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.dev_tools.config_diagnostics">配置诊断</h3>
+                        <button id="dev-refresh-config" class="text-xs text-primary hover:underline" data-i18n="admin.dev_tools.refresh">刷新</button>
                     </div>
-                    <p class="text-xs text-secondary mb-2">显示后端实际读取的 .env 配置值。修改 .env 后需重启服务。</p>
+                    <p class="text-xs text-secondary mb-2" data-i18n="admin.dev_tools.config_description">显示后端实际读取的 .env 配置值。修改 .env 后需重启服务。</p>
                     <div id="dev-config-content" class="bg p-3 border text-xs">
-                        <span class="text-secondary">加载中...</span>
+                        <span class="text-secondary" data-i18n="admin.dev_tools.loading">加载中...</span>
                     </div>
                     <div id="dev-server-info" class="mt-3 bg p-3 border text-xs" style="display: none;">
                         <h4 class="text-xs font-bold mb-2">{{ t('admin.dev_tools.server_info') }}</h4>
@@ -720,38 +720,38 @@
                 <!-- Recommended E2E Config -->
                 <div class="mb-4">
                     <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-sm font-bold">推荐 E2E 测试配置</h3>
-                        <button id="dev-show-recommended" class="text-xs text-primary hover:underline">显示</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.dev_tools.recommended_e2e">推荐 E2E 测试配置</h3>
+                        <button id="dev-show-recommended" class="text-xs text-primary hover:underline" data-i18n="admin.dev_tools.show">显示</button>
                     </div>
                     <div id="dev-recommended-config" class="bg p-3 border text-xs hidden">
-                        <p class="text-secondary mb-2">将以下内容复制到 .env 文件，并重启服务：</p>
+                        <p class="text-secondary mb-2" data-i18n="admin.dev_tools.copy_hint">将以下内容复制到 .env 文件，并重启服务：</p>
                         <pre id="dev-recommended-snippet" class="bg-black bg-opacity-20 p-2 border font-mono text-[10px] whitespace-pre-wrap"></pre>
                     </div>
                 </div>
 
                 <!-- Reset E2E Test Data -->
                 <div class="mb-4">
-                    <h3 class="text-sm font-bold mb-2">重置 E2E 测试数据</h3>
+                    <h3 class="text-sm font-bold mb-2" data-i18n="admin.dev_tools.reset_e2e_title">重置 E2E 测试数据</h3>
                     <div class="bg-red-900 bg-opacity-20 border border-red-700 p-3 mb-3 text-xs">
-                        <strong class="text-red-400">⚠ 警告：</strong>
-                        仅用于 VioletTest100 等测试目录。不要用于真实 iCloud Photos 数据。
+                        <strong class="text-red-400">⚠ <span data-i18n="admin.dev_tools.reset_warning">警告：</span></strong>
+                        <span data-i18n="admin.dev_tools.reset_warning_safe">仅用于 VioletTest100 等测试目录。不要用于真实 iCloud Photos 数据。
                         此操作将删除从指定目录导入的所有媒体、标签关联、扫描任务和 AI 打标任务。
-                        <strong>原始测试目录中的文件不会被删除。</strong>
+                        <strong>原始测试目录中的文件不会被删除。</strong></span>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                         <div>
-                            <label class="block text-xs font-bold mb-1">源目录路径</label>
+                            <label class="block text-xs font-bold mb-1" data-i18n="admin.dev_tools.source_path">源目录路径</label>
                             <input type="text" id="dev-reset-source-path"
                                 value="C:\Users\kyloris\Pictures\VioletTest100"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div class="flex items-end gap-2">
-                            <button id="dev-reset-dryrun-btn" class="btn-primary text-xs px-4 py-2">Dry Run 预览</button>
-                            <button id="dev-reset-real-btn" class="text-xs px-4 py-2 bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors">执行重置</button>
+                            <button id="dev-reset-dryrun-btn" class="btn-primary text-xs px-4 py-2" data-i18n="admin.dev_tools.dry_run_preview">Dry Run 预览</button>
+                            <button id="dev-reset-real-btn" class="text-xs px-4 py-2 bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors" data-i18n="admin.dev_tools.execute_reset">执行重置</button>
                         </div>
                     </div>
                     <div id="dev-reset-result" class="hidden bg p-3 border text-xs mt-2">
-                        <span class="text-secondary">等待操作...</span>
+                        <span class="text-secondary" data-i18n="admin.dev_tools.waiting">等待操作...</span>
                     </div>
                 </div>
 
@@ -765,7 +765,109 @@
                         <button id="dev-missing-media-cleanup-btn" class="text-xs px-4 py-2 bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors" disabled data-i18n="admin.dev_tools.missing_media.cleanup_btn">执行清理</button>
                     </div>
                     <div id="dev-missing-media-result" class="hidden bg p-3 border text-xs mt-2">
-                        <span class="text-secondary">等待操作...</span>
+                        <span class="text-secondary" data-i18n="admin.dev_tools.waiting">等待操作...</span>
+                    </div>
+                </div>
+
+                <!-- Legacy AI Direct Tagging (moved from Content Tab) -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2 cursor-pointer" id="dev-legacy-ai-tagging-toggle">
+                        <h3 class="text-sm font-bold">
+                            <span class="mr-1" id="dev-legacy-ai-tagging-arrow">&#9654;</span>
+                            {{ t('admin.ai_tagging.title') }}
+                            <span class="text-xs font-normal text-yellow-400 ml-2" data-i18n="admin.dev_tools.legacy_label">Legacy</span>
+                        </h3>
+                    </div>
+                    <div class="bg-yellow-900 bg-opacity-20 border border-yellow-700 p-2 mb-2 text-xs" data-i18n="admin.dev_tools.legacy_ai_tagging_notice">
+                        <strong class="text-yellow-400">&#9888;</strong>
+                        此功能已被「AI 打标任务」取代。仅供开发调试使用，未来版本可能移除。
+                    </div>
+                    <div id="dev-legacy-ai-tagging-content" class="hidden">
+                        <!-- Model Status -->
+                        <div class="bg p-4 border mb-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-bold">{{ t('admin.ai_tagging.model_status') }}</h3>
+                                <button id="ai-tag-refresh-status" class="btn-dark text-xs px-2 py-1">{{ t('admin.ai_tagging.refresh') }}</button>
+                            </div>
+                            <div id="ai-tag-status-content" class="text-xs text-secondary">
+                                {{ t('admin.ai_tagging.loading') }}
+                            </div>
+                        </div>
+
+                        <!-- Single Image Tagging -->
+                        <div class="bg p-4 border mb-4">
+                            <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.single_image') }}</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.media_id') }}</label>
+                                    <input type="number" id="ai-tag-media-id" min="1" placeholder="{{ t('admin.ai_tagging.media_id_placeholder') }}"
+                                        class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                                </div>
+                                <div class="flex items-end gap-2">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="ai-tag-single-dryrun" class="w-4 h-4 accent-primary" checked>
+                                        <span class="text-xs font-bold">{{ t('admin.ai_tagging.dry_run') }}</span>
+                                    </label>
+                                </div>
+                                <button id="ai-tag-single-btn" class="btn-primary w-full">
+                                    {{ t('admin.ai_tagging.run_ai_tagging') }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Batch Tagging -->
+                        <div class="bg p-4 border mb-4">
+                            <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.batch_title') }}</h3>
+                            <p class="text-xs text-secondary mb-3">
+                                {{ t('admin.ai_tagging.batch_description') }}
+                            </p>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.batch_ids_label') }}</label>
+                                    <input type="text" id="ai-tag-batch-ids" placeholder="{{ t('admin.ai_tagging.batch_ids_placeholder') }}"
+                                        class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.max_items') }}</label>
+                                        <input type="number" id="ai-tag-batch-max" min="1" value="5"
+                                            class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                                    </div>
+                                    <div class="flex items-end pb-1 gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" id="ai-tag-batch-dryrun" class="w-4 h-4 accent-primary" checked>
+                                            <span class="text-xs font-bold">{{ t('admin.ai_tagging.dry_run') }}</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <button id="ai-tag-batch-btn" class="btn-primary w-full">
+                                    {{ t('admin.ai_tagging.start_batch') }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Results -->
+                        <div id="ai-tag-results" style="display: none;">
+                            <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.results') }}</h3>
+                            <div class="bg p-4 border">
+                                <div id="ai-tag-summary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3"></div>
+                                <div id="ai-tag-details" class="overflow-x-auto max-h-60 overflow-y-auto border">
+                                    <table class="bg w-full text-left border-collapse">
+                                        <thead class="border-b">
+                                            <tr class="text-secondary text-[10px]">
+                                                <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.media') }}</th>
+                                                <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.added') }}</th>
+                                                <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.suggestions') }}</th>
+                                                <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.locked') }}</th>
+                                                <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.ignored') }}</th>
+                                                <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('common.error') }}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="ai-tag-details-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -773,6 +875,19 @@
 
         <!-- Content Tab -->
         <div id="tab-content" class="tab-content hidden">
+            <!-- Content Tab Section Quick Nav -->
+            <div class="surface p-2 border mb-4 flex flex-wrap gap-1 text-xs" id="content-section-nav">
+                <a href="#media-management" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.media_management.title">媒体管理</a>
+                <a href="#local-library-scan" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.local_library_scan.title">本地图库扫描</a>
+                <a href="#ai-tag-review-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tag_review.title">AI 标签审核</a>
+                <a href="#ai-tagging-jobs-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tagging_jobs.title">AI 打标任务</a>
+                <a href="#tag-localization-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.tag_localization.title">标签本地化</a>
+                <a href="#tags-management-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.tags_management.title">标签管理</a>
+                <a href="#tag-implications-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.tags_implications.title">标签关联</a>
+                <a href="#content-classification-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.content_classification.title">内容分类</a>
+                <a href="#albums-management-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.albums_management.title">相册管理</a>
+            </div>
+
             <!-- Media Management Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="media-management">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.media_management.title') }}</h2>
@@ -1063,97 +1178,6 @@
                 </div>
             </div>
 
-            <!-- AI Auto Tagging Section -->
-            <div class="surface p-2 sm:p-6 border mb-4" id="ai-tagging-section">
-                <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.ai_tagging.title') }}</h2>
-
-                <!-- Model Status -->
-                <div class="bg p-4 border mb-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">{{ t('admin.ai_tagging.model_status') }}</h3>
-                        <button id="ai-tag-refresh-status" class="btn-dark text-xs px-2 py-1">{{ t('admin.ai_tagging.refresh') }}</button>
-                    </div>
-                    <div id="ai-tag-status-content" class="text-xs text-secondary">
-                        {{ t('admin.ai_tagging.loading') }}
-                    </div>
-                </div>
-
-                <!-- Single Image Tagging -->
-                <div class="bg p-4 border mb-4">
-                    <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.single_image') }}</h3>
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.media_id') }}</label>
-                            <input type="number" id="ai-tag-media-id" min="1" placeholder="{{ t('admin.ai_tagging.media_id_placeholder') }}"
-                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
-                        </div>
-                        <div class="flex items-end gap-2">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="ai-tag-single-dryrun" class="w-4 h-4 accent-primary" checked>
-                                <span class="text-xs font-bold">{{ t('admin.ai_tagging.dry_run') }}</span>
-                            </label>
-                        </div>
-                        <button id="ai-tag-single-btn" class="btn-primary w-full">
-                            {{ t('admin.ai_tagging.run_ai_tagging') }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Batch Tagging -->
-                <div class="bg p-4 border mb-4">
-                    <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.batch_title') }}</h3>
-                    <p class="text-xs text-secondary mb-3">
-                        {{ t('admin.ai_tagging.batch_description') }}
-                    </p>
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.batch_ids_label') }}</label>
-                            <input type="text" id="ai-tag-batch-ids" placeholder="{{ t('admin.ai_tagging.batch_ids_placeholder') }}"
-                                class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs font-bold mb-2">{{ t('admin.ai_tagging.max_items') }}</label>
-                                <input type="number" id="ai-tag-batch-max" min="1" value="5"
-                                    class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
-                            </div>
-                            <div class="flex items-end pb-1 gap-4">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="ai-tag-batch-dryrun" class="w-4 h-4 accent-primary" checked>
-                                    <span class="text-xs font-bold">{{ t('admin.ai_tagging.dry_run') }}</span>
-                                </label>
-                            </div>
-                        </div>
-                        <button id="ai-tag-batch-btn" class="btn-primary w-full">
-                            {{ t('admin.ai_tagging.start_batch') }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Results -->
-                <div id="ai-tag-results" style="display: none;">
-                    <h3 class="text-sm font-bold mb-3">{{ t('admin.ai_tagging.results') }}</h3>
-                    <div class="bg p-4 border">
-                        <div id="ai-tag-summary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3"></div>
-                        <div id="ai-tag-details" class="overflow-x-auto max-h-60 overflow-y-auto border">
-                            <table class="bg w-full text-left border-collapse">
-                                <thead class="border-b">
-                                    <tr class="text-secondary text-[10px]">
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.media') }}</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.added') }}</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.suggestions') }}</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.locked') }}</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('admin.ai_tagging.ignored') }}</th>
-                                        <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">{{ t('common.error') }}</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ai-tag-details-tbody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- AI Tag Review Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="ai-tag-review-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.ai_tag_review.title') }}</h2>
@@ -1225,62 +1249,68 @@
 
             <!-- AI Tagging Jobs Section (Phase 2.3) -->
             <div class="surface p-2 sm:p-6 border mb-4" id="ai-tagging-jobs-section">
-                <h2 class="text-base font-bold mb-4 pb-3 border-b">AI 打标任务</h2>
+                <div class="flex items-center justify-between mb-4 pb-3 border-b">
+                    <h2 class="text-base font-bold" data-i18n="admin.ai_tagging_jobs.title">AI 打标任务</h2>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span data-i18n="admin.ai_tagging_jobs.model_status_label">模型状态:</span>
+                        <span id="ai-jobs-model-status-badge" class="px-2 py-0.5 border text-secondary">—</span>
+                    </div>
+                </div>
 
                 <!-- Auto-tag Config Status -->
                 <div class="bg p-4 border mb-4">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">自动打标配置</h3>
-                        <button id="ai-jobs-refresh-config" class="btn-dark text-xs px-2 py-1">刷新</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.ai_tagging_jobs.auto_tag_config">自动打标配置</h3>
+                        <button id="ai-jobs-refresh-config" class="btn-dark text-xs px-2 py-1" data-i18n="admin.ai_tagging_jobs.refresh">刷新</button>
                     </div>
-                    <div id="ai-jobs-config-content" class="text-xs text-secondary">
+                    <div id="ai-jobs-config-content" class="text-xs text-secondary" data-i18n="admin.ai_tagging_jobs.loading">
                         加载中…
                     </div>
                 </div>
 
                 <!-- Create Manual Job -->
                 <div class="bg p-4 border mb-4">
-                    <h3 class="text-sm font-bold mb-3">创建 AI 打标任务</h3>
+                    <h3 class="text-sm font-bold mb-3" data-i18n="admin.ai_tagging_jobs.create_job">创建 AI 打标任务</h3>
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-xs font-bold mb-2">Media IDs（逗号分隔，留空自动选择未打标图片）</label>
-                            <input type="text" id="ai-job-media-ids" placeholder="如 1,2,3 或留空"
+                            <label class="block text-xs font-bold mb-2" data-i18n="admin.ai_tagging_jobs.media_ids_label">Media IDs（逗号分隔，留空自动选择未打标图片）</label>
+                            <input type="text" id="ai-job-media-ids" data-i18n-placeholder="admin.ai_tagging_jobs.media_ids_placeholder" placeholder="如 1,2,3 或留空"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div>
-                                <label class="block text-xs font-bold mb-2">最大数量</label>
+                                <label class="block text-xs font-bold mb-2" data-i18n="admin.ai_tagging_jobs.max_items">最大数量</label>
                                 <input type="number" id="ai-job-max-items" min="1" value="10"
                                     class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                             </div>
                             <div class="flex items-end pb-1">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="ai-job-dry-run" class="w-4 h-4 accent-primary">
-                                    <span class="text-xs font-bold">Dry Run</span>
+                                    <span class="text-xs font-bold" data-i18n="admin.ai_tagging_jobs.dry_run">Dry Run</span>
                                 </label>
                             </div>
                             <div class="flex items-end pb-1">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="ai-job-force-suggestions" class="w-4 h-4 accent-primary">
-                                    <span class="text-xs font-bold">全部为建议</span>
+                                    <span class="text-xs font-bold" data-i18n="admin.ai_tagging_jobs.force_suggestions">全部为建议</span>
                                 </label>
                             </div>
                             <div class="flex items-end pb-1">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" id="ai-job-only-untagged" class="w-4 h-4 accent-primary" checked>
-                                    <span class="text-xs font-bold">仅未打标</span>
+                                    <span class="text-xs font-bold" data-i18n="admin.ai_tagging_jobs.only_untagged">仅未打标</span>
                                 </label>
                             </div>
                         </div>
-                        <button id="ai-job-create-btn" class="btn-primary w-full">创建任务</button>
+                        <button id="ai-job-create-btn" class="btn-primary w-full" data-i18n="admin.ai_tagging_jobs.create_btn">创建任务</button>
                     </div>
                 </div>
 
                 <!-- Current Job Progress -->
                 <div id="ai-job-progress-container" class="bg p-4 border mb-4" style="display:none;">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">当前任务进度</h3>
-                        <button id="ai-job-cancel-btn" class="btn text-xs px-3 py-1 text-red-400 border-red-400 hover:bg-red-400/10">取消</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.ai_tagging_jobs.current_progress">当前任务进度</h3>
+                        <button id="ai-job-cancel-btn" class="btn text-xs px-3 py-1 text-red-400 border-red-400 hover:bg-red-400/10" data-i18n="admin.ai_tagging_jobs.cancel">取消</button>
                     </div>
                     <div id="ai-job-progress-bar" class="w-full bg-gray-700 h-2 mb-3 overflow-hidden">
                         <div id="ai-job-progress-fill" class="h-full bg-primary transition-all duration-300" style="width:0%"></div>
@@ -1293,29 +1323,29 @@
                 <!-- Job History -->
                 <div class="bg p-4 border">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">任务历史</h3>
-                        <button id="ai-jobs-refresh-history" class="btn-dark text-xs px-2 py-1">刷新</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.ai_tagging_jobs.job_history">任务历史</h3>
+                        <button id="ai-jobs-refresh-history" class="btn-dark text-xs px-2 py-1" data-i18n="admin.ai_tagging_jobs.refresh">刷新</button>
                     </div>
                     <div class="overflow-x-auto max-h-60 overflow-y-auto border">
                         <table class="bg w-full text-left border-collapse">
                             <thead class="border-b">
                                 <tr class="text-secondary text-[10px]">
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">ID</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">状态</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">来源</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">Scan</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">已处理</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">标签</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">建议</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">失败</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">本地化</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">创建时间</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_id">ID</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_status">状态</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_source">来源</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_scan">Scan</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_processed">已处理</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_tags">标签</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_suggestions">建议</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_failed">失败</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_localized">本地化</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.ai_tagging_jobs.col_created">创建时间</th>
                                 </tr>
                             </thead>
                             <tbody id="ai-jobs-history-tbody"></tbody>
                         </table>
                     </div>
-                    <div id="ai-jobs-history-empty" class="text-center py-4 text-secondary text-xs" style="display:none;">
+                    <div id="ai-jobs-history-empty" class="text-center py-4 text-secondary text-xs" style="display:none;" data-i18n="admin.ai_tagging_jobs.no_history">
                         暂无任务历史
                     </div>
                 </div>
@@ -1628,7 +1658,7 @@
             </div>
 
             <!-- Tags Management Section -->
-            <div class="surface p-2 sm:p-6 border mb-4">
+            <div class="surface p-2 sm:p-6 border mb-4" id="tags-management-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tags_management.title') }}</h2>
 
                 <div id="tag-stats" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -1732,7 +1762,7 @@
             </div>
 
             <!-- Tag Implications Section -->
-            <div class="surface p-2 sm:p-6 border mb-4">
+            <div class="surface p-2 sm:p-6 border mb-4" id="tag-implications-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.tags_implications.title') }}</h2>
                 <p class="text-xs text-secondary mb-3">{{ t('admin.tags_implications.description') }}</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1805,7 +1835,7 @@
 
             <!-- Content Classification Section (Phase 3) -->
             <div class="surface p-2 sm:p-6 border mb-4" id="content-classification-section">
-                <h2 class="text-base font-bold mb-4 pb-3 border-b">内容分类</h2>
+                <h2 class="text-base font-bold mb-4 pb-3 border-b" data-i18n="admin.content_classification.title">内容分类</h2>
 
                 <!-- Classification Method Banners (conditional, toggled by JS) -->
                 <div id="cls-banner-clip" class="px-4 py-3 mb-4 text-sm border" style="display:none; background-color: #f0fdf4; border-color: #86efac; color: #166534;">
@@ -1824,19 +1854,19 @@
                 <!-- Classification Stats -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                     <div class="bg p-3 border">
-                        <div class="text-xs text-secondary">总媒体</div>
+                        <div class="text-xs text-secondary" data-i18n="admin.content_classification.total_media">总媒体</div>
                         <div class="text-lg font-bold" id="cls-total">0</div>
                     </div>
                     <div class="bg p-3 border">
-                        <div class="text-xs text-secondary">已分类</div>
+                        <div class="text-xs text-secondary" data-i18n="admin.content_classification.classified">已分类</div>
                         <div class="text-lg font-bold" id="cls-classified">0</div>
                     </div>
                     <div class="bg p-3 border">
-                        <div class="text-xs text-secondary">未分类</div>
+                        <div class="text-xs text-secondary" data-i18n="admin.content_classification.unclassified">未分类</div>
                         <div class="text-lg font-bold" id="cls-unclassified">0</div>
                     </div>
                     <div class="bg p-3 border">
-                        <div class="text-xs text-secondary">已锁定</div>
+                        <div class="text-xs text-secondary" data-i18n="admin.content_classification.locked">已锁定</div>
                         <div class="text-lg font-bold" id="cls-locked">0</div>
                     </div>
                 </div>
@@ -1845,26 +1875,26 @@
                 <!-- Classification Config -->
                 <div class="bg p-4 border mb-4">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">分类配置</h3>
-                        <button id="cls-refresh-config" class="btn-dark text-xs px-2 py-1">刷新</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.content_classification.config_title">分类配置</h3>
+                        <button id="cls-refresh-config" class="btn-dark text-xs px-2 py-1" data-i18n="admin.content_classification.refresh">刷新</button>
                     </div>
                     <div id="cls-config-content" class="text-xs text-secondary">
-                        加载中…
+                        <span data-i18n="admin.content_classification.loading">加载中…</span>
                     </div>
                 </div>
 
                 <!-- Create Classification Job -->
                 <div class="bg p-4 border mb-4">
-                    <h3 class="text-sm font-bold mb-3">创建分类任务</h3>
+                    <h3 class="text-sm font-bold mb-3" data-i18n="admin.content_classification.create_job">创建分类任务</h3>
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-xs font-bold mb-2">Media IDs（逗号分隔，留空自动选择未分类图片）</label>
-                            <input type="text" id="cls-job-media-ids" placeholder="如 1,2,3 或留空"
+                            <label class="block text-xs font-bold mb-2" data-i18n="admin.content_classification.media_ids_label">Media IDs（逗号分隔，留空自动选择未分类图片）</label>
+                            <input type="text" id="cls-job-media-ids" data-i18n-placeholder="admin.content_classification.media_ids_placeholder" placeholder="如 1,2,3 或留空"
                                 class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             <div>
-                                <label class="block text-xs font-bold mb-2">最大数量</label>
+                                <label class="block text-xs font-bold mb-2" data-i18n="admin.content_classification.max_items">最大数量</label>
                                 <input type="number" id="cls-job-max-items" min="1" value="100"
                                     class="w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
                             </div>
@@ -1882,15 +1912,15 @@
                             </div>
                         </div>
                         <div class="text-xs text-secondary mb-2" data-i18n="admin.content_classification.force_reclassify_hint"></div>
-                        <button id="cls-job-create-btn" class="btn-primary w-full">创建分类任务</button>
+                        <button id="cls-job-create-btn" class="btn-primary w-full" data-i18n="admin.content_classification.create_btn">创建分类任务</button>
                     </div>
                 </div>
 
                 <!-- Current Job Progress -->
                 <div id="cls-job-progress-container" class="bg p-4 border mb-4" style="display:none;">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">当前任务进度</h3>
-                        <button id="cls-job-cancel-btn" class="btn text-xs px-3 py-1 text-red-400 border-red-400 hover:bg-red-400/10">取消</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.content_classification.current_progress">当前任务进度</h3>
+                        <button id="cls-job-cancel-btn" class="btn text-xs px-3 py-1 text-red-400 border-red-400 hover:bg-red-400/10" data-i18n="admin.content_classification.cancel">取消</button>
                     </div>
                     <div class="w-full bg-gray-700 h-2 mb-3 overflow-hidden">
                         <div id="cls-job-progress-fill" class="h-full bg-primary transition-all duration-300" style="width:0%"></div>
@@ -1903,35 +1933,35 @@
                 <!-- Job History -->
                 <div class="bg p-4 border">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-bold">任务历史</h3>
-                        <button id="cls-jobs-refresh-history" class="btn-dark text-xs px-2 py-1">刷新</button>
+                        <h3 class="text-sm font-bold" data-i18n="admin.content_classification.job_history">任务历史</h3>
+                        <button id="cls-jobs-refresh-history" class="btn-dark text-xs px-2 py-1" data-i18n="admin.content_classification.refresh">刷新</button>
                     </div>
                     <div class="overflow-x-auto max-h-60 overflow-y-auto border">
                         <table class="bg w-full text-left border-collapse">
                             <thead class="border-b">
                                 <tr class="text-secondary text-[10px]">
                                     <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">ID</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">状态</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">来源</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">已处理</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">动漫</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">非动漫</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">未知</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">失败</th>
-                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium">创建时间</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_status">状态</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_source">来源</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_processed">已处理</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_anime">动漫</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_non_anime">非动漫</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_unknown">未知</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_failed">失败</th>
+                                    <th class="sticky top-0 z-10 bg py-1 px-2 font-medium" data-i18n="admin.content_classification.col_created">创建时间</th>
                                 </tr>
                             </thead>
                             <tbody id="cls-jobs-history-tbody"></tbody>
                         </table>
                     </div>
-                    <div id="cls-jobs-history-empty" class="text-center py-4 text-secondary text-xs" style="display:none;">
+                    <div id="cls-jobs-history-empty" class="text-center py-4 text-secondary text-xs" style="display:none;" data-i18n="admin.content_classification.no_history">
                         暂无任务历史
                     </div>
                 </div>
             </div>
 
             <!-- Albums Management Section -->
-            <div class="surface p-2 sm:p-6 border">
+            <div class="surface p-2 sm:p-6 border" id="albums-management-section">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.albums_management.title') }}</h2>
 
                 <div id="album-stats" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">

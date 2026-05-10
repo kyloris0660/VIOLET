@@ -198,6 +198,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [Entity Alias Resolver](docs/entity-alias-resolver.md) | Proper-noun alias resolution for character/copyright/artist tags |
 | [iCloud Safe Ingestion](docs/icloud-safe-ingestion.md) | Preflight scan, hydrated-only, timeout protection |
 | [Content Classification](docs/content-classification.md) | Content classifier design and evaluation harness |
+| [Test Workflow](docs/test-workflow.md) | Test tiers, environment setup, Playwright E2E |
 | [Project Roadmap](docs/project-roadmap.md) | Full phase plan |
 | [Current Handoff](docs/current-handoff.md) | Latest state for resuming development |
 | [Development Log](docs/local-anime-library-devlog.md) | Per-phase technical notes |
@@ -213,6 +214,9 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 2.4** — iCloud large library readiness / safe ingestion (done)
 - **Phase 3** — Content classification foundation + evaluation harness (done — heuristic baseline only)
 - **Phase 3.1** — CLIP zero-shot content classifier (done — anime recall >= 80%, non-anime FP <= 15%)
+- **Phase 3.1.1a** — Environment/DB/Storage safety foundation (done)
+- **Phase 3.1.1b** — Fixture-based test workflow foundation (done)
+- **Phase 3.1.2** — Admin UI closeout + gallery content-class filter (in progress)
 - **Phase 4** — Filesystem watcher & scheduled scans
 
 ## Tech Stack

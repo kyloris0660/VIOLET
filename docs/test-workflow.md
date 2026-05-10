@@ -16,6 +16,7 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_destructive_gate.py` | Destructive gate conditions, storage path containment |
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
+| `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -36,6 +37,16 @@ Requires `VIOLET_RUN_REAL_E2E=1` and a running V.I.O.L.E.T. server. Some tests a
 | `tests/e2e/fixture-import.spec.ts` | `VIOLET_RUN_REAL_E2E=1` + `VIOLET_TEST_FIXTURE_PATH` | Preflight, dry-run, import, idempotency |
 
 ## Environment Setup
+
+### Standardized Test Environment
+
+Load the test environment in one step (PowerShell):
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+```
+
+This sets `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT`, `VIOLET_TEST_FIXTURE_PATH`, `VIOLET_RUN_REAL_E2E=1`, and `VIOLET_BASE_URL=http://localhost:8001`.
 
 ### Prerequisites
 
@@ -99,7 +110,13 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py -v
+pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py -v
+```
+
+### Smoke Validation (Tier 1)
+
+```powershell
+pytest tests/test_smoke_validation.py -v
 ```
 
 ### Fixture Validation (Tier 2)

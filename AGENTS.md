@@ -48,7 +48,47 @@ Login endpoint: `POST /api/admin/login` with `{"username": "admin", "password": 
 
 ### Testing
 
-No automated test suite. Verify changes manually:
+The project has a three-tier test infrastructure. See `docs/test-workflow.md` for full details.
+
+**Standardized test environment** — load via PowerShell:
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+```
+
+**Tier 1 — Unit tests** (no external dependencies):
+
+```powershell
+pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py -v
+```
+
+| Test file | Coverage |
+|-----------|----------|
+| `tests/test_env_safety.py` | VIOLET_ENV, STORAGE_ROOT, test DB fail-closed, assert_test_db |
+| `tests/test_destructive_gate.py` | Destructive gate conditions, storage path containment |
+| `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
+| `tests/test_content_classification.py` | CLIP + heuristic classifiers |
+| `tests/test_smoke_validation.py` | Full pipeline smoke validation |
+
+**Tier 2 — Fixture validation** (requires `VIOLET_TEST_FIXTURE_PATH`):
+
+```powershell
+pytest tests/test_fixture_validation.py -v
+```
+
+**Tier 3 — Playwright E2E** (requires `VIOLET_RUN_REAL_E2E=1` + running server):
+
+```powershell
+npx playwright test tests/e2e/ --project=edge
+```
+
+| Test file | Coverage |
+|-----------|----------|
+| `tests/e2e/config-diagnostics-e2e.spec.ts` | Config diagnostics API sections |
+| `tests/e2e/gallery-browse.spec.ts` | Gallery grid, media detail, thumbnails |
+| `tests/e2e/fixture-import.spec.ts` | Preflight, dry-run, import, idempotency |
+
+For manual verification beyond test suites:
 - API: use curl / httpie / PowerShell `Invoke-RestMethod` against `http://localhost:8000/api/...`
 - UI: open `http://localhost:8000` in browser
 - Always test with a small directory first, never directly against iCloud Photos without dry-run

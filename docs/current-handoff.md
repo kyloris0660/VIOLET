@@ -1,24 +1,28 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.1.1a — Environment/DB/Storage Safety Foundation (2026-05-10).
-> Read this file at the start of any new Cursor conversation to resume development.
+> Last updated after Phase 3.1.1c — Smoke Validation + Unicode Fix (2026-05-11).
+> Read this file at the start of any new conversation to resume development.
 
 ## Repository State
 
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.1-clip-anime-classifier` (PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) — Phase 3.1 CLIP classifier) |
+| **Branch** | `main` (all prior phases merged) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
-| **DB** | `blombooru` on `localhost:5432`, user `postgres` |
+| **DB (dev)** | `blombooru` on `localhost:5432`, user `postgres` |
+| **DB (test)** | `blombooru_test` on `localhost:5432` — created via `scripts/setup_test_db.py` |
 | **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
+| **Test server** | `. "$env:USERPROFILE\.violet\test-env.ps1"` → `python run.py --debug --port 8001` → `http://localhost:8001` |
 | **Admin credentials** | `admin` / `admin123` |
-| **Phase 2.4 status** | Merged on `main` |
-| **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) open, pending merge |
+| **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) merged |
 | **Phase 3.1.1a status** | PR [#26](https://github.com/kyloris0660/AnimeLocalBooru/pull/26) merged |
-| **Phase 3.1.1b status** | PR pending — fixture-based test workflow foundation |
+| **Phase 3.1.1b status** | PR [#28](https://github.com/kyloris0660/AnimeLocalBooru/pull/28) merged |
+| **Phase 3.1.1c (PR #29)** | PR [#29](https://github.com/kyloris0660/AnimeLocalBooru/pull/29) merged — full pipeline smoke validation |
+| **Unicode fix (PR #30)** | PR [#30](https://github.com/kyloris0660/AnimeLocalBooru/pull/30) merged — harden Unicode scan import failure handling |
+| **Phase 3.1.2 status** | In progress — Admin UI closeout + gallery content-class filter |
 
 ## Mandatory Workflow Rules
 
@@ -473,11 +477,25 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 4
+## Recommended Next Phase: 3.1.2, then 4
 
-**Phase 3.1 is complete** (PR #25). The CLIP zero-shot classifier meets all gate criteria (anime recall >= 80%, non-anime FP rate <= 15%). Content classification can now be relied upon for filtering.
+**Phase 3.1.2 — Admin UI Closeout + Gallery Content-Class Filter** (in progress):
 
-**Phase 4 — iCloud Photos Watcher / Scheduled Scan**:
+PR 1 (`phase3.1.2a-admin-ui-closeout`):
+- Documentation closeout (6 files updated with PR #27-#30 info)
+- Full admin UI audit (all sections, HTML→JS→backend tracing)
+- AI tagging UI consolidation (old direct section moved to Developer Tools as legacy)
+- Admin navigation/hierarchy improvements (section quick nav, collapsible groups)
+- i18n fixes (~60 new locale keys, replace all hardcoded strings)
+- Locale key consistency (en.json, zh-cn.json, ru.json, sv.json)
+- Real browser Edge E2E validation
+
+PR 2 (`phase3.1.2b-gallery-content-class-filter`):
+- Gallery sidebar content-class filter (5 modes: 全部, 动漫+未分类, 仅动漫, 仅非动漫, 仅未分类)
+- Backend `content_class` param on `GET /api/media/`
+- Deferred: Phase 3.2 (model improvements) — not in scope
+
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.1.2):
 
 1. Filesystem watcher or periodic cron-style scan
 2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
@@ -493,6 +511,35 @@ The next development phase should include a developer/service control panel:
 - Show background workers status (tag translation worker, entity alias resolver)
 - One-click restart after config changes (optional)
 - Diagnostics for port conflicts and stale server processes (optional)
+
+## Test Environment
+
+### Standardized Test Env Loading
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+```
+
+This sets: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH=C:\Users\kyloris\Pictures\VioletTestFixture`, `VIOLET_RUN_REAL_E2E=1`, `VIOLET_BASE_URL=http://localhost:8001`.
+
+### Test Server
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+python run.py --debug --port 8001
+```
+
+### Test Tiers
+
+| Tier | Command | Requirements |
+|------|---------|-------------|
+| 1 — Unit tests | `pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py -v` | None (mocks only) |
+| 2 — Fixture validation | `pytest tests/test_fixture_validation.py -v` | `VIOLET_TEST_FIXTURE_PATH` |
+| 3 — Playwright E2E | `npx playwright test tests/e2e/*.spec.ts --project=edge` | Running test server + `VIOLET_RUN_REAL_E2E=1` |
+
+### VioletTestFixture
+
+Location: `C:\Users\kyloris\Pictures\VioletTestFixture` — contains curated images for E2E testing (anime, non_anime, mixed subfolders). Read-only; never modified by tests.
 
 ## Test Directory
 
@@ -577,7 +624,28 @@ Established a reproducible, fixture-based E2E test workflow using isolated test 
 | `tests/e2e/config-diagnostics-e2e.spec.ts` | Config diagnostics E2E (6 tests) |
 | `docs/test-workflow.md` | Test workflow documentation |
 
-### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
+### Fix: Storage Root Containment with Path Semantics (PR #27)
+
+Hardened storage path containment to use proper `PurePosixPath` / `PureWindowsPath` semantics:
+
+- Replaced string-prefix `startswith()` checks with `PurePath.is_relative_to()` for traversal prevention
+- Storage root containment now correctly handles edge cases: `../` traversal, absolute paths, UNC paths, empty paths
+- Tests in `tests/test_destructive_gate.py` verify all containment scenarios
+
+### Phase 3.1.1c — Full Pipeline Smoke Validation (PR #29)
+
+Local full pipeline smoke validation helper for verifying the complete import → tag → classify → search workflow:
+
+- **`scripts/smoke_validate_pipeline.py`**: End-to-end validation script covering preflight, import, AI tagging, content classification, gallery browse, and search
+- Verified entire pipeline runs cleanly against isolated test environment
+- All existing unit tests (Tier 1) and fixture validation tests (Tier 2) pass
+
+### Fix: Harden Unicode Scan Import Failure Handling (PR #30)
+
+Fixed crash during scan import when files with certain Unicode characters in their paths failed to hash:
+
+- Hardened `calculate_file_hash` and scan pipeline to handle Unicode path edge cases gracefully
+- Files that fail to hash are now counted as `failed` rather than crashing the entire scan job
 
 Post-Phase 2.4 infrastructure fix for LLM connectivity issues behind GFW:
 
