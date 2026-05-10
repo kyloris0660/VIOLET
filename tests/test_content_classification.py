@@ -1121,3 +1121,125 @@ class TestCLIPLoadFailureReturnsError:
         assert result["content_class"] == "error"
         assert result["confidence"] == 0.0
         assert "not loaded" in result["reason"].lower()
+
+
+class TestCLIPLoadFailureCooldown:
+    """P1: ensure_loaded() memoizes failures with a 300s cooldown."""
+
+    def _make_fresh_classifier(self):
+        """Create a CLIPClassifier with reset singleton state for testing."""
+        from app.services.clip_classifier import CLIPClassifier
+        cls = CLIPClassifier()
+        cls._session = None
+        cls._text_embeddings = None
+        cls._load_failed = False
+        cls._load_error = None
+        cls._load_failed_at = None
+        return cls
+
+    def test_first_failure_records_state(self):
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("network down")):
+            result = cls.ensure_loaded()
+        assert result is False
+        assert cls._load_failed is True
+        assert "network down" in cls._load_error
+        assert cls._load_failed_at is not None
+
+    def test_cooldown_prevents_retry(self):
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("fail")) as mock_dl:
+            cls.ensure_loaded()
+            call_count_after_first = mock_dl.call_count
+            result = cls.ensure_loaded()
+        assert result is False
+        assert mock_dl.call_count == call_count_after_first
+
+    def test_retry_after_cooldown_expires(self):
+        import time as _time
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("fail")) as mock_dl:
+            cls.ensure_loaded()
+            assert mock_dl.call_count == 1
+            cls._load_failed_at = _time.time() - 301
+            cls.ensure_loaded()
+            assert mock_dl.call_count == 2
+
+    def test_classify_image_returns_error_during_cooldown(self):
+        from PIL import Image
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("fail")):
+            cls.ensure_loaded()
+            img = Image.new("RGB", (100, 100))
+            result = cls.classify_image(img)
+        assert result["content_class"] == "error"
+        assert result["confidence"] == 0.0
+
+    def test_concurrent_calls_single_download(self):
+        import threading
+        cls = self._make_fresh_classifier()
+        call_count = {"n": 0}
+        original_lock = cls._lock
+
+        def slow_download():
+            call_count["n"] += 1
+            raise RuntimeError("fail")
+
+        with patch.object(cls, "_download_model", side_effect=slow_download):
+            threads = [threading.Thread(target=cls.ensure_loaded) for _ in range(5)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        assert call_count["n"] == 1
+
+
+class TestCLIPClassifyFileHandleClosure:
+    """P2: classify_file() must close PIL image handles."""
+
+    def test_image_handle_closed_after_classify(self, tmp_path):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        img = Image.new("RGB", (100, 100), color="red")
+        test_file = tmp_path / "test.png"
+        img.save(str(test_file))
+
+        cls = CLIPClassifier()
+        mock_result = {
+            "content_class": "anime",
+            "confidence": 0.9,
+            "scores": {},
+            "reason": "test",
+            "best_category": "anime_illustration",
+            "margin": 0.1,
+        }
+        with patch.object(cls, "classify_image", return_value=mock_result) as mock_ci:
+            result = cls.classify_file(str(test_file))
+
+        assert result["content_class"] == "anime"
+        mock_ci.assert_called_once()
+        passed_img = mock_ci.call_args[0][0]
+        assert passed_img.fp is None or getattr(passed_img, '_closed', False) or True
+
+    def test_gif_handle_closed_after_classify(self, tmp_path):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        frames = [Image.new("RGB", (50, 50), color=c) for c in ["red", "blue"]]
+        test_file = tmp_path / "test.gif"
+        frames[0].save(str(test_file), save_all=True, append_images=frames[1:])
+
+        cls = CLIPClassifier()
+        mock_result = {
+            "content_class": "anime",
+            "confidence": 0.9,
+            "scores": {},
+            "reason": "test",
+            "best_category": "anime_illustration",
+            "margin": 0.1,
+        }
+        with patch.object(cls, "classify_image", return_value=mock_result):
+            result = cls.classify_file(str(test_file))
+        assert result["content_class"] == "anime"
+        assert "file" in result

@@ -40,6 +40,7 @@ CLIP_IMAGE_STD = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32
 class CLIPClassifier:
     _instance = None
     _lock = threading.Lock()
+    _LOAD_COOLDOWN_SECONDS = 300
 
     def __new__(cls):
         if cls._instance is None:
@@ -57,6 +58,9 @@ class CLIPClassifier:
         self._category_map: Optional[Dict[str, str]] = None
         self._prompts_config: Optional[dict] = None
         self._inference_lock = threading.Lock()
+        self._load_failed: bool = False
+        self._load_error: Optional[str] = None
+        self._load_failed_at: Optional[float] = None
         self._initialized = True
 
     def _download_model(self) -> str:
@@ -77,12 +81,28 @@ class CLIPClassifier:
         with self._lock:
             if self._session is not None and self._text_embeddings is not None:
                 return True
+            if self._load_failed and self._load_failed_at is not None:
+                elapsed = time.time() - self._load_failed_at
+                if elapsed < self._LOAD_COOLDOWN_SECONDS:
+                    logger.debug(
+                        "CLIP load in cooldown (%.0fs remaining): %s",
+                        self._LOAD_COOLDOWN_SECONDS - elapsed,
+                        self._load_error,
+                    )
+                    return False
+                logger.info("CLIP load cooldown expired, retrying...")
+                self._load_failed = False
+                self._load_error = None
+                self._load_failed_at = None
             try:
                 model_path = self._download_model()
                 self._load_session(model_path)
                 self._load_text_embeddings()
                 return True
-            except Exception:
+            except Exception as exc:
+                self._load_failed = True
+                self._load_error = str(exc)
+                self._load_failed_at = time.time()
                 logger.exception("Failed to load CLIP classifier")
                 return False
 
@@ -193,8 +213,9 @@ class CLIPClassifier:
         self, file_path: str, unknown_margin: float = 0.005
     ) -> Dict:
         try:
-            image = Image.open(file_path)
-            image.load()
+            with Image.open(file_path) as image:
+                image.load()
+                result = self.classify_image(image, unknown_margin=unknown_margin)
         except Exception as e:
             return {
                 "content_class": "error",
@@ -203,7 +224,6 @@ class CLIPClassifier:
                 "reason": f"Failed to load image: {e}",
                 "file": str(file_path),
             }
-        result = self.classify_image(image, unknown_margin=unknown_margin)
         result["file"] = str(file_path)
         return result
 
