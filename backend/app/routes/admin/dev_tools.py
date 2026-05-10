@@ -83,22 +83,8 @@ def _compute_gate_diagnostic() -> dict:
 
 
 def _resolve_stored_media_path(stored_path: str) -> Optional[Path]:
-    """Normalize a DB-stored media path and resolve it against BASE_DIR.
-
-    Handles Windows backslash / POSIX forward-slash mismatches so that
-    ``media\\original\\abc.jpg`` and ``media/original/abc.jpg`` both
-    resolve to the same filesystem path.
-
-    Returns None for absolute paths (user source files stored in
-    Media.source — these are not app-managed and must never be
-    candidates for deletion).
-    """
-    if not stored_path:
-        return None
-    normalized = stored_path.replace("\\", "/")
-    if normalized.startswith("/") or Path(normalized).is_absolute():
-        return None
-    return settings.STORAGE_ROOT / normalized
+    """Normalize a DB-stored media path and resolve it against STORAGE_ROOT."""
+    return settings.resolve_storage_path(stored_path)
 
 
 def _is_dangerous_path(source_path: str) -> bool:

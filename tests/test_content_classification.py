@@ -1248,6 +1248,35 @@ class TestCLIPClassifyFileHandleClosure:
 class TestResolveStoredMediaPath:
     """Tests for _resolve_stored_media_path() path normalization helper."""
 
+    @staticmethod
+    def _make_resolver(storage_root):
+        """Build a resolve_storage_path callable rooted at *storage_root*."""
+        import re
+        from pathlib import Path, PureWindowsPath
+        def _resolve(stored_path):
+            if not stored_path:
+                return None
+            raw = stored_path
+            if raw.startswith("\\\\") or raw.startswith("//"):
+                return None
+            normalized = raw.replace("\\", "/")
+            if normalized.startswith("/"):
+                return None
+            if re.match(r"^[A-Za-z]:", normalized):
+                return None
+            if PureWindowsPath(raw).is_absolute():
+                return None
+            probe = Path(normalized)
+            if probe.is_absolute():
+                return None
+            if ".." in probe.parts:
+                return None
+            resolved = (storage_root / normalized).resolve()
+            if not str(resolved).startswith(str(storage_root.resolve())):
+                return None
+            return resolved
+        return _resolve
+
     def test_windows_backslash_path(self, tmp_path):
         from app.routes.admin.dev_tools import _resolve_stored_media_path
 
@@ -1256,12 +1285,12 @@ class TestResolveStoredMediaPath:
         test_file.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.STORAGE_ROOT = tmp_path
+            mock_settings.resolve_storage_path = self._make_resolver(tmp_path)
             result = _resolve_stored_media_path("media\\original\\abc.jpg")
 
         assert result is not None
         assert result.exists()
-        assert result == tmp_path / "media/original/abc.jpg"
+        assert result == (tmp_path / "media/original/abc.jpg").resolve()
 
     def test_posix_forward_slash_path(self, tmp_path):
         from app.routes.admin.dev_tools import _resolve_stored_media_path
@@ -1271,12 +1300,12 @@ class TestResolveStoredMediaPath:
         test_file.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.STORAGE_ROOT = tmp_path
+            mock_settings.resolve_storage_path = self._make_resolver(tmp_path)
             result = _resolve_stored_media_path("media/original/abc.jpg")
 
         assert result is not None
         assert result.exists()
-        assert result == tmp_path / "media/original/abc.jpg"
+        assert result == (tmp_path / "media/original/abc.jpg").resolve()
 
     def test_separator_mismatch_resolves_same(self, tmp_path):
         from app.routes.admin.dev_tools import _resolve_stored_media_path
@@ -1286,7 +1315,7 @@ class TestResolveStoredMediaPath:
         test_file.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.STORAGE_ROOT = tmp_path
+            mock_settings.resolve_storage_path = self._make_resolver(tmp_path)
             win_result = _resolve_stored_media_path("media\\original\\abc.jpg")
             posix_result = _resolve_stored_media_path("media/original/abc.jpg")
 
@@ -1312,7 +1341,7 @@ class TestResolveStoredMediaPath:
         original.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.STORAGE_ROOT = tmp_path
+            mock_settings.resolve_storage_path = self._make_resolver(tmp_path)
             media_path = _resolve_stored_media_path("media\\original\\abc.jpg")
             thumb_path = _resolve_stored_media_path("media\\thumbnails\\abc_thumb.jpg")
 

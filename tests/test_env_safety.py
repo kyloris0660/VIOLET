@@ -280,3 +280,167 @@ class TestDestructiveGateStorageConditions:
         tsr = str(tmp_path / "any_path_works")
         diag = self._get_gate(tmp_path, storage_root=tsr, test_storage_root=tsr)
         assert diag["gate_would_pass"] is True
+
+
+# ---------------------------------------------------------------------------
+# 7. resolve_storage_path / storage_relative_path helpers
+# ---------------------------------------------------------------------------
+
+class TestStorageRootMediaPathHelpers:
+
+    def _make_settings(self, tmp_path, storage_root=""):
+        env = {"VIOLET_ENV": "development", "POSTGRES_DB": "blombooru",
+               "VIOLET_STORAGE_ROOT": storage_root, "TEST_DATABASE_URL": ""}
+        with patch.dict(os.environ, env, clear=False):
+            return _reload_settings(tmp_path)
+
+    def test_resolve_typical_relative_path(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media/original/abc.jpg")
+        assert result == (sr / "media" / "original" / "abc.jpg").resolve()
+
+    def test_resolve_backslash_path(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media\\original\\abc.jpg")
+        assert result == (sr / "media" / "original" / "abc.jpg").resolve()
+
+    def test_resolve_rejects_empty(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("") is None
+        assert s.resolve_storage_path(None) is None
+
+    def test_resolve_rejects_absolute_unix(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("/etc/passwd") is None
+
+    def test_resolve_rejects_absolute_windows(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("C:\\Users\\someone\\file.jpg") is None
+        assert s.resolve_storage_path("C:/Users/someone/file.jpg") is None
+        assert s.resolve_storage_path("D:\\media\\file.jpg") is None
+
+    def test_resolve_rejects_unc_path(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("\\\\server\\share\\file.jpg") is None
+        assert s.resolve_storage_path("//server/share/file.jpg") is None
+
+    def test_resolve_rejects_traversal(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("../outside") is None
+        assert s.resolve_storage_path("media/../../../etc/passwd") is None
+        assert s.resolve_storage_path("media/original/../../..") is None
+
+    def test_storage_relative_path_posix(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        abs_path = sr / "media" / "original" / "abc.jpg"
+        rel = s.storage_relative_path(abs_path)
+        assert "/" in rel or "\\" not in rel
+        assert rel == "media/original/abc.jpg"
+
+    def test_storage_relative_path_rejects_outside(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        outside = tmp_path / "elsewhere" / "file.jpg"
+        with pytest.raises(ValueError):
+            s.storage_relative_path(outside)
+
+    def test_round_trip(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        abs_path = sr / "media" / "original" / "test.png"
+        rel = s.storage_relative_path(abs_path)
+        resolved = s.resolve_storage_path(rel)
+        assert resolved == abs_path.resolve()
+
+    def test_unset_storage_root_falls_back_to_code_root(self, tmp_path):
+        s = self._make_settings(tmp_path, "")
+        assert s.STORAGE_ROOT == s.CODE_ROOT
+        result = s.resolve_storage_path("media/original/x.jpg")
+        assert result == (s.CODE_ROOT / "media" / "original" / "x.jpg").resolve()
+
+    def test_worktree_scenario_code_root_ne_storage_root(self, tmp_path):
+        sr = tmp_path / "separate_storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.STORAGE_ROOT != s.CODE_ROOT
+        result = s.resolve_storage_path("media/original/x.jpg")
+        assert str(s.CODE_ROOT) not in str(result)
+        assert result == (sr / "media" / "original" / "x.jpg").resolve()
+
+
+# ---------------------------------------------------------------------------
+# 8. Media path flow tests (CODE_ROOT != STORAGE_ROOT)
+# ---------------------------------------------------------------------------
+
+class TestMediaPathFlow:
+    """Simulate the upload→store→serve round-trip when CODE_ROOT != STORAGE_ROOT."""
+
+    def _make_settings(self, tmp_path, storage_root=""):
+        env = {"VIOLET_ENV": "development", "POSTGRES_DB": "blombooru",
+               "VIOLET_STORAGE_ROOT": storage_root, "TEST_DATABASE_URL": ""}
+        with patch.dict(os.environ, env, clear=False):
+            return _reload_settings(tmp_path)
+
+    def test_upload_relativize_then_serve_resolve(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        (sr / "media" / "original").mkdir(parents=True)
+        img = sr / "media" / "original" / "abc123.jpg"
+        img.write_bytes(b"\xff\xd8\xff\xe0")
+
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.STORAGE_ROOT != s.CODE_ROOT
+
+        db_path = s.storage_relative_path(img)
+        assert db_path == "media/original/abc123.jpg"
+
+        served = s.resolve_storage_path(db_path)
+        assert served == img.resolve()
+        assert served.exists()
+
+    def test_thumbnail_relativize_then_resolve(self, tmp_path):
+        sr = tmp_path / "storage"
+        (sr / "media" / "thumbnails").mkdir(parents=True)
+        thumb = sr / "media" / "thumbnails" / "abc123.jpg"
+        thumb.write_bytes(b"\xff\xd8\xff\xe0")
+
+        s = self._make_settings(tmp_path, str(sr))
+        db_thumb = s.storage_relative_path(thumb)
+        assert db_thumb == "media/thumbnails/abc123.jpg"
+
+        resolved = s.resolve_storage_path(db_thumb)
+        assert resolved == thumb.resolve()
+
+    def test_resolve_never_falls_into_code_root(self, tmp_path):
+        sr = tmp_path / "ext_storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media/original/test.png")
+        assert str(s.CODE_ROOT) not in str(result)
+        assert str(result).startswith(str(sr.resolve()))
+
+    def test_backslash_db_path_resolves_correctly(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media\\original\\test.png")
+        expected = (sr / "media" / "original" / "test.png").resolve()
+        assert result == expected

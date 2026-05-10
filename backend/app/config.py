@@ -1,7 +1,8 @@
 import json
 import os
+import re
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -119,6 +120,43 @@ class Settings:
     @property
     def TEST_STORAGE_ROOT_EXPLICITLY_SET(self) -> bool:
         return bool(os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip())
+
+    def resolve_storage_path(self, stored_path: str) -> Optional[Path]:
+        """Resolve a DB-stored relative path against STORAGE_ROOT.
+
+        Returns None for empty, absolute, or traversal paths.
+        """
+        if not stored_path:
+            return None
+        raw = stored_path
+        if raw.startswith("\\\\") or raw.startswith("//"):
+            return None
+        normalized = raw.replace("\\", "/")
+        if normalized.startswith("/"):
+            return None
+        if re.match(r"^[A-Za-z]:", normalized):
+            return None
+        if PureWindowsPath(raw).is_absolute():
+            return None
+        probe = Path(normalized)
+        if probe.is_absolute():
+            return None
+        if ".." in probe.parts:
+            return None
+        resolved = (self.STORAGE_ROOT / normalized).resolve()
+        if not str(resolved).startswith(str(self.STORAGE_ROOT.resolve())):
+            return None
+        return resolved
+
+    def storage_relative_path(self, absolute_path: Path) -> str:
+        """Return POSIX-style relative path from STORAGE_ROOT for DB storage.
+
+        Raises ValueError if the path is not under STORAGE_ROOT.
+        """
+        resolved = absolute_path.resolve()
+        storage_resolved = self.STORAGE_ROOT.resolve()
+        rel = resolved.relative_to(storage_resolved)
+        return str(rel).replace("\\", "/")
 
     def _load_file_settings(self) -> dict:
         if self.SETTINGS_FILE.exists():

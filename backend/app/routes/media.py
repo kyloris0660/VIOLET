@@ -141,8 +141,8 @@ def process_and_save_media(
     else:
         logger.warning("Thumbnail generation failed")
 
-    relative_path = file_path.relative_to(settings.BASE_DIR)
-    relative_thumb = thumbnail_path.relative_to(settings.BASE_DIR) if thumbnail_generated else None
+    relative_path = settings.storage_relative_path(file_path)
+    relative_thumb = settings.storage_relative_path(thumbnail_path) if thumbnail_generated else None
 
     media = Media(
         filename=unique_filename,
@@ -343,7 +343,9 @@ async def get_media_file(media_id: int, db: Session = Depends(get_db)):
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")
     
-    file_path = settings.BASE_DIR / media.path
+    file_path = settings.resolve_storage_path(media.path)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Media file not found")
     return await serve_media_file(file_path, media.mime_type)
 
 @router.get("/{media_id}/thumbnail")
@@ -353,7 +355,9 @@ async def get_media_thumbnail(media_id: int, db: Session = Depends(get_db)):
     if not media or not media.thumbnail_path:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
     
-    thumb_path = settings.BASE_DIR / media.thumbnail_path
+    thumb_path = settings.resolve_storage_path(media.thumbnail_path)
+    if not thumb_path:
+        raise HTTPException(status_code=404, detail="Thumbnail file not found")
     return await serve_media_file(thumb_path, "image/jpeg", "Thumbnail file not found")
 
 @router.get("/{media_id}/metadata")
@@ -366,10 +370,10 @@ async def get_media_metadata(
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")
     
-    file_path = settings.BASE_DIR / media.path
-    if not file_path.exists():
+    file_path = settings.resolve_storage_path(media.path)
+    if not file_path or not file_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found")
-    
+
     return extract_image_metadata(file_path)
 
 @router.post("/", response_model=MediaResponse)
@@ -548,12 +552,14 @@ async def delete_media(
     
     tag_ids = [tag.id for tag in media.tags]
     
-    file_path = settings.BASE_DIR / media.path
-    file_path.unlink(missing_ok=True)
-    
+    file_path = settings.resolve_storage_path(media.path)
+    if file_path:
+        file_path.unlink(missing_ok=True)
+
     if media.thumbnail_path:
-        thumb_path = settings.BASE_DIR / media.thumbnail_path
-        thumb_path.unlink(missing_ok=True)
+        thumb_path = settings.resolve_storage_path(media.thumbnail_path)
+        if thumb_path:
+            thumb_path.unlink(missing_ok=True)
     
     db.delete(media)
     db.commit()
@@ -590,8 +596,9 @@ async def share_media(
         
         # Trigger background stripping
         if media.mime_type and media.mime_type.startswith('image/'):
-            file_path = settings.BASE_DIR / media.path
-            background_tasks.add_task(create_stripped_media_cache, file_path, media.mime_type)
+            file_path = settings.resolve_storage_path(media.path)
+            if file_path:
+                background_tasks.add_task(create_stripped_media_cache, file_path, media.mime_type)
     
     db.commit()
     invalidate_media_item_cache(media_id)
@@ -619,8 +626,9 @@ async def unshare_media(
     
     # Cleanup cache
     try:
-        file_path = settings.BASE_DIR / media.path
-        delete_media_cache(file_path)
+        file_path = settings.resolve_storage_path(media.path)
+        if file_path:
+            delete_media_cache(file_path)
     except Exception as e:
         logger.error(f"Failed to cleanup cache for unshared media: {e}")
     

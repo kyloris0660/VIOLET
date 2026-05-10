@@ -49,9 +49,11 @@ async def get_shared_file(share_uuid: str, request: Request, db: Session = Depen
     if not media:
         raise HTTPException(status_code=404, detail="Shared media not found")
     
-    file_path = settings.BASE_DIR / media.path
+    file_path = settings.resolve_storage_path(media.path)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Media file not found")
     strip_metadata = not media.share_ai_metadata
-    
+
     return await serve_media_file(file_path, media.mime_type, strip_metadata=strip_metadata)
 
 @router.get("/{share_uuid}/thumbnail")
@@ -66,7 +68,9 @@ async def get_shared_thumbnail(share_uuid: str, request: Request, db: Session = 
     if not media or not media.thumbnail_path:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
     
-    thumb_path = settings.BASE_DIR / media.thumbnail_path
+    thumb_path = settings.resolve_storage_path(media.thumbnail_path)
+    if not thumb_path:
+        raise HTTPException(status_code=404, detail="Thumbnail file not found")
     return await serve_media_file(thumb_path, "image/jpeg", "Thumbnail file not found")
 
 @router.get("/{share_uuid}/metadata")
@@ -84,10 +88,10 @@ async def get_shared_metadata(share_uuid: str, request: Request, db: Session = D
     if not media.share_ai_metadata:
         raise HTTPException(status_code=403, detail="AI metadata not shared")
     
-    file_path = settings.BASE_DIR / media.path
-    if not file_path.exists():
+    file_path = settings.resolve_storage_path(media.path)
+    if not file_path or not file_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found")
-    
+
     return extract_media_metadata(file_path)
 
 @router.get("/{share_uuid}/status")
@@ -111,10 +115,10 @@ async def get_shared_status(
     if media.share_ai_metadata:
         return {"status": "not_stripped"}
         
-    file_path = settings.BASE_DIR / media.path
-    if not file_path.exists():
+    file_path = settings.resolve_storage_path(media.path)
+    if not file_path or not file_path.exists():
         return {"status": "error"}
-        
+
     status = get_media_cache_status(file_path, media.mime_type)
     
     # If processing (not in cache), trigger generation
