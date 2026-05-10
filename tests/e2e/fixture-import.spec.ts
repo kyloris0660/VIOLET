@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
+import path from 'node:path';
 import { loginAsAdmin, apiCall } from './helpers/auth';
 
 const isRealE2E = process.env.VIOLET_RUN_REAL_E2E === '1';
 const fixturePath = process.env.VIOLET_TEST_FIXTURE_PATH || '';
+const animeFixturePath = path.join(fixturePath, 'anime');
 
 test.describe('Fixture Import E2E Workflow', () => {
   test.skip(!isRealE2E, 'Requires VIOLET_RUN_REAL_E2E=1');
@@ -24,7 +26,7 @@ test.describe('Fixture Import E2E Workflow', () => {
   test('preflight scan of anime subfolder returns file counts', async ({ page }) => {
     const resp = await apiCall(page, '/api/admin/scan-local-library/preflight', {
       method: 'POST',
-      body: JSON.stringify({ paths: [fixturePath + '\\anime'] }),
+      body: JSON.stringify({ paths: [animeFixturePath] }),
     });
     expect(resp.status).toBe(200);
     expect(typeof resp.data.total_seen).toBe('number');
@@ -36,7 +38,7 @@ test.describe('Fixture Import E2E Workflow', () => {
     const resp = await apiCall(page, '/api/admin/scan-local-library', {
       method: 'POST',
       body: JSON.stringify({
-        paths: [fixturePath + '\\anime'],
+        paths: [animeFixturePath],
         max_files: 5,
         dry_run: true,
       }),
@@ -52,7 +54,7 @@ test.describe('Fixture Import E2E Workflow', () => {
     const resp = await apiCall(page, '/api/admin/scan-local-library', {
       method: 'POST',
       body: JSON.stringify({
-        paths: [fixturePath + '\\anime'],
+        paths: [animeFixturePath],
         max_files: 5,
         dry_run: false,
       }),
@@ -70,7 +72,7 @@ test.describe('Fixture Import E2E Workflow', () => {
     const resp1 = await apiCall(page, '/api/admin/scan-local-library', {
       method: 'POST',
       body: JSON.stringify({
-        paths: [fixturePath + '\\anime'],
+        paths: [animeFixturePath],
         max_files: 3,
         dry_run: false,
       }),
@@ -81,7 +83,7 @@ test.describe('Fixture Import E2E Workflow', () => {
     const resp2 = await apiCall(page, '/api/admin/scan-local-library', {
       method: 'POST',
       body: JSON.stringify({
-        paths: [fixturePath + '\\anime'],
+        paths: [animeFixturePath],
         max_files: 3,
         dry_run: false,
       }),

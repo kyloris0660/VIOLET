@@ -65,6 +65,33 @@ def _create_database(test_db, dry_run):
     return bool(exists) or not dry_run
 
 
+def _build_migrate_url(test_db):
+    """Build an explicit SQLAlchemy URL from env vars and the validated test_db name.
+
+    This bypasses app config / .env loading entirely, so a local .env containing
+    POSTGRES_DB=blombooru can never redirect the migration target.
+    """
+    from sqlalchemy.engine import URL
+
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = int(os.getenv("POSTGRES_PORT", "5432"))
+    user = os.getenv("POSTGRES_USER", "postgres")
+    password = os.getenv("POSTGRES_PASSWORD", "")
+
+    if test_db.lower() in _FORBIDDEN_DB_NAMES:
+        print(f"ERROR: target DB is '{test_db}' — forbidden for migration.")
+        sys.exit(1)
+
+    return URL.create(
+        drivername="postgresql",
+        username=user,
+        password=password,
+        host=host,
+        port=port,
+        database=test_db,
+    )
+
+
 def _run_migrate(test_db, dry_run):
     """Run app schema initialization against the test database."""
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -78,29 +105,23 @@ def _run_migrate(test_db, dry_run):
               "Refusing to run --migrate outside test environment.")
         sys.exit(1)
 
-    os.environ["POSTGRES_DB"] = test_db
-
     if dry_run:
         print(f"[dry-run] Would run schema migration on '{test_db}'.")
         return
 
-    print(f"Running schema initialization on '{test_db}' ...")
-
-    from app.database import Base, check_and_migrate_schema
-    from app.config import settings
-
-    if settings.DB_NAME.lower() in _FORBIDDEN_DB_NAMES:
-        print(f"ERROR: resolved DB_NAME is '{settings.DB_NAME}' — refusing to migrate.")
-        sys.exit(1)
+    url = _build_migrate_url(test_db)
+    print(f"Running schema initialization on '{test_db}' at {url.host}:{url.port} ...")
 
     from sqlalchemy import create_engine
+    from app.database import Base, check_and_migrate_schema
+    from app import models  # noqa: F401 — registers all models with Base.metadata
+
     migrate_engine = create_engine(
-        settings.DATABASE_URL,
+        url,
         pool_pre_ping=True,
         connect_args={"connect_timeout": 10},
     )
 
-    from app import models  # noqa: F401 — registers all models with Base.metadata
     Base.metadata.create_all(bind=migrate_engine)
     print("  Tables created (idempotent).")
 
