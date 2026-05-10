@@ -283,6 +283,72 @@ class TestDestructiveGateStorageConditions:
 
 
 # ---------------------------------------------------------------------------
+# 6b. Destructive gate — root / drive-root path rejection
+# ---------------------------------------------------------------------------
+
+class TestDestructiveGateRootPathRejection:
+
+    def _build_gate_env(self, tmp_path, *, storage_root, test_storage_root="",
+                        env="test", db="blombooru_test", e2e_flag="1"):
+        return {
+            "VIOLET_ENV": env,
+            "POSTGRES_DB": db,
+            "VIOLET_STORAGE_ROOT": storage_root,
+            "VIOLET_TEST_STORAGE_ROOT": test_storage_root,
+            "VIOLET_ALLOW_DESTRUCTIVE_E2E": e2e_flag,
+            "TEST_DATABASE_URL": "",
+        }
+
+    def _get_gate(self, tmp_path, **kwargs):
+        env = self._build_gate_env(tmp_path, **kwargs)
+        with patch.dict(os.environ, env, clear=False):
+            _reload_settings(tmp_path)
+            import app.routes.admin.dev_tools as dt_mod
+            importlib.reload(dt_mod)
+            return dt_mod._compute_gate_diagnostic()
+
+    def test_unix_root_slash_rejected(self, tmp_path):
+        diag = self._get_gate(tmp_path, storage_root="/", test_storage_root="/")
+        assert diag["conditions"]["8_no_root_storage_paths"] is False
+        assert diag["gate_would_pass"] is False
+
+    def test_windows_drive_root_backslash_rejected(self, tmp_path):
+        diag = self._get_gate(tmp_path, storage_root="C:\\", test_storage_root="C:\\")
+        assert diag["conditions"]["8_no_root_storage_paths"] is False
+        assert diag["gate_would_pass"] is False
+
+    def test_windows_drive_root_forward_rejected(self, tmp_path):
+        diag = self._get_gate(tmp_path, storage_root="C:/", test_storage_root="C:/")
+        assert diag["conditions"]["8_no_root_storage_paths"] is False
+        assert diag["gate_would_pass"] is False
+
+    def test_valid_subdirectory_passes(self, tmp_path):
+        tsr = str(tmp_path / "test_storage")
+        diag = self._get_gate(tmp_path, storage_root=tsr, test_storage_root=tsr)
+        assert diag["conditions"]["8_no_root_storage_paths"] is True
+        assert diag["gate_would_pass"] is True
+
+    def test_storage_under_non_root_tsr_passes(self, tmp_path):
+        tsr = str(tmp_path / "test_storage")
+        sr = str(tmp_path / "test_storage" / "sub")
+        diag = self._get_gate(tmp_path, storage_root=sr, test_storage_root=tsr)
+        assert diag["conditions"]["8_no_root_storage_paths"] is True
+        assert diag["conditions"]["6_storage_root_under_test_storage_root"] is True
+
+    def test_unc_share_root_rejected(self, tmp_path):
+        env = self._build_gate_env(tmp_path, storage_root="//server/share",
+                                   test_storage_root="//server/share")
+        with patch.dict(os.environ, env, clear=False):
+            with patch("pathlib.Path.mkdir"):
+                _reload_settings(tmp_path)
+                import app.routes.admin.dev_tools as dt_mod
+                importlib.reload(dt_mod)
+                diag = dt_mod._compute_gate_diagnostic()
+        assert diag["conditions"]["8_no_root_storage_paths"] is False
+        assert diag["gate_would_pass"] is False
+
+
+# ---------------------------------------------------------------------------
 # 7. resolve_storage_path / storage_relative_path helpers
 # ---------------------------------------------------------------------------
 

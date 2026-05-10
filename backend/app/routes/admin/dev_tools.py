@@ -28,6 +28,25 @@ router = APIRouter()
 BLOCKED_ROOTS = {"", "c:", "c:/", "/", "c:/users"}
 
 
+def _is_root_or_drive_root(p: str) -> bool:
+    """Return True if *p* is a filesystem root, drive root, or UNC share root."""
+    if not p:
+        return True
+    norm = p.replace("\\", "/").rstrip("/")
+    if not norm:
+        return True
+    import re
+    if re.match(r"^[A-Za-z]:$", norm):
+        return True
+    if norm == "/":
+        return True
+    if norm.startswith("//"):
+        parts = norm.lstrip("/").split("/")
+        if len(parts) <= 2:
+            return True
+    return False
+
+
 def _safe_db_name() -> str:
     try:
         return settings.DB_NAME
@@ -48,12 +67,17 @@ def _compute_gate_diagnostic() -> dict:
     sr_norm = storage_root.lower().replace("\\", "/").rstrip("/")
     cr_norm = code_root.lower().replace("\\", "/").rstrip("/")
 
+    sr_is_root = _is_root_or_drive_root(storage_root)
+    tsr_is_root = _is_root_or_drive_root(str(test_storage_root) if test_storage_root else "")
+
     tsr_configured = test_storage_explicit and test_storage_root is not None
-    if tsr_configured:
+    if tsr_configured and not sr_is_root and not tsr_is_root:
         tsr_norm = str(test_storage_root).lower().replace("\\", "/").rstrip("/")
         storage_under_test_root = sr_norm == tsr_norm or sr_norm.startswith(tsr_norm + "/")
     else:
         storage_under_test_root = False
+
+    roots_safe = not sr_is_root and not tsr_is_root
 
     conditions = {
         "0_production_refusal": env != "production",
@@ -64,6 +88,7 @@ def _compute_gate_diagnostic() -> dict:
         "5_test_storage_root_configured": tsr_configured,
         "6_storage_root_under_test_storage_root": storage_under_test_root,
         "7_destructive_e2e_flag_set": e2e_flag,
+        "8_no_root_storage_paths": roots_safe,
     }
     gate_would_pass = all(conditions.values())
     return {
@@ -310,9 +335,9 @@ def _require_destructive_gate(*, confirm: bool, confirm_phrase: str, expected_ph
         )
 
     if not confirm:
-        failures["8_confirm_true"] = False
+        failures["9_confirm_true"] = False
     if confirm_phrase != expected_phrase:
-        failures["9_confirm_phrase_match"] = False
+        failures["10_confirm_phrase_match"] = False
 
     if failures:
         logger.warning(
