@@ -48,6 +48,49 @@ _SKIP_REASON_STAT_MAP = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Robust error conversion helpers (Fix C)
+# ---------------------------------------------------------------------------
+
+def _exception_to_message(exc: Exception, *, max_length: int = 2000) -> str:
+    """Convert any exception to a safe, loggable string.
+
+    Handles HTTPException.detail being str, list, tuple, or dict without
+    crashing.  The result is always a plain string, truncated to
+    *max_length* characters.
+    """
+    raw: object = str(exc)
+
+    if hasattr(exc, "detail"):
+        raw = exc.detail  # type: ignore[union-attr]
+
+    if isinstance(raw, str):
+        msg = raw
+    elif isinstance(raw, (list, tuple)):
+        try:
+            msg = json.dumps(raw, ensure_ascii=False, default=str)
+        except Exception:
+            msg = "; ".join(str(item) for item in raw)
+    elif isinstance(raw, dict):
+        try:
+            msg = json.dumps(raw, ensure_ascii=False, default=str)
+        except Exception:
+            msg = str(raw)
+    else:
+        msg = str(raw)
+
+    return msg[:max_length] if len(msg) > max_length else msg
+
+
+def _is_duplicate_error(message: str) -> bool:
+    """Return True if *message* indicates a duplicate/already-exists error.
+
+    Expects a plain string (use ``_exception_to_message`` first).
+    """
+    lower = message.lower()
+    return "duplicate" in lower or "already exists" in lower
+
+
 def _hash_file_in_subprocess(file_path: str, conn):
     """Target function for subprocess-based hash calculation.
 
@@ -319,6 +362,7 @@ def scan_and_import(
             stats["processed"] = candidates_processed
 
             copied_path: Path | None = None
+            unique_name: str | None = None
             try:
                 timeout_sec = settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS
                 hash_status, hash_value = _calculate_file_hash_with_timeout(
@@ -381,16 +425,33 @@ def scan_and_import(
                 logger.debug(f"Imported: {file_path.name}")
 
             except Exception as e:
+                # --- Per-file rollback (requirement #2) ---
+                # After a failed db.flush() inside process_and_save_media(),
+                # the SQLAlchemy session is in a broken transaction state.
+                # We must rollback before any further DB operations.
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
+                # --- Orphan file cleanup (Fix E) ---
                 if copied_path and copied_path.exists():
                     try:
                         copied_path.unlink()
                     except OSError:
                         pass
 
-                error_msg = str(e)
-                if hasattr(e, "detail"):
-                    error_msg = e.detail
-                if "duplicate" in error_msg.lower() or "already exists" in error_msg.lower():
+                if unique_name:
+                    thumb_path = settings.THUMBNAIL_DIR / (Path(unique_name).stem + ".jpg")
+                    if thumb_path.exists():
+                        try:
+                            thumb_path.unlink()
+                        except OSError:
+                            pass
+
+                # --- Robust error conversion (Fix C) ---
+                error_msg = _exception_to_message(e)
+                if _is_duplicate_error(error_msg):
                     existing_hashes.add(file_hash if "file_hash" in dir() else "")
                     stats["skipped_duplicate"] += 1
                 else:
@@ -670,14 +731,18 @@ def run_scan_job(job_id: int) -> None:
     except Exception as exc:
         logger.error(f"Scan job {job_id} failed: {exc}", exc_info=True)
         try:
+            db.rollback()  # Fix D: clear broken transaction state first
             job = db.query(ScanJob).get(job_id)
             if job:
                 job.status = "failed"
                 job.error_message = str(exc)[:2000]
                 job.finished_at = datetime.now(timezone.utc)
                 db.commit()
-        except Exception:
-            pass
+        except Exception as inner_exc:
+            logger.error(
+                f"Scan job {job_id}: failed to finalize job status: {inner_exc}",
+                exc_info=True,
+            )
     finally:
         with _active_job_lock:
             _active_job_cancel.pop(job_id, None)

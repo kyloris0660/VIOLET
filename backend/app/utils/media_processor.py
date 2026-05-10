@@ -1,4 +1,5 @@
 import hashlib
+import mimetypes
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -9,6 +10,26 @@ from PIL import Image
 from ..schemas import FileTypeEnum
 from .logger import logger
 
+
+def is_valid_mime_type(value: str) -> bool:
+    """Check whether *value* looks like a valid MIME type (type/subtype).
+
+    Rules:
+    - Must contain exactly one ``/``
+    - Total length must be <= 100 (VARCHAR(100) column constraint)
+    - Must not be empty or whitespace-only
+    """
+    if not value or not isinstance(value, str):
+        return False
+    value = value.strip()
+    if len(value) > 100:
+        return False
+    parts = value.split("/")
+    if len(parts) != 2:
+        return False
+    return bool(parts[0]) and bool(parts[1])
+
+
 def calculate_file_hash(file_path: Path) -> str:
     """Calculate MD5 hash of a file"""
     hash_md5 = hashlib.md5()
@@ -17,10 +38,55 @@ def calculate_file_hash(file_path: Path) -> str:
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+
 def get_mime_type(file_path: Path) -> str:
-    """Get MIME type of a file"""
-    mime = magic.Magic(mime=True)
-    return mime.from_file(str(file_path))
+    """Detect MIME type with a robust fallback chain.
+
+    Order:
+    1. python-magic  — only accepted if result is a valid MIME string
+    2. PIL content sniff — opens the file header, maps Image.format → MIME
+    3. mimetypes.guess_type — stdlib, extension-based (least reliable)
+    4. ``application/octet-stream`` — safe ultimate fallback
+    """
+    # --- 1. python-magic ---------------------------------------------------
+    try:
+        mime = magic.Magic(mime=True)
+        result = mime.from_file(str(file_path))
+        if result and is_valid_mime_type(result):
+            return result
+        logger.warning(
+            "python-magic returned invalid MIME for %s: %s — trying fallbacks",
+            file_path.name,
+            repr(result)[:200],
+        )
+    except Exception as exc:
+        logger.warning(
+            "python-magic failed for %s: %s — trying fallbacks",
+            file_path.name,
+            exc,
+        )
+
+    # --- 2. PIL content sniff ----------------------------------------------
+    try:
+        with Image.open(file_path) as img:
+            fmt = img.format  # e.g. "PNG", "JPEG", "GIF", "WEBP"
+            if fmt:
+                pil_mime = Image.MIME.get(fmt)
+                if pil_mime and is_valid_mime_type(pil_mime):
+                    logger.info("PIL detected MIME for %s: %s", file_path.name, pil_mime)
+                    return pil_mime
+    except Exception:
+        pass  # not an image PIL can open — that's fine
+
+    # --- 3. mimetypes.guess_type (extension-based) -------------------------
+    guessed, _ = mimetypes.guess_type(str(file_path))
+    if guessed and is_valid_mime_type(guessed):
+        logger.info("mimetypes guessed MIME for %s: %s", file_path.name, guessed)
+        return guessed
+
+    # --- 4. ultimate fallback ----------------------------------------------
+    logger.warning("All MIME detection failed for %s — using application/octet-stream", file_path.name)
+    return "application/octet-stream"
 
 def determine_file_type(mime_type: str, filename: str, file_path: Path = None) -> FileTypeEnum:
     """Determine if file is image, video, or gif"""

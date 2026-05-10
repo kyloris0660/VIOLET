@@ -36,7 +36,7 @@ from ..utils.media_helpers import (create_stripped_media_cache,
                                    delete_media_cache, extract_image_metadata,
                                    get_unique_filename, sanitize_filename,
                                    serve_media_file)
-from ..utils.media_processor import calculate_file_hash, process_media_file
+from ..utils.media_processor import calculate_file_hash, is_valid_mime_type, process_media_file
 from ..utils.thumbnail_generator import generate_thumbnail
 
 router = APIRouter(prefix="/api/media", tags=["media"])
@@ -129,6 +129,16 @@ def process_and_save_media(
 
     metadata = process_media_file(file_path)
     logger.debug(f"Media processed: {metadata}")
+
+    # Belt-and-suspenders: ensure mime_type is safe for VARCHAR(100) column
+    raw_mime = metadata.get("mime_type", "")
+    if not is_valid_mime_type(raw_mime):
+        logger.warning(
+            "Invalid MIME '%s' for %s — replacing with application/octet-stream",
+            repr(raw_mime)[:200],
+            file_path.name,
+        )
+        metadata["mime_type"] = "application/octet-stream"
 
     thumbnail_filename = Path(unique_filename).stem + ".jpg"
     thumbnail_path = settings.THUMBNAIL_DIR / thumbnail_filename
