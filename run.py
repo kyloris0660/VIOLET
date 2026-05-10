@@ -15,7 +15,19 @@ if __name__ == "__main__":
         os.environ["BLOMBOORU_DEBUG"] = "true"
 
     from backend.app.utils.logger import logger
+    from backend.app.config import settings, APP_VERSION
+
     logger.info("Starting V.I.O.L.E.T." + (" with debug mode enabled" if args.debug else ""))
+    logger.info(
+        "Environment: VIOLET_ENV=%s | APP_VERSION=%s | CODE_ROOT=%s | STORAGE_ROOT=%s | DB_NAME=%s",
+        settings.VIOLET_ENV,
+        APP_VERSION,
+        settings.CODE_ROOT,
+        settings.STORAGE_ROOT,
+        settings.DB_NAME,
+    )
+    if settings.WORKTREE_PATH:
+        logger.info("Running from git worktree: %s", settings.WORKTREE_PATH)
 
     port = int(os.getenv("APP_PORT", 8000))
     uvicorn.run(

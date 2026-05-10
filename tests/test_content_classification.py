@@ -1256,7 +1256,7 @@ class TestResolveStoredMediaPath:
         test_file.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.BASE_DIR = tmp_path
+            mock_settings.STORAGE_ROOT = tmp_path
             result = _resolve_stored_media_path("media\\original\\abc.jpg")
 
         assert result is not None
@@ -1271,7 +1271,7 @@ class TestResolveStoredMediaPath:
         test_file.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.BASE_DIR = tmp_path
+            mock_settings.STORAGE_ROOT = tmp_path
             result = _resolve_stored_media_path("media/original/abc.jpg")
 
         assert result is not None
@@ -1286,7 +1286,7 @@ class TestResolveStoredMediaPath:
         test_file.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.BASE_DIR = tmp_path
+            mock_settings.STORAGE_ROOT = tmp_path
             win_result = _resolve_stored_media_path("media\\original\\abc.jpg")
             posix_result = _resolve_stored_media_path("media/original/abc.jpg")
 
@@ -1312,7 +1312,7 @@ class TestResolveStoredMediaPath:
         original.touch()
 
         with patch("app.routes.admin.dev_tools.settings") as mock_settings:
-            mock_settings.BASE_DIR = tmp_path
+            mock_settings.STORAGE_ROOT = tmp_path
             media_path = _resolve_stored_media_path("media\\original\\abc.jpg")
             thumb_path = _resolve_stored_media_path("media\\thumbnails\\abc_thumb.jpg")
 

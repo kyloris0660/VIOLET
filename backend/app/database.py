@@ -119,11 +119,11 @@ def get_db():
 def get_shared_db():
     """Get shared database session (yields None if not available)"""
     global SharedSessionLocal, _shared_db_available
-    
+
     if not _shared_db_available or SharedSessionLocal is None:
         yield None
         return
-    
+
     db = SharedSessionLocal()
     try:
         yield db
@@ -132,6 +132,21 @@ def get_shared_db():
             db.close()
         except Exception:
             pass
+
+
+def assert_test_db():
+    from .config import settings
+    if not settings.IS_TEST_ENV:
+        raise RuntimeError(
+            f"assert_test_db() called but VIOLET_ENV={settings.VIOLET_ENV!r}, "
+            f"expected 'test'. Refusing to continue."
+        )
+    db_name = settings.DB_NAME
+    if db_name == "blombooru":
+        raise RuntimeError(
+            "assert_test_db() failed: DB_NAME is 'blombooru' (production default). "
+            "Set TEST_DATABASE_URL or POSTGRES_DB to a test-specific name."
+        )
 
 def init_db():
     """Initialize database schema"""
