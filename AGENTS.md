@@ -186,3 +186,21 @@ Keep technical identifiers in English: file paths, branch names, PR URLs, API ro
 - Full-scan iCloud Photos without dry-run
 - Database migrations without review
 - Multi-phase feature bundles in one PR
+
+### Destructive DB operation safety (post-incident policy, 2026-05-10)
+
+**Context:** A worktree/database mismatch caused the `missing-media-cleanup` E2E test to wipe all 284 media records from the shared PostgreSQL database. The worktree's `BASE_DIR` did not contain the actual media files, so every record appeared "missing" and was deleted.
+
+**Mandatory guardrails for all destructive endpoints:**
+
+1. **Env flag gate:** Non-dry-run destructive operations (`reset-e2e-test-data`, `missing-media-cleanup`) require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` in the server environment. Without it, the API returns HTTP 403.
+2. **Confirm phrase:** Each destructive endpoint requires a unique `confirm_phrase` string (e.g., `RESET_E2E_DATA`, `DELETE_ALL_MISSING_MEDIA`). This prevents accidental triggering by generic `confirm: true`.
+3. **Dry-run default:** All cleanup/reset request models default to `dry_run=true`.
+4. **Audit logging:** All destructive operations log `logger.warning(...)` with: operation name, item count, `BASE_DIR`, username.
+5. **E2E test gating:** Any E2E test that calls a destructive endpoint with `dry_run: false` must be gated by `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` via `test.skip()`.
+6. **Worktree awareness:** Never run a dev server from a worktree against the shared DB for E2E tests — worktree `BASE_DIR` differs from main repo, making all media appear "missing."
+
+**Agents must NOT:**
+- Run destructive E2E tests without setting `VIOLET_ALLOW_DESTRUCTIVE_E2E=1`
+- Add new destructive endpoints without all 4 guardrails (env flag, confirm phrase, dry-run default, audit log)
+- Run the dev server from a worktree path when E2E tests will touch the shared DB

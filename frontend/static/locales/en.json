@@ -526,6 +526,18 @@
             "next": "Next",
             "suggestions_ai": "Suggestions (AI)"
         },
+        "content_classification": {
+            "banner_clip_title": "CLIP Classifier",
+            "banner_clip": "CLIP ViT-B/32 visual classifier — 98.77% recall, 4.88% FP. First run downloads model (~350 MB). Recommend batch validation first.",
+            "banner_heuristic_title": "Heuristic Classifier",
+            "banner_heuristic": "Heuristic classifier has 97.4% false positive rate. Consider switching to CLIP. Set CONTENT_CLASSIFICATION_METHOD=clip in .env.",
+            "banner_disabled_title": "Disabled",
+            "banner_disabled": "Content classification is disabled. Set CONTENT_CLASSIFICATION_ENABLED=true in .env to enable.",
+            "only_unclassified_label": "Only unclassified",
+            "force_reclassify_label": "Force reclassify",
+            "force_reclassify_hint": "If previously classified with old classifier, uncheck 'Only unclassified' or enable force reclassify. Locked media is always skipped.",
+            "method_label": "Classification method"
+        },
         "dev_tools": {
             "server_info": "Server Info",
             "pid": "Process ID",
@@ -537,7 +549,23 @@
             "scan_config": "Scan Configuration",
             "hydrated_only_default": "Hydrated Only Default",
             "file_open_timeout": "File Open Timeout (s)",
-            "max_file_size": "Max File Size (MB)"
+            "max_file_size": "Max File Size (MB)",
+            "missing_media": {
+                "title": "Missing Media Maintenance",
+                "description": "Scan for media records with missing files and optionally clean up invalid records. Source files are never deleted.",
+                "scan_btn": "Scan",
+                "dry_run_btn": "Dry Run Preview",
+                "cleanup_btn": "Execute Cleanup",
+                "total": "Total Media",
+                "valid": "Valid",
+                "missing_original": "Original File Missing",
+                "missing_thumbnail_only": "Thumbnail Only Missing",
+                "missing_both": "Both Missing",
+                "deletable": "Deletable",
+                "suggest_regenerate": "Suggest regenerating thumbnails",
+                "cleanup_scope_note": "Only cleans records with missing original files (categories A+D). Thumbnail-only-missing records are not affected.",
+                "confirm_msg": "Confirm cleanup of these invalid media records? This action cannot be undone. Source files will NOT be deleted."
+            }
         }
     },
     "album_picker": {

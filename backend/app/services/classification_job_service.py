@@ -42,6 +42,7 @@ def create_classification_job(
     media_ids: Optional[List[int]] = None,
     max_items: int = 100,
     only_unclassified: bool = True,
+    force_reclassify: bool = False,
     trigger_source: str = "manual",
     scan_job_id: Optional[int] = None,
 ) -> ClassificationJob:
@@ -55,6 +56,7 @@ def create_classification_job(
         media_ids_json=json.dumps(media_ids) if media_ids else None,
         max_items=effective_max,
         only_unclassified=only_unclassified,
+        force_reclassify=force_reclassify,
     )
     db.add(job)
     db.commit()
@@ -184,7 +186,7 @@ def _resolve_media_ids(db: Session, job: ClassificationJob) -> List[int]:
         all_ids = json.loads(job.media_ids_json)
     else:
         query = db.query(Media.id)
-        if job.only_unclassified:
+        if job.only_unclassified and not getattr(job, 'force_reclassify', False):
             query = query.filter(Media.content_class.is_(None))
         query = query.order_by(Media.id.asc())
         all_ids = [row[0] for row in query.all()]

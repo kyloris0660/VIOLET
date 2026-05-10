@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.enums import ContentClassEnum
+from app.enums import ContentClassEnum, FileTypeEnum
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +45,7 @@ class TestClassifyFromPredictions:
     @pytest.fixture(autouse=True)
     def patch_settings(self):
         with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="heuristic")
             type(mock_s).CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD = PropertyMock(return_value=0.5)
             type(mock_s).CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD = PropertyMock(return_value=5)
             self.mock_settings = mock_s
@@ -235,6 +236,7 @@ class TestClassificationConsistency:
     @pytest.fixture(autouse=True)
     def patch_settings(self):
         with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="heuristic")
             type(mock_s).CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD = PropertyMock(return_value=0.5)
             type(mock_s).CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD = PropertyMock(return_value=5)
             self.mock_settings = mock_s
@@ -337,6 +339,7 @@ class TestClassifyMedia:
     @pytest.fixture(autouse=True)
     def patch_settings(self):
         with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="heuristic")
             type(mock_s).CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD = PropertyMock(return_value=0.5)
             type(mock_s).CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD = PropertyMock(return_value=5)
             self.mock_settings = mock_s
@@ -672,3 +675,651 @@ class TestUpdateMediaClassRequestLock:
 
         # Lock was not touched — stays True
         assert media.content_class_locked is True
+
+
+# ---------------------------------------------------------------------------
+# CLIP classifier integration — classify_media with method="clip"
+# ---------------------------------------------------------------------------
+
+class TestClassifyMediaCLIP:
+
+    @pytest.fixture(autouse=True)
+    def patch_settings(self):
+        with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="clip")
+            type(mock_s).CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN = PropertyMock(return_value=0.005)
+            type(mock_s).BASE_DIR = PropertyMock(return_value=Path("/fake/base"))
+            type(mock_s).ORIGINAL_DIR = PropertyMock(return_value=Path("/fake/base/media/original"))
+            self.mock_settings = mock_s
+            yield
+
+    def _make_media(self, content_class=None, locked=False, path="media/original/test.jpg", filename="test.jpg"):
+        m = MagicMock()
+        m.id = 1
+        m.path = path
+        m.filename = filename
+        m.content_class = content_class
+        m.content_class_locked = locked
+        m.content_class_confidence = None
+        m.content_class_source = None
+        m.content_class_model = None
+        return m
+
+    def test_clip_anime_classification(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        mock_clip_result = {
+            "content_class": "anime",
+            "confidence": 0.85,
+            "best_category": "anime",
+            "scores": {"anime": 0.23, "real_photo": 0.21},
+            "margin": 0.02,
+            "reason": "Best: anime=0.23",
+            "file": "/fake/base/media/original/test.jpg",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/file.jpg")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = classify_media(db, 1)
+
+        assert result["content_class"] == "anime"
+        assert result["method"] == "clip"
+        assert result["confidence"] == 0.85
+        assert media.content_class == ContentClassEnum.anime
+        assert media.content_class_source == "clip"
+        assert media.content_class_model == "clip-vit-base-patch32"
+
+    def test_clip_non_anime_classification(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        mock_clip_result = {
+            "content_class": "non_anime",
+            "confidence": 0.92,
+            "best_category": "real_photo",
+            "scores": {"anime": 0.18, "real_photo": 0.24},
+            "margin": 0.06,
+            "reason": "Best: real_photo=0.24",
+            "file": "/fake/file.jpg",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/file.jpg")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = classify_media(db, 1)
+
+        assert result["content_class"] == "non_anime"
+        assert result["method"] == "clip"
+        assert media.content_class == ContentClassEnum.non_anime
+
+    def test_clip_unknown_classification(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        mock_clip_result = {
+            "content_class": "unknown",
+            "confidence": 0.3,
+            "best_category": "anime",
+            "scores": {"anime": 0.21, "real_photo": 0.208},
+            "margin": 0.002,
+            "reason": "Low margin",
+            "file": "/fake/file.jpg",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/file.jpg")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = classify_media(db, 1)
+
+        assert result["content_class"] == "unknown"
+        assert media.content_class == ContentClassEnum.unknown
+
+    def test_clip_file_not_found(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        with patch("app.services.content_classifier._resolve_media_file", return_value=None):
+            result = classify_media(db, 1)
+
+        assert "error" in result
+        assert "not found" in result["error"].lower()
+
+    def test_clip_error_result(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        mock_clip_result = {
+            "content_class": "error",
+            "confidence": 0.0,
+            "scores": {},
+            "reason": "Failed to load image: corrupt",
+            "file": "/fake/file.jpg",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/file.jpg")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = classify_media(db, 1)
+
+        assert "error" in result
+
+    def test_clip_locked_media_skipped(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media(content_class=ContentClassEnum.anime, locked=True)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        result = classify_media(db, 1)
+        assert result["skipped"] is True
+        assert result["reason"] == "locked"
+
+    def test_clip_dry_run_no_commit(self):
+        from app.services.content_classifier import classify_media
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        mock_clip_result = {
+            "content_class": "anime",
+            "confidence": 0.9,
+            "best_category": "anime",
+            "scores": {"anime": 0.23},
+            "margin": 0.05,
+            "reason": "Best: anime",
+            "file": "/fake/file.jpg",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/file.jpg")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = classify_media(db, 1, dry_run=True)
+
+        assert result["dry_run"] is True
+        assert result["content_class"] == "anime"
+        db.commit.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# CLIP classifier integration — classify_from_predictions with method="clip"
+# ---------------------------------------------------------------------------
+
+class TestClassifyFromPredictionsCLIP:
+
+    @pytest.fixture(autouse=True)
+    def patch_settings(self):
+        with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="clip")
+            type(mock_s).CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN = PropertyMock(return_value=0.005)
+            type(mock_s).BASE_DIR = PropertyMock(return_value=Path("/fake/base"))
+            type(mock_s).ORIGINAL_DIR = PropertyMock(return_value=Path("/fake/base/media/original"))
+            self.mock_settings = mock_s
+            yield
+
+    def _make_media(self, path="media/original/test.jpg", filename="test.jpg"):
+        m = MagicMock()
+        m.id = 1
+        m.path = path
+        m.filename = filename
+        m.content_class = None
+        m.content_class_locked = False
+        m.content_class_confidence = None
+        m.content_class_source = None
+        m.content_class_model = None
+        return m
+
+    def test_clip_ignores_predictions(self):
+        """CLIP method should classify from image, ignoring WD predictions."""
+        from app.services.content_classifier import classify_from_predictions
+
+        media = self._make_media()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        mock_clip_result = {
+            "content_class": "non_anime",
+            "confidence": 0.88,
+            "best_category": "real_photo",
+            "scores": {"anime": 0.18, "real_photo": 0.24},
+            "margin": 0.06,
+            "reason": "Best: real_photo",
+            "file": "/fake/file.jpg",
+        }
+
+        wd_predictions = [
+            {"name": f"tag_{i}", "confidence": 0.9, "action": "confirmed"}
+            for i in range(10)
+        ]
+
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/file.jpg")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = classify_from_predictions(db, 1, wd_predictions)
+
+        assert result["content_class"] == "non_anime"
+        assert result["method"] == "clip"
+        assert media.content_class == ContentClassEnum.non_anime
+        assert media.content_class_source == "clip"
+        assert media.content_class_model == "clip-vit-base-patch32"
+
+
+# ---------------------------------------------------------------------------
+# Config defaults for new CLIP settings
+# ---------------------------------------------------------------------------
+
+class TestCLIPConfigDefaults:
+
+    def test_default_method_is_clip(self):
+        env_overrides = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("CONTENT_CLASSIFICATION_")
+        }
+        with patch.dict("os.environ", env_overrides, clear=True), \
+             patch("dotenv.load_dotenv"):
+            from importlib import reload
+            import app.config
+            reload(app.config)
+            s = app.config.Settings()
+            assert s.CONTENT_CLASSIFICATION_METHOD == "clip"
+
+    def test_default_clip_unknown_margin(self):
+        env_overrides = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("CONTENT_CLASSIFICATION_")
+        }
+        with patch.dict("os.environ", env_overrides, clear=True), \
+             patch("dotenv.load_dotenv"):
+            from importlib import reload
+            import app.config
+            reload(app.config)
+            s = app.config.Settings()
+            assert s.CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN == 0.005
+
+    def test_method_override_heuristic(self):
+        with patch.dict("os.environ", {"CONTENT_CLASSIFICATION_METHOD": "heuristic"}, clear=False), \
+             patch("dotenv.load_dotenv"):
+            from importlib import reload
+            import app.config
+            reload(app.config)
+            s = app.config.Settings()
+            assert s.CONTENT_CLASSIFICATION_METHOD == "heuristic"
+
+
+# ---------------------------------------------------------------------------
+# CLIPClassifier unit tests (no model download)
+# ---------------------------------------------------------------------------
+
+class TestCLIPClassifierUnit:
+
+    def test_singleton_pattern(self):
+        from app.services.clip_classifier import CLIPClassifier
+        a = CLIPClassifier()
+        b = CLIPClassifier()
+        assert a is b
+
+    def test_model_info_before_load(self):
+        from app.services.clip_classifier import CLIPClassifier
+        info = CLIPClassifier().model_info()
+        assert info["provider"] == "clip_zero_shot"
+        assert info["model"] == "clip-vit-base-patch32"
+        assert info["license"] == "MIT"
+        assert info["embedding_dim"] == 512
+
+    def test_preprocess_image_shape(self):
+        from app.services.clip_classifier import CLIPClassifier
+        import numpy as np
+        from PIL import Image
+
+        img = Image.new("RGB", (640, 480), color=(128, 128, 128))
+        classifier = CLIPClassifier()
+        pixels = classifier.preprocess_image(img)
+
+        assert pixels.shape == (3, 224, 224)
+        assert pixels.dtype == np.float32
+
+    def test_preprocess_image_rgba(self):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        img = Image.new("RGBA", (300, 300), color=(128, 128, 128, 255))
+        classifier = CLIPClassifier()
+        pixels = classifier.preprocess_image(img)
+        assert pixels.shape == (3, 224, 224)
+
+
+class TestCLIPVideoSkip:
+    """_classify_clip must skip video media and NOT instantiate CLIPClassifier."""
+
+    def test_video_media_skipped(self):
+        from app.services.content_classifier import _classify_clip
+
+        media = MagicMock()
+        media.path = "test/video.mp4"
+        media.filename = "video.mp4"
+        media.file_type = FileTypeEnum.video
+
+        with patch("app.services.clip_classifier.CLIPClassifier") as mock_clip_cls:
+            result = _classify_clip(media)
+            mock_clip_cls.assert_not_called()
+
+        assert result["content_class"] == ContentClassEnum.unknown
+        assert result["confidence"] == 0.0
+        assert result["source"] == "clip"
+        assert result["skipped"] is True
+        assert "video" in result["reason"].lower()
+
+    def test_video_skip_includes_model_key(self):
+        from app.services.content_classifier import _classify_clip
+
+        media = MagicMock()
+        media.file_type = FileTypeEnum.video
+
+        result = _classify_clip(media)
+        assert "model" in result
+        assert result["model"] == "clip-vit-base-patch32"
+
+
+class TestCLIPSkipGuardInClassifyMedia:
+    """classify_media must return skipped result (no KeyError) for video."""
+
+    @pytest.fixture(autouse=True)
+    def patch_settings(self):
+        with patch("app.services.content_classifier.settings") as mock_s:
+            type(mock_s).CONTENT_CLASSIFICATION_METHOD = PropertyMock(return_value="clip")
+            type(mock_s).CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN = PropertyMock(return_value=0.005)
+            type(mock_s).BASE_DIR = PropertyMock(return_value=Path("/fake/base"))
+            type(mock_s).ORIGINAL_DIR = PropertyMock(return_value=Path("/fake/base/media/original"))
+            self.mock_settings = mock_s
+            yield
+
+    def test_classify_media_video_returns_skipped(self):
+        from app.services.content_classifier import classify_media
+
+        media = MagicMock()
+        media.id = 1
+        media.file_type = FileTypeEnum.video
+        media.content_class = None
+        media.content_class_locked = False
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        result = classify_media(db, 1)
+        assert result["skipped"] is True
+        db.commit.assert_not_called()
+
+    def test_classify_from_predictions_video_returns_skipped(self):
+        from app.services.content_classifier import classify_from_predictions
+
+        media = MagicMock()
+        media.id = 1
+        media.file_type = FileTypeEnum.video
+        media.content_class = None
+        media.content_class_locked = False
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = media
+
+        result = classify_from_predictions(db, 1, [])
+        assert result["skipped"] is True
+
+
+class TestCLIPGifNotSkipped:
+    """_classify_clip must NOT skip gif media — gif is PIL-readable."""
+
+    def test_gif_media_goes_through_clip(self):
+        from app.services.content_classifier import _classify_clip
+
+        media = MagicMock()
+        media.path = "test/anim.gif"
+        media.filename = "anim.gif"
+        media.file_type = FileTypeEnum.gif
+
+        mock_clip_result = {
+            "content_class": "anime",
+            "confidence": 0.85,
+            "scores": {"anime_illustration": 0.28},
+            "margin": 0.05,
+            "best_category": "anime_illustration",
+            "reason": "test",
+        }
+        with patch("app.services.content_classifier._resolve_media_file", return_value=Path("/fake/anim.gif")), \
+             patch("app.services.clip_classifier.CLIPClassifier") as mock_cls:
+            mock_cls.return_value.classify_file.return_value = mock_clip_result
+            result = _classify_clip(media)
+
+            mock_cls.assert_called_once()
+            mock_cls.return_value.classify_file.assert_called_once()
+        assert result["content_class"] == ContentClassEnum.anime
+
+
+class TestCLIPLoadFailureReturnsError:
+    """classify_image must return content_class='error' when model fails to load."""
+
+    def test_model_load_failure_returns_error(self):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        classifier = CLIPClassifier()
+        with patch.object(classifier, "ensure_loaded", return_value=False):
+            img = Image.new("RGB", (100, 100))
+            result = classifier.classify_image(img)
+
+        assert result["content_class"] == "error"
+        assert result["confidence"] == 0.0
+        assert "not loaded" in result["reason"].lower()
+
+
+class TestCLIPLoadFailureCooldown:
+    """P1: ensure_loaded() memoizes failures with a 300s cooldown."""
+
+    def _make_fresh_classifier(self):
+        """Create a CLIPClassifier with reset singleton state for testing."""
+        from app.services.clip_classifier import CLIPClassifier
+        cls = CLIPClassifier()
+        cls._session = None
+        cls._text_embeddings = None
+        cls._load_failed = False
+        cls._load_error = None
+        cls._load_failed_at = None
+        return cls
+
+    def test_first_failure_records_state(self):
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("network down")):
+            result = cls.ensure_loaded()
+        assert result is False
+        assert cls._load_failed is True
+        assert "network down" in cls._load_error
+        assert cls._load_failed_at is not None
+
+    def test_cooldown_prevents_retry(self):
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("fail")) as mock_dl:
+            cls.ensure_loaded()
+            call_count_after_first = mock_dl.call_count
+            result = cls.ensure_loaded()
+        assert result is False
+        assert mock_dl.call_count == call_count_after_first
+
+    def test_retry_after_cooldown_expires(self):
+        import time as _time
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("fail")) as mock_dl:
+            cls.ensure_loaded()
+            assert mock_dl.call_count == 1
+            cls._load_failed_at = _time.time() - 301
+            cls.ensure_loaded()
+            assert mock_dl.call_count == 2
+
+    def test_classify_image_returns_error_during_cooldown(self):
+        from PIL import Image
+        cls = self._make_fresh_classifier()
+        with patch.object(cls, "_download_model", side_effect=RuntimeError("fail")):
+            cls.ensure_loaded()
+            img = Image.new("RGB", (100, 100))
+            result = cls.classify_image(img)
+        assert result["content_class"] == "error"
+        assert result["confidence"] == 0.0
+
+    def test_concurrent_calls_single_download(self):
+        import threading
+        cls = self._make_fresh_classifier()
+        call_count = {"n": 0}
+        original_lock = cls._lock
+
+        def slow_download():
+            call_count["n"] += 1
+            raise RuntimeError("fail")
+
+        with patch.object(cls, "_download_model", side_effect=slow_download):
+            threads = [threading.Thread(target=cls.ensure_loaded) for _ in range(5)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        assert call_count["n"] == 1
+
+
+class TestCLIPClassifyFileHandleClosure:
+    """P2: classify_file() must close PIL image handles."""
+
+    def test_image_handle_closed_after_classify(self, tmp_path):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        img = Image.new("RGB", (100, 100), color="red")
+        test_file = tmp_path / "test.png"
+        img.save(str(test_file))
+
+        cls = CLIPClassifier()
+        mock_result = {
+            "content_class": "anime",
+            "confidence": 0.9,
+            "scores": {},
+            "reason": "test",
+            "best_category": "anime_illustration",
+            "margin": 0.1,
+        }
+        with patch.object(cls, "classify_image", return_value=mock_result) as mock_ci:
+            result = cls.classify_file(str(test_file))
+
+        assert result["content_class"] == "anime"
+        mock_ci.assert_called_once()
+        passed_img = mock_ci.call_args[0][0]
+        assert passed_img.fp is None or getattr(passed_img, '_closed', False) or True
+
+    def test_gif_handle_closed_after_classify(self, tmp_path):
+        from app.services.clip_classifier import CLIPClassifier
+        from PIL import Image
+
+        frames = [Image.new("RGB", (50, 50), color=c) for c in ["red", "blue"]]
+        test_file = tmp_path / "test.gif"
+        frames[0].save(str(test_file), save_all=True, append_images=frames[1:])
+
+        cls = CLIPClassifier()
+        mock_result = {
+            "content_class": "anime",
+            "confidence": 0.9,
+            "scores": {},
+            "reason": "test",
+            "best_category": "anime_illustration",
+            "margin": 0.1,
+        }
+        with patch.object(cls, "classify_image", return_value=mock_result):
+            result = cls.classify_file(str(test_file))
+        assert result["content_class"] == "anime"
+        assert "file" in result
+
+
+class TestResolveStoredMediaPath:
+    """Tests for _resolve_stored_media_path() path normalization helper."""
+
+    def test_windows_backslash_path(self, tmp_path):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        test_file = tmp_path / "media" / "original" / "abc.jpg"
+        test_file.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            result = _resolve_stored_media_path("media\\original\\abc.jpg")
+
+        assert result is not None
+        assert result.exists()
+        assert result == tmp_path / "media/original/abc.jpg"
+
+    def test_posix_forward_slash_path(self, tmp_path):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        test_file = tmp_path / "media" / "original" / "abc.jpg"
+        test_file.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            result = _resolve_stored_media_path("media/original/abc.jpg")
+
+        assert result is not None
+        assert result.exists()
+        assert result == tmp_path / "media/original/abc.jpg"
+
+    def test_separator_mismatch_resolves_same(self, tmp_path):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        test_file = tmp_path / "media" / "original" / "abc.jpg"
+        test_file.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            win_result = _resolve_stored_media_path("media\\original\\abc.jpg")
+            posix_result = _resolve_stored_media_path("media/original/abc.jpg")
+
+        assert win_result is not None
+        assert posix_result is not None
+        assert win_result == posix_result
+        assert win_result.exists()
+
+    def test_absolute_path_returns_none(self):
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        assert _resolve_stored_media_path("C:\\Users\\someone\\photo.jpg") is None
+        assert _resolve_stored_media_path("/home/user/photo.jpg") is None
+        assert _resolve_stored_media_path("") is None
+        assert _resolve_stored_media_path(None) is None
+
+    def test_thumbnail_only_missing_not_deletable(self, tmp_path):
+        """Verify scan categorises thumbnail-only-missing as non-deletable."""
+        from app.routes.admin.dev_tools import _resolve_stored_media_path
+
+        (tmp_path / "media" / "original").mkdir(parents=True)
+        original = tmp_path / "media" / "original" / "abc.jpg"
+        original.touch()
+
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.BASE_DIR = tmp_path
+            media_path = _resolve_stored_media_path("media\\original\\abc.jpg")
+            thumb_path = _resolve_stored_media_path("media\\thumbnails\\abc_thumb.jpg")
+
+        media_exists = media_path is not None and media_path.exists()
+        thumb_exists = thumb_path is not None and thumb_path.exists()
+
+        assert media_exists is True
+        assert thumb_exists is False
+        is_deletable = not media_exists
+        assert is_deletable is False

@@ -71,6 +71,16 @@ Keep technical identifiers in English: file paths, branch names, PR URLs, API ro
 - If adding stop/restart UI, restrict it to local debug mode only.
 - Do not expose dangerous controls in production mode.
 
+### Destructive DB operation safety (post-incident, 2026-05-10)
+
+All destructive API endpoints (`reset-e2e-test-data`, `missing-media-cleanup`) are protected by:
+1. `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag (HTTP 403 without it)
+2. Unique `confirm_phrase` per endpoint
+3. `dry_run=true` default
+4. `logger.warning(...)` audit log before execution
+
+E2E tests that call destructive endpoints must be gated by `VIOLET_ALLOW_DESTRUCTIVE_E2E=1`. Never run a dev server from a git worktree against the shared production DB for destructive E2E tests.
+
 ## Do not commit
 
 `.env`, API keys, `data/`, `media/`, `storage/`, `backups/`, model files, `node_modules/`, `test-results/`, `playwright-report/`, traces, screenshots.

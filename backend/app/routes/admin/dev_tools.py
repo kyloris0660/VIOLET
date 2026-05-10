@@ -1,10 +1,13 @@
 """Developer / E2E tools API endpoints (Phase 2.3a+).
 
-Config diagnostics, E2E test data reset, and recommended config.
-Admin-only, requires admin_mode.
+Config diagnostics, E2E test data reset, missing-media maintenance,
+and recommended config. Admin-only, requires admin_mode.
 """
+import json
 import os
 import sys
+from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -13,13 +16,35 @@ from sqlalchemy.orm import Session
 from ...auth import require_admin_mode
 from ...config import settings, _PROJECT_ROOT, APP_VERSION
 from ...database import get_db
-from ...models import User
+from ...models import (
+    AITagJob, ClassificationJob, Media, ScanJobMedia, Tag, User,
+    blombooru_album_media, blombooru_media_tags,
+)
 from ...utils.logger import logger
 
 router = APIRouter()
 
 
 BLOCKED_ROOTS = {"", "c:", "c:/", "/", "c:/users"}
+
+
+def _resolve_stored_media_path(stored_path: str) -> Optional[Path]:
+    """Normalize a DB-stored media path and resolve it against BASE_DIR.
+
+    Handles Windows backslash / POSIX forward-slash mismatches so that
+    ``media\\original\\abc.jpg`` and ``media/original/abc.jpg`` both
+    resolve to the same filesystem path.
+
+    Returns None for absolute paths (user source files stored in
+    Media.source — these are not app-managed and must never be
+    candidates for deletion).
+    """
+    if not stored_path:
+        return None
+    normalized = stored_path.replace("\\", "/")
+    if normalized.startswith("/") or Path(normalized).is_absolute():
+        return None
+    return settings.BASE_DIR / normalized
 
 
 def _is_dangerous_path(source_path: str) -> bool:
@@ -52,6 +77,7 @@ def _is_dangerous_path(source_path: str) -> bool:
 class ResetE2ERequest(BaseModel):
     source_path: str
     confirm: bool = False
+    confirm_phrase: str = ""
     dry_run: bool = True
 
 
@@ -102,6 +128,16 @@ async def get_config_diagnostics(
             "file_open_timeout_seconds": settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS,
             "max_file_size_mb": settings.SCAN_MAX_FILE_SIZE_MB,
         },
+        "content_classification": {
+            "enabled": settings.CONTENT_CLASSIFICATION_ENABLED,
+            "method": settings.CONTENT_CLASSIFICATION_METHOD,
+            "batch_max_items": settings.CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS,
+            "auto_after_import": settings.CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT,
+            "auto_max_items": settings.CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS,
+            "clip_unknown_margin": settings.CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN,
+            "heuristic_anime_tag_threshold": settings.CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD,
+            "heuristic_anime_confidence_threshold": settings.CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD,
+        },
         "server": {
             "pid": os.getpid(),
             "python_version": sys.version,
@@ -137,11 +173,27 @@ async def reset_e2e_test_data(
             "message": "No data was deleted. Set dry_run=false and confirm=true to execute.",
         }
 
+    _require_destructive_flag()
+
     if not body.confirm:
         raise HTTPException(
             status_code=400,
             detail="Must set confirm=true to execute real deletion",
         )
+
+    if body.confirm_phrase != RESET_CONFIRM_PHRASE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must set confirm_phrase='{RESET_CONFIRM_PHRASE}' to execute real deletion",
+        )
+
+    logger.warning(
+        "DESTRUCTIVE: reset-e2e-test-data executing for source_path='%s' "
+        "(BASE_DIR=%s, user=%s)",
+        body.source_path,
+        settings.BASE_DIR,
+        current_user.username if current_user else "unknown",
+    )
 
     result = execute_reset(db, body.source_path)
     return {
@@ -175,4 +227,245 @@ LOCAL_LIBRARY_PATHS=C:\\Users\\kyloris\\Pictures\\VioletTest100
 # TAG_TRANSLATION_LLM_BASE_URL=https://your-api-url
 # TAG_TRANSLATION_LLM_MODEL=your-model-name""",
         "note": "Copy these values to your .env file and restart the server.",
+    }
+
+
+DESTRUCTIVE_E2E_ENV_FLAG = "VIOLET_ALLOW_DESTRUCTIVE_E2E"
+
+CLEANUP_CONFIRM_PHRASE = "DELETE_ALL_MISSING_MEDIA"
+RESET_CONFIRM_PHRASE = "RESET_E2E_DATA"
+
+
+def _require_destructive_flag():
+    """Block destructive (non-dry-run) operations unless env flag is set."""
+    if os.environ.get(DESTRUCTIVE_E2E_ENV_FLAG, "").strip() != "1":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Destructive operations require environment variable "
+                f"{DESTRUCTIVE_E2E_ENV_FLAG}=1. "
+                f"This prevents accidental data loss from automated tests or worktree mismatches."
+            ),
+        )
+
+
+class MissingMediaCleanupRequest(BaseModel):
+    confirm: bool = False
+    confirm_phrase: str = ""
+    dry_run: bool = True
+
+
+@router.get("/dev/missing-media-scan")
+async def scan_missing_media(
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Scan for media with missing files. 4 categories:
+    A: original/app file missing → deletable
+    B: only thumbnail missing, original exists → suggest regenerate
+    C: original exists, thumbnail damaged → suggest regenerate
+    D: both DB record files and app media missing → deletable
+    """
+    all_media = db.query(Media).all()
+
+    valid = []
+    missing_original = []  # Category A: media file missing
+    missing_thumbnail_only = []  # Category B/C: thumb missing, original exists
+    missing_both = []  # Category D: both missing
+
+    for m in all_media:
+        media_path = _resolve_stored_media_path(m.path) if m.path else None
+        thumb_path = _resolve_stored_media_path(m.thumbnail_path) if m.thumbnail_path else None
+
+        media_exists = media_path is not None and media_path.exists()
+        thumb_exists = thumb_path is not None and thumb_path.exists()
+
+        if media_exists and thumb_exists:
+            valid.append(m.id)
+        elif media_exists and not thumb_exists:
+            missing_thumbnail_only.append(m.id)
+        elif not media_exists and thumb_exists:
+            missing_original.append(m.id)
+        else:
+            missing_both.append(m.id)
+
+    cap = 100
+    return {
+        "total_media": len(all_media),
+        "valid": len(valid),
+        "missing_original_or_media_file": len(missing_original),
+        "missing_thumbnail_only": len(missing_thumbnail_only),
+        "missing_both": len(missing_both),
+        "deletable_count": len(missing_original) + len(missing_both),
+        "samples": {
+            "missing_original": missing_original[:cap],
+            "missing_thumbnail_only": missing_thumbnail_only[:cap],
+            "missing_both": missing_both[:cap],
+        },
+    }
+
+
+@router.post("/dev/missing-media-cleanup")
+async def cleanup_missing_media(
+    body: MissingMediaCleanupRequest,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """Delete DB records for media whose original/app file is missing (categories A+D).
+    Source files are NEVER deleted by this operation.
+    """
+    all_media = db.query(Media).all()
+
+    deletable_ids = []
+    for m in all_media:
+        media_path = _resolve_stored_media_path(m.path) if m.path else None
+        media_exists = media_path is not None and media_path.exists()
+        if not media_exists:
+            deletable_ids.append(m.id)
+
+    if not deletable_ids:
+        return {
+            "dry_run": body.dry_run,
+            "message": "No media with missing files found",
+            "deleted": 0,
+        }
+
+    if body.dry_run:
+        return {
+            "dry_run": True,
+            "deletable_count": len(deletable_ids),
+            "deletable_ids_sample": deletable_ids[:100],
+            "message": "No data was deleted. Set dry_run=false and confirm=true to execute.",
+        }
+
+    _require_destructive_flag()
+
+    if not body.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Must set confirm=true to execute real deletion",
+        )
+
+    if body.confirm_phrase != CLEANUP_CONFIRM_PHRASE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must set confirm_phrase='{CLEANUP_CONFIRM_PHRASE}' to execute real deletion",
+        )
+
+    logger.warning(
+        "DESTRUCTIVE: missing-media-cleanup executing with %d deletable items "
+        "(BASE_DIR=%s, user=%s)",
+        len(deletable_ids),
+        settings.BASE_DIR,
+        current_user.username if current_user else "unknown",
+    )
+    logger.info("Source files are NEVER deleted by this operation")
+
+    affected_tag_ids = [
+        row[0] for row in
+        db.query(blombooru_media_tags.c.tag_id)
+        .filter(blombooru_media_tags.c.media_id.in_(deletable_ids))
+        .distinct()
+        .all()
+    ]
+
+    thumbs_deleted = 0
+    for mid in deletable_ids:
+        m = db.query(Media).get(mid)
+        if m and m.thumbnail_path:
+            thumb_path = _resolve_stored_media_path(m.thumbnail_path)
+            if thumb_path and thumb_path.exists() and str(thumb_path).startswith(str(settings.THUMBNAIL_DIR)):
+                try:
+                    thumb_path.unlink()
+                    thumbs_deleted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete thumbnail {thumb_path}: {e}")
+
+    db.query(Media).filter(Media.parent_id.in_(deletable_ids)).update(
+        {Media.parent_id: None}, synchronize_session=False
+    )
+
+    tag_assocs_deleted = (
+        db.query(blombooru_media_tags)
+        .filter(blombooru_media_tags.c.media_id.in_(deletable_ids))
+        .delete(synchronize_session=False)
+    )
+
+    album_assocs_deleted = (
+        db.query(blombooru_album_media)
+        .filter(blombooru_album_media.c.media_id.in_(deletable_ids))
+        .delete(synchronize_session=False)
+    )
+
+    sjm_deleted = (
+        db.query(ScanJobMedia)
+        .filter(ScanJobMedia.media_id.in_(deletable_ids))
+        .delete(synchronize_session=False)
+    )
+
+    deletable_set = set(deletable_ids)
+    ai_jobs_cleaned = 0
+    for job in db.query(AITagJob).all():
+        if job.media_ids_json:
+            try:
+                ids = json.loads(job.media_ids_json)
+                filtered = [i for i in ids if i not in deletable_set]
+                if len(filtered) != len(ids):
+                    job.media_ids_json = json.dumps(filtered) if filtered else None
+                    ai_jobs_cleaned += 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    cls_jobs_cleaned = 0
+    for job in db.query(ClassificationJob).all():
+        if job.media_ids_json:
+            try:
+                ids = json.loads(job.media_ids_json)
+                filtered = [i for i in ids if i not in deletable_set]
+                if len(filtered) != len(ids):
+                    job.media_ids_json = json.dumps(filtered) if filtered else None
+                    cls_jobs_cleaned += 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    media_deleted = (
+        db.query(Media)
+        .filter(Media.id.in_(deletable_ids))
+        .delete(synchronize_session=False)
+    )
+
+    tags_updated = 0
+    if affected_tag_ids:
+        for tag_id in affected_tag_ids:
+            tag = db.query(Tag).get(tag_id)
+            if tag:
+                new_count = (
+                    db.query(blombooru_media_tags)
+                    .filter(blombooru_media_tags.c.tag_id == tag_id)
+                    .count()
+                )
+                tag.post_count = new_count
+                tags_updated += 1
+
+    db.commit()
+    logger.info(
+        f"Missing-media cleanup: {media_deleted} media records deleted, "
+        f"{thumbs_deleted} orphan thumbnails removed, "
+        f"{tag_assocs_deleted} tag assocs, {album_assocs_deleted} album assocs, "
+        f"{sjm_deleted} scan_job_media, {ai_jobs_cleaned} AI jobs cleaned, "
+        f"{cls_jobs_cleaned} classification jobs cleaned, {tags_updated} tags recalculated"
+    )
+
+    return {
+        "dry_run": False,
+        "media_deleted": media_deleted,
+        "thumbnails_deleted": thumbs_deleted,
+        "tag_associations_deleted": tag_assocs_deleted,
+        "album_associations_deleted": album_assocs_deleted,
+        "scan_job_media_deleted": sjm_deleted,
+        "ai_jobs_cleaned": ai_jobs_cleaned,
+        "classification_jobs_cleaned": cls_jobs_cleaned,
+        "tags_recalculated": tags_updated,
+        "source_files_deleted": 0,
+        "message": "Cleanup completed. Source files were NOT touched.",
     }

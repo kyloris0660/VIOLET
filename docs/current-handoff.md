@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3 Content Classification Foundation — evaluation complete (2026-05-09).
+> Last updated after Phase 3.1 CLIP Zero-Shot Classifier — hardening pass (2026-05-09).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` (Phase 2.4 merged via PR [#21](https://github.com/kyloris0660/AnimeLocalBooru/pull/21)) |
+| **Branch** | `phase3.1-clip-anime-classifier` (PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) — Phase 3.1 CLIP classifier) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -16,6 +16,7 @@
 | **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
 | **Admin credentials** | `admin` / `admin123` |
 | **Phase 2.4 status** | Merged on `main` |
+| **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) open, pending merge |
 
 ## Mandatory Workflow Rules
 
@@ -28,6 +29,22 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 5. **Service / dev environment safety** — Never kill arbitrary processes. Only stop clearly identified V.I.O.L.E.T. dev server processes with PID/port reported first.
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
+8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
+
+## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
+
+**What happened:** `ux-hygiene-fix.spec.ts` test #10 called `POST /api/admin/dev/missing-media-cleanup` with `dry_run: false` during a normal Playwright E2E run. The dev server was running from a git worktree, so `settings.BASE_DIR` resolved to the worktree path (not the main repo). All 284 media files live in the main repo's `media/original/` — they don't exist at the worktree path. The cleanup endpoint checked `settings.BASE_DIR / m.path` for each media item, found them all "missing," and deleted all 284 `blombooru_media` rows. CASCADE propagated to `blombooru_media_tags` (0 rows) and `blombooru_scan_job_media` (0 rows).
+
+**Evidence:** `blombooru_media` = 0, `blombooru_tags` = 1966 (survived, not cascade-dependent), `blombooru_scan_jobs` = 141 (survived), 284 original files + 283 thumbnails intact on disk.
+
+**Root cause:** No env-flag gate or confirm-phrase on destructive endpoints; E2E test ran destructive cleanup in the default test suite without any guard.
+
+**Remediation (all committed on `phase3.1-clip-anime-classifier`):**
+- `backend/app/routes/admin/dev_tools.py`: Added `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag gate, unique `confirm_phrase` per endpoint, `logger.warning(...)` audit logging
+- `tests/e2e/ux-hygiene-fix.spec.ts`: Gated test #10 with `VIOLET_ALLOW_DESTRUCTIVE_E2E` skip + added `confirm_phrase`
+- `tests/e2e/violet-test100-real.spec.ts`: Gated reset test with `VIOLET_ALLOW_DESTRUCTIVE_E2E` skip + added `confirm_phrase`
+- `frontend/static/js/admin.js`: Frontend destructive calls include `confirm_phrase`
+- Safety policy added to `AGENTS.md`, `CLAUDE.md`, `docs/project-roadmap.md`, `docs/current-handoff.md`
 
 ## Language Policy
 
@@ -385,30 +402,37 @@ Real dataset evaluation using `scripts/evaluate_content_classification.py`:
 - Auth cookie fix: evaluation script now uses `admin_token` cookie (not `access_token`)
 - Test isolation fix: pytest config tests properly mock `dotenv.load_dotenv` to avoid `.env` pollution
 
-### Phase 3.1 — Required: Model-Backed Classifier
+### Phase 3.1 — CLIP Zero-Shot Anime/Non-Anime Classifier (PR #25)
 
-The heuristic tag-count approach has a **97.4% non-anime false positive rate** and is insufficient for any production use. Phase 3.1 must replace it with a model-backed classifier.
+Production-ready content classifier using CLIP ViT-B/32 zero-shot classification:
 
-**Why the heuristic fails:** The WD tagger generates many tags with confidence ≥ 0.5 for ANY image type (photos, screenshots, etc.), so the tag-count threshold of 5 is trivially exceeded. The classifier cannot distinguish anime from non-anime based on tag count alone.
+- **CLIP classifier**: `clip_classifier.py` — singleton ONNX inference, cosine similarity to pre-computed text centroids, margin-based unknown detection
+- **Zero-shot approach**: Classifies images directly (no WD tags needed) by comparing CLIP image embeddings to text prompt centroids for anime, illustration, non_anime categories
+- **Pre-computed text embeddings**: Generated offline by `scripts/generate_clip_text_embeddings.py`, stored in `backend/app/assets/content_classification/clip_text_embeddings.npz`
+- **Prompt design**: Category prompts defined in `backend/app/assets/content_classification/clip_prompts.json`
+- **Dual-method support**: `CONTENT_CLASSIFICATION_METHOD` switches between `clip` (default) and `heuristic` (legacy)
+- **Standalone evaluation**: `scripts/evaluate_clip_content_classifier.py` (no database, no server required)
+- **Gate criteria met**: Anime recall >= 80%, non-anime FP rate <= 15%
+- **Optimal threshold**: `CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN=0.005` (tuned via threshold sweep)
+- **Model**: Xenova/clip-vit-base-patch32 (MIT license), ~350 MB, auto-downloaded from HuggingFace Hub on first use
+- **Thread-safe**: Singleton pattern with inference lock, safe for concurrent classification jobs
 
-**Candidate approaches (in order of recommendation):**
+**Key files:**
 
-1. **CLIP zero-shot / embedding-based classification**: Use CLIP to encode images and compare cosine similarity to text prompts like "anime illustration" vs "photograph". No training data required, good generalization expected. Can run on CPU.
-2. **Lightweight dedicated anime-vs-photo CNN**: Train or fine-tune a small binary classifier (e.g., MobileNet, EfficientNet-B0) on anime vs photo datasets. Fast inference, potentially highest accuracy, but requires curating training data.
-3. **WD tagger raw prediction distribution analysis**: Instead of counting confirmed tags, analyze the full WD prediction vector — total probability mass, presence of art-style-specific tags (e.g., `1girl`, `solo`, `highres` patterns), distribution shape. Photos may show different prediction patterns than anime. Requires no additional model download.
-4. **Manual override workflow**: Expose `content_class` manual override as the primary workflow until a model is available (already supported via PUT endpoint).
-
-**Evaluation targets:**
-- VioletTest100_2 (anime): recall ≥ 80%
-- VioletPhase3Eval (non_anime): false positive rate ≤ 10-15%
-- Evaluation harness (`scripts/evaluate_content_classification.py`) is fully reusable
-
-**Infrastructure reuse:** Phase 3 schema (ContentClassEnum, 6 media columns), classification job system, search filters (`class:`), admin UI, inline classification hook, and evaluation harness are all reusable — only the classifier service (`backend/app/services/content_classifier.py`) needs replacement.
+| File | Role |
+|------|------|
+| `backend/app/services/clip_classifier.py` | CLIP ViT-B/32 ONNX zero-shot classifier |
+| `backend/app/services/content_classifier.py` | Classifier dispatcher (CLIP + heuristic) |
+| `backend/app/assets/content_classification/clip_prompts.json` | Text prompt definitions |
+| `backend/app/assets/content_classification/clip_text_embeddings.npz` | Pre-computed text centroids |
+| `backend/app/config.py` | `CONTENT_CLASSIFICATION_METHOD`, `CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN` |
+| `scripts/evaluate_clip_content_classifier.py` | Standalone CLIP evaluation script |
+| `scripts/generate_clip_text_embeddings.py` | Text centroid generator |
+| `tests/test_content_classification.py` | Unit tests for CLIP + heuristic classifiers |
 
 ## What Has NOT Been Built
 
 - No filesystem watcher or scheduled scan (Phase 4)
-- No model-backed content classifier (Phase 3.1 recommended)
 - No suggestion search syntax (e.g. `suggestion:tag_name`)
 - No persistent rejected decision tracking (reject = delete)
 - No HEIC or video import support
@@ -447,15 +471,11 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 3.1 (then 4)
+## Recommended Next Phase: 4
 
-**Phase 3.1 — Model-Backed Content Classifier** (required before relying on classification):
-1. Replace heuristic tag-count classifier with a model-backed approach (CLIP, lightweight CNN, or WD distribution analysis)
-2. Reuse Phase 3 infrastructure (schema, job system, search, admin UI, evaluation harness)
-3. Target: non-anime FP rate ≤ 10-15%
-4. **Do NOT gate iCloud import on content classification until Phase 3.1 passes evaluation**
+**Phase 3.1 is complete** (PR #25). The CLIP zero-shot classifier meets all gate criteria (anime recall >= 80%, non-anime FP rate <= 15%). Content classification can now be relied upon for filtering.
 
-**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (after Phase 3.1 or independently):
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan**:
 
 1. Filesystem watcher or periodic cron-style scan
 2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
@@ -496,8 +516,9 @@ The next development phase should include a developer/service control panel:
 | `docs/tag-localization-llm.md` | Phase 2.2.2 LLM translation documentation |
 | `docs/entity-alias-resolver.md` | Phase 2.3e entity alias resolver documentation |
 | `docs/icloud-safe-ingestion.md` | Phase 2.4 iCloud safe ingestion documentation |
-| `docs/content-classification.md` | Phase 3 content classification documentation (limitations + Phase 3.1 plan) |
-| `scripts/evaluate_content_classification.py` | Phase 3 evaluation script for classifier accuracy |
+| `docs/content-classification.md` | Phase 3 + 3.1 content classification documentation |
+| `scripts/evaluate_content_classification.py` | Phase 3 server-based evaluation harness |
+| `scripts/evaluate_clip_content_classifier.py` | Phase 3.1 standalone CLIP evaluation (no DB) |
 
 ### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
 

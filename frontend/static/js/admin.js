@@ -558,6 +558,18 @@ class AdminPanel {
         if (devResetRealBtn) {
             devResetRealBtn.addEventListener('click', () => this.resetE2ETestData(false));
         }
+        const devMmScanBtn = document.getElementById('dev-missing-media-scan-btn');
+        if (devMmScanBtn) {
+            devMmScanBtn.addEventListener('click', () => this.scanMissingMedia());
+        }
+        const devMmDryrunBtn = document.getElementById('dev-missing-media-dryrun-btn');
+        if (devMmDryrunBtn) {
+            devMmDryrunBtn.addEventListener('click', () => this.cleanupMissingMedia(true));
+        }
+        const devMmCleanupBtn = document.getElementById('dev-missing-media-cleanup-btn');
+        if (devMmCleanupBtn) {
+            devMmCleanupBtn.addEventListener('click', () => this.cleanupMissingMedia(false));
+        }
         this.loadDevConfigDiagnostics();
     }
 
@@ -3770,6 +3782,7 @@ class AdminPanel {
             el.innerHTML = `
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs">
                     <div>功能启用：${badge(data.enabled)}</div>
+                    <div>分类方法：<span class="font-bold text-yellow-300">${data.method || '-'}</span></div>
                     <div>Batch 上限：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
                     <div>导入后自动分类：${badge(data.auto_after_import)}</div>
                     <div>自动分类上限：<span class="font-bold text-yellow-300">${data.auto_max_items}</span></div>
@@ -3778,8 +3791,28 @@ class AdminPanel {
                 </div>
                 <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，修改后需重启服务。</p>
             `;
+            this._updateClassificationBanner(data);
         } catch (e) {
             el.textContent = `加载失败: ${e.message || e}`;
+        }
+    }
+
+    _updateClassificationBanner(config) {
+        const clipBanner = document.getElementById('cls-banner-clip');
+        const heuristicBanner = document.getElementById('cls-banner-heuristic');
+        const disabledBanner = document.getElementById('cls-banner-disabled');
+        if (!clipBanner || !heuristicBanner || !disabledBanner) return;
+
+        clipBanner.style.display = 'none';
+        heuristicBanner.style.display = 'none';
+        disabledBanner.style.display = 'none';
+
+        if (!config.enabled) {
+            disabledBanner.style.display = '';
+        } else if (config.method === 'clip') {
+            clipBanner.style.display = '';
+        } else {
+            heuristicBanner.style.display = '';
         }
     }
 
@@ -3788,6 +3821,7 @@ class AdminPanel {
         const idsInput = document.getElementById('cls-job-media-ids').value.trim();
         const maxItems = parseInt(document.getElementById('cls-job-max-items').value) || 100;
         const onlyUnclassified = document.getElementById('cls-job-only-unclassified').checked;
+        const forceReclassify = document.getElementById('cls-job-force-reclassify')?.checked || false;
 
         let mediaIds = null;
         if (idsInput) {
@@ -3804,6 +3838,7 @@ class AdminPanel {
             const body = {
                 max_items: maxItems,
                 only_unclassified: onlyUnclassified,
+                force_reclassify: forceReclassify,
             };
             if (mediaIds) body.media_ids = mediaIds;
 
@@ -4622,6 +4657,7 @@ class AdminPanel {
                     source_path: sourcePath,
                     dry_run: dryRun,
                     confirm: !dryRun,
+                    confirm_phrase: dryRun ? '' : 'RESET_E2E_DATA',
                 }),
             });
             const s = data.summary || {};
@@ -4662,6 +4698,89 @@ class AdminPanel {
         } catch (e) {
             resultDiv.innerHTML = `<span class="text-red-500">失败: ${e.message || e}</span>`;
             app.showNotification(`重置失败: ${e.message || e}`, 'error');
+        }
+    }
+
+    async scanMissingMedia() {
+        const resultDiv = document.getElementById('dev-missing-media-result');
+        const dryrunBtn = document.getElementById('dev-missing-media-dryrun-btn');
+        const cleanupBtn = document.getElementById('dev-missing-media-cleanup-btn');
+        if (!resultDiv) return;
+
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = '<span class="text-yellow-400">扫描中…</span>';
+        try {
+            const data = await app.apiCall('/api/admin/dev/missing-media-scan');
+            let html = `<div class="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs mb-2">
+                <div>总计媒体：<span class="font-bold">${data.total_media}</span></div>
+                <div>有效：<span class="font-bold text-green-400">${data.valid}</span></div>
+                <div>缺失原件：<span class="font-bold text-red-400">${data.missing_original_or_media_file}</span></div>
+                <div>缺失缩略图：<span class="font-bold text-yellow-400">${data.missing_thumbnail_only}</span></div>
+                <div>全部缺失：<span class="font-bold text-red-400">${data.missing_both}</span></div>
+                <div>可删除记录：<span class="font-bold text-red-400">${data.deletable_count}</span></div>
+            </div>`;
+            if (data.missing_thumbnail_only > 0) {
+                html += '<div class="text-xs text-yellow-400 mb-1">缺失缩略图的项目建议重新生成缩略图，不会被删除。</div>';
+            }
+            resultDiv.innerHTML = html;
+
+            if (data.deletable_count > 0) {
+                if (dryrunBtn) dryrunBtn.disabled = false;
+                if (cleanupBtn) cleanupBtn.disabled = false;
+            } else {
+                if (dryrunBtn) dryrunBtn.disabled = true;
+                if (cleanupBtn) cleanupBtn.disabled = true;
+            }
+        } catch (e) {
+            resultDiv.innerHTML = `<span class="text-red-500">扫描失败: ${e.message || e}</span>`;
+        }
+    }
+
+    async cleanupMissingMedia(dryRun) {
+        const resultDiv = document.getElementById('dev-missing-media-result');
+        if (!resultDiv) return;
+
+        resultDiv.classList.remove('hidden');
+
+        if (!dryRun) {
+            const ok = confirm('确认执行清理？将删除缺失原件的媒体 DB 记录。源文件不会被删除。');
+            if (!ok) return;
+        }
+
+        resultDiv.innerHTML = `<span class="text-yellow-400">${dryRun ? 'Dry run 中…' : '清理中…'}</span>`;
+        try {
+            const data = await app.apiCall('/api/admin/dev/missing-media-cleanup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dry_run: dryRun, confirm: !dryRun, confirm_phrase: dryRun ? '' : 'DELETE_ALL_MISSING_MEDIA' }),
+            });
+
+            if (data.dry_run) {
+                resultDiv.innerHTML = `<div class="text-xs">
+                    <div class="text-yellow-400 mb-1">Dry Run — 不会删除任何数据</div>
+                    <div>可删除记录数：<span class="font-bold">${data.deletable_count}</span></div>
+                    <div class="text-secondary mt-1">设置 dry_run=false 并 confirm=true 执行真正清理。</div>
+                </div>`;
+            } else {
+                resultDiv.innerHTML = `<div class="text-xs">
+                    <div class="text-green-400 mb-1">清理完成</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                        <div>删除媒体记录：<span class="font-bold">${data.media_deleted}</span></div>
+                        <div>删除缩略图：<span class="font-bold">${data.thumbnails_deleted}</span></div>
+                        <div>删除标签关联：<span class="font-bold">${data.tag_associations_deleted}</span></div>
+                        <div>删除专辑关联：<span class="font-bold">${data.album_associations_deleted}</span></div>
+                        <div>删除扫描记录：<span class="font-bold">${data.scan_job_media_deleted}</span></div>
+                        <div>清理 AI 任务：<span class="font-bold">${data.ai_jobs_cleaned}</span></div>
+                        <div>清理分类任务：<span class="font-bold">${data.classification_jobs_cleaned}</span></div>
+                        <div>标签重算：<span class="font-bold">${data.tags_recalculated}</span></div>
+                        <div>源文件删除：<span class="font-bold text-green-400">${data.source_files_deleted} (不删除)</span></div>
+                    </div>
+                </div>`;
+                app.showNotification('缺失媒体清理完成', 'success');
+            }
+        } catch (e) {
+            resultDiv.innerHTML = `<span class="text-red-500">清理失败: ${e.message || e}</span>`;
+            app.showNotification(`清理失败: ${e.message || e}`, 'error');
         }
     }
 }

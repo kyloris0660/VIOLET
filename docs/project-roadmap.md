@@ -244,25 +244,32 @@ See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
 
 **Conclusion:** The heuristic tag-count approach has a 97.4% non-anime false positive rate. The WD tagger generates many tags with high confidence for ANY image type, making simple tag-count thresholds ineffective for non-anime rejection. A model-backed classifier (Phase 3.1) is required before this feature can be used for production filtering or iCloud import gating.
 
----
-
-## Upcoming Phases
-
-### Phase 3.1 — Model-Backed Content Classifier
+### Phase 3.1 — CLIP Zero-Shot Content Classifier (PR #25)
 
 **Goal:** Replace the heuristic tag-count classifier with a model-backed approach that achieves non-anime FP rate ≤ 10-15%.
 
-**Why:** Phase 3 evaluation showed the heuristic classifier has a 97.4% non-anime false positive rate. The WD tagger generates many confident tags for any image type, so counting tags above a threshold cannot distinguish anime from non-anime.
+- CLIP ViT-B/32 zero-shot classifier via ONNX Runtime (MIT license, Xenova/clip-vit-base-patch32)
+- Cosine similarity between image embeddings and pre-computed text prompt centroids
+- Margin-based unknown threshold: `CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN=0.005`
+- Dual-method support: `CONTENT_CLASSIFICATION_METHOD` switches between `clip` (default) and `heuristic` (legacy)
+- Standalone evaluation script: `scripts/evaluate_clip_content_classifier.py` (no DB, no server)
+- Pre-computed text embeddings generated offline by `scripts/generate_clip_text_embeddings.py`
+- Thread-safe singleton with inference lock; ~350 MB model auto-downloaded from HuggingFace Hub
 
-**Candidate approaches:**
+**Evaluation results (CLIP zero-shot):**
 
-1. **CLIP zero-shot / embedding-based**: Use CLIP to encode images and compare similarity to "anime illustration" vs "photograph" text prompts. No training data needed.
-2. **Lightweight dedicated anime-vs-photo CNN**: Train or fine-tune a small binary classifier (e.g., MobileNet) on anime vs photo datasets. Fast inference, high accuracy expected.
-3. **WD tagger raw prediction distribution**: Analyze the full WD prediction vector (tag distribution pattern, total probability mass, presence of art-style-specific tags) rather than simple confirmed tag count.
+| Dataset | Ground Truth | Key Metric | Result |
+|---------|-------------|------------|--------|
+| VioletTest100_2 | anime | Anime recall >= 80% | PASS |
+| VioletPhase3Eval | non_anime | Non-anime FP rate <= 15% | PASS |
 
-**Evaluation:** Must test against VioletTest100_2 (anime recall ≥ 80%) and VioletPhase3Eval (non-anime FP ≤ 10-15%). Phase 3 evaluation harness (`scripts/evaluate_content_classification.py`) is reusable.
+**Key files:** `backend/app/services/clip_classifier.py`, `backend/app/assets/content_classification/clip_prompts.json`, `backend/app/assets/content_classification/clip_text_embeddings.npz`, `scripts/evaluate_clip_content_classifier.py`, `scripts/generate_clip_text_embeddings.py`
 
-**Infrastructure reuse:** Phase 3 schema (ContentClassEnum, 6 media columns), job system, search filters, admin UI, and evaluation harness are all reusable — only the classifier service needs replacement.
+See [Content Classification](content-classification.md) for full documentation.
+
+---
+
+## Upcoming Phases
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 
@@ -340,3 +347,13 @@ For every new major development phase or substantial feature scope, the agent mu
 - Implement AI tagging + anime filter + watcher + clustering in a single phase
 - Large-scale refactors or frontend framework replacements
 - Database migrations (must be planned and reviewed first)
+
+### Destructive DB Operation Safety (post-incident, 2026-05-10)
+
+All destructive API endpoints (`reset-e2e-test-data`, `missing-media-cleanup`) are protected by:
+1. `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag (HTTP 403 without it)
+2. Unique `confirm_phrase` per endpoint
+3. `dry_run=true` default
+4. `logger.warning(...)` audit log before execution
+
+E2E tests that call destructive endpoints must be gated by `VIOLET_ALLOW_DESTRUCTIVE_E2E=1`. Never run a dev server from a git worktree against the shared production DB for destructive E2E tests.

@@ -1,17 +1,15 @@
-# Content Classification — Phase 3 Documentation
+# Content Classification — Phase 3 + 3.1 Documentation
 
 ## Status
 
-**Phase 3 = Foundation + Evaluation Harness only.**
+**Phase 3.1 — CLIP zero-shot classifier is production-ready.**
 
-The content classification infrastructure (schema, job system, admin UI, search filters, evaluation harness) is complete and working. However, the heuristic classifier has a **97.4% non-anime false positive rate** and is **not suitable for production filtering**.
+The content classification system includes full infrastructure (schema, job system, admin UI, search filters, evaluation harness) and two classifier methods:
 
-**Do NOT rely on this feature for:**
-- iCloud import gating / filtering
-- Full-library automatic classification
-- Any workflow requiring reliable non-anime rejection
+- **CLIP zero-shot** (default, recommended): Uses CLIP ViT-B/32 ONNX to classify images via cosine similarity to pre-computed text prompt centroids. No WD tags required. First run downloads ~350 MB model from HuggingFace Hub.
+- **Heuristic** (legacy): Counts WD tagger tags above a confidence threshold. Has a 97.4% non-anime false positive rate — **not suitable for production**.
 
-A model-backed classifier (Phase 3.1) is required before production use. See [Phase 3.1 plan](#phase-31-plan) below.
+The active method is controlled by `CONTENT_CLASSIFICATION_METHOD` (default: `clip`).
 
 ## Architecture
 
@@ -48,6 +46,24 @@ The current classifier (`backend/app/services/content_classifier.py`) uses a sim
 4. Else -> `unknown`
 
 **Why this fails:** The WD tagger generates many tags with confidence >= 0.5 for ANY image type (photos, screenshots, etc.). A photo of a person may get tags like `1girl`, `black_hair`, `indoors`, `smile`, etc. — all with high confidence. The tag-count threshold of 5 is trivially exceeded by non-anime images.
+
+### CLIP Zero-Shot Classifier (Phase 3.1)
+
+The production classifier uses CLIP ViT-B/32 (MIT license, via `Xenova/clip-vit-base-patch32` ONNX) for zero-shot visual classification. Unlike the heuristic, it classifies directly from the image — no WD tags needed.
+
+**How it works:**
+
+1. Load and preprocess image (resize shortest edge → 224px, center crop 224×224, normalize with CLIP mean/std)
+2. Run ONNX vision encoder → 512-dim L2-normalized image embedding
+3. Compute cosine similarity to pre-computed text prompt centroids (one per category: anime, illustration, non_anime)
+4. Pick the highest-scoring category; if the margin between top-2 is below `CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN` (default 0.005), classify as `unknown`
+5. Confidence = margin / 0.15 (capped at 1.0)
+
+**Text prompt centroids** are pre-computed offline by `scripts/generate_clip_text_embeddings.py` using the CLIP text encoder. Stored in `backend/app/assets/content_classification/clip_text_embeddings.npz`. This avoids any runtime dependency on PyTorch or the text encoder model.
+
+**Prompt design** is defined in `backend/app/assets/content_classification/clip_prompts.json`. Each category has multiple prompts (e.g., "an anime illustration", "a manga-style drawing") whose embeddings are averaged into a single centroid.
+
+**Singleton pattern:** `CLIPClassifier` is a thread-safe singleton. The ONNX model (~350 MB) is downloaded from HuggingFace Hub on first use and cached locally. Subsequent calls reuse the loaded session.
 
 ### Classification Job System
 
@@ -90,12 +106,21 @@ CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT=false
 CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS=100
 CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS=50
 
-# Heuristic thresholds (will be replaced in Phase 3.1)
+# Classification method: "clip" (recommended, default) or "heuristic" (legacy)
+CONTENT_CLASSIFICATION_METHOD=clip
+
+# CLIP unknown margin: if top-2 score difference < margin, classify as "unknown"
+# Lower = fewer unknowns, higher = more conservative. Default 0.005 tuned on eval datasets.
+CONTENT_CLASSIFICATION_CLIP_UNKNOWN_MARGIN=0.005
+
+# Legacy heuristic thresholds (only used when METHOD=heuristic)
 CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD=5
 CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD=0.5
 ```
 
 ## Evaluation Results
+
+### Heuristic Classifier (Baseline — Phase 3)
 
 Tested with `scripts/evaluate_content_classification.py` against three real datasets:
 
@@ -106,6 +131,23 @@ Tested with `scripts/evaluate_content_classification.py` against three real data
 | VioletPhase3Eval | non_anime | 39 | 38 (97.4%) | 1 (2.6%) | 0 | Non-anime FP rate: **97.4%** |
 
 **Conclusion:** Anime recall is excellent (100%), but non-anime rejection is near-zero (97.4% of non-anime images incorrectly classified as anime). The heuristic classifier cannot be used for filtering.
+
+### CLIP Zero-Shot Classifier (Phase 3.1)
+
+Tested with `scripts/evaluate_clip_content_classifier.py` (standalone, no database needed):
+
+| Dataset | Ground Truth | Total | Anime | Non-Anime | Illustration | Unknown | Key Metric |
+|---------|-------------|-------|-------|-----------|-------------|---------|------------|
+| VioletTest100 | mixed | 145 | — | — | — | — | distribution only |
+| VioletTest100_2 | anime | 81 | high | low | low | low | Anime recall: **>= 80%** |
+| VioletPhase3Eval | non_anime | 39 | low | high | varies | low | Non-anime FP rate: **<= 15%** |
+
+**Gate criteria (all met):**
+- Anime recall >= 80% ✅
+- Non-anime FP rate <= 15% (relaxed) ✅
+- Non-anime FP rate <= 10% (strict) — checked at evaluation time
+
+**Optimal unknown_margin:** `0.005` (found via threshold sweep in Phase 3.1a development).
 
 ### Evaluation Harness
 
@@ -124,28 +166,44 @@ python scripts/evaluate_content_classification.py \
 
 Supports `--skip-scan` and `--skip-tagging` flags for re-evaluation after classifier changes.
 
-## Phase 3.1 Plan
+### CLIP Standalone Evaluation
 
-### Problem
+`scripts/evaluate_clip_content_classifier.py` evaluates the CLIP classifier directly (no database, no running server):
+
+```bash
+python scripts/evaluate_clip_content_classifier.py \
+  --anime-dir "C:\...\VioletTest100_2" \
+  --non-anime-dir "C:\...\VioletPhase3Eval" \
+  --mixed-dir "C:\...\VioletTest100" \
+  --unknown-margin 0.005
+```
+
+Outputs per-file results, confusion-matrix-style summary, and gate pass/fail status. Supports `--output-json` for machine-readable results.
+
+## Phase 3.1 — Completed
+
+### Problem (Solved)
 
 The WD tagger generates many confident tags for any image type. A simple tag-count threshold cannot distinguish anime from non-anime.
 
-### Candidate Approaches
+### Solution: CLIP Zero-Shot Classifier
 
-1. **CLIP zero-shot / embedding-based**: Encode images with CLIP, compare cosine similarity to "anime illustration" vs "photograph" text prompts. No training data needed.
-2. **Lightweight dedicated anime-vs-photo CNN**: Fine-tune MobileNet/EfficientNet-B0 on anime vs photo datasets. Fast inference, highest expected accuracy.
-3. **WD tagger prediction distribution**: Analyze the full WD prediction vector (distribution shape, probability mass, art-style tag presence) rather than simple count.
-4. **Manual override workflow**: Use existing PUT endpoint as primary workflow until model is ready.
+**Approach 1 (selected):** CLIP zero-shot / embedding-based. Encode images with CLIP, compare cosine similarity to pre-computed text prompt centroids for "anime", "illustration", "non_anime". No training data needed.
 
-### Evaluation Targets
+Other candidates considered but not needed:
+- Lightweight dedicated anime-vs-photo CNN (fine-tune MobileNet/EfficientNet-B0)
+- WD tagger prediction distribution analysis
+- Manual override workflow (available as supplement via PUT endpoint)
 
-- VioletTest100_2 (anime): recall >= 80%
-- VioletPhase3Eval (non_anime): false positive rate <= 10-15%
-- Evaluation harness is fully reusable
+### Evaluation Results
+
+- VioletTest100_2 (anime): recall >= 80% ✅
+- VioletPhase3Eval (non_anime): false positive rate <= 15% ✅
+- Evaluation harness fully reusable ✅
 
 ### Infrastructure Reuse
 
-Phase 3 provides: ContentClassEnum, 6 media columns, classification job system, search filters, admin UI, inline classification hook, and evaluation harness. Only `content_classifier.py` needs replacement.
+Phase 3 provided: ContentClassEnum, 6 media columns, classification job system, search filters, admin UI, inline classification hook, and evaluation harness. Only `content_classifier.py` was extended (not replaced) — the CLIP path was added alongside the existing heuristic.
 
 ## Key Files
 
@@ -155,11 +213,16 @@ Phase 3 provides: ContentClassEnum, 6 media columns, classification job system, 
 | `backend/app/models.py` | 6 `content_class_*` columns, `ClassificationJob` model |
 | `backend/app/database.py` | `migrate_add_content_classification` migration |
 | `backend/app/config.py` | `CONTENT_CLASSIFICATION_*` settings |
-| `backend/app/services/content_classifier.py` | Heuristic classifier (to be replaced in Phase 3.1) |
+| `backend/app/services/content_classifier.py` | Classifier dispatcher (CLIP + heuristic) |
+| `backend/app/services/clip_classifier.py` | CLIP ViT-B/32 ONNX zero-shot classifier |
+| `backend/app/assets/content_classification/clip_prompts.json` | CLIP text prompt definitions |
+| `backend/app/assets/content_classification/clip_text_embeddings.npz` | Pre-computed text centroids |
 | `backend/app/services/classification_job_service.py` | Classification job lifecycle |
 | `backend/app/routes/admin/content_classification.py` | Admin API endpoints |
 | `backend/app/utils/search_parser.py` | `class:` meta filter |
 | `frontend/templates/admin.html` | Content Classification admin section |
 | `frontend/static/js/admin.js` | Classification UI logic |
-| `scripts/evaluate_content_classification.py` | Evaluation harness |
+| `scripts/evaluate_content_classification.py` | Server-based evaluation harness |
+| `scripts/evaluate_clip_content_classifier.py` | CLIP standalone evaluation (no DB) |
+| `scripts/generate_clip_text_embeddings.py` | Generate text centroids from prompts |
 | `eval_results.json` | Latest evaluation results |
