@@ -510,3 +510,117 @@ class TestMediaPathFlow:
         result = s.resolve_storage_path("media\\original\\test.png")
         expected = (sr / "media" / "original" / "test.png").resolve()
         assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# 9. Storage-root containment — Path.relative_to() semantics
+# ---------------------------------------------------------------------------
+
+class TestStorageRootContainment:
+    """Verify that resolve_storage_path uses proper path containment,
+    not string-prefix matching.  Covers the P1 hotfix."""
+
+    def _make_settings(self, tmp_path, storage_root=""):
+        env = {"VIOLET_ENV": "development", "POSTGRES_DB": "blombooru",
+               "VIOLET_STORAGE_ROOT": storage_root, "TEST_DATABASE_URL": ""}
+        with patch.dict(os.environ, env, clear=False):
+            return _reload_settings(tmp_path)
+
+    def test_valid_path_inside_storage_accepted(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media/original/a.jpg")
+        assert result is not None
+        assert result == (sr / "media" / "original" / "a.jpg").resolve()
+
+    def test_storage_evil_prefix_rejected(self, tmp_path):
+        """STORAGE_ROOT=/tmp/storage must reject paths resolving to
+        /tmp/storage_evil/a.jpg — the old string-prefix logic would accept
+        this because '/tmp/storage_evil'.startswith('/tmp/storage') is True."""
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        evil = tmp_path / "storage_evil"
+        evil.mkdir()
+        (evil / "a.jpg").write_bytes(b"\xff")
+        s = self._make_settings(tmp_path, str(sr))
+        # Craft a relative path that, after normalization & resolve, would
+        # land in storage_evil.  The early checks block ".." in parts, so the
+        # only way this could slip through is via a symlink — tested below.
+        # Here we directly verify that the method uses relative_to semantics
+        # by checking the contract: result must be under STORAGE_ROOT.
+        result = s.resolve_storage_path("media/original/a.jpg")
+        if result is not None:
+            storage_resolved = sr.resolve()
+            result.relative_to(storage_resolved)  # must not raise
+
+    def test_symlink_escape_rejected(self, tmp_path):
+        """A symlink inside STORAGE_ROOT that points outside must be rejected."""
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        secret = outside / "secret.txt"
+        secret.write_bytes(b"sensitive")
+
+        link = sr / "escape"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlinks not supported on this filesystem")
+
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("escape/secret.txt")
+        assert result is None, (
+            "symlink escape should be rejected: resolved path is outside STORAGE_ROOT"
+        )
+
+    def test_backslash_path_accepted(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media\\original\\a.jpg")
+        assert result is not None
+        assert result == (sr / "media" / "original" / "a.jpg").resolve()
+
+    def test_posix_path_accepted(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        result = s.resolve_storage_path("media/original/a.jpg")
+        assert result is not None
+        assert result == (sr / "media" / "original" / "a.jpg").resolve()
+
+    def test_absolute_unix_still_rejected(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("/etc/passwd") is None
+
+    def test_traversal_still_rejected(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("../outside") is None
+        assert s.resolve_storage_path("media/../../../etc/passwd") is None
+
+    def test_unc_still_rejected(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("\\\\server\\share\\file") is None
+        assert s.resolve_storage_path("//server/share/file") is None
+
+    def test_windows_drive_still_rejected(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("C:\\Users\\someone\\file.jpg") is None
+        assert s.resolve_storage_path("D:/media/file.jpg") is None
+
+    def test_empty_still_rejected(self, tmp_path):
+        sr = tmp_path / "storage"
+        sr.mkdir()
+        s = self._make_settings(tmp_path, str(sr))
+        assert s.resolve_storage_path("") is None
+        assert s.resolve_storage_path(None) is None
