@@ -267,6 +267,20 @@ See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
 
 See [Content Classification](content-classification.md) for full documentation.
 
+### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
+
+**Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
+
+- `VIOLET_ENV` environment variable: `development|test|production` with fail-closed validation
+- `CODE_ROOT` / `STORAGE_ROOT` separation: storage paths derive from `STORAGE_ROOT` (configurable via `VIOLET_STORAGE_ROOT`), not project root
+- Test DB fail-closed: `VIOLET_ENV=test` requires explicit test DB name or `TEST_DATABASE_URL`
+- `assert_test_db()` database helper for test fixture guards
+- 9-condition destructive operation gate with production hard refusal
+- `_resolve_stored_media_path()` uses `STORAGE_ROOT` instead of `BASE_DIR`
+- Startup logging: env, version, code root, storage root, DB name
+- 14 unit tests in `tests/test_env_safety.py`
+- 5 env template files + `scripts/setup_test_db.py`
+
 ---
 
 ## Upcoming Phases

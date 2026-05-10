@@ -41,6 +41,7 @@ Login endpoint: `POST /api/admin/login` with `{"username": "admin", "password": 
 ### Database
 
 - PostgreSQL database: `blombooru` on `localhost:5432`, user `postgres`
+- Test database: `blombooru_test` (created via `scripts/setup_test_db.py`). `VIOLET_ENV=test` requires a test DB name or `TEST_DATABASE_URL`.
 - No Alembic. Migrations are DIY `ALTER TABLE` functions in `backend/app/database.py` → `check_and_migrate_schema`.
 - Before adding columns/tables, follow the existing pattern: write a `migrate_add_*` function that checks existence first.
 - **Any database migration must be planned and reviewed before implementation.**
@@ -75,7 +76,9 @@ No automated test suite. Verify changes manually:
 | Tag Translation Worker | `backend/app/services/tag_translation_worker.py` | Background continuous tag translation worker |
 | AI Tagging Jobs | `backend/app/services/ai_tagging_job_service.py` | Background AI tagging job worker |
 | AI Tagging Jobs API | `backend/app/routes/admin/ai_tagging_jobs.py` | AI job CRUD + cancel endpoints |
-| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics (incl. server info, scan config), E2E reset |
+| Dev Tools API | `backend/app/routes/admin/dev_tools.py` | Config diagnostics (incl. server info, scan config), E2E reset, 9-condition destructive gate |
+| Env Safety Tests | `tests/test_env_safety.py` | 14 unit tests for VIOLET_ENV, STORAGE_ROOT separation, test DB fail-closed, assert_test_db |
+| Test DB Setup | `scripts/setup_test_db.py` | Idempotent creation of `blombooru_test` database |
 | E2E Reset Service | `backend/app/services/e2e_reset_service.py` | Test data reset logic |
 | Entity Alias Resolver | `backend/app/services/entity_alias_resolver.py` | Proper-noun alias resolution (character/copyright/artist) |
 | Frontend | `frontend/templates/`, `frontend/static/` | Jinja2 HTML, CSS (Tailwind), JS |

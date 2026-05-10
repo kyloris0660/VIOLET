@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 def _resolve_media_file(media: Media) -> Optional[Path]:
     """Resolve the on-disk path for a media item."""
-    file_path = settings.BASE_DIR / media.path
-    if file_path.exists():
+    file_path = settings.resolve_storage_path(media.path)
+    if file_path and file_path.exists():
         return file_path
     direct = settings.ORIGINAL_DIR / media.filename
     if direct.exists():

@@ -177,8 +177,8 @@ async def download_and_import(
             metadata['file_type']
         )
 
-        relative_path = file_path.relative_to(settings.BASE_DIR)
-        relative_thumb = thumbnail_path.relative_to(settings.BASE_DIR) if thumbnail_generated else None
+        relative_path = settings.storage_relative_path(file_path)
+        relative_thumb = settings.storage_relative_path(thumbnail_path) if thumbnail_generated else None
 
         final_rating = req.rating or post.rating
         final_source = req.source if req.source is not None else (post.source or post.booru_url)

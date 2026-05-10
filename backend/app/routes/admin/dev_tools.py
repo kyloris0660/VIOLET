@@ -28,23 +28,88 @@ router = APIRouter()
 BLOCKED_ROOTS = {"", "c:", "c:/", "/", "c:/users"}
 
 
+def _is_root_or_drive_root(p: str) -> bool:
+    """Return True if *p* is a filesystem root, drive root, or UNC share root."""
+    if not p:
+        return True
+    norm = p.replace("\\", "/").rstrip("/")
+    if not norm:
+        return True
+    import re
+    if re.match(r"^[A-Za-z]:$", norm):
+        return True
+    if norm == "/":
+        return True
+    if norm.startswith("//"):
+        parts = norm.lstrip("/").split("/")
+        if len(parts) <= 2:
+            return True
+    return False
+
+
+def _safe_db_name() -> str:
+    try:
+        return settings.DB_NAME
+    except RuntimeError:
+        return "<fail-closed: no valid test DB configured>"
+
+
+def _compute_gate_diagnostic() -> dict:
+    env = settings.VIOLET_ENV
+    db_name = _safe_db_name()
+    storage_root = str(settings.STORAGE_ROOT)
+    code_root = str(settings.CODE_ROOT)
+    storage_explicit = settings.STORAGE_ROOT_EXPLICITLY_SET
+    test_storage_root = settings.VIOLET_TEST_STORAGE_ROOT
+    test_storage_explicit = settings.TEST_STORAGE_ROOT_EXPLICITLY_SET
+    e2e_flag = os.environ.get(DESTRUCTIVE_E2E_ENV_FLAG, "").strip() == "1"
+
+    sr_norm = storage_root.lower().replace("\\", "/").rstrip("/")
+    cr_norm = code_root.lower().replace("\\", "/").rstrip("/")
+
+    sr_is_root = _is_root_or_drive_root(storage_root)
+    tsr_is_root = _is_root_or_drive_root(str(test_storage_root) if test_storage_root else "")
+
+    tsr_configured = test_storage_explicit and test_storage_root is not None
+    if tsr_configured and not sr_is_root and not tsr_is_root:
+        tsr_norm = str(test_storage_root).lower().replace("\\", "/").rstrip("/")
+        storage_under_test_root = sr_norm == tsr_norm or sr_norm.startswith(tsr_norm + "/")
+    else:
+        storage_under_test_root = False
+
+    roots_safe = not sr_is_root and not tsr_is_root
+
+    conditions = {
+        "0_production_refusal": env != "production",
+        "1_violet_env_is_test": env == "test",
+        "2_db_is_test_db": db_name != "blombooru" and not db_name.startswith("<fail"),
+        "3_storage_root_explicitly_set": storage_explicit,
+        "4_storage_root_ne_code_root": sr_norm != cr_norm,
+        "5_test_storage_root_configured": tsr_configured,
+        "6_storage_root_under_test_storage_root": storage_under_test_root,
+        "7_destructive_e2e_flag_set": e2e_flag,
+        "8_no_root_storage_paths": roots_safe,
+    }
+    gate_would_pass = all(conditions.values())
+    return {
+        "conditions": conditions,
+        "gate_would_pass": gate_would_pass,
+        "values": {
+            "VIOLET_ENV": env,
+            "DB_NAME": db_name,
+            "STORAGE_ROOT": storage_root,
+            "CODE_ROOT": code_root,
+            "STORAGE_ROOT_EXPLICITLY_SET": storage_explicit,
+            "VIOLET_TEST_STORAGE_ROOT": str(test_storage_root) if test_storage_root else None,
+            "TEST_STORAGE_ROOT_EXPLICITLY_SET": test_storage_explicit,
+            "DESTRUCTIVE_E2E_FLAG": e2e_flag,
+        },
+    }
+
+
 def _resolve_stored_media_path(stored_path: str) -> Optional[Path]:
-    """Normalize a DB-stored media path and resolve it against BASE_DIR.
-
-    Handles Windows backslash / POSIX forward-slash mismatches so that
-    ``media\\original\\abc.jpg`` and ``media/original/abc.jpg`` both
-    resolve to the same filesystem path.
-
-    Returns None for absolute paths (user source files stored in
-    Media.source — these are not app-managed and must never be
-    candidates for deletion).
-    """
-    if not stored_path:
-        return None
-    normalized = stored_path.replace("\\", "/")
-    if normalized.startswith("/") or Path(normalized).is_absolute():
-        return None
-    return settings.BASE_DIR / normalized
+    """Normalize a DB-stored media path and resolve it against STORAGE_ROOT."""
+    return settings.resolve_storage_path(stored_path)
 
 
 def _is_dangerous_path(source_path: str) -> bool:
@@ -86,7 +151,29 @@ async def get_config_diagnostics(
     current_user: User = Depends(require_admin_mode),
 ):
     """Return runtime configuration diagnostics (no secrets)."""
+    gate_diag = _compute_gate_diagnostic()
     return {
+        "environment": {
+            "VIOLET_ENV": settings.VIOLET_ENV,
+            "IS_TEST_ENV": settings.IS_TEST_ENV,
+            "IS_PRODUCTION_ENV": settings.IS_PRODUCTION_ENV,
+            "WORKTREE_PATH": settings.WORKTREE_PATH,
+        },
+        "database": {
+            "DB_NAME": _safe_db_name(),
+            "DB_HOST": settings.DB_HOST,
+            "DB_PORT": settings.DB_PORT,
+        },
+        "storage": {
+            "CODE_ROOT": str(settings.CODE_ROOT),
+            "STORAGE_ROOT": str(settings.STORAGE_ROOT),
+            "STORAGE_ROOT_EXPLICITLY_SET": settings.STORAGE_ROOT_EXPLICITLY_SET,
+            "MEDIA_DIR": str(settings.MEDIA_DIR),
+            "ORIGINAL_DIR": str(settings.ORIGINAL_DIR),
+            "THUMBNAIL_DIR": str(settings.THUMBNAIL_DIR),
+            "DATA_DIR": str(settings.DATA_DIR),
+        },
+        "destructive_ops": gate_diag,
         "ai_tagging": {
             "enabled": settings.AI_TAGGING_ENABLED,
             "batch_max_items": settings.AI_TAGGING_BATCH_MAX_ITEMS,
@@ -173,25 +260,17 @@ async def reset_e2e_test_data(
             "message": "No data was deleted. Set dry_run=false and confirm=true to execute.",
         }
 
-    _require_destructive_flag()
-
-    if not body.confirm:
-        raise HTTPException(
-            status_code=400,
-            detail="Must set confirm=true to execute real deletion",
-        )
-
-    if body.confirm_phrase != RESET_CONFIRM_PHRASE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Must set confirm_phrase='{RESET_CONFIRM_PHRASE}' to execute real deletion",
-        )
+    _require_destructive_gate(
+        confirm=body.confirm,
+        confirm_phrase=body.confirm_phrase,
+        expected_phrase=RESET_CONFIRM_PHRASE,
+    )
 
     logger.warning(
         "DESTRUCTIVE: reset-e2e-test-data executing for source_path='%s' "
-        "(BASE_DIR=%s, user=%s)",
+        "(STORAGE_ROOT=%s, user=%s)",
         body.source_path,
-        settings.BASE_DIR,
+        settings.STORAGE_ROOT,
         current_user.username if current_user else "unknown",
     )
 
@@ -236,17 +315,50 @@ CLEANUP_CONFIRM_PHRASE = "DELETE_ALL_MISSING_MEDIA"
 RESET_CONFIRM_PHRASE = "RESET_E2E_DATA"
 
 
-def _require_destructive_flag():
-    """Block destructive (non-dry-run) operations unless env flag is set."""
-    if os.environ.get(DESTRUCTIVE_E2E_ENV_FLAG, "").strip() != "1":
+
+def _require_destructive_gate(*, confirm: bool, confirm_phrase: str, expected_phrase: str):
+    diag = _compute_gate_diagnostic()
+    conditions = diag["conditions"]
+    failures = {k: v for k, v in conditions.items() if not v}
+
+    if not conditions["0_production_refusal"]:
+        logger.warning(
+            "DESTRUCTIVE GATE: production hard refusal triggered (VIOLET_ENV=%s)",
+            settings.VIOLET_ENV,
+        )
         raise HTTPException(
             status_code=403,
-            detail=(
-                f"Destructive operations require environment variable "
-                f"{DESTRUCTIVE_E2E_ENV_FLAG}=1. "
-                f"This prevents accidental data loss from automated tests or worktree mismatches."
-            ),
+            detail={
+                "error": "Production hard refusal: destructive operations are forbidden in production.",
+                "VIOLET_ENV": settings.VIOLET_ENV,
+            },
         )
+
+    if not confirm:
+        failures["9_confirm_true"] = False
+    if confirm_phrase != expected_phrase:
+        failures["10_confirm_phrase_match"] = False
+
+    if failures:
+        logger.warning(
+            "DESTRUCTIVE GATE: blocked — failed conditions: %s",
+            list(failures.keys()),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Destructive operation gate check failed.",
+                "failed_conditions": list(failures.keys()),
+                "gate_diagnostic": diag,
+                "expected_confirm_phrase": expected_phrase,
+            },
+        )
+
+    logger.warning(
+        "DESTRUCTIVE GATE: all conditions passed — allowing destructive operation "
+        "(VIOLET_ENV=%s, DB_NAME=%s, STORAGE_ROOT=%s)",
+        settings.VIOLET_ENV, _safe_db_name(), settings.STORAGE_ROOT,
+    )
 
 
 class MissingMediaCleanupRequest(BaseModel):
@@ -338,25 +450,17 @@ async def cleanup_missing_media(
             "message": "No data was deleted. Set dry_run=false and confirm=true to execute.",
         }
 
-    _require_destructive_flag()
-
-    if not body.confirm:
-        raise HTTPException(
-            status_code=400,
-            detail="Must set confirm=true to execute real deletion",
-        )
-
-    if body.confirm_phrase != CLEANUP_CONFIRM_PHRASE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Must set confirm_phrase='{CLEANUP_CONFIRM_PHRASE}' to execute real deletion",
-        )
+    _require_destructive_gate(
+        confirm=body.confirm,
+        confirm_phrase=body.confirm_phrase,
+        expected_phrase=CLEANUP_CONFIRM_PHRASE,
+    )
 
     logger.warning(
         "DESTRUCTIVE: missing-media-cleanup executing with %d deletable items "
-        "(BASE_DIR=%s, user=%s)",
+        "(STORAGE_ROOT=%s, user=%s)",
         len(deletable_ids),
-        settings.BASE_DIR,
+        settings.STORAGE_ROOT,
         current_user.username if current_user else "unknown",
     )
     logger.info("Source files are NEVER deleted by this operation")

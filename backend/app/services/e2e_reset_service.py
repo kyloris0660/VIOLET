@@ -104,12 +104,12 @@ def compute_reset_summary(db: Session, source_path: str) -> Dict[str, Any]:
     thumbnail_files = 0
     for m in media_list:
         if m.path:
-            full_path = settings.BASE_DIR / m.path
-            if full_path.exists():
+            full_path = settings.resolve_storage_path(m.path)
+            if full_path and full_path.exists():
                 copied_files += 1
         if m.thumbnail_path:
-            thumb_path = settings.BASE_DIR / m.thumbnail_path
-            if thumb_path.exists():
+            thumb_path = settings.resolve_storage_path(m.thumbnail_path)
+            if thumb_path and thumb_path.exists():
                 thumbnail_files += 1
 
     return {
@@ -171,21 +171,21 @@ def execute_reset(db: Session, source_path: str) -> Dict[str, Any]:
     thumbs_deleted = 0
     for m in media_list:
         if m.path:
-            full_path = settings.BASE_DIR / m.path
+            full_path = settings.resolve_storage_path(m.path)
             try:
-                if full_path.exists():
+                if full_path and full_path.exists():
                     full_path.unlink()
                     files_deleted += 1
             except Exception as e:
-                logger.warning(f"Failed to delete file {full_path}: {e}")
+                logger.warning(f"Failed to delete file {m.path}: {e}")
         if m.thumbnail_path:
-            thumb_path = settings.BASE_DIR / m.thumbnail_path
+            thumb_path = settings.resolve_storage_path(m.thumbnail_path)
             try:
-                if thumb_path.exists():
+                if thumb_path and thumb_path.exists():
                     thumb_path.unlink()
                     thumbs_deleted += 1
             except Exception as e:
-                logger.warning(f"Failed to delete thumbnail {thumb_path}: {e}")
+                logger.warning(f"Failed to delete thumbnail {m.thumbnail_path}: {e}")
 
     tag_assocs_deleted = (
         db.query(blombooru_media_tags)

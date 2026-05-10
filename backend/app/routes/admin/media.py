@@ -519,16 +519,14 @@ def _do_regenerate_all_thumbnails(db: Session) -> dict:
 
     # Re-generate thumbnails for all media items
     all_media = db.query(Media).all()
-    base_dir = settings.BASE_DIR
     generated = 0
     failed = 0
 
     for item in all_media:
-        # Paths in DB are relative to BASE_DIR
-        source_path = base_dir / item.path
+        source_path = settings.resolve_storage_path(item.path)
 
-        if not source_path.exists():
-            logger.warning(f"Source file missing for media {item.id}: {source_path}")
+        if not source_path or not source_path.exists():
+            logger.warning(f"Source file missing for media {item.id}: {item.path}")
             failed += 1
             continue
 
@@ -538,7 +536,7 @@ def _do_regenerate_all_thumbnails(db: Session) -> dict:
         try:
             ok = generate_thumbnail(source_path, thumbnail_path, item.file_type)
             if ok:
-                item.thumbnail_path = str(thumbnail_path.relative_to(base_dir))
+                item.thumbnail_path = settings.storage_relative_path(thumbnail_path)
                 generated += 1
             else:
                 item.thumbnail_path = None
@@ -560,15 +558,15 @@ def _do_regenerate_all_thumbnails(db: Session) -> dict:
 def _do_generate_missing_thumbnails(db: Session) -> dict:
     """Synchronous worker for generating missing thumbnails only."""
     thumbnail_dir = settings.THUMBNAIL_DIR
-    base_dir = settings.BASE_DIR
 
     # Collect all thumbnail paths registered in the DB (resolved to absolute)
     all_media = db.query(Media).all()
     registered_paths: set = set()
     for item in all_media:
         if item.thumbnail_path:
-            # Paths in DB are relative to BASE_DIR
-            registered_paths.add(str((base_dir / item.thumbnail_path).resolve()))
+            resolved = settings.resolve_storage_path(item.thumbnail_path)
+            if resolved:
+                registered_paths.add(str(resolved))
 
     # Delete orphaned thumbnail files (files with no registered DB path)
     orphans_deleted = 0
@@ -588,19 +586,18 @@ def _do_generate_missing_thumbnails(db: Session) -> dict:
 
     for item in all_media:
         # Check whether the recorded thumbnail file actually exists
-        thumb_exists = (
-            item.thumbnail_path is not None
-            and (base_dir / item.thumbnail_path).exists()
-        )
+        thumb_exists = False
+        if item.thumbnail_path:
+            resolved_thumb = settings.resolve_storage_path(item.thumbnail_path)
+            thumb_exists = resolved_thumb is not None and resolved_thumb.exists()
         if thumb_exists:
             skipped += 1
             continue
 
-        # Source path is relative to BASE_DIR
-        source_path = base_dir / item.path
+        source_path = settings.resolve_storage_path(item.path)
 
-        if not source_path.exists():
-            logger.warning(f"Source file missing for media {item.id}: {source_path}")
+        if not source_path or not source_path.exists():
+            logger.warning(f"Source file missing for media {item.id}: {item.path}")
             failed += 1
             continue
 
@@ -610,7 +607,7 @@ def _do_generate_missing_thumbnails(db: Session) -> dict:
         try:
             ok = generate_thumbnail(source_path, thumbnail_path, item.file_type)
             if ok:
-                item.thumbnail_path = str(thumbnail_path.relative_to(base_dir))
+                item.thumbnail_path = settings.storage_relative_path(thumbnail_path)
                 generated += 1
             else:
                 item.thumbnail_path = None

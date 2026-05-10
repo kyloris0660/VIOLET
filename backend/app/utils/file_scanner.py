@@ -45,8 +45,9 @@ def find_untracked_media(db: Session) -> dict:
             tracked_filenames.add(media.filename)
         if media.path:
             try:
-                abs_path = (settings.BASE_DIR / media.path).resolve()
-                tracked_paths.add(str(abs_path))
+                abs_path = settings.resolve_storage_path(media.path)
+                if abs_path:
+                    tracked_paths.add(str(abs_path))
             except Exception:
                 pass
         

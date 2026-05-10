@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.1 CLIP Zero-Shot Classifier — hardening pass (2026-05-09).
+> Last updated after Phase 3.1.1a — Environment/DB/Storage Safety Foundation (2026-05-10).
 > Read this file at the start of any new Cursor conversation to resume development.
 
 ## Repository State
@@ -17,6 +17,7 @@
 | **Admin credentials** | `admin` / `admin123` |
 | **Phase 2.4 status** | Merged on `main` |
 | **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) open, pending merge |
+| **Phase 3.1.1a status** | PR pending — environment/DB/storage safety foundation |
 
 ## Mandatory Workflow Rules
 
@@ -519,6 +520,33 @@ The next development phase should include a developer/service control panel:
 | `docs/content-classification.md` | Phase 3 + 3.1 content classification documentation |
 | `scripts/evaluate_content_classification.py` | Phase 3 server-based evaluation harness |
 | `scripts/evaluate_clip_content_classifier.py` | Phase 3.1 standalone CLIP evaluation (no DB) |
+
+### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
+
+Hardened the environment, database, and storage separation to prevent worktree/DB mismatch incidents:
+
+- **VIOLET_ENV**: New `development|test|production` environment variable with `IS_TEST_ENV` and `IS_PRODUCTION_ENV` computed properties. Invalid values raise at access time.
+- **CODE_ROOT / STORAGE_ROOT separation**: `CODE_ROOT` = project root (replaces ambiguous `BASE_DIR`). `STORAGE_ROOT` optionally set via `VIOLET_STORAGE_ROOT` env var, defaults to `CODE_ROOT`. All storage paths (`MEDIA_DIR`, `ORIGINAL_DIR`, `THUMBNAIL_DIR`, `DATA_DIR`) derive from `STORAGE_ROOT`.
+- **Test DB fail-closed**: `VIOLET_ENV=test` requires `POSTGRES_DB` to contain `_test` suffix or `TEST_DATABASE_URL` to be set. Using the production DB name in test mode raises RuntimeError.
+- **`assert_test_db()` helper**: `database.py` function that raises if `VIOLET_ENV != test` or DB name is `blombooru`. Used as a guard in test fixtures.
+- **9-condition destructive gate**: `_require_destructive_gate()` in `dev_tools.py` replaces the old flag+confirm checks. Production hard-refuses (condition 0). Remaining 8 conditions: test env, test DB, STORAGE_ROOT explicitly set, STORAGE_ROOT != CODE_ROOT, STORAGE_ROOT != main repo, STORAGE_ROOT under recommended prefix, `VIOLET_ALLOW_DESTRUCTIVE_E2E=1`, confirm + phrase.
+- **`_resolve_stored_media_path()`**: Now uses `settings.STORAGE_ROOT` instead of `settings.BASE_DIR` for media file resolution.
+- **Startup logging**: `run.py` prints `VIOLET_ENV`, `APP_VERSION`, `CODE_ROOT`, `STORAGE_ROOT`, `DB_NAME` at boot.
+- **14 unit tests**: `tests/test_env_safety.py` covering VIOLET_ENV, STORAGE_ROOT separation, test DB fail-closed, assert_test_db.
+- **5 env templates**: `.env.example`, `.env.test.example`, `.env.production.example`, `.env.worktree.debug.example`, `.env.worktree.test.example`.
+- **Test DB setup script**: `scripts/setup_test_db.py` — idempotent creation of `blombooru_test` database.
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/config.py` | `VIOLET_ENV`, `CODE_ROOT`, `STORAGE_ROOT`, `IS_TEST_ENV`, `IS_PRODUCTION_ENV`, `DB_NAME` fail-closed |
+| `backend/app/database.py` | `assert_test_db()` helper |
+| `backend/app/routes/admin/dev_tools.py` | `_require_destructive_gate()`, `_compute_gate_diagnostic()`, `_resolve_stored_media_path()` uses STORAGE_ROOT |
+| `run.py` | Startup env/storage/DB logging |
+| `tests/test_env_safety.py` | 14 unit tests for env/DB/storage safety |
+| `scripts/setup_test_db.py` | Idempotent test DB creation |
+| `.env.*.example` | 5 env template files |
 
 ### Fix: LLM Proxy Diagnostics + DeepSeek Fallback
 

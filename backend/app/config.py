@@ -1,6 +1,8 @@
 import json
 import os
-from pathlib import Path
+import re
+import subprocess
+from pathlib import Path, PureWindowsPath
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -9,24 +11,54 @@ from sqlalchemy.engine import URL
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=True)
 
-APP_VERSION = "1.40.0"
+APP_VERSION = "1.41.0"
 SCHEMA_VERSION = 6
+
+_VALID_ENVS = ("development", "test", "production")
+
+
+def _detect_worktree() -> Optional[str]:
+    try:
+        git_dir = subprocess.check_output(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(_PROJECT_ROOT), stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        git_common = subprocess.check_output(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=str(_PROJECT_ROOT), stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        git_dir_resolved = str(Path(git_dir).resolve())
+        git_common_resolved = str(Path(git_common).resolve())
+        if git_dir_resolved != git_common_resolved:
+            return str(_PROJECT_ROOT)
+    except Exception:
+        pass
+    return None
+
 
 class Settings:
     def __init__(self):
-        self.BASE_DIR = Path(__file__).resolve().parent.parent.parent
-        self.MEDIA_DIR = self.BASE_DIR / "media"
+        self.CODE_ROOT = Path(__file__).resolve().parent.parent.parent
+        self.BASE_DIR = self.CODE_ROOT
+
+        storage_env = os.getenv("VIOLET_STORAGE_ROOT", "").strip()
+        if storage_env:
+            self.STORAGE_ROOT = Path(storage_env)
+        else:
+            self.STORAGE_ROOT = self.BASE_DIR
+
+        self.MEDIA_DIR = self.STORAGE_ROOT / "media"
         self.ORIGINAL_DIR = self.MEDIA_DIR / "original"
         self.THUMBNAIL_DIR = self.MEDIA_DIR / "thumbnails"
         self.CACHE_DIR = self.MEDIA_DIR / "cache"
-        self.DATA_DIR = self.BASE_DIR / "data"
+        self.DATA_DIR = self.STORAGE_ROOT / "data"
         self.SETTINGS_FILE = self.DATA_DIR / "settings.json"
-        
+
         self.ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
         self.THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
         self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         self.file_settings = self._load_file_settings()
         self.settings = self._get_default_settings()
         self.settings.update(self.file_settings)
@@ -45,7 +77,87 @@ class Settings:
     @property
     def DEBUG(self) -> bool:
         return os.getenv("BLOMBOORU_DEBUG", "false").lower() == "true"
-    
+
+    @property
+    def VIOLET_ENV(self) -> str:
+        val = os.getenv("VIOLET_ENV", "development").strip().lower()
+        if val not in _VALID_ENVS:
+            raise RuntimeError(
+                f"Invalid VIOLET_ENV={val!r}. Must be one of {_VALID_ENVS}."
+            )
+        return val
+
+    @property
+    def IS_TEST_ENV(self) -> bool:
+        return self.VIOLET_ENV == "test"
+
+    @property
+    def IS_PRODUCTION_ENV(self) -> bool:
+        return self.VIOLET_ENV == "production"
+
+    @property
+    def STORAGE_ROOT_EXPLICITLY_SET(self) -> bool:
+        return bool(os.getenv("VIOLET_STORAGE_ROOT", "").strip())
+
+    @property
+    def WORKTREE_PATH(self) -> Optional[str]:
+        return _detect_worktree()
+
+    @property
+    def VIOLET_TEST_FIXTURE_PATH(self) -> Optional[Path]:
+        val = os.getenv("VIOLET_TEST_FIXTURE_PATH", "").strip()
+        if val:
+            return Path(val)
+        return None
+
+    @property
+    def VIOLET_TEST_STORAGE_ROOT(self) -> Optional[Path]:
+        val = os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip()
+        if val:
+            return Path(val)
+        return None
+
+    @property
+    def TEST_STORAGE_ROOT_EXPLICITLY_SET(self) -> bool:
+        return bool(os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip())
+
+    def resolve_storage_path(self, stored_path: str) -> Optional[Path]:
+        """Resolve a DB-stored relative path against STORAGE_ROOT.
+
+        Returns None for empty, absolute, or traversal paths.
+        """
+        if not stored_path:
+            return None
+        raw = stored_path
+        if raw.startswith("\\\\") or raw.startswith("//"):
+            return None
+        normalized = raw.replace("\\", "/")
+        if normalized.startswith("/"):
+            return None
+        if re.match(r"^[A-Za-z]:", normalized):
+            return None
+        if PureWindowsPath(raw).is_absolute():
+            return None
+        probe = Path(normalized)
+        if probe.is_absolute():
+            return None
+        if ".." in probe.parts:
+            return None
+        resolved = (self.STORAGE_ROOT / normalized).resolve()
+        if not str(resolved).startswith(str(self.STORAGE_ROOT.resolve())):
+            return None
+        return resolved
+
+    def storage_relative_path(self, absolute_path: Path) -> str:
+        """Return POSIX-style relative path from STORAGE_ROOT for DB storage.
+
+        Raises ValueError if the path is not under STORAGE_ROOT.
+        """
+        resolved = absolute_path.resolve()
+        storage_resolved = self.STORAGE_ROOT.resolve()
+        rel = resolved.relative_to(storage_resolved)
+        return str(rel).replace("\\", "/")
+
     def _load_file_settings(self) -> dict:
         if self.SETTINGS_FILE.exists():
             with open(self.SETTINGS_FILE, 'r') as f:
@@ -125,12 +237,41 @@ class Settings:
     def DB_PORT(self) -> int:
         return int(self.file_settings.get("database", {}).get('port') or os.getenv("POSTGRES_PORT") or self.settings.get("database", {}).get('port', 5432))
 
+    _FORBIDDEN_TEST_DB_NAMES = frozenset({"blombooru", "production", "main", "postgres"})
+
     @property
     def DB_NAME(self) -> str:
-        return self.file_settings.get("database", {}).get('name') or os.getenv("POSTGRES_DB") or self.settings.get("database", {}).get('name', 'blombooru')
+        test_url = os.getenv("TEST_DATABASE_URL", "").strip()
+        if self.IS_TEST_ENV:
+            if test_url:
+                name = self._parse_db_name_from_url(test_url)
+                if name.lower() in self._FORBIDDEN_TEST_DB_NAMES:
+                    raise RuntimeError(
+                        f"VIOLET_ENV=test but TEST_DATABASE_URL points to "
+                        f"production-like database {name!r}. "
+                        f"Use a test-specific name (e.g. 'blombooru_test'). "
+                        f"Refusing to start against production DB."
+                    )
+                return name
+            env_db = os.getenv("POSTGRES_DB", "").strip()
+            if not env_db or env_db.lower() in self._FORBIDDEN_TEST_DB_NAMES:
+                raise RuntimeError(
+                    "VIOLET_ENV=test but no valid test DB configured. "
+                    "Set TEST_DATABASE_URL or POSTGRES_DB to a test-specific name "
+                    "(e.g. 'blombooru_test'). Refusing to start against production DB."
+                )
+            return env_db
+        return (
+            self.file_settings.get("database", {}).get("name")
+            or os.getenv("POSTGRES_DB")
+            or self.settings.get("database", {}).get("name", "blombooru")
+        )
 
     @property
     def DATABASE_URL(self) -> URL:
+        test_url = os.getenv("TEST_DATABASE_URL", "").strip()
+        if self.IS_TEST_ENV and test_url:
+            return self._parse_test_url(test_url)
         return URL.create(
             drivername="postgresql",
             username=self.DB_USER,
@@ -139,6 +280,20 @@ class Settings:
             port=self.DB_PORT,
             database=self.DB_NAME
         )
+
+    @staticmethod
+    def _parse_db_name_from_url(url: str) -> str:
+        parts = url.rstrip("/").rsplit("/", 1)
+        if len(parts) == 2 and parts[1]:
+            name = parts[1].split("?")[0]
+            if name:
+                return name
+        raise RuntimeError(f"Cannot parse DB name from TEST_DATABASE_URL: {url!r}")
+
+    @staticmethod
+    def _parse_test_url(url: str) -> URL:
+        from sqlalchemy.engine import make_url
+        return make_url(url)
     
     @property
     def REDIS_HOST(self) -> str:
