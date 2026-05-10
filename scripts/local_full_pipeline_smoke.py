@@ -179,6 +179,41 @@ def validate_config_diagnostics(diag: dict) -> Tuple[bool, List[str]]:
     return (len(issues) == 0, issues)
 
 
+def ensure_env_before_execute(steps: List[str]) -> List[str]:
+    """Return *steps* with ``'env'`` prepended if any execute step is present
+    but ``'env'`` is missing.
+
+    This guarantees config-diagnostics validation runs before any
+    server-mutating step.
+    """
+    if any(s in EXECUTE_STEPS for s in steps) and "env" not in steps:
+        return ["env"] + list(steps)
+    return list(steps)
+
+
+def filter_confirmed_steps(
+    steps: List[str],
+    *,
+    execute: bool,
+    yes: bool,
+    declined: frozenset[str] | None = None,
+) -> List[str]:
+    """Return a copy of *steps* with declined confirm-steps removed.
+
+    Parameters
+    ----------
+    steps : list of step names
+    execute : whether ``--execute`` is active
+    yes : whether ``--yes`` is active (auto-confirm all)
+    declined : set of step names the user declined interactively.
+        When *None* and *yes* is False, this function keeps all steps
+        (the interactive prompt happens elsewhere).
+    """
+    if not execute or yes or declined is None:
+        return list(steps)
+    return [s for s in steps if s not in declined]
+
+
 def mask_sensitive(value: str, visible_chars: int = 4) -> str:
     """Mask a sensitive string, showing only the last *visible_chars*."""
     if len(value) <= visible_chars:
@@ -1009,7 +1044,18 @@ def main() -> None:
             ))
             sys.exit(1)
 
-    # Interactive confirmation for confirm-steps
+    # Safety: ensure env validation runs before any execute step.
+    # If the user requested execute steps but did not include 'env',
+    # automatically prepend it so config diagnostics are validated first.
+    prev_len = len(steps)
+    steps = ensure_env_before_execute(steps)
+    if len(steps) > prev_len:
+        print(_info("Auto-prepended 'env' step — required before execute steps."))
+
+    # Interactive confirmation for confirm-steps.
+    # Build a *new* list instead of mutating ``steps`` during iteration,
+    # so that declining one step cannot accidentally skip the next.
+    confirmed_steps: List[str] = []
     for s in steps:
         if s in CONFIRM_STEPS and args.execute and not args.yes:
             warnings = {
@@ -1026,7 +1072,9 @@ def main() -> None:
             answer = input(f"  Proceed with '{s}'? [y/N] ").strip().lower()
             if answer not in ("y", "yes"):
                 print(_info(f"Skipping '{s}' per user choice."))
-                steps.remove(s)
+                continue  # do NOT append — step is declined
+        confirmed_steps.append(s)
+    steps = confirmed_steps
 
     # Create API client and attempt login
     client = ApiClient(args.base_url)
@@ -1059,8 +1107,11 @@ def main() -> None:
                 if "env" not in steps:
                     sys.exit(1)
 
-    # Env check must pass before execute steps proceed
-    env_ok = True  # optimistic default for non-env steps
+    # Env check must pass before execute steps proceed.
+    # Starts False — only set True when step_env succeeds.
+    # Safe-only runs (no execute steps) do not need env_ok,
+    # because the gate below only blocks EXECUTE_STEPS.
+    env_ok = False
     results: List[dict] = []
     before_snap: Optional[dict] = None
     after_snap: Optional[dict] = None

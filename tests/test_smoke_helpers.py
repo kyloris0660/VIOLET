@@ -14,9 +14,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from local_full_pipeline_smoke import (
+    CONFIRM_STEPS,
+    EXECUTE_STEPS,
     FORBIDDEN_DB_NAMES,
+    SAFE_STEPS,
     count_dir_files,
     count_supported_files,
+    ensure_env_before_execute,
+    filter_confirmed_steps,
     mask_sensitive,
     validate_base_url,
     validate_config_diagnostics,
@@ -289,3 +294,139 @@ class TestSafetyConstants:
 
     def test_forbidden_db_names_includes_main(self):
         assert "main" in FORBIDDEN_DB_NAMES
+
+
+# ---------------------------------------------------------------------------
+# ensure_env_before_execute  (P1 #1 — forced env validation)
+# ---------------------------------------------------------------------------
+
+class TestEnsureEnvBeforeExecute:
+
+    def test_import_without_env_prepends_env(self):
+        result = ensure_env_before_execute(["import"])
+        assert result[0] == "env"
+        assert "import" in result
+
+    def test_execute_step_import_requires_env_first(self):
+        """``--step import --execute`` must have env before import."""
+        result = ensure_env_before_execute(["import"])
+        assert result == ["env", "import"]
+
+    def test_clip_without_env_prepends_env(self):
+        result = ensure_env_before_execute(["clip"])
+        assert result[0] == "env"
+
+    def test_translate_without_env_prepends_env(self):
+        result = ensure_env_before_execute(["translate"])
+        assert result[0] == "env"
+
+    def test_aitag_without_env_prepends_env(self):
+        result = ensure_env_before_execute(["ai-tag"])
+        assert result[0] == "env"
+
+    def test_env_already_present_no_duplication(self):
+        result = ensure_env_before_execute(["env", "import"])
+        assert result.count("env") == 1
+        assert result == ["env", "import"]
+
+    def test_safe_steps_only_no_env_prepend(self):
+        """Safe steps (fixture, browser, etc.) should NOT force env."""
+        result = ensure_env_before_execute(["fixture", "browser"])
+        assert "env" not in result
+
+    def test_empty_list(self):
+        result = ensure_env_before_execute([])
+        assert result == []
+
+    def test_all_execute_steps_without_env(self):
+        result = ensure_env_before_execute(["import", "clip", "ai-tag", "translate"])
+        assert result[0] == "env"
+        assert len(result) == 5
+
+    def test_mixed_safe_and_execute_prepends_env(self):
+        result = ensure_env_before_execute(["fixture", "import"])
+        assert result[0] == "env"
+        assert result == ["env", "fixture", "import"]
+
+    def test_returns_new_list(self):
+        """Must return a copy, not mutate the original."""
+        original = ["import"]
+        result = ensure_env_before_execute(original)
+        assert result is not original
+        assert original == ["import"]  # unchanged
+
+
+# ---------------------------------------------------------------------------
+# filter_confirmed_steps  (P1 #2 — no mutation during iteration)
+# ---------------------------------------------------------------------------
+
+class TestFilterConfirmedSteps:
+
+    def test_declining_aitag_does_not_skip_translate_confirmation(self):
+        """Declining ai-tag must NOT skip translate — it must still appear."""
+        steps = ["env", "import", "ai-tag", "translate"]
+        result = filter_confirmed_steps(
+            steps, execute=True, yes=False, declined=frozenset({"ai-tag"})
+        )
+        assert "ai-tag" not in result
+        assert "translate" in result
+        assert result == ["env", "import", "translate"]
+
+    def test_declining_translate_removes_translate(self):
+        steps = ["env", "import", "ai-tag", "translate"]
+        result = filter_confirmed_steps(
+            steps, execute=True, yes=False, declined=frozenset({"translate"})
+        )
+        assert "translate" not in result
+        assert "ai-tag" in result
+
+    def test_declining_both_removes_both(self):
+        steps = ["env", "import", "ai-tag", "translate"]
+        result = filter_confirmed_steps(
+            steps, execute=True, yes=False, declined=frozenset({"ai-tag", "translate"})
+        )
+        assert "ai-tag" not in result
+        assert "translate" not in result
+        assert result == ["env", "import"]
+
+    def test_yes_flag_keeps_all_confirm_steps(self):
+        steps = ["env", "import", "ai-tag", "translate"]
+        result = filter_confirmed_steps(
+            steps, execute=True, yes=True, declined=frozenset({"ai-tag"})
+        )
+        # --yes overrides declined set
+        assert "ai-tag" in result
+        assert "translate" in result
+        assert result == steps
+
+    def test_non_confirm_steps_unchanged(self):
+        steps = ["env", "fixture", "db", "preflight", "import"]
+        result = filter_confirmed_steps(
+            steps, execute=True, yes=False, declined=frozenset()
+        )
+        assert result == steps
+
+    def test_no_execute_keeps_all(self):
+        steps = ["ai-tag", "translate"]
+        result = filter_confirmed_steps(
+            steps, execute=False, yes=False, declined=frozenset({"ai-tag"})
+        )
+        # Without --execute, confirm logic doesn't apply
+        assert result == steps
+
+    def test_declined_none_keeps_all(self):
+        """When declined is None (pre-interactive), keep everything."""
+        steps = ["env", "ai-tag", "translate"]
+        result = filter_confirmed_steps(
+            steps, execute=True, yes=False, declined=None
+        )
+        assert result == steps
+
+    def test_returns_new_list(self):
+        """Must return a copy, not the original list."""
+        original = ["env", "import", "ai-tag"]
+        result = filter_confirmed_steps(
+            original, execute=True, yes=True
+        )
+        assert result is not original
+        assert result == original  # same content, different object
