@@ -8,8 +8,46 @@ import cv2
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from PIL import Image
+from sqlalchemy import or_
+from sqlalchemy.orm import Query as SAQuery
 
 from .logger import logger
+
+
+VALID_CONTENT_CLASSES = {"anime", "illustration", "non_anime", "unknown"}
+
+
+def apply_content_class_filter(query: SAQuery, content_class: Optional[str]) -> SAQuery:
+    """Apply content_class filtering to a SQLAlchemy query.
+
+    Accepts a comma-separated string of values. 'unknown' includes NULL rows.
+    Raises HTTPException 400 for invalid values.
+    """
+    if not content_class:
+        return query
+
+    from ..models import Media
+
+    values = [v.strip() for v in content_class.split(",") if v.strip()]
+    if not values:
+        return query
+
+    invalid = [v for v in values if v not in VALID_CONTENT_CLASSES]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid content_class value(s): {', '.join(invalid)}",
+        )
+
+    conditions = []
+    for v in values:
+        if v == "unknown":
+            conditions.append(Media.content_class == "unknown")
+            conditions.append(Media.content_class.is_(None))
+        else:
+            conditions.append(Media.content_class == v)
+
+    return query.filter(or_(*conditions))
 
 def extract_image_metadata(file_path: Path) -> Dict[str, Any]:
     """Extract metadata from media files (EXIF, PNG chunks, XMP, etc.)"""

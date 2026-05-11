@@ -1,4 +1,4 @@
-const CACHE_NAME = 'blombooru-1-24-0';
+const CACHE_NAME = 'violet-1-41-0';
 const STATIC_ASSETS = [
     '/static/css/tailwind.css',
     '/static/css/main.css',
