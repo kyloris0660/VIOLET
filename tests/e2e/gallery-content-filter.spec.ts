@@ -122,4 +122,35 @@ test.describe('Gallery Content-Class Filter E2E', () => {
     );
     expect(jsErrors).toEqual([]);
   });
+
+  test('stale localStorage.selectedRating does NOT affect gallery requests', async ({ page }) => {
+    // Preset a stale rating value as if user had it from before the UI change
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => localStorage.setItem('selectedRating', 'safe'));
+
+    // Reload so base-gallery picks up the stale value
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+
+    // Intercept the gallery API request
+    const apiRequest = await page.waitForRequest(req =>
+      req.url().includes('/api/media') || req.url().includes('/api/search')
+    );
+
+    const url = new URL(apiRequest.url());
+    expect(url.searchParams.has('rating')).toBe(false);
+  });
+
+  test('gallery API request omits rating parameter entirely', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    const apiRequest = await page.waitForRequest(req =>
+      req.url().includes('/api/media') || req.url().includes('/api/search')
+    );
+
+    const url = new URL(apiRequest.url());
+    expect(url.searchParams.has('rating')).toBe(false);
+  });
 });
