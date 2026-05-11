@@ -134,6 +134,10 @@ class LLMBatchAggregateError(LLMProviderError):
     def all_transport_errors(self) -> bool:
         return self._all_transport
 
+    @property
+    def has_non_transport_errors(self) -> bool:
+        return not self._all_transport
+
 
 # Keep old name as alias for backwards compat in tests
 LLMChunkAggregateError = LLMBatchAggregateError

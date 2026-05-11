@@ -57,7 +57,7 @@ test.describe('Tag Translation Worker - Smoke', () => {
   });
 
   test('worker status panel exists in admin UI', async ({ page }) => {
-    await page.goto('http://localhost:8000/admin');
+    await page.goto('/admin');
     await page.waitForLoadState('domcontentloaded');
     await page.locator('button:has-text("内容"), button:has-text("Content")').first().click();
     await page.waitForTimeout(1000);

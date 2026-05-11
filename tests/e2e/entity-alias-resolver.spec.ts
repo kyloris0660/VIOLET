@@ -128,11 +128,11 @@ test.describe('Entity Alias Resolver — Smoke', () => {
   });
 });
 
-const REAL_E2E = process.env.VIOLET_RUN_REAL_E2E === '1';
+const REAL_LLM_E2E = process.env.VIOLET_RUN_REAL_LLM_E2E === '1';
 
 test.describe('Entity Alias Resolver — Real E2E', () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(!REAL_E2E, 'Skipped: set VIOLET_RUN_REAL_E2E=1 to run');
+    test.skip(!REAL_LLM_E2E, 'Skipped: set VIOLET_RUN_REAL_LLM_E2E=1 to run real LLM tests');
     await loginAsAdmin(page);
   });
 

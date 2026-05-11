@@ -10,13 +10,12 @@ test.describe('Admin Content Tab', () => {
   test('all content sections are visible', async ({ page }) => {
     const sections = [
       '媒体管理',
-      '上传媒体',
-      '从外部 Booru 导入',
       '本地图库扫描',
-      'AI 自动打标',
       'AI 标签审核',
       'AI 打标任务',
       '标签本地化',
+      '标签管理',
+      '内容分类',
     ];
     for (const section of sections) {
       await expect(

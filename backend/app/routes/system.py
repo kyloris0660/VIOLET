@@ -91,6 +91,14 @@ class UpdateStatus(BaseModel):
     asset_urls: dict = {}
     deployment_type: str = "local"
 
+
+def _safe_db_name() -> str:
+    try:
+        return settings.DB_NAME
+    except Exception:
+        return os.getenv("POSTGRES_DB", "blombooru")
+
+
 @router.get("/server-identity")
 async def get_server_identity(current_user: dict = Depends(require_admin_mode)):
     """Return lightweight runtime diagnostics for verifying which server is running.
@@ -119,7 +127,7 @@ async def get_server_identity(current_user: dict = Depends(require_admin_mode)):
         "app_name": "V.I.O.L.E.T.",
         "app_version": APP_VERSION,
         "violet_env": settings.VIOLET_ENV,
-        "db_name": os.getenv("POSTGRES_DB", "blombooru"),
+        "db_name": _safe_db_name(),
         "code_root": str(settings.CODE_ROOT),
         "storage_root": str(settings.STORAGE_ROOT),
         "git_sha": git_sha,

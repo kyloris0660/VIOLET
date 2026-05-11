@@ -49,6 +49,7 @@ def main():
     parser.add_argument("--expected-code-root", default=None)
     parser.add_argument("--expected-git-sha", default=None)
     parser.add_argument("--expected-branch", default=None)
+    parser.add_argument("--admin-username", default="admin", help="Admin username for auth")
     parser.add_argument("--admin-password", default=None, help="Admin password for auth")
     args = parser.parse_args()
 
@@ -58,9 +59,13 @@ def main():
 
     session = requests.Session()
     if args.admin_password:
-        login_url = f"{args.base_url.rstrip('/')}/api/auth/admin-login"
+        login_url = f"{args.base_url.rstrip('/')}/api/admin/login"
         try:
-            resp = session.post(login_url, json={"password": args.admin_password}, timeout=5)
+            resp = session.post(
+                login_url,
+                json={"username": args.admin_username, "password": args.admin_password},
+                timeout=5,
+            )
             if resp.status_code != 200:
                 print(f"FAIL: admin login returned {resp.status_code}")
                 sys.exit(1)

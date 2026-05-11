@@ -46,9 +46,9 @@ def _build_identity(*, violet_env="test", db_name="blombooru_test",
     mock_settings.CODE_ROOT = Path(code_root)
     mock_settings.STORAGE_ROOT = Path(storage_root)
     mock_settings.WORKTREE_PATH = worktree_path
+    mock_settings.DB_NAME = db_name
 
     env = {
-        "POSTGRES_DB": db_name,
         "APP_PORT": app_port,
         "TAG_TRANSLATION_LLM_API_KEY": "sk-secret-key-12345",
         "POSTGRES_PASSWORD": "hunter2",
@@ -66,7 +66,7 @@ def _build_identity(*, violet_env="test", db_name="blombooru_test",
          patch("app.routes.system.settings", mock_settings), \
          patch("subprocess.check_output", side_effect=mock_check_output):
         import asyncio
-        return asyncio.get_event_loop().run_until_complete(
+        return asyncio.run(
             get_server_identity(current_user={"username": "admin"})
         )
 
@@ -160,18 +160,19 @@ class TestServerIdentityGitFailure:
         mock_settings.CODE_ROOT = Path("C:\\project")
         mock_settings.STORAGE_ROOT = Path("C:\\storage")
         mock_settings.WORKTREE_PATH = None
+        mock_settings.DB_NAME = "blombooru_test"
 
         def mock_check_output_fail(cmd, **kwargs):
             raise FileNotFoundError("git not found")
 
-        env = {"POSTGRES_DB": "blombooru_test", "APP_PORT": "8000"}
+        env = {"APP_PORT": "8000"}
 
         with patch.dict(os.environ, env, clear=False), \
              patch("app.routes.system.settings", mock_settings), \
              patch("subprocess.check_output", side_effect=mock_check_output_fail):
             from app.routes.system import get_server_identity
             import asyncio
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 get_server_identity(current_user={"username": "admin"})
             )
 

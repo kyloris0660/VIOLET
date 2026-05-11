@@ -29,6 +29,10 @@ test.describe('VioletTest100 Real E2E', () => {
   });
 
   test('scan and import test library', async ({ page }) => {
+    test.skip(
+      !process.env.VIOLET_ALLOW_DESTRUCTIVE_E2E,
+      'Full pipeline requires VIOLET_ALLOW_DESTRUCTIVE_E2E=1 (reset must run first)'
+    );
     test.setTimeout(600_000);
 
     const createResp = await apiCall(page, '/api/admin/scan-local-library/jobs', {
@@ -54,6 +58,10 @@ test.describe('VioletTest100 Real E2E', () => {
   });
 
   test('verify auto AI tagging job completed', async ({ page }) => {
+    test.skip(
+      !process.env.VIOLET_ALLOW_DESTRUCTIVE_E2E,
+      'Full pipeline requires VIOLET_ALLOW_DESTRUCTIVE_E2E=1 (reset must run first)'
+    );
     test.setTimeout(1200_000);
 
     let aiJobId: number | undefined;
