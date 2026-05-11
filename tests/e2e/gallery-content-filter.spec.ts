@@ -67,7 +67,7 @@ test.describe('Gallery Content-Class Filter E2E', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    const animeLabel = page.locator('span.content-class-filter-label').filter({ hasText: /Anime Only|仅动漫/ });
+    const animeLabel = page.locator('span.content-class-filter-label').filter({ hasText: /^(Anime Only|仅动漫)$/ });
     const count = await animeLabel.count();
     if (count > 0) {
       const reqPromise = page.waitForRequest(req =>
@@ -83,7 +83,7 @@ test.describe('Gallery Content-Class Filter E2E', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    const animeLabel = page.locator('span.content-class-filter-label').filter({ hasText: /Anime Only|仅动漫/ });
+    const animeLabel = page.locator('span.content-class-filter-label').filter({ hasText: /^(Anime Only|仅动漫)$/ });
     if (await animeLabel.count() > 0) {
       await animeLabel.last().click();
       await page.waitForTimeout(500);

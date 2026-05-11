@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, Query, Request, UploadFile)
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 from sqlalchemy import and_, desc, func, or_, text
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -32,7 +32,7 @@ from ..utils.cache import (cache_response, invalidate_album_cache,
                            invalidate_media_cache, invalidate_media_item_cache,
                            invalidate_tag_cache)
 from ..utils.logger import logger
-from ..utils.media_helpers import apply_content_class_filter
+from ..utils.media_helpers import VALID_CONTENT_CLASSES, apply_content_class_filter
 from ..utils.media_helpers import (create_stripped_media_cache,
                                    delete_media_cache, extract_image_metadata,
                                    get_unique_filename, sanitize_filename,
@@ -254,10 +254,19 @@ async def get_media_list(
     """Get paginated media list"""
     if limit is None:
         limit = settings.get_items_per_page()
-    
+
+    if content_class:
+        values = [v.strip() for v in content_class.split(",") if v.strip()]
+        invalid = [v for v in values if v not in VALID_CONTENT_CLASSES]
+        if invalid:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": f"Invalid content_class value(s): {', '.join(invalid)}"},
+            )
+
     try:
         query = db.query(Media).options(selectinload(Media.tags))
-        
+
         if rating and rating != "explicit":
             allowed_ratings = {
                 "safe": [RatingEnum.safe],
@@ -310,7 +319,7 @@ async def get_media_list(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in get_media_list: {e}", exc_info=True)
+        logger.error(f"Error in get_media_list: {e}")
         raise HTTPException(status_code=500, detail=safe_error_detail("Failed to retrieve media list", e))
 
 @router.get("/batch")
