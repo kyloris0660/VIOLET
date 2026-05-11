@@ -2,7 +2,6 @@ import random
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session, selectinload
 
@@ -31,15 +30,6 @@ async def search_media(
     """Search media with tag-based query"""
     if limit is None:
         limit = settings.get_items_per_page()
-
-    if content_class:
-        values = [v.strip() for v in content_class.split(",") if v.strip()]
-        invalid = [v for v in values if v not in VALID_CONTENT_CLASSES]
-        if invalid:
-            return JSONResponse(
-                status_code=400,
-                content={"detail": f"Invalid content_class value(s): {', '.join(invalid)}"},
-            )
 
     query = db.query(Media).options(selectinload(Media.tags))
     parsed = parse_search_query(q)
