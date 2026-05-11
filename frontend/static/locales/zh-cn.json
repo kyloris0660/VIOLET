@@ -1061,6 +1061,14 @@
         "bulk_ai_tags": "批量追加 AI 标签",
         "bulk_predict_tags": "批量 AI 预测标签",
         "check_console": "请检查浏览器控制台以获取更多详细信息",
+        "content_class_filter": "内容分类",
+        "content_class": {
+            "all": "全部",
+            "anime_unknown": "动漫 + 未分类",
+            "anime": "仅动漫",
+            "non_anime": "仅非动漫",
+            "unknown": "仅未分类"
+        },
         "delete_selected": "删除选中项",
         "deselect_all": "取消全选",
         "error_label": "错误:",

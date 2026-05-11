@@ -1061,6 +1061,14 @@
         "bulk_ai_tags": "Bulk Append AI Tags",
         "bulk_predict_tags": "Bulk AI Predict Tags",
         "check_console": "Check the browser console for more details",
+        "content_class_filter": "Content Filter",
+        "content_class": {
+            "all": "All",
+            "anime_unknown": "Anime + Unclassified",
+            "anime": "Anime Only",
+            "non_anime": "Non-Anime Only",
+            "unknown": "Unclassified Only"
+        },
         "delete_selected": "Delete Selected",
         "deselect_all": "Deselect All",
         "error_label": "Error:",

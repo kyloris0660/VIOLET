@@ -32,6 +32,7 @@ from ..utils.cache import (cache_response, invalidate_album_cache,
                            invalidate_media_cache, invalidate_media_item_cache,
                            invalidate_tag_cache)
 from ..utils.logger import logger
+from ..utils.media_helpers import apply_content_class_filter
 from ..utils.media_helpers import (create_stripped_media_cache,
                                    delete_media_cache, extract_image_metadata,
                                    get_unique_filename, sanitize_filename,
@@ -245,6 +246,7 @@ async def get_media_list(
     page: int = 1,
     limit: int = Query(None),
     rating: Optional[str] = None,
+    content_class: Optional[str] = Query(None),
     sort: Optional[str] = None,
     order: Optional[str] = None,
     db: Session = Depends(get_db)
@@ -262,7 +264,9 @@ async def get_media_list(
                 "questionable": [RatingEnum.safe, RatingEnum.questionable]
             }
             query = query.filter(Media.rating.in_(allowed_ratings.get(rating, [])))
-        
+
+        query = apply_content_class_filter(query, content_class)
+
         # Sorting
         sort_by = sort if sort else settings.get_default_sort()
         sort_order = order if order else settings.get_default_order()
@@ -303,6 +307,8 @@ async def get_media_list(
             "page": page,
             "pages": max(1, (total + limit - 1) // limit)
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in get_media_list: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=safe_error_detail("Failed to retrieve media list", e))

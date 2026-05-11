@@ -39,7 +39,21 @@ class Gallery extends BaseGallery {
             apiParams.set('sort', this.getSortValue());
             apiParams.set('order', this.getOrderValue());
 
-            // 2. Handle Search vs Browse
+            // 2. Content class filter
+            const contentClassMap = {
+                'anime_unknown': 'anime,unknown',
+                'anime': 'anime',
+                'non_anime': 'non_anime',
+                'unknown': 'unknown'
+            };
+            if (this.currentContentClass && this.currentContentClass !== 'all') {
+                const mapped = contentClassMap[this.currentContentClass];
+                if (mapped) {
+                    apiParams.set('content_class', mapped);
+                }
+            }
+
+            // 3. Handle Search vs Browse
             const urlParams = new URLSearchParams(window.location.search);
             const searchQuery = urlParams.get('q');
 

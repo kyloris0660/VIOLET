@@ -46,6 +46,7 @@ class BaseGallery {
 
         // Current state
         this.currentRating = localStorage.getItem('selectedRating') || this.options.defaultRating;
+        this.currentContentClass = localStorage.getItem('selectedContentClass') || 'all';
 
         const sidebarMode = document.body.dataset.sidebarMode || 'rating';
         if (sidebarMode === 'custom') {
@@ -65,6 +66,7 @@ class BaseGallery {
         if (this.options.enableRatingFilter) {
             this.setupRatingFilter();
         }
+        this.setupContentClassFilter();
         if (this.options.enableSorting) {
             this.setupSorting();
         }
@@ -190,6 +192,40 @@ class BaseGallery {
 
     onRatingChange() {
         this.loadContent();
+    }
+
+    // ==================== Content Class Filter ====================
+
+    setupContentClassFilter() {
+        document.querySelectorAll('.content-class-filter-input').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.currentContentClass = e.target.value;
+                this.updateContentClassFilterLabels(this.currentContentClass);
+                localStorage.setItem('selectedContentClass', this.currentContentClass);
+                this.currentPage = 1;
+                this.loadContent();
+            });
+        });
+
+        const savedRadio = document.querySelector(`.content-class-filter-input[value="${this.currentContentClass}"]`);
+        if (savedRadio) {
+            savedRadio.checked = true;
+            this.updateContentClassFilterLabels(this.currentContentClass);
+        }
+    }
+
+    updateContentClassFilterLabels(selectedValue) {
+        document.querySelectorAll('.content-class-filter-label').forEach(label => {
+            label.classList.remove('checked');
+        });
+
+        document.querySelectorAll(`.content-class-filter-input[value="${selectedValue}"]`).forEach(radio => {
+            radio.checked = true;
+            const label = radio.nextElementSibling;
+            if (label) {
+                label.classList.add('checked');
+            }
+        });
     }
 
     // ==================== Sorting ====================

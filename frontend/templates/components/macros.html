@@ -62,6 +62,44 @@
 {% endmacro %}
 
 
+{# Content Class Filter Component #}
+{% macro content_class_filter(location='desktop') %}
+{% set options = [
+    ('all', t('gallery.content_class.all')),
+    ('anime_unknown', t('gallery.content_class.anime_unknown')),
+    ('anime', t('gallery.content_class.anime')),
+    ('non_anime', t('gallery.content_class.non_anime')),
+    ('unknown', t('gallery.content_class.unknown'))
+] %}
+{% if location == 'mobile' %}
+<div class="surface p-3 mb-4 border block lg:hidden">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {{ _content_class_options(options, location, 'py-2') }}
+    </div>
+</div>
+{% else %}
+<div class="hidden lg:block mb-4">
+    <h3 class="text-sm font-bold mb-3 pb-1 border-b">{{ t('gallery.content_class_filter') }}</h3>
+    <div class="grid grid-cols-1 gap-2 mb-3">
+        {{ _content_class_options(options, location, 'py-1') }}
+    </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro _content_class_options(options, location='desktop', padding='py-1') %}
+{% for value, label in options %}
+<label class="flex-1">
+    <input type="radio" name="content_class_filter_{{ location }}" value="{{ value }}" class="hidden content-class-filter-input">
+    <span
+        class="block text-center px-3 {{ padding }} border-1 cursor-pointer bg hover:border-primary transition-colors content-class-filter-label">
+        {{ label }}
+    </span>
+</label>
+{% endfor %}
+{% endmacro %}
+
+
 {# Sorting Options Component #}
 {% macro sorting_options(sort_options=none, default_sort='uploaded_at', default_order='desc', show_wrapper=true,
 location='desktop') %}

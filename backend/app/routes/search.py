@@ -10,6 +10,7 @@ from ..database import get_db
 from ..models import Media
 from ..schemas import MediaResponse
 from ..utils.cache import cache_response
+from ..utils.media_helpers import apply_content_class_filter
 from ..utils.search_parser import apply_search_criteria, parse_search_query
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -21,6 +22,7 @@ async def search_media(
     request: Request,
     q: str = Query("", description="Search query"),
     rating: Optional[str] = None,
+    content_class: Optional[str] = Query(None),
     page: int = 1,
     limit: int = Query(None),
     db: Session = Depends(get_db)
@@ -40,7 +42,8 @@ async def search_media(
 
     # Apply all criteria
     query = apply_search_criteria(query, parsed, db)
-    
+    query = apply_content_class_filter(query, content_class)
+
     # Pagination
     offset = (page - 1) * limit
     total = query.count()
