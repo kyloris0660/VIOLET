@@ -3624,7 +3624,10 @@ class AdminPanel {
         const dryRun = document.getElementById('ai-job-dry-run').checked;
         const forceSuggestions = document.getElementById('ai-job-force-suggestions').checked;
         const onlyUntagged = document.getElementById('ai-job-only-untagged').checked;
-        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
+        const t = (k, fbOrParams, maybeParams) => {
+            if (typeof fbOrParams === 'object') return window.i18n ? window.i18n.t(k, fbOrParams) : k;
+            return window.i18n ? window.i18n.t(k, maybeParams) : (maybeParams ? fbOrParams.replace(/\{(\w+)\}/g, (m, p) => Object.prototype.hasOwnProperty.call(maybeParams, p) ? String(maybeParams[p]) : m) : fbOrParams);
+        };
 
         let mediaIds = null;
         if (idsInput) {
@@ -3651,7 +3654,7 @@ class AdminPanel {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            app.showNotification(`${t('admin.ai_tagging_jobs.job_created', 'AI tag job created')} #${data.id}`, 'success');
+            app.showNotification(t('admin.ai_tagging_jobs.job_created', 'AI Tagging Job #{id} created', { id: data.id }), 'success');
             this._currentAiJobId = data.id;
             this._startAiJobPolling(data.id);
         } catch (e) {
@@ -3888,7 +3891,10 @@ class AdminPanel {
         const maxItems = parseInt(document.getElementById('cls-job-max-items').value) || 100;
         const onlyUnclassified = document.getElementById('cls-job-only-unclassified').checked;
         const forceReclassify = document.getElementById('cls-job-force-reclassify')?.checked || false;
-        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
+        const t = (k, fbOrParams, maybeParams) => {
+            if (typeof fbOrParams === 'object') return window.i18n ? window.i18n.t(k, fbOrParams) : k;
+            return window.i18n ? window.i18n.t(k, maybeParams) : (maybeParams ? fbOrParams.replace(/\{(\w+)\}/g, (m, p) => Object.prototype.hasOwnProperty.call(maybeParams, p) ? String(maybeParams[p]) : m) : fbOrParams);
+        };
 
         let mediaIds = null;
         if (idsInput) {
@@ -3914,7 +3920,7 @@ class AdminPanel {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            app.showNotification(`${t('admin.content_classification.job_created', 'Classification job created')} #${data.id}`, 'success');
+            app.showNotification(t('admin.content_classification.job_created', 'Classification Job #{id} created', { id: data.id }), 'success');
             this._currentClsJobId = data.id;
             this._startClsJobPolling(data.id);
         } catch (e) {
