@@ -6,17 +6,24 @@ Defaults to disabled when no API key is configured.
 Chunking: large batches are split into chunks of CHUNK_SIZE tags per API call
 to avoid exceeding LLM token limits.  Errors in individual chunks are collected
 and re-raised so callers can report them properly.
+
+Two-layer completion API:
+  complete_chat()  — returns the raw content string from the LLM.
+  complete_json()  — calls complete_chat(), then parses as JSON.
 """
 import json
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 25
+
+_FALLBACK_HTTP_CODES = {408, 429, 500, 502, 503, 504}
 
 
 def _safe_url_host(url: str) -> str:
@@ -48,7 +55,7 @@ def _format_error(exc: Exception, *, provider_label: str, base_url: str, model: 
     ]
     if proxy:
         parts.append(f"proxy={proxy}")
-    parts.append(str(exc))
+    parts.append(repr(exc) if not str(exc) else str(exc))
     return " ".join(parts)
 
 
@@ -65,20 +72,59 @@ def _is_transport_error(exc: Exception) -> bool:
 
 def _sanitize_error_message(msg: str) -> str:
     """Remove anything that looks like an API key from error messages."""
-    import re
     return re.sub(r'(sk-|key-)[a-zA-Z0-9]{8,}', r'\1***', msg)
 
 
-class LLMChunkAggregateError(RuntimeError):
-    """Raised when all LLM chunks fail. Carries structured failure info."""
+# ── Structured error hierarchy ──────────────────────────────────
+
+
+class LLMProviderError(RuntimeError):
+    """Base class for all LLM provider errors."""
+
+
+class LLMTransportError(LLMProviderError):
+    """Network / transport-layer error — triggers fallback."""
+
+
+class LLMHTTPStatusError(LLMProviderError):
+    """HTTP status-code error from the upstream LLM API."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(message)
+
+    @property
+    def should_fallback(self) -> bool:
+        return self.status_code in _FALLBACK_HTTP_CODES
+
+
+class LLMResponseFormatError(LLMProviderError):
+    """Model returned content that could not be parsed as expected — no fallback."""
+
+
+class LLMAllProvidersFailed(LLMProviderError):
+    """Both primary and fallback providers failed."""
+
+    def __init__(self, primary_error: Exception, fallback_error: Optional[Exception] = None):
+        self.primary_error = primary_error
+        self.fallback_error = fallback_error
+        parts = [f"primary: {_sanitize_error_message(repr(primary_error))}"]
+        if fallback_error:
+            parts.append(f"fallback: {_sanitize_error_message(repr(fallback_error))}")
+        super().__init__(f"All LLM providers failed — {'; '.join(parts)}")
+
+
+class LLMBatchAggregateError(LLMProviderError):
+    """Raised when all chunks in a batch fail. Carries structured failure info."""
 
     def __init__(self, failures: list, *, provider_label: str):
         self.failures = failures
         self.provider_label = provider_label
-        self._all_transport = all(_is_transport_error(f) for f in failures)
-        self._has_non_transport = any(not _is_transport_error(f) for f in failures)
+        self._all_transport = all(
+            isinstance(f, LLMTransportError) or _is_transport_error(f) for f in failures
+        )
         sanitized = _sanitize_error_message(
-            "; ".join(f"{type(f).__name__}: {f}" for f in failures)
+            "; ".join(f"{type(f).__name__}: {repr(f)}" for f in failures)
         )
         super().__init__(
             f"All LLM chunks failed ({provider_label}): {sanitized}"
@@ -88,9 +134,25 @@ class LLMChunkAggregateError(RuntimeError):
     def all_transport_errors(self) -> bool:
         return self._all_transport
 
-    @property
-    def has_non_transport_errors(self) -> bool:
-        return self._has_non_transport
+
+# Keep old name as alias for backwards compat in tests
+LLMChunkAggregateError = LLMBatchAggregateError
+
+
+def _should_fallback(exc: Exception) -> bool:
+    """Determine whether an exception warrants trying the fallback provider."""
+    if isinstance(exc, LLMTransportError) or _is_transport_error(exc):
+        return True
+    if isinstance(exc, LLMHTTPStatusError):
+        return exc.should_fallback
+    if isinstance(exc, LLMBatchAggregateError):
+        return exc.all_transport_errors
+    if isinstance(exc, LLMResponseFormatError):
+        return False
+    return _is_transport_error(exc)
+
+
+# ── Result dataclass ────────────────────────────────────────────
 
 
 class TranslationResult:
@@ -105,6 +167,9 @@ class TranslationResult:
         self.category = category
 
 
+# ── Provider abstraction ────────────────────────────────────────
+
+
 class BaseLLMProvider(ABC):
     @abstractmethod
     def is_available(self) -> bool:
@@ -113,6 +178,40 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     def get_provider_name(self) -> str:
         ...
+
+    @abstractmethod
+    async def complete_chat(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Raw chat completion. Returns the content string."""
+        ...
+
+    async def complete_json(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> Any:
+        """Chat completion parsed as JSON. Raises LLMResponseFormatError on parse failure."""
+        content = await self.complete_chat(
+            messages, temperature=temperature, max_tokens=max_tokens,
+        )
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(
+                lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+            )
+        try:
+            return json.loads(content)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise LLMResponseFormatError(
+                f"Failed to parse LLM response as JSON: {e} — content[:200]: {content[:200]}"
+            ) from e
 
     @abstractmethod
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
@@ -126,6 +225,9 @@ class DisabledProvider(BaseLLMProvider):
 
     def get_provider_name(self) -> str:
         return "disabled"
+
+    async def complete_chat(self, messages, *, temperature=0.3, max_tokens=4096) -> str:
+        raise LLMProviderError("LLM provider is disabled")
 
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
         return []
@@ -144,6 +246,56 @@ class OpenAICompatibleProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return f"openai_compatible({self.label})"
 
+    async def complete_chat(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Raw OpenAI-compatible chat completion. Returns the content string.
+
+        Raises LLMTransportError for network issues, LLMHTTPStatusError for bad status codes.
+        """
+        import httpx
+
+        if not self.is_available():
+            raise LLMProviderError(f"Provider {self.label} is not available")
+
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                    },
+                )
+        except Exception as e:
+            if _is_transport_error(e):
+                raise LLMTransportError(
+                    _format_error(e, provider_label=self.label, base_url=self.base_url, model=self.model)
+                ) from e
+            raise
+
+        if resp.status_code != 200:
+            msg = _format_error(
+                Exception(f"HTTP {resp.status_code}: {resp.text[:300]}"),
+                provider_label=self.label,
+                base_url=self.base_url,
+                model=self.model,
+            )
+            raise LLMHTTPStatusError(resp.status_code, msg)
+
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()
+
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
         if not self.is_available():
             return []
@@ -158,20 +310,18 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 all_results.extend(chunk_results)
             except Exception as e:
                 msg = _format_error(e, provider_label=self.label, base_url=self.base_url, model=self.model)
-                logger.error(f"LLM chunk {i // CHUNK_SIZE + 1} failed: {msg}")
+                logger.error("LLM chunk %d failed: %s", i // CHUNK_SIZE + 1, msg)
                 chunk_exceptions.append(e)
 
         if chunk_exceptions and not all_results:
-            raise LLMChunkAggregateError(chunk_exceptions, provider_label=self.label)
+            raise LLMBatchAggregateError(chunk_exceptions, provider_label=self.label)
 
         if chunk_exceptions:
-            logger.warning(f"LLM translation partially failed ({self.label}): {len(chunk_exceptions)} chunk(s)")
+            logger.warning("LLM translation partially failed (%s): %d chunk(s)", self.label, len(chunk_exceptions))
 
         return all_results
 
     async def _translate_chunk(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
-        import httpx
-
         tags_text = json.dumps(tags, ensure_ascii=False)
         system_prompt = (
             "You are a Danbooru anime tag translator. Translate the given tags to Chinese (zh-CN).\n"
@@ -185,38 +335,15 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             '{"canonical_name": "...", "display_name_zh": "...", "aliases_zh": ["..."], "notes": "...", "needs_review": true/false}\n'
             "ONLY output valid JSON array, no markdown, no explanation."
         )
-        user_prompt = f"Translate these Danbooru tags to Chinese:\n{tags_text}"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Translate these Danbooru tags to Chinese:\n{tags_text}"},
+        ]
 
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            resp = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4096,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        results_raw = await self.complete_json(messages)
 
-        content = data["choices"][0]["message"]["content"].strip()
-        if content.startswith("```"):
-            lines = content.split("\n")
-            content = "\n".join(
-                lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-            )
-
-        results_raw = json.loads(content)
         if not isinstance(results_raw, list):
-            raise ValueError(f"LLM returned non-array response: {content[:200]}")
+            raise LLMResponseFormatError(f"LLM returned non-array response: {str(results_raw)[:200]}")
 
         results = []
         for item in results_raw:
@@ -243,7 +370,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
 
 class FallbackProvider(BaseLLMProvider):
-    """Wraps a primary and fallback provider. On transport errors, retries with fallback."""
+    """Wraps a primary and fallback provider. On fallback-eligible errors, retries with fallback."""
 
     def __init__(self, primary: OpenAICompatibleProvider, fallback: OpenAICompatibleProvider):
         self.primary = primary
@@ -255,19 +382,50 @@ class FallbackProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return f"fallback({self.primary.label}->{self.fallback.label})"
 
+    async def complete_chat(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> str:
+        if self.primary.is_available():
+            try:
+                return await self.primary.complete_chat(
+                    messages, temperature=temperature, max_tokens=max_tokens,
+                )
+            except Exception as primary_exc:
+                if _should_fallback(primary_exc):
+                    logger.warning(
+                        "Primary provider (%s) failed (%s), trying fallback (%s)",
+                        self.primary.label, type(primary_exc).__name__, self.fallback.label,
+                    )
+                    if self.fallback.is_available():
+                        try:
+                            return await self.fallback.complete_chat(
+                                messages, temperature=temperature, max_tokens=max_tokens,
+                            )
+                        except Exception as fallback_exc:
+                            raise LLMAllProvidersFailed(primary_exc, fallback_exc) from fallback_exc
+                    raise LLMAllProvidersFailed(primary_exc) from primary_exc
+                raise
+
+        if self.fallback.is_available():
+            return await self.fallback.complete_chat(
+                messages, temperature=temperature, max_tokens=max_tokens,
+            )
+
+        raise LLMProviderError("No LLM providers available")
+
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
         if self.primary.is_available():
             try:
                 return await self.primary.translate_tags(tags)
             except Exception as primary_exc:
-                should_fallback = (
-                    _is_transport_error(primary_exc) or
-                    (isinstance(primary_exc, LLMChunkAggregateError) and primary_exc.all_transport_errors)
-                )
-                if should_fallback:
+                if _should_fallback(primary_exc):
                     logger.warning(
-                        f"Primary provider ({self.primary.label}) transport failure, "
-                        f"trying fallback ({self.fallback.label}): {type(primary_exc).__name__}"
+                        "Primary provider (%s) batch failure (%s), trying fallback (%s)",
+                        self.primary.label, type(primary_exc).__name__, self.fallback.label,
                     )
                     if self.fallback.is_available():
                         return await self.fallback.translate_tags(tags)
@@ -286,7 +444,7 @@ def get_llm_provider() -> BaseLLMProvider:
 
     provider_type = settings.TAG_TRANSLATION_LLM_PROVIDER
     if provider_type != "openai_compatible":
-        logger.warning(f"Unknown LLM provider: {provider_type}, using disabled")
+        logger.warning("Unknown LLM provider: %s, using disabled", provider_type)
         return DisabledProvider()
 
     primary = OpenAICompatibleProvider(
@@ -308,8 +466,9 @@ def get_llm_provider() -> BaseLLMProvider:
             label="fallback",
         )
         logger.info(
-            f"LLM fallback configured: {_safe_url_host(settings.TAG_TRANSLATION_LLM_BASE_URL)} "
-            f"-> {_safe_url_host(fallback_url)}"
+            "LLM fallback configured: %s -> %s",
+            _safe_url_host(settings.TAG_TRANSLATION_LLM_BASE_URL),
+            _safe_url_host(fallback_url),
         )
         return FallbackProvider(primary, fallback)
 

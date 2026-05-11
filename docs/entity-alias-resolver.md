@@ -26,10 +26,14 @@ A wrong entity alias (e.g., inventing a Chinese name for an obscure artist) is w
 ```
 Admin triggers "Resolve Entities"  (POST /entity/resolve)
          ↓
+  Concurrency gate (asyncio.Lock — HTTP 409 if already running)
+         ↓
   list_pending_proper_nouns(db)
          ↓
   await resolve_entity_aliases(tags)  ← async, dedicated LLM prompt
          ↓                               chunks by ENTITY_ALIAS_BATCH_SIZE
+  provider.complete_json(messages)    ← unified LLM path (FallbackProvider)
+         ↓                               transport/5xx errors → auto-fallback
   upsert_translation(db, ...)  ← source=llm, provider=entity_resolver
          ↓
   Trust policy gate (single-pass filter in _build_alias_cache):
@@ -41,8 +45,9 @@ Admin triggers "Resolve Entities"  (POST /entity/resolve)
 
 | Component | Path | Role |
 |-----------|------|------|
-| Entity resolver service | `backend/app/services/entity_alias_resolver.py` | Core logic + LLM prompt |
-| Admin API endpoints | `backend/app/routes/admin/tag_localization.py` | `/entity/status`, `/entity/pending`, `/entity/resolve` |
+| Entity resolver service | `backend/app/services/entity_alias_resolver.py` | Core logic + LLM prompt (uses `provider.complete_json()`) |
+| Unified LLM provider | `backend/app/services/llm_translation_provider.py` | `complete_chat`/`complete_json` API, fallback, structured errors |
+| Admin API endpoints | `backend/app/routes/admin/tag_localization.py` | `/entity/status`, `/entity/pending`, `/entity/resolve` (structured error handling) |
 | Search trust policy | `backend/app/utils/search_parser.py` | Excludes untrusted aliases |
 | Background worker | `backend/app/services/tag_translation_worker.py` | Category filtering (skips proper-nouns) |
 | Admin UI | `frontend/templates/admin.html` | Entity Alias Resolver section |
@@ -131,7 +136,18 @@ Lists proper-noun tags needing resolution, sorted by post count (most popular fi
 
 Runs entity alias resolution for pending tags. Requires `ENTITY_ALIAS_RESOLVER_ENABLED=true`.
 
-**Response:**
+Protected by `asyncio.Lock` — concurrent requests return HTTP 409. LLM errors return structured HTTP 502 responses:
+
+| Error | HTTP | `detail.error` |
+|-------|------|-----------------|
+| Transport failure | 502 | `llm_transport_error` |
+| All providers failed | 502 | `llm_all_providers_failed` |
+| Response format error | 502 | `llm_response_format_error` |
+| HTTP status error | 502 | `llm_http_error` |
+| Batch all failed | 502 | `llm_batch_failed` |
+| Concurrent resolve | 409 | `entity_resolve_conflict` |
+
+**Success response:**
 ```json
 {
   "processed": 10,
@@ -155,6 +171,7 @@ All settings are in `.env`:
 The entity resolver reuses the same LLM provider configuration as visual translation:
 - `TAG_TRANSLATION_LLM_ENABLED` must be `true`
 - `TAG_TRANSLATION_LLM_API_KEY`, `TAG_TRANSLATION_LLM_BASE_URL`, `TAG_TRANSLATION_LLM_MODEL` configure the provider
+- If fallback env vars are set, the entity resolver automatically benefits from `FallbackProvider` (e.g., DeepSeek fallback when primary API is unreachable)
 
 ## Admin UI
 

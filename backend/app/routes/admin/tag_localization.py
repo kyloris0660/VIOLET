@@ -399,11 +399,55 @@ async def run_entity_resolution_endpoint(
     """Run entity alias resolution for pending proper-noun tags."""
     from ...config import settings
     from ...services.entity_alias_resolver import run_entity_resolution
+    from ...services.llm_translation_provider import (
+        LLMAllProvidersFailed,
+        LLMBatchAggregateError,
+        LLMHTTPStatusError,
+        LLMProviderError,
+        LLMResponseFormatError,
+        LLMTransportError,
+    )
 
     if not settings.ENTITY_ALIAS_RESOLVER_ENABLED:
         raise HTTPException(status_code=400, detail="Entity alias resolver is disabled")
 
-    return await run_entity_resolution(db, limit=limit)
+    try:
+        return await run_entity_resolution(db, limit=limit)
+    except LLMProviderError as e:
+        if isinstance(e, LLMTransportError):
+            raise HTTPException(status_code=502, detail={
+                "error": "llm_transport_error",
+                "message": "LLM 服务连接失败",
+            })
+        if isinstance(e, LLMAllProvidersFailed):
+            raise HTTPException(status_code=502, detail={
+                "error": "llm_all_providers_failed",
+                "message": "所有 LLM 提供方均失败",
+            })
+        if isinstance(e, LLMResponseFormatError):
+            raise HTTPException(status_code=502, detail={
+                "error": "llm_response_format_error",
+                "message": "LLM 返回格式异常",
+            })
+        if isinstance(e, LLMHTTPStatusError):
+            raise HTTPException(status_code=502, detail={
+                "error": "llm_http_error",
+                "message": f"LLM API 返回 HTTP {e.status_code}",
+            })
+        if isinstance(e, LLMBatchAggregateError):
+            raise HTTPException(status_code=502, detail={
+                "error": "llm_batch_failed",
+                "message": "LLM 批量处理全部失败",
+            })
+        if "already running" in str(e):
+            raise HTTPException(status_code=409, detail={
+                "error": "entity_resolve_conflict",
+                "message": "实体别名解析正在进行中，请稍后再试",
+            })
+        raise HTTPException(status_code=502, detail={
+            "error": "llm_provider_error",
+            "message": "LLM 提供方错误",
+        })
 
 
 def _parse_aliases(aliases_json: Optional[str]) -> List[str]:

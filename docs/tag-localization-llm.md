@@ -113,11 +113,27 @@ The `BaseLLMProvider` abstract class defines the interface:
 - `is_available()` — check if provider is ready
 - `get_provider_name()` — human-readable name
 - `translate_tags(tags)` — batch translate
+- `complete_chat(messages, *, temperature, max_tokens)` — raw chat completion, returns content string
+- `complete_json(messages, *, temperature, max_tokens)` — calls `complete_chat()`, parses JSON; raises `LLMResponseFormatError` on parse failure
 
 Built-in providers:
 - `DisabledProvider` — returns empty results (default when LLM is disabled)
 - `OpenAICompatibleProvider` — works with OpenAI, Azure, DeepSeek, local LLM servers
-- `FallbackProvider` — wraps primary + fallback; retries on transport errors (see below)
+- `FallbackProvider` — wraps primary + fallback; retries on transport errors and HTTP 5xx (see below)
+
+### Structured Error Hierarchy
+
+All LLM errors inherit from `LLMProviderError`:
+
+| Error Class | When Raised | Triggers Fallback? |
+|------------|-------------|:------------------:|
+| `LLMTransportError` | Network/transport failures (ConnectError, Timeout, etc.) | Yes |
+| `LLMHTTPStatusError` | Non-200 HTTP response from LLM API | Yes for 408/429/5xx; No for 400/401/403/404 |
+| `LLMResponseFormatError` | LLM returned unparseable JSON or wrong schema | No |
+| `LLMAllProvidersFailed` | Both primary and fallback providers failed | N/A (terminal) |
+| `LLMBatchAggregateError` | All chunks in a batch operation failed | N/A (terminal) |
+
+Fallback-eligible HTTP status codes: `{408, 429, 500, 502, 503, 504}`.
 
 ### Fallback Provider
 
@@ -131,8 +147,9 @@ TAG_TRANSLATION_LLM_FALLBACK_BASE_URL=https://api.deepseek.com
 
 **Behavior:**
 - Primary provider is tried first
-- On **transport errors** (ConnectError, ConnectTimeout, ReadTimeout, etc.) or when all chunks fail, the fallback provider is tried automatically
-- On **non-transport errors** (HTTP 4xx, invalid JSON, etc.) from the primary, the error is raised immediately — no fallback
+- On **transport errors** (ConnectError, ConnectTimeout, ReadTimeout, etc.) or **HTTP 5xx/408/429**, the fallback provider is tried automatically
+- On **HTTP 4xx** (400/401/403/404) or **invalid JSON**, the error is raised immediately — no fallback
+- If both primary and fallback fail, `LLMAllProvidersFailed` is raised
 - If only the primary is configured (no fallback env vars), the system works exactly as before
 
 **Use case:** Primary API is unreachable (e.g., OpenAI blocked by GFW), but a fallback API (e.g., DeepSeek) is reachable.

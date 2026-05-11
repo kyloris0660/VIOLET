@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.1.1c — Smoke Validation + Unicode Fix (2026-05-11).
+> Last updated after Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (2026-05-11).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -22,7 +22,9 @@
 | **Phase 3.1.1b status** | PR [#28](https://github.com/kyloris0660/AnimeLocalBooru/pull/28) merged |
 | **Phase 3.1.1c (PR #29)** | PR [#29](https://github.com/kyloris0660/AnimeLocalBooru/pull/29) merged — full pipeline smoke validation |
 | **Unicode fix (PR #30)** | PR [#30](https://github.com/kyloris0660/AnimeLocalBooru/pull/30) merged — harden Unicode scan import failure handling |
-| **Phase 3.1.2 status** | In progress — Admin UI closeout + gallery content-class filter |
+| **Phase 3.1.2a (PR #31)** | PR [#31](https://github.com/kyloris0660/AnimeLocalBooru/pull/31) merged — Admin UI closeout |
+| **Phase 3.1.2b (PR #32)** | PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged — Gallery content-class filter |
+| **Phase 3.1.2c status** | In progress — Server identity + unified LLM fallback + entity resolver hardening |
 
 ## Mandatory Workflow Rules
 
@@ -436,6 +438,45 @@ Production-ready content classifier using CLIP ViT-B/32 zero-shot classification
 | `scripts/generate_clip_text_embeddings.py` | Text centroid generator |
 | `tests/test_content_classification.py` | Unit tests for CLIP + heuristic classifiers |
 
+### Phase 3.1.2a — Admin UI Closeout (PR #31)
+
+- Documentation closeout (6 files updated with PR #27-#30 info)
+- Full admin UI audit (all sections, HTML→JS→backend tracing)
+- AI tagging UI consolidation (old direct section moved to Developer Tools as legacy)
+- Admin navigation/hierarchy improvements (section quick nav, collapsible groups)
+- i18n fixes (~60 new locale keys, replace all hardcoded strings)
+- Locale key consistency (en.json, zh-cn.json, ru.json, sv.json)
+- Dark Violet theme, logo/favicon integration
+- Real browser Edge E2E validation
+
+### Phase 3.1.2b — Gallery Content-Class Filter (PR #32)
+
+- Gallery sidebar content-class filter (5 modes: 全部, 动漫+未分类, 仅动漫, 仅非动漫, 仅未分类)
+- Backend `content_class` param on `GET /api/media/`
+
+### Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (in progress)
+
+- `GET /api/system/server-identity` endpoint for dev server validation (git SHA, branch, PID, env, DB)
+- `scripts/check_test_server_identity.py` verification script with port-owner diagnostics
+- Unified LLM architecture: `BaseLLMProvider` with `complete_chat()` / `complete_json()` two-layer API
+- Structured error hierarchy: `LLMProviderError` → `LLMTransportError`, `LLMHTTPStatusError`, `LLMResponseFormatError`, `LLMAllProvidersFailed`, `LLMBatchAggregateError`
+- Fallback policy: transport errors + HTTP 408/429/5xx → fallback; HTTP 400/401/403/404 + invalid JSON → no fallback
+- Entity alias resolver uses unified `provider.complete_json()` instead of direct `httpx.post`
+- Entity alias resolver concurrency protection (`asyncio.Lock`, HTTP 409 on concurrent resolve)
+- Structured error responses at route level (no raw traceback to client)
+- Frontend entity resolve UX lifecycle: loading (yellow) → completed (green) / failed (red)
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `backend/app/routes/system.py` | Server identity endpoint |
+| `scripts/check_test_server_identity.py` | Server identity verification script |
+| `backend/app/services/llm_translation_provider.py` | Unified LLM provider with `complete_chat`/`complete_json`, error hierarchy, fallback |
+| `backend/app/services/entity_alias_resolver.py` | Entity resolver using unified LLM path |
+| `backend/app/routes/admin/tag_localization.py` | Structured error handling for entity resolve |
+| `frontend/static/js/admin.js` | Entity resolve UX lifecycle |
+
 ## What Has NOT Been Built
 
 - No filesystem watcher or scheduled scan (Phase 4)
@@ -477,25 +518,14 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 3.1.2, then 4
+## Recommended Next Phase: 4
 
-**Phase 3.1.2 — Admin UI Closeout + Gallery Content-Class Filter** (in progress):
+**Phase 3.1.2 — complete:**
+- Phase 3.1.2a — Admin UI closeout (PR [#31](https://github.com/kyloris0660/AnimeLocalBooru/pull/31) merged)
+- Phase 3.1.2b — Gallery content-class filter (PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged)
+- Phase 3.1.2c — Server identity + unified LLM fallback + entity resolver hardening (in progress)
 
-PR 1 (`phase3.1.2a-admin-ui-closeout`):
-- Documentation closeout (6 files updated with PR #27-#30 info)
-- Full admin UI audit (all sections, HTML→JS→backend tracing)
-- AI tagging UI consolidation (old direct section moved to Developer Tools as legacy)
-- Admin navigation/hierarchy improvements (section quick nav, collapsible groups)
-- i18n fixes (~60 new locale keys, replace all hardcoded strings)
-- Locale key consistency (en.json, zh-cn.json, ru.json, sv.json)
-- Real browser Edge E2E validation
-
-PR 2 (`phase3.1.2b-gallery-content-class-filter`):
-- Gallery sidebar content-class filter (5 modes: 全部, 动漫+未分类, 仅动漫, 仅非动漫, 仅未分类)
-- Backend `content_class` param on `GET /api/media/`
-- Deferred: Phase 3.2 (model improvements) — not in scope
-
-**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.1.2):
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.1.2c):
 
 1. Filesystem watcher or periodic cron-style scan
 2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)

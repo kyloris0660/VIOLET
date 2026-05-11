@@ -59,7 +59,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 **Tier 1 — Unit tests** (no external dependencies):
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py -v
+pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py -v
 ```
 
 | Test file | Coverage |
@@ -69,6 +69,8 @@ pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanne
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation |
+| `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
+| `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 
 **Tier 2 — Fixture validation** (requires `VIOLET_TEST_FIXTURE_PATH`):
 
@@ -87,6 +89,7 @@ npx playwright test tests/e2e/ --project=edge
 | `tests/e2e/config-diagnostics-e2e.spec.ts` | Config diagnostics API sections |
 | `tests/e2e/gallery-browse.spec.ts` | Gallery grid, media detail, thumbnails |
 | `tests/e2e/fixture-import.spec.ts` | Preflight, dry-run, import, idempotency |
+| `tests/e2e/entity-alias-resolver.spec.ts` | Entity resolver API, trust policy, admin UI |
 
 For manual verification beyond test suites:
 - API: use curl / httpie / PowerShell `Invoke-RestMethod` against `http://localhost:8000/api/...`
@@ -223,6 +226,7 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
 10. Do not touch iCloud paths or modify VioletTestFixture.
 11. If server startup fails, diagnose and report the exact error — do not skip E2E.
+12. After server starts, verify identity with `scripts/check_test_server_identity.py` to confirm the server is running expected code (correct env, DB, git SHA).
 
 **Final report must include:** working directory, branch, server command, PID, port, `VIOLET_BASE_URL`, environment confirmation (VIOLET_ENV, DB, storage root), E2E command, stop/cleanup result.
 

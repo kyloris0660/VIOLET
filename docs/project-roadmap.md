@@ -310,21 +310,31 @@ Local full pipeline smoke validation helper (`scripts/smoke_validate_pipeline.py
 
 Fixed crash during scan import when files with certain Unicode characters in their paths failed to hash. Files that fail to hash are now counted as `failed` rather than crashing the scan job.
 
-### Phase 3.1.2 — Admin UI Closeout + Gallery Content-Class Filter (in progress)
+### Phase 3.1.2a — Admin UI Closeout (PR #31, merged)
 
-**Goal:** Clean up the admin UI accumulated from many rapid development phases: consolidate AI tagging entry points, fix hardcoded i18n strings, improve admin navigation, add gallery content-class filtering.
-
-PR 1 (`phase3.1.2a-admin-ui-closeout`):
 - Documentation closeout for PR #27-#30
 - Full admin UI audit (all sections, HTML→JS→backend)
 - AI tagging UI consolidation (old direct section → Developer Tools as legacy)
 - Admin navigation improvements (section quick nav, collapsible groups)
 - i18n fixes (~60 new locale keys)
 - Locale key consistency across all 4 locale files
+- Dark Violet theme, logo/favicon
 
-PR 2 (`phase3.1.2b-gallery-content-class-filter`):
+### Phase 3.1.2b — Gallery Content-Class Filter (PR #32, merged)
+
 - Gallery sidebar content-class filter (5 modes)
 - Backend `content_class` param on `GET /api/media/`
+
+### Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (in progress)
+
+- `GET /api/system/server-identity` endpoint for dev server validation
+- `scripts/check_test_server_identity.py` verification script
+- Unified LLM architecture: `complete_chat()` / `complete_json()` two-layer API
+- Structured error hierarchy: `LLMProviderError` → transport, HTTP status, format, all-failed, batch errors
+- Fallback policy: transport + HTTP 408/429/5xx → fallback; HTTP 4xx + invalid JSON → no fallback
+- Entity alias resolver uses unified provider path (no direct httpx)
+- Entity resolver concurrency protection (asyncio.Lock, HTTP 409)
+- Frontend entity resolve UX lifecycle (loading → success/error)
 
 ## Upcoming Phases
 
