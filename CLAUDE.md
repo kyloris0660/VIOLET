@@ -123,7 +123,12 @@ Load the standardized test environment (PowerShell):
 . "$env:USERPROFILE\.violet\test-env.ps1"
 ```
 
-This sets `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH`, `VIOLET_RUN_REAL_E2E=1`, and `VIOLET_BASE_URL=http://localhost:8001`.
+This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH`, and `APP_PORT=8001`. For E2E runs, agents override in the current session:
+
+```powershell
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+$env:VIOLET_RUN_REAL_E2E = "1"
+```
 
 Test server: `python run.py --debug --port 8001` (with test env loaded). Agents should override port and `VIOLET_BASE_URL` to a dedicated free port (prefer 8011+) for E2E runs.
 

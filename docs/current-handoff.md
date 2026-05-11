@@ -520,7 +520,7 @@ The next development phase should include a developer/service control panel:
 . "$env:USERPROFILE\.violet\test-env.ps1"
 ```
 
-This sets: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH=C:\Users\kyloris\Pictures\VioletTestFixture`, `VIOLET_RUN_REAL_E2E=1`, `VIOLET_BASE_URL=http://localhost:8001`.
+This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH=C:\Users\kyloris\Pictures\VioletTestFixture`, and `APP_PORT=8001`. For E2E runs, agents override `VIOLET_BASE_URL` and `VIOLET_RUN_REAL_E2E` in the current session.
 
 ### Test Server
 

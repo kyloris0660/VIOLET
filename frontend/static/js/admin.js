@@ -3602,7 +3602,7 @@ class AdminPanel {
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <div>${t('admin.ai_tagging_jobs.config_ai_enabled', 'AI Tagging')}：${badge(data.ai_tagging_enabled)}</div>
                     <div>${t('admin.ai_tagging_jobs.config_auto_after_import', 'Auto after import')}：${badge(data.auto_tag_after_import)}</div>
-                    <div>${t('admin.ai_tagging_jobs.config_auto_max_items', 'Auto max items')}：<span class="font-bold text-yellow-300">${data.auto_tag_max_items}</span></div>
+                    <div>${t('admin.ai_tagging_jobs.config_auto_max', 'Auto-tag max items')}：<span class="font-bold text-yellow-300">${data.auto_tag_max_items}</span></div>
                     <div>${t('admin.ai_tagging_jobs.config_only_new', 'Only new')}：${badge(data.auto_tag_only_new)}</div>
                     <div>${t('admin.ai_tagging_jobs.config_dry_run', 'Dry Run')}：${badge(data.auto_tag_dry_run)}</div>
                     <div>${t('admin.ai_tagging_jobs.config_force_suggestions', 'Force suggestions')}：${badge(data.auto_tag_force_suggestions)}</div>
@@ -3723,10 +3723,10 @@ class AdminPanel {
 
         statsEl.innerHTML = `
             <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_processed', 'Processed')}</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.tags_added}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_confirmed', 'Confirmed')}</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.suggestions_added}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_suggestions', 'Suggestions')}</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold">${job.skipped_locked}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_skipped', 'Skipped')}</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold">${job.ignored_low_confidence}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_ignored', 'Ignored')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.tags_added}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_confirmed_tags', 'Confirmed Tags')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.suggestions_added}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_suggestion_tags', 'Suggestion Tags')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.skipped_locked}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_skipped_locked', 'Skipped Locked')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.ignored_low_confidence}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_ignored_low', 'Ignored Low Conf')}</div></div>
             <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_failed', 'Failed')}</div></div>
         `;
         let statusText = `${t('admin.ai_tagging_jobs.status_label', 'Status')}: ${statusMap[job.status] || job.status}`;
@@ -3851,7 +3851,7 @@ class AdminPanel {
                     <div>${t('admin.content_classification.config_method', 'Method')}：<span class="font-bold text-yellow-300">${data.method || '-'}</span></div>
                     <div>${t('admin.content_classification.config_batch_max', 'Batch max')}：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
                     <div>${t('admin.content_classification.config_auto_after_import', 'Auto after import')}：${badge(data.auto_after_import)}</div>
-                    <div>${t('admin.content_classification.config_auto_max_items', 'Auto max items')}：<span class="font-bold text-yellow-300">${data.auto_max_items}</span></div>
+                    <div>${t('admin.content_classification.config_auto_max', 'Auto-classify max items')}：<span class="font-bold text-yellow-300">${data.auto_max_items}</span></div>
                     <div>${t('admin.content_classification.config_anime_tag_threshold', 'Anime tag threshold')}：<span class="font-bold text-yellow-300">${data.anime_tag_threshold}</span></div>
                     <div>${t('admin.content_classification.config_anime_confidence', 'Anime confidence')}：<span class="font-bold text-yellow-300">${data.anime_confidence_threshold}</span></div>
                 </div>
@@ -3992,7 +3992,7 @@ class AdminPanel {
             <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.classified_unknown}</div><div class="text-secondary">${t('admin.content_classification.progress_unknown', 'Unknown')}</div></div>
             <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">${t('admin.content_classification.progress_failed', 'Failed')}</div></div>
         `;
-        let statusText = `${t('admin.content_classification.label_status', 'Status')}: ${statusMap[job.status] || job.status}`;
+        let statusText = `${t('admin.content_classification.status_label', 'Status')}: ${statusMap[job.status] || job.status}`;
         if (job.trigger_source === 'scan_job' && job.scan_job_id) {
             statusText += ` | ${t('admin.content_classification.linked_scan', 'Linked Scan')} #${job.scan_job_id}`;
         }

@@ -51,18 +51,6 @@ class LanguageRegistry:
         ))
 
         self.register_language(Language(
-            id="sv",
-            name="Swedish",
-            native_name="Svenska"
-        ))
-
-        self.register_language(Language(
-            id="ru",
-            name="Russian",
-            native_name="Русский"
-        ))
-
-        self.register_language(Language(
             id="zh-cn",
             name="Chinese (Simplified)",
             native_name="中文（简体）"

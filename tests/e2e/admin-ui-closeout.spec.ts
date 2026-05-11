@@ -317,7 +317,7 @@ test.describe('E — i18n locale rendering', () => {
       if (text.length === 0) continue;
 
       // Raw key pattern: "admin.something.something" — should not appear as visible text
-      const looksLikeRawKey = /^admin\.[a-z_]+\.[a-z_]+/.test(text);
+      const looksLikeRawKey = /^(admin|gallery|ai_tagging_jobs|content_classification|common|modal|notifications)\.[a-z_]+(\.[a-z_]+)*/.test(text);
       expect(looksLikeRawKey, `Element with data-i18n shows raw key: "${text}"`).toBeFalsy();
     }
   });
@@ -372,6 +372,77 @@ test.describe('E — i18n locale rendering', () => {
       expect(enVal, `EN locale missing key: ${keyStr}`).toBeTruthy();
       expect(zhVal, `ZH-CN locale missing key: ${keyStr}`).toBeTruthy();
     }
+  });
+
+  test('ru/sv locale files return 404 (removed)', async ({ page }) => {
+    const ruResponse = await page.request.get('/static/locales/ru.json');
+    expect(ruResponse.status()).toBe(404);
+
+    const svResponse = await page.request.get('/static/locales/sv.json');
+    expect(svResponse.status()).toBe(404);
+  });
+
+  test('backend language registry returns only en and zh-cn', async ({ page }) => {
+    const response = await page.request.get('/api/admin/languages');
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    const langIds = data.languages.map((l: { id: string }) => l.id).sort();
+    expect(langIds).toEqual(['en', 'zh-cn']);
+  });
+
+  test('language selector excludes ru and sv', async ({ page }) => {
+    // The language selector is a CustomSelect component (not native <select>).
+    // Options are <div class="custom-select-option" data-value="VALUE"> inside
+    // .custom-select-dropdown, populated async by loadLanguages() → fetch('/api/admin/languages').
+    const select = page.locator('#language-select');
+    await expect(select).toBeAttached({ timeout: 5_000 });
+
+    // Wait for async loadLanguages() to populate options
+    const firstOption = select.locator('.custom-select-dropdown .custom-select-option').first();
+    await expect(firstOption).toBeAttached({ timeout: 10_000 });
+
+    const options = select.locator('.custom-select-dropdown .custom-select-option');
+    const count = await options.count();
+    expect(count, 'Language selector should have at least 1 option').toBeGreaterThan(0);
+
+    const values: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const val = await options.nth(i).getAttribute('data-value');
+      if (val) values.push(val);
+      expect(val, `Language selector should not contain ru`).not.toBe('ru');
+      expect(val, `Language selector should not contain sv`).not.toBe('sv');
+    }
+    expect(values).toContain('en');
+    expect(values).toContain('zh-cn');
+  });
+
+  test('AI and Classification sections show human-readable text, not raw keys', async ({ page }) => {
+    await clickTab(page, '内容');
+    const contentPanel = page.locator('#tab-content');
+    await expect(contentPanel).toBeVisible({ timeout: 5_000 });
+
+    // Check AI Tagging Jobs section
+    const aiSection = contentPanel.locator('#ai-tagging-jobs-section');
+    await expect(aiSection).toBeVisible();
+    const aiText = (await aiSection.textContent()) || '';
+    expect(aiText.length).toBeGreaterThan(0);
+    expect(/^(admin|ai_tagging_jobs)\.[a-z_]+/.test(aiText.trim())).toBeFalsy();
+
+    // Check Content Classification section
+    const clsSection = contentPanel.locator('#content-classification-section');
+    await expect(clsSection).toBeVisible();
+    const clsText = (await clsSection.textContent()) || '';
+    expect(clsText.length).toBeGreaterThan(0);
+    expect(/^(admin|content_classification)\.[a-z_]+/.test(clsText.trim())).toBeFalsy();
+  });
+
+  test('DevTools section shows human-readable text, not raw keys', async ({ page }) => {
+    await clickTab(page, '系统');
+    const devTools = page.locator('#dev-tools-section');
+    await expect(devTools).toBeVisible({ timeout: 5_000 });
+    const devText = (await devTools.textContent()) || '';
+    expect(devText.length).toBeGreaterThan(0);
+    expect(/^(admin|dev_tools)\.[a-z_]+/.test(devText.trim())).toBeFalsy();
   });
 });
 
