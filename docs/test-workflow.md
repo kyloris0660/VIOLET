@@ -16,6 +16,7 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_destructive_gate.py` | Destructive gate conditions, storage path containment |
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
+| `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -36,6 +37,21 @@ Requires `VIOLET_RUN_REAL_E2E=1` and a running V.I.O.L.E.T. server. Some tests a
 | `tests/e2e/fixture-import.spec.ts` | `VIOLET_RUN_REAL_E2E=1` + `VIOLET_TEST_FIXTURE_PATH` | Preflight, dry-run, import, idempotency |
 
 ## Environment Setup
+
+### Standardized Test Environment
+
+Load the test environment in one step (PowerShell):
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+```
+
+This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT`, `VIOLET_TEST_FIXTURE_PATH`, and `APP_PORT=8001`. For E2E runs, agents override in the current session:
+
+```powershell
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+$env:VIOLET_RUN_REAL_E2E = "1"
+```
 
 ### Prerequisites
 
@@ -99,7 +115,13 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py -v
+pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py -v
+```
+
+### Smoke Validation (Tier 1)
+
+```powershell
+pytest tests/test_smoke_validation.py -v
 ```
 
 ### Fixture Validation (Tier 2)
@@ -111,21 +133,60 @@ pytest tests/test_fixture_validation.py -v
 
 ### Playwright E2E (Tier 3)
 
-Start a test server (port 8001 recommended):
+**Agents must start a controlled test server themselves** for non-destructive E2E validation. Do not ask the user to start the server unless startup fails for a concrete reason.
+
+**Playwright base URL variable:** `VIOLET_BASE_URL` (read by `playwright.config.ts`). Do not use `PLAYWRIGHT_BASE_URL`.
+
+Agent-started server workflow (PowerShell):
 
 ```powershell
-$env:VIOLET_ENV = "test"
-$env:POSTGRES_DB = "blombooru_test"
-$env:VIOLET_STORAGE_ROOT = "C:\Users\kyloris\VioletStorage\test"
-python run.py --debug --port 8001
+# 1. Load test environment
+. "$env:USERPROFILE\.violet\test-env.ps1"
+
+# 2. Override port and base URL (prefer 8011+)
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+
+# 3. Start server in background from the PR branch/worktree
+#    If worktree has no venv, use the main repo Python:
+#    C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug --port 8011
+cd <worktree-or-branch-path>
+Start-Process -NoNewWindow python -ArgumentList "run.py","--debug","--port","8011"
+# Record the PID
+
+# 4. Wait for server readiness
+# Verify: http://127.0.0.1:8011/api/health or /admin
+
+# 5. Run E2E
+npx playwright test tests/e2e/<spec>.spec.ts --project=edge
+
+# 6. Stop only the PID you started
+Stop-Process -Id <recorded-PID>
+```
+
+**Required conditions for agent-started servers:**
+
+1. `VIOLET_ENV=test`
+2. `POSTGRES_DB=blombooru_test`
+3. Dedicated test storage (not dev storage)
+4. Dedicated free port (prefer 8011+)
+5. Record and only stop the exact PID started
+6. No import / AI tagging / LLM translation / cleanup / reset / delete operations
+7. No iCloud paths, no VioletTestFixture mutation
+8. Final report must include: working directory, branch, server command, PID, port, VIOLET_BASE_URL, E2E command, stop/cleanup result
+
+Manual server start (fallback only — if agent startup fails):
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+python run.py --debug --port 8011
 ```
 
 Run E2E tests:
 
 ```powershell
 $env:VIOLET_RUN_REAL_E2E = "1"
-$env:VIOLET_BASE_URL = "http://localhost:8001"
-$env:VIOLET_TEST_FIXTURE_PATH = "C:\Users\kyloris\Pictures\VioletTestFixture"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
 npx playwright test tests/e2e/config-diagnostics-e2e.spec.ts --project=edge
 npx playwright test tests/e2e/gallery-browse.spec.ts --project=edge
 npx playwright test tests/e2e/fixture-import.spec.ts --project=edge

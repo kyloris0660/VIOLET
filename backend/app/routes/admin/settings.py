@@ -55,7 +55,17 @@ async def update_settings(
 ):
     """Update settings"""
     update_dict = updates.dict(exclude_unset=True)
-    
+
+    # Validate language against registry — reject unknown languages
+    if "language" in update_dict:
+        from ...translations import language_registry
+        lang_val = update_dict["language"]
+        if not language_registry.language_exists(lang_val):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported language: {lang_val}"
+            )
+
     if "redis" in update_dict and update_dict["redis"].get("password") == "***":
         update_dict["redis"]["password"] = settings.REDIS_PASSWORD
     

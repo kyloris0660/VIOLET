@@ -37,11 +37,11 @@ For every feature phase, bug fix, or UI-affecting change, the agent must perform
 
 1. Prefer Playwright with system Edge on Windows.
 2. Do not rely only on API tests or unit tests when UI behavior is affected.
-3. Use a real running local server.
+3. Use a real running local server. **Agents must start a controlled test server themselves** (see "Agent-started test servers" section). Do not ask the user to start the server unless startup fails for a concrete reason.
 4. Use the actual app page, not only mocked DOM tests.
 5. Verify the relevant user flow end-to-end.
 6. If the feature touches local files, scan, thumbnails, or media display, validate with a real local test folder when safe.
-7. If real browser validation cannot be run, the agent must explicitly explain why and provide the closest fallback validation.
+7. If real browser validation cannot be run despite best effort, the agent must explicitly explain why (exact error) and provide the closest fallback validation. "Server was not running" is not an acceptable excuse — the agent should have started one.
 
 The delivery report must include a dedicated section: **真实浏览器验收**, containing: 验收方式, 浏览器/Playwright project, URL tested, pages/flows validated, pass/fail result, skipped or not covered items, fallback explanation if real browser validation could not be completed. A phase is not considered complete without this section.
 
@@ -71,6 +71,28 @@ Keep technical identifiers in English: file paths, branch names, PR URLs, API ro
 - If adding stop/restart UI, restrict it to local debug mode only.
 - Do not expose dangerous controls in production mode.
 
+### Agent-started test servers for E2E validation
+
+For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a controlled local test server themselves. Do not ask the user to start the server unless startup fails for a concrete reason the agent cannot fix.
+
+All of the following conditions must be met:
+
+1. Use `VIOLET_ENV=test`.
+2. Use `POSTGRES_DB=blombooru_test`.
+3. Use dedicated test storage (`VIOLET_STORAGE_ROOT`), never development storage.
+4. Load the user's test env script first: `. "$env:USERPROFILE\.violet\test-env.ps1"`
+5. Use a dedicated free port (prefer 8011 or higher).
+6. Record the server PID.
+7. Start the server from the PR branch/worktree being tested.
+8. Only stop the exact PID the agent started — never kill unknown processes.
+9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
+10. Do not touch iCloud paths or modify VioletTestFixture.
+11. If server startup fails, diagnose and report the exact error — do not skip E2E.
+
+The final report must include: working directory, branch, server command, PID, port, `VIOLET_BASE_URL`, environment confirmation (VIOLET_ENV, DB, storage root), E2E command, stop/cleanup result.
+
+Clarification: "Do not kill arbitrary processes" means only stop the exact server PID you started. It does **not** mean agents cannot start a test server.
+
 ### Destructive DB operation safety (post-incident, 2026-05-10)
 
 All destructive API endpoints (`reset-e2e-test-data`, `missing-media-cleanup`) are protected by:
@@ -92,6 +114,27 @@ E2E tests that call destructive endpoints must be gated by `VIOLET_ALLOW_DESTRUC
 - If `gh` is not found in PATH, use the absolute path above. Do not claim `gh` is unavailable unless both `where gh` and `& "C:\Program Files\GitHub CLI\gh.exe" --version` fail.
 - Dev server: `python run.py --debug` → `http://localhost:8000`
 - Database: PostgreSQL 17, `blombooru` on `localhost:5432`
+
+## Test environment
+
+Load the standardized test environment (PowerShell):
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+```
+
+This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH`, and `APP_PORT=8001`. For E2E runs, agents override in the current session:
+
+```powershell
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+$env:VIOLET_RUN_REAL_E2E = "1"
+```
+
+Test server: `python run.py --debug --port 8001` (with test env loaded). Agents should override port and `VIOLET_BASE_URL` to a dedicated free port (prefer 8011+) for E2E runs.
+
+**Playwright base URL variable:** `VIOLET_BASE_URL` (read by `playwright.config.ts`). Do not use `PLAYWRIGHT_BASE_URL`.
+
+See `docs/test-workflow.md` for test tiers and commands.
 
 ## Language policy
 

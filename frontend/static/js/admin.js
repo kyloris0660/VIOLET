@@ -414,6 +414,7 @@ class AdminPanel {
         }
         this.loadAutoTagConfig();
         this.loadAIJobHistory();
+        this.updateModelStatusBadge();
 
         // Tag Localization
         this._tlReviewOffset = 0;
@@ -569,6 +570,27 @@ class AdminPanel {
         const devMmCleanupBtn = document.getElementById('dev-missing-media-cleanup-btn');
         if (devMmCleanupBtn) {
             devMmCleanupBtn.addEventListener('click', () => this.cleanupMissingMedia(false));
+        }
+        const legacyAiToggle = document.getElementById('dev-legacy-ai-tagging-toggle');
+        if (legacyAiToggle) {
+            legacyAiToggle.addEventListener('click', () => {
+                const content = document.getElementById('dev-legacy-ai-tagging-content');
+                const arrow = document.getElementById('dev-legacy-ai-tagging-arrow');
+                if (content && arrow) {
+                    const hidden = content.classList.toggle('hidden');
+                    arrow.innerHTML = hidden ? '&#9654;' : '&#9660;';
+                }
+            });
+        }
+        const sectionNav = document.getElementById('content-section-nav');
+        if (sectionNav) {
+            sectionNav.addEventListener('click', (e) => {
+                const link = e.target.closest('a[href^="#"]');
+                if (!link) return;
+                e.preventDefault();
+                const target = document.getElementById(link.getAttribute('href').slice(1));
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
         }
         this.loadDevConfigDiagnostics();
     }
@@ -1684,6 +1706,27 @@ class AdminPanel {
             el.innerHTML = html;
         } catch (err) {
             el.innerHTML = `<span class="text-red-500">Failed to check: ${err.message || err}</span>`;
+        }
+    }
+
+    async updateModelStatusBadge() {
+        const badge = document.getElementById('ai-jobs-model-status-badge');
+        if (!badge) return;
+        try {
+            const data = await app.apiCall('/api/admin/ai-tagging/model-status', { method: 'GET' });
+            if (!data.enabled) {
+                badge.textContent = window.i18n ? window.i18n.t('admin.ai_tagging_jobs.model_disabled') : '已禁用';
+                badge.className = 'px-2 py-0.5 border text-red-500';
+            } else if (data.available && data.model_downloaded) {
+                badge.textContent = window.i18n ? window.i18n.t('admin.ai_tagging_jobs.model_ready') : '就绪';
+                badge.className = 'px-2 py-0.5 border text-green-500';
+            } else {
+                badge.textContent = window.i18n ? window.i18n.t('admin.ai_tagging_jobs.model_unavailable') : '不可用';
+                badge.className = 'px-2 py-0.5 border text-yellow-400';
+            }
+        } catch {
+            badge.textContent = '—';
+            badge.className = 'px-2 py-0.5 border text-secondary';
         }
     }
 
@@ -3549,27 +3592,28 @@ class AdminPanel {
     async loadAutoTagConfig() {
         const el = document.getElementById('ai-jobs-config-content');
         if (!el) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const data = await app.apiCall('/api/admin/ai-tagging/auto-config', { method: 'GET' });
             const badge = (val) => val
-                ? '<span class="text-green-400 font-bold">开启</span>'
-                : '<span class="text-red-400 font-bold">关闭</span>';
+                ? `<span class="text-green-400 font-bold">${t('admin.ai_tagging_jobs.on', 'ON')}</span>`
+                : `<span class="text-red-400 font-bold">${t('admin.ai_tagging_jobs.off', 'OFF')}</span>`;
             el.innerHTML = `
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <div>AI 打标总开关：${badge(data.ai_tagging_enabled)}</div>
-                    <div>导入后自动打标：${badge(data.auto_tag_after_import)}</div>
-                    <div>自动打标最大数量：<span class="font-bold text-yellow-300">${data.auto_tag_max_items}</span></div>
-                    <div>仅处理新导入：${badge(data.auto_tag_only_new)}</div>
-                    <div>Dry Run 模式：${badge(data.auto_tag_dry_run)}</div>
-                    <div>强制为建议：${badge(data.auto_tag_force_suggestions)}</div>
-                    <div>Batch 上限 (AI_TAGGING_BATCH_MAX_ITEMS)：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
-                    <div>自动翻译：${badge(data.tag_translation_auto)}</div>
-                    <div>LLM 翻译：${badge(data.tag_translation_llm)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_ai_enabled', 'AI Tagging')}：${badge(data.ai_tagging_enabled)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_auto_after_import', 'Auto after import')}：${badge(data.auto_tag_after_import)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_auto_max', 'Auto-tag max items')}：<span class="font-bold text-yellow-300">${data.auto_tag_max_items}</span></div>
+                    <div>${t('admin.ai_tagging_jobs.config_only_new', 'Only new')}：${badge(data.auto_tag_only_new)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_dry_run', 'Dry Run')}：${badge(data.auto_tag_dry_run)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_force_suggestions', 'Force suggestions')}：${badge(data.auto_tag_force_suggestions)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_batch_max', 'Batch max')}：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
+                    <div>${t('admin.ai_tagging_jobs.config_auto_translate', 'Auto translate')}：${badge(data.tag_translation_auto)}</div>
+                    <div>${t('admin.ai_tagging_jobs.config_llm_translate', 'LLM translate')}：${badge(data.tag_translation_llm)}</div>
                 </div>
-                <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，修改后需重启服务。详细诊断见 System → 开发者工具。</p>
+                <p class="text-xs text-secondary mt-2">${t('admin.ai_tagging_jobs.config_note', 'Config managed via .env, restart required.')}</p>
             `;
         } catch (e) {
-            el.textContent = `加载失败: ${e.message || e}`;
+            el.textContent = `${t('admin.ai_tagging_jobs.load_failed', 'Load failed')}: ${e.message || e}`;
         }
     }
 
@@ -3580,18 +3624,22 @@ class AdminPanel {
         const dryRun = document.getElementById('ai-job-dry-run').checked;
         const forceSuggestions = document.getElementById('ai-job-force-suggestions').checked;
         const onlyUntagged = document.getElementById('ai-job-only-untagged').checked;
+        const t = (k, fbOrParams, maybeParams) => {
+            if (typeof fbOrParams === 'object') return window.i18n ? window.i18n.t(k, fbOrParams) : k;
+            return window.i18n ? window.i18n.t(k, maybeParams) : (maybeParams ? fbOrParams.replace(/\{(\w+)\}/g, (m, p) => Object.prototype.hasOwnProperty.call(maybeParams, p) ? String(maybeParams[p]) : m) : fbOrParams);
+        };
 
         let mediaIds = null;
         if (idsInput) {
             mediaIds = idsInput.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
             if (mediaIds.length === 0) {
-                app.showNotification('无效的 Media IDs', 'error');
+                app.showNotification(t('admin.ai_tagging_jobs.invalid_media_ids', 'Invalid Media IDs'), 'error');
                 return;
             }
         }
 
         btn.disabled = true;
-        btn.textContent = '创建中…';
+        btn.textContent = t('admin.ai_tagging_jobs.creating', 'Creating…');
         try {
             const body = {
                 max_items: maxItems,
@@ -3606,24 +3654,25 @@ class AdminPanel {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            app.showNotification(`AI 打标任务 #${data.id} 已创建`, 'success');
+            app.showNotification(t('admin.ai_tagging_jobs.job_created', 'AI Tagging Job #{id} created', { id: data.id }), 'success');
             this._currentAiJobId = data.id;
             this._startAiJobPolling(data.id);
         } catch (e) {
-            app.showNotification(`创建失败: ${e.message || e}`, 'error');
+            app.showNotification(`${t('admin.ai_tagging_jobs.create_failed', 'Create failed')}: ${e.message || e}`, 'error');
         } finally {
             btn.disabled = false;
-            btn.textContent = '创建任务';
+            btn.textContent = t('admin.ai_tagging_jobs.create_btn', 'Create Job');
         }
     }
 
     async cancelAITagJob() {
         if (!this._currentAiJobId) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             await app.apiCall(`/api/admin/ai-tagging/jobs/${this._currentAiJobId}/cancel`, { method: 'POST' });
-            app.showNotification('取消请求已发送', 'success');
+            app.showNotification(t('admin.ai_tagging_jobs.cancel_sent', 'Cancel request sent'), 'success');
         } catch (e) {
-            app.showNotification(`取消失败: ${e.message || e}`, 'error');
+            app.showNotification(`${t('admin.ai_tagging_jobs.cancel_failed', 'Cancel failed')}: ${e.message || e}`, 'error');
         }
     }
 
@@ -3656,6 +3705,7 @@ class AdminPanel {
         const statusEl = document.getElementById('ai-job-progress-status');
         const fillEl = document.getElementById('ai-job-progress-fill');
         const cancelBtn = document.getElementById('ai-job-cancel-btn');
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
 
         if (!statsEl) return;
 
@@ -3665,25 +3715,30 @@ class AdminPanel {
         if (cancelBtn) cancelBtn.disabled = !['pending', 'running'].includes(job.status);
 
         const statusMap = {
-            pending: '等待中', running: '运行中', completed: '已完成',
-            failed: '失败', cancelled: '已取消', cancelling: '取消中', interrupted: '已中断'
+            pending: t('admin.ai_tagging_jobs.status_pending', 'Pending'),
+            running: t('admin.ai_tagging_jobs.status_running', 'Running'),
+            completed: t('admin.ai_tagging_jobs.status_completed', 'Completed'),
+            failed: t('admin.ai_tagging_jobs.status_failed', 'Failed'),
+            cancelled: t('admin.ai_tagging_jobs.status_cancelled', 'Cancelled'),
+            cancelling: t('admin.ai_tagging_jobs.status_cancelling', 'Cancelling'),
+            interrupted: t('admin.ai_tagging_jobs.status_interrupted', 'Interrupted')
         };
 
         statsEl.innerHTML = `
-            <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">已处理</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.tags_added}</div><div class="text-secondary">确认标签</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.suggestions_added}</div><div class="text-secondary">建议标签</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold">${job.skipped_locked}</div><div class="text-secondary">跳过锁定</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold">${job.ignored_low_confidence}</div><div class="text-secondary">忽略低信度</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">失败</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_processed', 'Processed')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.tags_added}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_confirmed_tags', 'Confirmed Tags')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.suggestions_added}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_suggestion_tags', 'Suggestion Tags')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.skipped_locked}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_skipped_locked', 'Skipped Locked')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.ignored_low_confidence}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_ignored_low', 'Ignored Low Conf')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">${t('admin.ai_tagging_jobs.progress_failed', 'Failed')}</div></div>
         `;
-        let statusText = `状态: ${statusMap[job.status] || job.status}`;
+        let statusText = `${t('admin.ai_tagging_jobs.status_label', 'Status')}: ${statusMap[job.status] || job.status}`;
         if (job.trigger_source === 'scan_job' && job.scan_job_id) {
-            statusText += ` | 关联 Scan #${job.scan_job_id}`;
+            statusText += ` | ${t('admin.ai_tagging_jobs.linked_scan', 'Linked Scan')} #${job.scan_job_id}`;
         }
         if (job.dry_run) statusText += ' | Dry Run';
-        if (job.force_suggestions) statusText += ' | 强制建议';
-        if (job.localization_status) statusText += ` | 本地化: ${job.localization_status}`;
+        if (job.force_suggestions) statusText += ` | ${t('admin.ai_tagging_jobs.force_suggestion_label', 'Force Suggestions')}`;
+        if (job.localization_status) statusText += ` | ${t('admin.ai_tagging_jobs.localization_label', 'Localization')}: ${job.localization_status}`;
         if (job.error_message) statusText += ` | ${job.error_message}`;
         if (statusEl) statusEl.textContent = statusText;
     }
@@ -3692,6 +3747,7 @@ class AdminPanel {
         const tbody = document.getElementById('ai-jobs-history-tbody');
         const emptyEl = document.getElementById('ai-jobs-history-empty');
         if (!tbody) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const jobs = await app.apiCall('/api/admin/ai-tagging/jobs', { method: 'GET' });
             if (!jobs || jobs.length === 0) {
@@ -3709,29 +3765,35 @@ class AdminPanel {
             }
 
             const statusMap = {
-                pending: '⏳ 等待', running: '▶️ 运行', completed: '✅ 完成',
-                failed: '❌ 失败', cancelled: '⏹ 取消', cancelling: '⏸ 取消中', interrupted: '⚠️ 中断'
+                pending: `⏳ ${t('admin.ai_tagging_jobs.history_status_pending', 'Pending')}`,
+                running: `▶️ ${t('admin.ai_tagging_jobs.history_status_running', 'Running')}`,
+                completed: `✅ ${t('admin.ai_tagging_jobs.history_status_completed', 'Completed')}`,
+                failed: `❌ ${t('admin.ai_tagging_jobs.history_status_failed', 'Failed')}`,
+                cancelled: `⏹ ${t('admin.ai_tagging_jobs.history_status_cancelled', 'Cancelled')}`,
+                cancelling: `⏸ ${t('admin.ai_tagging_jobs.history_status_cancelling', 'Cancelling')}`,
+                interrupted: `⚠️ ${t('admin.ai_tagging_jobs.history_status_interrupted', 'Interrupted')}`
             };
             tbody.innerHTML = jobs.map(j => `
                 <tr class="border-b hover:bg-gray-800/30 text-[11px] cursor-pointer" onclick="adminPanel._showAiJobDetail(${j.id})">
                     <td class="py-1 px-2">${j.id}</td>
                     <td class="py-1 px-2">${statusMap[j.status] || j.status}</td>
-                    <td class="py-1 px-2">${j.trigger_source === 'scan_job' ? '扫描触发' : '手动'}</td>
+                    <td class="py-1 px-2">${j.trigger_source === 'scan_job' ? t('admin.ai_tagging_jobs.trigger_scan', 'Scan triggered') : t('admin.ai_tagging_jobs.trigger_manual', 'Manual')}</td>
                     <td class="py-1 px-2">${j.scan_job_id || '-'}</td>
                     <td class="py-1 px-2">${j.processed}</td>
                     <td class="py-1 px-2 text-green-400">${j.tags_added}</td>
                     <td class="py-1 px-2 text-yellow-400">${j.suggestions_added}</td>
                     <td class="py-1 px-2 text-red-400">${j.failed}</td>
                     <td class="py-1 px-2 text-xs">${j.localization_status || '-'}</td>
-                    <td class="py-1 px-2">${j.created_at ? new Date(j.created_at).toLocaleString('zh-CN') : '-'}</td>
+                    <td class="py-1 px-2">${j.created_at ? new Date(j.created_at).toLocaleString() : '-'}</td>
                 </tr>
             `).join('');
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="10" class="py-2 px-2 text-red-400">加载失败: ${e.message || e}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" class="py-2 px-2 text-red-400">${t('admin.ai_tagging_jobs.load_failed', 'Load failed')}: ${e.message || e}</td></tr>`;
         }
     }
 
     async _showAiJobDetail(jobId) {
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const job = await app.apiCall(`/api/admin/ai-tagging/jobs/${jobId}`, { method: 'GET' });
             this._renderAiJobProgress(job);
@@ -3742,13 +3804,14 @@ class AdminPanel {
                 this._startAiJobPolling(job.id);
             }
         } catch (e) {
-            app.showNotification(`加载任务详情失败: ${e.message || e}`, 'error');
+            app.showNotification(`${t('admin.ai_tagging_jobs.load_detail_failed', 'Load job detail failed')}: ${e.message || e}`, 'error');
         }
     }
 
     // ---- Content Classification (Phase 3) ----
 
     async loadClassificationStats() {
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const data = await app.apiCall('/api/admin/content-classification/stats');
             const el = (id) => document.getElementById(id);
@@ -3760,11 +3823,16 @@ class AdminPanel {
             const breakdownEl = el('cls-breakdown');
             if (breakdownEl && data.breakdown) {
                 const parts = [];
-                const labels = { anime: '动漫', non_anime: '非动漫', illustration: '插画', unknown: '未知' };
+                const labels = {
+                    anime: t('admin.content_classification.breakdown_anime', 'Anime'),
+                    non_anime: t('admin.content_classification.breakdown_non_anime', 'Non-anime'),
+                    illustration: t('admin.content_classification.breakdown_illustration', 'Illustration'),
+                    unknown: t('admin.content_classification.breakdown_unknown', 'Unknown')
+                };
                 for (const [k, v] of Object.entries(data.breakdown)) {
                     parts.push(`${labels[k] || k}: ${v}`);
                 }
-                breakdownEl.textContent = parts.length ? parts.join('  |  ') : '暂无数据';
+                breakdownEl.textContent = parts.length ? parts.join('  |  ') : t('admin.content_classification.no_data', 'No data');
             }
         } catch (e) {
             console.error('Failed to load classification stats:', e);
@@ -3774,26 +3842,27 @@ class AdminPanel {
     async loadClassificationConfig() {
         const el = document.getElementById('cls-config-content');
         if (!el) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const data = await app.apiCall('/api/admin/content-classification/config');
             const badge = (v) => v
-                ? '<span class="text-green-400 font-bold">ON</span>'
-                : '<span class="text-secondary">OFF</span>';
+                ? `<span class="text-green-400 font-bold">${t('admin.content_classification.on', 'ON')}</span>`
+                : `<span class="text-secondary">${t('admin.content_classification.off', 'OFF')}</span>`;
             el.innerHTML = `
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs">
-                    <div>功能启用：${badge(data.enabled)}</div>
-                    <div>分类方法：<span class="font-bold text-yellow-300">${data.method || '-'}</span></div>
-                    <div>Batch 上限：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
-                    <div>导入后自动分类：${badge(data.auto_after_import)}</div>
-                    <div>自动分类上限：<span class="font-bold text-yellow-300">${data.auto_max_items}</span></div>
-                    <div>动漫标签阈值：<span class="font-bold text-yellow-300">${data.anime_tag_threshold}</span></div>
-                    <div>动漫信度阈值：<span class="font-bold text-yellow-300">${data.anime_confidence_threshold}</span></div>
+                    <div>${t('admin.content_classification.config_enabled', 'Enabled')}：${badge(data.enabled)}</div>
+                    <div>${t('admin.content_classification.config_method', 'Method')}：<span class="font-bold text-yellow-300">${data.method || '-'}</span></div>
+                    <div>${t('admin.content_classification.config_batch_max', 'Batch max')}：<span class="font-bold text-yellow-300">${data.batch_max_items}</span></div>
+                    <div>${t('admin.content_classification.config_auto_after_import', 'Auto after import')}：${badge(data.auto_after_import)}</div>
+                    <div>${t('admin.content_classification.config_auto_max', 'Auto-classify max items')}：<span class="font-bold text-yellow-300">${data.auto_max_items}</span></div>
+                    <div>${t('admin.content_classification.config_anime_tag_threshold', 'Anime tag threshold')}：<span class="font-bold text-yellow-300">${data.anime_tag_threshold}</span></div>
+                    <div>${t('admin.content_classification.config_anime_confidence', 'Anime confidence')}：<span class="font-bold text-yellow-300">${data.anime_confidence_threshold}</span></div>
                 </div>
-                <p class="text-xs text-secondary mt-2">配置通过 .env 文件管理，修改后需重启服务。</p>
+                <p class="text-xs text-secondary mt-2">${t('admin.content_classification.config_note', 'Config managed via .env, restart required.')}</p>
             `;
             this._updateClassificationBanner(data);
         } catch (e) {
-            el.textContent = `加载失败: ${e.message || e}`;
+            el.textContent = `${t('admin.content_classification.load_failed', 'Load failed')}: ${e.message || e}`;
         }
     }
 
@@ -3822,18 +3891,22 @@ class AdminPanel {
         const maxItems = parseInt(document.getElementById('cls-job-max-items').value) || 100;
         const onlyUnclassified = document.getElementById('cls-job-only-unclassified').checked;
         const forceReclassify = document.getElementById('cls-job-force-reclassify')?.checked || false;
+        const t = (k, fbOrParams, maybeParams) => {
+            if (typeof fbOrParams === 'object') return window.i18n ? window.i18n.t(k, fbOrParams) : k;
+            return window.i18n ? window.i18n.t(k, maybeParams) : (maybeParams ? fbOrParams.replace(/\{(\w+)\}/g, (m, p) => Object.prototype.hasOwnProperty.call(maybeParams, p) ? String(maybeParams[p]) : m) : fbOrParams);
+        };
 
         let mediaIds = null;
         if (idsInput) {
             mediaIds = idsInput.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
             if (mediaIds.length === 0) {
-                app.showNotification('无效的 Media IDs', 'error');
+                app.showNotification(t('admin.content_classification.invalid_media_ids', 'Invalid Media IDs'), 'error');
                 return;
             }
         }
 
         btn.disabled = true;
-        btn.textContent = '创建中…';
+        btn.textContent = t('admin.content_classification.creating', 'Creating…');
         try {
             const body = {
                 max_items: maxItems,
@@ -3847,24 +3920,25 @@ class AdminPanel {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            app.showNotification(`分类任务 #${data.id} 已创建`, 'success');
+            app.showNotification(t('admin.content_classification.job_created', 'Classification Job #{id} created', { id: data.id }), 'success');
             this._currentClsJobId = data.id;
             this._startClsJobPolling(data.id);
         } catch (e) {
-            app.showNotification(`创建失败: ${e.message || e}`, 'error');
+            app.showNotification(`${t('admin.content_classification.create_failed', 'Create failed')}: ${e.message || e}`, 'error');
         } finally {
             btn.disabled = false;
-            btn.textContent = '创建任务';
+            btn.textContent = t('admin.content_classification.create_btn', 'Create Job');
         }
     }
 
     async cancelClassificationJob() {
         if (!this._currentClsJobId) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             await app.apiCall(`/api/admin/content-classification/jobs/${this._currentClsJobId}/cancel`, { method: 'POST' });
-            app.showNotification('取消请求已发送', 'success');
+            app.showNotification(t('admin.content_classification.cancel_sent', 'Cancel request sent'), 'success');
         } catch (e) {
-            app.showNotification(`取消失败: ${e.message || e}`, 'error');
+            app.showNotification(`${t('admin.content_classification.cancel_failed', 'Cancel failed')}: ${e.message || e}`, 'error');
         }
     }
 
@@ -3900,6 +3974,7 @@ class AdminPanel {
         const cancelBtn = document.getElementById('cls-job-cancel-btn');
 
         if (!statsEl) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
 
         const total = job.max_items || 1;
         const pct = Math.min(100, Math.round((job.processed / total) * 100));
@@ -3907,20 +3982,25 @@ class AdminPanel {
         if (cancelBtn) cancelBtn.disabled = !['pending', 'running'].includes(job.status);
 
         const statusMap = {
-            pending: '等待中', running: '运行中', completed: '已完成',
-            failed: '失败', cancelled: '已取消', cancelling: '取消中', interrupted: '已中断'
+            pending: t('admin.content_classification.status_pending', 'Pending'),
+            running: t('admin.content_classification.status_running', 'Running'),
+            completed: t('admin.content_classification.status_completed', 'Completed'),
+            failed: t('admin.content_classification.status_failed', 'Failed'),
+            cancelled: t('admin.content_classification.status_cancelled', 'Cancelled'),
+            cancelling: t('admin.content_classification.status_cancelling', 'Cancelling'),
+            interrupted: t('admin.content_classification.status_interrupted', 'Interrupted')
         };
 
         statsEl.innerHTML = `
-            <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">已处理</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.classified_anime}</div><div class="text-secondary">动漫</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-blue-400">${job.classified_non_anime}</div><div class="text-secondary">非动漫</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.classified_unknown}</div><div class="text-secondary">未知</div></div>
-            <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">失败</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold">${job.processed}</div><div class="text-secondary">${t('admin.content_classification.progress_processed', 'Processed')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-green-400">${job.classified_anime}</div><div class="text-secondary">${t('admin.content_classification.progress_anime', 'Anime')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-blue-400">${job.classified_non_anime}</div><div class="text-secondary">${t('admin.content_classification.progress_non_anime', 'Non-Anime')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-yellow-400">${job.classified_unknown}</div><div class="text-secondary">${t('admin.content_classification.progress_unknown', 'Unknown')}</div></div>
+            <div class="bg p-2 border text-center"><div class="font-bold text-red-400">${job.failed}</div><div class="text-secondary">${t('admin.content_classification.progress_failed', 'Failed')}</div></div>
         `;
-        let statusText = `状态: ${statusMap[job.status] || job.status}`;
+        let statusText = `${t('admin.content_classification.status_label', 'Status')}: ${statusMap[job.status] || job.status}`;
         if (job.trigger_source === 'scan_job' && job.scan_job_id) {
-            statusText += ` | 关联 Scan #${job.scan_job_id}`;
+            statusText += ` | ${t('admin.content_classification.linked_scan', 'Linked Scan')} #${job.scan_job_id}`;
         }
         if (job.error_message) statusText += ` | ${job.error_message}`;
         if (statusEl) statusEl.textContent = statusText;
@@ -3930,6 +4010,7 @@ class AdminPanel {
         const tbody = document.getElementById('cls-jobs-history-tbody');
         const emptyEl = document.getElementById('cls-jobs-history-empty');
         if (!tbody) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const jobs = await app.apiCall('/api/admin/content-classification/jobs', { method: 'GET' });
             if (!jobs || jobs.length === 0) {
@@ -3946,28 +4027,34 @@ class AdminPanel {
             }
 
             const statusMap = {
-                pending: '⏳ 等待', running: '▶️ 运行', completed: '✅ 完成',
-                failed: '❌ 失败', cancelled: '⏹ 取消', cancelling: '⏸ 取消中', interrupted: '⚠️ 中断'
+                pending: `⏳ ${t('admin.content_classification.history_status_pending', 'Pending')}`,
+                running: `▶️ ${t('admin.content_classification.history_status_running', 'Running')}`,
+                completed: `✅ ${t('admin.content_classification.history_status_completed', 'Completed')}`,
+                failed: `❌ ${t('admin.content_classification.history_status_failed', 'Failed')}`,
+                cancelled: `⏹ ${t('admin.content_classification.history_status_cancelled', 'Cancelled')}`,
+                cancelling: `⏸ ${t('admin.content_classification.history_status_cancelling', 'Cancelling')}`,
+                interrupted: `⚠️ ${t('admin.content_classification.history_status_interrupted', 'Interrupted')}`
             };
             tbody.innerHTML = jobs.map(j => `
                 <tr class="border-b hover:bg-gray-800/30 text-[11px] cursor-pointer" onclick="adminPanel._showClsJobDetail(${j.id})">
                     <td class="py-1 px-2">${j.id}</td>
                     <td class="py-1 px-2">${statusMap[j.status] || j.status}</td>
-                    <td class="py-1 px-2">${j.trigger_source === 'scan_job' ? '扫描触发' : '手动'}</td>
+                    <td class="py-1 px-2">${j.trigger_source === 'scan_job' ? t('admin.content_classification.trigger_scan', 'Scan triggered') : t('admin.content_classification.trigger_manual', 'Manual')}</td>
                     <td class="py-1 px-2">${j.processed}</td>
                     <td class="py-1 px-2 text-green-400">${j.classified_anime}</td>
                     <td class="py-1 px-2 text-blue-400">${j.classified_non_anime}</td>
                     <td class="py-1 px-2 text-yellow-400">${j.classified_unknown}</td>
                     <td class="py-1 px-2 text-red-400">${j.failed}</td>
-                    <td class="py-1 px-2">${j.created_at ? new Date(j.created_at).toLocaleString('zh-CN') : '-'}</td>
+                    <td class="py-1 px-2">${j.created_at ? new Date(j.created_at).toLocaleString() : '-'}</td>
                 </tr>
             `).join('');
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="9" class="py-2 px-2 text-red-400">加载失败: ${e.message || e}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="py-2 px-2 text-red-400">${t('admin.content_classification.load_failed', 'Load failed')}: ${e.message || e}</td></tr>`;
         }
     }
 
     async _showClsJobDetail(jobId) {
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const job = await app.apiCall(`/api/admin/content-classification/jobs/${jobId}`, { method: 'GET' });
             this._renderClsJobProgress(job);
@@ -3978,7 +4065,7 @@ class AdminPanel {
                 this._startClsJobPolling(job.id);
             }
         } catch (e) {
-            app.showNotification(`加载任务详情失败: ${e.message || e}`, 'error');
+            app.showNotification(`${t('admin.content_classification.load_detail_failed', 'Failed to load job detail')}: ${e.message || e}`, 'error');
         }
     }
 
@@ -4526,11 +4613,12 @@ class AdminPanel {
     async loadDevConfigDiagnostics() {
         const el = document.getElementById('dev-config-content');
         if (!el) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         try {
             const data = await app.apiCall('/api/admin/dev/config-diagnostics', { method: 'GET' });
             const badge = (val) => val
-                ? '<span class="text-green-400 font-bold">ON</span>'
-                : '<span class="text-red-400 font-bold">OFF</span>';
+                ? `<span class="text-green-400 font-bold">${t('admin.dev_tools.on', 'ON')}</span>`
+                : `<span class="text-red-400 font-bold">${t('admin.dev_tools.off', 'OFF')}</span>`;
             const ai = data.ai_tagging || {};
             const auto = data.auto_tag_after_import || {};
             const loc = data.tag_localization || {};
@@ -4540,50 +4628,50 @@ class AdminPanel {
                 <div class="mb-3">
                     <div class="font-bold text-xs mb-1 text-primary">AI Tagging</div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                        <div>启用：${badge(ai.enabled)}</div>
-                        <div>Batch 上限：<span class="font-bold text-yellow-300">${ai.batch_max_items}</span></div>
-                        <div>模型：${ai.model_name || 'N/A'}</div>
+                        <div>${t('admin.dev_tools.ai_enabled', 'Enabled')}：${badge(ai.enabled)}</div>
+                        <div>${t('admin.dev_tools.ai_batch_max', 'Batch limit')}：<span class="font-bold text-yellow-300">${ai.batch_max_items}</span></div>
+                        <div>${t('admin.dev_tools.ai_model', 'Model')}：${ai.model_name || 'N/A'}</div>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <div class="font-bold text-xs mb-1 text-primary">导入后自动打标</div>
+                    <div class="font-bold text-xs mb-1 text-primary">${t('admin.dev_tools.auto_tag_title', 'Auto-tag after import')}</div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                        <div>启用：${badge(auto.enabled)}</div>
-                        <div>最大数量：<span class="font-bold text-yellow-300">${auto.max_items}</span></div>
-                        <div>仅新导入：${badge(auto.only_new)}</div>
+                        <div>${t('admin.dev_tools.auto_enabled', 'Enabled')}：${badge(auto.enabled)}</div>
+                        <div>${t('admin.dev_tools.auto_max_items', 'Max items')}：<span class="font-bold text-yellow-300">${auto.max_items}</span></div>
+                        <div>${t('admin.dev_tools.auto_only_new', 'Only new')}：${badge(auto.only_new)}</div>
                         <div>Dry Run：${badge(auto.dry_run)}</div>
-                        <div>强制建议：${badge(auto.force_suggestions)}</div>
+                        <div>${t('admin.dev_tools.auto_force_suggest', 'Force suggestions')}：${badge(auto.force_suggestions)}</div>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <div class="font-bold text-xs mb-1 text-primary">标签本地化</div>
+                    <div class="font-bold text-xs mb-1 text-primary">${t('admin.dev_tools.tag_loc_title', 'Tag Localization')}</div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                        <div>LLM 翻译：${badge(loc.llm_enabled)}</div>
-                        <div>自动翻译：${badge(loc.auto_enabled)}</div>
-                        <div>自动上限：<span class="font-bold">${loc.auto_max_items}</span></div>
-                        <div>批量上限：<span class="font-bold">${loc.batch_max_items}</span></div>
+                        <div>${t('admin.dev_tools.tag_loc_llm', 'LLM Translation')}：${badge(loc.llm_enabled)}</div>
+                        <div>${t('admin.dev_tools.tag_loc_auto', 'Auto-translate')}：${badge(loc.auto_enabled)}</div>
+                        <div>${t('admin.dev_tools.tag_loc_auto_limit', 'Auto limit')}：<span class="font-bold">${loc.auto_max_items}</span></div>
+                        <div>${t('admin.dev_tools.tag_loc_batch_limit', 'Batch limit')}：<span class="font-bold">${loc.batch_max_items}</span></div>
                         <div>API Key：${badge(loc.api_key_configured)}</div>
-                        <div>模型：${loc.model || 'N/A'}</div>
+                        <div>${t('admin.dev_tools.tag_loc_model', 'Model')}：${loc.model || 'N/A'}</div>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <div class="font-bold text-xs mb-1 text-primary">后台自动翻译</div>
+                    <div class="font-bold text-xs mb-1 text-primary">${t('admin.dev_tools.bg_translate_title', 'Background Auto-translate')}</div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                        <div>启用：${badge(loc.background_enabled)}</div>
-                        <div>间隔：<span class="font-bold">${loc.background_interval || '-'}s</span></div>
-                        <div>批量大小：<span class="font-bold">${loc.background_batch_size || '-'}</span></div>
-                        <div>每轮上限：<span class="font-bold">${loc.background_max_per_run || '-'}</span></div>
-                        <div>每日上限：<span class="font-bold">${loc.background_daily_limit || '-'}</span></div>
-                        <div>错误阈值：<span class="font-bold">${loc.background_error_limit || '-'}</span></div>
-                        <div>优先级：<span class="font-bold">${loc.background_priority || '-'}</span></div>
+                        <div>${t('admin.dev_tools.bg_enabled', 'Enabled')}：${badge(loc.background_enabled)}</div>
+                        <div>${t('admin.dev_tools.bg_interval', 'Interval')}：<span class="font-bold">${loc.background_interval || '-'}s</span></div>
+                        <div>${t('admin.dev_tools.bg_batch_size', 'Batch size')}：<span class="font-bold">${loc.background_batch_size || '-'}</span></div>
+                        <div>${t('admin.dev_tools.bg_max_per_run', 'Max per run')}：<span class="font-bold">${loc.background_max_per_run || '-'}</span></div>
+                        <div>${t('admin.dev_tools.bg_daily_limit', 'Daily limit')}：<span class="font-bold">${loc.background_daily_limit || '-'}</span></div>
+                        <div>${t('admin.dev_tools.bg_error_limit', 'Error threshold')}：<span class="font-bold">${loc.background_error_limit || '-'}</span></div>
+                        <div>${t('admin.dev_tools.bg_priority', 'Priority')}：<span class="font-bold">${loc.background_priority || '-'}</span></div>
                     </div>
                 </div>
                 <div class="mb-2">
-                    <div class="font-bold text-xs mb-1 text-primary">路径</div>
-                    <div>LOCAL_LIBRARY_PATHS：<span class="font-mono">${(paths.local_library_paths || []).join(', ') || '(未配置)'}</span></div>
+                    <div class="font-bold text-xs mb-1 text-primary">${t('admin.dev_tools.paths_title', 'Paths')}</div>
+                    <div>LOCAL_LIBRARY_PATHS：<span class="font-mono">${(paths.local_library_paths || []).join(', ') || t('admin.dev_tools.not_configured', '(Not configured)')}</span></div>
                 </div>
                 <div class="text-[10px] text-secondary mt-2">
-                    .env 路径：${data.env_file || '(unknown)'}　|　修改 .env 后需重启服务
+                    ${t('admin.dev_tools.env_path', '.env path')}：${data.env_file || '(unknown)'}　|　${t('admin.dev_tools.restart_note', 'Restart server after modifying .env')}
                 </div>
             `;
 
@@ -4596,18 +4684,18 @@ class AdminPanel {
                 serverGrid.innerHTML = `
                     <div>PID：<span class="font-bold">${srv.pid || '—'}</span></div>
                     <div>Python：<span class="font-bold">${srv.python_version ? srv.python_version.split(' ')[0] : '—'}</span></div>
-                    <div>版本：<span class="font-bold">${srv.app_version || '—'}</span></div>
-                    <div>平台：<span class="font-bold">${srv.platform || '—'}</span></div>
+                    <div>${t('admin.dev_tools.srv_version', 'Version')}：<span class="font-bold">${srv.app_version || '—'}</span></div>
+                    <div>${t('admin.dev_tools.srv_platform', 'Platform')}：<span class="font-bold">${srv.platform || '—'}</span></div>
                     <div>Debug：<span class="font-bold">${srv.debug ? 'ON' : 'OFF'}</span></div>
-                    <div>根目录：<span class="font-mono text-[10px]">${srv.base_dir || '—'}</span></div>
-                    <div class="col-span-full border-t border-base mt-1 pt-1 font-bold text-xs text-primary">扫描配置</div>
-                    <div>仅已下载：<span class="font-bold">${scn.hydrated_only_default ? 'ON' : 'OFF'}</span></div>
-                    <div>超时：<span class="font-bold">${scn.file_open_timeout_seconds ?? '—'}s</span></div>
-                    <div>文件上限：<span class="font-bold">${scn.max_file_size_mb ?? '—'} MB</span></div>
+                    <div>${t('admin.dev_tools.srv_basedir', 'Root dir')}：<span class="font-mono text-[10px]">${srv.base_dir || '—'}</span></div>
+                    <div class="col-span-full border-t border-base mt-1 pt-1 font-bold text-xs text-primary">${t('admin.dev_tools.scan_config_title', 'Scan Config')}</div>
+                    <div>${t('admin.dev_tools.scan_hydrated_only', 'Hydrated only')}：<span class="font-bold">${scn.hydrated_only_default ? 'ON' : 'OFF'}</span></div>
+                    <div>${t('admin.dev_tools.scan_timeout', 'Timeout')}：<span class="font-bold">${scn.file_open_timeout_seconds ?? '—'}s</span></div>
+                    <div>${t('admin.dev_tools.scan_max_size', 'File size limit')}：<span class="font-bold">${scn.max_file_size_mb ?? '—'} MB</span></div>
                 `;
             }
         } catch (e) {
-            el.textContent = `加载失败: ${e.message || e}`;
+            el.textContent = `${t('admin.dev_tools.load_failed', 'Load failed')}: ${e.message || e}`;
         }
     }
 
@@ -4615,6 +4703,7 @@ class AdminPanel {
         const container = document.getElementById('dev-recommended-config');
         const snippet = document.getElementById('dev-recommended-snippet');
         if (!container || !snippet) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
 
         if (!container.classList.contains('hidden')) {
             container.classList.add('hidden');
@@ -4626,7 +4715,7 @@ class AdminPanel {
             snippet.textContent = data.snippet || '';
             container.classList.remove('hidden');
         } catch (e) {
-            snippet.textContent = `加载失败: ${e.message || e}`;
+            snippet.textContent = `${t('admin.dev_tools.load_failed', 'Load failed')}: ${e.message || e}`;
             container.classList.remove('hidden');
         }
     }
@@ -4634,20 +4723,21 @@ class AdminPanel {
     async resetE2ETestData(dryRun) {
         const sourcePath = document.getElementById('dev-reset-source-path')?.value?.trim();
         const resultDiv = document.getElementById('dev-reset-result');
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
         if (!sourcePath) {
-            app.showNotification('请输入源目录路径', 'error');
+            app.showNotification(t('admin.dev_tools.enter_source_path', 'Please enter source directory path'), 'error');
             return;
         }
         if (!resultDiv) return;
 
         if (!dryRun) {
-            if (!confirm('确定要执行真实重置吗？这将删除所有从该目录导入的数据。原始文件不受影响。')) {
+            if (!confirm(t('admin.dev_tools.confirm_reset', 'Are you sure you want to execute a real reset? This will delete all data imported from this directory. Original files are not affected.'))) {
                 return;
             }
         }
 
         resultDiv.classList.remove('hidden');
-        resultDiv.innerHTML = '<span class="text-secondary">处理中...</span>';
+        resultDiv.innerHTML = `<span class="text-secondary">${t('admin.dev_tools.processing', 'Processing…')}</span>`;
 
         try {
             const data = await app.apiCall('/api/admin/dev/reset-e2e-test-data', {
@@ -4661,43 +4751,45 @@ class AdminPanel {
                 }),
             });
             const s = data.summary || {};
-            const label = dryRun ? '🔍 Dry Run 预览' : '✅ 重置完成';
+            const label = dryRun
+                ? `🔍 ${t('admin.dev_tools.dry_run_label', 'Dry Run Preview')}`
+                : `✅ ${t('admin.dev_tools.reset_complete_label', 'Reset Complete')}`;
             let html = `<div class="font-bold mb-2">${label}</div>`;
 
             if (dryRun) {
                 html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-1">
-                    <div>媒体：${s.media_count || 0}</div>
-                    <div>复制文件：${s.copied_files_count || 0}</div>
-                    <div>缩略图：${s.thumbnail_files_count || 0}</div>
-                    <div>标签关联：${s.tag_associations_count || 0}</div>
-                    <div>受影响标签：${s.affected_tags_count || 0}</div>
-                    <div>扫描任务：${s.scan_job_count || 0}</div>
-                    <div>AI 打标任务：${s.ai_tag_job_count || 0}</div>
-                    <div>导入链接：${s.scan_job_media_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_media', 'Media')}：${s.media_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_copied_files', 'Copied files')}：${s.copied_files_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_thumbnails', 'Thumbnails')}：${s.thumbnail_files_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_tag_assoc', 'Tag associations')}：${s.tag_associations_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_affected_tags', 'Affected tags')}：${s.affected_tags_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_scan_jobs', 'Scan jobs')}：${s.scan_job_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_ai_jobs', 'AI tag jobs')}：${s.ai_tag_job_count || 0}</div>
+                    <div>${t('admin.dev_tools.reset_import_links', 'Import links')}：${s.scan_job_media_count || 0}</div>
                 </div>`;
                 if (s.media_count === 0) {
-                    html += '<div class="text-secondary mt-2">未找到从该目录导入的数据。</div>';
+                    html += `<div class="text-secondary mt-2">${t('admin.dev_tools.no_data_found', 'No data found imported from this directory.')}</div>`;
                 }
             } else {
                 html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-1">
-                    <div>删除媒体：${s.media_deleted || 0}</div>
-                    <div>删除文件：${s.files_deleted || 0}</div>
-                    <div>删除缩略图：${s.thumbnails_deleted || 0}</div>
-                    <div>删除标签关联：${s.tag_associations_deleted || 0}</div>
-                    <div>删除扫描任务：${s.scan_jobs_deleted || 0}</div>
-                    <div>删除 AI 任务：${s.ai_tag_jobs_deleted || 0}</div>
-                    <div>标签重算：${s.tags_recalculated || 0}</div>
+                    <div>${t('admin.dev_tools.deleted_media', 'Deleted media')}：${s.media_deleted || 0}</div>
+                    <div>${t('admin.dev_tools.deleted_files', 'Deleted files')}：${s.files_deleted || 0}</div>
+                    <div>${t('admin.dev_tools.deleted_thumbnails', 'Deleted thumbnails')}：${s.thumbnails_deleted || 0}</div>
+                    <div>${t('admin.dev_tools.deleted_tag_assoc', 'Deleted tag associations')}：${s.tag_associations_deleted || 0}</div>
+                    <div>${t('admin.dev_tools.deleted_scan_jobs', 'Deleted scan jobs')}：${s.scan_jobs_deleted || 0}</div>
+                    <div>${t('admin.dev_tools.deleted_ai_jobs', 'Deleted AI jobs')}：${s.ai_tag_jobs_deleted || 0}</div>
+                    <div>${t('admin.dev_tools.tags_recalculated', 'Tags recalculated')}：${s.tags_recalculated || 0}</div>
                 </div>`;
-                html += '<div class="text-green-400 mt-2">重置完成，可以重新运行 E2E 测试。</div>';
+                html += `<div class="text-green-400 mt-2">${t('admin.dev_tools.reset_done_msg', 'Reset complete, you can re-run E2E tests.')}</div>`;
             }
 
             resultDiv.innerHTML = html;
             if (!dryRun) {
-                app.showNotification('E2E 测试数据已重置', 'success');
+                app.showNotification(t('admin.dev_tools.e2e_data_reset', 'E2E test data has been reset'), 'success');
             }
         } catch (e) {
-            resultDiv.innerHTML = `<span class="text-red-500">失败: ${e.message || e}</span>`;
-            app.showNotification(`重置失败: ${e.message || e}`, 'error');
+            resultDiv.innerHTML = `<span class="text-red-500">${t('admin.dev_tools.failed', 'Failed')}: ${e.message || e}</span>`;
+            app.showNotification(`${t('admin.dev_tools.reset_failed', 'Reset failed')}: ${e.message || e}`, 'error');
         }
     }
 
@@ -4706,21 +4798,22 @@ class AdminPanel {
         const dryrunBtn = document.getElementById('dev-missing-media-dryrun-btn');
         const cleanupBtn = document.getElementById('dev-missing-media-cleanup-btn');
         if (!resultDiv) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
 
         resultDiv.classList.remove('hidden');
-        resultDiv.innerHTML = '<span class="text-yellow-400">扫描中…</span>';
+        resultDiv.innerHTML = `<span class="text-yellow-400">${t('admin.dev_tools.scanning', 'Scanning…')}</span>`;
         try {
             const data = await app.apiCall('/api/admin/dev/missing-media-scan');
             let html = `<div class="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs mb-2">
-                <div>总计媒体：<span class="font-bold">${data.total_media}</span></div>
-                <div>有效：<span class="font-bold text-green-400">${data.valid}</span></div>
-                <div>缺失原件：<span class="font-bold text-red-400">${data.missing_original_or_media_file}</span></div>
-                <div>缺失缩略图：<span class="font-bold text-yellow-400">${data.missing_thumbnail_only}</span></div>
-                <div>全部缺失：<span class="font-bold text-red-400">${data.missing_both}</span></div>
-                <div>可删除记录：<span class="font-bold text-red-400">${data.deletable_count}</span></div>
+                <div>${t('admin.dev_tools.scan_total_media', 'Total media')}：<span class="font-bold">${data.total_media}</span></div>
+                <div>${t('admin.dev_tools.scan_valid', 'Valid')}：<span class="font-bold text-green-400">${data.valid}</span></div>
+                <div>${t('admin.dev_tools.scan_missing_original', 'Missing original')}：<span class="font-bold text-red-400">${data.missing_original_or_media_file}</span></div>
+                <div>${t('admin.dev_tools.scan_missing_thumb', 'Missing thumbnail')}：<span class="font-bold text-yellow-400">${data.missing_thumbnail_only}</span></div>
+                <div>${t('admin.dev_tools.scan_missing_both', 'Missing both')}：<span class="font-bold text-red-400">${data.missing_both}</span></div>
+                <div>${t('admin.dev_tools.scan_deletable', 'Deletable records')}：<span class="font-bold text-red-400">${data.deletable_count}</span></div>
             </div>`;
             if (data.missing_thumbnail_only > 0) {
-                html += '<div class="text-xs text-yellow-400 mb-1">缺失缩略图的项目建议重新生成缩略图，不会被删除。</div>';
+                html += `<div class="text-xs text-yellow-400 mb-1">${t('admin.dev_tools.scan_thumb_hint', 'Items missing thumbnails should regenerate thumbnails and will not be deleted.')}</div>`;
             }
             resultDiv.innerHTML = html;
 
@@ -4732,22 +4825,23 @@ class AdminPanel {
                 if (cleanupBtn) cleanupBtn.disabled = true;
             }
         } catch (e) {
-            resultDiv.innerHTML = `<span class="text-red-500">扫描失败: ${e.message || e}</span>`;
+            resultDiv.innerHTML = `<span class="text-red-500">${t('admin.dev_tools.scan_failed', 'Scan failed')}: ${e.message || e}</span>`;
         }
     }
 
     async cleanupMissingMedia(dryRun) {
         const resultDiv = document.getElementById('dev-missing-media-result');
         if (!resultDiv) return;
+        const t = (k, fb) => window.i18n ? window.i18n.t(k) : fb;
 
         resultDiv.classList.remove('hidden');
 
         if (!dryRun) {
-            const ok = confirm('确认执行清理？将删除缺失原件的媒体 DB 记录。源文件不会被删除。');
+            const ok = confirm(t('admin.dev_tools.confirm_cleanup', 'Confirm cleanup? This will delete DB records for media missing their original files. Source files will not be deleted.'));
             if (!ok) return;
         }
 
-        resultDiv.innerHTML = `<span class="text-yellow-400">${dryRun ? 'Dry run 中…' : '清理中…'}</span>`;
+        resultDiv.innerHTML = `<span class="text-yellow-400">${dryRun ? t('admin.dev_tools.dry_running', 'Dry run…') : t('admin.dev_tools.cleaning_up', 'Cleaning up…')}</span>`;
         try {
             const data = await app.apiCall('/api/admin/dev/missing-media-cleanup', {
                 method: 'POST',
@@ -4757,30 +4851,30 @@ class AdminPanel {
 
             if (data.dry_run) {
                 resultDiv.innerHTML = `<div class="text-xs">
-                    <div class="text-yellow-400 mb-1">Dry Run — 不会删除任何数据</div>
-                    <div>可删除记录数：<span class="font-bold">${data.deletable_count}</span></div>
-                    <div class="text-secondary mt-1">设置 dry_run=false 并 confirm=true 执行真正清理。</div>
+                    <div class="text-yellow-400 mb-1">${t('admin.dev_tools.dry_run_no_delete', 'Dry Run — no data will be deleted')}</div>
+                    <div>${t('admin.dev_tools.deletable_count', 'Deletable records')}：<span class="font-bold">${data.deletable_count}</span></div>
+                    <div class="text-secondary mt-1">${t('admin.dev_tools.dry_run_hint', 'Set dry_run=false and confirm=true to execute real cleanup.')}</div>
                 </div>`;
             } else {
                 resultDiv.innerHTML = `<div class="text-xs">
-                    <div class="text-green-400 mb-1">清理完成</div>
+                    <div class="text-green-400 mb-1">${t('admin.dev_tools.cleanup_complete', 'Cleanup complete')}</div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                        <div>删除媒体记录：<span class="font-bold">${data.media_deleted}</span></div>
-                        <div>删除缩略图：<span class="font-bold">${data.thumbnails_deleted}</span></div>
-                        <div>删除标签关联：<span class="font-bold">${data.tag_associations_deleted}</span></div>
-                        <div>删除专辑关联：<span class="font-bold">${data.album_associations_deleted}</span></div>
-                        <div>删除扫描记录：<span class="font-bold">${data.scan_job_media_deleted}</span></div>
-                        <div>清理 AI 任务：<span class="font-bold">${data.ai_jobs_cleaned}</span></div>
-                        <div>清理分类任务：<span class="font-bold">${data.classification_jobs_cleaned}</span></div>
-                        <div>标签重算：<span class="font-bold">${data.tags_recalculated}</span></div>
-                        <div>源文件删除：<span class="font-bold text-green-400">${data.source_files_deleted} (不删除)</span></div>
+                        <div>${t('admin.dev_tools.cleanup_media_deleted', 'Media records deleted')}：<span class="font-bold">${data.media_deleted}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_thumbs_deleted', 'Thumbnails deleted')}：<span class="font-bold">${data.thumbnails_deleted}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_tags_deleted', 'Tag associations deleted')}：<span class="font-bold">${data.tag_associations_deleted}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_albums_deleted', 'Album associations deleted')}：<span class="font-bold">${data.album_associations_deleted}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_scan_deleted', 'Scan records deleted')}：<span class="font-bold">${data.scan_job_media_deleted}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_ai_cleaned', 'AI jobs cleaned')}：<span class="font-bold">${data.ai_jobs_cleaned}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_cls_cleaned', 'Classification jobs cleaned')}：<span class="font-bold">${data.classification_jobs_cleaned}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_tags_recalc', 'Tags recalculated')}：<span class="font-bold">${data.tags_recalculated}</span></div>
+                        <div>${t('admin.dev_tools.cleanup_source_files', 'Source files deleted')}：<span class="font-bold text-green-400">${data.source_files_deleted} (${t('admin.dev_tools.not_deleted', 'not deleted')})</span></div>
                     </div>
                 </div>`;
-                app.showNotification('缺失媒体清理完成', 'success');
+                app.showNotification(t('admin.dev_tools.missing_media_cleaned', 'Missing media cleanup complete'), 'success');
             }
         } catch (e) {
-            resultDiv.innerHTML = `<span class="text-red-500">清理失败: ${e.message || e}</span>`;
-            app.showNotification(`清理失败: ${e.message || e}`, 'error');
+            resultDiv.innerHTML = `<span class="text-red-500">${t('admin.dev_tools.cleanup_failed', 'Cleanup failed')}: ${e.message || e}</span>`;
+            app.showNotification(`${t('admin.dev_tools.cleanup_failed', 'Cleanup failed')}: ${e.message || e}`, 'error');
         }
     }
 }

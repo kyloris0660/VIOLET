@@ -298,7 +298,33 @@ See [Content Classification](content-classification.md) for full documentation.
 
 See [Test Workflow](test-workflow.md) for documentation.
 
----
+### Fix: Storage Root Containment with Path Semantics (PR #27)
+
+Hardened storage path containment to use `PurePath.is_relative_to()` instead of string `startswith()`, preventing edge cases with `../` traversal, absolute paths, UNC paths, and empty paths.
+
+### Phase 3.1.1c — Full Pipeline Smoke Validation (PR #29)
+
+Local full pipeline smoke validation helper (`scripts/smoke_validate_pipeline.py`) for verifying the complete import → tag → classify → search workflow against the isolated test environment.
+
+### Fix: Harden Unicode Scan Import Failure Handling (PR #30)
+
+Fixed crash during scan import when files with certain Unicode characters in their paths failed to hash. Files that fail to hash are now counted as `failed` rather than crashing the scan job.
+
+### Phase 3.1.2 — Admin UI Closeout + Gallery Content-Class Filter (in progress)
+
+**Goal:** Clean up the admin UI accumulated from many rapid development phases: consolidate AI tagging entry points, fix hardcoded i18n strings, improve admin navigation, add gallery content-class filtering.
+
+PR 1 (`phase3.1.2a-admin-ui-closeout`):
+- Documentation closeout for PR #27-#30
+- Full admin UI audit (all sections, HTML→JS→backend)
+- AI tagging UI consolidation (old direct section → Developer Tools as legacy)
+- Admin navigation improvements (section quick nav, collapsible groups)
+- i18n fixes (~60 new locale keys)
+- Locale key consistency across all 4 locale files
+
+PR 2 (`phase3.1.2b-gallery-content-class-filter`):
+- Gallery sidebar content-class filter (5 modes)
+- Backend `content_class` param on `GET /api/media/`
 
 ## Upcoming Phases
 

@@ -366,9 +366,14 @@ class Settings:
     @property
     def CURRENT_LANGUAGE(self) -> str:
         val = self.file_settings.get("language")
-        if val is not None:
-            return val
-        return os.getenv("BLOMBOORU_LANGUAGE", self.settings.get("language", "en"))
+        if val is None:
+            val = os.getenv("BLOMBOORU_LANGUAGE", self.settings.get("language", "en"))
+        # Validate against language registry — fallback to "en" if stored
+        # language no longer exists (e.g. ru/sv removed)
+        from .translations import language_registry
+        if not language_registry.language_exists(val):
+            return "en"
+        return val
     
     @property
     def IS_FIRST_RUN(self) -> bool:
