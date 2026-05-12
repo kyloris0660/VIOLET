@@ -19,6 +19,7 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
 | `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
+| `tests/test_python_env_preflight.py` | Python/venv env preflight, stdlib-only, sys.executable match |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -63,7 +64,7 @@ $env:VIOLET_RUN_REAL_E2E = "1"
 ### Prerequisites
 
 1. PostgreSQL 17 running on `localhost:5432`
-2. Python 3.12 venv with project dependencies
+2. Python 3.12 venv with project dependencies (`$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`). Run `& "$PY" scripts/check_python_env.py --expected-python "$PY"` before any test/server operation — this is a hard gate.
 3. Node.js with Playwright installed (`npx playwright install`)
 
 ### Test Database
@@ -72,7 +73,7 @@ Create the test database (idempotent):
 
 ```powershell
 $env:POSTGRES_DB = "blombooru_test"
-python scripts/setup_test_db.py
+& "$PY" scripts/setup_test_db.py
 ```
 
 Run schema migrations on the test database:
@@ -80,13 +81,13 @@ Run schema migrations on the test database:
 ```powershell
 $env:POSTGRES_DB = "blombooru_test"
 $env:VIOLET_ENV = "test"
-python scripts/setup_test_db.py --migrate
+& "$PY" scripts/setup_test_db.py --migrate
 ```
 
 Use `--dry-run` to preview without making changes:
 
 ```powershell
-python scripts/setup_test_db.py --migrate --dry-run
+& "$PY" scripts/setup_test_db.py --migrate --dry-run
 ```
 
 Forbidden DB names (`blombooru`, `production`, `main`, `postgres`) are rejected to prevent accidental use of the production database.
@@ -105,8 +106,8 @@ VioletTestFixture/
 Validate the fixture (read-only, never modifies files):
 
 ```powershell
-python scripts/inspect_test_fixture.py --path "C:\Users\kyloris\Pictures\VioletTestFixture"
-python scripts/inspect_test_fixture.py --path "C:\Users\kyloris\Pictures\VioletTestFixture" --json
+& "$PY" scripts/inspect_test_fixture.py --path "C:\Users\kyloris\Pictures\VioletTestFixture"
+& "$PY" scripts/inspect_test_fixture.py --path "C:\Users\kyloris\Pictures\VioletTestFixture" --json
 ```
 
 ### Test Storage
@@ -122,20 +123,20 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py -v
 ```
 
 ### Smoke Validation (Tier 1)
 
 ```powershell
-pytest tests/test_smoke_validation.py -v
+& "$PY" -m pytest tests/test_smoke_validation.py -v
 ```
 
 ### Fixture Validation (Tier 2)
 
 ```powershell
 $env:VIOLET_TEST_FIXTURE_PATH = "C:\Users\kyloris\Pictures\VioletTestFixture"
-pytest tests/test_fixture_validation.py -v
+& "$PY" -m pytest tests/test_fixture_validation.py -v
 ```
 
 ### Playwright E2E (Tier 3)
@@ -162,7 +163,7 @@ Start-Process -NoNewWindow python -ArgumentList "run.py","--debug"
 # Record the PID
 
 # 4. MANDATORY: Verify server identity before running any E2E tests
-python scripts/check_test_server_identity.py --base-url "http://127.0.0.1:$($env:APP_PORT)" --expected-env test --expected-db blombooru_test
+& "$PY" scripts/check_test_server_identity.py --base-url "http://127.0.0.1:$($env:APP_PORT)" --expected-env test --expected-db blombooru_test
 # If identity check fails → STOP. Do not run E2E. Diagnose and restart.
 
 # 5. Run E2E
@@ -191,7 +192,7 @@ Manual server start (fallback only — if agent startup fails):
 . "$env:USERPROFILE\.violet\test-env.ps1"
 $env:APP_PORT = "8013"
 $env:VIOLET_BASE_URL = "http://127.0.0.1:8013"
-python run.py --debug
+& "$PY" run.py --debug
 ```
 
 Run E2E tests:

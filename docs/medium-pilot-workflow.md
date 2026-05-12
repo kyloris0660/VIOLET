@@ -55,18 +55,19 @@ Each step's output feeds the next. Do not skip steps or run them out of order.
 
 Complete ALL items before executing any tier:
 
+- [ ] 0. **Python/venv identity preflight (hard gate):** Verify the approved project venv Python is in use — not the global/system Python. Run: `& "$PY" scripts/check_python_env.py --expected-python "$PY"` where `$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`. The script must exit 0. If it exits 1, stop and diagnose. Do not proceed with any subsequent preflight items until this passes.
 - [ ] 1. `VIOLET_ENV=test` confirmed
 - [ ] 2. `POSTGRES_DB=blombooru_test_medium` confirmed
 - [ ] 3. `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\medium` confirmed
-- [ ] 4. Database created: `python scripts/setup_test_db.py` with `POSTGRES_DB=blombooru_test_medium`
-- [ ] 5. Schema migrated: `python scripts/setup_test_db.py --migrate` with test env
+- [ ] 4. Database created: `& "$PY" scripts/setup_test_db.py` with `POSTGRES_DB=blombooru_test_medium`
+- [ ] 5. Schema migrated: `& "$PY" scripts/setup_test_db.py --migrate` with test env
 - [ ] 6. Storage directory exists and is empty (or contains only previous tier data if continuing)
 - [ ] 7. Dataset directory exists with expected file count
 - [ ] 8. Dataset validated with generic pilot inspector (see Section 12). The inspector must exit with code 0 — any non-zero exit means errors were found (unreadable files, traversal failures, missing directory) and the preflight fails:
 
 ```powershell
-python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500"
-python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500" --json
+& "$PY" scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500"
+& "$PY" scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500" --json
 # Exit code 0 = clean, non-zero = errors found (check "errors" and "stat_errors" in JSON output)
 ```
 
@@ -81,7 +82,7 @@ python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500" --json
 $expectedSha = (git rev-parse --short HEAD)
 $expectedRoot = (Get-Location).Path
 
-python scripts/check_test_server_identity.py `
+& "$PY" scripts/check_test_server_identity.py `
   --base-url $env:VIOLET_BASE_URL `
   --expected-env test `
   --expected-db blombooru_test_medium `

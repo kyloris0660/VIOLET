@@ -112,6 +112,43 @@ E2E tests that call destructive endpoints must be gated by `VIOLET_ALLOW_DESTRUC
 
 `.env`, API keys, `data/`, `media/`, `storage/`, `backups/`, model files, `node_modules/`, `test-results/`, `playwright-report/`, traces, screenshots.
 
+## Python/venv identity (hard gate)
+
+**All agent workflows** — server start, test execution, script execution, dependency installation — **MUST use the approved project venv Python.** This is a hard gate, not a suggestion.
+
+**Determining `$PY` (the approved venv Python):**
+
+The rule is: "use the repo-local venv Python." The exact path depends on the platform:
+
+| Environment | `$PY` |
+|-------------|-------|
+| Windows (user local dev) | `<repo>\venv\Scripts\python.exe` |
+| Linux / macOS / cloud | `<repo>/venv/bin/python` or `<repo>/.venv/bin/python` |
+| Git worktree (no local venv) | Use the main repo's venv explicitly |
+
+For the current Windows local dev setup:
+
+```powershell
+$PY = "C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe"
+```
+
+`scripts/check_python_env.py` can auto-infer the venv Python from the repo root when `--expected-python` is omitted. It probes `venv/Scripts/python.exe`, `.venv/Scripts/python.exe`, `venv/bin/python`, `.venv/bin/python` in order. You can also set `VIOLET_EXPECTED_PYTHON` as an env var override.
+
+**Rules:**
+
+1. **Never use the global/system Python** (`C:\Python313\python.exe`, `python.exe` from PATH, or any interpreter outside the project venv). This includes `pip install` — never install packages into the global Python.
+2. **Preflight is mandatory.** Before any server start, test run, or script execution, run:
+
+```powershell
+& "$PY" scripts/check_python_env.py --expected-python "$PY"
+```
+
+The script must exit 0. If it exits 1, stop and diagnose — do not proceed.
+
+3. **Worktrees do not have their own venv.** Always use the main repo venv explicitly.
+4. **Test execution** must also use `$PY`: `& "$PY" -m pytest tests/ -v`
+5. **Include `sys.executable` in all delivery reports** to prove the correct Python was used.
+
 ## Environment
 
 - Windows local dev
