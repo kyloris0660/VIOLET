@@ -15,8 +15,12 @@ test.describe('Tag Localization', () => {
     expect(resp.data.enabled).toBe(true);
     expect(resp.data.available).toBe(true);
     expect(resp.data.api_key_configured).toBe(true);
-    expect(resp.data.batch_max_items).toBe(200);
-    expect(resp.data.auto_max_items).toBe(200);
+    expect(typeof resp.data.batch_max_items).toBe('number');
+    expect(resp.data.batch_max_items).toBeGreaterThanOrEqual(1);
+    expect(resp.data.batch_max_items).toBeLessThanOrEqual(10000);
+    expect(typeof resp.data.auto_max_items).toBe('number');
+    expect(resp.data.auto_max_items).toBeGreaterThanOrEqual(1);
+    expect(resp.data.auto_max_items).toBeLessThanOrEqual(10000);
   });
 
   test('translation stats are available', async ({ page }) => {

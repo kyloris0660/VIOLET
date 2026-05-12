@@ -5,11 +5,17 @@ from unittest.mock import AsyncMock, patch
 
 from backend.app.services.llm_translation_provider import (
     FallbackProvider,
+    LLMBatchAggregateError,
     LLMChunkAggregateError,
+    LLMHTTPStatusError,
+    LLMResponseFormatError,
+    LLMTransportError,
     OpenAICompatibleProvider,
     TranslationResult,
+    _FALLBACK_HTTP_CODES,
     _is_transport_error,
     _sanitize_error_message,
+    _should_fallback,
 )
 
 
@@ -221,4 +227,94 @@ class TestFallbackProviderClassification:
                 await fb.translate_tags([{"name": "tag", "category": "general"}])
             assert "sk-realkey1234567890" not in str(exc_info.value)
             assert "sk-***" in str(exc_info.value)
+        asyncio.run(_run())
+
+
+class TestShouldFallbackDecision:
+    """Tests for _should_fallback() with typed error classes."""
+
+    def test_llm_transport_error_is_fallback_eligible(self):
+        assert _should_fallback(LLMTransportError("connection refused"))
+
+    @pytest.mark.parametrize("code", sorted(_FALLBACK_HTTP_CODES))
+    def test_fallback_http_codes_trigger_fallback(self, code):
+        assert _should_fallback(LLMHTTPStatusError(code, f"HTTP {code}"))
+
+    @pytest.mark.parametrize("code", [400, 401, 403, 404, 405, 422])
+    def test_non_fallback_http_codes_do_not_trigger(self, code):
+        assert not _should_fallback(LLMHTTPStatusError(code, f"HTTP {code}"))
+
+    def test_response_format_error_does_not_trigger_fallback(self):
+        assert not _should_fallback(LLMResponseFormatError("bad JSON"))
+
+    def test_generic_exception_does_not_trigger_fallback(self):
+        assert not _should_fallback(ValueError("unexpected"))
+
+    def test_aggregate_all_fallback_eligible_triggers(self):
+        err = LLMBatchAggregateError(
+            [LLMTransportError("timeout"), LLMHTTPStatusError(502, "Bad Gateway")],
+            provider_label="test",
+        )
+        assert _should_fallback(err)
+
+    def test_aggregate_mixed_does_not_trigger(self):
+        err = LLMBatchAggregateError(
+            [LLMTransportError("timeout"), LLMHTTPStatusError(401, "Unauthorized")],
+            provider_label="test",
+        )
+        assert not _should_fallback(err)
+
+
+class TestFallbackProviderHTTPCodes:
+    """FallbackProvider integration with typed HTTP status errors."""
+
+    @pytest.mark.parametrize("code", [429, 500, 502, 503, 504])
+    def test_fallback_http_code_triggers_fallback(self, code):
+        async def _run():
+            primary = _make_provider("primary")
+            fallback = _make_provider("fallback")
+            fb = FallbackProvider(primary, fallback)
+
+            expected = [TranslationResult("tag", "标签")]
+            primary.translate_tags = AsyncMock(
+                side_effect=LLMHTTPStatusError(code, f"HTTP {code}")
+            )
+            fallback.translate_tags = AsyncMock(return_value=expected)
+
+            result = await fb.translate_tags([{"name": "tag", "category": "general"}])
+            assert result == expected
+            fallback.translate_tags.assert_called_once()
+        asyncio.run(_run())
+
+    @pytest.mark.parametrize("code", [400, 401, 403, 404])
+    def test_non_fallback_http_code_raises(self, code):
+        async def _run():
+            primary = _make_provider("primary")
+            fallback = _make_provider("fallback")
+            fb = FallbackProvider(primary, fallback)
+
+            primary.translate_tags = AsyncMock(
+                side_effect=LLMHTTPStatusError(code, f"HTTP {code}")
+            )
+            fallback.translate_tags = AsyncMock()
+
+            with pytest.raises(LLMHTTPStatusError):
+                await fb.translate_tags([{"name": "tag", "category": "general"}])
+            fallback.translate_tags.assert_not_called()
+        asyncio.run(_run())
+
+    def test_response_format_error_does_not_fallback(self):
+        async def _run():
+            primary = _make_provider("primary")
+            fallback = _make_provider("fallback")
+            fb = FallbackProvider(primary, fallback)
+
+            primary.translate_tags = AsyncMock(
+                side_effect=LLMResponseFormatError("unparseable response")
+            )
+            fallback.translate_tags = AsyncMock()
+
+            with pytest.raises(LLMResponseFormatError):
+                await fb.translate_tags([{"name": "tag", "category": "general"}])
+            fallback.translate_tags.assert_not_called()
         asyncio.run(_run())
