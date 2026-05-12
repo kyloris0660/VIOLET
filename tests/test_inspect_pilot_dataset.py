@@ -1,14 +1,26 @@
 """Tests for scripts/inspect_pilot_dataset.py — generic pilot dataset inspector."""
+import importlib.util
 import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "inspect_pilot_dataset.py")
+SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "inspect_pilot_dataset.py"
+SCRIPT = str(SCRIPT_PATH)
+
+# ---------------------------------------------------------------------------
+# Load the module via importlib (no package-import assumption on `scripts`)
+# ---------------------------------------------------------------------------
+_spec = importlib.util.spec_from_file_location("inspect_pilot_dataset", SCRIPT_PATH)
+_module = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(_module)
+inspect_dataset = _module.inspect_dataset
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -74,7 +86,7 @@ def test_sample_unsupported(pilot_dir: Path):
     assert exts <= {".mp4", ".txt", ".heic", ".bmp"}
 
 
-# ---------- exit code semantics ----------
+# ---------- exit code semantics (real CLI via _run) ----------
 
 def test_json_nonexistent_dir_returns_nonzero():
     r = _run(["--path", "/nonexistent/path/abc123", "--json"])
@@ -141,12 +153,10 @@ def test_empty_dir(tmp_path: Path):
     assert data["stat_errors"] == 0
 
 
-# ---------- os.walk traversal error (monkeypatch) ----------
+# ---------- unit: os.walk traversal error (monkeypatch) ----------
 
-def test_walk_onerror_recorded():
-    """os.walk onerror callback records traversal errors."""
-    from scripts.inspect_pilot_dataset import inspect_dataset
-
+def test_unit_walk_onerror_recorded():
+    """Unit test: os.walk onerror callback records traversal errors."""
     real_walk = os.walk
 
     def _patched_walk(path, **kwargs):
@@ -155,8 +165,7 @@ def test_walk_onerror_recorded():
             onerror(PermissionError(13, "Permission denied", "/fake/locked"))
         yield from real_walk(path, **kwargs)
 
-    with patch("scripts.inspect_pilot_dataset.os.walk", side_effect=_patched_walk):
-        import tempfile
+    with patch.object(_module.os, "walk", side_effect=_patched_walk):
         with tempfile.TemporaryDirectory() as td:
             result = inspect_dataset(Path(td))
 
@@ -165,48 +174,31 @@ def test_walk_onerror_recorded():
     assert any("PermissionError" in e for e in result["errors"])
 
 
-def test_walk_error_causes_nonzero_exit(tmp_path: Path):
-    """Traversal errors cause non-zero exit in JSON mode."""
-    (tmp_path / "ok.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 50)
+def test_unit_walk_error_reflected_in_result():
+    """Unit test: traversal errors cause non-empty errors list."""
+    real_walk = os.walk
 
-    env = os.environ.copy()
-    env["_VIOLET_INJECT_WALK_ERROR"] = "1"
+    def _patched_walk(path, **kwargs):
+        cb = kwargs.get("onerror")
+        if cb:
+            cb(PermissionError(13, "denied", "/x"))
+        yield from real_walk(path, **kwargs)
 
-    wrapper = tmp_path / "_wrapper.py"
-    wrapper.write_text(
-        "import os, sys\n"
-        "from pathlib import Path\n"
-        "from unittest.mock import patch\n"
-        "sys.path.insert(0, " + repr(str(Path(SCRIPT).parent.parent)) + ")\n"
-        "from scripts.inspect_pilot_dataset import inspect_dataset\n"
-        "import json\n"
-        "real_walk = os.walk\n"
-        "def pw(p, **kw):\n"
-        "    cb = kw.get('onerror')\n"
-        "    if cb: cb(PermissionError(13, 'denied', '/x'))\n"
-        "    yield from real_walk(p, **kw)\n"
-        "with patch('scripts.inspect_pilot_dataset.os.walk', side_effect=pw):\n"
-        "    r = inspect_dataset(Path(sys.argv[1]))\n"
-        "print(json.dumps(r, indent=2))\n"
-        "sys.exit(1 if r['errors'] else 0)\n"
-    )
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        (td_path / "ok.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 50)
 
-    r = subprocess.run(
-        [sys.executable, str(wrapper), str(tmp_path)],
-        capture_output=True, text=True, timeout=30,
-    )
-    assert r.returncode != 0
-    data = json.loads(r.stdout)
-    assert any("Traversal error" in e for e in data["errors"])
+        with patch.object(_module.os, "walk", side_effect=_patched_walk):
+            result = inspect_dataset(td_path)
+
+    assert result["errors"]
+    assert any("Traversal error" in e for e in result["errors"])
 
 
-# ---------- stat failure (monkeypatch) ----------
+# ---------- unit: stat failure (monkeypatch) ----------
 
-def test_stat_failure_recorded():
-    """stat() OSError is recorded, file not counted as supported/unsupported."""
-    from scripts.inspect_pilot_dataset import inspect_dataset
-
-    import tempfile
+def test_unit_stat_failure_recorded():
+    """Unit test: stat() OSError is recorded, file not counted as supported."""
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
         (td_path / "good.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 50)
@@ -219,7 +211,7 @@ def test_stat_failure_recorded():
                 raise PermissionError(13, "Permission denied", str(self))
             return real_stat(self, *args, **kwargs)
 
-        with patch.object(Path, "stat", _patched_stat):
+        with patch.object(_module.Path, "stat", _patched_stat):
             result = inspect_dataset(td_path)
 
     assert result["stat_errors"] == 1
@@ -228,37 +220,3 @@ def test_stat_failure_recorded():
     assert len(result["errors"]) >= 1
     assert any("stat failed" in e for e in result["errors"])
     assert any("bad.png" in e for e in result["errors"])
-
-
-def test_stat_failure_json_nonzero_exit():
-    """JSON mode exits non-zero when stat errors are present."""
-    import tempfile
-    with tempfile.TemporaryDirectory() as td:
-        td_path = Path(td)
-        (td_path / "bad.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 50)
-
-        wrapper = Path(td) / "_stat_wrapper.py"
-        wrapper.write_text(
-            "import os, sys, json\n"
-            "from pathlib import Path\n"
-            "from unittest.mock import patch\n"
-            "sys.path.insert(0, " + repr(str(Path(SCRIPT).parent.parent)) + ")\n"
-            "from scripts.inspect_pilot_dataset import inspect_dataset\n"
-            "real_stat = Path.stat\n"
-            "def ps(self, *a, **kw):\n"
-            "    if self.name == 'bad.jpg' and kw.get('follow_symlinks', True):\n"
-            "        raise PermissionError(13, 'denied', str(self))\n"
-            "    return real_stat(self, *a, **kw)\n"
-            "with patch.object(Path, 'stat', ps):\n"
-            "    r = inspect_dataset(Path(sys.argv[1]))\n"
-            "print(json.dumps(r, indent=2))\n"
-            "sys.exit(1 if r['errors'] else 0)\n"
-        )
-
-        r = subprocess.run(
-            [sys.executable, str(wrapper), td],
-            capture_output=True, text=True, timeout=30,
-        )
-        assert r.returncode != 0
-        data = json.loads(r.stdout)
-        assert data["stat_errors"] >= 1
