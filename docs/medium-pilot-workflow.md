@@ -62,10 +62,39 @@ Complete ALL items before executing any tier:
 - [ ] 5. Schema migrated: `python scripts/setup_test_db.py --migrate` with test env
 - [ ] 6. Storage directory exists and is empty (or contains only previous tier data if continuing)
 - [ ] 7. Dataset directory exists with expected file count
-- [ ] 8. Dataset validated: `python scripts/inspect_test_fixture.py --path <dataset_dir>`
-- [ ] 9. Server started on dynamic port with identity check passed
-- [ ] 10. `scripts/check_test_server_identity.py` confirms correct `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`
-- [ ] 11. Database backup taken: `pg_dump blombooru_test_medium > backup_before_tier_N.sql`
+- [ ] 8. Dataset validated with generic pilot inspector (see Section 12):
+
+```powershell
+python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500"
+python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500" --json
+```
+
+> **Note:** `scripts/inspect_test_fixture.py` is for VioletTestFixture (small smoke) only — it requires `anime/non_anime/mixed` subfolders and is NOT suitable for arbitrary pilot datasets.
+
+- [ ] 9. Server started on dynamic port (probe 8012–8024)
+- [ ] 10. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
+
+```powershell
+$expectedSha = (git rev-parse --short HEAD)
+$expectedRoot = (Get-Location).Path
+
+python scripts/check_test_server_identity.py `
+  --base-url $env:VIOLET_BASE_URL `
+  --expected-env test `
+  --expected-db blombooru_test_medium `
+  --expected-code-root "$expectedRoot" `
+  --expected-git-sha "$expectedSha" `
+  --admin-password "<your admin password>"
+```
+
+If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, and git SHA. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
+
+- [ ] 11. Database backup taken (custom archive format):
+
+```powershell
+pg_dump -Fc -f backup_before_tier_N.dump blombooru_test_medium
+```
+
 - [ ] 12. Dry-run import completed and results reviewed
 
 ## 8. Pass / Fail Criteria
@@ -102,30 +131,61 @@ Errors are files that fail processing with an exception or timeout. The followin
 
 ## 9. Rollback Strategy
 
-**CRITICAL**: All destructive operations below require explicit user confirmation. Do NOT automate rollback without user approval.
+**CRITICAL**: This section is a **manual runbook for future use**. Rollback is NOT executed during Phase 3.2c (design-only). All destructive operations require explicit user confirmation — never automate rollback.
 
-### Database rollback
+### Backup format
 
-```powershell
-# Only execute after explicit user confirmation
-pg_restore -d blombooru_test_medium backup_before_tier_N.sql
-```
-
-If `pg_dump` backup is unavailable, the database can be dropped and recreated:
+All backups use PostgreSQL custom archive format (`-Fc`), which supports `pg_restore` with `--exit-on-error` and `--single-transaction` for fail-fast semantics. Plain SQL dumps (`pg_dump > file.sql`) are **not** used because `psql -f` cannot guarantee atomic rollback.
 
 ```powershell
-# DESTRUCTIVE — requires user confirmation
-# This permanently deletes ALL data in blombooru_test_medium
-dropdb blombooru_test_medium
-python scripts/setup_test_db.py  # with POSTGRES_DB=blombooru_test_medium
-python scripts/setup_test_db.py --migrate
+# Backup — run BEFORE each tier import (see Preflight Checklist item 11)
+pg_dump -Fc -f backup_before_tier_N.dump blombooru_test_medium
 ```
+
+### Database rollback procedure
+
+**Do NOT run these commands without explicit user confirmation.** This is a controlled, manual runbook.
+
+**Step 1 — Stop V.I.O.L.E.T. server**
+
+The server must be stopped before drop/restore to release active DB connections. Stop only the exact PID you started — do not force-kill arbitrary processes.
+
+```powershell
+# Stop the known server PID (recorded at startup)
+Stop-Process -Id <recorded-PID>
+```
+
+**Step 2 — Confirm target database**
+
+Verify the target is exactly `blombooru_test_medium`. Triple-check — the following commands are irreversible:
+
+```powershell
+# MUST be blombooru_test_medium — NEVER blombooru or blombooru_test
+$targetDb = "blombooru_test_medium"
+```
+
+**Step 3 — Drop, recreate, and restore (fail-fast)**
+
+```powershell
+# DESTRUCTIVE — requires explicit user confirmation
+# This permanently deletes ALL data in blombooru_test_medium and restores from backup
+dropdb $targetDb
+createdb $targetDb
+pg_restore --exit-on-error --single-transaction -d $targetDb backup_before_tier_N.dump
+```
+
+If `dropdb` fails because active sessions are connected, the app server was not fully stopped. Go back to Step 1. Do NOT use `--force` or kill unknown processes.
+
+If `pg_restore` fails (`--exit-on-error` will abort on first error):
+- The `--single-transaction` flag ensures the entire restore is rolled back on failure — the DB will be empty, not partially restored.
+- **Stop. Report the error. Do not continue the pilot.**
+- Investigate the backup file integrity before retrying.
 
 ### Storage rollback
 
 ```powershell
-# DESTRUCTIVE — requires user confirmation
-# This permanently deletes ALL imported media and thumbnails
+# DESTRUCTIVE — requires explicit user confirmation
+# This permanently deletes ALL imported media and thumbnails in the medium pilot storage
 Remove-Item -Recurse -Force C:\Users\kyloris\VioletStorage\medium\*
 ```
 
@@ -135,7 +195,8 @@ Pilot operations NEVER touch:
 - `blombooru` (dev/production database)
 - `blombooru_test` (unit/E2E test database)
 - `C:\Users\kyloris\VioletStorage\test` (test storage)
-- Any iCloud or VioletTestFixture paths
+- Any iCloud paths or source dataset directories (e.g., `D:\VioletPilotData\*`)
+- VioletTestFixture directory
 
 ## 10. LLM Cost Control
 
@@ -156,9 +217,20 @@ After completing each tier, fill in this report:
 - Storage: C:\Users\kyloris\VioletStorage\medium
 - Port: [port]
 - git_sha: [sha]
-- Server identity check: [pass/fail]
+- Code root: [path]
+- Server identity check: [pass/fail] (with --expected-env, --expected-db, --expected-code-root, --expected-git-sha)
+
+### Pre-Import
+- Dataset source path: [exact path, e.g. D:\VioletPilotData\500]
+- Dataset inspector: inspect_pilot_dataset.py
+- Dataset inspector results: [total/supported/unsupported/hidden]
+- Backup file: [path, e.g. backup_before_tier_500.dump]
+- Backup format: custom archive (pg_dump -Fc)
+- Dry-run scan_job_id: [id]
+- Dry-run result: [total files / supported / skipped / errors]
 
 ### Import
+- scan_job_id: [id]
 - Total files scanned: [N]
 - Imported (new): [N]
 - Skipped (duplicate): [N]
@@ -220,3 +292,12 @@ After completing each tier, fill in this report:
 - Smoke script runs in minutes; pilot tiers may take hours
 
 The smoke script CAN be used as a pre-pilot sanity check to confirm the pipeline is functional before starting a tier.
+
+### Dataset inspection tools
+
+| Script | Purpose | Directory structure |
+|--------|---------|---------------------|
+| `scripts/inspect_test_fixture.py` | VioletTestFixture (small smoke) | Requires `anime/non_anime/mixed` subfolders |
+| `scripts/inspect_pilot_dataset.py` | Medium-scale pilot datasets | Any flat or nested directory |
+
+Use `inspect_pilot_dataset.py` for all pilot tiers. `inspect_test_fixture.py` is for VioletTestFixture only and will report errors on directories that lack the expected subfolder structure.
