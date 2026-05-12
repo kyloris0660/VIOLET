@@ -24,13 +24,39 @@ import requests
 
 
 def normalize_path(p: str) -> str:
-    """Normalize a file path for comparison: resolve, lowercase on Windows."""
-    # os.path.normpath handles separators; realpath resolves symlinks/junctions.
-    # On Windows paths are case-insensitive, so compare lowered.
+    """Normalize a file path for comparison: resolve symlinks, lowercase on Windows.
+
+    Used for code_root and other general path comparisons where symlink
+    resolution is desirable (e.g. verifying the server serves from the
+    expected directory regardless of how it was reached).
+    """
     result = os.path.normpath(os.path.realpath(p))
     if platform.system() == "Windows":
         result = result.lower()
     return result
+
+
+def normalize_executable_path(p: str) -> str:
+    """Normalize a Python executable path for identity comparison.
+
+    Unlike normalize_path(), this intentionally does NOT resolve symlinks.
+    On POSIX, venv/bin/python is typically a symlink to the base interpreter.
+    If we resolved symlinks, two distinct venvs pointing at the same base
+    Python would compare equal — defeating the purpose of verifying which
+    venv the server is running under.
+
+    Normalization applied:
+    - expanduser (~)
+    - abspath (relative → absolute)
+    - normpath (redundant separators, . / ..)
+    - normcase on Windows (lowercase + backslash, since NTFS is case-insensitive)
+    """
+    expanded = os.path.expanduser(p)
+    absolute = os.path.abspath(expanded)
+    normalized = os.path.normpath(absolute)
+    if platform.system() == "Windows":
+        normalized = os.path.normcase(normalized)
+    return normalized
 
 
 def detect_port_owner(port: int) -> str:
@@ -135,8 +161,10 @@ def main():
         if expected != actual:
             mismatches.append(f"  {label}: expected={expected!r}, actual={actual!r}")
 
-    # Python executable path comparison uses normalization to handle
-    # Windows path separators, case, and symlink resolution.
+    # Python executable path comparison uses lexical normalization only —
+    # NO symlink resolution.  On POSIX, venv/bin/python is a symlink to
+    # the base interpreter; resolving it would make distinct venvs compare
+    # equal, hiding a real mismatch.  See normalize_executable_path().
     if args.expected_python is not None:
         actual_python = data.get("python_executable", "")
         if not actual_python:
@@ -145,8 +173,8 @@ def main():
                 "(upgrade server to include Python runtime identity)"
             )
         else:
-            norm_expected = normalize_path(args.expected_python)
-            norm_actual = normalize_path(actual_python)
+            norm_expected = normalize_executable_path(args.expected_python)
+            norm_actual = normalize_executable_path(actual_python)
             if norm_expected != norm_actual:
                 mismatches.append(
                     f"  expected-python: expected={args.expected_python!r} "
