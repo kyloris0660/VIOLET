@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.2b — Pilot Hardening, Configuration Audit, Medium-Scale Readiness (2026-05-12).
+> Last updated after Phase 3.2c — Medium-Scale Pilot Preparation (2026-05-12).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -25,7 +25,8 @@
 | **Phase 3.1.2a (PR #31)** | PR [#31](https://github.com/kyloris0660/AnimeLocalBooru/pull/31) merged — Admin UI closeout |
 | **Phase 3.1.2b (PR #32)** | PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged — Gallery content-class filter |
 | **Phase 3.1.2c (PR #33)** | PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged — Server identity + unified LLM fallback + entity resolver hardening |
-| **Phase 3.2b status** | PR pending — Pilot hardening, configuration audit, medium-scale readiness |
+| **Phase 3.2b status** | PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged — Pilot hardening, configuration audit, medium-scale readiness |
+| **Phase 3.2c status** | PR pending — Medium-scale pilot preparation, env docs, LLM gate unification |
 
 ## Mandatory Workflow Rules
 
@@ -515,6 +516,28 @@ Production-ready content classifier using CLIP ViT-B/32 zero-shot classification
 
 All gallery-content-filter tests (14/14) pass. Initial failures were caused by running E2E against a stale server on port 8011 — resolved by using a fresh server on port 8023 with identity verification via `scripts/check_test_server_identity.py`.
 
+### Phase 3.2c — Medium-Scale Pilot Preparation
+
+Closed deferred items from Phase 3.2b and designed the medium-scale pilot workflow:
+
+- **`.env.example` coverage gap closed**: Added 18 missing Phase 3.x config keys to `.env.example`, `.env.production.example`, and `.env.test.example` — covering AI auto-tag extensions, background translation worker, content classification thresholds, scan parameters, storage paths, and E2E gating variables
+- **`TEST_DATABASE_URL` documented**: Added to `.env.test.example` with safety warnings explaining forbidden DB name validation and override behavior
+- **LLM E2E gate naming unified**: `tag-localization.spec.ts` now accepts both `VIOLET_RUN_REAL_LLM_E2E` (canonical) and `VIOLET_RUN_REAL_LLM_TESTS` (deprecated alias) via OR logic. Config audit doc §1.7 updated to "fixed"
+- **`docs/test-workflow.md` updated**: Added `tag-localization.spec.ts` to Tier 3 table, documented LLM E2E gate variable and deprecated alias
+- **Medium-scale pilot workflow designed**: `docs/medium-pilot-workflow.md` — 500→1000→2000 tier design with isolated `blombooru_test_medium` DB, dry-run-first policy, recommended processing limits, 12-item preflight checklist, rigorous pass/fail criteria (separate failure definitions for unsupported/duplicate/hidden vs errors, immediate-fail conditions for data loss/corruption/crash/security), rollback strategy with explicit destructive operation warnings, LLM cost control, and per-tier report template
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `.env.example` | Added 18 missing Phase 3.x config keys |
+| `.env.production.example` | Synced with `.env.example` additions |
+| `.env.test.example` | Added `TEST_DATABASE_URL` docs, E2E gating variables |
+| `tests/e2e/tag-localization.spec.ts` | Unified LLM gate variable (OR logic) |
+| `docs/medium-pilot-workflow.md` | Medium-scale pilot workflow design |
+| `docs/config-audit-phase3.2b.md` | §1.7 naming inconsistency → fixed |
+| `docs/test-workflow.md` | Added tag-localization spec, LLM gate docs |
+
 ## What Has NOT Been Built
 
 - No filesystem watcher or scheduled scan (Phase 4)
@@ -565,6 +588,10 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 
 **Phase 3.2b — in progress:**
 - Pilot hardening, configuration audit, medium-scale readiness
+
+**Phase 3.2c — in progress:**
+- Medium-scale pilot preparation, env documentation, LLM gate unification
+- Medium-scale pilot workflow designed in `docs/medium-pilot-workflow.md` (execution is a separate phase)
 
 **Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.2b):
 
@@ -640,6 +667,8 @@ Location: `C:\Users\kyloris\Pictures\VioletTestFixture` — contains curated ima
 | `scripts/evaluate_content_classification.py` | Phase 3 server-based evaluation harness |
 | `scripts/evaluate_clip_content_classifier.py` | Phase 3.1 standalone CLIP evaluation (no DB) |
 | `docs/test-workflow.md` | Test workflow documentation and policy |
+| `docs/medium-pilot-workflow.md` | Medium-scale pilot (500/1000/2000) workflow design |
+| `docs/config-audit-phase3.2b.md` | Phase 3.2b configuration audit report |
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
