@@ -59,7 +59,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 **Tier 1 — Unit tests** (no external dependencies):
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py -v
 ```
 
 | Test file | Coverage |
@@ -76,7 +76,7 @@ pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanne
 **Tier 2 — Fixture validation** (requires `VIOLET_TEST_FIXTURE_PATH`):
 
 ```powershell
-pytest tests/test_fixture_validation.py -v
+& "$PY" -m pytest tests/test_fixture_validation.py -v
 ```
 
 **Tier 3 — Playwright E2E** (requires `VIOLET_RUN_REAL_E2E=1` + running server):
@@ -243,11 +243,23 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 
 **All agent workflows** — server start, test execution, script execution, dependency installation — **MUST use the approved project venv Python.** This is a hard gate, not a suggestion.
 
-**Approved Python (`$PY`):**
+**Determining `$PY` (the approved venv Python):**
 
+The rule is: "use the repo-local venv Python." The exact path depends on the platform:
+
+| Environment | `$PY` |
+|-------------|-------|
+| Windows (user local dev) | `<repo>\venv\Scripts\python.exe` |
+| Linux / macOS / cloud | `<repo>/venv/bin/python` or `<repo>/.venv/bin/python` |
+| Git worktree (no local venv) | Use the main repo's venv explicitly |
+
+For the current Windows local dev setup:
+
+```powershell
+$PY = "C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe"
 ```
-$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
-```
+
+`scripts/check_python_env.py` can auto-infer the venv Python from the repo root when `--expected-python` is omitted. It probes `venv/Scripts/python.exe`, `.venv/Scripts/python.exe`, `venv/bin/python`, `.venv/bin/python` in order. You can also set `VIOLET_EXPECTED_PYTHON` as an env var override.
 
 **Rules:**
 

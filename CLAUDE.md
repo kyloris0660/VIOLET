@@ -116,11 +116,23 @@ E2E tests that call destructive endpoints must be gated by `VIOLET_ALLOW_DESTRUC
 
 **All agent workflows** — server start, test execution, script execution, dependency installation — **MUST use the approved project venv Python.** This is a hard gate, not a suggestion.
 
-**Approved Python (`$PY`):**
+**Determining `$PY` (the approved venv Python):**
 
+The rule is: "use the repo-local venv Python." The exact path depends on the platform:
+
+| Environment | `$PY` |
+|-------------|-------|
+| Windows (user local dev) | `<repo>\venv\Scripts\python.exe` |
+| Linux / macOS / cloud | `<repo>/venv/bin/python` or `<repo>/.venv/bin/python` |
+| Git worktree (no local venv) | Use the main repo's venv explicitly |
+
+For the current Windows local dev setup:
+
+```powershell
+$PY = "C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe"
 ```
-$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
-```
+
+`scripts/check_python_env.py` can auto-infer the venv Python from the repo root when `--expected-python` is omitted. It probes `venv/Scripts/python.exe`, `.venv/Scripts/python.exe`, `venv/bin/python`, `.venv/bin/python` in order. You can also set `VIOLET_EXPECTED_PYTHON` as an env var override.
 
 **Rules:**
 

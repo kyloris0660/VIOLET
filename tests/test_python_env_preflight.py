@@ -1,10 +1,12 @@
 """Tests for scripts/check_python_env.py — Python/venv environment preflight.
 
-All tests invoke the script via subprocess so we never pollute the test
-process's own environment.  The script is stdlib-only, so it must work
-with any Python >= 3.10.
+Subprocess tests validate CLI behavior (exit codes, JSON output).
+Direct-import tests validate inference logic (infer_venv_python,
+resolve_expected_python) which cannot be tested via CLI alone because
+the script determines repo root from its own file location.
 """
 import ast
+import importlib.util
 import json
 import os
 import subprocess
@@ -27,15 +29,70 @@ def _run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
     )
 
 
-# ---- 1. correct sys.executable → exit 0 --------------------------------
+def _load_module():
+    """Import check_python_env as a module without executing main()."""
+    spec = importlib.util.spec_from_file_location("check_python_env", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
-def test_correct_executable_passes():
-    r = _run(["--expected-python", PY])
-    assert r.returncode == 0, f"stdout: {r.stdout}\nstderr: {r.stderr}"
-    assert "PASS" in r.stdout
+
+# ---- 1. inferred venv from a fake repo root ------------------------------
+
+def test_inferred_venv_from_fake_root(tmp_path):
+    """Create a fake venv tree under tmp_path so auto-inference finds it."""
+    mod = _load_module()
+    if sys.platform == "win32":
+        fake_python = tmp_path / "venv" / "Scripts" / "python.exe"
+    else:
+        fake_python = tmp_path / "venv" / "bin" / "python"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("placeholder")
+
+    result = mod.infer_venv_python(tmp_path)
+    assert result is not None, "Should have inferred venv python"
+    assert os.path.normcase(result) == os.path.normcase(str(fake_python))
 
 
-# ---- 2. wrong expected-python path → exit 1 -----------------------------
+# ---- 2. explicit --expected-python overrides inferred ---------------------
+
+def test_explicit_overrides_inferred(tmp_path):
+    """--expected-python CLI arg takes priority over inferred venv."""
+    mod = _load_module()
+    if sys.platform == "win32":
+        fake_python = tmp_path / "venv" / "Scripts" / "python.exe"
+    else:
+        fake_python = tmp_path / "venv" / "bin" / "python"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("placeholder")
+
+    expected, source = mod.resolve_expected_python(
+        cli_arg=PY, repo_root=tmp_path,
+    )
+    assert source == "cli"
+    assert os.path.normcase(os.path.realpath(expected)) == \
+        os.path.normcase(os.path.realpath(PY))
+
+
+def test_env_var_overrides_inferred(tmp_path):
+    """VIOLET_EXPECTED_PYTHON env var takes priority over inferred."""
+    mod = _load_module()
+    if sys.platform == "win32":
+        fake_python = tmp_path / "venv" / "Scripts" / "python.exe"
+    else:
+        fake_python = tmp_path / "venv" / "bin" / "python"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("placeholder")
+
+    expected, source = mod.resolve_expected_python(
+        cli_arg=None, env_var=PY, repo_root=tmp_path,
+    )
+    assert source == "env"
+    assert os.path.normcase(os.path.realpath(expected)) == \
+        os.path.normcase(os.path.realpath(PY))
+
+
+# ---- 3. wrong expected-python path → exit 1 ------------------------------
 
 def test_wrong_executable_fails():
     r = _run(["--expected-python", r"C:\nonexistent\python.exe"])
@@ -43,27 +100,55 @@ def test_wrong_executable_fails():
     assert "FAIL" in r.stdout
 
 
-# ---- 3. JSON failure output is parseable --------------------------------
+# ---- 4. no inferred + no explicit → errors ------------------------------
 
-def test_json_output_parseable_on_failure():
-    r = _run(["--expected-python", r"C:\nonexistent\python.exe", "--json"])
-    assert r.returncode == 1
-    data = json.loads(r.stdout)
-    assert data["pass"] is False
-    assert data["python_match"] is False
-    assert "sys_executable" in data
-    assert "expected_python" in data
+def test_no_venv_no_explicit_has_errors(tmp_path):
+    """No repo-local venv and no CLI/env override → errors list non-empty."""
+    mod = _load_module()
+    expected, source = mod.resolve_expected_python(
+        cli_arg=None, env_var="", repo_root=tmp_path,
+    )
+    assert expected is None
+    assert source == "none"
+
+    result = mod.run_checks(expected_python=None, expected_code_root=None)
+    assert result["pass"] is False
+    assert result["expected_python"] is None
+    assert isinstance(result["errors"], list)
+    assert len(result["errors"]) > 0
 
 
-def test_json_output_parseable_on_success():
+# ---- 5. JSON output always includes "errors" field -----------------------
+
+def test_json_success_has_errors_field():
     r = _run(["--expected-python", PY, "--json"])
     assert r.returncode == 0
     data = json.loads(r.stdout)
     assert data["pass"] is True
-    assert data["python_match"] is True
+    assert "errors" in data
+    assert isinstance(data["errors"], list)
+    assert len(data["errors"]) == 0
 
 
-# ---- 4. expected-code-root mismatch → exit 1 ----------------------------
+def test_json_failure_has_errors_field():
+    r = _run(["--expected-python", r"C:\nonexistent\python.exe", "--json"])
+    assert r.returncode == 1
+    data = json.loads(r.stdout)
+    assert data["pass"] is False
+    assert "errors" in data
+    assert isinstance(data["errors"], list)
+    assert len(data["errors"]) > 0
+
+
+# ---- 6. correct sys.executable → exit 0 ----------------------------------
+
+def test_correct_executable_passes():
+    r = _run(["--expected-python", PY])
+    assert r.returncode == 0, f"stdout: {r.stdout}\nstderr: {r.stderr}"
+    assert "PASS" in r.stdout
+
+
+# ---- 7. expected-code-root mismatch → exit 1 -----------------------------
 
 def test_code_root_mismatch_fails():
     r = _run([
@@ -74,17 +159,16 @@ def test_code_root_mismatch_fails():
     assert "FAIL" in r.stdout
 
 
-# ---- 5. human-readable output includes sys.executable -------------------
+# ---- 8. human-readable output includes sys.executable --------------------
 
 def test_human_output_includes_executable():
     r = _run(["--expected-python", PY])
     assert PY in r.stdout or os.path.normcase(PY) in r.stdout.lower()
 
 
-# ---- 6. script does not import backend/app dependencies ----------------
+# ---- 9. script does not import backend/app dependencies -----------------
 
 def test_no_backend_imports():
-    """Parse the script's AST and verify no imports touch backend.*."""
     tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -99,10 +183,9 @@ def test_no_backend_imports():
                 )
 
 
-# ---- 7. script does not modify files -----------------------------------
+# ---- 10. script does not modify files -----------------------------------
 
 def test_no_file_modifications(tmp_path):
-    """Run the script in a temp dir and verify nothing was created."""
     before = set(tmp_path.iterdir())
     _run(["--expected-python", PY], cwd=str(tmp_path))
     after = set(tmp_path.iterdir())

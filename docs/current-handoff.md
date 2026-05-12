@@ -15,7 +15,7 @@
 | **DB (dev)** | `blombooru` on `localhost:5432`, user `postgres` |
 | **DB (test)** | `blombooru_test` on `localhost:5432` — created via `scripts/setup_test_db.py` |
 | **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
-| **Test server** | `. "$env:USERPROFILE\.violet\test-env.ps1"` → `python run.py --debug --port 8001` → `http://localhost:8001` |
+| **Test server** | `. "$env:USERPROFILE\.violet\test-env.ps1"` → `& "$PY" run.py --debug` → `http://localhost:<APP_PORT>` |
 | **Admin credentials** | `admin` / `admin123` |
 | **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) merged |
 | **Phase 3.1.1a status** | PR [#26](https://github.com/kyloris0660/AnimeLocalBooru/pull/26) merged |
@@ -41,7 +41,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
-9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`). Run `scripts/check_python_env.py` as a mandatory preflight before any operation. Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
+9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY`). On Windows: `$PY = "<repo>\venv\Scripts\python.exe"`; on POSIX: `$PY = "<repo>/venv/bin/python"`. The script `scripts/check_python_env.py` auto-infers the venv when `--expected-python` is omitted (probes `venv/` and `.venv/`), or you can set `VIOLET_EXPECTED_PYTHON` env var. Run it as a mandatory preflight before any operation. Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -626,15 +626,15 @@ This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, 
 
 ```powershell
 . "$env:USERPROFILE\.violet\test-env.ps1"
-python run.py --debug --port 8001
+& "$PY" run.py --debug  # APP_PORT set by test-env.ps1 or overridden manually
 ```
 
 ### Test Tiers
 
 | Tier | Command | Requirements |
 |------|---------|-------------|
-| 1 — Unit tests | `pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py -v` | None (mocks only) |
-| 2 — Fixture validation | `pytest tests/test_fixture_validation.py -v` | `VIOLET_TEST_FIXTURE_PATH` |
+| 1 — Unit tests | `& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py -v` | None (mocks only) |
+| 2 — Fixture validation | `& "$PY" -m pytest tests/test_fixture_validation.py -v` | `VIOLET_TEST_FIXTURE_PATH` |
 | 3 — Playwright E2E | `npx playwright test tests/e2e/*.spec.ts --project=edge` | Running test server + `VIOLET_RUN_REAL_E2E=1` |
 
 ### VioletTestFixture
