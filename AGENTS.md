@@ -69,7 +69,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation |
-| `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
+| `tests/test_server_identity.py` | Server identity endpoint fields, Python runtime identity, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 | `tests/test_python_env_preflight.py` | Python/venv identity preflight: sys.executable match, JSON output, code-root check, no backend imports |
 
@@ -227,7 +227,9 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
 10. Do not touch iCloud paths or modify VioletTestFixture.
 11. If server startup fails, diagnose and report the exact error — do not skip E2E.
-12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, and `git_sha` match the current worktree/branch. **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
+12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, and `python_executable` match the current worktree/branch. Include `--expected-python "$PY"` to verify the server is running the approved venv Python (not the system Python). **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
+
+> **Windows venv shim note:** On Windows, `wmic` / `tasklist` may display the system Python path for venv-launched processes — this is a known Windows reporting artifact. The venv `python.exe` is a launcher shim; Windows records the underlying base interpreter in its process table. The server identity endpoint uses `sys.executable`, which correctly reports the venv path. Always use the `/api/system/server-identity` endpoint (via `check_test_server_identity.py --expected-python`) for Python identity verification, not OS-level process listings.
 
 **Singleton server policy:** Only one agent-started test server may be running at a time per session. Before starting a new server, verify no previous agent-started server is still running. If a port conflict is detected, diagnose the conflict (PID, command line) — do not silently pick another port.
 

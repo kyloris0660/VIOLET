@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import uvicorn
 from dotenv import load_dotenv
@@ -25,6 +26,12 @@ if __name__ == "__main__":
         settings.CODE_ROOT,
         settings.STORAGE_ROOT,
         settings.DB_NAME,
+    )
+    logger.info(
+        "Python runtime: executable=%s | version=%s.%s.%s | is_venv=%s",
+        sys.executable,
+        sys.version_info.major, sys.version_info.minor, sys.version_info.micro,
+        sys.prefix != sys.base_prefix,
     )
     if settings.WORKTREE_PATH:
         logger.info("Running from git worktree: %s", settings.WORKTREE_PATH)
