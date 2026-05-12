@@ -123,6 +123,17 @@ async def get_server_identity(current_user: dict = Depends(require_admin_mode)):
     except Exception:
         pass
 
+    # Python runtime identity — use sys values which reflect the actual
+    # interpreter, not the OS-level process command line.  On Windows the
+    # venv python.exe is a launcher shim; Windows records the *base*
+    # interpreter path in its process table, but sys.executable correctly
+    # reports the venv shim path.
+    python_executable = sys.executable
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    python_prefix = sys.prefix
+    python_base_prefix = sys.base_prefix
+    is_venv = sys.prefix != sys.base_prefix
+
     return {
         "app_name": "V.I.O.L.E.T.",
         "app_version": APP_VERSION,
@@ -136,6 +147,11 @@ async def get_server_identity(current_user: dict = Depends(require_admin_mode)):
         "port": int(os.getenv("APP_PORT", 8000)),
         "worktree_path": settings.WORKTREE_PATH,
         "deployment_type": detect_deployment_type(),
+        "python_executable": python_executable,
+        "python_version": python_version,
+        "python_prefix": python_prefix,
+        "python_base_prefix": python_base_prefix,
+        "is_venv": is_venv,
     }
 
 

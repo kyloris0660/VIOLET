@@ -22,6 +22,8 @@ _EXPECTED_FIELDS = {
     "app_name", "app_version", "violet_env", "db_name",
     "code_root", "storage_root", "git_sha", "git_branch",
     "pid", "port", "worktree_path", "deployment_type",
+    "python_executable", "python_version", "python_prefix",
+    "python_base_prefix", "is_venv",
 }
 
 _SECRET_PATTERNS = [
@@ -130,6 +132,44 @@ class TestServerIdentityFields:
         with patch("app.routes.system.is_running_in_docker", return_value=False):
             result = _build_identity()
         assert result["deployment_type"] == "local"
+
+
+class TestServerIdentityPythonFields:
+
+    def test_python_executable_is_sys_executable(self):
+        result = _build_identity()
+        assert result["python_executable"] == sys.executable
+
+    def test_python_version_format(self):
+        result = _build_identity()
+        version = result["python_version"]
+        parts = version.split(".")
+        assert len(parts) == 3, f"Expected major.minor.micro, got {version}"
+        assert all(p.isdigit() for p in parts), f"Non-numeric version parts: {version}"
+
+    def test_python_version_matches_sys(self):
+        result = _build_identity()
+        expected = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        assert result["python_version"] == expected
+
+    def test_python_prefix_is_string(self):
+        result = _build_identity()
+        assert isinstance(result["python_prefix"], str)
+        assert len(result["python_prefix"]) > 0
+
+    def test_python_base_prefix_is_string(self):
+        result = _build_identity()
+        assert isinstance(result["python_base_prefix"], str)
+        assert len(result["python_base_prefix"]) > 0
+
+    def test_is_venv_is_bool(self):
+        result = _build_identity()
+        assert isinstance(result["is_venv"], bool)
+
+    def test_is_venv_derivation(self):
+        """is_venv must be True iff sys.prefix != sys.base_prefix."""
+        result = _build_identity()
+        assert result["is_venv"] == (sys.prefix != sys.base_prefix)
 
 
 class TestServerIdentityNoSecrets:

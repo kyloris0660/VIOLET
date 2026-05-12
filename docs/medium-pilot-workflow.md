@@ -88,10 +88,11 @@ $expectedRoot = (Get-Location).Path
   --expected-db blombooru_test_medium `
   --expected-code-root "$expectedRoot" `
   --expected-git-sha "$expectedSha" `
+  --expected-python "$PY" `
   --admin-password "<your admin password>"
 ```
 
-If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, and git SHA. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
+If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, git SHA, and Python executable. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
 
 - [ ] 11. Database backup taken (custom archive format):
 
@@ -222,7 +223,10 @@ After completing each tier, fill in this report:
 - Port: [port]
 - git_sha: [sha]
 - Code root: [path]
-- Server identity check: [pass/fail] (with --expected-env, --expected-db, --expected-code-root, --expected-git-sha)
+- Python executable: [python_executable from server identity]
+- Python version: [python_version from server identity]
+- is_venv: [true/false from server identity]
+- Server identity check: [pass/fail] (with --expected-env, --expected-db, --expected-code-root, --expected-git-sha, --expected-python)
 
 ### Pre-Import
 - Dataset source path: [exact path, e.g. D:\VioletPilotData\500]

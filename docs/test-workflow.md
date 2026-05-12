@@ -17,7 +17,7 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
-| `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
+| `tests/test_server_identity.py` | Server identity endpoint fields, Python runtime identity, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 | `tests/test_python_env_preflight.py` | Python/venv env preflight, stdlib-only, sys.executable match |
 
@@ -163,7 +163,7 @@ Start-Process -NoNewWindow python -ArgumentList "run.py","--debug"
 # Record the PID
 
 # 4. MANDATORY: Verify server identity before running any E2E tests
-& "$PY" scripts/check_test_server_identity.py --base-url "http://127.0.0.1:$($env:APP_PORT)" --expected-env test --expected-db blombooru_test
+& "$PY" scripts/check_test_server_identity.py --base-url "http://127.0.0.1:$($env:APP_PORT)" --expected-env test --expected-db blombooru_test --expected-python "$PY"
 # If identity check fails → STOP. Do not run E2E. Diagnose and restart.
 
 # 5. Run E2E
@@ -180,7 +180,7 @@ Stop-Process -Id <recorded-PID>
 3. Dedicated test storage (not dev storage)
 4. Dynamically chosen free port (no fixed default — probe 8012–8024). Use `APP_PORT` env var, not `--port` CLI flag.
 5. Record and only stop the exact PID started
-6. **Mandatory identity preflight** — `scripts/check_test_server_identity.py` must pass before E2E. This is a hard gate, not optional.
+6. **Mandatory identity preflight** — `scripts/check_test_server_identity.py` (with `--expected-python "$PY"`) must pass before E2E. This is a hard gate, not optional.
 7. No import / AI tagging / LLM translation / cleanup / reset / delete operations
 8. No iCloud paths, no VioletTestFixture mutation
 9. **Singleton policy** — only one agent-started server per session. Diagnose port conflicts, do not silently skip.

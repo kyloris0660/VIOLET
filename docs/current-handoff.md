@@ -27,7 +27,7 @@
 | **Phase 3.1.2c (PR #33)** | PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged — Server identity + unified LLM fallback + entity resolver hardening |
 | **Phase 3.2b status** | PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged — Pilot hardening, configuration audit, medium-scale readiness |
 | **Phase 3.2c status** | PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged — Medium-scale pilot preparation, env docs, LLM gate unification |
-| **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`) |
+| **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`), server runtime Python identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
 
 ## Mandatory Workflow Rules
 
@@ -41,7 +41,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
-9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY`). On Windows: `$PY = "<repo>\venv\Scripts\python.exe"`; on POSIX: `$PY = "<repo>/venv/bin/python"`. The script `scripts/check_python_env.py` auto-infers the venv when `--expected-python` is omitted (probes `venv/` and `.venv/`), or you can set `VIOLET_EXPECTED_PYTHON` env var. Run it as a mandatory preflight before any operation. Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
+9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY`). On Windows: `$PY = "<repo>\venv\Scripts\python.exe"`; on POSIX: `$PY = "<repo>/venv/bin/python"`. The script `scripts/check_python_env.py` auto-infers the venv when `--expected-python` is omitted (probes `venv/` and `.venv/`), or you can set `VIOLET_EXPECTED_PYTHON` env var. Run it as a mandatory preflight before any operation. For running servers, also use `scripts/check_test_server_identity.py --expected-python "$PY"` to verify the server process reports `sys.executable` matching the venv Python (not the system Python that Windows process tables may display). Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -460,8 +460,8 @@ Production-ready content classifier using CLIP ViT-B/32 zero-shot classification
 
 ### Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (PR #33)
 
-- `GET /api/system/server-identity` endpoint for dev server validation (git SHA, branch, PID, env, DB)
-- `scripts/check_test_server_identity.py` verification script with port-owner diagnostics
+- `GET /api/system/server-identity` endpoint for dev server validation (git SHA, branch, PID, env, DB, Python runtime identity: `python_executable`, `python_version`, `python_prefix`, `python_base_prefix`, `is_venv`)
+- `scripts/check_test_server_identity.py` verification script with port-owner diagnostics and `--expected-python` for venv Python path verification (with Windows path normalization)
 - Unified LLM architecture: `BaseLLMProvider` with `complete_chat()` / `complete_json()` two-layer API
 - Structured error hierarchy: `LLMProviderError` → `LLMTransportError`, `LLMHTTPStatusError`, `LLMResponseFormatError`, `LLMAllProvidersFailed`, `LLMBatchAggregateError`
 - Fallback policy: transport errors + HTTP 408/429/5xx → fallback; HTTP 400/401/403/404 + invalid JSON → no fallback
