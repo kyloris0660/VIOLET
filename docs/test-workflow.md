@@ -52,7 +52,8 @@ Load the test environment in one step (PowerShell):
 This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT`, `VIOLET_TEST_FIXTURE_PATH`, and `APP_PORT=8001`. For E2E runs, agents override in the current session:
 
 ```powershell
-$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+$env:APP_PORT = "<chosen-free-port>"   # probe 8012-8024 for availability
+$env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 $env:VIOLET_RUN_REAL_E2E = "1"
 ```
 
@@ -146,20 +147,20 @@ Agent-started server workflow (PowerShell):
 # 1. Load test environment
 . "$env:USERPROFILE\.violet\test-env.ps1"
 
-# 2. Override port and base URL (prefer 8011+)
-$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+# 2. Choose a free port dynamically (probe 8012-8024)
+$env:APP_PORT = "<chosen-free-port>"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 
 # 3. Start server in background from the PR branch/worktree
 #    If worktree has no venv, use the main repo Python:
-#    C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug --port 8011
+#    C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug
 cd <worktree-or-branch-path>
-Start-Process -NoNewWindow python -ArgumentList "run.py","--debug","--port","8011"
+Start-Process -NoNewWindow python -ArgumentList "run.py","--debug"
 # Record the PID
 
-# 4. Wait for server readiness and verify identity
-# Verify: http://127.0.0.1:8011/api/health or /admin
-# Then run server identity check:
-python scripts/check_test_server_identity.py --base-url http://127.0.0.1:8011 --expected-env test --expected-db blombooru_test
+# 4. MANDATORY: Verify server identity before running any E2E tests
+python scripts/check_test_server_identity.py --base-url "http://127.0.0.1:$($env:APP_PORT)" --expected-env test --expected-db blombooru_test
+# If identity check fails → STOP. Do not run E2E. Diagnose and restart.
 
 # 5. Run E2E
 npx playwright test tests/e2e/<spec>.spec.ts --project=edge
@@ -173,25 +174,28 @@ Stop-Process -Id <recorded-PID>
 1. `VIOLET_ENV=test`
 2. `POSTGRES_DB=blombooru_test`
 3. Dedicated test storage (not dev storage)
-4. Dedicated free port (prefer 8011+)
+4. Dynamically chosen free port (no fixed default — probe 8012–8024). Use `APP_PORT` env var, not `--port` CLI flag.
 5. Record and only stop the exact PID started
-6. No import / AI tagging / LLM translation / cleanup / reset / delete operations
-7. No iCloud paths, no VioletTestFixture mutation
-8. Final report must include: working directory, branch, server command, PID, port, VIOLET_BASE_URL, E2E command, stop/cleanup result
+6. **Mandatory identity preflight** — `scripts/check_test_server_identity.py` must pass before E2E. This is a hard gate, not optional.
+7. No import / AI tagging / LLM translation / cleanup / reset / delete operations
+8. No iCloud paths, no VioletTestFixture mutation
+9. **Singleton policy** — only one agent-started server per session. Diagnose port conflicts, do not silently skip.
+10. Final report must include: working directory, branch, server command, PID, port, VIOLET_BASE_URL, identity check result, E2E command, stop/cleanup result
 
 Manual server start (fallback only — if agent startup fails):
 
 ```powershell
 . "$env:USERPROFILE\.violet\test-env.ps1"
-$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
-python run.py --debug --port 8011
+$env:APP_PORT = "8013"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:8013"
+python run.py --debug
 ```
 
 Run E2E tests:
 
 ```powershell
 $env:VIOLET_RUN_REAL_E2E = "1"
-$env:VIOLET_BASE_URL = "http://127.0.0.1:8011"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 npx playwright test tests/e2e/config-diagnostics-e2e.spec.ts --project=edge
 npx playwright test tests/e2e/gallery-browse.spec.ts --project=edge
 npx playwright test tests/e2e/fixture-import.spec.ts --project=edge

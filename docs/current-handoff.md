@@ -480,13 +480,20 @@ Production-ready content classifier using CLIP ViT-B/32 zero-shot classification
 
 ### Phase 3.2b — Pilot Hardening, Configuration Audit, Medium-Scale Readiness
 
-- E2E test hardening: replaced hardcoded `.toBe(200)` assertions with dynamic type + range [1, 10000] validation in `tag-localization.spec.ts` and `ai-tagging-jobs.spec.ts`. Note: these assertions test config endpoint return values, not UI display values. If future UI displays batch limits, a separate UI/API consistency assertion should be added.
+- E2E test hardening: replaced hardcoded `.toBe(200)` assertions with `expectPositiveInteger()` helper in `tag-localization.spec.ts` and `ai-tagging-jobs.spec.ts`. The helper validates typeof === 'number', Number.isFinite(), Number.isInteger(), >= 1 — no artificial upper bound. Intermediate `[1, 10000]` range was removed per Codex P2 review (backend config.py has no such cap).
 - Fallback provider unit tests: `TestShouldFallbackDecision` + `TestFallbackProviderHTTPCodes` covering typed error classes, parametrized HTTP code coverage ({408,429,500,502,503,504} fallback, {400,401,403,404,405,422} no-fallback)
 - Repository-wide configuration audit: `docs/config-audit-phase3.2b.md` with actionable classifications (keep_safety_gate, document_default, make_test_dynamic, leave_as_fixture, naming_inconsistency)
 - Content classification attribution analysis: 4 trigger paths documented, inline classification design intent clarified
 - Report path mismatch root cause: confirmed "batch_a/b/c" labels never existed in codebase — originated from external notes
 - `.env.example` + `.env.production.example` expanded with all Phase 3.x config keys (AI tagging, LLM translation, fallback, entity alias, content classification)
 - Env flag naming inconsistency documented: `VIOLET_RUN_REAL_LLM_TESTS` vs `VIOLET_RUN_REAL_LLM_E2E` — standardize to `_E2E` suffix in Phase 3.3+
+- **Server lifecycle hardening (post stale-server incident):**
+  - Mandatory identity preflight via `scripts/check_test_server_identity.py` — hard gate before any E2E
+  - No default port (removed hardcoded 8011) — agents must probe 8012–8024 for availability
+  - Singleton server policy — one agent-started server per session
+  - Stale server prevention rules — cannot mark stale-server failures as non-blocking
+  - `APP_PORT` env var (not `--port` CLI flag) documented across CLAUDE.md, AGENTS.md, docs/test-workflow.md
+  - Root cause analysis in `docs/config-audit-phase3.2b.md` § 5
 
 **Key files:**
 

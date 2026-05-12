@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, apiCall } from './helpers/auth';
 
+function expectPositiveInteger(value: unknown) {
+  expect(typeof value).toBe('number');
+  expect(Number.isFinite(value)).toBe(true);
+  expect(Number.isInteger(value)).toBe(true);
+  expect(value as number).toBeGreaterThanOrEqual(1);
+}
+
 const REAL_LLM = process.env.VIOLET_RUN_REAL_LLM_TESTS === '1';
 
 test.describe('Tag Localization', () => {
@@ -15,12 +22,8 @@ test.describe('Tag Localization', () => {
     expect(resp.data.enabled).toBe(true);
     expect(resp.data.available).toBe(true);
     expect(resp.data.api_key_configured).toBe(true);
-    expect(typeof resp.data.batch_max_items).toBe('number');
-    expect(resp.data.batch_max_items).toBeGreaterThanOrEqual(1);
-    expect(resp.data.batch_max_items).toBeLessThanOrEqual(10000);
-    expect(typeof resp.data.auto_max_items).toBe('number');
-    expect(resp.data.auto_max_items).toBeGreaterThanOrEqual(1);
-    expect(resp.data.auto_max_items).toBeLessThanOrEqual(10000);
+    expectPositiveInteger(resp.data.batch_max_items);
+    expectPositiveInteger(resp.data.auto_max_items);
   });
 
   test('translation stats are available', async ({ page }) => {

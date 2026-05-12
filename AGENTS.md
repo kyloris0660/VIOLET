@@ -219,23 +219,30 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 2. Use `POSTGRES_DB=blombooru_test`.
 3. Use dedicated test storage (`VIOLET_STORAGE_ROOT`), never development storage.
 4. Load the user's test env script first: `. "$env:USERPROFILE\.violet\test-env.ps1"`
-5. Use a dedicated free port (prefer 8011 or higher) — do not use 8000 (dev) or 8001 (default test).
+5. Choose a free port dynamically — do NOT default to any fixed port (e.g. 8011). Probe candidate ports (8012–8024) for availability before starting. Use `APP_PORT` env var (not `--port` CLI flag).
 6. Record the server PID.
 7. Start the server from the PR branch/worktree being tested.
 8. Only stop the exact PID the agent started — never kill unknown processes.
 9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
 10. Do not touch iCloud paths or modify VioletTestFixture.
 11. If server startup fails, diagnose and report the exact error — do not skip E2E.
-12. After server starts, verify identity with `scripts/check_test_server_identity.py` to confirm the server is running expected code (correct env, DB, git SHA).
+12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, and `git_sha` match the current worktree/branch. **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
 
-**Final report must include:** working directory, branch, server command, PID, port, `VIOLET_BASE_URL`, environment confirmation (VIOLET_ENV, DB, storage root), E2E command, stop/cleanup result.
+**Singleton server policy:** Only one agent-started test server may be running at a time per session. Before starting a new server, verify no previous agent-started server is still running. If a port conflict is detected, diagnose the conflict (PID, command line) — do not silently pick another port.
+
+**Stale server prevention:** A "stale server" is one serving code from a different commit, branch, or worktree. Stale servers produce false test results. On Windows, killed processes may leave TCP sockets in LISTENING state for up to 60 seconds — verify the port is free before restarting. Never mark stale-server-induced E2E failures as "pre-existing" or "non-blocking."
+
+**Cannot skip E2E due to port conflicts:** If all candidate ports are occupied, the agent must diagnose which processes hold them and report. E2E cannot be skipped with "port unavailable" as the excuse.
+
+**Final report must include:** working directory, branch, server command, PID, port, `VIOLET_BASE_URL`, environment confirmation (VIOLET_ENV, DB, storage root), identity check result, E2E command, stop/cleanup result.
 
 **Clarification:** "Do not kill arbitrary processes" means only stop the exact server PID you started. It does **not** mean agents cannot start a test server.
 
 **If the worktree does not contain its own venv**, use the main repo's Python explicitly:
 
 ```powershell
-C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug --port 8011
+$env:APP_PORT = "8013"
+C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug
 ```
 
 The server must run the PR branch/worktree code (i.e. CWD = worktree path).

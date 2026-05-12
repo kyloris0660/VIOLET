@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, apiCall } from './helpers/auth';
 
+function expectPositiveInteger(value: unknown) {
+  expect(typeof value).toBe('number');
+  expect(Number.isFinite(value)).toBe(true);
+  expect(Number.isInteger(value)).toBe(true);
+  expect(value as number).toBeGreaterThanOrEqual(1);
+}
+
 test.describe('AI Tagging Jobs', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
@@ -15,11 +22,7 @@ test.describe('AI Tagging Jobs', () => {
     const resp = await apiCall(page, '/api/admin/ai-tagging/auto-config');
     expect(resp.status).toBe(200);
     expect(typeof resp.data.ai_tagging_enabled).toBe('boolean');
-    expect(typeof resp.data.auto_tag_max_items).toBe('number');
-    expect(resp.data.auto_tag_max_items).toBeGreaterThanOrEqual(1);
-    expect(resp.data.auto_tag_max_items).toBeLessThanOrEqual(10000);
-    expect(typeof resp.data.batch_max_items).toBe('number');
-    expect(resp.data.batch_max_items).toBeGreaterThanOrEqual(1);
-    expect(resp.data.batch_max_items).toBeLessThanOrEqual(10000);
+    expectPositiveInteger(resp.data.auto_tag_max_items);
+    expectPositiveInteger(resp.data.batch_max_items);
   });
 });
