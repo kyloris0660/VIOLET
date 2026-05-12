@@ -49,6 +49,7 @@ def inspect_dataset(dataset_path: Path) -> dict:
         "unsupported": 0,
         "hidden": 0,
         "symlinks": 0,
+        "stat_errors": 0,
         "total_bytes": 0,
         "extension_distribution": {},
         "sample_unsupported": [],
@@ -59,10 +60,15 @@ def inspect_dataset(dataset_path: Path) -> dict:
         result["errors"].append(f"Directory does not exist: {dataset_path}")
         return result
 
+    walk_errors: list[str] = []
+
+    def _on_walk_error(err: OSError) -> None:
+        walk_errors.append(f"Traversal error: [{type(err).__name__}] {err}")
+
     ext_counter: Counter = Counter()
     max_unsupported_samples = 10
 
-    for root, dirs, files in os.walk(dataset_path):
+    for root, dirs, files in os.walk(dataset_path, onerror=_on_walk_error):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
 
         for fname in files:
@@ -79,8 +85,11 @@ def inspect_dataset(dataset_path: Path) -> dict:
 
             try:
                 result["total_bytes"] += fpath.stat().st_size
-            except OSError:
-                pass
+            except OSError as exc:
+                result["stat_errors"] += 1
+                result["errors"].append(
+                    f"stat failed: [{type(exc).__name__}] {fpath} — {exc}")
+                continue
 
             ext = fpath.suffix.lower()
             ext_counter[ext] += 1
@@ -96,6 +105,7 @@ def inspect_dataset(dataset_path: Path) -> dict:
                         rel = fpath
                     result["sample_unsupported"].append(str(rel))
 
+    result["errors"].extend(walk_errors)
     result["extension_distribution"] = dict(ext_counter.most_common())
     return result
 
@@ -123,9 +133,11 @@ def main():
     dataset_path = Path(args.path)
     result = inspect_dataset(dataset_path)
 
+    has_errors = bool(result["errors"]) or not result["exists"]
+
     if args.json:
         print(json.dumps(result, indent=2))
-        return
+        sys.exit(1 if has_errors else 0)
 
     print(f"Dataset path: {result['dataset_path']}")
     print(f"Exists: {result['exists']}")
@@ -139,6 +151,7 @@ def main():
     print(f"  Unsupported files:        {result['unsupported']}")
     print(f"  Hidden/system files:      {result['hidden']}")
     print(f"  Symlinks encountered:     {result['symlinks']}")
+    print(f"  Stat errors:              {result['stat_errors']}")
     print(f"  Total size:               {_fmt_bytes(result['total_bytes'])}")
 
     if result["extension_distribution"]:
@@ -158,6 +171,8 @@ def main():
         print()
         for err in result["errors"]:
             print(f"  ERROR: {err}")
+
+    sys.exit(1 if has_errors else 0)
 
 
 if __name__ == "__main__":

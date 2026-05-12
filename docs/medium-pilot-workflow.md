@@ -62,14 +62,17 @@ Complete ALL items before executing any tier:
 - [ ] 5. Schema migrated: `python scripts/setup_test_db.py --migrate` with test env
 - [ ] 6. Storage directory exists and is empty (or contains only previous tier data if continuing)
 - [ ] 7. Dataset directory exists with expected file count
-- [ ] 8. Dataset validated with generic pilot inspector (see Section 12):
+- [ ] 8. Dataset validated with generic pilot inspector (see Section 12). The inspector must exit with code 0 — any non-zero exit means errors were found (unreadable files, traversal failures, missing directory) and the preflight fails:
 
 ```powershell
 python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500"
 python scripts/inspect_pilot_dataset.py --path "D:\VioletPilotData\500" --json
+# Exit code 0 = clean, non-zero = errors found (check "errors" and "stat_errors" in JSON output)
 ```
 
 > **Note:** `scripts/inspect_test_fixture.py` is for VioletTestFixture (small smoke) only — it requires `anime/non_anime/mixed` subfolders and is NOT suitable for arbitrary pilot datasets.
+>
+> **Error semantics:** The following are tracked as **errors** (cause non-zero exit, block preflight): stat failures on individual files (`stat_errors`), directory traversal errors (permission denied on subdirectories), and non-existent dataset path. The following are NOT errors: unsupported file types, hidden/system files, duplicate files — these are expected in mixed datasets and do not block preflight.
 
 - [ ] 9. Server started on dynamic port (probe 8012–8024)
 - [ ] 10. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
@@ -223,7 +226,7 @@ After completing each tier, fill in this report:
 ### Pre-Import
 - Dataset source path: [exact path, e.g. D:\VioletPilotData\500]
 - Dataset inspector: inspect_pilot_dataset.py
-- Dataset inspector results: [total/supported/unsupported/hidden]
+- Dataset inspector results: [total/supported/unsupported/hidden/stat_errors]
 - Backup file: [path, e.g. backup_before_tier_500.dump]
 - Backup format: custom archive (pg_dump -Fc)
 - Dry-run scan_job_id: [id]
