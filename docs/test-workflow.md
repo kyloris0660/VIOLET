@@ -17,6 +17,8 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
+| `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
+| `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -35,6 +37,7 @@ Requires `VIOLET_RUN_REAL_E2E=1` and a running V.I.O.L.E.T. server. Some tests a
 | `tests/e2e/config-diagnostics-e2e.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Config diagnostics API sections |
 | `tests/e2e/gallery-browse.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Gallery grid, media detail, thumbnails |
 | `tests/e2e/fixture-import.spec.ts` | `VIOLET_RUN_REAL_E2E=1` + `VIOLET_TEST_FIXTURE_PATH` | Preflight, dry-run, import, idempotency |
+| `tests/e2e/entity-alias-resolver.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Entity resolver API, trust policy, admin UI |
 
 ## Environment Setup
 
@@ -115,7 +118,7 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py -v
+pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py -v
 ```
 
 ### Smoke Validation (Tier 1)
@@ -153,8 +156,10 @@ cd <worktree-or-branch-path>
 Start-Process -NoNewWindow python -ArgumentList "run.py","--debug","--port","8011"
 # Record the PID
 
-# 4. Wait for server readiness
+# 4. Wait for server readiness and verify identity
 # Verify: http://127.0.0.1:8011/api/health or /admin
+# Then run server identity check:
+python scripts/check_test_server_identity.py --base-url http://127.0.0.1:8011 --expected-env test --expected-db blombooru_test
 
 # 5. Run E2E
 npx playwright test tests/e2e/<spec>.spec.ts --project=edge

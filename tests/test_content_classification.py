@@ -1324,13 +1324,15 @@ class TestResolveStoredMediaPath:
         assert win_result == posix_result
         assert win_result.exists()
 
-    def test_absolute_path_returns_none(self):
+    def test_absolute_path_returns_none(self, tmp_path):
         from app.routes.admin.dev_tools import _resolve_stored_media_path
 
-        assert _resolve_stored_media_path("C:\\Users\\someone\\photo.jpg") is None
-        assert _resolve_stored_media_path("/home/user/photo.jpg") is None
-        assert _resolve_stored_media_path("") is None
-        assert _resolve_stored_media_path(None) is None
+        with patch("app.routes.admin.dev_tools.settings") as mock_settings:
+            mock_settings.resolve_storage_path = self._make_resolver(tmp_path)
+            assert _resolve_stored_media_path("C:\\Users\\someone\\photo.jpg") is None
+            assert _resolve_stored_media_path("/home/user/photo.jpg") is None
+            assert _resolve_stored_media_path("") is None
+            assert _resolve_stored_media_path(None) is None
 
     def test_thumbnail_only_missing_not_deletable(self, tmp_path):
         """Verify scan categorises thumbnail-only-missing as non-deletable."""

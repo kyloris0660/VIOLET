@@ -58,6 +58,10 @@ Core capabilities:
 | Auto AI tagging after import | Done | Optional, disabled by default |
 | AI tagging background jobs | Done | Progress tracking, cancel, history |
 | Proper noun alias resolver | Done | Character/copyright/artist alias resolution with LLM + manual review |
+| Admin UI closeout | Done | Navigation, i18n, AI tagging consolidation, dark Violet theme (Phase 3.1.2a) |
+| Gallery content-class filter | Done | 5-mode filter: all/anime+unknown/anime-only/non-anime/unknown (Phase 3.1.2b) |
+| Server identity endpoint | Done | `GET /api/system/server-identity` for dev server validation (Phase 3.1.2c) |
+| Unified LLM fallback | Done | `complete_chat`/`complete_json` two-layer API with structured error hierarchy (Phase 3.1.2c) |
 | iCloud large library safety | Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
 | Content classification foundation | Done | Infrastructure + evaluation harness (heuristic baseline only) |
 | CLIP zero-shot content classifier | Done | Anime vs non-anime via CLIP ViT-B/32 ONNX (Phase 3.1) |
@@ -216,7 +220,9 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 3.1** — CLIP zero-shot content classifier (done — anime recall >= 80%, non-anime FP <= 15%)
 - **Phase 3.1.1a** — Environment/DB/Storage safety foundation (done)
 - **Phase 3.1.1b** — Fixture-based test workflow foundation (done)
-- **Phase 3.1.2** — Admin UI closeout + gallery content-class filter (in progress)
+- **Phase 3.1.2a** — Admin UI closeout (done)
+- **Phase 3.1.2b** — Gallery content-class filter (done)
+- **Phase 3.1.2c** — Server identity + unified LLM fallback + entity resolver hardening (in progress)
 - **Phase 4** — Filesystem watcher & scheduled scans
 
 ## Tech Stack

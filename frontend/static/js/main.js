@@ -408,9 +408,15 @@ class Blombooru {
 
         if (!response.ok) {
             const error = await response.json();
-            let errorMessage = error.detail || 'API call failed';
+            let detail = error.detail || 'API call failed';
+            let errorMessage;
 
-            // Check if error detail is an i18n key (starts with error_ or exists in notifications.admin)
+            if (typeof detail === 'object' && detail !== null) {
+                errorMessage = detail.message || detail.error || JSON.stringify(detail);
+            } else {
+                errorMessage = String(detail);
+            }
+
             if (typeof errorMessage === 'string' && (errorMessage.startsWith('error_') || errorMessage.includes('.'))) {
                 const translated = window.i18n.t(`notifications.admin.${errorMessage}`);
                 if (translated !== `notifications.admin.${errorMessage}`) {
@@ -418,7 +424,10 @@ class Blombooru {
                 }
             }
 
-            throw new Error(errorMessage);
+            const err = new Error(errorMessage);
+            err.detail = detail;
+            err.status = response.status;
+            throw err;
         }
 
         return response.json();

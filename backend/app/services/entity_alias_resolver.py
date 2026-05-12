@@ -7,7 +7,10 @@ This is fundamentally different from visual tag translation:
 
 The LLM prompt explicitly forbids inventing names — if the entity's Chinese name
 is not well-known, the canonical tag is returned unchanged with needs_review=true.
+
+Uses the unified complete_json() path so FallbackProvider works automatically.
 """
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -15,9 +18,20 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from .llm_translation_provider import TranslationResult, get_llm_provider
+from .llm_translation_provider import (
+    LLMBatchAggregateError,
+    LLMProviderError,
+    LLMResponseFormatError,
+    LLMTransportError,
+    TranslationResult,
+    _format_error,
+    _sanitize_error_message,
+    get_llm_provider,
+)
 
 logger = logging.getLogger(__name__)
+
+_resolve_lock = asyncio.Lock()
 
 ENTITY_SYSTEM_PROMPT = (
     "You are an anime/manga entity name resolver. Your task is to find the ESTABLISHED "
@@ -47,44 +61,17 @@ async def _resolve_chunk(
     provider,
     tags: List[Dict[str, str]],
 ) -> List[TranslationResult]:
-    """Resolve a single chunk of proper-noun tags via LLM."""
-    import httpx
-
+    """Resolve a single chunk of proper-noun tags via the unified LLM path."""
     tags_text = json.dumps(tags, ensure_ascii=False)
-    user_prompt = (
-        f"Find the established Chinese names for these anime/manga entity tags:\n{tags_text}"
-    )
+    messages = [
+        {"role": "system", "content": ENTITY_SYSTEM_PROMPT},
+        {"role": "user", "content": f"Find the established Chinese names for these anime/manga entity tags:\n{tags_text}"},
+    ]
 
-    async with httpx.AsyncClient(timeout=90.0) as client:
-        resp = await client.post(
-            f"{provider.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {provider.api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": provider.model,
-                "messages": [
-                    {"role": "system", "content": ENTITY_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.2,
-                "max_tokens": 4096,
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    results_raw = await provider.complete_json(messages, temperature=0.2)
 
-    content = data["choices"][0]["message"]["content"].strip()
-    if content.startswith("```"):
-        lines = content.split("\n")
-        content = "\n".join(
-            lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-        )
-
-    results_raw = json.loads(content)
     if not isinstance(results_raw, list):
-        raise ValueError(f"LLM returned non-array response: {content[:200]}")
+        raise LLMResponseFormatError(f"LLM returned non-array response: {str(results_raw)[:200]}")
 
     results = []
     for item in results_raw:
@@ -115,20 +102,17 @@ async def resolve_entity_aliases(
 ) -> List[TranslationResult]:
     """Resolve proper-noun tags to their established Chinese aliases via LLM.
 
-    Uses the entity-specific prompt that forbids inventing names.
+    Uses the unified complete_json() path so FallbackProvider works automatically.
     """
     from ..config import settings
 
     provider = get_llm_provider()
     if not provider.is_available():
-        raise RuntimeError("LLM provider not available")
-
-    if not hasattr(provider, "api_key"):
-        raise RuntimeError("Entity alias resolver requires OpenAI-compatible provider")
+        raise LLMProviderError("LLM provider not available for entity alias resolution")
 
     chunk_size = settings.ENTITY_ALIAS_BATCH_SIZE
     all_results: List[TranslationResult] = []
-    errors: List[str] = []
+    chunk_exceptions: List[Exception] = []
 
     for i in range(0, len(tags), chunk_size):
         chunk = tags[i:i + chunk_size]
@@ -136,14 +120,14 @@ async def resolve_entity_aliases(
             chunk_results = await _resolve_chunk(provider, chunk)
             all_results.extend(chunk_results)
         except Exception as e:
-            logger.error("Entity resolver chunk %d failed: %s", i // chunk_size + 1, e)
-            errors.append(f"Chunk {i // chunk_size + 1} ({len(chunk)} tags): {e}")
+            logger.error("Entity resolver chunk %d failed: %s", i // chunk_size + 1, repr(e))
+            chunk_exceptions.append(e)
 
-    if errors and not all_results:
-        raise RuntimeError(f"All entity resolver chunks failed: {'; '.join(errors)}")
+    if chunk_exceptions and not all_results:
+        raise LLMBatchAggregateError(chunk_exceptions, provider_label="entity_resolver")
 
-    if errors:
-        logger.warning("Entity resolver partially failed: %s", "; ".join(errors))
+    if chunk_exceptions:
+        logger.warning("Entity resolver partially failed: %d chunk(s)", len(chunk_exceptions))
 
     return all_results
 
@@ -264,63 +248,68 @@ async def run_entity_resolution(
     """Run entity alias resolution for pending proper-noun tags.
 
     Returns a summary of results. Saves resolved aliases to TagTranslation table.
+    Acquires _resolve_lock to prevent concurrent runs.
     """
     from ..config import settings
     from .tag_localization_service import upsert_translation
     from ..utils.search_parser import invalidate_translation_cache
 
-    if limit is None:
-        limit = settings.ENTITY_ALIAS_MAX_PER_RUN
+    if _resolve_lock.locked():
+        raise LLMProviderError("Entity resolution is already running")
 
-    pending = list_pending_proper_nouns(db, limit=limit)
-    if not pending:
-        return {"processed": 0, "resolved": 0, "kept_original": 0, "failed": 0, "message": "No pending proper-noun tags"}
+    async with _resolve_lock:
+        if limit is None:
+            limit = settings.ENTITY_ALIAS_MAX_PER_RUN
 
-    tag_inputs = [{"name": p["canonical_name"], "category": p["category"]} for p in pending]
+        pending = list_pending_proper_nouns(db, limit=limit)
+        if not pending:
+            return {"processed": 0, "resolved": 0, "kept_original": 0, "failed": 0, "message": "No pending proper-noun tags"}
 
-    results = await resolve_entity_aliases(tag_inputs)
+        tag_inputs = [{"name": p["canonical_name"], "category": p["category"]} for p in pending]
 
-    resolved = 0
-    kept_original = 0
-    failed = 0
+        results = await resolve_entity_aliases(tag_inputs)
 
-    for tr in results:
-        try:
-            is_unchanged = tr.display_name_zh.replace(" ", "_") == tr.canonical_name or tr.display_name_zh == tr.canonical_name
-            saved = upsert_translation(
-                db,
-                canonical_name=tr.canonical_name,
-                display_name=tr.display_name_zh,
-                lang="zh-CN",
-                aliases=tr.aliases_zh,
-                category=tr.category,
-                source="llm",
-                status="translated",
-                needs_review=tr.needs_review or is_unchanged,
-                provider="entity_resolver",
-                force=True,
-            )
-            if saved:
-                if tr.needs_review or is_unchanged:
-                    kept_original += 1
-                else:
-                    resolved += 1
-            else:
-                kept_original += 1
-        except Exception as e:
-            failed += 1
-            logger.error("Entity resolver save error for %s: %s", tr.canonical_name, e)
+        resolved = 0
+        kept_original = 0
+        failed = 0
+
+        for tr in results:
             try:
-                db.rollback()
-            except Exception:
-                pass
+                is_unchanged = tr.display_name_zh.replace(" ", "_") == tr.canonical_name or tr.display_name_zh == tr.canonical_name
+                saved = upsert_translation(
+                    db,
+                    canonical_name=tr.canonical_name,
+                    display_name=tr.display_name_zh,
+                    lang="zh-CN",
+                    aliases=tr.aliases_zh,
+                    category=tr.category,
+                    source="llm",
+                    status="translated",
+                    needs_review=tr.needs_review or is_unchanged,
+                    provider="entity_resolver",
+                    force=True,
+                )
+                if saved:
+                    if tr.needs_review or is_unchanged:
+                        kept_original += 1
+                    else:
+                        resolved += 1
+                else:
+                    kept_original += 1
+            except Exception as e:
+                failed += 1
+                logger.error("Entity resolver save error for %s: %s", tr.canonical_name, repr(e))
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
-    if resolved > 0:
-        invalidate_translation_cache()
+        if resolved > 0:
+            invalidate_translation_cache()
 
-    return {
-        "processed": len(results),
-        "resolved": resolved,
-        "kept_original": kept_original,
-        "failed": failed,
-    }
+        return {
+            "processed": len(results),
+            "resolved": resolved,
+            "kept_original": kept_original,
+            "failed": failed,
+        }

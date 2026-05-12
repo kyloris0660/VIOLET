@@ -4549,25 +4549,44 @@ class AdminPanel {
     async resolveEntities() {
         const t = (k, p) => window.i18n ? window.i18n.t(k, p) : k;
         const btn = document.getElementById('tl-entity-resolve-btn');
-        if (btn) btn.disabled = true;
         const resultEl = document.getElementById('tl-entity-result');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = t('admin.tag_localization.entity_resolving');
+        }
+        if (resultEl) {
+            resultEl.textContent = t('admin.tag_localization.entity_resolving');
+            resultEl.className = 'text-xs mb-3 text-yellow-400';
+            resultEl.classList.remove('hidden');
+        }
         try {
             const data = await app.apiCall('/api/admin/tag-localization/entity/resolve', { method: 'POST' });
-            app.showNotification(t('admin.tag_localization.entity_resolve_triggered'), 'success');
+            app.showNotification(t('admin.tag_localization.entity_resolve_completed'), 'success');
             if (resultEl) {
                 const msg = t('admin.tag_localization.entity_result')
                     .replace('{resolved}', data.resolved || 0)
                     .replace('{kept}', data.kept_original || 0)
                     .replace('{failed}', data.failed || 0);
                 resultEl.textContent = msg;
-                resultEl.classList.remove('hidden');
+                resultEl.className = 'text-xs mb-3 text-green-400';
             }
             this.loadEntityStatus();
+            this.loadEntityPending();
             this._refreshAfterTranslation();
         } catch (e) {
-            app.showNotification(`Error: ${e.message || e}`, 'error');
+            const detail = e.detail || e.message || String(e);
+            const displayMsg = typeof detail === 'object' ? (detail.message || detail.error || t('admin.tag_localization.entity_resolve_failed')) : detail;
+            app.showNotification(t('admin.tag_localization.entity_resolve_failed') + ': ' + displayMsg, 'error');
+            if (resultEl) {
+                resultEl.textContent = t('admin.tag_localization.entity_resolve_failed') + ': ' + displayMsg;
+                resultEl.className = 'text-xs mb-3 text-red-400';
+                resultEl.classList.remove('hidden');
+            }
         } finally {
-            if (btn) btn.disabled = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = t('admin.tag_localization.entity_resolve_now');
+            }
         }
     }
 

@@ -91,6 +91,54 @@ class UpdateStatus(BaseModel):
     asset_urls: dict = {}
     deployment_type: str = "local"
 
+
+def _safe_db_name() -> str:
+    try:
+        return settings.DB_NAME
+    except Exception:
+        return os.getenv("POSTGRES_DB", "blombooru")
+
+
+@router.get("/server-identity")
+async def get_server_identity(current_user: dict = Depends(require_admin_mode)):
+    """Return lightweight runtime diagnostics for verifying which server is running.
+
+    Computes git SHA / branch at request time so it reflects the actual running code.
+    Never exposes API keys, DB passwords, or tokens.
+    """
+    git_sha = ""
+    git_branch = ""
+    try:
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(settings.CODE_ROOT), env=env,
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        git_branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(settings.CODE_ROOT), env=env,
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+    except Exception:
+        pass
+
+    return {
+        "app_name": "V.I.O.L.E.T.",
+        "app_version": APP_VERSION,
+        "violet_env": settings.VIOLET_ENV,
+        "db_name": _safe_db_name(),
+        "code_root": str(settings.CODE_ROOT),
+        "storage_root": str(settings.STORAGE_ROOT),
+        "git_sha": git_sha,
+        "git_branch": git_branch,
+        "pid": os.getpid(),
+        "port": int(os.getenv("APP_PORT", 8000)),
+        "worktree_path": settings.WORKTREE_PATH,
+        "deployment_type": detect_deployment_type(),
+    }
+
+
 @router.get("/update/check", response_model=UpdateStatus)
 async def check_update_status(current_user: dict = Depends(require_admin_mode)):
     """Check for available updates via the GitHub Releases API."""
