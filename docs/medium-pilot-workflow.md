@@ -55,6 +55,7 @@ Each step's output feeds the next. Do not skip steps or run them out of order.
 
 Complete ALL items before executing any tier:
 
+- [ ] 0. **Python/venv identity preflight (hard gate):** Verify the approved project venv Python is in use — not the global/system Python. Run: `& "$PY" scripts/check_python_env.py --expected-python "$PY"` where `$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`. The script must exit 0. If it exits 1, stop and diagnose. Do not proceed with any subsequent preflight items until this passes.
 - [ ] 1. `VIOLET_ENV=test` confirmed
 - [ ] 2. `POSTGRES_DB=blombooru_test_medium` confirmed
 - [ ] 3. `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\medium` confirmed

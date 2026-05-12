@@ -59,7 +59,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 **Tier 1 — Unit tests** (no external dependencies):
 
 ```powershell
-pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py -v
+pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py -v
 ```
 
 | Test file | Coverage |
@@ -71,6 +71,7 @@ pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanne
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation |
 | `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
+| `tests/test_python_env_preflight.py` | Python/venv identity preflight: sys.executable match, JSON output, code-root check, no backend imports |
 
 **Tier 2 — Fixture validation** (requires `VIOLET_TEST_FIXTURE_PATH`):
 
@@ -238,12 +239,41 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 
 **Clarification:** "Do not kill arbitrary processes" means only stop the exact server PID you started. It does **not** mean agents cannot start a test server.
 
-**If the worktree does not contain its own venv**, use the main repo's Python explicitly:
+### Python/venv identity preflight (hard gate)
+
+**All agent workflows** — server start, test execution, script execution, dependency installation — **MUST use the approved project venv Python.** This is a hard gate, not a suggestion.
+
+**Approved Python (`$PY`):**
+
+```
+$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
+```
+
+**Rules:**
+
+1. **Never use the global/system Python** (`C:\Python313\python.exe`, `python.exe` from PATH, or any interpreter outside the project venv). This includes `pip install` — never install packages into the global Python.
+2. **Preflight is mandatory.** Before any server start, test run, or script execution, run:
 
 ```powershell
-$env:APP_PORT = "8013"
-C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug
+& "$PY" scripts/check_python_env.py --expected-python "$PY"
 ```
+
+The script must exit 0. If it exits 1, stop and diagnose — do not proceed.
+
+3. **Worktrees do not have their own venv.** Always use the main repo venv explicitly:
+
+```powershell
+$PY = "C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe"
+& "$PY" run.py --debug
+```
+
+4. **Test execution** must also use `$PY`:
+
+```powershell
+& "$PY" -m pytest tests/ -v
+```
+
+5. **Include `sys.executable` in all delivery reports** to prove the correct Python was used.
 
 The server must run the PR branch/worktree code (i.e. CWD = worktree path).
 

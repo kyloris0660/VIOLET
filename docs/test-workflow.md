@@ -19,6 +19,7 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
 | `tests/test_server_identity.py` | Server identity endpoint fields, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
+| `tests/test_python_env_preflight.py` | Python/venv env preflight, stdlib-only, sys.executable match |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -63,7 +64,7 @@ $env:VIOLET_RUN_REAL_E2E = "1"
 ### Prerequisites
 
 1. PostgreSQL 17 running on `localhost:5432`
-2. Python 3.12 venv with project dependencies
+2. Python 3.12 venv with project dependencies (`$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`). Run `& "$PY" scripts/check_python_env.py --expected-python "$PY"` before any test/server operation — this is a hard gate.
 3. Node.js with Playwright installed (`npx playwright install`)
 
 ### Test Database

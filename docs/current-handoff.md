@@ -26,7 +26,8 @@
 | **Phase 3.1.2b (PR #32)** | PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged — Gallery content-class filter |
 | **Phase 3.1.2c (PR #33)** | PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged — Server identity + unified LLM fallback + entity resolver hardening |
 | **Phase 3.2b status** | PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged — Pilot hardening, configuration audit, medium-scale readiness |
-| **Phase 3.2c status** | PR pending — Medium-scale pilot preparation, env docs, LLM gate unification |
+| **Phase 3.2c status** | PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged — Medium-scale pilot preparation, env docs, LLM gate unification |
+| **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`) |
 
 ## Mandatory Workflow Rules
 
@@ -40,6 +41,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
+9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`). Run `scripts/check_python_env.py` as a mandatory preflight before any operation. Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
