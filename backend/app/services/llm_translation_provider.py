@@ -117,11 +117,24 @@ class LLMAllProvidersFailed(LLMProviderError):
 class LLMBatchAggregateError(LLMProviderError):
     """Raised when all chunks in a batch fail. Carries structured failure info."""
 
+    _BATCH_FALLBACK_HTTP_CODES = _FALLBACK_HTTP_CODES
+
+    @staticmethod
+    def _is_failure_fallback_eligible(exc: Exception) -> bool:
+        if isinstance(exc, LLMTransportError) or _is_transport_error(exc):
+            return True
+        if isinstance(exc, LLMHTTPStatusError):
+            return exc.should_fallback
+        return False
+
     def __init__(self, failures: list, *, provider_label: str):
         self.failures = failures
         self.provider_label = provider_label
         self._all_transport = all(
             isinstance(f, LLMTransportError) or _is_transport_error(f) for f in failures
+        )
+        self._all_fallback_eligible = all(
+            self._is_failure_fallback_eligible(f) for f in failures
         )
         sanitized = _sanitize_error_message(
             "; ".join(f"{type(f).__name__}: {repr(f)}" for f in failures)
@@ -129,6 +142,10 @@ class LLMBatchAggregateError(LLMProviderError):
         super().__init__(
             f"All LLM chunks failed ({provider_label}): {sanitized}"
         )
+
+    @property
+    def all_fallback_eligible_errors(self) -> bool:
+        return self._all_fallback_eligible
 
     @property
     def all_transport_errors(self) -> bool:
@@ -143,17 +160,22 @@ class LLMBatchAggregateError(LLMProviderError):
 LLMChunkAggregateError = LLMBatchAggregateError
 
 
-def _should_fallback(exc: Exception) -> bool:
-    """Determine whether an exception warrants trying the fallback provider."""
+def _is_fallback_eligible_provider_error(exc: Exception) -> bool:
+    """Check if a single provider-level error is fallback-eligible."""
     if isinstance(exc, LLMTransportError) or _is_transport_error(exc):
         return True
     if isinstance(exc, LLMHTTPStatusError):
         return exc.should_fallback
-    if isinstance(exc, LLMBatchAggregateError):
-        return exc.all_transport_errors
     if isinstance(exc, LLMResponseFormatError):
         return False
-    return _is_transport_error(exc)
+    return False
+
+
+def _should_fallback(exc: Exception) -> bool:
+    """Determine whether an exception warrants trying the fallback provider."""
+    if isinstance(exc, LLMBatchAggregateError):
+        return exc.all_fallback_eligible_errors
+    return _is_fallback_eligible_provider_error(exc)
 
 
 # ── Result dataclass ────────────────────────────────────────────

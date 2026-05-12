@@ -462,6 +462,91 @@ class TestShouldFallback:
         )
         assert _should_fallback(err) is False
 
+    # -- Regression tests: batch fallback eligibility for HTTP errors (Codex P1) --
+
+    def test_batch_all_http_429_triggers_fallback(self):
+        err = LLMBatchAggregateError(
+            [LLMHTTPStatusError(429, "rate limited"), LLMHTTPStatusError(429, "rate limited")],
+            provider_label="test",
+        )
+        assert _should_fallback(err) is True
+
+    def test_batch_all_http_5xx_triggers_fallback(self):
+        err = LLMBatchAggregateError(
+            [LLMHTTPStatusError(502, "bad gw"), LLMHTTPStatusError(500, "internal")],
+            provider_label="test",
+        )
+        assert _should_fallback(err) is True
+
+    def test_batch_mixed_transport_and_http_5xx_triggers_fallback(self):
+        err = LLMBatchAggregateError(
+            [LLMTransportError("timeout"), LLMHTTPStatusError(503, "unavailable"),
+             LLMHTTPStatusError(429, "rate limited")],
+            provider_label="test",
+        )
+        assert _should_fallback(err) is True
+
+    def test_batch_contains_http_4xx_no_fallback(self):
+        err = LLMBatchAggregateError(
+            [LLMHTTPStatusError(429, "rate limited"), LLMHTTPStatusError(401, "unauthorized")],
+            provider_label="test",
+        )
+        assert _should_fallback(err) is False
+
+    def test_batch_contains_format_error_no_fallback(self):
+        err = LLMBatchAggregateError(
+            [LLMHTTPStatusError(502, "bad gw"), LLMResponseFormatError("bad json")],
+            provider_label="test",
+        )
+        assert _should_fallback(err) is False
+
+    def test_batch_all_408_triggers_fallback(self):
+        err = LLMBatchAggregateError(
+            [LLMHTTPStatusError(408, "timeout"), LLMHTTPStatusError(408, "timeout")],
+            provider_label="test",
+        )
+        assert _should_fallback(err) is True
+
+
+# ---------------------------------------------------------------------------
+# FallbackProvider.translate_tags — batch-level fallback integration
+# ---------------------------------------------------------------------------
+
+class TestFallbackProviderBatchFallback:
+
+    def test_batch_http_5xx_triggers_translate_tags_fallback(self):
+        primary = _make_provider("primary")
+        fallback = _make_provider("fallback")
+        primary.translate_tags = AsyncMock(
+            side_effect=LLMBatchAggregateError(
+                [LLMHTTPStatusError(502, "bad gw")], provider_label="primary",
+            )
+        )
+        fallback.translate_tags = AsyncMock(return_value=[])
+
+        fp = FallbackProvider(primary, fallback)
+        result = _run(fp.translate_tags([{"name": "test", "category": "general"}]))
+
+        assert result == []
+        fallback.translate_tags.assert_called_once()
+
+    def test_batch_http_4xx_no_translate_tags_fallback(self):
+        primary = _make_provider("primary")
+        fallback = _make_provider("fallback")
+        primary.translate_tags = AsyncMock(
+            side_effect=LLMBatchAggregateError(
+                [LLMHTTPStatusError(401, "unauth")], provider_label="primary",
+            )
+        )
+        fallback.translate_tags = AsyncMock(return_value=[])
+
+        fp = FallbackProvider(primary, fallback)
+
+        with pytest.raises(LLMBatchAggregateError):
+            _run(fp.translate_tags([{"name": "test", "category": "general"}]))
+
+        fallback.translate_tags.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Error sanitization
