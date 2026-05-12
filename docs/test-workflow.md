@@ -38,6 +38,9 @@ Requires `VIOLET_RUN_REAL_E2E=1` and a running V.I.O.L.E.T. server. Some tests a
 | `tests/e2e/gallery-browse.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Gallery grid, media detail, thumbnails |
 | `tests/e2e/fixture-import.spec.ts` | `VIOLET_RUN_REAL_E2E=1` + `VIOLET_TEST_FIXTURE_PATH` | Preflight, dry-run, import, idempotency |
 | `tests/e2e/entity-alias-resolver.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Entity resolver API, trust policy, admin UI |
+| `tests/e2e/tag-localization.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | LLM tag translation status, batch, auto-translate |
+
+**LLM E2E gate variable:** Some E2E tests that call real LLM APIs are additionally gated by `VIOLET_RUN_REAL_LLM_E2E=1`. The deprecated alias `VIOLET_RUN_REAL_LLM_TESTS` is still accepted (via OR logic) but new tests should use `VIOLET_RUN_REAL_LLM_E2E`.
 
 ## Environment Setup
 

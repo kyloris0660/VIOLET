@@ -95,7 +95,7 @@ Standard server-error + rate-limit codes. Changing these would alter fallback be
 
 These gate the same category of test (real LLM calls in E2E) but use different env var names. Classification: `naming_inconsistency`.
 
-**Recommendation**: Standardize to `VIOLET_RUN_REAL_LLM_E2E` (matches the `_E2E` suffix convention used by `VIOLET_RUN_REAL_E2E`). This is a Phase 3.3+ cleanup — not changing in this PR to avoid scope creep, but documented for tracking.
+**Fixed in Phase 3.2c**: `tag-localization.spec.ts` now accepts both `VIOLET_RUN_REAL_LLM_E2E` (canonical) and `VIOLET_RUN_REAL_LLM_TESTS` (deprecated alias) via OR logic. The canonical variable is `VIOLET_RUN_REAL_LLM_E2E`.
 
 ### 1.8 Hardcoded Paths
 
