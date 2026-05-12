@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (2026-05-11).
+> Last updated after Phase 3.2b — Pilot Hardening, Configuration Audit, Medium-Scale Readiness (2026-05-12).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -24,7 +24,8 @@
 | **Unicode fix (PR #30)** | PR [#30](https://github.com/kyloris0660/AnimeLocalBooru/pull/30) merged — harden Unicode scan import failure handling |
 | **Phase 3.1.2a (PR #31)** | PR [#31](https://github.com/kyloris0660/AnimeLocalBooru/pull/31) merged — Admin UI closeout |
 | **Phase 3.1.2b (PR #32)** | PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged — Gallery content-class filter |
-| **Phase 3.1.2c status** | In progress — Server identity + unified LLM fallback + entity resolver hardening |
+| **Phase 3.1.2c (PR #33)** | PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged — Server identity + unified LLM fallback + entity resolver hardening |
+| **Phase 3.2b status** | PR pending — Pilot hardening, configuration audit, medium-scale readiness |
 
 ## Mandatory Workflow Rules
 
@@ -454,7 +455,7 @@ Production-ready content classifier using CLIP ViT-B/32 zero-shot classification
 - Gallery sidebar content-class filter (5 modes: 全部, 动漫+未分类, 仅动漫, 仅非动漫, 仅未分类)
 - Backend `content_class` param on `GET /api/media/`
 
-### Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (in progress)
+### Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (PR #33)
 
 - `GET /api/system/server-identity` endpoint for dev server validation (git SHA, branch, PID, env, DB)
 - `scripts/check_test_server_identity.py` verification script with port-owner diagnostics
@@ -476,6 +477,43 @@ Production-ready content classifier using CLIP ViT-B/32 zero-shot classification
 | `backend/app/services/entity_alias_resolver.py` | Entity resolver using unified LLM path |
 | `backend/app/routes/admin/tag_localization.py` | Structured error handling for entity resolve |
 | `frontend/static/js/admin.js` | Entity resolve UX lifecycle |
+
+### Phase 3.2b — Pilot Hardening, Configuration Audit, Medium-Scale Readiness
+
+- E2E test hardening: replaced hardcoded `.toBe(200)` assertions with `expectPositiveInteger()` helper in `tag-localization.spec.ts` and `ai-tagging-jobs.spec.ts`. The helper validates typeof === 'number', Number.isFinite(), Number.isInteger(), >= 1 — no artificial upper bound. Intermediate `[1, 10000]` range was removed per Codex P2 review (backend config.py has no such cap).
+- Fallback provider unit tests: `TestShouldFallbackDecision` + `TestFallbackProviderHTTPCodes` covering typed error classes, parametrized HTTP code coverage ({408,429,500,502,503,504} fallback, {400,401,403,404,405,422} no-fallback)
+- Repository-wide configuration audit: `docs/config-audit-phase3.2b.md` with actionable classifications (keep_safety_gate, document_default, make_test_dynamic, leave_as_fixture, naming_inconsistency)
+- Content classification attribution analysis: 4 trigger paths documented, inline classification design intent clarified
+- Report path mismatch root cause: confirmed "batch_a/b/c" labels never existed in codebase — originated from external notes
+- `.env.example` + `.env.production.example` expanded with all Phase 3.x config keys (AI tagging, LLM translation, fallback, entity alias, content classification)
+- Env flag naming inconsistency documented: `VIOLET_RUN_REAL_LLM_TESTS` vs `VIOLET_RUN_REAL_LLM_E2E` — standardize to `_E2E` suffix in Phase 3.3+
+- **Server lifecycle hardening (post stale-server incident):**
+  - Mandatory identity preflight via `scripts/check_test_server_identity.py` — hard gate before any E2E
+  - No default port (removed hardcoded 8011) — agents must probe 8012–8024 for availability
+  - Singleton server policy — one agent-started server per session
+  - Stale server prevention rules — cannot mark stale-server failures as non-blocking
+  - `APP_PORT` env var (not `--port` CLI flag) documented across CLAUDE.md, AGENTS.md, docs/test-workflow.md
+  - Root cause analysis in `docs/config-audit-phase3.2b.md` § 5
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `tests/e2e/tag-localization.spec.ts` | Fixed dynamic assertions |
+| `tests/e2e/ai-tagging-jobs.spec.ts` | Fixed dynamic assertions |
+| `tests/test_llm_translation_provider.py` | Fallback smoke unit tests |
+| `docs/config-audit-phase3.2b.md` | Configuration audit report |
+| `.env.example` | Updated config documentation |
+| `.env.production.example` | Updated config documentation |
+
+**Test results:**
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest | 442 passed, 10 skipped, 0 failures |
+| Playwright E2E (Edge) | 126 passed, 18 skipped, 0 failures |
+
+All gallery-content-filter tests (14/14) pass. Initial failures were caused by running E2E against a stale server on port 8011 — resolved by using a fresh server on port 8023 with identity verification via `scripts/check_test_server_identity.py`.
 
 ## What Has NOT Been Built
 
@@ -523,9 +561,12 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 **Phase 3.1.2 — complete:**
 - Phase 3.1.2a — Admin UI closeout (PR [#31](https://github.com/kyloris0660/AnimeLocalBooru/pull/31) merged)
 - Phase 3.1.2b — Gallery content-class filter (PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged)
-- Phase 3.1.2c — Server identity + unified LLM fallback + entity resolver hardening (in progress)
+- Phase 3.1.2c — Server identity + unified LLM fallback + entity resolver hardening (PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged)
 
-**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.1.2c):
+**Phase 3.2b — in progress:**
+- Pilot hardening, configuration audit, medium-scale readiness
+
+**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.2b):
 
 1. Filesystem watcher or periodic cron-style scan
 2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
