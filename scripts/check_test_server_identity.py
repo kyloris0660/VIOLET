@@ -105,6 +105,10 @@ def main():
     port = parsed.port or 80
 
     session = requests.Session()
+    # Disable inheriting proxy env vars (HTTP_PROXY / HTTPS_PROXY).
+    # Identity checks target localhost — routing them through an external
+    # proxy causes spurious connection failures.
+    session.trust_env = False
     if args.admin_password:
         login_url = f"{args.base_url.rstrip('/')}/api/admin/login"
         try:

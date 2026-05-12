@@ -61,6 +61,16 @@ $env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 $env:VIOLET_RUN_REAL_E2E = "1"
 ```
 
+### HuggingFace Hub Offline Mode
+
+If `HTTP_PROXY` / `HTTPS_PROXY` is set in the environment (e.g. for GFW bypass), HuggingFace Hub metadata requests may fail even when the CLIP model is already cached locally. Set `HF_HUB_OFFLINE=1` to skip all Hub network requests and use only the local cache:
+
+```powershell
+$env:HF_HUB_OFFLINE = "1"
+```
+
+This is recommended for all test/pilot runs where the CLIP model has already been downloaded. See `docs/medium-pilot-workflow.md` § 3.1 for full details.
+
 ### Prerequisites
 
 1. PostgreSQL 17 running on `localhost:5432`
