@@ -132,6 +132,126 @@ class TestContentClassEnumValues:
         assert actual == expected
 
 
+class TestUnknownNullConditionBuilding:
+    """Test the condition-building logic for content_class_filter.
+
+    Mock SQLAlchemy queries cannot evaluate real filter conditions, so these
+    tests exercise the condition-building loop directly, inspecting the
+    generated SQLAlchemy BinaryExpression / ClauseList objects.
+
+    The logic under test (from create_ai_tag_job route handler):
+        conditions = []
+        for cls in valid_classes:
+            conditions.append(Media.content_class == cls)
+            if cls == ContentClassEnum.unknown:
+                conditions.append(Media.content_class.is_(None))
+
+    This mirrors apply_content_class_filter in media_helpers.py:
+        "unknown" includes NULL rows (unclassified media).
+    """
+
+    @staticmethod
+    def _build_conditions(filter_values):
+        """Replicate the route handler's condition-building loop.
+
+        Returns the list of SQLAlchemy condition objects that would be
+        passed to ``or_(*conditions)``.
+        """
+        from app.enums import ContentClassEnum
+        from app.models import Media
+
+        valid_classes = [ContentClassEnum(v) for v in filter_values]
+        conditions = []
+        for cls in valid_classes:
+            conditions.append(Media.content_class == cls)
+            if cls == ContentClassEnum.unknown:
+                conditions.append(Media.content_class.is_(None))
+        return conditions
+
+    @staticmethod
+    def _condition_strs(conditions):
+        """Compile each condition to its string representation for assertion."""
+        return [str(c) for c in conditions]
+
+    # -- Test 1: unknown includes IS NULL --
+
+    def test_unknown_includes_null_condition(self):
+        """content_class_filter=["unknown"] must produce a condition that
+        includes IS NULL (to match unclassified / NULL rows)."""
+        conditions = self._build_conditions(["unknown"])
+        strs = self._condition_strs(conditions)
+        # Should have exactly 2 conditions: == 'unknown' AND IS NULL
+        assert len(conditions) == 2
+        assert any("IS NULL" in s.upper() or "IS_NULL" in s.upper() or "IS NULL" in s
+                    for s in strs), f"No IS NULL condition found in: {strs}"
+
+    # -- Test 2: unknown includes explicit unknown equality --
+
+    def test_unknown_includes_explicit_unknown(self):
+        """content_class_filter=["unknown"] must also include
+        Media.content_class == 'unknown' (explicit unknown rows)."""
+        conditions = self._build_conditions(["unknown"])
+        strs = self._condition_strs(conditions)
+        assert any("unknown" in s.lower() and "==" in s or "= " in s
+                    for s in strs if "NULL" not in s.upper()), \
+            f"No equality condition for 'unknown' found in: {strs}"
+
+    # -- Test 3: anime does NOT include IS NULL --
+
+    def test_anime_does_not_include_null(self):
+        """content_class_filter=["anime"] must NOT produce IS NULL.
+        Only "unknown" triggers NULL inclusion."""
+        conditions = self._build_conditions(["anime"])
+        strs = self._condition_strs(conditions)
+        assert len(conditions) == 1, f"Expected 1 condition, got {len(conditions)}: {strs}"
+        assert not any("IS NULL" in s.upper() or "IS_NULL" in s.upper()
+                       for s in strs), f"Unexpected IS NULL in: {strs}"
+
+    # -- Test 4: anime + unknown includes all three conditions --
+
+    def test_anime_unknown_includes_all_three(self):
+        """content_class_filter=["anime", "unknown"] must produce 3 conditions:
+        == anime, == unknown, IS NULL."""
+        conditions = self._build_conditions(["anime", "unknown"])
+        strs = self._condition_strs(conditions)
+        assert len(conditions) == 3, f"Expected 3 conditions, got {len(conditions)}: {strs}"
+        # Verify IS NULL is present
+        assert any("IS NULL" in s.upper() or "IS_NULL" in s.upper()
+                    for s in strs), f"No IS NULL condition found in: {strs}"
+
+    # -- Test 5: illustration alone — single condition, no NULL --
+
+    def test_illustration_single_condition_no_null(self):
+        """content_class_filter=["illustration"] → 1 condition, no IS NULL."""
+        conditions = self._build_conditions(["illustration"])
+        strs = self._condition_strs(conditions)
+        assert len(conditions) == 1
+        assert not any("IS NULL" in s.upper() for s in strs)
+
+    # -- Test 6: all four classes → 5 conditions (4 equality + 1 NULL for unknown) --
+
+    def test_all_classes_produce_five_conditions(self):
+        """All four valid classes → 5 conditions: 4 equality + 1 IS NULL."""
+        conditions = self._build_conditions(["anime", "illustration", "non_anime", "unknown"])
+        strs = self._condition_strs(conditions)
+        assert len(conditions) == 5, f"Expected 5 conditions, got {len(conditions)}: {strs}"
+        null_count = sum(1 for s in strs if "IS NULL" in s.upper() or "IS_NULL" in s.upper())
+        assert null_count == 1, f"Expected 1 IS NULL, got {null_count}: {strs}"
+
+    # -- Test 7: or_(*conditions) compiles without error --
+
+    def test_or_conditions_compiles(self):
+        """The conditions list can be passed to sqlalchemy.or_() without error."""
+        from sqlalchemy import or_
+        conditions = self._build_conditions(["anime", "unknown"])
+        clause = or_(*conditions)
+        compiled = str(clause)
+        # Compiled SQL uses bind params (:content_class_1) not literal values
+        assert "IS NULL" in compiled.upper()
+        assert compiled.count(" OR ") == 2  # 3 conditions joined by 2 ORs
+        assert "content_class" in compiled.lower()
+
+
 # ---------------------------------------------------------------------------
 # Route-level tests for content_class_filter business logic
 # ---------------------------------------------------------------------------

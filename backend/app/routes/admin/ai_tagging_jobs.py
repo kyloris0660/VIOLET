@@ -129,6 +129,7 @@ async def create_ai_tag_job(
                 status_code=400,
                 detail="Cannot combine media_ids with content_class_filter. Use one or the other.",
             )
+        from sqlalchemy import or_
         from ...models import Media
         from ...enums import ContentClassEnum
         valid_classes = []
@@ -141,7 +142,14 @@ async def create_ai_tag_job(
                     detail=f"Invalid content_class value: {cc!r}. "
                            f"Valid values: {[e.value for e in ContentClassEnum]}",
                 )
-        query = db.query(Media.id).filter(Media.content_class.in_(valid_classes))
+        # Build per-class conditions; "unknown" also matches NULL rows
+        # (unclassified media), consistent with gallery content_class filtering.
+        conditions = []
+        for cls in valid_classes:
+            conditions.append(Media.content_class == cls)
+            if cls == ContentClassEnum.unknown:
+                conditions.append(Media.content_class.is_(None))
+        query = db.query(Media.id).filter(or_(*conditions))
         if body.only_without_ai_tags:
             from ...models import blombooru_media_tags
             ai_tagged = (
