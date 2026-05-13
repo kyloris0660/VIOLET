@@ -20,6 +20,8 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_server_identity.py` | Server identity endpoint fields, Python runtime identity, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 | `tests/test_python_env_preflight.py` | Python/venv env preflight, stdlib-only, sys.executable match |
+| `tests/test_check_clip_model_ready.py` | CLIP model preflight check (cache-only, HF_HUB_OFFLINE, exit codes) |
+| `tests/test_classification_job_clip_precheck.py` | CLIP precheck video-only skip, early fail, `requires_clip_inference` |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -60,6 +62,16 @@ $env:APP_PORT = "<chosen-free-port>"   # probe 8012-8024 for availability
 $env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 $env:VIOLET_RUN_REAL_E2E = "1"
 ```
+
+### HuggingFace Hub Offline Mode
+
+If `HTTP_PROXY` / `HTTPS_PROXY` is set in the environment (e.g. for GFW bypass), HuggingFace Hub metadata requests may fail even when the CLIP model is already cached locally. Set `HF_HUB_OFFLINE=1` to skip all Hub network requests and use only the local cache:
+
+```powershell
+$env:HF_HUB_OFFLINE = "1"
+```
+
+This is recommended for all test/pilot runs where the CLIP model has already been downloaded. See `docs/medium-pilot-workflow.md` § 3.1 for full details.
 
 ### Prerequisites
 
@@ -123,7 +135,7 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py -v
 ```
 
 ### Smoke Validation (Tier 1)
@@ -212,4 +224,4 @@ npx playwright test tests/e2e/fixture-import.spec.ts --project=edge
 3. **Read-only fixtures** — The VioletTestFixture directory is never modified by tests. Tests only read and stat files.
 4. **Gating** — E2E tests are gated by `VIOLET_RUN_REAL_E2E=1` so they never run during normal CI or `npx playwright test` without explicit opt-in.
 5. **No destructive defaults** — Destructive E2E operations require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` in addition to `confirm_phrase` and `dry_run=false`.
-6. **CLIP is optional** — Core PR validation must not require a 350 MB CLIP model download. CLIP-dependent tests should be gated or skipped when the model is unavailable.
+6. **CLIP is optional** — Core PR validation must not require a 350 MB CLIP model download. CLIP-dependent tests should be gated or skipped when the model is unavailable. The CLIP preflight script (`scripts/check_clip_model_ready.py`) is **cache-only by default** — it forces `HF_HUB_OFFLINE=1` and never downloads models. Video-only classification jobs skip CLIP inference entirely and do not require CLIP readiness.

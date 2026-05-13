@@ -22,6 +22,29 @@ Each pilot tier uses a dedicated database and storage root, completely separate 
 | Storage | `C:\Users\kyloris\VioletStorage\medium` |
 | Port | dynamic probe 8012-8024 (via `APP_PORT` env var) |
 | Env | `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test_medium` |
+| HF cache | `HF_HUB_OFFLINE=1` — use local model cache only (see § 3.1) |
+
+### 3.1 HuggingFace Hub Offline Mode and Proxy Considerations
+
+**Problem:** The CLIP model (~350 MB) is downloaded from HuggingFace Hub on first use. In proxy environments (e.g. `HTTP_PROXY` / `HTTPS_PROXY` set for GFW bypass), `huggingface_hub` may fail on metadata checks even when the model is already cached locally — the proxy routes the Hub request through an external relay that may time out or return SSL errors.
+
+**Solution:** Set `HF_HUB_OFFLINE=1` in the server environment. This tells `huggingface_hub` to use only the local cache and skip all network requests. The model must have been downloaded at least once before enabling this flag.
+
+```powershell
+# Add to your session before starting the server
+$env:HF_HUB_OFFLINE = "1"
+```
+
+**When to use:**
+- Always during medium-pilot tiers (model should already be cached from Phase 3.1+)
+- Any environment where `HTTP_PROXY` / `HTTPS_PROXY` is set and HuggingFace Hub requests fail
+- Air-gapped or restricted-network deployments
+
+**When NOT to use:**
+- First-time model download (the model must be cached locally first)
+- Updating to a new model version (disable temporarily to fetch the new version)
+
+**Proxy vs localhost conflict:** External services (HuggingFace, OpenAI) need the proxy; localhost server identity checks must NOT use the proxy. The identity check script (`scripts/check_test_server_identity.py`) sets `session.trust_env = False` to disable proxy inheritance for localhost calls. `HF_HUB_OFFLINE=1` sidesteps the HuggingFace proxy issue entirely by avoiding network calls.
 
 ## 4. Dry-Run First (mandatory)
 
@@ -75,8 +98,10 @@ Complete ALL items before executing any tier:
 >
 > **Error semantics:** The following are tracked as **errors** (cause non-zero exit, block preflight): stat failures on individual files (`stat_errors`), directory traversal errors (permission denied on subdirectories), and non-existent dataset path. The following are NOT errors: unsupported file types, hidden/system files, duplicate files — these are expected in mixed datasets and do not block preflight.
 
-- [ ] 9. Server started on dynamic port (probe 8012–8024)
-- [ ] 10. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
+- [ ] 9. `HF_HUB_OFFLINE=1` set in session (see § 3.1 — ensures CLIP uses local cache only, avoids proxy/network failures)
+- [ ] 10. CLIP model readiness verified: `& "$PY" scripts/check_clip_model_ready.py` exits 0 (model cached and loadable). This script is **cache-only by default** — it forces `HF_HUB_OFFLINE=1` internally and never downloads models, regardless of your environment. Note: video-only jobs do not require CLIP readiness (they skip CLIP inference entirely).
+- [ ] 11. Server started on dynamic port (probe 8012–8024)
+- [ ] 12. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
 
 ```powershell
 $expectedSha = (git rev-parse --short HEAD)
@@ -94,13 +119,13 @@ $expectedRoot = (Get-Location).Path
 
 If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, git SHA, and Python executable. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
 
-- [ ] 11. Database backup taken (custom archive format):
+- [ ] 13. Database backup taken (custom archive format):
 
 ```powershell
 pg_dump -Fc -f backup_before_tier_N.dump blombooru_test_medium
 ```
 
-- [ ] 12. Dry-run import completed and results reviewed
+- [ ] 14. Dry-run import completed and results reviewed
 
 ## 8. Pass / Fail Criteria
 

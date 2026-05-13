@@ -104,6 +104,61 @@ def run_classification_job(job_id: int) -> None:
             db.commit()
             return
 
+        # ── CLIP readiness pre-check ──────────────────────────────────
+        # When classification method is 'clip', verify the model is
+        # loadable BEFORE entering the per-item loop.  Without this,
+        # a missing/corrupted CLIP model causes every single item to
+        # fail individually — the first failure triggers a 300-second
+        # cooldown (CLIPClassifier._LOAD_COOLDOWN_SECONDS), and all
+        # remaining items silently fail with the cooldown error.
+        # Failing fast here gives a clear, single error message.
+        #
+        # Skip the pre-check when NO candidate actually requires CLIP
+        # inference (e.g. video-only jobs).  The per-item skip condition
+        # is defined in content_classifier.requires_clip_inference().
+        _needs_clip = False
+        if settings.CONTENT_CLASSIFICATION_METHOD == "clip":
+            from ..services.content_classifier import requires_clip_inference
+            clip_candidates = (
+                db.query(Media)
+                .filter(Media.id.in_(media_ids))
+                .all()
+            )
+            _needs_clip = any(requires_clip_inference(m) for m in clip_candidates)
+
+        if _needs_clip:
+            try:
+                from .clip_classifier import CLIPClassifier
+                _clip = CLIPClassifier()
+                if not _clip.ensure_loaded():
+                    err = getattr(_clip, "_load_error", None) or "CLIP model not loadable"
+                    job.status = "failed"
+                    job.finished_at = datetime.now(timezone.utc)
+                    job.error_message = (
+                        f"CLIP readiness pre-check failed: {err}. "
+                        "Run 'python scripts/check_clip_model_ready.py' to diagnose. "
+                        "If the model is cached, set HF_HUB_OFFLINE=1 to avoid network issues."
+                    )
+                    logger.warning(
+                        "Classification job %d: CLIP pre-check failed — %s",
+                        job_id, err,
+                    )
+                    db.commit()
+                    return
+            except ImportError as e:
+                job.status = "failed"
+                job.finished_at = datetime.now(timezone.utc)
+                job.error_message = (
+                    f"CLIP pre-check import error: {e}. "
+                    "Ensure CLIP dependencies (onnxruntime, numpy, Pillow) are installed."
+                )
+                logger.warning(
+                    "Classification job %d: CLIP import failed — %s",
+                    job_id, e,
+                )
+                db.commit()
+                return
+
         items_since_flush = 0
         failed_items: List[Dict[str, Any]] = []
 

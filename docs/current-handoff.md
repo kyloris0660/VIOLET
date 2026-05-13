@@ -540,6 +540,36 @@ Closed deferred items from Phase 3.2b and designed the medium-scale pilot workfl
 | `docs/config-audit-phase3.2b.md` | §1.7 naming inconsistency → fixed |
 | `docs/test-workflow.md` | Added tag-localization spec, LLM gate docs |
 
+### Phase 3.2f — Model / Proxy Runtime Hardening
+
+Hardened CLIP model loading, proxy bypass, and preflight tooling:
+
+- **Localhost proxy bypass**: `scripts/check_test_server_identity.py` now sets `session.trust_env = False` to prevent `HTTP_PROXY`/`HTTPS_PROXY` env vars from routing localhost identity checks through an external proxy. Unit tests added in `tests/test_check_server_identity_script.py`.
+- **`HF_HUB_OFFLINE=1` documentation**: Documented across `docs/medium-pilot-workflow.md`, `docs/test-workflow.md`, and this file. Required for all test/pilot runs where the CLIP model is already cached locally.
+- **CLIP preflight script**: `scripts/check_clip_model_ready.py` — standalone preflight check that verifies the CLIP model is cached locally and loadable. Returns structured JSON result (`ready`, `model_info`, `error`, `elapsed_ms`, `hf_hub_offline`, `cache_only`). Resets singleton failure state before load attempt. **Cache-only by default** — forces `HF_HUB_OFFLINE=1` internally before loading the model and restores the previous value afterward; never triggers network downloads. 24 unit tests in `tests/test_check_clip_model_ready.py`.
+- **CLIP early-fail in classification jobs**: `classification_job_service.py` now performs a CLIP readiness pre-check before the per-item processing loop. Without this, a missing/corrupted CLIP model causes every single item to fail individually — the first failure triggers `CLIPClassifier._LOAD_COOLDOWN_SECONDS` (300 seconds), and all remaining items silently fail with the cooldown error. The early-fail check prevents this cascade by testing CLIP once and failing the entire job with a clear error message and diagnostic hints.
+- **Video-only jobs skip CLIP precheck**: The precheck now queries actual candidate `Media` objects and uses `requires_clip_inference()` (from `content_classifier.py`) to determine if any candidate needs CLIP. Video-only jobs (`FileTypeEnum.video`) bypass the CLIP readiness check entirely, so they succeed even when CLIP is unavailable. Mixed jobs (video + image) still fail early if CLIP cannot load. 7 regression tests in `tests/test_classification_job_clip_precheck.py`.
+- **CLIPClassifier cooldown behavior**: `clip_classifier.py` has a 300-second cooldown after `ensure_loaded()` fails. During cooldown, all subsequent `ensure_loaded()` calls return `False` immediately without retrying. This protects against repeated expensive load attempts but causes silent cascading failures in batch jobs. The new pre-check avoids this by failing the job before entering the loop.
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `scripts/check_test_server_identity.py` | Localhost proxy bypass (`trust_env=False`) |
+| `scripts/check_clip_model_ready.py` | CLIP model preflight check (cache-only default) |
+| `tests/test_check_clip_model_ready.py` | 24 unit tests for CLIP preflight (cache-only, HF_HUB_OFFLINE, exit codes) |
+| `tests/test_check_server_identity_script.py` | Tests for identity script proxy bypass |
+| `tests/test_classification_job_clip_precheck.py` | 7 regression tests: video-only skip, early fail, `requires_clip_inference` |
+| `backend/app/services/classification_job_service.py` | Conditional CLIP pre-check (video-only skip via `requires_clip_inference`) |
+| `backend/app/services/content_classifier.py` | `requires_clip_inference()` helper (public API) |
+| `docs/medium-pilot-workflow.md` | Updated preflight checklist (CLIP cache-only, video-only note) |
+
+### Known Observation: Stale Job Recovery at Startup
+
+All four job types (scan, AI tag, translation, classification) have stale recovery at application startup (`main.py` lines 68–84). On startup, any jobs left in `pending`/`running`/`cancelling` status from an unclean shutdown are marked as `interrupted` with an error message. This is a document-only observation — no cleanup or mutation is needed.
+
+**Phase 3.2g awareness:** If the `blombooru_test_medium` database contains stale `interrupted` AI tagging jobs from prior pilot runs, these are expected artifacts of the startup recovery mechanism. They do not indicate data corruption and should NOT be cleaned up or reset. Future phases that re-run pilot tiers should expect to see these jobs in the history. The `only_without_ai_tags` filter on new AI tagging jobs ensures already-tagged media from interrupted jobs is not re-processed unnecessarily.
+
 ## What Has NOT Been Built
 
 - No filesystem watcher or scheduled scan (Phase 4)
@@ -595,6 +625,9 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Medium-scale pilot preparation, env documentation, LLM gate unification
 - Medium-scale pilot workflow designed in `docs/medium-pilot-workflow.md` (execution is a separate phase)
 
+**Phase 3.2f — in progress (PR [#38](https://github.com/kyloris0660/AnimeLocalBooru/pull/38)):**
+- Model / proxy runtime hardening: localhost proxy bypass, CLIP preflight (cache-only default), CLIP early-fail in classification jobs, video-only CLIP skip via `requires_clip_inference()`, 24+7 unit/regression tests
+
 **Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.2b):
 
 1. Filesystem watcher or periodic cron-style scan
@@ -621,6 +654,8 @@ The next development phase should include a developer/service control panel:
 ```
 
 This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH=C:\Users\kyloris\Pictures\VioletTestFixture`, and `APP_PORT=8001`. For E2E runs, agents override `VIOLET_BASE_URL` and `VIOLET_RUN_REAL_E2E` in the current session.
+
+**HuggingFace Hub Offline Mode:** Set `HF_HUB_OFFLINE=1` when the CLIP model is already cached locally. This prevents HuggingFace Hub metadata network requests from failing in proxy environments. Required for medium-pilot tiers. See `docs/medium-pilot-workflow.md` § 3.1.
 
 ### Test Server
 

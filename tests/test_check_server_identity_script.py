@@ -176,3 +176,73 @@ class TestEdgeCases:
         """Empty string should produce cwd-based result (abspath of '')."""
         result = normalize_executable_path("")
         assert os.path.isabs(result)
+
+
+# ---------------------------------------------------------------------------
+# 6. Proxy bypass — session.trust_env must be False for localhost calls
+# ---------------------------------------------------------------------------
+
+class TestProxyBypass:
+    """The identity-check script creates a requests.Session() that must NOT
+    inherit proxy environment variables.  Routing localhost calls through an
+    external proxy causes spurious connection failures (discovered during
+    Phase 3.2f medium-pilot)."""
+
+    def test_session_trust_env_false_in_main(self):
+        """Verify that main() creates a session with trust_env = False.
+
+        We patch requests.Session to capture the instance and inspect it
+        after main() exits (via SystemExit from argparse or from the
+        connection-failure path).
+        """
+        captured_sessions: list = []
+        _OrigSession = __import__("requests").Session
+
+        class _SpySession(_OrigSession):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                captured_sessions.append(self)
+
+        with patch("requests.Session", _SpySession), \
+             patch("sys.argv", ["prog", "--base-url", "http://127.0.0.1:9999"]):
+            try:
+                _mod.main()
+            except SystemExit:
+                pass  # main calls sys.exit on connection failure — expected
+
+        assert len(captured_sessions) >= 1, "main() should create at least one Session"
+        for sess in captured_sessions:
+            assert sess.trust_env is False, (
+                "Session.trust_env must be False to prevent proxy interference "
+                "with localhost identity checks"
+            )
+
+    def test_session_no_proxy_env_leaks(self):
+        """Even when HTTP_PROXY / HTTPS_PROXY are set, the session must not
+        use them for localhost calls (trust_env = False achieves this)."""
+        captured_sessions: list = []
+        _OrigSession = __import__("requests").Session
+
+        class _SpySession(_OrigSession):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                captured_sessions.append(self)
+
+        proxy_env = {
+            "HTTP_PROXY": "http://127.0.0.1:7897",
+            "HTTPS_PROXY": "http://127.0.0.1:7897",
+            "http_proxy": "http://127.0.0.1:7897",
+            "https_proxy": "http://127.0.0.1:7897",
+        }
+
+        with patch.dict(os.environ, proxy_env, clear=False), \
+             patch("requests.Session", _SpySession), \
+             patch("sys.argv", ["prog", "--base-url", "http://127.0.0.1:9999"]):
+            try:
+                _mod.main()
+            except SystemExit:
+                pass
+
+        assert len(captured_sessions) >= 1
+        for sess in captured_sessions:
+            assert sess.trust_env is False

@@ -18,6 +18,27 @@ from ..models import Media, blombooru_media_tags
 logger = logging.getLogger(__name__)
 
 
+def requires_clip_inference(media: "Media") -> bool:
+    """Return True if this media item would require CLIP model inference.
+
+    Mirrors the skip conditions in ``classify_media`` / ``_classify_clip``:
+
+    * **Locked media** — ``content_class_locked is True`` causes an early
+      return ("skipped: locked") *before* any classifier runs, so CLIP is
+      never invoked.
+    * **Video files** — ``_classify_clip`` returns a skip result for
+      ``FileTypeEnum.video`` without loading the CLIP model.
+
+    All other file types (image, gif, etc.) with an unlocked content class
+    need CLIP inference when the classification method is "clip".
+    """
+    if getattr(media, "content_class_locked", False):
+        return False
+    if media.file_type == FileTypeEnum.video:
+        return False
+    return True
+
+
 def _resolve_media_file(media: Media) -> Optional[Path]:
     """Resolve the on-disk path for a media item."""
     file_path = settings.resolve_storage_path(media.path)
