@@ -474,6 +474,15 @@ class Settings:
         return val.lower() in ("true", "1", "yes")
 
     @property
+    def AI_TAGGING_AUTO_LOCALIZATION(self) -> bool:
+        """When False, AI tagging jobs will NOT auto-trigger tag localization/translation.
+        Default: True (preserves existing behavior).
+        Set AI_TAGGING_AUTO_LOCALIZATION=false to disable the side-effect for
+        controlled pilot runs where localization should be managed separately."""
+        val = os.getenv("AI_TAGGING_AUTO_LOCALIZATION", "true")
+        return val.lower() in ("true", "1", "yes")
+
+    @property
     def TAG_TRANSLATION_LLM_ENABLED(self) -> bool:
         val = os.getenv("TAG_TRANSLATION_LLM_ENABLED", "false")
         return val.lower() in ("true", "1", "yes")

@@ -253,9 +253,17 @@ def _schedule_localization(job: AITagJob, new_tag_names: List[str]) -> None:
 
     If the background worker is running, triggers an immediate run.
     Falls back to the legacy schedule_auto_translate for compatibility.
+
+    Gated by settings.AI_TAGGING_AUTO_LOCALIZATION — when False, localization
+    is skipped entirely so pilot/controlled runs don't trigger LLM side-effects.
     """
     if not new_tag_names or job.dry_run:
         job.localization_status = "skipped_dry_run" if job.dry_run else "skipped_no_new_tags"
+        return
+
+    if not settings.AI_TAGGING_AUTO_LOCALIZATION:
+        job.localization_status = "skipped_auto_localization_disabled"
+        logger.info(f"AI tag job {job.id}: auto-localization disabled (AI_TAGGING_AUTO_LOCALIZATION=false), skipping")
         return
 
     unique_names = list(set(new_tag_names))

@@ -26,6 +26,12 @@ class CreateAITagJobRequest(BaseModel):
     dry_run: bool = False
     only_without_ai_tags: bool = True
     force_suggestions: bool = False
+    content_class_filter: Optional[List[str]] = Field(
+        default=None,
+        description="Filter media by content_class (e.g. ['anime', 'illustration']). "
+                    "Only media with matching content_class will be included. "
+                    "None means no filtering (all classes)."
+    )
 
 
 def _serialize_ai_job(job: AITagJob) -> dict:
@@ -109,9 +115,46 @@ async def create_ai_tag_job(
     if body.media_ids is None and body.max_items > hard_limit:
         body.max_items = hard_limit
 
+    # Pre-filter by content_class if requested (resolve to explicit media_ids)
+    effective_media_ids = body.media_ids
+    if body.content_class_filter:
+        if effective_media_ids is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot combine media_ids with content_class_filter. Use one or the other.",
+            )
+        from ...models import Media
+        from ...enums import ContentClassEnum
+        valid_classes = []
+        for cc in body.content_class_filter:
+            try:
+                valid_classes.append(ContentClassEnum(cc))
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid content_class value: {cc!r}. "
+                           f"Valid values: {[e.value for e in ContentClassEnum]}",
+                )
+        query = db.query(Media.id).filter(Media.content_class.in_(valid_classes))
+        if body.only_without_ai_tags:
+            from ...models import blombooru_media_tags
+            ai_tagged = (
+                db.query(blombooru_media_tags.c.media_id)
+                .filter(blombooru_media_tags.c.source == "ai_wd")
+                .distinct()
+                .subquery()
+            )
+            query = query.filter(~Media.id.in_(ai_tagged))
+        query = query.order_by(Media.id.asc())
+        effective_media_ids = [row[0] for row in query.all()]
+        logger.info(
+            f"AI tagging content_class_filter={body.content_class_filter}: "
+            f"resolved {len(effective_media_ids)} media IDs"
+        )
+
     job = _create_job(
         db,
-        media_ids=body.media_ids,
+        media_ids=effective_media_ids,
         max_items=body.max_items,
         dry_run=body.dry_run,
         only_without_ai_tags=body.only_without_ai_tags,

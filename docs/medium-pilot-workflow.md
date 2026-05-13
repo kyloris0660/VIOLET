@@ -68,11 +68,52 @@ The following are **recommended starting points** for each pilot tier. Adjust ba
 
 1. Import (local library scan)
 2. Content classification (CLIP or heuristic)
-3. AI tagging (WDv3)
-4. Tag translation (LLM)
+3. AI tagging (WDv3) — use `content_class_filter` to scope by content class (see § 6.1)
+4. Tag translation (LLM) — only if `AI_TAGGING_AUTO_LOCALIZATION=true` (see § 6.2)
 5. Entity alias resolution (LLM, if enabled)
 
 Each step's output feeds the next. Do not skip steps or run them out of order.
+
+### 6.1 AI Tagging Scope Control (`content_class_filter`)
+
+The `POST /api/admin/ai-tagging/jobs` endpoint accepts a `content_class_filter` parameter to limit AI tagging to specific content classes. This prevents tagging non-anime media with anime-specific models (WDv3).
+
+```json
+{
+  "content_class_filter": ["anime", "illustration"],
+  "max_items": 50,
+  "only_without_ai_tags": true
+}
+```
+
+Valid values: `"anime"`, `"illustration"`, `"non_anime"`, `"unknown"`.
+
+**Rules:**
+- `content_class_filter` and `media_ids` are mutually exclusive — the API returns HTTP 400 if both are provided.
+- `null` (default) means no filtering — all content classes are eligible.
+- The filter resolves to explicit media IDs at the API route level, so the background job service is unchanged.
+- `only_without_ai_tags` is applied *in addition to* the content class filter.
+
+**Recommended pilot usage:** Run classification first (step 2), then tag only `["anime", "illustration"]` to avoid wasting WDv3 inference on photos.
+
+### 6.2 Localization Side-Effect Control (`AI_TAGGING_AUTO_LOCALIZATION`)
+
+After an AI tagging job completes, the system auto-triggers tag localization (LLM translation). This can be disabled for controlled pilot runs:
+
+```powershell
+$env:AI_TAGGING_AUTO_LOCALIZATION = "false"
+```
+
+When disabled, `_schedule_localization` sets `localization_status = "skipped_auto_localization_disabled"` and returns without invoking LLM.
+
+**Default:** `true` (backward compatible — preserves existing auto-localization behavior).
+
+**When to disable:**
+- Controlled pilot runs where LLM costs must be managed separately
+- Debugging AI tagging without localization side-effects
+- Any run where tag translation should be triggered manually later
+
+**Incident context (Phase 3.2g):** During the first medium-pilot AI tagging run, auto-localization queued 306 LLM translations via OpenAI despite the phase prohibiting LLM usage. This flag was added to prevent such unintended side-effects.
 
 ## 7. Preflight Checklist
 
@@ -100,8 +141,9 @@ Complete ALL items before executing any tier:
 
 - [ ] 9. `HF_HUB_OFFLINE=1` set in session (see § 3.1 — ensures CLIP uses local cache only, avoids proxy/network failures)
 - [ ] 10. CLIP model readiness verified: `& "$PY" scripts/check_clip_model_ready.py` exits 0 (model cached and loadable). This script is **cache-only by default** — it forces `HF_HUB_OFFLINE=1` internally and never downloads models, regardless of your environment. Note: video-only jobs do not require CLIP readiness (they skip CLIP inference entirely).
-- [ ] 11. Server started on dynamic port (probe 8012–8024)
-- [ ] 12. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
+- [ ] 11. **Localization side-effect gate set** (if not running tag translation this tier): `$env:AI_TAGGING_AUTO_LOCALIZATION = "false"` — prevents AI tagging from auto-triggering LLM translations. See § 6.2. Omit this (or set `"true"`) if you *want* auto-localization.
+- [ ] 12. Server started on dynamic port (probe 8012–8024)
+- [ ] 13. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
 
 ```powershell
 $expectedSha = (git rev-parse --short HEAD)
@@ -119,13 +161,13 @@ $expectedRoot = (Get-Location).Path
 
 If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, git SHA, and Python executable. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
 
-- [ ] 13. Database backup taken (custom archive format):
+- [ ] 14. Database backup taken (custom archive format):
 
 ```powershell
 pg_dump -Fc -f backup_before_tier_N.dump blombooru_test_medium
 ```
 
-- [ ] 14. Dry-run import completed and results reviewed
+- [ ] 15. Dry-run import completed and results reviewed
 
 ## 8. Pass / Fail Criteria
 
@@ -168,7 +210,7 @@ Errors are files that fail processing with an exception or timeout. The followin
 All backups use PostgreSQL custom archive format (`-Fc`), which supports `pg_restore` with `--exit-on-error` and `--single-transaction` for fail-fast semantics. Plain SQL dumps (`pg_dump > file.sql`) are **not** used because `psql -f` cannot guarantee atomic rollback.
 
 ```powershell
-# Backup — run BEFORE each tier import (see Preflight Checklist item 11)
+# Backup — run BEFORE each tier import (see Preflight Checklist item 14)
 pg_dump -Fc -f backup_before_tier_N.dump blombooru_test_medium
 ```
 
@@ -230,6 +272,7 @@ Pilot operations NEVER touch:
 
 ## 10. LLM Cost Control
 
+- `AI_TAGGING_AUTO_LOCALIZATION=false` disables automatic tag translation after AI tagging jobs (see § 6.2) — **recommended for all pilot tiers** to keep LLM costs predictable
 - `TAG_TRANSLATION_BACKGROUND_DAILY_LIMIT` caps daily LLM API calls per tier (see Section 5)
 - `ENTITY_ALIAS_MAX_PER_RUN` limits alias resolution calls per execution
 - Monitor LLM provider dashboard for actual token usage
