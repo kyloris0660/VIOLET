@@ -112,7 +112,21 @@ def run_classification_job(job_id: int) -> None:
         # cooldown (CLIPClassifier._LOAD_COOLDOWN_SECONDS), and all
         # remaining items silently fail with the cooldown error.
         # Failing fast here gives a clear, single error message.
+        #
+        # Skip the pre-check when NO candidate actually requires CLIP
+        # inference (e.g. video-only jobs).  The per-item skip condition
+        # is defined in content_classifier.requires_clip_inference().
+        _needs_clip = False
         if settings.CONTENT_CLASSIFICATION_METHOD == "clip":
+            from ..services.content_classifier import requires_clip_inference
+            clip_candidates = (
+                db.query(Media)
+                .filter(Media.id.in_(media_ids))
+                .all()
+            )
+            _needs_clip = any(requires_clip_inference(m) for m in clip_candidates)
+
+        if _needs_clip:
             try:
                 from .clip_classifier import CLIPClassifier
                 _clip = CLIPClassifier()

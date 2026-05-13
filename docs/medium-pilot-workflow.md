@@ -99,7 +99,7 @@ Complete ALL items before executing any tier:
 > **Error semantics:** The following are tracked as **errors** (cause non-zero exit, block preflight): stat failures on individual files (`stat_errors`), directory traversal errors (permission denied on subdirectories), and non-existent dataset path. The following are NOT errors: unsupported file types, hidden/system files, duplicate files — these are expected in mixed datasets and do not block preflight.
 
 - [ ] 9. `HF_HUB_OFFLINE=1` set in session (see § 3.1 — ensures CLIP uses local cache only, avoids proxy/network failures)
-- [ ] 10. CLIP model readiness verified: `& "$PY" scripts/check_clip_model_ready.py` exits 0 (model cached and loadable)
+- [ ] 10. CLIP model readiness verified: `& "$PY" scripts/check_clip_model_ready.py` exits 0 (model cached and loadable). This script is **cache-only by default** — it forces `HF_HUB_OFFLINE=1` internally and never downloads models, regardless of your environment. Note: video-only jobs do not require CLIP readiness (they skip CLIP inference entirely).
 - [ ] 11. Server started on dynamic port (probe 8012–8024)
 - [ ] 12. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
 

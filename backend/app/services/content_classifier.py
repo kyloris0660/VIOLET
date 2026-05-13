@@ -18,6 +18,16 @@ from ..models import Media, blombooru_media_tags
 logger = logging.getLogger(__name__)
 
 
+def requires_clip_inference(media: "Media") -> bool:
+    """Return True if this media item would require CLIP model inference.
+
+    Mirrors the skip condition in ``_classify_clip``: video files are
+    handled without loading the CLIP model, so they do not require it.
+    All other file types (image, gif, etc.) need CLIP inference.
+    """
+    return media.file_type != FileTypeEnum.video
+
+
 def _resolve_media_file(media: Media) -> Optional[Path]:
     """Resolve the on-disk path for a media item."""
     file_path = settings.resolve_storage_path(media.path)
