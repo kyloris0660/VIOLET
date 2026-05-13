@@ -2,6 +2,8 @@
 
 Verifies that:
 - Video-only jobs skip the CLIP pre-check (P2 fix).
+- Locked-media-only jobs skip the CLIP pre-check (P2 fix).
+- Mixed locked+video jobs skip the CLIP pre-check.
 - Image-containing jobs fail early when CLIP is unavailable.
 - Mixed jobs (image + video) still fail early.
 - Successful CLIP loads proceed normally.
@@ -338,3 +340,143 @@ class TestRequiresClipInference:
 
         media = FakeMedia(3, FileTypeEnum.gif)
         assert requires_clip_inference(media) is True
+
+    def test_locked_image_does_not_require_clip(self):
+        """Locked media is skipped before reaching any classifier — no CLIP needed."""
+        from app.enums import FileTypeEnum
+        from app.services.content_classifier import requires_clip_inference
+
+        media = FakeMedia(4, FileTypeEnum.image)
+        media.content_class_locked = True
+        assert requires_clip_inference(media) is False
+
+    def test_locked_video_does_not_require_clip(self):
+        """Locked video — both conditions exclude CLIP."""
+        from app.enums import FileTypeEnum
+        from app.services.content_classifier import requires_clip_inference
+
+        media = FakeMedia(5, FileTypeEnum.video)
+        media.content_class_locked = True
+        assert requires_clip_inference(media) is False
+
+    def test_unlocked_image_requires_clip(self):
+        """Unlocked image needs CLIP inference."""
+        from app.enums import FileTypeEnum
+        from app.services.content_classifier import requires_clip_inference
+
+        media = FakeMedia(6, FileTypeEnum.image)
+        media.content_class_locked = False
+        assert requires_clip_inference(media) is True
+
+
+class TestClipPrecheckLockedMedia:
+    """P2 regression: locked-media-only jobs must NOT fail at CLIP precheck."""
+
+    def test_locked_images_only_skip_clip_precheck(self):
+        """Job with only locked image candidates + CLIP unavailable must succeed."""
+        from app.enums import FileTypeEnum
+
+        job = FakeJob(id=50, media_ids=[1, 2, 3])
+        locked_images = []
+        for i in [1, 2, 3]:
+            m = FakeMedia(i, FileTypeEnum.image)
+            m.content_class_locked = True
+            locked_images.append(m)
+
+        db = FakeDB(job, locked_images)
+
+        with patch("app.database.SessionLocal", return_value=db), \
+             patch("app.config.settings") as mock_settings, \
+             patch("app.services.content_classifier.classify_media") as mock_classify:
+            mock_settings.CONTENT_CLASSIFICATION_METHOD = "clip"
+            mock_settings.CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS = 1000
+
+            # classify_media returns skip for locked items
+            mock_classify.return_value = {
+                "skipped": True,
+                "reason": "locked",
+            }
+
+            from app.services.classification_job_service import run_classification_job
+            run_classification_job(50)
+
+        # Job should complete, NOT fail at CLIP pre-check
+        assert job.status == "completed"
+        assert job.error_message is None or "CLIP readiness" not in (job.error_message or "")
+
+    def test_locked_images_plus_video_skip_clip_precheck(self):
+        """Mixed job: locked images + videos + CLIP unavailable must succeed."""
+        from app.enums import FileTypeEnum
+
+        job = FakeJob(id=51, media_ids=[10, 11, 12])
+        media_items = []
+
+        m1 = FakeMedia(10, FileTypeEnum.image)
+        m1.content_class_locked = True
+        media_items.append(m1)
+
+        m2 = FakeMedia(11, FileTypeEnum.video)
+        media_items.append(m2)
+
+        m3 = FakeMedia(12, FileTypeEnum.image)
+        m3.content_class_locked = True
+        media_items.append(m3)
+
+        db = FakeDB(job, media_items)
+
+        with patch("app.database.SessionLocal", return_value=db), \
+             patch("app.config.settings") as mock_settings, \
+             patch("app.services.content_classifier.classify_media") as mock_classify:
+            mock_settings.CONTENT_CLASSIFICATION_METHOD = "clip"
+            mock_settings.CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS = 1000
+
+            def fake_classify(db_session, media_id):
+                return {"skipped": True, "reason": "locked or video skip"}
+
+            mock_classify.side_effect = fake_classify
+
+            from app.services.classification_job_service import run_classification_job
+            run_classification_job(51)
+
+        assert job.status == "completed"
+        assert job.error_message is None or "CLIP readiness" not in (job.error_message or "")
+
+    def test_mixed_locked_and_unlocked_fails_when_clip_unavailable(self):
+        """At least one unlocked image + CLIP unavailable must fail early."""
+        from app.enums import FileTypeEnum
+
+        job = FakeJob(id=52, media_ids=[20, 21, 22])
+        media_items = []
+
+        m1 = FakeMedia(20, FileTypeEnum.image)
+        m1.content_class_locked = True
+        media_items.append(m1)
+
+        # This one is unlocked — requires CLIP
+        m2 = FakeMedia(21, FileTypeEnum.image)
+        m2.content_class_locked = False
+        media_items.append(m2)
+
+        m3 = FakeMedia(22, FileTypeEnum.video)
+        media_items.append(m3)
+
+        db = FakeDB(job, media_items)
+
+        mock_clip_instance = MagicMock()
+        mock_clip_instance.ensure_loaded.return_value = False
+        mock_clip_instance._load_error = "ONNX model not cached"
+        mock_clip_cls = MagicMock(return_value=mock_clip_instance)
+
+        with patch("app.database.SessionLocal", return_value=db), \
+             patch("app.config.settings") as mock_settings, \
+             patch.dict("sys.modules", {
+                 "app.services.clip_classifier": MagicMock(CLIPClassifier=mock_clip_cls),
+             }):
+            mock_settings.CONTENT_CLASSIFICATION_METHOD = "clip"
+            mock_settings.CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS = 1000
+
+            from app.services.classification_job_service import run_classification_job
+            run_classification_job(52)
+
+        assert job.status == "failed"
+        assert "CLIP readiness pre-check failed" in job.error_message
