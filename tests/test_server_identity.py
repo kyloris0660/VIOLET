@@ -252,8 +252,13 @@ class TestCheckScriptNormalizePath:
     def test_normalize_path_import(self):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
         from check_test_server_identity import normalize_path
-        # Basic identity: normalizing a simple absolute path returns something non-empty
-        result = normalize_path("C:\\Users\\test")
+        import platform
+        # Use a platform-native absolute path for the basic identity test
+        if platform.system() == "Windows":
+            test_path = "C:\\Users\\test"
+        else:
+            test_path = "/home/test"
+        result = normalize_path(test_path)
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -267,7 +272,13 @@ class TestCheckScriptNormalizePath:
     def test_normalize_path_trailing_separator(self):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
         from check_test_server_identity import normalize_path
-        # Path with trailing separator should normalize same as without
-        p1 = normalize_path("C:\\Users\\test")
-        p2 = normalize_path("C:\\Users\\test\\")
+        import platform
+        import os
+        # Use platform-native paths to avoid backslash interpretation on POSIX
+        if platform.system() == "Windows":
+            p1 = normalize_path("C:\\Users\\test")
+            p2 = normalize_path("C:\\Users\\test\\")
+        else:
+            p1 = normalize_path("/home/test")
+            p2 = normalize_path("/home/test/")
         assert p1 == p2

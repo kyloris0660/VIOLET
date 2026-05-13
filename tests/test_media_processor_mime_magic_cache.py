@@ -5,16 +5,22 @@ Validates that:
 - Missing magic does not retry or log on every file
 - Fallback chain (PIL -> mimetypes -> octet-stream) still works
 - Per-file detector.from_file() failures do not disable the detector
+- Detector instances are NOT shared across threads (thread-local)
+- Concurrent initialization does not expose half-initialized state
 """
 
 import builtins
 import logging
+import sys
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.app.utils.media_processor import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+
+from app.utils.media_processor import (
     _get_magic_detector,
     _reset_magic_cache,
     get_mime_type,
@@ -30,7 +36,7 @@ def _clean_magic_cache():
 
 
 # ---------------------------------------------------------------------------
-# 1. ModuleNotFoundError — import magic fails
+# 1. ModuleNotFoundError - import magic fails
 # ---------------------------------------------------------------------------
 class TestMagicImportMissing:
     """When python-magic is not installed (ModuleNotFoundError)."""
@@ -128,7 +134,8 @@ class TestMagicConstructionFailure:
 
         assert result1 is None
         assert result2 is None
-        # Magic() constructor called only once
+        # Magic() constructor called only once (during probe, which creates
+        # a test detector to verify libmagic works).
         assert mock_magic_module.Magic.call_count == 1
 
     def test_fallback_still_works_after_construction_failure(self, tmp_path):
@@ -148,16 +155,18 @@ class TestMagicConstructionFailure:
 
 
 # ---------------------------------------------------------------------------
-# 3. python-magic available — detector reused
+# 3. python-magic available - detector reused within same thread
 # ---------------------------------------------------------------------------
 class TestMagicAvailableAndCached:
-    """When python-magic is installed and working, detector is reused."""
+    """When python-magic is installed and working, detector is reused
+    within the same thread (thread-local)."""
 
-    def test_detector_created_once(self):
-        """magic.Magic(mime=True) is called exactly once across many probes."""
+    def test_detector_created_once_per_thread(self):
+        """Within a single thread, the detector is created once and reused."""
         mock_detector = MagicMock()
         mock_magic_module = MagicMock()
-        mock_magic_module.Magic.return_value = mock_detector
+        # First call during probe (test detector), second creates thread-local
+        mock_magic_module.Magic.side_effect = [MagicMock(), mock_detector]
 
         with patch.dict("sys.modules", {"magic": mock_magic_module}):
             d1 = _get_magic_detector()
@@ -167,26 +176,29 @@ class TestMagicAvailableAndCached:
         assert d1 is mock_detector
         assert d2 is mock_detector
         assert d3 is mock_detector
-        assert mock_magic_module.Magic.call_count == 1
+        # Magic() called twice: once during probe (test detector), once for
+        # the thread-local detector.
+        assert mock_magic_module.Magic.call_count == 2
 
     def test_detector_used_for_mime(self, tmp_path):
-        """get_mime_type() uses the cached detector's from_file()."""
+        """get_mime_type() uses the thread-local detector's from_file()."""
         f = tmp_path / "img.png"
         f.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
 
         mock_detector = MagicMock()
         mock_detector.from_file.return_value = "image/png"
-        mock_magic_module = MagicMock()
-        mock_magic_module.Magic.return_value = mock_detector
 
-        with patch.dict("sys.modules", {"magic": mock_magic_module}):
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             mime1 = get_mime_type(f)
             mime2 = get_mime_type(f)
 
         assert mime1 == "image/png"
         assert mime2 == "image/png"
-        # Magic() constructed once, from_file() called twice (once per file)
-        assert mock_magic_module.Magic.call_count == 1
+        # from_file() called twice (once per file)
         assert mock_detector.from_file.call_count == 2
 
 
@@ -213,11 +225,13 @@ class TestPerFileFailure:
             return "image/png"
 
         mock_detector.from_file.side_effect = _from_file
-        mock_magic_module = MagicMock()
-        mock_magic_module.Magic.return_value = mock_detector
 
-        with patch.dict("sys.modules", {"magic": mock_magic_module}):
-            mime_a = get_mime_type(file_a)  # fails → fallback
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
+            mime_a = get_mime_type(file_a)  # fails -> fallback
             mime_b = get_mime_type(file_b)  # should still use detector
 
         # file_b should get the magic result
@@ -229,7 +243,7 @@ class TestPerFileFailure:
 
 
 # ---------------------------------------------------------------------------
-# 5. Logging behavior — warning emitted once, not per file
+# 5. Logging behavior - warning emitted once, not per file
 # ---------------------------------------------------------------------------
 class TestLoggingBehavior:
     """Missing python-magic warning is logged once, not per file."""
@@ -264,10 +278,12 @@ class TestLoggingBehavior:
 
         mock_detector = MagicMock()
         mock_detector.from_file.side_effect = OSError("read error")
-        mock_magic_module = MagicMock()
-        mock_magic_module.Magic.return_value = mock_detector
 
-        with patch.dict("sys.modules", {"magic": mock_magic_module}):
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             with caplog.at_level(logging.WARNING):
                 get_mime_type(f)
 
@@ -276,6 +292,136 @@ class TestLoggingBehavior:
             if "python-magic failed for" in r.message
         ]
         assert len(per_file_msgs) == 1
+
+
+# ---------------------------------------------------------------------------
+# 6. Thread safety - detector NOT shared across threads
+# ---------------------------------------------------------------------------
+class TestThreadSafety:
+    """Detector instances are per-thread, never shared across threads."""
+
+    def test_each_thread_gets_own_detector(self):
+        """Two threads calling _get_magic_detector() receive different
+        Magic instances (thread-local isolation)."""
+        detectors_by_thread = {}
+        mock_magic_module = MagicMock()
+        # Each Magic() call returns a distinct mock
+        mock_magic_module.Magic.side_effect = lambda mime=True: MagicMock()
+
+        barrier = threading.Barrier(2)
+
+        def worker(tid):
+            d = _get_magic_detector()
+            detectors_by_thread[tid] = d
+            barrier.wait(timeout=5)
+
+        with patch.dict("sys.modules", {"magic": mock_magic_module}):
+            t1 = threading.Thread(target=worker, args=(1,))
+            t2 = threading.Thread(target=worker, args=(2,))
+            t1.start()
+            t2.start()
+            t1.join(timeout=10)
+            t2.join(timeout=10)
+
+        assert 1 in detectors_by_thread and 2 in detectors_by_thread
+        assert detectors_by_thread[1] is not detectors_by_thread[2], (
+            "Detectors must be per-thread, not globally shared"
+        )
+
+    def test_same_thread_reuses_detector(self):
+        """Within one thread, repeated calls return the same instance."""
+        mock_magic_module = MagicMock()
+        detector_instance = MagicMock()
+        # probe creates test detector, then thread-local creates the real one
+        mock_magic_module.Magic.side_effect = [MagicMock(), detector_instance]
+
+        with patch.dict("sys.modules", {"magic": mock_magic_module}):
+            d1 = _get_magic_detector()
+            d2 = _get_magic_detector()
+
+        assert d1 is d2 is detector_instance
+
+
+# ---------------------------------------------------------------------------
+# 7. Concurrent initialization - no half-initialized state
+# ---------------------------------------------------------------------------
+class TestConcurrentInitialization:
+    """Concurrent callers must not observe half-initialized availability state."""
+
+    def test_concurrent_probes_see_consistent_state(self):
+        """Multiple threads starting simultaneously all see the same
+        final availability result (no thread sees available=True while
+        another sees available=False for the same probe)."""
+        results = {}
+        num_threads = 4
+        barrier = threading.Barrier(num_threads)
+
+        mock_magic_module = MagicMock()
+        mock_magic_module.Magic.side_effect = lambda mime=True: MagicMock()
+
+        def worker(tid):
+            barrier.wait(timeout=5)  # synchronize start
+            d = _get_magic_detector()
+            results[tid] = d is not None
+
+        with patch.dict("sys.modules", {"magic": mock_magic_module}):
+            threads = [
+                threading.Thread(target=worker, args=(i,))
+                for i in range(num_threads)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=10)
+
+        # All threads must agree on availability
+        values = list(results.values())
+        assert len(values) == num_threads
+        assert all(v == values[0] for v in values), (
+            f"Inconsistent availability across threads: {results}"
+        )
+
+    def test_slow_probe_blocks_concurrent_callers(self):
+        """A slow first probe should block concurrent callers via the lock,
+        not let them see _MAGIC_PROBE_DONE=False and start a second probe."""
+        import app.utils.media_processor as mp
+
+        probe_count = 0
+        original_probe = mp._probe_magic
+
+        def slow_probe():
+            nonlocal probe_count
+            probe_count += 1
+            import time
+            time.sleep(0.1)  # simulate slow import
+            original_probe()
+
+        barrier = threading.Barrier(2)
+        results = {}
+
+        def worker(tid):
+            barrier.wait(timeout=5)
+            d = _get_magic_detector()
+            results[tid] = d
+
+        mock_magic_module = MagicMock()
+        mock_magic_module.Magic.side_effect = lambda mime=True: MagicMock()
+
+        with patch.dict("sys.modules", {"magic": mock_magic_module}), \
+             patch.object(mp, "_probe_magic", side_effect=slow_probe):
+            t1 = threading.Thread(target=worker, args=(1,))
+            t2 = threading.Thread(target=worker, args=(2,))
+            t1.start()
+            t2.start()
+            t1.join(timeout=10)
+            t2.join(timeout=10)
+
+        # _probe_magic should have been called at most once despite
+        # two threads racing.  (Due to double-checked locking, the second
+        # thread waits on the lock and finds _MAGIC_PROBE_DONE=True.)
+        assert probe_count <= 1, (
+            f"_probe_magic called {probe_count} times; expected at most 1"
+        )
 
 
 # ---------------------------------------------------------------------------
