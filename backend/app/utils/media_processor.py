@@ -1,14 +1,115 @@
 import hashlib
 import mimetypes
+import threading
 from pathlib import Path
 from typing import Optional, Tuple
 
 import cv2
-import magic
 from PIL import Image
 
 from ..schemas import FileTypeEnum
 from .logger import logger
+
+# ---------------------------------------------------------------------------
+# python-magic availability cache (thread-safe)
+# ---------------------------------------------------------------------------
+# python-magic (+ system libmagic) may not be installed.  We probe once on
+# first use and cache the *availability* result so that large scans don't pay
+# O(N) exception overhead or produce O(N) warning lines when the library is
+# missing.
+#
+# IMPORTANT — thread safety:
+#   magic.Magic instances are NOT safe to share across threads (libmagic uses
+#   internal buffers).  We therefore cache only whether python-magic is
+#   importable and functional, but store actual detector instances in a
+#   threading.local() so each thread gets its own Magic(mime=True).
+#
+# The probe itself is protected by _MAGIC_PROBE_LOCK so concurrent callers
+# cannot observe half-initialised state.
+_MAGIC_PROBE_LOCK = threading.Lock()
+_MAGIC_PROBE_DONE = False
+_MAGIC_AVAILABLE = False
+_MAGIC_MODULE = None          # cached reference to the ``magic`` module
+_MAGIC_UNAVAILABLE_REASON: str | None = None
+_MAGIC_THREAD_LOCAL = threading.local()
+
+
+def _probe_magic():
+    """Run the one-time probe to determine python-magic availability.
+
+    Must be called under ``_MAGIC_PROBE_LOCK``.  Sets the module-level
+    ``_MAGIC_PROBE_DONE``, ``_MAGIC_AVAILABLE``, ``_MAGIC_MODULE``, and
+    ``_MAGIC_UNAVAILABLE_REASON`` variables.
+    """
+    global _MAGIC_PROBE_DONE, _MAGIC_AVAILABLE, _MAGIC_MODULE, _MAGIC_UNAVAILABLE_REASON
+
+    try:
+        import magic as _magic_mod
+
+        # Verify that Magic(mime=True) actually works (libmagic present)
+        test_detector = _magic_mod.Magic(mime=True)
+        del test_detector  # discard — each thread creates its own
+
+        _MAGIC_AVAILABLE = True
+        _MAGIC_MODULE = _magic_mod
+    except Exception as exc:
+        _MAGIC_AVAILABLE = False
+        _MAGIC_MODULE = None
+        _MAGIC_UNAVAILABLE_REASON = str(exc)
+        logger.warning(
+            "python-magic unavailable; MIME detection will use "
+            "PIL/mimetypes fallbacks: %s",
+            exc,
+        )
+    finally:
+        _MAGIC_PROBE_DONE = True
+
+
+def _get_magic_detector():
+    """Return a thread-local ``magic.Magic(mime=True)`` instance, or *None*.
+
+    The availability probe runs at most once per process (lock-protected).
+    If python-magic is unavailable, all subsequent calls return *None*
+    immediately without retrying.  Each thread that needs a detector gets
+    its own instance via ``threading.local()``.
+    """
+    global _MAGIC_PROBE_DONE
+
+    if not _MAGIC_PROBE_DONE:
+        with _MAGIC_PROBE_LOCK:
+            # Double-checked locking: another thread may have completed
+            # the probe while we waited for the lock.
+            if not _MAGIC_PROBE_DONE:
+                _probe_magic()
+
+    if not _MAGIC_AVAILABLE:
+        return None
+
+    # Per-thread detector — never shared across threads.
+    detector = getattr(_MAGIC_THREAD_LOCAL, "detector", None)
+    if detector is None:
+        try:
+            detector = _MAGIC_MODULE.Magic(mime=True)
+            _MAGIC_THREAD_LOCAL.detector = detector
+        except Exception as exc:
+            logger.warning(
+                "python-magic per-thread detector creation failed: %s — "
+                "falling back to PIL/mimetypes",
+                exc,
+            )
+            return None
+    return detector
+
+
+def _reset_magic_cache():
+    """Reset the module-level magic cache (for testing only)."""
+    global _MAGIC_PROBE_DONE, _MAGIC_AVAILABLE, _MAGIC_MODULE, _MAGIC_UNAVAILABLE_REASON
+    _MAGIC_PROBE_DONE = False
+    _MAGIC_AVAILABLE = False
+    _MAGIC_MODULE = None
+    _MAGIC_UNAVAILABLE_REASON = None
+    # Clear thread-local detector for the calling thread.
+    _MAGIC_THREAD_LOCAL.__dict__.clear()
 
 
 def is_valid_mime_type(value: str) -> bool:
@@ -48,23 +149,25 @@ def get_mime_type(file_path: Path) -> str:
     3. mimetypes.guess_type — stdlib, extension-based (least reliable)
     4. ``application/octet-stream`` — safe ultimate fallback
     """
-    # --- 1. python-magic ---------------------------------------------------
-    try:
-        mime = magic.Magic(mime=True)
-        result = mime.from_file(str(file_path))
-        if result and is_valid_mime_type(result):
-            return result
-        logger.warning(
-            "python-magic returned invalid MIME for %s: %s — trying fallbacks",
-            file_path.name,
-            repr(result)[:200],
-        )
-    except Exception as exc:
-        logger.warning(
-            "python-magic failed for %s: %s — trying fallbacks",
-            file_path.name,
-            exc,
-        )
+    # --- 1. python-magic (cached probe) -------------------------------------
+    detector = _get_magic_detector()
+    if detector is not None:
+        try:
+            result = detector.from_file(str(file_path))
+            if result and is_valid_mime_type(result):
+                return result
+            logger.warning(
+                "python-magic returned invalid MIME for %s: %s — trying fallbacks",
+                file_path.name,
+                repr(result)[:200],
+            )
+        except Exception as exc:
+            # Per-file failure is fine — log and fall through to PIL/mimetypes.
+            logger.warning(
+                "python-magic failed for %s: %s — trying fallbacks",
+                file_path.name,
+                exc,
+            )
 
     # --- 2. PIL content sniff ----------------------------------------------
     try:

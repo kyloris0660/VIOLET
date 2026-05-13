@@ -88,7 +88,7 @@ All of the following conditions must be met:
 9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
 10. Do not touch iCloud paths or modify VioletTestFixture.
 11. If server startup fails, diagnose and report the exact error — do not skip E2E.
-12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, and `git_sha` match the current worktree/branch. **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, the server is stale or misconfigured — stop it, diagnose, and restart. Never skip E2E due to identity check failure.
+12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, and `storage_root` match the current worktree/branch. Use `--expected-storage-root` to verify storage root. **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, the server is stale or misconfigured — stop it, diagnose, and restart. Never skip E2E due to identity check failure.
 
 **Singleton server policy:** Only one agent-started test server may be running at a time per development session. Before starting a new server, verify no previous agent-started server is still running on any port. If a port conflict is detected, diagnose the conflict (PID, command line) — do not silently pick another port without investigating.
 

@@ -59,7 +59,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 **Tier 1 — Unit tests** (no external dependencies):
 
 ```powershell
-& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py tests/test_media_processor_mime_magic_cache.py -v
 ```
 
 | Test file | Coverage |
@@ -72,6 +72,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 | `tests/test_server_identity.py` | Server identity endpoint fields, Python runtime identity, no secrets exposed |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 | `tests/test_python_env_preflight.py` | Python/venv identity preflight: sys.executable match, JSON output, code-root check, no backend imports |
+| `tests/test_media_processor_mime_magic_cache.py` | python-magic availability caching, thread-local detectors, fallback chain, concurrent init safety |
 
 **Tier 2 — Fixture validation** (requires `VIOLET_TEST_FIXTURE_PATH`):
 
@@ -227,7 +228,7 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
 10. Do not touch iCloud paths or modify VioletTestFixture.
 11. If server startup fails, diagnose and report the exact error — do not skip E2E.
-12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, and `python_executable` match the current worktree/branch. Include `--expected-python "$PY"` to verify the server is running the approved venv Python (not the system Python). **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
+12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, `storage_root`, and `python_executable` match the current worktree/branch. Include `--expected-python "$PY"` to verify the server is running the approved venv Python (not the system Python). Always pass `--expected-storage-root` when a specific storage root is required (e.g. medium pilot). **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
 
 > **Windows venv shim note:** On Windows, `wmic` / `tasklist` may display the system Python path for venv-launched processes — this is a known Windows reporting artifact. The venv `python.exe` is a launcher shim; Windows records the underlying base interpreter in its process table. The server identity endpoint uses `sys.executable`, which correctly reports the venv path. Always use the `/api/system/server-identity` endpoint (via `check_test_server_identity.py --expected-python`) for Python identity verification, not OS-level process listings.
 
@@ -334,3 +335,22 @@ The server must run the PR branch/worktree code (i.e. CWD = worktree path).
 - Run destructive E2E tests without setting `VIOLET_ALLOW_DESTRUCTIVE_E2E=1`
 - Add new destructive endpoints without all 4 guardrails (env flag, confirm phrase, dry-run default, audit log)
 - Run the dev server from a worktree path when E2E tests will touch the shared DB
+
+### AI-only phase isolation (post-incident policy, 2026-05-13)
+
+**Context:** During Phase 3.2g.2, `AI_TAGGING_AUTO_LOCALIZATION=false` was set to prevent localization during AI-only tagging. However, the server-level background translation worker (`tag_translation_worker.py`) was not disabled and ran independently, adding 182 translations. The setting only gates `_schedule_localization()` inside AI tagging jobs — it does NOT disable the background worker.
+
+**Required env vars for AI-only phases** (AI tagging without any localization/translation side effects):
+
+```
+AI_TAGGING_AUTO_LOCALIZATION=false        # disable AI-job-triggered localization
+TAG_TRANSLATION_BACKGROUND_ENABLED=false  # disable background translation worker
+TAG_TRANSLATION_AUTO_ENABLED=false        # disable auto-translate on tag creation
+TAG_TRANSLATION_LLM_ENABLED=false         # disable LLM translation provider entirely
+```
+
+All four must be set. After server startup, verify the worker is stopped via `GET /api/admin/tag-localization/worker/status` — the response should show `running: false`. If any active or running translation jobs exist from prior phases, stop and report them before starting new AI tagging.
+
+**Admin auth mutation rule:** Agent-initiated admin password resets (e.g. via `psql UPDATE`) require explicit user consent in the chat before execution. Silent resets are prohibited. Document any auth mutation in the delivery report.
+
+**Reporting accuracy for tag deltas:** Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), `media_tags` row delta (net change in media↔tag associations), `tag row delta` (net change in Tag table rows), and `media_with_ai_tags delta` (net change in media items with at least one AI-generated tag). If `media_tags` delta equals `tags_added + suggestions_added`, state so explicitly. Do not conflate these metrics or attribute the total `media_tags` delta solely to tag creation.

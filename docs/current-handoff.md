@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.2c — Medium-Scale Pilot Preparation (2026-05-12).
+> Last updated after Phase 3.2g.2a — AI-only Run Isolation & Storage Identity Hardening (2026-05-14).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -42,6 +42,9 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
 9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY`). On Windows: `$PY = "<repo>\venv\Scripts\python.exe"`; on POSIX: `$PY = "<repo>/venv/bin/python"`. The script `scripts/check_python_env.py` auto-infers the venv when `--expected-python` is omitted (probes `venv/` and `.venv/`), or you can set `VIOLET_EXPECTED_PYTHON` env var. Run it as a mandatory preflight before any operation. For running servers, also use `scripts/check_test_server_identity.py --expected-python "$PY"` to verify the server process reports `sys.executable` matching the venv Python (not the system Python that Windows process tables may display). Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
+10. **AI-only phase isolation** — When running AI-only phases (e.g. AI tagging without localization), all four translation env vars must be set: `AI_TAGGING_AUTO_LOCALIZATION=false`, `TAG_TRANSLATION_BACKGROUND_ENABLED=false`, `TAG_TRANSLATION_AUTO_ENABLED=false`, `TAG_TRANSLATION_LLM_ENABLED=false`. After server startup, verify the worker is stopped via `GET /api/admin/tag-localization/worker/status`. See `AGENTS.md` § AI-only phase isolation.
+11. **Admin auth mutation rule** — Agent-initiated admin password resets (e.g. via `psql UPDATE`) require explicit user consent in the chat before execution. Silent resets are prohibited. Document any auth mutation in the delivery report.
+12. **Reporting accuracy for tag deltas** — Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), `media_tags` row delta (net change in media↔tag associations), `tag row delta` (net change in Tag table rows), and `media_with_ai_tags delta` (net change in media items that have at least one AI-generated tag). If `media_tags` delta equals `tags_added + suggestions_added`, state so explicitly. Do not conflate these metrics.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -611,21 +614,21 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Documentation updated with V.I.O.L.E.T. naming
 - Added `docs/tag-localization-zh.md` for tag localization design
 
-## Recommended Next Phase: 4
+## Phase History (recent)
 
 **Phase 3.1.2 — complete:**
 - Phase 3.1.2a — Admin UI closeout (PR [#31](https://github.com/kyloris0660/AnimeLocalBooru/pull/31) merged)
 - Phase 3.1.2b — Gallery content-class filter (PR [#32](https://github.com/kyloris0660/AnimeLocalBooru/pull/32) merged)
 - Phase 3.1.2c — Server identity + unified LLM fallback + entity resolver hardening (PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged)
 
-**Phase 3.2b — in progress:**
+**Phase 3.2b — completed (PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged):**
 - Pilot hardening, configuration audit, medium-scale readiness
 
-**Phase 3.2c — in progress:**
+**Phase 3.2c — completed (PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged):**
 - Medium-scale pilot preparation, env documentation, LLM gate unification
 - Medium-scale pilot workflow designed in `docs/medium-pilot-workflow.md` (execution is a separate phase)
 
-**Phase 3.2f — in progress (PR [#38](https://github.com/kyloris0660/AnimeLocalBooru/pull/38)):**
+**Phase 3.2f — completed (PR [#38](https://github.com/kyloris0660/AnimeLocalBooru/pull/38) merged):**
 - Model / proxy runtime hardening: localhost proxy bypass, CLIP preflight (cache-only default), CLIP early-fail in classification jobs, video-only CLIP skip via `requires_clip_inference()`, 24+7 unit/regression tests
 
 **Phase 3.2g — completed (manual, no PR):**
@@ -634,19 +637,63 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Post-job-#3 DB: 1090 tags, 5513 media_tags, 97 media with AI tags
 - **Critical incident**: System auto-triggered tag localization after AI tagging (localization_status=`queued_767_tags_worker_running`), created 306 LLM translations + 4 translation jobs despite phase policy prohibiting LLM usage. This motivated Phase 3.2g.1.
 
-**Phase 3.2g.1 — AI Tagging Scope & Localization Side-Effect Hardening:**
+**Phase 3.2g.1 — AI Tagging Scope & Localization Side-Effect Hardening (PR [#39](https://github.com/kyloris0660/AnimeLocalBooru/pull/39) merged):**
 - Added `AI_TAGGING_AUTO_LOCALIZATION` config flag (default: `true`) to gate the automatic localization trigger after AI tagging jobs
 - When set to `false`, `_schedule_localization()` skips with `localization_status=skipped_auto_localization_disabled`
 - Added `content_class_filter` parameter to `CreateAITagJobRequest` for safe AI tagging scope targeting (e.g., `["anime"]` only)
 - Pre-filters media IDs at route level, cannot be combined with explicit `media_ids`
 - 4 regression tests for localization gate, 7 tests for content_class_filter model
-- Docs updated: `current-handoff.md`, `medium-pilot-workflow.md`
 
-**Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.2b):
+**Phase 3.2g.2 — AI-only run (manual, no PR):**
+- WDv3 AI tagging on `blombooru_test_medium`: 2 jobs — #4 dry-run (25 items), #5 completed (100/100, anime+illustration only)
+- `AI_TAGGING_AUTO_LOCALIZATION=false` set, but background translation worker was NOT disabled → 182 LLM translations leaked
+- Server ran with `VIOLET_STORAGE_ROOT=test` instead of `medium` — storage root mismatch not caught (identity script lacked `--expected-storage-root`)
+- Admin password silently reset via psql without user consent
+- These incidents motivated Phase 3.2g.2a
 
-1. Filesystem watcher or periodic cron-style scan
-2. Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders)
-3. Requires Phase 1.5 safety controls already in place
+**Phase 3.2g.2a — AI-only Run Isolation & Storage Identity Hardening (PR [#40](https://github.com/kyloris0660/AnimeLocalBooru/pull/40)):**
+- Server identity endpoint: added `original_dir`, `thumbnail_dir`, `storage_root_explicitly_set` fields
+- Identity check script: added `--expected-storage-root` arg with `normalize_path()` comparison
+- `media_processor.py`: thread-safe python-magic availability probe (one-time, lock-protected) with per-thread `Magic(mime=True)` detectors via `threading.local()`; MIME fallback chain (python-magic → PIL → mimetypes → octet-stream) works without libmagic
+- Unit tests: 4 new identity endpoint tests, 3 normalize_path tests, 20+ MIME magic cache/thread-safety tests (`test_media_processor_mime_magic_cache.py`)
+- Docs: AI-only isolation section, admin auth mutation rule, reporting accuracy rule, storage identity hard gate
+
+## Recommended Next Phase: 3.2g.3
+
+**Phase 3.2g.3 — Medium Pilot Tier 1: Complete AI Tagging + Tag Translation**
+
+Resume medium-pilot AI tagging on `blombooru_test_medium` to tag remaining anime media, then run controlled tag translation.
+
+### Known Medium State (last known from Phase 3.2g.2 report — re-audit before execution)
+
+| Metric | Count |
+|--------|-------|
+| Total media | 522 |
+| anime | 500 |
+| non_anime | 14 |
+| unknown | 8 |
+| media_with_ai_tags | 197 |
+| Remaining anime without AI tags | ~306 |
+| non_anime AI-tagged | 0 |
+| unknown AI-tagged | 3 |
+
+> These counts are from the Phase 3.2g.2 report. Re-audit `blombooru_test_medium` before starting any new processing — counts may have drifted if interim operations were performed.
+
+### Prerequisites (all must pass before execution)
+
+1. PR #40 (Phase 3.2g.2a) merged and code on `main`
+2. Full preflight checklist from `docs/medium-pilot-workflow.md` § 7 completed
+3. Python/venv identity preflight passed (`scripts/check_python_env.py`)
+4. Server identity check passed with all `--expected-*` args including `--expected-storage-root "C:\Users\kyloris\VioletStorage\medium"`
+5. All 4 AI-only isolation env vars set for AI tagging phase (see `docs/medium-pilot-workflow.md` § 6.3)
+6. Translation worker confirmed stopped (`GET /api/admin/tag-localization/worker/status` → `running: false`)
+7. If any active/running translation jobs exist from prior phases, stop and report them before starting new AI tagging
+8. Database backup taken (`pg_dump -Fc -f backup_before_3.2g.3.dump blombooru_test_medium`)
+9. Re-audit medium DB state: verify actual media counts, `media_with_ai_tags`, tag counts against known state above
+10. CLIP model readiness verified (`scripts/check_clip_model_ready.py` exits 0)
+11. `HF_HUB_OFFLINE=1` set
+12. Dry-run AI tagging job completed and reviewed before real run
+13. Plan approved by user before execution begins
 
 ### Next-Phase Requirement: Service Control UI
 

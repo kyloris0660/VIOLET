@@ -115,6 +115,30 @@ When disabled, `_schedule_localization` sets `localization_status = "skipped_aut
 
 **Incident context (Phase 3.2g):** During the first medium-pilot AI tagging run, auto-localization queued 306 LLM translations via OpenAI despite the phase prohibiting LLM usage. This flag was added to prevent such unintended side-effects.
 
+### 6.3 Full AI-Only Isolation (post-incident, Phase 3.2g.2a)
+
+`AI_TAGGING_AUTO_LOCALIZATION=false` alone is **insufficient** for full AI-only isolation. It only gates `_schedule_localization()` inside AI tagging jobs. The server-level background translation worker (`tag_translation_worker.py`) runs independently and will continue translating tags.
+
+**All four env vars must be set for AI-only phases:**
+
+```powershell
+$env:AI_TAGGING_AUTO_LOCALIZATION = "false"        # disable AI-job-triggered localization
+$env:TAG_TRANSLATION_BACKGROUND_ENABLED = "false"  # disable background translation worker
+$env:TAG_TRANSLATION_AUTO_ENABLED = "false"        # disable auto-translate on tag creation
+$env:TAG_TRANSLATION_LLM_ENABLED = "false"         # disable LLM translation provider entirely
+```
+
+**Post-startup verification:** After starting the server, confirm the translation worker is stopped:
+
+```
+GET /api/admin/tag-localization/worker/status
+→ response should show "running": false
+```
+
+**Active translation jobs check:** Before starting new AI tagging, verify no active or running translation jobs exist from prior phases. If any are found, stop and report them before proceeding.
+
+**Incident context (Phase 3.2g.2):** With only `AI_TAGGING_AUTO_LOCALIZATION=false`, the background worker added 182 translations during an AI-only tagging run. The other three env vars were not set.
+
 ## 7. Preflight Checklist
 
 Complete ALL items before executing any tier:
@@ -141,7 +165,7 @@ Complete ALL items before executing any tier:
 
 - [ ] 9. `HF_HUB_OFFLINE=1` set in session (see § 3.1 — ensures CLIP uses local cache only, avoids proxy/network failures)
 - [ ] 10. CLIP model readiness verified: `& "$PY" scripts/check_clip_model_ready.py` exits 0 (model cached and loadable). This script is **cache-only by default** — it forces `HF_HUB_OFFLINE=1` internally and never downloads models, regardless of your environment. Note: video-only jobs do not require CLIP readiness (they skip CLIP inference entirely).
-- [ ] 11. **Localization side-effect gate set** (if not running tag translation this tier): `$env:AI_TAGGING_AUTO_LOCALIZATION = "false"` — prevents AI tagging from auto-triggering LLM translations. See § 6.2. Omit this (or set `"true"`) if you *want* auto-localization.
+- [ ] 11. **Localization side-effect gate set** (if not running tag translation this tier): Set all 4 AI-only isolation env vars (see § 6.3). At minimum: `$env:AI_TAGGING_AUTO_LOCALIZATION = "false"`. For full isolation, also set `TAG_TRANSLATION_BACKGROUND_ENABLED=false`, `TAG_TRANSLATION_AUTO_ENABLED=false`, `TAG_TRANSLATION_LLM_ENABLED=false`. Omit these (or set `"true"`) if you *want* auto-localization.
 - [ ] 12. Server started on dynamic port (probe 8012–8024)
 - [ ] 13. Identity check passed with **explicit expected args** (hard gate — do not proceed without this):
 
@@ -156,10 +180,11 @@ $expectedRoot = (Get-Location).Path
   --expected-code-root "$expectedRoot" `
   --expected-git-sha "$expectedSha" `
   --expected-python "$PY" `
+  --expected-storage-root "C:\Users\kyloris\VioletStorage\medium" `
   --admin-password "<your admin password>"
 ```
 
-If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, git SHA, and Python executable. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
+If the endpoint requires admin auth, add `--admin-username` and `--admin-password`. Do NOT commit real credentials. Running without `--expected-*` args is **not sufficient** for medium pilot — the script must explicitly verify env, DB, code root, git SHA, Python executable, and storage root. Any identity mismatch is an **immediate fail**: stop, diagnose, do not continue with E2E, import, or any processing.
 
 - [ ] 14. Database backup taken (custom archive format):
 
@@ -294,7 +319,7 @@ After completing each tier, fill in this report:
 - Python executable: [python_executable from server identity]
 - Python version: [python_version from server identity]
 - is_venv: [true/false from server identity]
-- Server identity check: [pass/fail] (with --expected-env, --expected-db, --expected-code-root, --expected-git-sha, --expected-python)
+- Server identity check: [pass/fail] (with --expected-env, --expected-db, --expected-code-root, --expected-git-sha, --expected-python, --expected-storage-root)
 
 ### Pre-Import
 - Dataset source path: [exact path, e.g. D:\VioletPilotData\500]
@@ -324,6 +349,13 @@ After completing each tier, fill in this report:
 - Tagged: [N]
 - Skipped (already tagged): [N]
 - Errors: [N]
+- tags_added (new Tag rows): [N]
+- suggestions_added (new AI suggestion rows): [N]
+- media_tags row delta: [N]
+- tag row delta (net change in Tag table rows): [N]
+- media_with_ai_tags delta: [N]
+- AI-only isolation env vars: [all 4 set / partial / none]
+- Translation worker status after startup: [running: false / running: true]
 - Duration: [time]
 
 ### Tag Translation
