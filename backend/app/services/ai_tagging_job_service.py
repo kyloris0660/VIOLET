@@ -58,6 +58,13 @@ def create_ai_tag_job(
         trigger_source=trigger_source,
         scan_job_id=scan_job_id,
         media_ids_json=json.dumps(media_ids) if media_ids else None,
+        # NOTE: empty list [] is falsy, so media_ids=[] collapses to None here,
+        # which causes _resolve_media_ids to query ALL media (full-scope fallback).
+        # This is safe because the route handler rejects content_class_filter
+        # results that resolve to zero IDs (HTTP 400) before reaching this point.
+        # If adding new callers, ensure they never pass media_ids=[] intending
+        # "tag nothing" — use explicit None for "unfiltered" or non-empty list
+        # for "scoped".
         max_items=effective_max,
         dry_run=dry_run,
         only_without_ai_tags=only_without_ai_tags,

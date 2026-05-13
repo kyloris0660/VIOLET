@@ -117,7 +117,13 @@ async def create_ai_tag_job(
 
     # Pre-filter by content_class if requested (resolve to explicit media_ids)
     effective_media_ids = body.media_ids
-    if body.content_class_filter:
+    if body.content_class_filter is not None:
+        # Empty list is invalid — caller must omit the field to disable filtering
+        if len(body.content_class_filter) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="content_class_filter must not be empty; omit it to disable filtering.",
+            )
         if effective_media_ids is not None:
             raise HTTPException(
                 status_code=400,
@@ -145,12 +151,22 @@ async def create_ai_tag_job(
                 .subquery()
             )
             query = query.filter(~Media.id.in_(ai_tagged))
-        query = query.order_by(Media.id.asc())
+        # Apply max_items DB-side to bound memory for large libraries
+        query = query.order_by(Media.id.asc()).limit(body.max_items)
         effective_media_ids = [row[0] for row in query.all()]
         logger.info(
             f"AI tagging content_class_filter={body.content_class_filter}: "
-            f"resolved {len(effective_media_ids)} media IDs"
+            f"resolved {len(effective_media_ids)} media IDs (limit={body.max_items})"
         )
+        # Zero-match rejection: do not create a fallback full-scope job.
+        # If the filter matched nothing, it means no media in the requested
+        # content classes are eligible — creating a job would be misleading.
+        if not effective_media_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="content_class_filter resolved to zero eligible media; "
+                       "no AI tagging job created.",
+            )
 
     job = _create_job(
         db,
