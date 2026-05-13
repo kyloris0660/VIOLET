@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import cv2
-import magic
 from PIL import Image
 
 from ..schemas import FileTypeEnum
@@ -50,6 +49,7 @@ def get_mime_type(file_path: Path) -> str:
     """
     # --- 1. python-magic ---------------------------------------------------
     try:
+        import magic
         mime = magic.Magic(mime=True)
         result = mime.from_file(str(file_path))
         if result and is_valid_mime_type(result):

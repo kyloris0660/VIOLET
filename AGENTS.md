@@ -227,7 +227,7 @@ For **non-destructive** UI/E2E validation, agents **MAY and SHOULD** start a con
 9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
 10. Do not touch iCloud paths or modify VioletTestFixture.
 11. If server startup fails, diagnose and report the exact error — do not skip E2E.
-12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, and `python_executable` match the current worktree/branch. Include `--expected-python "$PY"` to verify the server is running the approved venv Python (not the system Python). **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
+12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, `storage_root`, and `python_executable` match the current worktree/branch. Include `--expected-python "$PY"` to verify the server is running the approved venv Python (not the system Python). Always pass `--expected-storage-root` when a specific storage root is required (e.g. medium pilot). **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, stop the server, diagnose, and restart. Never skip E2E due to identity check failure.
 
 > **Windows venv shim note:** On Windows, `wmic` / `tasklist` may display the system Python path for venv-launched processes — this is a known Windows reporting artifact. The venv `python.exe` is a launcher shim; Windows records the underlying base interpreter in its process table. The server identity endpoint uses `sys.executable`, which correctly reports the venv path. Always use the `/api/system/server-identity` endpoint (via `check_test_server_identity.py --expected-python`) for Python identity verification, not OS-level process listings.
 
@@ -334,3 +334,22 @@ The server must run the PR branch/worktree code (i.e. CWD = worktree path).
 - Run destructive E2E tests without setting `VIOLET_ALLOW_DESTRUCTIVE_E2E=1`
 - Add new destructive endpoints without all 4 guardrails (env flag, confirm phrase, dry-run default, audit log)
 - Run the dev server from a worktree path when E2E tests will touch the shared DB
+
+### AI-only phase isolation (post-incident policy, 2026-05-13)
+
+**Context:** During Phase 3.2g.2, `AI_TAGGING_AUTO_LOCALIZATION=false` was set to prevent localization during AI-only tagging. However, the server-level background translation worker (`tag_translation_worker.py`) was not disabled and ran independently, adding 182 translations. The setting only gates `_schedule_localization()` inside AI tagging jobs — it does NOT disable the background worker.
+
+**Required env vars for AI-only phases** (AI tagging without any localization/translation side effects):
+
+```
+AI_TAGGING_AUTO_LOCALIZATION=false        # disable AI-job-triggered localization
+TAG_TRANSLATION_BACKGROUND_ENABLED=false  # disable background translation worker
+TAG_TRANSLATION_AUTO_ENABLED=false        # disable auto-translate on tag creation
+TAG_TRANSLATION_LLM_ENABLED=false         # disable LLM translation provider entirely
+```
+
+All four must be set. After server startup, verify the worker is stopped via `GET /api/admin/tag-localization/worker/status` — the response should show `running: false`.
+
+**Admin auth mutation rule:** Agent-initiated admin password resets (e.g. via `psql UPDATE`) require explicit user consent in the chat before execution. Silent resets are prohibited. Document any auth mutation in the delivery report.
+
+**Reporting accuracy for tag deltas:** Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), and `media_tags` row delta (net change in media↔tag associations). Do not conflate these metrics or attribute the total `media_tags` delta solely to tag creation.

@@ -42,6 +42,9 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 7. **Phase plan approval** — For every new major development phase, the agent must first produce an implementation plan and wait for explicit user approval before making substantial code changes.
 8. **Destructive DB operation safety** — All destructive API endpoints require `VIOLET_ALLOW_DESTRUCTIVE_E2E=1` env flag, unique `confirm_phrase`, `dry_run=true` default, and `logger.warning(...)` audit log. E2E tests calling destructive endpoints must be gated by the env flag. Never run a dev server from a worktree against the shared production DB for destructive E2E tests. See incident log below.
 9. **Python/venv identity preflight (hard gate)** — All agent workflows (server start, test run, script execution, dependency install) MUST use the approved project venv Python (`$PY`). On Windows: `$PY = "<repo>\venv\Scripts\python.exe"`; on POSIX: `$PY = "<repo>/venv/bin/python"`. The script `scripts/check_python_env.py` auto-infers the venv when `--expected-python` is omitted (probes `venv/` and `.venv/`), or you can set `VIOLET_EXPECTED_PYTHON` env var. Run it as a mandatory preflight before any operation. For running servers, also use `scripts/check_test_server_identity.py --expected-python "$PY"` to verify the server process reports `sys.executable` matching the venv Python (not the system Python that Windows process tables may display). Never use the global/system Python. See `AGENTS.md` § Python/venv identity preflight.
+10. **AI-only phase isolation** — When running AI-only phases (e.g. AI tagging without localization), all four translation env vars must be set: `AI_TAGGING_AUTO_LOCALIZATION=false`, `TAG_TRANSLATION_BACKGROUND_ENABLED=false`, `TAG_TRANSLATION_AUTO_ENABLED=false`, `TAG_TRANSLATION_LLM_ENABLED=false`. After server startup, verify the worker is stopped via `GET /api/admin/tag-localization/worker/status`. See `AGENTS.md` § AI-only phase isolation.
+11. **Admin auth mutation rule** — Agent-initiated admin password resets (e.g. via `psql UPDATE`) require explicit user consent in the chat before execution. Silent resets are prohibited. Document any auth mutation in the delivery report.
+12. **Reporting accuracy for tag deltas** — Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), and `media_tags` row delta (net change in media↔tag associations). Do not conflate these metrics.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -625,7 +628,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Medium-scale pilot preparation, env documentation, LLM gate unification
 - Medium-scale pilot workflow designed in `docs/medium-pilot-workflow.md` (execution is a separate phase)
 
-**Phase 3.2f — in progress (PR [#38](https://github.com/kyloris0660/AnimeLocalBooru/pull/38)):**
+**Phase 3.2f — completed (PR [#38](https://github.com/kyloris0660/AnimeLocalBooru/pull/38) merged):**
 - Model / proxy runtime hardening: localhost proxy bypass, CLIP preflight (cache-only default), CLIP early-fail in classification jobs, video-only CLIP skip via `requires_clip_inference()`, 24+7 unit/regression tests
 
 **Phase 3.2g — completed (manual, no PR):**
@@ -641,6 +644,23 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Pre-filters media IDs at route level, cannot be combined with explicit `media_ids`
 - 4 regression tests for localization gate, 7 tests for content_class_filter model
 - Docs updated: `current-handoff.md`, `medium-pilot-workflow.md`
+
+**Phase 3.2g.2 — AI-only run (manual, no PR):**
+- WDv3 AI tagging on `blombooru_test_medium`: 2 jobs — #4 dry-run (25 items), #5 completed (100/100, anime+illustration only)
+- `AI_TAGGING_AUTO_LOCALIZATION=false` set, but background translation worker was NOT disabled → 182 LLM translations leaked
+- Server ran with `VIOLET_STORAGE_ROOT=test` instead of `medium` — storage root mismatch not caught (identity script lacked `--expected-storage-root`)
+- Admin password silently reset via psql without user consent
+- These incidents motivated Phase 3.2g.2a
+
+**Phase 3.2g.2a — AI-only Run Isolation & Storage Identity Hardening (PR pending):**
+- Server identity endpoint: added `original_dir`, `thumbnail_dir`, `storage_root_explicitly_set` fields
+- Identity check script: added `--expected-storage-root` arg with `normalize_path()` comparison
+- `AGENTS.md`: added AI-only phase isolation section (4 required env vars), admin auth mutation rule, reporting accuracy rule
+- `CLAUDE.md`: updated identity preflight item to include `storage_root`
+- `docs/medium-pilot-workflow.md`: added AI-only subsection, updated preflight checklist, updated report template
+- `docs/test-workflow.md`: added `test_check_server_identity_script.py` to Tier 1
+- `media_processor.py`: moved `import magic` to lazy import inside `get_mime_type()`
+- Unit tests: 4 new identity endpoint tests, 3 normalize_path tests
 
 **Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.2b):
 

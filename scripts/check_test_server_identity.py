@@ -2,7 +2,8 @@
 
 Usage:
     python scripts/check_test_server_identity.py --base-url http://127.0.0.1:8011 \
-        --expected-env test --expected-db blombooru_test
+        --expected-env test --expected-db blombooru_test \
+        --expected-storage-root "C:\\Users\\kyloris\\VioletStorage\\medium"
 
     # With Python runtime identity verification:
     python scripts/check_test_server_identity.py --base-url http://127.0.0.1:8014 \
@@ -93,6 +94,8 @@ def main():
     parser.add_argument("--expected-branch", default=None)
     parser.add_argument("--admin-username", default="admin", help="Admin username for auth")
     parser.add_argument("--admin-password", default=None, help="Admin password for auth")
+    parser.add_argument("--expected-storage-root", default=None,
+                        help="Expected VIOLET_STORAGE_ROOT path (compared with symlink resolution)")
     parser.add_argument(
         "--expected-python", default=None,
         help="Expected Python executable path for the server runtime. "
@@ -185,6 +188,18 @@ def main():
                     f"(normalized={norm_expected!r}), "
                     f"actual={actual_python!r} (normalized={norm_actual!r})"
                 )
+
+    # Storage root uses path normalization (resolve symlinks, lowercase on Windows)
+    if args.expected_storage_root is not None:
+        actual_storage = data.get("storage_root", "")
+        norm_expected = normalize_path(args.expected_storage_root)
+        norm_actual = normalize_path(actual_storage)
+        if norm_expected != norm_actual:
+            mismatches.append(
+                f"  expected-storage-root: expected={args.expected_storage_root!r} "
+                f"(normalized={norm_expected!r}), actual={actual_storage!r} "
+                f"(normalized={norm_actual!r})"
+            )
 
     # Report is_venv status (informational, non-blocking unless --expected-python fails)
     is_venv = data.get("is_venv")

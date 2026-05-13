@@ -24,6 +24,7 @@ Run with `pytest tests/` from the project root. These tests mock environment var
 | `tests/test_classification_job_clip_precheck.py` | CLIP precheck video-only skip, early fail, `requires_clip_inference` |
 | `tests/test_ai_tagging_localization_gate.py` | `AI_TAGGING_AUTO_LOCALIZATION` gate in `_schedule_localization`, config property |
 | `tests/test_ai_tagging_content_class_filter.py` | `content_class_filter` request model validation, `ContentClassEnum` values |
+| `tests/test_check_server_identity_script.py` | Identity script proxy bypass (`trust_env=False`), `normalize_path`, `normalize_executable_path` |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -137,7 +138,7 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py tests/test_ai_tagging_localization_gate.py tests/test_ai_tagging_content_class_filter.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py tests/test_ai_tagging_localization_gate.py tests/test_ai_tagging_content_class_filter.py tests/test_check_server_identity_script.py -v
 ```
 
 ### Smoke Validation (Tier 1)

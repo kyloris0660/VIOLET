@@ -20,7 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 _EXPECTED_FIELDS = {
     "app_name", "app_version", "violet_env", "db_name",
-    "code_root", "storage_root", "git_sha", "git_branch",
+    "code_root", "storage_root", "original_dir", "thumbnail_dir",
+    "storage_root_explicitly_set",
+    "git_sha", "git_branch",
     "pid", "port", "worktree_path", "deployment_type",
     "python_executable", "python_version", "python_prefix",
     "python_base_prefix", "is_venv",
@@ -39,7 +41,8 @@ _SECRET_PATTERNS = [
 def _build_identity(*, violet_env="test", db_name="blombooru_test",
                     code_root="C:\\project", storage_root="C:\\storage",
                     git_sha="abc1234", git_branch="main",
-                    app_port="8011", worktree_path=None):
+                    app_port="8011", worktree_path=None,
+                    storage_root_explicitly_set=True):
     """Call the endpoint function directly, bypassing FastAPI routing."""
     from app.routes.system import get_server_identity, detect_deployment_type
 
@@ -47,6 +50,9 @@ def _build_identity(*, violet_env="test", db_name="blombooru_test",
     mock_settings.VIOLET_ENV = violet_env
     mock_settings.CODE_ROOT = Path(code_root)
     mock_settings.STORAGE_ROOT = Path(storage_root)
+    mock_settings.ORIGINAL_DIR = Path(storage_root) / "media" / "original"
+    mock_settings.THUMBNAIL_DIR = Path(storage_root) / "media" / "thumbnails"
+    mock_settings.STORAGE_ROOT_EXPLICITLY_SET = storage_root_explicitly_set
     mock_settings.WORKTREE_PATH = worktree_path
     mock_settings.DB_NAME = db_name
 
@@ -102,6 +108,22 @@ class TestServerIdentityFields:
     def test_storage_root(self):
         result = _build_identity(storage_root="C:\\my\\storage")
         assert result["storage_root"] == "C:\\my\\storage"
+
+    def test_original_dir(self):
+        result = _build_identity(storage_root="C:\\my\\storage")
+        assert result["original_dir"] == str(Path("C:\\my\\storage") / "media" / "original")
+
+    def test_thumbnail_dir(self):
+        result = _build_identity(storage_root="C:\\my\\storage")
+        assert result["thumbnail_dir"] == str(Path("C:\\my\\storage") / "media" / "thumbnails")
+
+    def test_storage_root_explicitly_set_true(self):
+        result = _build_identity(storage_root_explicitly_set=True)
+        assert result["storage_root_explicitly_set"] is True
+
+    def test_storage_root_explicitly_set_false(self):
+        result = _build_identity(storage_root_explicitly_set=False)
+        assert result["storage_root_explicitly_set"] is False
 
     def test_git_sha(self):
         result = _build_identity(git_sha="fe81f6b")
@@ -199,6 +221,9 @@ class TestServerIdentityGitFailure:
         mock_settings.VIOLET_ENV = "test"
         mock_settings.CODE_ROOT = Path("C:\\project")
         mock_settings.STORAGE_ROOT = Path("C:\\storage")
+        mock_settings.ORIGINAL_DIR = Path("C:\\storage\\media\\original")
+        mock_settings.THUMBNAIL_DIR = Path("C:\\storage\\media\\thumbnails")
+        mock_settings.STORAGE_ROOT_EXPLICITLY_SET = False
         mock_settings.WORKTREE_PATH = None
         mock_settings.DB_NAME = "blombooru_test"
 
@@ -219,3 +244,30 @@ class TestServerIdentityGitFailure:
         assert result["git_sha"] == ""
         assert result["git_branch"] == ""
         assert "app_name" in result
+
+
+class TestCheckScriptNormalizePath:
+    """Tests for the normalize_path helper in check_test_server_identity.py."""
+
+    def test_normalize_path_import(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        from check_test_server_identity import normalize_path
+        # Basic identity: normalizing a simple absolute path returns something non-empty
+        result = normalize_path("C:\\Users\\test")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_normalize_path_case_insensitive_on_windows(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        from check_test_server_identity import normalize_path
+        import platform
+        if platform.system() == "Windows":
+            assert normalize_path("C:\\Users\\TEST") == normalize_path("C:\\users\\test")
+
+    def test_normalize_path_trailing_separator(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        from check_test_server_identity import normalize_path
+        # Path with trailing separator should normalize same as without
+        p1 = normalize_path("C:\\Users\\test")
+        p2 = normalize_path("C:\\Users\\test\\")
+        assert p1 == p2
