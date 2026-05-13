@@ -16,6 +16,11 @@ Import strategy:
   before importing the target module.  This keeps the tests portable to
   environments without libmagic.
 
+  After importing the target module, the stub is removed from sys.modules
+  so that other test files can import the real admin package.  The
+  _patch_deps fixture uses patch.object() with a direct module reference,
+  which does NOT depend on sys.modules["app.routes.admin"] being present.
+
 No real AI tagging, no real LLM, no DB mutation.
 """
 import asyncio
@@ -69,13 +74,16 @@ _ensure_admin_stub()
 # Now import the target module — relative imports inside it will resolve
 # normally because ``app``, ``app.routes`` are real, and
 # ``app.routes.admin`` is our stub with __path__ pointing to the real dir.
+import app.routes.admin.ai_tagging_jobs as _ai_tagging_jobs_mod  # noqa: E402
 from app.routes.admin.ai_tagging_jobs import (  # noqa: E402
     CreateAITagJobRequest,
     create_ai_tag_job as _create_ai_tag_job_route,
 )
 
-# Clean up the stub so that later test files in the same pytest process
-# can import the real admin package (which exposes .router etc.).
+# Clean up the stub so other test files can import the real admin package.
+# This is safe because _patch_deps uses patch.object() with the direct
+# module reference (_ai_tagging_jobs_mod), which does NOT depend on
+# sys.modules["app.routes.admin"] being present.
 if not _admin_was_loaded:
     del sys.modules["app.routes.admin"]
 
@@ -316,11 +324,16 @@ class TestRouteContentClassFilter:
 
     @pytest.fixture(autouse=True)
     def _patch_deps(self):
-        """Patch settings and service imports used by the route handler."""
+        """Patch settings and service imports used by the route handler.
+
+        Uses patch.object with a direct module reference to avoid
+        dependence on sys.modules["app.routes.admin"] being present
+        (P1 order-independence fix).
+        """
         self.mock_settings = _make_mock_settings()
         self.patches = [
-            patch("app.routes.admin.ai_tagging_jobs.settings", self.mock_settings),
-            patch("app.routes.admin.ai_tagging_jobs.require_admin_mode", lambda: MagicMock()),
+            patch.object(_ai_tagging_jobs_mod, "settings", self.mock_settings),
+            patch.object(_ai_tagging_jobs_mod, "require_admin_mode", lambda: MagicMock()),
         ]
         for p in self.patches:
             p.start()

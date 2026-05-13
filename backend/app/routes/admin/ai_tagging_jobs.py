@@ -151,12 +151,12 @@ async def create_ai_tag_job(
                 conditions.append(Media.content_class.is_(None))
         query = db.query(Media.id).filter(or_(*conditions))
         if body.only_without_ai_tags:
+            from sqlalchemy import select as sa_select
             from ...models import blombooru_media_tags
             ai_tagged = (
-                db.query(blombooru_media_tags.c.media_id)
-                .filter(blombooru_media_tags.c.source == "ai_wd")
+                sa_select(blombooru_media_tags.c.media_id)
+                .where(blombooru_media_tags.c.source == "ai_wd")
                 .distinct()
-                .subquery()
             )
             query = query.filter(~Media.id.in_(ai_tagged))
         # Apply max_items DB-side to bound memory for large libraries

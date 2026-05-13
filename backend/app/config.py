@@ -483,11 +483,21 @@ class Settings:
         Empty or whitespace-only values are treated as unset (→ default True).
         Accepted truthy values: true, 1, yes, on
         Accepted falsy values: false, 0, no, off
+        Unrecognized values (e.g. typos like "flase") raise RuntimeError.
         """
         val = os.getenv("AI_TAGGING_AUTO_LOCALIZATION", "").strip()
         if not val:
             return True  # default when unset or empty
-        return val.lower() in ("true", "1", "yes", "on")
+        lowered = val.lower()
+        if lowered in ("true", "1", "yes", "on"):
+            return True
+        if lowered in ("false", "0", "no", "off"):
+            return False
+        raise RuntimeError(
+            f"Invalid AI_TAGGING_AUTO_LOCALIZATION={val!r}. "
+            f"Accepted values: true/1/yes/on, false/0/no/off (case-insensitive). "
+            f"Omit or leave empty for default (true)."
+        )
 
     @property
     def TAG_TRANSLATION_LLM_ENABLED(self) -> bool:

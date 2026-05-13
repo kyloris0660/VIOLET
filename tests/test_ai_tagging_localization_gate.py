@@ -151,3 +151,12 @@ class TestAITaggingAutoLocalizationConfig:
     def test_falsy_values(self, val):
         """All standard falsy values → False."""
         assert self._get_value(val) is False
+
+    # -- Invalid / typo values → RuntimeError --
+
+    @pytest.mark.parametrize("val", ["flase", "ture", "nope", "2", "tru", "ye", "onn"])
+    def test_invalid_value_raises_error(self, val):
+        """Unrecognized values (e.g. typos) must raise RuntimeError,
+        not silently return True or False."""
+        with pytest.raises(RuntimeError, match="Invalid AI_TAGGING_AUTO_LOCALIZATION"):
+            self._get_value(val)
