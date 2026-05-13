@@ -9,6 +9,52 @@ from PIL import Image
 from ..schemas import FileTypeEnum
 from .logger import logger
 
+# ---------------------------------------------------------------------------
+# python-magic availability cache
+# ---------------------------------------------------------------------------
+# python-magic (+ system libmagic) may not be installed. We probe once on
+# first use and cache the result so that large scans don't pay O(N) exception
+# overhead or produce O(N) warning lines when the library is missing.
+_MAGIC_DETECTOR = None
+_MAGIC_PROBE_DONE = False
+_MAGIC_UNAVAILABLE_REASON: str | None = None
+
+
+def _get_magic_detector():
+    """Return a cached ``magic.Magic(mime=True)`` instance, or *None*.
+
+    The probe runs at most once per process.  If ``import magic`` or
+    ``magic.Magic(mime=True)`` fails, subsequent calls return *None*
+    immediately without retrying.
+    """
+    global _MAGIC_DETECTOR, _MAGIC_PROBE_DONE, _MAGIC_UNAVAILABLE_REASON
+
+    if _MAGIC_PROBE_DONE:
+        return _MAGIC_DETECTOR
+
+    _MAGIC_PROBE_DONE = True
+    try:
+        import magic
+
+        _MAGIC_DETECTOR = magic.Magic(mime=True)
+    except Exception as exc:
+        _MAGIC_DETECTOR = None
+        _MAGIC_UNAVAILABLE_REASON = str(exc)
+        logger.warning(
+            "python-magic unavailable; MIME detection will use "
+            "PIL/mimetypes fallbacks: %s",
+            exc,
+        )
+    return _MAGIC_DETECTOR
+
+
+def _reset_magic_cache():
+    """Reset the module-level magic cache (for testing only)."""
+    global _MAGIC_DETECTOR, _MAGIC_PROBE_DONE, _MAGIC_UNAVAILABLE_REASON
+    _MAGIC_DETECTOR = None
+    _MAGIC_PROBE_DONE = False
+    _MAGIC_UNAVAILABLE_REASON = None
+
 
 def is_valid_mime_type(value: str) -> bool:
     """Check whether *value* looks like a valid MIME type (type/subtype).
@@ -47,24 +93,25 @@ def get_mime_type(file_path: Path) -> str:
     3. mimetypes.guess_type — stdlib, extension-based (least reliable)
     4. ``application/octet-stream`` — safe ultimate fallback
     """
-    # --- 1. python-magic ---------------------------------------------------
-    try:
-        import magic
-        mime = magic.Magic(mime=True)
-        result = mime.from_file(str(file_path))
-        if result and is_valid_mime_type(result):
-            return result
-        logger.warning(
-            "python-magic returned invalid MIME for %s: %s — trying fallbacks",
-            file_path.name,
-            repr(result)[:200],
-        )
-    except Exception as exc:
-        logger.warning(
-            "python-magic failed for %s: %s — trying fallbacks",
-            file_path.name,
-            exc,
-        )
+    # --- 1. python-magic (cached probe) -------------------------------------
+    detector = _get_magic_detector()
+    if detector is not None:
+        try:
+            result = detector.from_file(str(file_path))
+            if result and is_valid_mime_type(result):
+                return result
+            logger.warning(
+                "python-magic returned invalid MIME for %s: %s — trying fallbacks",
+                file_path.name,
+                repr(result)[:200],
+            )
+        except Exception as exc:
+            # Per-file failure is fine — log and fall through to PIL/mimetypes.
+            logger.warning(
+                "python-magic failed for %s: %s — trying fallbacks",
+                file_path.name,
+                exc,
+            )
 
     # --- 2. PIL content sniff ----------------------------------------------
     try:

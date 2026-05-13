@@ -21,7 +21,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.utils.media_processor import get_mime_type, is_valid_mime_type
+from app.utils.media_processor import (
+    get_mime_type,
+    is_valid_mime_type,
+    _reset_magic_cache,
+)
 from app.utils.local_library_scanner import (
     _exception_to_message,
     _is_duplicate_error,
@@ -84,13 +88,15 @@ class TestGetMimeFallback:
         png = tmp_path / "test.png"
         self._create_real_png(png)
 
-        with patch("app.utils.media_processor.magic") as mock_magic:
-            mock_instance = MagicMock()
-            mock_instance.from_file.return_value = (
-                "cannot open `C:\\\\path` (No such file or directory)"
-            )
-            mock_magic.Magic.return_value = mock_instance
-
+        mock_detector = MagicMock()
+        mock_detector.from_file.return_value = (
+            "cannot open `C:\\\\path` (No such file or directory)"
+        )
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             result = get_mime_type(png)
 
         # PIL should detect it as image/png
@@ -101,11 +107,13 @@ class TestGetMimeFallback:
         png = tmp_path / "test.png"
         self._create_real_png(png)
 
-        with patch("app.utils.media_processor.magic") as mock_magic:
-            mock_instance = MagicMock()
-            mock_instance.from_file.return_value = None
-            mock_magic.Magic.return_value = mock_instance
-
+        mock_detector = MagicMock()
+        mock_detector.from_file.return_value = None
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             result = get_mime_type(png)
 
         assert result == "image/png"
@@ -115,11 +123,13 @@ class TestGetMimeFallback:
         png = tmp_path / "test.png"
         self._create_real_png(png)
 
-        with patch("app.utils.media_processor.magic") as mock_magic:
-            mock_instance = MagicMock()
-            mock_instance.from_file.side_effect = OSError("magic DLL not found")
-            mock_magic.Magic.return_value = mock_instance
-
+        mock_detector = MagicMock()
+        mock_detector.from_file.side_effect = OSError("magic DLL not found")
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             result = get_mime_type(png)
 
         assert result == "image/png"
@@ -130,11 +140,13 @@ class TestGetMimeFallback:
         noext = tmp_path / "mystery_file"
         noext.write_bytes(b"\x00\x01\x02\x03" * 100)
 
-        with patch("app.utils.media_processor.magic") as mock_magic:
-            mock_instance = MagicMock()
-            mock_instance.from_file.return_value = "this-is-not-a-mime"
-            mock_magic.Magic.return_value = mock_instance
-
+        mock_detector = MagicMock()
+        mock_detector.from_file.return_value = "this-is-not-a-mime"
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             # Also patch mimetypes to return None
             with patch("app.utils.media_processor.mimetypes") as mock_mt:
                 mock_mt.guess_type.return_value = (None, None)
@@ -148,11 +160,13 @@ class TestGetMimeFallback:
         png = tmp_path / "test.png"
         self._create_real_png(png)
 
-        with patch("app.utils.media_processor.magic") as mock_magic:
-            mock_instance = MagicMock()
-            mock_instance.from_file.return_value = "image/png"
-            mock_magic.Magic.return_value = mock_instance
-
+        mock_detector = MagicMock()
+        mock_detector.from_file.return_value = "image/png"
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             result = get_mime_type(png)
 
         assert result == "image/png"
@@ -718,14 +732,16 @@ class TestUnicodeFilenameIntegration:
         img.save(str(chinese_file), format="PNG")
 
         # Simulate magic failure (returns error string)
-        with patch("app.utils.media_processor.magic") as mock_magic:
-            mock_instance = MagicMock()
-            mock_instance.from_file.return_value = (
-                "cannot open `\\\\?\\C:\\Users\\用户\\截屏_测试图片.png` "
-                "(No such file or directory)"
-            )
-            mock_magic.Magic.return_value = mock_instance
-
+        mock_detector = MagicMock()
+        mock_detector.from_file.return_value = (
+            "cannot open `\\\\?\\C:\\Users\\用户\\截屏_测试图片.png` "
+            "(No such file or directory)"
+        )
+        _reset_magic_cache()
+        with patch(
+            "app.utils.media_processor._get_magic_detector",
+            return_value=mock_detector,
+        ):
             mime = get_mime_type(chinese_file)
 
         assert mime == "image/png", f"Expected image/png from PIL fallback, got: {mime}"
