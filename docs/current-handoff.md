@@ -628,6 +628,20 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 **Phase 3.2f — in progress (PR [#38](https://github.com/kyloris0660/AnimeLocalBooru/pull/38)):**
 - Model / proxy runtime hardening: localhost proxy bypass, CLIP preflight (cache-only default), CLIP early-fail in classification jobs, video-only CLIP skip via `requires_clip_inference()`, 24+7 unit/regression tests
 
+**Phase 3.2g — completed (manual, no PR):**
+- Limited AI tagging on `blombooru_test_medium` (medium pilot DB, 522 media)
+- WDv3 tagger: 3 jobs total — #1 interrupted (46), #2 dry-run (25), #3 completed (50/50, 2237 tags)
+- Post-job-#3 DB: 1090 tags, 5513 media_tags, 97 media with AI tags
+- **Critical incident**: System auto-triggered tag localization after AI tagging (localization_status=`queued_767_tags_worker_running`), created 306 LLM translations + 4 translation jobs despite phase policy prohibiting LLM usage. This motivated Phase 3.2g.1.
+
+**Phase 3.2g.1 — AI Tagging Scope & Localization Side-Effect Hardening:**
+- Added `AI_TAGGING_AUTO_LOCALIZATION` config flag (default: `true`) to gate the automatic localization trigger after AI tagging jobs
+- When set to `false`, `_schedule_localization()` skips with `localization_status=skipped_auto_localization_disabled`
+- Added `content_class_filter` parameter to `CreateAITagJobRequest` for safe AI tagging scope targeting (e.g., `["anime"]` only)
+- Pre-filters media IDs at route level, cannot be combined with explicit `media_ids`
+- 4 regression tests for localization gate, 7 tests for content_class_filter model
+- Docs updated: `current-handoff.md`, `medium-pilot-workflow.md`
+
 **Phase 4 — iCloud Photos Watcher / Scheduled Scan** (next after 3.2b):
 
 1. Filesystem watcher or periodic cron-style scan

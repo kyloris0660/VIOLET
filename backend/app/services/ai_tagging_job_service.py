@@ -58,6 +58,13 @@ def create_ai_tag_job(
         trigger_source=trigger_source,
         scan_job_id=scan_job_id,
         media_ids_json=json.dumps(media_ids) if media_ids else None,
+        # NOTE: empty list [] is falsy, so media_ids=[] collapses to None here,
+        # which causes _resolve_media_ids to query ALL media (full-scope fallback).
+        # This is safe because the route handler rejects content_class_filter
+        # results that resolve to zero IDs (HTTP 400) before reaching this point.
+        # If adding new callers, ensure they never pass media_ids=[] intending
+        # "tag nothing" — use explicit None for "unfiltered" or non-empty list
+        # for "scoped".
         max_items=effective_max,
         dry_run=dry_run,
         only_without_ai_tags=only_without_ai_tags,
@@ -253,9 +260,17 @@ def _schedule_localization(job: AITagJob, new_tag_names: List[str]) -> None:
 
     If the background worker is running, triggers an immediate run.
     Falls back to the legacy schedule_auto_translate for compatibility.
+
+    Gated by settings.AI_TAGGING_AUTO_LOCALIZATION — when False, localization
+    is skipped entirely so pilot/controlled runs don't trigger LLM side-effects.
     """
     if not new_tag_names or job.dry_run:
         job.localization_status = "skipped_dry_run" if job.dry_run else "skipped_no_new_tags"
+        return
+
+    if not settings.AI_TAGGING_AUTO_LOCALIZATION:
+        job.localization_status = "skipped_auto_localization_disabled"
+        logger.info(f"AI tag job {job.id}: auto-localization disabled (AI_TAGGING_AUTO_LOCALIZATION=false), skipping")
         return
 
     unique_names = list(set(new_tag_names))
