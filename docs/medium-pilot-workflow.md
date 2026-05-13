@@ -135,6 +135,8 @@ GET /api/admin/tag-localization/worker/status
 → response should show "running": false
 ```
 
+**Active translation jobs check:** Before starting new AI tagging, verify no active or running translation jobs exist from prior phases. If any are found, stop and report them before proceeding.
+
 **Incident context (Phase 3.2g.2):** With only `AI_TAGGING_AUTO_LOCALIZATION=false`, the background worker added 182 translations during an AI-only tagging run. The other three env vars were not set.
 
 ## 7. Preflight Checklist
@@ -350,6 +352,8 @@ After completing each tier, fill in this report:
 - tags_added (new Tag rows): [N]
 - suggestions_added (new AI suggestion rows): [N]
 - media_tags row delta: [N]
+- tag row delta (net change in Tag table rows): [N]
+- media_with_ai_tags delta: [N]
 - AI-only isolation env vars: [all 4 set / partial / none]
 - Translation worker status after startup: [running: false / running: true]
 - Duration: [time]
