@@ -8,6 +8,7 @@ These tests verify:
 
 No real AI tagging, no real LLM, no DB mutation.
 """
+import importlib
 import os
 import sys
 from pathlib import Path
@@ -100,35 +101,53 @@ class TestScheduleLocalizationGate:
 
 
 class TestAITaggingAutoLocalizationConfig:
-    """Test AI_TAGGING_AUTO_LOCALIZATION config property."""
+    """Test AI_TAGGING_AUTO_LOCALIZATION config property parsing.
 
-    def test_default_is_true(self, reload_settings):
-        """Default value should be True (backward compatible)."""
-        s = reload_settings({"AI_TAGGING_AUTO_LOCALIZATION": ""})
-        # When env var is empty string, should fall back to default "true"
-        # Actually empty string won't match "true", so let's test unset
-        with patch.dict(os.environ, {}, clear=False):
-            # Remove the key if it exists
-            env_copy = os.environ.copy()
-            env_copy.pop("AI_TAGGING_AUTO_LOCALIZATION", None)
-            with patch.dict(os.environ, env_copy, clear=True):
-                s2 = reload_settings()
-                assert s2.AI_TAGGING_AUTO_LOCALIZATION is True
+    Covers: unset, empty string, whitespace, truthy values (true/1/yes/on),
+    falsy values (false/0/no/off), and case-insensitive matching.
 
-    def test_explicit_false(self, reload_settings):
-        """Setting AI_TAGGING_AUTO_LOCALIZATION=false disables it."""
-        with patch.dict(os.environ, {"AI_TAGGING_AUTO_LOCALIZATION": "false"}):
-            s = reload_settings({"AI_TAGGING_AUTO_LOCALIZATION": "false"})
-            assert s.AI_TAGGING_AUTO_LOCALIZATION is False
+    The property reads os.getenv at access time, so we must ensure the env
+    var is patched when the property is accessed, not just at reload time.
+    """
 
-    def test_explicit_true(self, reload_settings):
-        """Setting AI_TAGGING_AUTO_LOCALIZATION=true enables it."""
-        with patch.dict(os.environ, {"AI_TAGGING_AUTO_LOCALIZATION": "true"}):
-            s = reload_settings({"AI_TAGGING_AUTO_LOCALIZATION": "true"})
-            assert s.AI_TAGGING_AUTO_LOCALIZATION is True
+    def _get_value(self, env_val=None):
+        """Build a Settings object and read the property with env patched."""
+        import app.config as config_mod
+        import dotenv
+        env = {"VIOLET_ENV": "test", "POSTGRES_DB": "blombooru_test"}
+        if env_val is not None:
+            env["AI_TAGGING_AUTO_LOCALIZATION"] = env_val
+        # else: key absent from env → os.getenv returns default
+        with patch.dict(os.environ, env, clear=True), \
+             patch.object(dotenv, "load_dotenv", lambda *a, **kw: None):
+            importlib.reload(config_mod)
+            s = config_mod.Settings()
+            return s.AI_TAGGING_AUTO_LOCALIZATION
 
-    def test_explicit_zero(self, reload_settings):
-        """Setting AI_TAGGING_AUTO_LOCALIZATION=0 disables it."""
-        with patch.dict(os.environ, {"AI_TAGGING_AUTO_LOCALIZATION": "0"}):
-            s = reload_settings({"AI_TAGGING_AUTO_LOCALIZATION": "0"})
-            assert s.AI_TAGGING_AUTO_LOCALIZATION is False
+    # -- Unset / empty → default True --
+
+    def test_unset_defaults_to_true(self):
+        """When AI_TAGGING_AUTO_LOCALIZATION is not in env, default is True."""
+        assert self._get_value() is True
+
+    def test_empty_string_defaults_to_true(self):
+        """Empty string should be treated as unset → default True."""
+        assert self._get_value("") is True
+
+    def test_whitespace_only_defaults_to_true(self):
+        """Whitespace-only value should be treated as unset → default True."""
+        assert self._get_value("   ") is True
+
+    # -- Truthy values --
+
+    @pytest.mark.parametrize("val", ["true", "True", "TRUE", "1", "yes", "Yes", "on", "On"])
+    def test_truthy_values(self, val):
+        """All standard truthy values → True."""
+        assert self._get_value(val) is True
+
+    # -- Falsy values --
+
+    @pytest.mark.parametrize("val", ["false", "False", "FALSE", "0", "no", "No", "off", "Off"])
+    def test_falsy_values(self, val):
+        """All standard falsy values → False."""
+        assert self._get_value(val) is False

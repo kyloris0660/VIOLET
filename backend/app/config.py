@@ -478,9 +478,16 @@ class Settings:
         """When False, AI tagging jobs will NOT auto-trigger tag localization/translation.
         Default: True (preserves existing behavior).
         Set AI_TAGGING_AUTO_LOCALIZATION=false to disable the side-effect for
-        controlled pilot runs where localization should be managed separately."""
-        val = os.getenv("AI_TAGGING_AUTO_LOCALIZATION", "true")
-        return val.lower() in ("true", "1", "yes")
+        controlled pilot runs where localization should be managed separately.
+
+        Empty or whitespace-only values are treated as unset (→ default True).
+        Accepted truthy values: true, 1, yes, on
+        Accepted falsy values: false, 0, no, off
+        """
+        val = os.getenv("AI_TAGGING_AUTO_LOCALIZATION", "").strip()
+        if not val:
+            return True  # default when unset or empty
+        return val.lower() in ("true", "1", "yes", "on")
 
     @property
     def TAG_TRANSLATION_LLM_ENABLED(self) -> bool:

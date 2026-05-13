@@ -7,11 +7,22 @@ Tests in two layers:
 The route-level tests mock the DB session and service imports so no real
 database, AI tagging, or LLM calls are needed.
 
+Import strategy:
+  The target module (app.routes.admin.ai_tagging_jobs) lives inside the
+  admin package whose __init__.py eagerly imports all admin routers —
+  some of which transitively require optional/system dependencies such as
+  libmagic.  To avoid triggering those side-effect imports we pre-register
+  a lightweight stub for the ``app.routes.admin`` package in sys.modules
+  before importing the target module.  This keeps the tests portable to
+  environments without libmagic.
+
 No real AI tagging, no real LLM, no DB mutation.
 """
 import asyncio
+import importlib
 import json
 import sys
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
@@ -19,19 +30,64 @@ import pytest
 from pydantic import ValidationError
 
 # Ensure backend is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+_BACKEND = str(Path(__file__).resolve().parent.parent / "backend")
+if _BACKEND not in sys.path:
+    sys.path.insert(0, _BACKEND)
+
+
+def _ensure_admin_stub():
+    """Pre-register ``app.routes.admin`` as a namespace stub so that
+    importing ``app.routes.admin.ai_tagging_jobs`` does NOT execute
+    the real ``admin/__init__.py`` (which eagerly imports all routers
+    and may pull in optional deps like libmagic).
+
+    Only the ``app.routes.admin`` entry is stubbed; ``app`` and
+    ``app.routes`` are left to normal import machinery.  If the real
+    admin package is already loaded, this is a no-op.
+    """
+    key = "app.routes.admin"
+    if key in sys.modules:
+        return  # already loaded — nothing to stub
+
+    # Ensure parent packages are importable first (normal import, not stubs)
+    importlib.import_module("app")
+    importlib.import_module("app.routes")
+
+    # Minimal stub — just enough to let importlib resolve child modules
+    stub = types.ModuleType(key)
+    stub.__path__ = [
+        str(Path(__file__).resolve().parent.parent / "backend" / "app" / "routes" / "admin")
+    ]
+    stub.__package__ = key
+    sys.modules[key] = stub
+
+
+# Apply once at module load
+_admin_was_loaded = "app.routes.admin" in sys.modules
+_ensure_admin_stub()
+
+# Now import the target module — relative imports inside it will resolve
+# normally because ``app``, ``app.routes`` are real, and
+# ``app.routes.admin`` is our stub with __path__ pointing to the real dir.
+from app.routes.admin.ai_tagging_jobs import (  # noqa: E402
+    CreateAITagJobRequest,
+    create_ai_tag_job as _create_ai_tag_job_route,
+)
+
+# Clean up the stub so that later test files in the same pytest process
+# can import the real admin package (which exposes .router etc.).
+if not _admin_was_loaded:
+    del sys.modules["app.routes.admin"]
 
 
 class TestCreateAITagJobRequestModel:
     """Test the Pydantic model for content_class_filter field."""
 
     def test_default_no_content_class_filter(self):
-        from app.routes.admin.ai_tagging_jobs import CreateAITagJobRequest
         req = CreateAITagJobRequest()
         assert req.content_class_filter is None
 
     def test_valid_content_class_filter(self):
-        from app.routes.admin.ai_tagging_jobs import CreateAITagJobRequest
         req = CreateAITagJobRequest(
             content_class_filter=["anime", "illustration"],
             max_items=50,
@@ -40,12 +96,10 @@ class TestCreateAITagJobRequestModel:
         assert req.max_items == 50
 
     def test_single_content_class(self):
-        from app.routes.admin.ai_tagging_jobs import CreateAITagJobRequest
         req = CreateAITagJobRequest(content_class_filter=["anime"])
         assert req.content_class_filter == ["anime"]
 
     def test_all_valid_content_classes(self):
-        from app.routes.admin.ai_tagging_jobs import CreateAITagJobRequest
         req = CreateAITagJobRequest(
             content_class_filter=["anime", "illustration", "non_anime", "unknown"]
         )
@@ -58,13 +112,11 @@ class TestCreateAITagJobRequestModel:
         the route handler enforces business rules (empty list = invalid).
         See TestRouteContentClassFilter.test_empty_list_rejected_with_400.
         """
-        from app.routes.admin.ai_tagging_jobs import CreateAITagJobRequest
         req = CreateAITagJobRequest(content_class_filter=[])
         assert req.content_class_filter == []
 
     def test_media_ids_alone_still_works(self):
         """Existing media_ids-only requests are unaffected."""
-        from app.routes.admin.ai_tagging_jobs import CreateAITagJobRequest
         req = CreateAITagJobRequest(media_ids=[1, 2, 3], max_items=10)
         assert req.media_ids == [1, 2, 3]
         assert req.content_class_filter is None
@@ -121,6 +173,19 @@ def _make_mock_settings(**overrides):
     return s
 
 
+def _make_mock_job(media_ids_json=None):
+    """Build a mock AITagJob with serialization-friendly attributes."""
+    mock_job = MagicMock()
+    mock_job.id = 1
+    mock_job.status = "pending"
+    mock_job.created_at = None
+    mock_job.started_at = None
+    mock_job.finished_at = None
+    mock_job.media_ids_json = media_ids_json
+    mock_job.failed_items_json = None
+    return mock_job
+
+
 class TestRouteContentClassFilter:
     """Route-level tests for create_ai_tag_job endpoint.
 
@@ -143,63 +208,88 @@ class TestRouteContentClassFilter:
         for p in self.patches:
             p.stop()
 
+    # -- P1 #1: empty list rejection --
+
     def test_empty_list_rejected_with_400(self):
         """P1 #1: content_class_filter=[] must be rejected with HTTP 400,
-        no job created."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
+        no job created.  Also asserts service is never called."""
         from fastapi import HTTPException
 
         db, _ = _make_mock_db()
         body = CreateAITagJobRequest(content_class_filter=[])
         user = MagicMock()
 
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(create_ai_tag_job(body=body, current_user=user, db=db))
+        import app.services.ai_tagging_job_service as svc
+        with patch.object(svc, "create_ai_tag_job") as mock_create, \
+             patch.object(svc, "is_ai_job_active", return_value=False), \
+             patch.object(svc, "start_ai_tag_job"):
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(_create_ai_tag_job_route(body=body, current_user=user, db=db))
+            mock_create.assert_not_called()
         assert exc_info.value.status_code == 400
         assert "must not be empty" in exc_info.value.detail
 
+    # -- P1 #2: zero-match rejection --
+
+    def test_zero_match_rejected_no_fallback(self):
+        """P1 #2: Valid filter that matches zero media → HTTP 400,
+        no job created.  Service must not be called."""
+        from fastapi import HTTPException
+
+        db, _ = _make_mock_db(media_rows=[])
+        body = CreateAITagJobRequest(
+            content_class_filter=["anime"],
+            max_items=50,
+        )
+        user = MagicMock()
+
+        import app.services.ai_tagging_job_service as svc
+        with patch.object(svc, "create_ai_tag_job") as mock_create, \
+             patch.object(svc, "is_ai_job_active", return_value=False), \
+             patch.object(svc, "start_ai_tag_job"):
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(_create_ai_tag_job_route(body=body, current_user=user, db=db))
+            mock_create.assert_not_called()
+        assert exc_info.value.status_code == 400
+        assert "zero eligible media" in exc_info.value.detail
+
+    # -- None filter → unfiltered (P2 #3: assert service call scope) --
+
     def test_none_filter_means_unfiltered(self):
         """Omitted / None content_class_filter means no filtering applied.
-        The job is created with media_ids=None (unfiltered scope)."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
-
+        The service must be called with media_ids=None (unfiltered scope)."""
         db, mock_query = _make_mock_db()
         body = CreateAITagJobRequest()  # content_class_filter defaults to None
         user = MagicMock()
 
-        mock_job = MagicMock()
-        mock_job.id = 1
-        mock_job.status = "pending"
-        mock_job.created_at = None
-        mock_job.started_at = None
-        mock_job.finished_at = None
-        mock_job.media_ids_json = None
-        mock_job.failed_items_json = None
+        mock_job = _make_mock_job(media_ids_json=None)
 
         import app.services.ai_tagging_job_service as svc
-        with patch.object(svc, "create_ai_tag_job", return_value=mock_job), \
+        with patch.object(svc, "create_ai_tag_job", return_value=mock_job) as mock_create, \
              patch.object(svc, "is_ai_job_active", return_value=False), \
              patch.object(svc, "start_ai_tag_job"):
             result = asyncio.run(
-                create_ai_tag_job(body=body, current_user=user, db=db)
+                _create_ai_tag_job_route(body=body, current_user=user, db=db)
             )
 
-        # media_ids should be None in the created job (no filtering)
+        # Assert the serialized response shows no media_ids
         assert result["media_ids"] is None
 
-    def test_valid_filter_resolves_scoped_ids(self):
-        """Valid non-empty filter resolves to scoped media IDs."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
+        # P2 #3: Assert service was called with media_ids=None (truly unfiltered)
+        mock_create.assert_called_once()
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["media_ids"] is None
+        # Verify other forwarded parameters
+        assert call_kwargs["max_items"] == body.max_items
+        assert call_kwargs["dry_run"] == body.dry_run
+        assert call_kwargs["only_without_ai_tags"] == body.only_without_ai_tags
+        assert call_kwargs["force_suggestions"] == body.force_suggestions
 
+    # -- Valid filter → scoped resolution --
+
+    def test_valid_filter_resolves_scoped_ids(self):
+        """Valid non-empty filter resolves to scoped media IDs.
+        Service is called with exactly those IDs."""
         # DB returns 3 matching media IDs
         db, mock_query = _make_mock_db(media_rows=[10, 20, 30])
         body = CreateAITagJobRequest(
@@ -208,57 +298,27 @@ class TestRouteContentClassFilter:
         )
         user = MagicMock()
 
-        mock_job = MagicMock()
-        mock_job.id = 1
-        mock_job.status = "pending"
-        mock_job.created_at = None
-        mock_job.started_at = None
-        mock_job.finished_at = None
-        mock_job.media_ids_json = json.dumps([10, 20, 30])
-        mock_job.failed_items_json = None
+        mock_job = _make_mock_job(media_ids_json=json.dumps([10, 20, 30]))
 
         import app.services.ai_tagging_job_service as svc
         with patch.object(svc, "create_ai_tag_job", return_value=mock_job) as mock_create, \
              patch.object(svc, "is_ai_job_active", return_value=False), \
              patch.object(svc, "start_ai_tag_job"):
             result = asyncio.run(
-                create_ai_tag_job(body=body, current_user=user, db=db)
+                _create_ai_tag_job_route(body=body, current_user=user, db=db)
             )
 
         # Verify the service was called with resolved media_ids
         mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args
-        passed_ids = call_kwargs.kwargs.get("media_ids") or call_kwargs[1].get("media_ids")
-        assert passed_ids == [10, 20, 30]
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["media_ids"] == [10, 20, 30]
 
-    def test_zero_match_rejected_no_fallback(self):
-        """P1 #2: Valid filter that matches zero media → HTTP 400, no job created."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
-        from fastapi import HTTPException
-
-        # DB returns zero matching rows
-        db, _ = _make_mock_db(media_rows=[])
-        body = CreateAITagJobRequest(
-            content_class_filter=["anime"],
-            max_items=50,
-        )
-        user = MagicMock()
-
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(create_ai_tag_job(body=body, current_user=user, db=db))
-        assert exc_info.value.status_code == 400
-        assert "zero eligible media" in exc_info.value.detail
+    # -- only_without_ai_tags excludes all → zero match --
 
     def test_only_without_ai_tags_excludes_all_rejected(self):
         """When only_without_ai_tags=True and all matches are already tagged,
-        the result is zero IDs → rejected with 400 (same as zero-match)."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
+        the result is zero IDs → rejected with 400 (same as zero-match).
+        Service must not be called."""
         from fastapi import HTTPException
 
         # After filtering by content_class AND excluding already-tagged, zero remain
@@ -270,18 +330,20 @@ class TestRouteContentClassFilter:
         )
         user = MagicMock()
 
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(create_ai_tag_job(body=body, current_user=user, db=db))
+        import app.services.ai_tagging_job_service as svc
+        with patch.object(svc, "create_ai_tag_job") as mock_create, \
+             patch.object(svc, "is_ai_job_active", return_value=False), \
+             patch.object(svc, "start_ai_tag_job"):
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(_create_ai_tag_job_route(body=body, current_user=user, db=db))
+            mock_create.assert_not_called()
         assert exc_info.value.status_code == 400
         assert "zero eligible media" in exc_info.value.detail
 
+    # -- DB-side limit --
+
     def test_filtered_query_applies_db_side_limit(self):
         """P2 #1: The filtered query must apply .limit(max_items) DB-side."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
-
         db, mock_query = _make_mock_db(media_rows=[1, 2, 3])
         body = CreateAITagJobRequest(
             content_class_filter=["anime"],
@@ -289,30 +351,22 @@ class TestRouteContentClassFilter:
         )
         user = MagicMock()
 
-        mock_job = MagicMock()
-        mock_job.id = 1
-        mock_job.status = "pending"
-        mock_job.created_at = None
-        mock_job.started_at = None
-        mock_job.finished_at = None
-        mock_job.media_ids_json = json.dumps([1, 2, 3])
-        mock_job.failed_items_json = None
+        mock_job = _make_mock_job(media_ids_json=json.dumps([1, 2, 3]))
 
         import app.services.ai_tagging_job_service as svc
         with patch.object(svc, "create_ai_tag_job", return_value=mock_job), \
              patch.object(svc, "is_ai_job_active", return_value=False), \
              patch.object(svc, "start_ai_tag_job"):
-            asyncio.run(create_ai_tag_job(body=body, current_user=user, db=db))
+            asyncio.run(_create_ai_tag_job_route(body=body, current_user=user, db=db))
 
         # Verify .limit() was called with max_items on the query chain
         mock_query.limit.assert_called_with(25)
 
+    # -- Invalid content_class --
+
     def test_invalid_content_class_returns_400(self):
-        """Invalid content_class value returns HTTP 400 with valid options listed."""
-        from app.routes.admin.ai_tagging_jobs import (
-            CreateAITagJobRequest,
-            create_ai_tag_job,
-        )
+        """Invalid content_class value returns HTTP 400 with valid options listed.
+        Service must not be called."""
         from fastapi import HTTPException
 
         db, _ = _make_mock_db()
@@ -322,8 +376,13 @@ class TestRouteContentClassFilter:
         )
         user = MagicMock()
 
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(create_ai_tag_job(body=body, current_user=user, db=db))
+        import app.services.ai_tagging_job_service as svc
+        with patch.object(svc, "create_ai_tag_job") as mock_create, \
+             patch.object(svc, "is_ai_job_active", return_value=False), \
+             patch.object(svc, "start_ai_tag_job"):
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(_create_ai_tag_job_route(body=body, current_user=user, db=db))
+            mock_create.assert_not_called()
         assert exc_info.value.status_code == 400
         assert "Invalid content_class value" in exc_info.value.detail
         assert "not_a_real_class" in exc_info.value.detail
