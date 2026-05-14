@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy.engine import URL
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=True)
+load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=False)
 
 APP_VERSION = "1.41.0"
 SCHEMA_VERSION = 6
