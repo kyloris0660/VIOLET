@@ -139,6 +139,8 @@ GET /api/admin/tag-localization/worker/status
 
 **Incident context (Phase 3.2g.2):** With only `AI_TAGGING_AUTO_LOCALIZATION=false`, the background worker added 182 translations during an AI-only tagging run. The other three env vars were not set.
 
+**Config precedence fix (Phase 3.2g.5):** `backend/app/config.py` previously called `load_dotenv(override=True)`, which forced `.env` values (e.g. `POSTGRES_DB=blombooru`, `TAG_TRANSLATION_BACKGROUND_ENABLED=true`) to overwrite explicit session env vars. This has been fixed to `override=False` — shell-set env vars now take precedence over `.env` defaults directly, eliminating the need for API-based workarounds to pause the translation worker.
+
 ## 7. Preflight Checklist
 
 Complete ALL items before executing any tier:

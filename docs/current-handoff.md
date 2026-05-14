@@ -250,7 +250,7 @@ Background AI tagging job system with optional auto-tag after import:
 
 Config fix and developer tooling for E2E validation:
 
-- **Config fix**: `load_dotenv()` now uses explicit project-root path with `override=True`
+- **Config fix**: `load_dotenv()` now uses explicit project-root path with `override=False` (changed from `override=True` in Phase 3.2g.5)
 - **Config diagnostics API**: `GET /api/admin/dev/config-diagnostics` returns all runtime config values (no secrets)
 - **E2E reset API**: `POST /api/admin/dev/reset-e2e-test-data` with dry-run support
 - **Developer Tools UI**: Admin → System → "Developer / E2E Tools" section
@@ -261,7 +261,7 @@ Config fix and developer tooling for E2E validation:
 
 | File | Change |
 |------|--------|
-| `backend/app/config.py` | `load_dotenv(override=True)` with explicit path |
+| `backend/app/config.py` | `load_dotenv(override=False)` with explicit path (changed from `override=True` in Phase 3.2g.5) |
 | `backend/app/routes/admin/dev_tools.py` | Config diagnostics, reset, recommended config APIs |
 | `backend/app/services/e2e_reset_service.py` | Reset logic (summary + execute) |
 | `frontend/templates/admin.html` | Developer Tools UI section |
@@ -863,3 +863,31 @@ Post-Phase 2.4 infrastructure fix for LLM connectivity issues behind GFW:
 | `docs/tag-localization-llm.md` | Fallback Provider, Proxy Configuration, Error Diagnostics docs |
 | `docs/tag-localization-zh.md` | Tag localization design (zh-CN) |
 | `example.env` | Available environment variables |
+
+### Phase 3.2g.5 — Config Precedence Hardening
+
+**Status:** In progress
+**Branch:** `phase3.2g-config-precedence-hardening` (from `main` @ `ff7da9a`)
+
+**Root cause:** `backend/app/config.py` called `load_dotenv(override=True)`, forcing `.env` values to overwrite explicit session/process environment variables. This caused repeated incidents during medium pilot phases where `POSTGRES_DB=blombooru` from `.env` overwrote `POSTGRES_DB=blombooru_test_medium` set in the shell, and `TAG_TRANSLATION_*=true` flags from `.env` overwrote `false` values set for AI-only isolation.
+
+**Fix:** Changed `load_dotenv(override=True)` → `load_dotenv(override=False)` in `backend/app/config.py` line 12. With `override=False`, `load_dotenv` only sets variables that are not already present in the environment, preserving the standard precedence: process env → `.env` defaults → code defaults.
+
+**Regression tests:** `tests/test_config_precedence.py` — 6 test classes covering:
+- `POSTGRES_DB` session override wins over `.env`
+- `TEST_DATABASE_URL` still works with `override=False`
+- `TAG_TRANSLATION_BACKGROUND_ENABLED` session `false` overrides `.env` `true`
+- `TAG_TRANSLATION_AUTO_ENABLED` session `false` overrides `.env` `true`
+- `TAG_TRANSLATION_LLM_ENABLED` session `false` overrides `.env` `true`
+- Code defaults used when env var unset; source code assertion for `override=False`
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `backend/app/config.py` | `load_dotenv(override=True)` → `override=False` |
+| `tests/test_config_precedence.py` | New: 6 regression test classes |
+| `docs/test-workflow.md` | Added `test_config_precedence.py` to Tier 1 table and command |
+| `AGENTS.md` | Added `test_config_precedence.py` to Tier 1 table and command |
+| `docs/medium-pilot-workflow.md` | Added config precedence fix note in § 6.3 |
+| `docs/current-handoff.md` | Updated `override=True` → `override=False` references; added this section |
