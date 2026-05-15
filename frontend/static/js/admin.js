@@ -429,6 +429,10 @@ class AdminPanel {
         if (tlSaveBtn) {
             tlSaveBtn.addEventListener('click', () => this.saveTagTranslation());
         }
+        const tlCancelEditBtn = document.getElementById('tl-cancel-edit-btn');
+        if (tlCancelEditBtn) {
+            tlCancelEditBtn.addEventListener('click', () => this._cancelEditMode());
+        }
         const tlBatchBtn = document.getElementById('tl-batch-btn');
         if (tlBatchBtn) {
             tlBatchBtn.addEventListener('click', () => this.runBatchTranslation());
@@ -510,10 +514,19 @@ class AdminPanel {
                 }
                 const editBtn = e.target.closest('.tl-review-edit-btn');
                 if (editBtn) {
+                    const id = parseInt(editBtn.dataset.id);
                     document.getElementById('tl-edit-canonical').value = editBtn.dataset.name || '';
                     document.getElementById('tl-edit-display').value = editBtn.dataset.display || '';
                     document.getElementById('tl-edit-aliases').value = editBtn.dataset.aliases || '';
                     document.getElementById('tl-edit-category').value = editBtn.dataset.category || '';
+                    // Enter PATCH mode
+                    this._tlPatchId = id;
+                    document.getElementById('tl-edit-canonical').disabled = true;
+                    const saveBtn = document.getElementById('tl-save-btn');
+                    const cancelBtn = document.getElementById('tl-cancel-edit-btn');
+                    const t = (k) => window.i18n ? window.i18n.t(k) : k;
+                    if (saveBtn) saveBtn.textContent = t('admin.tag_localization.update_translation');
+                    if (cancelBtn) cancelBtn.classList.remove('hidden');
                     document.getElementById('tl-edit-canonical').scrollIntoView({ behavior: 'smooth' });
                 }
             });
@@ -4143,6 +4156,10 @@ class AdminPanel {
     }
 
     async saveTagTranslation() {
+        // If in PATCH mode, delegate to _patchTagTranslation
+        if (this._tlPatchId) {
+            return this._patchTagTranslation();
+        }
         const canonical = document.getElementById('tl-edit-canonical').value.trim();
         const display = document.getElementById('tl-edit-display').value.trim();
         if (!canonical || !display) {
@@ -4176,6 +4193,48 @@ class AdminPanel {
         } catch (e) {
             app.showNotification(`Error: ${e.message || e}`, 'error');
         }
+    }
+
+    async _patchTagTranslation() {
+        const display = document.getElementById('tl-edit-display').value.trim();
+        const aliasStr = document.getElementById('tl-edit-aliases').value.trim();
+        const aliases = aliasStr ? aliasStr.split(',').map(s => s.trim()).filter(Boolean) : null;
+
+        const body = {};
+        if (display) body.display_name = display;
+        if (aliases) body.aliases = aliases;
+
+        if (Object.keys(body).length === 0) {
+            app.showNotification('Nothing to update', 'error');
+            return;
+        }
+
+        try {
+            await app.apiCall(`/api/admin/tag-localization/translations/${this._tlPatchId}`, {
+                method: 'PATCH',
+                body: JSON.stringify(body)
+            });
+            const t = (k) => window.i18n ? window.i18n.t(k) : k;
+            app.showNotification(t('admin.tag_localization.translation_updated'), 'success');
+            this._cancelEditMode();
+            this.loadTranslationReview();
+            this._refreshAfterTranslation();
+        } catch (e) {
+            app.showNotification(`Error: ${e.message || e}`, 'error');
+        }
+    }
+
+    _cancelEditMode() {
+        this._tlPatchId = null;
+        document.getElementById('tl-edit-canonical').disabled = false;
+        document.getElementById('tl-edit-canonical').value = '';
+        document.getElementById('tl-edit-display').value = '';
+        document.getElementById('tl-edit-aliases').value = '';
+        const saveBtn = document.getElementById('tl-save-btn');
+        const cancelBtn = document.getElementById('tl-cancel-edit-btn');
+        const t = (k) => window.i18n ? window.i18n.t(k) : k;
+        if (saveBtn) saveBtn.textContent = t('admin.tag_localization.save_translation');
+        if (cancelBtn) cancelBtn.classList.add('hidden');
     }
 
     async runBatchTranslation() {
@@ -4309,7 +4368,7 @@ class AdminPanel {
                         <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="approve" data-id="${item.id}" title="${t('admin.tag_localization.approve')}">✓</button>
                         <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="reject" data-id="${item.id}" title="${t('admin.tag_localization.reject')}">✗</button>
                         <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="delete" data-id="${item.id}" title="${t('admin.tag_localization.delete')}">🗑</button>
-                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-review-edit-btn" data-name="${this.escapeHtml(item.canonical_name)}" data-display="${this.escapeHtml(item.display_name)}" data-aliases="${this.escapeHtml(aliases)}" data-category="${this.escapeHtml(item.category || '')}" title="${t('admin.tag_localization.edit')}">✏</button>
+                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-review-edit-btn" data-id="${item.id}" data-name="${this.escapeHtml(item.canonical_name)}" data-display="${this.escapeHtml(item.display_name)}" data-aliases="${this.escapeHtml(aliases)}" data-category="${this.escapeHtml(item.category || '')}" title="${t('admin.tag_localization.edit')}">✏</button>
                     </td>
                 `;
                 tbody.appendChild(tr);

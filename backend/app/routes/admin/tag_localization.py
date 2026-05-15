@@ -29,6 +29,13 @@ class TranslationUpsertRequest(BaseModel):
     needs_review: bool = False
 
 
+class TranslationPatchRequest(BaseModel):
+    """Request body for PATCH /translations/{id} — manual correction."""
+    display_name: Optional[str] = None
+    aliases: Optional[List[str]] = None
+    needs_review: Optional[bool] = None
+
+
 class BatchTranslateRequest(BaseModel):
     dry_run: bool = True
     max_items: int = 50
@@ -279,6 +286,87 @@ async def review_translation(
     invalidate_translation_cache()
 
     return {"message": f"Translation {action}d", "id": translation_id, "status": trans.status}
+
+
+@router.patch("/translations/{translation_id}")
+async def patch_translation(
+    translation_id: int,
+    req: TranslationPatchRequest,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually correct an existing translation's display_name, aliases, and/or needs_review.
+    Sets source='manual' and status='reviewed' to protect against future LLM overwrites.
+    """
+    from ...models import TagTranslation
+    from ...utils.search_parser import invalidate_translation_cache
+
+    # At least one field must be provided
+    if req.display_name is None and req.aliases is None and req.needs_review is None:
+        raise HTTPException(
+            status_code=422,
+            detail="At least one of display_name, aliases, or needs_review must be provided",
+        )
+
+    trans = db.query(TagTranslation).filter(TagTranslation.id == translation_id).first()
+    if not trans:
+        raise HTTPException(status_code=404, detail="Translation not found")
+
+    # Validate display_name if provided
+    if req.display_name is not None:
+        cleaned = req.display_name.strip()
+        if not cleaned:
+            raise HTTPException(status_code=422, detail="display_name must not be empty")
+
+    # Capture old values for the response diff
+    old_display_name = trans.display_name
+    old_aliases = _parse_aliases(trans.aliases_json)
+    old_needs_review = trans.needs_review
+
+    # Apply updates
+    if req.display_name is not None:
+        trans.display_name = req.display_name.strip()
+
+    if req.aliases is not None:
+        # Normalize aliases: trim whitespace, remove empty strings, deduplicate,
+        # remove any alias that equals the (possibly updated) display_name
+        current_display = trans.display_name  # use the possibly-updated value
+        seen = set()
+        normalized = []
+        for alias in req.aliases:
+            a = alias.strip()
+            if a and a not in seen and a != current_display:
+                seen.add(a)
+                normalized.append(a)
+        trans.aliases_json = json.dumps(normalized, ensure_ascii=False) if normalized else None
+
+    if req.needs_review is not None:
+        trans.needs_review = req.needs_review
+
+    # Mark as manual correction
+    trans.source = "manual"
+    trans.status = "reviewed"
+
+    db.commit()
+    db.refresh(trans)
+    invalidate_translation_cache()
+
+    return {
+        "id": trans.id,
+        "canonical_name": trans.canonical_name,
+        "display_name": trans.display_name,
+        "aliases": _parse_aliases(trans.aliases_json),
+        "needs_review": trans.needs_review,
+        "source": trans.source,
+        "status": trans.status,
+        "old": {
+            "display_name": old_display_name,
+            "aliases": old_aliases,
+            "needs_review": old_needs_review,
+        },
+        "message": "Translation updated",
+    }
 
 
 @router.get("/worker/status")
