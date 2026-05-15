@@ -202,6 +202,7 @@ The LLM prompt instructs the model to:
 | GET | `/api/admin/tag-localization/translations` | List translations with filters |
 | POST | `/api/admin/tag-localization/translations` | Create/update translation |
 | DELETE | `/api/admin/tag-localization/translations/{id}` | Delete translation |
+| PATCH | `/api/admin/tag-localization/translations/{id}` | Manual correction (display_name, aliases, needs_review). Sets source='manual', status='reviewed' to protect from future LLM overwrites |
 | POST | `/api/admin/tag-localization/batch-translate` | Batch LLM translate |
 | GET | `/api/admin/tag-localization/llm-status` | Check LLM provider status |
 | POST | `/api/admin/tag-localization/translations/{id}/review` | Approve/reject |
@@ -222,7 +223,7 @@ The Admin Panel includes a "Tag Localization" section with:
 1. **Statistics** — total tags, translated count, missing, needs review, source breakdown
 2. **LLM Status** — provider, model, API key configured (yes/no, never shows the key), auto-translate status
 3. **Test LLM** — translate a known tag to verify LLM connectivity
-4. **Manual edit** — input canonical tag name, Chinese display name, aliases, save
+4. **Manual edit / correction** — input canonical tag name, Chinese display name, aliases, save (POST for new translations; PATCH for correcting existing ones via edit button with cancel support)
 5. **Batch LLM translate** — dry-run toggle, max items, category filter
 6. **Missing translations list** — browse untranslated tags by category
 7. **Review translations** — filter, search, approve/reject LLM results

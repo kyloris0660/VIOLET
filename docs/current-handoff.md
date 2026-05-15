@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.2g.2a — AI-only Run Isolation & Storage Identity Hardening (2026-05-14).
+> Last updated after Phase 3.2j — Manual Tag Translation Correction (2026-05-15).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -657,6 +657,15 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - `media_processor.py`: thread-safe python-magic availability probe (one-time, lock-protected) with per-thread `Magic(mime=True)` detectors via `threading.local()`; MIME fallback chain (python-magic → PIL → mimetypes → octet-stream) works without libmagic
 - Unit tests: 4 new identity endpoint tests, 3 normalize_path tests, 20+ MIME magic cache/thread-safety tests (`test_media_processor_mime_magic_cache.py`)
 - Docs: AI-only isolation section, admin auth mutation rule, reporting accuracy rule, storage identity hard gate
+
+**Phase 3.2j — Manual Tag Translation Correction (PR pending):**
+- PATCH endpoint: `PATCH /api/admin/tag-localization/translations/{id}` for manual correction of display_name, aliases, needs_review
+- Sets `source='manual'` and `status='reviewed'` to protect from future LLM overwrites (source priority system: manual > static > llm > imported)
+- Input validation: at least one field required, empty display_name rejected, alias normalization (dedup, trim, remove empty, remove alias==display_name)
+- Returns old/new diff in response for audit trail
+- Admin UI: edit button on review table rows enters PATCH mode (canonical name locked, save→update, cancel button), `_patchTagTranslation()` and `_cancelEditMode()` methods
+- i18n: 4 new keys in en.json and zh-cn.json (update_translation, cancel_edit, translation_saved, translation_updated)
+- Tests: 11 unit tests covering 10 required cases (valid update, aliases, needs_review, empty body 422, empty display_name 422, 404, auth dependency, alias normalization, source priority protection, cache invalidation)
 
 ## Recommended Next Phase: 3.2g.3
 

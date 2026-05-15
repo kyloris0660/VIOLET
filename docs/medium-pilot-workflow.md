@@ -69,7 +69,7 @@ The following are **recommended starting points** for each pilot tier. Adjust ba
 1. Import (local library scan)
 2. Content classification (CLIP or heuristic)
 3. AI tagging (WDv3) — use `content_class_filter` to scope by content class (see § 6.1)
-4. Tag translation (LLM) — only if `AI_TAGGING_AUTO_LOCALIZATION=true` (see § 6.2)
+4. Tag translation (LLM) — only if `AI_TAGGING_AUTO_LOCALIZATION=true` (see § 6.2). Manual corrections available via `PATCH /api/admin/tag-localization/translations/{id}` (Phase 3.2j)
 5. Entity alias resolution (LLM, if enabled)
 
 Each step's output feeds the next. Do not skip steps or run them out of order.
