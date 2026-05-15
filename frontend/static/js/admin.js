@@ -495,6 +495,8 @@ class AdminPanel {
             tlMissingTbody.addEventListener('click', (e) => {
                 const btn = e.target.closest('.tl-edit-btn');
                 if (btn) {
+                    // Exit any active PATCH mode before filling form for new/missing tag
+                    this._exitTranslationPatchMode({ clearForm: false });
                     document.getElementById('tl-edit-canonical').value = btn.dataset.name || '';
                     document.getElementById('tl-edit-display').value = '';
                     document.getElementById('tl-edit-aliases').value = '';
@@ -515,19 +517,15 @@ class AdminPanel {
                 const editBtn = e.target.closest('.tl-review-edit-btn');
                 if (editBtn) {
                     const id = parseInt(editBtn.dataset.id);
+                    const needsReview = editBtn.dataset.needsReview === 'true';
                     document.getElementById('tl-edit-canonical').value = editBtn.dataset.name || '';
                     document.getElementById('tl-edit-display').value = editBtn.dataset.display || '';
                     document.getElementById('tl-edit-aliases').value = editBtn.dataset.aliases || '';
                     document.getElementById('tl-edit-category').value = editBtn.dataset.category || '';
-                    // Enter PATCH mode
-                    this._tlPatchId = id;
-                    document.getElementById('tl-edit-canonical').disabled = true;
-                    const saveBtn = document.getElementById('tl-save-btn');
-                    const cancelBtn = document.getElementById('tl-cancel-edit-btn');
-                    const t = (k) => window.i18n ? window.i18n.t(k) : k;
-                    if (saveBtn) saveBtn.textContent = t('admin.tag_localization.update_translation');
-                    if (cancelBtn) cancelBtn.classList.remove('hidden');
-                    document.getElementById('tl-edit-canonical').scrollIntoView({ behavior: 'smooth' });
+                    // Set reviewed checkbox to inverse of needs_review
+                    const reviewedCheckbox = document.getElementById('tl-edit-reviewed');
+                    if (reviewedCheckbox) reviewedCheckbox.checked = !needsReview;
+                    this._enterTranslationPatchMode(id);
                 }
             });
         }
@@ -4156,8 +4154,8 @@ class AdminPanel {
     }
 
     async saveTagTranslation() {
-        // If in PATCH mode, delegate to _patchTagTranslation
-        if (this._tlPatchId) {
+        // If in explicit PATCH mode, delegate to _patchTagTranslation
+        if (this._isTranslationPatchMode()) {
             return this._patchTagTranslation();
         }
         const canonical = document.getElementById('tl-edit-canonical').value.trim();
@@ -4198,13 +4196,20 @@ class AdminPanel {
     async _patchTagTranslation() {
         const display = document.getElementById('tl-edit-display').value.trim();
         const aliasStr = document.getElementById('tl-edit-aliases').value.trim();
-        const aliases = aliasStr ? aliasStr.split(',').map(s => s.trim()).filter(Boolean) : null;
+        // Always send aliases in PATCH mode — empty string means clear all aliases
+        const aliases = aliasStr ? aliasStr.split(',').map(s => s.trim()).filter(Boolean) : [];
 
         const body = {};
         if (display) body.display_name = display;
-        if (aliases) body.aliases = aliases;
+        // Always include aliases so clearing is possible (empty array removes all)
+        body.aliases = aliases;
+        // Wire needs_review from the reviewed checkbox (reviewed=true → needs_review=false)
+        const reviewedCheckbox = document.getElementById('tl-edit-reviewed');
+        if (reviewedCheckbox) {
+            body.needs_review = !reviewedCheckbox.checked;
+        }
 
-        if (Object.keys(body).length === 0) {
+        if (!display && aliases.length === 0 && body.needs_review === undefined) {
             app.showNotification('Nothing to update', 'error');
             return;
         }
@@ -4216,25 +4221,67 @@ class AdminPanel {
             });
             const t = (k) => window.i18n ? window.i18n.t(k) : k;
             app.showNotification(t('admin.tag_localization.translation_updated'), 'success');
-            this._cancelEditMode();
+            this._exitTranslationPatchMode({ clearForm: true });
             this.loadTranslationReview();
             this._refreshAfterTranslation();
         } catch (e) {
+            // Keep PATCH mode on failure so user can fix and retry
             app.showNotification(`Error: ${e.message || e}`, 'error');
         }
     }
 
-    _cancelEditMode() {
+    /**
+     * Enter PATCH mode for editing an existing translation.
+     * Sets _tlPatchId and _tlPatchModeActive, locks canonical name field,
+     * updates save button text, shows cancel button.
+     */
+    _enterTranslationPatchMode(translationId) {
+        this._tlPatchId = translationId;
+        this._tlPatchModeActive = true;
+        document.getElementById('tl-edit-canonical').disabled = true;
+        const saveBtn = document.getElementById('tl-save-btn');
+        const cancelBtn = document.getElementById('tl-cancel-edit-btn');
+        const t = (k) => window.i18n ? window.i18n.t(k) : k;
+        if (saveBtn) saveBtn.textContent = t('admin.tag_localization.update_translation');
+        if (cancelBtn) cancelBtn.classList.remove('hidden');
+        document.getElementById('tl-edit-canonical').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /**
+     * Exit PATCH mode. Clears _tlPatchId and _tlPatchModeActive.
+     * @param {Object} options
+     * @param {boolean} options.clearForm - If true, clear all form fields. If false, preserve current values.
+     */
+    _exitTranslationPatchMode({ clearForm = false } = {}) {
         this._tlPatchId = null;
+        this._tlPatchModeActive = false;
         document.getElementById('tl-edit-canonical').disabled = false;
-        document.getElementById('tl-edit-canonical').value = '';
-        document.getElementById('tl-edit-display').value = '';
-        document.getElementById('tl-edit-aliases').value = '';
+        if (clearForm) {
+            document.getElementById('tl-edit-canonical').value = '';
+            document.getElementById('tl-edit-display').value = '';
+            document.getElementById('tl-edit-aliases').value = '';
+        }
         const saveBtn = document.getElementById('tl-save-btn');
         const cancelBtn = document.getElementById('tl-cancel-edit-btn');
         const t = (k) => window.i18n ? window.i18n.t(k) : k;
         if (saveBtn) saveBtn.textContent = t('admin.tag_localization.save_translation');
         if (cancelBtn) cancelBtn.classList.add('hidden');
+    }
+
+    /**
+     * Check if the editor is currently in PATCH mode.
+     * Both _tlPatchModeActive and _tlPatchId must be set.
+     */
+    _isTranslationPatchMode() {
+        return this._tlPatchModeActive === true && this._tlPatchId != null;
+    }
+
+    /**
+     * Cancel edit mode — alias for _exitTranslationPatchMode with form clearing.
+     * Kept for backward compatibility with the cancel button listener.
+     */
+    _cancelEditMode() {
+        this._exitTranslationPatchMode({ clearForm: true });
     }
 
     async runBatchTranslation() {
@@ -4368,7 +4415,7 @@ class AdminPanel {
                         <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="approve" data-id="${item.id}" title="${t('admin.tag_localization.approve')}">✓</button>
                         <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="reject" data-id="${item.id}" title="${t('admin.tag_localization.reject')}">✗</button>
                         <button class="btn btn-sm px-1 py-0.5 text-xs tl-action-btn" data-action="delete" data-id="${item.id}" title="${t('admin.tag_localization.delete')}">🗑</button>
-                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-review-edit-btn" data-id="${item.id}" data-name="${this.escapeHtml(item.canonical_name)}" data-display="${this.escapeHtml(item.display_name)}" data-aliases="${this.escapeHtml(aliases)}" data-category="${this.escapeHtml(item.category || '')}" title="${t('admin.tag_localization.edit')}">✏</button>
+                        <button class="btn btn-sm px-1 py-0.5 text-xs tl-review-edit-btn" data-id="${item.id}" data-name="${this.escapeHtml(item.canonical_name)}" data-display="${this.escapeHtml(item.display_name)}" data-aliases="${this.escapeHtml(aliases)}" data-category="${this.escapeHtml(item.category || '')}" data-needs-review="${item.needs_review ? 'true' : 'false'}" title="${t('admin.tag_localization.edit')}">✏</button>
                     </td>
                 `;
                 tbody.appendChild(tr);

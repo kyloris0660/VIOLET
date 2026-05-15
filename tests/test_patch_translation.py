@@ -2,7 +2,7 @@
 Tests for PATCH /api/admin/tag-localization/translations/{id}
 Phase 3.2j — Manual Tag Translation Correction endpoint.
 
-10 required test cases:
+10 required test cases + additional coverage:
   1. Valid display_name → 200, source='manual', status='reviewed'
   2. Valid aliases → normalized correctly
   3. needs_review=false → clears flag
@@ -13,6 +13,8 @@ Phase 3.2j — Manual Tag Translation Correction endpoint.
   8. Alias normalization (dedup, trim, remove empty, remove alias==display_name)
   9. source='manual' protects from future LLM overwrite (force=False)
  10. Translation cache invalidated after PATCH
+ 11. aliases=[] clears existing aliases
+ 12. needs_review=true sets the flag
 """
 
 import asyncio
@@ -325,3 +327,66 @@ class TestCacheInvalidation:
             ))
 
         mock_invalidate.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Case 11: PATCH with aliases=[] clears existing aliases
+# ---------------------------------------------------------------------------
+
+class TestPatchClearAliases:
+    def test_empty_aliases_clears_existing(self):
+        """PATCH with aliases=[] should set aliases_json to None, clearing all aliases."""
+        trans = _make_translation(
+            aliases_json=json.dumps(["碧眼", "蓝色眼睛"]),
+        )
+        db = _mock_db_with_translation(trans)
+        req = TranslationPatchRequest(aliases=[])
+        user = MagicMock()
+
+        with patch("app.utils.search_parser.invalidate_translation_cache"):
+            result = _run(patch_translation(
+                translation_id=1, req=req, current_user=user, db=db,
+            ))
+
+        assert result["aliases"] == []
+        assert result["old"]["aliases"] == ["碧眼", "蓝色眼睛"]
+        # aliases_json should be set to None for empty list
+        assert trans.aliases_json is None
+
+    def test_all_invalid_aliases_clears(self):
+        """PATCH with aliases containing only empty/whitespace strings should clear aliases."""
+        trans = _make_translation(
+            aliases_json=json.dumps(["碧眼"]),
+        )
+        db = _mock_db_with_translation(trans)
+        req = TranslationPatchRequest(aliases=["", "  ", ""])
+        user = MagicMock()
+
+        with patch("app.utils.search_parser.invalidate_translation_cache"):
+            result = _run(patch_translation(
+                translation_id=1, req=req, current_user=user, db=db,
+            ))
+
+        assert result["aliases"] == []
+        assert trans.aliases_json is None
+
+
+# ---------------------------------------------------------------------------
+# Case 12: PATCH needs_review=true sets the flag
+# ---------------------------------------------------------------------------
+
+class TestPatchSetNeedsReview:
+    def test_set_needs_review_true(self):
+        """PATCH with needs_review=true should set the flag."""
+        trans = _make_translation(needs_review=False)
+        db = _mock_db_with_translation(trans)
+        req = TranslationPatchRequest(needs_review=True)
+        user = MagicMock()
+
+        with patch("app.utils.search_parser.invalidate_translation_cache"):
+            result = _run(patch_translation(
+                translation_id=1, req=req, current_user=user, db=db,
+            ))
+
+        assert result["needs_review"] is True
+        assert result["old"]["needs_review"] is False
