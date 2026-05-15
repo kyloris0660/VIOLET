@@ -59,7 +59,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 **Tier 1 — Unit tests** (no external dependencies):
 
 ```powershell
-& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py tests/test_media_processor_mime_magic_cache.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_smoke_validation.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_python_env_preflight.py tests/test_media_processor_mime_magic_cache.py tests/test_config_precedence.py -v
 ```
 
 | Test file | Coverage |
@@ -73,6 +73,7 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 | `tests/test_python_env_preflight.py` | Python/venv identity preflight: sys.executable match, JSON output, code-root check, no backend imports |
 | `tests/test_media_processor_mime_magic_cache.py` | python-magic availability caching, thread-local detectors, fallback chain, concurrent init safety |
+| `tests/test_config_precedence.py` | Config precedence: process env beats `.env`, `TEST_DATABASE_URL` override, translation flag overrides, code defaults |
 
 **Tier 2 — Fixture validation** (requires `VIOLET_TEST_FIXTURE_PATH`):
 
