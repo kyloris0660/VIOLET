@@ -13,7 +13,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, switchToTab } from './helpers/auth';
+import { loginAsAdmin, navigateToContentSection } from './helpers/auth';
 
 const REAL_E2E = process.env.VIOLET_RUN_REAL_E2E === '1';
 
@@ -21,8 +21,8 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
   test.beforeEach(async ({ page }) => {
     test.skip(!REAL_E2E, 'Skipped: set VIOLET_RUN_REAL_E2E=1 with a running server');
     await loginAsAdmin(page);
-    // Navigate to admin page — Tag Localization tab
-    await switchToTab(page, '标签本地化');
+    // Navigate to admin page — Content tab → Tag Localization section
+    await navigateToContentSection(page, '标签本地化');
     // Wait for the localization section to be visible
     await page.waitForSelector('#tl-edit-canonical', { timeout: 10_000 });
   });
@@ -34,8 +34,11 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
   async function installApiCallMock(page: import('@playwright/test').Page) {
     await page.evaluate(() => {
       (window as any).__patchTestCalls = [];
-      const origApiCall = (window as any).app.apiCall.bind((window as any).app);
-      (window as any).app.apiCall = async (url: string, options: any) => {
+      // `app` is a global lexical const in main.js (not a window property).
+      // Use indirect eval to reach the global lexical environment.
+      const appInstance: any = (0, eval)('app');
+      const origApiCall = appInstance.apiCall.bind(appInstance);
+      appInstance.apiCall = async (url: string, options: any) => {
         const entry = { url, method: options?.method || 'GET', body: null as any };
         try {
           entry.body = options?.body ? JSON.parse(options.body) : null;
@@ -73,6 +76,10 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
   /**
    * Helper: simulate entering PATCH mode by calling the AdminPanel method
    * directly and filling form fields.
+   *
+   * `opts.original` — the "pre-edit" snapshot stored by _enterTranslationPatchMode
+   * for diff detection.  When omitted the original defaults to placeholder values
+   * that differ from the form fields so that every field is treated as changed.
    */
   async function enterPatchMode(page: import('@playwright/test').Page, opts: {
     translationId: number;
@@ -81,10 +88,11 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
     aliases?: string;
     needsReview?: boolean;
     category?: string;
+    original?: { display_name?: string; aliases?: string; needs_review?: boolean };
   }) {
     await page.evaluate((o) => {
       const panel = (window as any).adminPanel;
-      // Fill form fields
+      // Fill form fields (these represent the *edited* state the user wants to save)
       (document.getElementById('tl-edit-canonical') as HTMLInputElement).value = o.canonical || 'test_tag';
       (document.getElementById('tl-edit-display') as HTMLInputElement).value = o.display || '测试名';
       (document.getElementById('tl-edit-aliases') as HTMLInputElement).value = o.aliases ?? '';
@@ -92,11 +100,18 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
       if (reviewedCb) reviewedCb.checked = !(o.needsReview ?? false);
       const categorySel = document.getElementById('tl-edit-category') as HTMLSelectElement;
       if (categorySel) categorySel.value = o.category || '';
-      // Enter PATCH mode with original values for diff detection
+      // Enter PATCH mode with original (pre-edit) values for diff detection.
+      // If no explicit original is provided, use sentinel values that differ
+      // from the form fields so the save handler detects a change.
+      const orig = o.original || {
+        display_name: '__original__',
+        aliases: '__original__',
+        needs_review: !(o.needsReview ?? false),
+      };
       panel._enterTranslationPatchMode(o.translationId, {
-        display_name: o.display || '测试名',
-        aliases: o.aliases ?? '',
-        needs_review: o.needsReview ?? false,
+        display_name: orig.display_name ?? '__original__',
+        aliases: orig.aliases ?? '__original__',
+        needs_review: orig.needs_review ?? !(o.needsReview ?? false),
       });
     }, opts);
   }
@@ -379,12 +394,13 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
   test('9. No-op save (no changes) does NOT call PATCH', async ({ page }) => {
     await installApiCallMock(page);
 
-    // Enter PATCH mode with specific values
+    // Enter PATCH mode with specific values — originals match form → no diff
     await enterPatchMode(page, {
       translationId: 113,
       display: '蓝眼睛',
       aliases: '碧眼,蓝色',
       needsReview: false,
+      original: { display_name: '蓝眼睛', aliases: '碧眼,蓝色', needs_review: false },
     });
 
     // Do NOT change any form values — save immediately
@@ -414,6 +430,7 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
       display: '测试不变',
       aliases: '',
       needsReview: true,
+      original: { display_name: '测试不变', aliases: '', needs_review: true },
     });
 
     // Save without changes
@@ -450,6 +467,7 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
       display: '原始显示名',
       aliases: '别名一',
       needsReview: true,
+      original: { display_name: '原始显示名', aliases: '别名一', needs_review: true },
     });
 
     // Change display_name and clear aliases
