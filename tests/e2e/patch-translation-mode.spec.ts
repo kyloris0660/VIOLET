@@ -80,6 +80,7 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
     display?: string;
     aliases?: string;
     needsReview?: boolean;
+    category?: string;
   }) {
     await page.evaluate((o) => {
       const panel = (window as any).adminPanel;
@@ -89,8 +90,14 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
       (document.getElementById('tl-edit-aliases') as HTMLInputElement).value = o.aliases ?? '';
       const reviewedCb = document.getElementById('tl-edit-reviewed') as HTMLInputElement;
       if (reviewedCb) reviewedCb.checked = !(o.needsReview ?? false);
-      // Enter PATCH mode
-      panel._enterTranslationPatchMode(o.translationId);
+      const categorySel = document.getElementById('tl-edit-category') as HTMLSelectElement;
+      if (categorySel) categorySel.value = o.category || '';
+      // Enter PATCH mode with original values for diff detection
+      panel._enterTranslationPatchMode(o.translationId, {
+        display_name: o.display || '测试名',
+        aliases: o.aliases ?? '',
+        needs_review: o.needsReview ?? false,
+      });
     }, opts);
   }
 
@@ -280,5 +287,188 @@ test.describe('PATCH Translation Mode — Frontend Behavior', () => {
     expect(patchCall).toBeFalsy();  // No PATCH to stale ID 66
     expect(postCall).toBeTruthy();   // POST for new translation
     expect(postCall.body.canonical_name).toBe('cancel_test_tag');
+  });
+
+  // ─── Scenario 6: Cancel after editing needs_review=true row → checkbox resets ───
+
+  test('6. Cancel after editing needs_review=true row resets reviewed checkbox to default', async ({ page }) => {
+    await installApiCallMock(page);
+
+    // Enter PATCH mode with needs_review=true (reviewed checkbox unchecked)
+    await enterPatchMode(page, {
+      translationId: 110,
+      display: '需要审核标签',
+      needsReview: true,
+    });
+
+    // Verify checkbox is unchecked (needs_review=true → reviewed=false)
+    const checkedBefore = await page.evaluate(() =>
+      (document.getElementById('tl-edit-reviewed') as HTMLInputElement).checked
+    );
+    expect(checkedBefore).toBe(false);
+
+    // Click cancel
+    await page.click('#tl-cancel-edit-btn');
+    await page.waitForTimeout(200);
+
+    // Reviewed checkbox should reset to create-mode default (checked)
+    const checkedAfter = await page.evaluate(() =>
+      (document.getElementById('tl-edit-reviewed') as HTMLInputElement).checked
+    );
+    expect(checkedAfter).toBe(true);
+  });
+
+  // ─── Scenario 7: Successful PATCH → checkbox resets to create-mode default ───
+
+  test('7. Successful PATCH resets reviewed checkbox to create-mode default', async ({ page }) => {
+    await installApiCallMock(page);
+
+    // Enter PATCH mode with needs_review=true (checkbox unchecked)
+    await enterPatchMode(page, {
+      translationId: 111,
+      display: '原始名',
+      needsReview: true,
+    });
+
+    // Change display_name so it's not a no-op
+    await page.evaluate(() => {
+      (document.getElementById('tl-edit-display') as HTMLInputElement).value = '修正后的名字';
+    });
+
+    await page.click('#tl-save-btn');
+    await page.waitForTimeout(300);
+
+    // After successful PATCH, form should be cleared and checkbox reset
+    const checkedAfter = await page.evaluate(() =>
+      (document.getElementById('tl-edit-reviewed') as HTMLInputElement).checked
+    );
+    expect(checkedAfter).toBe(true);
+  });
+
+  // ─── Scenario 8: Cancel/save resets category to default ───
+
+  test('8. Cancel resets category field to default', async ({ page }) => {
+    await installApiCallMock(page);
+
+    // Enter PATCH mode with a specific category
+    await enterPatchMode(page, {
+      translationId: 112,
+      display: '角色翻译',
+      category: 'character',
+    });
+
+    // Verify category is set
+    const categoryBefore = await page.evaluate(() =>
+      (document.getElementById('tl-edit-category') as HTMLSelectElement).value
+    );
+    expect(categoryBefore).toBe('character');
+
+    // Click cancel
+    await page.click('#tl-cancel-edit-btn');
+    await page.waitForTimeout(200);
+
+    // Category should reset to default (empty)
+    const categoryAfter = await page.evaluate(() =>
+      (document.getElementById('tl-edit-category') as HTMLSelectElement).value
+    );
+    expect(categoryAfter).toBe('');
+  });
+
+  // ─── Scenario 9: No-op save does NOT call PATCH ───
+
+  test('9. No-op save (no changes) does NOT call PATCH', async ({ page }) => {
+    await installApiCallMock(page);
+
+    // Enter PATCH mode with specific values
+    await enterPatchMode(page, {
+      translationId: 113,
+      display: '蓝眼睛',
+      aliases: '碧眼,蓝色',
+      needsReview: false,
+    });
+
+    // Do NOT change any form values — save immediately
+    await page.click('#tl-save-btn');
+    await page.waitForTimeout(300);
+
+    const calls = await getCapturedCalls(page);
+    const patchCall = calls.find((c: any) => c.method === 'PATCH');
+
+    // No PATCH call should have been made
+    expect(patchCall).toBeFalsy();
+
+    // PATCH mode should still be active (no-op keeps mode)
+    const inPatch = await page.evaluate(() =>
+      (window as any).adminPanel._isTranslationPatchMode()
+    );
+    expect(inPatch).toBe(true);
+  });
+
+  // ─── Scenario 10: No-op save keeps PATCH mode active ───
+
+  test('10. No-op save keeps PATCH mode active with correct ID', async ({ page }) => {
+    await installApiCallMock(page);
+
+    await enterPatchMode(page, {
+      translationId: 114,
+      display: '测试不变',
+      aliases: '',
+      needsReview: true,
+    });
+
+    // Save without changes
+    await page.click('#tl-save-btn');
+    await page.waitForTimeout(300);
+
+    // PATCH mode should still be active
+    const inPatch = await page.evaluate(() =>
+      (window as any).adminPanel._isTranslationPatchMode()
+    );
+    expect(inPatch).toBe(true);
+
+    // Translation ID should be preserved
+    const patchId = await page.evaluate(() =>
+      (window as any).adminPanel._tlPatchId
+    );
+    expect(patchId).toBe(114);
+
+    // Form values should be unchanged
+    const displayVal = await page.evaluate(() =>
+      (document.getElementById('tl-edit-display') as HTMLInputElement).value
+    );
+    expect(displayVal).toBe('测试不变');
+  });
+
+  // ─── Scenario 11: Actual changes still trigger PATCH correctly ───
+
+  test('11. Actual changes (display, aliases, needs_review) trigger PATCH with only changed fields', async ({ page }) => {
+    await installApiCallMock(page);
+
+    // Enter PATCH mode with known original values
+    await enterPatchMode(page, {
+      translationId: 115,
+      display: '原始显示名',
+      aliases: '别名一',
+      needsReview: true,
+    });
+
+    // Change display_name and clear aliases
+    await page.evaluate(() => {
+      (document.getElementById('tl-edit-display') as HTMLInputElement).value = '修改后显示名';
+      (document.getElementById('tl-edit-aliases') as HTMLInputElement).value = '';
+    });
+
+    await page.click('#tl-save-btn');
+    await page.waitForTimeout(300);
+
+    const calls = await getCapturedCalls(page);
+    const patchCall = calls.find((c: any) => c.method === 'PATCH');
+
+    expect(patchCall).toBeTruthy();
+    expect(patchCall.url).toContain('/translations/115');
+    expect(patchCall.body.display_name).toBe('修改后显示名');
+    expect(patchCall.body.aliases).toEqual([]);
+    // needs_review was not changed, so should NOT be in the payload
+    expect(patchCall.body.needs_review).toBeUndefined();
   });
 });

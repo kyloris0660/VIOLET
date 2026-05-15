@@ -518,14 +518,20 @@ class AdminPanel {
                 if (editBtn) {
                     const id = parseInt(editBtn.dataset.id);
                     const needsReview = editBtn.dataset.needsReview === 'true';
+                    const displayVal = editBtn.dataset.display || '';
+                    const aliasesVal = editBtn.dataset.aliases || '';
                     document.getElementById('tl-edit-canonical').value = editBtn.dataset.name || '';
-                    document.getElementById('tl-edit-display').value = editBtn.dataset.display || '';
-                    document.getElementById('tl-edit-aliases').value = editBtn.dataset.aliases || '';
+                    document.getElementById('tl-edit-display').value = displayVal;
+                    document.getElementById('tl-edit-aliases').value = aliasesVal;
                     document.getElementById('tl-edit-category').value = editBtn.dataset.category || '';
                     // Set reviewed checkbox to inverse of needs_review
                     const reviewedCheckbox = document.getElementById('tl-edit-reviewed');
                     if (reviewedCheckbox) reviewedCheckbox.checked = !needsReview;
-                    this._enterTranslationPatchMode(id);
+                    this._enterTranslationPatchMode(id, {
+                        display_name: displayVal,
+                        aliases: aliasesVal,
+                        needs_review: needsReview,
+                    });
                 }
             });
         }
@@ -4198,18 +4204,28 @@ class AdminPanel {
         const aliasStr = document.getElementById('tl-edit-aliases').value.trim();
         // Always send aliases in PATCH mode — empty string means clear all aliases
         const aliases = aliasStr ? aliasStr.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-        const body = {};
-        if (display) body.display_name = display;
-        // Always include aliases so clearing is possible (empty array removes all)
-        body.aliases = aliases;
-        // Wire needs_review from the reviewed checkbox (reviewed=true → needs_review=false)
         const reviewedCheckbox = document.getElementById('tl-edit-reviewed');
-        if (reviewedCheckbox) {
-            body.needs_review = !reviewedCheckbox.checked;
+        const needsReview = reviewedCheckbox ? !reviewedCheckbox.checked : undefined;
+
+        // Diff against stored original values to avoid no-op PATCH
+        // (which would unintentionally promote source to 'manual')
+        const orig = this._tlPatchOriginal || {};
+        const displayChanged = display !== (orig.display_name || '');
+        const aliasesChanged = JSON.stringify(aliases) !== JSON.stringify(orig.aliases || []);
+        const needsReviewChanged = needsReview !== undefined && needsReview !== orig.needs_review;
+
+        if (!displayChanged && !aliasesChanged && !needsReviewChanged) {
+            app.showNotification('Nothing to update', 'info');
+            return;
         }
 
-        if (!display && aliases.length === 0 && body.needs_review === undefined) {
+        const body = {};
+        if (displayChanged && display) body.display_name = display;
+        if (aliasesChanged) body.aliases = aliases;
+        if (needsReviewChanged) body.needs_review = needsReview;
+
+        // Safety: if body is still empty (e.g. display cleared to empty), reject
+        if (Object.keys(body).length === 0) {
             app.showNotification('Nothing to update', 'error');
             return;
         }
@@ -4235,9 +4251,24 @@ class AdminPanel {
      * Sets _tlPatchId and _tlPatchModeActive, locks canonical name field,
      * updates save button text, shows cancel button.
      */
-    _enterTranslationPatchMode(translationId) {
+    _enterTranslationPatchMode(translationId, { display_name, aliases, needs_review } = {}) {
         this._tlPatchId = translationId;
         this._tlPatchModeActive = true;
+        // Capture original values for no-op diff detection.
+        // If explicit values provided (from call-site), use them;
+        // otherwise read current form state as the baseline.
+        const displayEl = document.getElementById('tl-edit-display');
+        const aliasEl = document.getElementById('tl-edit-aliases');
+        const reviewedCb = document.getElementById('tl-edit-reviewed');
+        const origDisplay = display_name !== undefined ? display_name : (displayEl ? displayEl.value.trim() : '');
+        const origAliasStr = aliases !== undefined ? aliases : (aliasEl ? aliasEl.value.trim() : '');
+        const origAliases = origAliasStr ? origAliasStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const origNeedsReview = needs_review !== undefined ? needs_review : (reviewedCb ? !reviewedCb.checked : false);
+        this._tlPatchOriginal = {
+            display_name: origDisplay,
+            aliases: origAliases,
+            needs_review: origNeedsReview,
+        };
         document.getElementById('tl-edit-canonical').disabled = true;
         const saveBtn = document.getElementById('tl-save-btn');
         const cancelBtn = document.getElementById('tl-cancel-edit-btn');
@@ -4260,7 +4291,14 @@ class AdminPanel {
             document.getElementById('tl-edit-canonical').value = '';
             document.getElementById('tl-edit-display').value = '';
             document.getElementById('tl-edit-aliases').value = '';
+            // Reset reviewed checkbox to create-mode default (checked = reviewed)
+            const reviewedCb = document.getElementById('tl-edit-reviewed');
+            if (reviewedCb) reviewedCb.checked = true;
+            // Reset category to default (empty = auto-detect)
+            const categorySel = document.getElementById('tl-edit-category');
+            if (categorySel) categorySel.value = '';
         }
+        this._tlPatchOriginal = null;
         const saveBtn = document.getElementById('tl-save-btn');
         const cancelBtn = document.getElementById('tl-cancel-edit-btn');
         const t = (k) => window.i18n ? window.i18n.t(k) : k;
