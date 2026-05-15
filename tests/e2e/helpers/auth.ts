@@ -21,6 +21,17 @@ export async function switchToTab(page: Page, tabName: string) {
   await page.waitForTimeout(500);
 }
 
+/**
+ * Navigate to a section within the Content tab using section-nav anchor links.
+ * Clicks the "内容" top-level tab first, then clicks the matching section-nav
+ * link (e.g. "标签本地化", "媒体管理", "AI 标签审核").
+ */
+export async function navigateToContentSection(page: Page, sectionName: string) {
+  await switchToTab(page, '内容');
+  await page.locator(`#content-section-nav a:has-text("${sectionName}")`).first().click();
+  await page.waitForTimeout(500);
+}
+
 export async function apiCall(page: Page, path: string, options?: {
   method?: string;
   body?: string;
