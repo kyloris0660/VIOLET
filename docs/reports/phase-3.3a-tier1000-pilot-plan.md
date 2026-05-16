@@ -99,7 +99,7 @@ Phase 3.2 / Tier-500 中规模试验已完成并通过验收。本文档是 Phas
 | 数据库 | `blombooru_test_1000` |
 | 存储根 | `C:\Users\kyloris\VioletStorage\pilot1000` |
 | 备份目录 | `C:\Users\kyloris\VioletBackups\pilot1000` |
-| 源数据 | `E:\VioletPilotData` (需要用户扩充到 ~1000 支持文件) |
+| 源数据 | `E:\VioletPilotData_1000` (iCloud-safe 暂存目录，详见 Section 15) |
 | 端口 | 动态 8012–8024 |
 | 环境 | `VIOLET_ENV=test` |
 
@@ -163,19 +163,25 @@ $env:VIOLET_RUN_REAL_E2E = "1"
 **当前数据集不足以支撑 Tier-1000 试验。**
 
 E:\VioletPilotData 中仅有 522 个支持文件 — 与 Tier-500 使用的是同一数据集。
-要达到 Tier-1000，**用户需要向 E:\VioletPilotData（或新目录）补充约 500 个额外的支持格式图像文件**。
+要达到 Tier-1000，需要约 500 个额外的支持格式图像文件。
 
-### 5.3 用户操作要求
+**解决方案**: 采用 iCloud-safe Candidate Selection and Staging Workflow（详见 Section 15）。
+Agent 将只读扫描用户指定的 iCloud / 照片库源目录，生成候选清单，
+经用户审批后复制到隔离暂存目录 `E:\VioletPilotData_1000`，再从暂存目录导入。
 
-在 Phase 3.3b（执行阶段）开始前，用户需要：
+### 5.3 数据补充方案
 
-1. 向 E:\VioletPilotData 添加约 500+ 个新的支持格式图像（.jpg / .png / .jpeg / .webp / .gif）
-2. **或** 提供一个新的源数据目录路径，包含 ~1000 个支持格式图像
-3. 重新运行检查脚本确认文件数量：
+在 Phase 3.3b（执行阶段）开始前，需要完成 Phase 3.3a.1（iCloud-safe 候选选择和暂存）：
+
+1. 用户提供 iCloud / 照片库源目录路径
+2. Agent 只读扫描源目录，生成候选清单（详见 Section 15.4）
+3. 用户审批候选清单
+4. Agent 将 Tier-500 已有数据 + 新候选文件复制到 `E:\VioletPilotData_1000`
+5. 运行检查脚本确认暂存目录文件数量：
    ```powershell
-   & "$PY" scripts/inspect_pilot_dataset.py --path "E:\VioletPilotData"
+   & "$PY" scripts/inspect_pilot_dataset.py --path "E:\VioletPilotData_1000"
    ```
-4. 确认所有文件均来自本地磁盘，不涉及 iCloud
+6. 确认所有暂存文件均在本地磁盘，无 iCloud 占位符
 
 ---
 
@@ -195,9 +201,10 @@ E:\VioletPilotData 中仅有 522 个支持文件 — 与 Tier-500 使用的是�
 **当前推荐：方案 D — 使用所有支持文件。**
 
 理由：
-- 当前 522 支持文件远低于 1000，用户需要补充
-- 如果用户补充后总数接近 1000（例如 950–1100），直接使用全部
-- 如果用户提供的数据量远超 1000（例如 2000+），改用方案 B（固定种子 `seed=42` 随机抽样 1000）
+- 当前 E:\VioletPilotData 仅 522 支持文件，需通过 iCloud-safe 暂存补充（详见 Section 15）
+- 暂存完成后，`E:\VioletPilotData_1000` 应包含 ~1000 支持文件
+- 如果暂存后总数接近 1000（例如 950–1100），直接使用全部
+- 如果暂存后数量远超 1000（例如 2000+），改用方案 B（固定种子 `seed=42` 随机抽样 1000）
 
 ### 6.3 Manifest 格式
 
@@ -207,12 +214,12 @@ E:\VioletPilotData 中仅有 522 个支持文件 — 与 Tier-500 使用的是�
 # pilot1000-manifest.txt
 # Generated: 2026-05-XX
 # Strategy: all_supported | random_seed_42
-# Source: E:\VioletPilotData
+# Source: E:\VioletPilotData_1000
 # Total supported files in source: XXXX
 # Selected for pilot: 1000
 #
-E:\VioletPilotData\100002224_p0.jpg
-E:\VioletPilotData\100021824_p0.jpg
+E:\VioletPilotData_1000\100002224_p0.jpg
+E:\VioletPilotData_1000\100021824_p0.jpg
 ...
 ```
 
@@ -263,7 +270,8 @@ E:\VioletPilotData\100021824_p0.jpg
 
 1. **Dry-run first**: 预检导入范围，报告文件数、跳过数、错误
 2. 用户确认后执行真实导入
-3. `max_files` 基于 manifest 或全部支持文件数
+3. 导入源: `E:\VioletPilotData_1000`（暂存目录，非 iCloud 源）
+4. `max_files` 基于 manifest 或全部支持文件数
 4. 记录 `scan_job_id`
 5. 记录导入的 media IDs
 6. 报告: imported / skipped_unsupported / skipped_duplicate / errors
@@ -335,7 +343,7 @@ E:\VioletPilotData\100021824_p0.jpg
 |------|-----|
 | 目标 media 数 | ~1000 支持文件 |
 | 不支持格式 | 跳过，不转换 |
-| 源路径 | E:\VioletPilotData（或用户指定） |
+| 源路径 | E:\VioletPilotData_1000（iCloud-safe 暂存目录） |
 
 ### 8.2 Classification
 
@@ -562,7 +570,12 @@ Phase 3.3b 执行完成后，交付报告应包含以下部分：
 
 ### Phase 3.3: Tier-1000 核心流水线验证
 - 3.3a: 规划（本文档） ✅
-- 3.3b: 执行（用户提供数据后开始）
+- 3.3a.1: iCloud-safe 候选选择和暂存（待用户批准）
+  - 只读扫描 iCloud / 照片库源目录
+  - 生成候选清单，用户审批
+  - 复制到隔离暂存目录 `E:\VioletPilotData_1000`
+  - 验证暂存数据完整性
+- 3.3b: 执行（暂存完成后开始）
 - 目标: 验证 import → classify → AI tag → localize → browser acceptance 在 ~1000 规模下的稳定性
 - 退出条件: Tier-1000 核心流水线 closeout 通过
 
@@ -600,6 +613,7 @@ Phase 3.3b 执行完成后，交付报告应包含以下部分：
 
 | 项目 | 当前状态 | 计划阶段 |
 |------|----------|----------|
+| iCloud-safe 候选选择和暂存 | 规划完成（Section 15） | Phase 3.3a.1 |
 | character / entity resolver | 58 character 翻译缺失 | Phase 3.4 |
 | similar image / character clustering | 未开始 | Phase 3.5 |
 | 不支持格式转换 (JFIF/HEIC/AVIF) | 5 JFIF 文件被跳过 | Phase 4+ |
@@ -609,12 +623,175 @@ Phase 3.3b 执行完成后，交付报告应包含以下部分：
 
 ## 14. 下一步操作（需要用户确认）
 
-1. **用户补充数据**: 向 `E:\VioletPilotData` 添加约 500+ 个新的支持格式图像文件（.jpg / .png / .jpeg / .webp / .gif），使总支持文件数达到 ~1000
-   - 或提供新的源数据目录路径
-2. **确认环境**: 确认 `blombooru_test_1000` 作为 Tier-1000 数据库名称
-3. **确认存储**: 确认 `C:\Users\kyloris\VioletStorage\pilot1000` 作为存储路径
-4. **批准执行计划**: 确认本文档中的执行阶段序列和安全门控
-5. **Phase 3.3b 开始**: 用户确认以上内容后，agent 创建执行分支并开始 Stage A (Preflight)
+1. **批准 iCloud-safe 暂存工作流**: 确认 Section 15 中的候选选择和暂存方案
+2. **提供 iCloud / 照片库源路径**: 指定 Agent 可只读扫描的源目录
+3. **确认暂存目录**: 确认 `E:\VioletPilotData_1000` 作为暂存目录
+4. **确认环境**: 确认 `blombooru_test_1000` 作为 Tier-1000 数据库名称
+5. **确认存储**: 确认 `C:\Users\kyloris\VioletStorage\pilot1000` 作为存储路径
+6. **Phase 3.3a.1 开始**: 用户确认以上内容后，agent 执行 iCloud-safe 候选选择和暂存
+7. **Phase 3.3b 开始**: 暂存完成且验证通过后，agent 创建执行分支并开始 Stage A (Preflight)
+
+---
+
+## 15. iCloud-safe Candidate Selection and Staging Workflow
+
+### 15.1 背景与动机
+
+Section 5.2 确认当前 E:\VioletPilotData 仅有 522 个支持文件 — 与 Tier-500 完全相同。
+Tier-1000 需要约 500 个额外图像。
+
+**产品决策变更**: 用户不希望手动收集和复制约 500 张图像。Agent 应能够：
+1. **只读**扫描 iCloud / 系统照片库目录，生成候选清单 (manifest)
+2. 用户审批后，将选中的候选文件**复制**到隔离的暂存目录
+3. 仅从暂存目录导入，**绝不从 iCloud 源目录直接导入**
+
+### 15.2 硬性规则
+
+| # | 规则 | 说明 |
+|---|------|------|
+| 1 | iCloud 源目录只读 | 不写入、不删除、不重命名、不移动源文件 |
+| 2 | 不从 iCloud 源目录导入 | Import Stage D 只接受暂存目录路径 |
+| 3 | 不对 iCloud 源运行 AI / classification / localization | 这些操作仅在导入后对 DB 记录执行 |
+| 4 | 暂存目录必须在本地磁盘 | 不使用网络驱动器或云同步目录 |
+| 5 | 云端占位符文件必须识别并跳过 | iCloud 未下载的文件 (0 字节 / placeholder) 不可复制 |
+| 6 | 候选清单需用户审批后才复制 | Dry-run → 用户确认 → 执行复制 |
+| 7 | 暂存目录路径独立于 Tier-500 数据 | 不混入 E:\VioletPilotData |
+
+### 15.3 推荐的暂存目录
+
+| 配置项 | 值 |
+|--------|-----|
+| 暂存目录 | `E:\VioletPilotData_1000` |
+| 用途 | Tier-1000 导入源（暂存后的本地副本） |
+| 清理策略 | Tier-1000 pilot 完成后可安全删除 |
+
+### 15.4 候选选择流程 (11 步)
+
+```
+Phase 3.3a.1 — iCloud-safe Candidate Selection and Staging Dry-run
+
+步骤 1: 用户提供 iCloud / 照片库源路径
+        例: C:\Users\kyloris\Pictures\iCloud Photos\
+        或: 其他包含 anime 图像的本地/iCloud 目录
+
+步骤 2: Agent 只读扫描源目录
+        - 递归遍历，统计支持格式文件 (.jpg/.png/.jpeg/.webp/.gif)
+        - 识别并标记云端占位符 (0 字节 / iCloud placeholder)
+        - 识别已存在于 E:\VioletPilotData 的重复文件 (by filename or hash)
+        - 不打开、不修改、不移动任何源文件
+
+步骤 3: 生成候选清单 (candidate manifest)
+        - 输出到 docs/reports/pilot1000-candidates.txt
+        - 包含: 源路径, 文件大小, 格式, 是否为占位符, 是否与 Tier-500 重复
+        - 标记推荐选取 / 跳过的原因
+
+步骤 4: 汇总报告
+        - 总候选数、支持格式数、占位符数、重复数
+        - 推荐选取数（目标: ~500 新文件，使总数达到 ~1000）
+        - 预计复制大小
+
+步骤 5: 用户审批
+        - 用户查看候选清单和汇总报告
+        - 用户可调整选择（排除特定文件/目录）
+        - 用户明确确认: "批准复制 N 个文件到 E:\VioletPilotData_1000"
+
+步骤 6: 创建暂存目录
+        - mkdir E:\VioletPilotData_1000 (如不存在)
+        - 验证目标为本地磁盘
+
+步骤 7: 复制已有 Tier-500 数据
+        - 从 E:\VioletPilotData 复制 522 个支持文件到 E:\VioletPilotData_1000
+        - 保持文件名不变
+        - 验证复制完整性 (文件数 + 大小校验)
+
+步骤 8: 复制新候选文件
+        - 从 iCloud 源复制用户批准的 ~500 个新文件到 E:\VioletPilotData_1000
+        - 跳过所有占位符文件
+        - 跳过所有重复文件
+        - 记录每个文件的复制状态
+
+步骤 9: 暂存后验证
+        - 运行 inspect_pilot_dataset.py --path "E:\VioletPilotData_1000"
+        - 确认总支持文件数 ~1000
+        - 确认无占位符文件被复制
+        - 确认暂存目录在本地磁盘
+
+步骤 10: 生成最终 manifest
+         - pilot1000-manifest.txt 基于暂存目录内容
+         - 所有路径指向 E:\VioletPilotData_1000
+
+步骤 11: 进入 Phase 3.3b Stage A (Preflight)
+         - Import source = E:\VioletPilotData_1000
+         - 不再引用 iCloud 源路径
+```
+
+### 15.5 iCloud 占位符处理
+
+iCloud 照片库中未下载到本地的文件可能表现为：
+- 0 字节文件
+- 具有特殊扩展属性的占位符文件
+- Windows 上的 `.icloud` 后缀文件
+
+**检测策略**:
+```python
+def is_icloud_placeholder(path: Path) -> bool:
+    # 0-byte file
+    if path.stat().st_size == 0:
+        return True
+    # .icloud stub file (macOS convention, rare on Windows)
+    if path.suffix == '.icloud' or path.name.startswith('.'):
+        return True
+    # Very small file that cannot be a valid image (< 1KB)
+    if path.stat().st_size < 1024:
+        return True
+    return False
+```
+
+占位符文件在候选清单中标记为 `SKIP: placeholder`，不会被复制到暂存目录。
+
+### 15.6 命令模板（仅供参考，Phase 3.3a.1 执行时使用）
+
+```powershell
+# Phase 3.3a.1: iCloud-safe Candidate Selection
+# 以下命令在 Phase 3.3a.1 执行，不在本规划阶段运行
+
+# Step 1: 用户提供 iCloud 源路径
+$ICLOUD_SOURCE = "C:\Users\kyloris\Pictures\iCloud Photos\"  # 用户确认
+
+# Step 2: 只读扫描
+& "$PY" scripts/inspect_pilot_dataset.py --path "$ICLOUD_SOURCE" --check-placeholders
+
+# Step 3-4: 生成候选清单 (脚本待开发)
+& "$PY" scripts/generate_candidate_manifest.py `
+    --source "$ICLOUD_SOURCE" `
+    --existing "E:\VioletPilotData" `
+    --target-count 500 `
+    --output "docs/reports/pilot1000-candidates.txt"
+
+# Step 5: 用户审批 (人工步骤)
+
+# Step 6-8: 复制到暂存目录 (脚本待开发)
+& "$PY" scripts/stage_pilot_files.py `
+    --manifest "docs/reports/pilot1000-candidates.txt" `
+    --existing-source "E:\VioletPilotData" `
+    --staging-dir "E:\VioletPilotData_1000" `
+    --dry-run  # 先 dry-run
+
+# Step 9: 暂存后验证
+& "$PY" scripts/inspect_pilot_dataset.py --path "E:\VioletPilotData_1000"
+```
+
+**注意**: `generate_candidate_manifest.py` 和 `stage_pilot_files.py` 是 Phase 3.3a.1 需要开发的新脚本，不在本规划阶段创建。
+
+### 15.7 额外安全门控
+
+| # | 门控 | 触发时机 | 失败处理 |
+|---|------|----------|----------|
+| 19 | iCloud 源路径只读验证 | 扫描前 | 不可在源路径创建/修改文件 |
+| 20 | 占位符检测 | 复制前 | 跳过所有占位符文件 |
+| 21 | 暂存目录本地磁盘验证 | 复制前 | 不可使用云同步目录 |
+| 22 | 复制完整性校验 | 复制后 | 文件数 + 大小必须匹配 |
+| 23 | 用户批准复制 | 复制前 | 无批准则不执行复制 |
 
 ---
 
