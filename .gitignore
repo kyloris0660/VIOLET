@@ -26,3 +26,6 @@ eval_results.json
 *.bak
 reports/
 !docs/reports/
+
+# Privacy-safe: full-path manifests stay local
+.local_manifests/
