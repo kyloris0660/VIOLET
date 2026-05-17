@@ -536,6 +536,24 @@ class TestTargetTotalCap:
         assert result["summary"]["existing_supported_count"] == 0
         assert result["summary"]["selected_new_count"] == 3
 
+    def test_combined_total_never_exceeds_target(self, tmp_path: Path):
+        src = tmp_path / "src"
+        src.mkdir()
+        for i in range(20):
+            (src / f"new_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * (2000 + i))
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        for i in range(4):
+            (ex / f"ex_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * (2000 + i))
+        target = tmp_path / "tgt"
+
+        for cap in [4, 5, 6, 10]:
+            result = generate_manifest(src, ex, target, target_total=cap, seed=42)
+            s = result["summary"]
+            combined = s["existing_supported_count"] + s["selected_new_count"]
+            assert combined <= cap, f"combined_total {combined} exceeds target_total {cap}"
+            assert s["combined_total"] <= cap
+
 
 # ---------------------------------------------------------------------------
 # 15. Privacy-safe summary JSON (Codex P3)
