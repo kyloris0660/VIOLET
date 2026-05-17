@@ -132,6 +132,13 @@ def generate_manifest(
     existing_rows, duplicate_index, existing_count, existing_total_bytes = \
         _scan_existing_dataset(existing_root)
 
+    if existing_count > target_total:
+        raise ValueError(
+            f"existing_supported_count ({existing_count}) exceeds "
+            f"target_total ({target_total}). Cannot build a manifest "
+            f"within the cap. Increase --target-total or reduce existing dataset."
+        )
+
     needed = max(0, target_total - existing_count)
 
     all_source_entries = []
@@ -178,14 +185,11 @@ def generate_manifest(
         dup_key = (entry["filename"].lower(), entry["size_bytes"])
         if dup_key in duplicate_index:
             duplicates += 1
-            all_source_entries.append({
-                **entry,
-                "selection_reason": "",
-                "exclusion_reason": f"duplicate:{dup_key[0]}|{dup_key[1]}",
-            })
-            continue
+            entry["possible_duplicate_with_existing"] = True
+        else:
+            entry["possible_duplicate_with_existing"] = False
 
-        # Eligible candidate
+        # Eligible candidate (possible duplicates are NOT excluded)
         eligible.append(entry)
 
     # Sort eligible by stable key before seeded sampling
@@ -252,9 +256,16 @@ def generate_manifest(
         })
 
     # New candidates from source
+    selected_possible_duplicates = 0
     for entry in selected:
         row_id += 1
         proposed = _unique_target(entry["filename"], entry["path"])
+        is_dup = entry.get("possible_duplicate_with_existing", False)
+        if is_dup:
+            selected_possible_duplicates += 1
+        dup_key_str = ""
+        if is_dup:
+            dup_key_str = f"possible_duplicate:{entry['filename'].lower()}|{entry['size_bytes']}"
         rows.append({
             "row_id": row_id,
             "source_path": str(entry["path"]),
@@ -262,7 +273,7 @@ def generate_manifest(
             "extension": entry["extension"],
             "size_bytes": entry["size_bytes"],
             "selection_reason": "new_candidate",
-            "duplicate_key": "",
+            "duplicate_key": dup_key_str,
             "exclusion_reason": "",
             "placeholder_flag": False,
             "stat_error": False,
@@ -297,12 +308,13 @@ def generate_manifest(
         "existing_supported_count": existing_count,
         "needed_new": needed,
         "source_total_scanned": (
-            len(eligible) + stat_errors + placeholders + unsupported + duplicates + hidden
+            len(eligible) + stat_errors + placeholders + unsupported + hidden
         ),
         "source_supported_eligible": len(eligible),
         "source_placeholders": placeholders,
         "source_unsupported": unsupported,
-        "source_duplicates_with_existing": duplicates,
+        "possible_duplicates_with_existing": duplicates,
+        "selected_possible_duplicates": selected_possible_duplicates,
         "source_stat_errors": stat_errors,
         "source_hidden": hidden,
         "selected_new_count": len(selected),
@@ -330,10 +342,20 @@ def write_csv(rows: list, output_path: Path):
 
 
 def write_summary(summary: dict, output_path: Path):
-    """Write summary JSON (privacy-safe — no individual file paths)."""
+    """Write summary JSON (privacy-safe — absolute paths are redacted)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    redacted = dict(summary)
+    redacted["source_root_label"] = "iCloud Photos source"
+    redacted["source_root_redacted"] = True
+    redacted.pop("source_root", None)
+    redacted["existing_root_label"] = "existing pilot dataset"
+    redacted["existing_root_redacted"] = True
+    redacted.pop("existing_root", None)
+    redacted["target_root_label"] = "staging target directory"
+    redacted["target_root_redacted"] = True
+    redacted.pop("target_root", None)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
+        json.dump(redacted, f, indent=2, ensure_ascii=False)
 
 
 def main():
@@ -378,13 +400,17 @@ def main():
     print(f"Mode:          {'dry-run' if args.dry_run else 'generate'}")
     print()
 
-    result = generate_manifest(
-        source_root=source_root,
-        existing_root=existing_root,
-        target_root=target_root,
-        target_total=args.target_total,
-        seed=args.seed,
-    )
+    try:
+        result = generate_manifest(
+            source_root=source_root,
+            existing_root=existing_root,
+            target_root=target_root,
+            target_total=args.target_total,
+            seed=args.seed,
+        )
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     write_csv(result["candidates"], output_path)
     write_summary(result["summary"], summary_path)
@@ -397,7 +423,8 @@ def main():
     print(f"  Source eligible:         {s['source_supported_eligible']}")
     print(f"  Source placeholders:     {s['source_placeholders']}")
     print(f"  Source unsupported:      {s['source_unsupported']}")
-    print(f"  Source duplicates:       {s['source_duplicates_with_existing']}")
+    print(f"  Source possible dupes:   {s['possible_duplicates_with_existing']}")
+    print(f"  Selected possible dupes: {s['selected_possible_duplicates']}")
     print(f"  Source stat errors:      {s['source_stat_errors']}")
     print(f"  Source hidden:           {s['source_hidden']}")
     print(f"  Selected new:            {s['selected_new_count']}")

@@ -111,7 +111,7 @@ class TestDuplicateDetection:
         assert count == 0
         assert total_bytes == 0
 
-    def test_duplicates_excluded_in_manifest(self, tmp_path: Path):
+    def test_duplicates_annotated_not_excluded(self, tmp_path: Path):
         src = tmp_path / "src"
         src.mkdir()
         (src / "dup.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
@@ -123,8 +123,26 @@ class TestDuplicateDetection:
         target = tmp_path / "tgt"
         result = generate_manifest(src, ex, target, target_total=10, seed=1)
         new_rows = [r for r in result["candidates"] if r["selection_reason"] == "new_candidate"]
-        assert len(new_rows) == 0
-        assert result["summary"]["source_duplicates_with_existing"] == 1
+        assert len(new_rows) == 1
+        assert "possible_duplicate" in new_rows[0]["duplicate_key"]
+        assert result["summary"]["possible_duplicates_with_existing"] == 1
+        assert result["summary"]["selected_possible_duplicates"] == 1
+
+    def test_duplicate_annotation_in_eligible_pool(self, tmp_path: Path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "dup.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        (src / "unique.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 3000)
+
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        (ex / "dup.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target = tmp_path / "tgt"
+        result = generate_manifest(src, ex, target, target_total=10, seed=1)
+        new_rows = [r for r in result["candidates"] if r["selection_reason"] == "new_candidate"]
+        assert len(new_rows) == 2
+        assert result["summary"]["source_supported_eligible"] == 2
 
 
 # ---------------------------------------------------------------------------
@@ -301,11 +319,15 @@ class TestSummaryJSON:
             s = json.load(f)
 
         required = [
-            "source_root", "existing_root", "target_root", "target_total", "seed",
+            "source_root_label", "source_root_redacted",
+            "existing_root_label", "existing_root_redacted",
+            "target_root_label", "target_root_redacted",
+            "target_total", "seed",
             "strategy", "existing_supported_count", "needed_new",
             "source_total_scanned", "source_supported_eligible",
             "source_placeholders", "source_unsupported",
-            "source_duplicates_with_existing", "source_stat_errors",
+            "possible_duplicates_with_existing", "selected_possible_duplicates",
+            "source_stat_errors",
             "source_hidden", "selected_new_count",
             "selected_new_total_bytes", "existing_total_bytes",
             "combined_total", "manifest_total_rows",
@@ -451,3 +473,103 @@ class TestTargetCollisionDisambiguation:
         names = [Path(r["proposed_target_path"]).name for r in new_rows]
         assert any("__" in n for n in names), \
             f"Expected at least one disambiguated name with __ hash, got: {names}"
+
+
+# ---------------------------------------------------------------------------
+# 14. Target-total cap enforcement (Codex P1)
+# ---------------------------------------------------------------------------
+
+class TestTargetTotalCap:
+    def test_existing_exceeds_cap_raises(self, tmp_path: Path):
+        src = tmp_path / "src"
+        src.mkdir()
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        for i in range(5):
+            (ex / f"img_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target = tmp_path / "tgt"
+
+        with pytest.raises(ValueError, match="exceeds"):
+            generate_manifest(src, ex, target, target_total=3, seed=1)
+
+    def test_existing_equals_cap_succeeds(self, tmp_path: Path):
+        src = tmp_path / "src"
+        src.mkdir()
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        for i in range(3):
+            (ex / f"img_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target = tmp_path / "tgt"
+
+        result = generate_manifest(src, ex, target, target_total=3, seed=1)
+        assert result["summary"]["existing_supported_count"] == 3
+        assert result["summary"]["needed_new"] == 0
+        assert result["summary"]["selected_new_count"] == 0
+
+    def test_existing_under_cap_fills_remaining(self, tmp_path: Path):
+        src = tmp_path / "src"
+        src.mkdir()
+        for i in range(10):
+            (src / f"new_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * (2000 + i))
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        for i in range(2):
+            (ex / f"ex_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target = tmp_path / "tgt"
+
+        result = generate_manifest(src, ex, target, target_total=5, seed=1)
+        assert result["summary"]["existing_supported_count"] == 2
+        assert result["summary"]["needed_new"] == 3
+        assert result["summary"]["selected_new_count"] == 3
+        assert result["summary"]["combined_total"] == 5
+
+    def test_zero_existing_works(self, tmp_path: Path):
+        src = tmp_path / "src"
+        src.mkdir()
+        for i in range(5):
+            (src / f"img_{i}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * (2000 + i))
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        target = tmp_path / "tgt"
+
+        result = generate_manifest(src, ex, target, target_total=3, seed=1)
+        assert result["summary"]["existing_supported_count"] == 0
+        assert result["summary"]["selected_new_count"] == 3
+
+
+# ---------------------------------------------------------------------------
+# 15. Privacy-safe summary JSON (Codex P3)
+# ---------------------------------------------------------------------------
+
+class TestPrivacySafeSummary:
+    def test_summary_redacts_absolute_paths(self, source_dir: Path, existing_dir: Path, tmp_path: Path):
+        target = tmp_path / "tgt"
+        summary_path = tmp_path / "summary.json"
+        result = generate_manifest(source_dir, existing_dir, target, target_total=10, seed=1)
+        write_summary(result["summary"], summary_path)
+
+        with open(summary_path, "r", encoding="utf-8") as f:
+            s = json.load(f)
+
+        assert "source_root" not in s
+        assert "existing_root" not in s
+        assert "target_root" not in s
+        assert s["source_root_redacted"] is True
+        assert s["existing_root_redacted"] is True
+        assert s["target_root_redacted"] is True
+        assert "source_root_label" in s
+        assert "existing_root_label" in s
+        assert "target_root_label" in s
+
+    def test_summary_no_absolute_path_values(self, source_dir: Path, existing_dir: Path, tmp_path: Path):
+        target = tmp_path / "tgt"
+        summary_path = tmp_path / "summary.json"
+        result = generate_manifest(source_dir, existing_dir, target, target_total=10, seed=1)
+        write_summary(result["summary"], summary_path)
+
+        with open(summary_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        assert str(source_dir) not in content
+        assert str(existing_dir) not in content
+        assert str(target) not in content

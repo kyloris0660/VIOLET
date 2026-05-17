@@ -34,10 +34,10 @@
 
 | 指标 | 值 |
 |------|-----|
-| 总扫描文件 | 38,124 |
-| 支持格式且合格 | 33,277 |
+| 总扫描文件 | 38,127 |
+| 支持格式且合格 | 33,802 |
 | 不支持格式 | 4,325 |
-| 与 Tier-500 重复 | 522 |
+| 与 Tier-500 可能重复 | 522 |
 | iCloud 占位符 | 0 |
 | stat 错误 | 0 |
 | 隐藏文件 | 0 |
@@ -51,10 +51,11 @@
 | 已有 Tier-500 文件 | 522 |
 | 需要新增 | 478 |
 | 已选新增 | 478 |
+| 其中可能与已有重复 | 5 |
 | 合计 | 1,000 |
-| 新增文件总大小 | 1.17 GB |
+| 新增文件总大小 | 1.18 GB |
 | 已有文件总大小 | 1.84 GB |
-| 总复制大小 | 3.01 GB |
+| 总复制大小 | 3.02 GB |
 
 ---
 
@@ -67,6 +68,8 @@
 | 目标文件名冲突 | 0 |
 | 目标路径越界 | 0 |
 | 不支持扩展名 | 0 |
+| 空白源路径 | 0 |
+| 空白目标路径 | 0 |
 | 验证结果 | **VALID** |
 
 ---
@@ -78,7 +81,7 @@
 | CSV manifest | `.local_manifests/phase-3.3a.1-candidate-manifest.csv` | 含完整路径，已 gitignore，不提交 |
 | JSON summary | `docs/reports/phase-3.3a.1-icloud-staging-summary.json` | 仅聚合计数，隐私安全，已提交 |
 
-**CSV manifest 行数**: 5,847 (522 existing + 478 new + 4,847 excluded)
+**CSV manifest 行数**: 5,325 (522 existing + 478 new + 4,325 excluded)
 
 ---
 
@@ -90,10 +93,14 @@
 | 2 | 未复制任何文件 | ✓ dry-run 模式 |
 | 3 | 未修改任何数据库 | ✓ 无 DB 操作 |
 | 4 | iCloud 占位符已检测 | ✓ 0 个占位符 |
-| 5 | 重复文件已排除 | ✓ 522 个排除 |
+| 5 | 重复文件已标注（非排除） | ✓ 522 个标注，5 个被选中 |
 | 6 | 目标路径越界检查 | ✓ 0 个越界 |
 | 7 | `--execute` 已阻止 | ✓ 返回错误码 2 |
 | 8 | 隐私安全 | ✓ 完整路径仅在 `.local_manifests/` |
+| 9 | JSON summary 无绝对路径 | ✓ 三个路径已 redact |
+| 10 | target_total 上限强制 | ✓ existing > cap 时 ValueError |
+| 11 | 空白 source_path 检查 | ✓ 非排除行空白 source_path 触发 invalid |
+| 12 | 空白 target_path 检查 | ✓ 非排除行空白 target_path 触发 invalid |
 
 ---
 
@@ -101,13 +108,25 @@
 
 | 工具 | 测试数 | 结果 |
 |------|--------|------|
-| `generate_candidate_manifest.py` | 24 | 全部通过 |
-| `stage_pilot_files.py` | 14 | 全部通过 |
-| 合计 | 38 | 全部通过 |
+| `generate_candidate_manifest.py` | 31 | 全部通过 |
+| `stage_pilot_files.py` | 20 | 全部通过 |
+| 合计 | 51 | 全部通过 |
 
 ---
 
-## 9. 下一步
+## 9. Codex 第二轮修复
+
+| # | 优先级 | 修复项 | 状态 |
+|---|--------|--------|------|
+| 1 | P1 | target_total 上限强制 (existing > cap → ValueError) | ✓ |
+| 2 | P2 | 空白 proposed_target_path 拒绝 | ✓ |
+| 3 | P2 | 空白 source_path 拒绝 | ✓ |
+| 4 | P2 | 重复处理改为标注而非排除 | ✓ |
+| 5 | P3 | JSON summary 移除绝对路径 | ✓ |
+
+---
+
+## 10. 下一步
 
 1. **用户审批候选清单** — 查看 `.local_manifests/phase-3.3a.1-candidate-manifest.csv`
 2. **Phase 3.3b Stage A: 创建暂存目录** — `E:\VioletPilotData_1000`

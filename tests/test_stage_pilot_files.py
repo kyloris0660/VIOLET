@@ -308,3 +308,119 @@ class TestTargetRootEscape:
         result = validate_manifest(manifest_path, target_root)
         assert result["target_root_escapes"] == 1
         assert result["valid"] is False
+
+
+# ---------------------------------------------------------------------------
+# 9. Blank source_path on non-excluded rows (Codex P2)
+# ---------------------------------------------------------------------------
+
+class TestBlankSourcePath:
+    def test_blank_source_path_invalidates(self, tmp_path: Path):
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": "",
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "5000",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_source_paths"] == 1
+        assert result["valid"] is False
+        assert any("blank source_path" in e for e in result["errors"])
+
+    def test_whitespace_only_source_path_invalidates(self, tmp_path: Path):
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": "   ",
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "5000",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_source_paths"] == 1
+        assert result["valid"] is False
+
+    def test_excluded_row_blank_source_ok(self, tmp_path: Path):
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": "",
+            "proposed_target_path": "",
+            "extension": ".mp4", "size_bytes": "5000",
+            "selection_reason": "", "duplicate_key": "",
+            "exclusion_reason": "unsupported_format:.mp4",
+            "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_source_paths"] == 0
+        assert result["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# 10. Blank proposed_target_path on non-excluded rows (Codex P2)
+# ---------------------------------------------------------------------------
+
+class TestBlankTargetPath:
+    def test_blank_target_path_invalidates(self, tmp_path: Path):
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": "",
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_target_paths"] == 1
+        assert result["valid"] is False
+        assert any("blank proposed_target_path" in e for e in result["errors"])
+
+    def test_whitespace_only_target_path_invalidates(self, tmp_path: Path):
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": "   ",
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_target_paths"] == 1
+        assert result["valid"] is False
+
+    def test_excluded_row_blank_target_ok(self, tmp_path: Path):
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(tmp_path / "nonexistent.mp4"),
+            "proposed_target_path": "",
+            "extension": ".mp4", "size_bytes": "5000",
+            "selection_reason": "", "duplicate_key": "",
+            "exclusion_reason": "unsupported_format:.mp4",
+            "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_target_paths"] == 0
+        assert result["valid"] is True

@@ -46,6 +46,8 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         "target_root_escapes": 0,
         "target_root_escape_paths": [],
         "unsupported_extensions": 0,
+        "blank_source_paths": 0,
+        "blank_target_paths": 0,
         "total_copy_bytes": 0,
         "target_root_exists": target_root.is_dir(),
         "target_root_is_local": True,
@@ -97,6 +99,14 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         elif selection == "new_candidate":
             result["new_candidate_rows"] += 1
 
+        # Reject non-excluded copy rows with blank source_path
+        if not source_path or not source_path.strip():
+            result["blank_source_paths"] += 1
+
+        # Reject non-excluded copy rows with blank proposed_target_path
+        if not proposed_target or not proposed_target.strip():
+            result["blank_target_paths"] += 1
+
         # Validate source file exists
         if source_path:
             sp = Path(source_path)
@@ -147,6 +157,18 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
     if result["target_root_escapes"] > 0:
         result["errors"].append(
             f"{result['target_root_escapes']} target paths escape target_root"
+        )
+        result["valid"] = False
+
+    if result["blank_source_paths"] > 0:
+        result["errors"].append(
+            f"{result['blank_source_paths']} non-excluded rows have blank source_path"
+        )
+        result["valid"] = False
+
+    if result["blank_target_paths"] > 0:
+        result["errors"].append(
+            f"{result['blank_target_paths']} non-excluded rows have blank proposed_target_path"
         )
         result["valid"] = False
 
@@ -223,6 +245,8 @@ def main():
     print(f"  Target collisions:         {result['target_filename_collisions']}")
     print(f"  Target-root escapes:       {result['target_root_escapes']}")
     print(f"  Unsupported extensions:    {result['unsupported_extensions']}")
+    print(f"  Blank source paths:        {result['blank_source_paths']}")
+    print(f"  Blank target paths:        {result['blank_target_paths']}")
     print(f"  Total copy size:           {_fmt_bytes(result['total_copy_bytes'])}")
     print(f"  Target root exists:        {result['target_root_exists']}")
     print()
