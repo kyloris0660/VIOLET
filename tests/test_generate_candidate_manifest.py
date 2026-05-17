@@ -19,7 +19,7 @@ is_icloud_placeholder = _module.is_icloud_placeholder
 generate_manifest = _module.generate_manifest
 write_csv = _module.write_csv
 write_summary = _module.write_summary
-_build_duplicate_index = _module._build_duplicate_index
+_scan_existing_dataset = _module._scan_existing_dataset
 _scan_source = _module._scan_source
 
 
@@ -96,16 +96,20 @@ class TestPlaceholderDetection:
 # ---------------------------------------------------------------------------
 
 class TestDuplicateDetection:
-    def test_duplicate_index_from_existing(self, existing_dir: Path):
-        idx = _build_duplicate_index(existing_dir)
-        assert len(idx) == 2
+    def test_existing_dataset_scan(self, existing_dir: Path):
+        rows, idx, count, total_bytes = _scan_existing_dataset(existing_dir)
+        assert count == 2
+        assert len(rows) == 2
         names = {name for name, _ in idx}
         assert "existing1.jpg" in names
         assert "existing2.png" in names
+        assert total_bytes > 0
 
-    def test_duplicate_index_nonexistent_dir(self, tmp_path: Path):
-        idx = _build_duplicate_index(tmp_path / "nope")
+    def test_existing_dataset_nonexistent_dir(self, tmp_path: Path):
+        rows, idx, count, total_bytes = _scan_existing_dataset(tmp_path / "nope")
         assert idx == set()
+        assert count == 0
+        assert total_bytes == 0
 
     def test_duplicates_excluded_in_manifest(self, tmp_path: Path):
         src = tmp_path / "src"
@@ -341,3 +345,109 @@ class TestSourceSafety:
                 after[str(p.relative_to(source_dir))] = p.stat().st_size
 
         assert before == after, "Source directory must not be modified"
+
+
+# ---------------------------------------------------------------------------
+# 11. Regression: deterministic scan order (Codex P1)
+# ---------------------------------------------------------------------------
+
+class TestDeterministicScanOrder:
+    def test_scan_source_order_is_sorted(self, tmp_path: Path):
+        src = tmp_path / "src"
+        sub_b = src / "Bravo"
+        sub_a = src / "Alpha"
+        sub_b.mkdir(parents=True)
+        sub_a.mkdir(parents=True)
+        (sub_b / "z_image.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        (sub_a / "a_image.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        (sub_b / "m_image.png").write_bytes(b"\x89PNG" + b"\x00" * 2000)
+
+        entries = list(_scan_source(src))
+        filenames = [e["filename"] for e in entries]
+        assert filenames == ["a_image.jpg", "m_image.png", "z_image.jpg"]
+
+    def test_eligible_presort_makes_sample_stable(self, tmp_path: Path):
+        src = tmp_path / "src"
+        sub_z = src / "ZDir"
+        sub_a = src / "ADir"
+        sub_z.mkdir(parents=True)
+        sub_a.mkdir(parents=True)
+        for i in range(15):
+            d = sub_z if i % 2 == 0 else sub_a
+            (d / f"img_{i:03d}.jpg").write_bytes(b"\xff\xd8" + b"\x00" * (2000 + i))
+
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        target = tmp_path / "tgt"
+
+        r1 = generate_manifest(src, ex, target, target_total=5, seed=42)
+        r2 = generate_manifest(src, ex, target, target_total=5, seed=42)
+
+        names1 = [r["source_path"] for r in r1["candidates"] if r["selection_reason"] == "new_candidate"]
+        names2 = [r["source_path"] for r in r2["candidates"] if r["selection_reason"] == "new_candidate"]
+        assert names1 == names2
+
+
+# ---------------------------------------------------------------------------
+# 12. Regression: existing count accuracy (Codex P2)
+# ---------------------------------------------------------------------------
+
+class TestExistingCountAccuracy:
+    def test_count_by_rows_not_key_set(self, tmp_path: Path):
+        ex = tmp_path / "ex"
+        sub1 = ex / "dir1"
+        sub2 = ex / "dir2"
+        sub1.mkdir(parents=True)
+        sub2.mkdir(parents=True)
+        content = b"\xff\xd8" + b"\x00" * 2000
+        (sub1 / "same.jpg").write_bytes(content)
+        (sub2 / "same.jpg").write_bytes(content)
+
+        rows, idx, count, total_bytes = _scan_existing_dataset(ex)
+        assert count == 2
+        assert len(idx) == 1  # same (name, size) key
+        assert len(rows) == 2
+
+
+# ---------------------------------------------------------------------------
+# 13. Regression: target collision disambiguation (Codex P1)
+# ---------------------------------------------------------------------------
+
+class TestTargetCollisionDisambiguation:
+    def test_same_filename_gets_unique_targets(self, tmp_path: Path):
+        src = tmp_path / "src"
+        sub1 = src / "dir1"
+        sub2 = src / "dir2"
+        sub1.mkdir(parents=True)
+        sub2.mkdir(parents=True)
+        (sub1 / "photo.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        (sub2 / "photo.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2500)
+
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        target = tmp_path / "tgt"
+
+        result = generate_manifest(src, ex, target, target_total=10, seed=1)
+        new_rows = [r for r in result["candidates"] if r["selection_reason"] == "new_candidate"]
+        target_names = [Path(r["proposed_target_path"]).name for r in new_rows]
+        assert len(target_names) == len(set(n.lower() for n in target_names)), \
+            f"Target names must be unique, got: {target_names}"
+
+    def test_disambiguated_name_has_hash_suffix(self, tmp_path: Path):
+        src = tmp_path / "src"
+        sub1 = src / "d1"
+        sub2 = src / "d2"
+        sub1.mkdir(parents=True)
+        sub2.mkdir(parents=True)
+        (sub1 / "dup.png").write_bytes(b"\x89PNG" + b"\x00" * 2000)
+        (sub2 / "dup.png").write_bytes(b"\x89PNG" + b"\x00" * 2500)
+
+        ex = tmp_path / "ex"
+        ex.mkdir()
+        target = tmp_path / "tgt"
+
+        result = generate_manifest(src, ex, target, target_total=10, seed=1)
+        new_rows = [r for r in result["candidates"] if r["selection_reason"] == "new_candidate"]
+        names = [Path(r["proposed_target_path"]).name for r in new_rows]
+        assert any("__" in n for n in names), \
+            f"Expected at least one disambiguated name with __ hash, got: {names}"

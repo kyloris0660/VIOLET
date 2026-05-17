@@ -224,3 +224,87 @@ class TestMissingManifestFile:
         target_root = tmp_path / "target"
         r = _run(["--manifest", str(tmp_path / "nope.csv"), "--target-root", str(target_root), "--dry-run"])
         assert r.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# 8. Regression: target-root escape rejection (Codex P1)
+# ---------------------------------------------------------------------------
+
+class TestTargetRootEscape:
+    def test_dotdot_traversal_invalidates(self, tmp_path: Path):
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        escaped_path = str(target_root / ".." / "evil.jpg")
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": escaped_path,
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["target_root_escapes"] == 1
+        assert any("escape" in e for e in result["errors"])
+
+    def test_absolute_outside_path_invalidates(self, tmp_path: Path):
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(tmp_path / "elsewhere" / "bad.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["target_root_escapes"] == 1
+
+    def test_valid_target_inside_root_passes(self, tmp_path: Path):
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "good.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["target_root_escapes"] == 0
+        assert result["valid"] is True
+
+    def test_empty_target_path_counted_as_escape(self, tmp_path: Path):
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": "   ",
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["target_root_escapes"] == 1
+        assert result["valid"] is False

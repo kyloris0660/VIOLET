@@ -52,17 +52,23 @@ def is_icloud_placeholder(path: Path) -> bool:
     return False
 
 
-def _build_duplicate_index(existing_root: Path) -> set:
-    """Build a set of (lowercase_filename, size) tuples from the existing dataset.
+def _scan_existing_dataset(existing_root: Path) -> tuple:
+    """Scan the existing dataset directory.
 
-    Uses filename + size as a conservative duplicate key — avoids forcing
-    iCloud to hydrate files just to compute hashes.
+    Returns (existing_rows, duplicate_index, existing_count, existing_total_bytes).
+    - existing_rows: list of dicts with path, filename, extension, size_bytes
+    - duplicate_index: set of (lowercase_filename, size) for candidate exclusion
+    - existing_count: actual number of supported files (may differ from len(duplicate_index))
+    - existing_total_bytes: sum of all supported file sizes
     """
+    rows = []
     dupes = set()
+    total_bytes = 0
     if not existing_root.is_dir():
-        return dupes
-    for root, _dirs, files in os.walk(existing_root):
-        for fname in files:
+        return rows, dupes, 0, 0
+    for root, dirs, files in os.walk(existing_root):
+        dirs[:] = sorted(dirs, key=str.lower)
+        for fname in sorted(files, key=str.lower):
             fpath = Path(root) / fname
             try:
                 size = fpath.stat().st_size
@@ -71,7 +77,14 @@ def _build_duplicate_index(existing_root: Path) -> set:
             ext = fpath.suffix.lower()
             if ext in SUPPORTED_EXTENSIONS:
                 dupes.add((fname.lower(), size))
-    return dupes
+                total_bytes += size
+                rows.append({
+                    "path": fpath,
+                    "filename": fname,
+                    "extension": ext,
+                    "size_bytes": size,
+                })
+    return rows, dupes, len(rows), total_bytes
 
 
 def _scan_source(source_root: Path):
@@ -81,8 +94,8 @@ def _scan_source(source_root: Path):
     is_placeholder, stat_error.
     """
     for root, dirs, files in os.walk(source_root):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        for fname in files:
+        dirs[:] = sorted([d for d in dirs if not d.startswith(".")], key=str.lower)
+        for fname in sorted(files, key=str.lower):
             fpath = Path(root) / fname
             entry = {
                 "path": fpath,
@@ -116,10 +129,8 @@ def generate_manifest(
       - candidates: list of row dicts (the CSV rows)
       - summary: dict of aggregate counts
     """
-    duplicate_index = _build_duplicate_index(existing_root)
-
-    # Count existing supported files
-    existing_count = len(duplicate_index)
+    existing_rows, duplicate_index, existing_count, existing_total_bytes = \
+        _scan_existing_dataset(existing_root)
 
     needed = max(0, target_total - existing_count)
 
@@ -177,57 +188,77 @@ def generate_manifest(
         # Eligible candidate
         eligible.append(entry)
 
+    # Sort eligible by stable key before seeded sampling
+    eligible.sort(key=lambda e: (
+        str(e["path"].relative_to(source_root)).lower()
+        if source_root in e["path"].parents or e["path"].parent == source_root
+        else str(e["path"]).lower()
+    ))
+
     # Deterministic selection
     if len(eligible) <= needed:
-        selected = eligible
+        selected = list(eligible)
         strategy = "all_eligible"
     else:
         rng = random.Random(seed)
         selected = rng.sample(eligible, needed)
         strategy = f"random_seed_{seed}"
 
-    # Sort selected deterministically by filename for stable output
+    # Sort selected deterministically for stable output
     selected.sort(key=lambda e: e["filename"].lower())
+
+    # Build collision-free target paths
+    used_target_names: dict[str, int] = {}
+
+    def _unique_target(fname: str, source_path: Path) -> Path:
+        stem = Path(fname).stem
+        ext = Path(fname).suffix
+        key = fname.lower()
+        if key not in used_target_names:
+            used_target_names[key] = 0
+            return target_root / fname
+        used_target_names[key] += 1
+        path_hash = hashlib.sha256(
+            f"{source_path}|{fname}".encode()
+        ).hexdigest()[:8]
+        new_name = f"{stem}__{path_hash}{ext}"
+        while new_name.lower() in used_target_names:
+            path_hash = hashlib.sha256(
+                f"{source_path}|{fname}|{used_target_names[key]}".encode()
+            ).hexdigest()[:8]
+            new_name = f"{stem}__{path_hash}{ext}"
+            used_target_names[key] += 1
+        used_target_names[new_name.lower()] = 0
+        return target_root / new_name
 
     rows = []
     row_id = 0
 
     # Existing files (to be copied from existing_root)
-    if existing_root.is_dir():
-        for root, _dirs, files in os.walk(existing_root):
-            for fname in sorted(files):
-                fpath = Path(root) / fname
-                ext = fpath.suffix.lower()
-                if ext not in SUPPORTED_EXTENSIONS:
-                    continue
-                try:
-                    size = fpath.stat().st_size
-                except OSError:
-                    continue
-                row_id += 1
-                rows.append({
-                    "row_id": row_id,
-                    "source_path": str(fpath),
-                    "proposed_target_path": str(target_root / fname),
-                    "extension": ext,
-                    "size_bytes": size,
-                    "selection_reason": "existing_tier500",
-                    "duplicate_key": "",
-                    "exclusion_reason": "",
-                    "placeholder_flag": False,
-                    "stat_error": False,
-                })
+    for ex_entry in existing_rows:
+        row_id += 1
+        proposed = _unique_target(ex_entry["filename"], ex_entry["path"])
+        rows.append({
+            "row_id": row_id,
+            "source_path": str(ex_entry["path"]),
+            "proposed_target_path": str(proposed),
+            "extension": ex_entry["extension"],
+            "size_bytes": ex_entry["size_bytes"],
+            "selection_reason": "existing_tier500",
+            "duplicate_key": "",
+            "exclusion_reason": "",
+            "placeholder_flag": False,
+            "stat_error": False,
+        })
 
     # New candidates from source
     for entry in selected:
         row_id += 1
-        target_fname = entry["filename"]
-        # Handle filename collision with existing files
-        proposed_target = target_root / target_fname
+        proposed = _unique_target(entry["filename"], entry["path"])
         rows.append({
             "row_id": row_id,
             "source_path": str(entry["path"]),
-            "proposed_target_path": str(proposed_target),
+            "proposed_target_path": str(proposed),
             "extension": entry["extension"],
             "size_bytes": entry["size_bytes"],
             "selection_reason": "new_candidate",
@@ -255,9 +286,6 @@ def generate_manifest(
             })
 
     selected_total_bytes = sum(e["size_bytes"] for e in selected)
-    existing_total_bytes = sum(
-        r["size_bytes"] for r in rows if r["selection_reason"] == "existing_tier500"
-    )
 
     summary = {
         "source_root": str(source_root),

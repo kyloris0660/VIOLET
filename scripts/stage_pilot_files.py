@@ -43,6 +43,8 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         "source_files_missing_paths": [],
         "target_filename_collisions": 0,
         "target_collision_paths": [],
+        "target_root_escapes": 0,
+        "target_root_escape_paths": [],
         "unsupported_extensions": 0,
         "total_copy_bytes": 0,
         "target_root_exists": target_root.is_dir(),
@@ -70,7 +72,8 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
 
     result["total_rows"] = len(rows)
 
-    seen_targets = {}
+    resolved_root = target_root.resolve()
+    seen_targets: dict[str, str] = {}
 
     for row in rows:
         selection = row.get("selection_reason", "")
@@ -108,6 +111,21 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         if ext and ext not in SUPPORTED_EXTENSIONS:
             result["unsupported_extensions"] += 1
 
+        # Check target path escapes target_root
+        if proposed_target:
+            if not proposed_target.strip():
+                result["target_root_escapes"] += 1
+                if len(result["target_root_escape_paths"]) < 10:
+                    result["target_root_escape_paths"].append(proposed_target)
+            else:
+                try:
+                    resolved_target = Path(proposed_target).resolve()
+                    resolved_target.relative_to(resolved_root)
+                except ValueError:
+                    result["target_root_escapes"] += 1
+                    if len(result["target_root_escape_paths"]) < 10:
+                        result["target_root_escape_paths"].append(proposed_target)
+
         # Check target filename collisions
         if proposed_target:
             target_name = Path(proposed_target).name.lower()
@@ -125,6 +143,12 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         result["warnings"].append(
             f"{result['source_files_missing']} source files not found (may be iCloud-only)"
         )
+
+    if result["target_root_escapes"] > 0:
+        result["errors"].append(
+            f"{result['target_root_escapes']} target paths escape target_root"
+        )
+        result["valid"] = False
 
     if result["target_filename_collisions"] > 0:
         result["errors"].append(
@@ -197,6 +221,7 @@ def main():
     print(f"  Source files found:        {result['source_files_exist']}")
     print(f"  Source files missing:      {result['source_files_missing']}")
     print(f"  Target collisions:         {result['target_filename_collisions']}")
+    print(f"  Target-root escapes:       {result['target_root_escapes']}")
     print(f"  Unsupported extensions:    {result['unsupported_extensions']}")
     print(f"  Total copy size:           {_fmt_bytes(result['total_copy_bytes'])}")
     print(f"  Target root exists:        {result['target_root_exists']}")
