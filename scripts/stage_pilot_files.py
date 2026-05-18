@@ -89,6 +89,7 @@ def validate_manifest(
     target_root: Path,
     *,
     approved_source_roots: list[Path] | None = None,
+    rows: list[dict] | None = None,
 ) -> dict:
     """Validate a staging manifest (dry-run).
 
@@ -101,6 +102,10 @@ def validate_manifest(
     approved_source_roots : list[Path] | None
         If provided, every non-excluded source_path must resolve under
         one of these roots. None skips the check (dry-run compat).
+    rows : list[dict] | None
+        Pre-read CSV rows.  If provided, the manifest file is NOT re-read;
+        these rows are validated directly.  Use with ``read_manifest_rows()``
+        to avoid TOCTOU gaps.
 
     Returns a dict with validation results.
     """
@@ -139,21 +144,21 @@ def validate_manifest(
         "valid": True,
     }
 
-    if not manifest_path.is_file():
+    if not manifest_path.is_file() and rows is None:
         result["errors"].append(f"Manifest file not found: {manifest_path}")
         result["valid"] = False
         return result
 
-    rows = []
-    try:
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-    except Exception as e:
-        result["errors"].append(f"Failed to read manifest: {e}")
-        result["valid"] = False
-        return result
+    if rows is not None:
+        # Use pre-read rows (avoids TOCTOU gap in execute path)
+        pass
+    else:
+        rows_read, read_err = read_manifest_rows(manifest_path)
+        if read_err is not None:
+            result["errors"].append(read_err)
+            result["valid"] = False
+            return result
+        rows = rows_read
 
     result["total_rows"] = len(rows)
 
@@ -433,11 +438,64 @@ def _is_under(child: Path, parent: Path) -> bool:
         return False
 
 
+def _ensure_target_root_disjoint(
+    target_root: Path,
+    protected_roots: list[Path],
+) -> tuple[bool, str | None]:
+    """Check that target_root does not overlap with any protected root.
+
+    Rejects if:
+    - target_root == protected_root (same directory)
+    - target_root is inside a protected_root
+    - a protected_root is inside target_root
+
+    All paths must already be resolved.
+
+    Returns (ok, error_message).  ok=True means disjoint (safe).
+    """
+    for pr in protected_roots:
+        # Exact match (case-insensitive on Windows)
+        if str(target_root).lower() == str(pr).lower():
+            return False, (
+                f"target_root is the same as protected root: "
+                f"{target_root} == {pr}"
+            )
+        # target inside protected
+        if _is_under(target_root, pr):
+            return False, (
+                f"target_root is inside protected root: "
+                f"{target_root} inside {pr}"
+            )
+        # protected inside target
+        if _is_under(pr, target_root):
+            return False, (
+                f"protected root is inside target_root: "
+                f"{pr} inside {target_root}"
+            )
+    return True, None
+
+
+def read_manifest_rows(manifest_path: Path) -> tuple[list[dict], str | None]:
+    """Read all rows from a CSV manifest file.
+
+    Returns (rows, error_message).  On success error_message is None.
+    On failure rows is [] and error_message describes the problem.
+    """
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        return rows, None
+    except (OSError, csv.Error) as exc:
+        return [], f"Failed to read manifest {manifest_path}: {exc}"
+
+
 def execute_copy(
     manifest_path: Path,
     target_root: Path,
     *,
     approved_source_roots: list[Path],
+    rows: list[dict] | None = None,
 ) -> dict:
     """Execute the staging copy from a validated manifest.
 
@@ -452,6 +510,10 @@ def execute_copy(
         Staging directory (will be created if it doesn't exist).
     approved_source_roots : list[Path]
         Every source_path must resolve under one of these.
+    rows : list[dict] | None
+        Pre-read CSV rows.  If provided, the manifest file is NOT re-read;
+        these rows are used directly.  Use with ``read_manifest_rows()``
+        to avoid TOCTOU gaps.
 
     Returns a dict with copy results.
     """
@@ -478,7 +540,25 @@ def execute_copy(
             copy_result["failed_reason"] = f"Cannot resolve approved root: {exc}"
             return copy_result
 
-    resolved_root = target_root.resolve()
+    # §3: Wrap target_root.resolve() in try/except
+    try:
+        resolved_root = target_root.resolve()
+    except (RuntimeError, OSError) as exc:
+        msg = f"Cannot resolve target_root {target_root}: {exc}"
+        copy_result["errors"].append(msg)
+        copy_result["failed"] = 1
+        copy_result["failed_reason"] = msg
+        return copy_result
+
+    # §1: target_root must be disjoint from all protected (source/existing) roots
+    disjoint_ok, disjoint_msg = _ensure_target_root_disjoint(
+        resolved_root, resolved_approved
+    )
+    if not disjoint_ok:
+        copy_result["errors"].append(disjoint_msg)
+        copy_result["failed"] = 1
+        copy_result["failed_reason"] = disjoint_msg
+        return copy_result
 
     # Guard: target_root must not be an existing non-directory (e.g. a file)
     if target_root.exists() and not target_root.is_dir():
@@ -498,11 +578,17 @@ def execute_copy(
         copy_result["failed_reason"] = msg
         return copy_result
 
-    rows = []
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
+    # §2+§4: Use pre-read rows if provided, otherwise read with structured error handling
+    if rows is not None:
+        pass  # use caller-provided rows
+    else:
+        rows_read, read_err = read_manifest_rows(manifest_path)
+        if read_err is not None:
+            copy_result["errors"].append(read_err)
+            copy_result["failed"] = 1
+            copy_result["failed_reason"] = read_err
+            return copy_result
+        rows = rows_read
 
     copy_result["total_rows"] = len(rows)
 
@@ -733,10 +819,17 @@ def main():
         print(f"Existing root: {args.existing_root}")
     print()
 
+    # --- Phase 0: Read manifest once (TOCTOU prevention) ---
+    manifest_rows, read_err = read_manifest_rows(manifest_path)
+    if read_err is not None:
+        print(f"ERROR: {read_err}", file=sys.stderr)
+        sys.exit(1)
+
     # --- Phase 1: Validation ---
     result = validate_manifest(
         manifest_path, target_root,
         approved_source_roots=approved_source_roots,
+        rows=manifest_rows,
     )
 
     print("=== Staging Validation ===")
@@ -803,6 +896,7 @@ def main():
     copy_res = execute_copy(
         manifest_path, target_root,
         approved_source_roots=[Path(args.source_root), Path(args.existing_root)],
+        rows=manifest_rows,
     )
 
     print(f"  Rows processed: {copy_res['total_rows']}")

@@ -20,6 +20,8 @@ execute_copy = _module.execute_copy
 post_copy_audit = _module.post_copy_audit
 _clean_field = _module._clean_field
 _row_has_required_values = _module._row_has_required_values
+_ensure_target_root_disjoint = _module._ensure_target_root_disjoint
+read_manifest_rows = _module.read_manifest_rows
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -1151,7 +1153,10 @@ class TestPostCopyAudit:
 class TestExecuteCopyTargetRootGuard:
     def test_target_root_is_file_returns_failure(self, tmp_path: Path):
         """execute_copy returns structured failure if target_root is an existing file."""
-        src = tmp_path / "img.jpg"
+        # Use a disjoint source root so disjointness check passes first
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "img.jpg"
         src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
 
         # Create target_root as a *file*, not a directory
@@ -1168,7 +1173,7 @@ class TestExecuteCopyTargetRootGuard:
         }]
         _write_manifest(manifest_path, rows)
 
-        res = execute_copy(manifest_path, target_as_file, approved_source_roots=[tmp_path])
+        res = execute_copy(manifest_path, target_as_file, approved_source_roots=[src_root])
         assert res["failed"] >= 1
         assert res["copied"] == 0
         assert "not a directory" in res["failed_reason"].lower()
@@ -1567,3 +1572,238 @@ class TestParentMkdirFailure:
             "--existing-root", str(src_root),
         ])
         assert r.returncode == 3
+
+
+# ===================================================================
+# §1 P1 — target_root disjointness guard
+# ===================================================================
+
+class TestEnsureTargetRootDisjoint:
+    """Verify _ensure_target_root_disjoint rejects overlapping roots."""
+
+    def test_target_equals_source(self, tmp_path: Path):
+        """target_root == protected_root → rejected."""
+        root = tmp_path / "photos"
+        root.mkdir()
+        ok, msg = _ensure_target_root_disjoint(root.resolve(), [root.resolve()])
+        assert not ok
+        assert "same as protected root" in msg
+
+    def test_target_inside_source(self, tmp_path: Path):
+        """target_root inside a protected root → rejected."""
+        source = tmp_path / "photos"
+        source.mkdir()
+        target = source / "staging"
+        target.mkdir()
+        ok, msg = _ensure_target_root_disjoint(target.resolve(), [source.resolve()])
+        assert not ok
+        assert "inside protected root" in msg
+
+    def test_source_inside_target(self, tmp_path: Path):
+        """protected root inside target_root → rejected."""
+        target = tmp_path / "staging"
+        target.mkdir()
+        source = target / "photos"
+        source.mkdir()
+        ok, msg = _ensure_target_root_disjoint(target.resolve(), [source.resolve()])
+        assert not ok
+        assert "inside target_root" in msg
+
+    def test_disjoint_passes(self, tmp_path: Path):
+        """Disjoint target and source roots → accepted."""
+        target = tmp_path / "staging"
+        target.mkdir()
+        source = tmp_path / "photos"
+        source.mkdir()
+        existing = tmp_path / "existing"
+        existing.mkdir()
+        ok, msg = _ensure_target_root_disjoint(
+            target.resolve(), [source.resolve(), existing.resolve()]
+        )
+        assert ok
+        assert msg is None
+
+
+class TestExecuteDisjointGuard:
+    """Verify execute_copy rejects overlapping target/source at execution time."""
+
+    def test_execute_target_equals_source_fails(self, tmp_path: Path):
+        """execute_copy with target_root == source_root → structured failure."""
+        src_root = tmp_path / "photos"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(src_root / "staged_a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, src_root, approved_source_roots=[src_root])
+        assert res["failed"] >= 1
+        assert "same as protected root" in res["failed_reason"]
+        assert res["copied"] == 0
+
+    def test_execute_target_inside_existing_fails(self, tmp_path: Path):
+        """execute_copy with target_root inside existing_root → structured failure."""
+        existing = tmp_path / "existing"
+        existing.mkdir()
+        target = existing / "staging"
+        # don't mkdir — execute_copy should reject before mkdir
+
+        src_root = tmp_path / "source"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target / "a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(
+            manifest_path, target,
+            approved_source_roots=[src_root, existing],
+        )
+        assert res["failed"] >= 1
+        assert "inside protected root" in res["failed_reason"]
+        assert res["copied"] == 0
+
+    def test_execute_disjoint_cli_exit_3(self, tmp_path: Path):
+        """CLI exits 3 when target_root overlaps source_root."""
+        src_root = tmp_path / "photos"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(src_root / "a_staged.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        r = _run([
+            "--manifest", str(manifest_path),
+            "--target-root", str(src_root),
+            "--execute",
+            "--confirm-copy-tier1000",
+            "--source-root", str(src_root),
+            "--existing-root", str(tmp_path / "other"),
+        ])
+        assert r.returncode == 3
+
+
+# ===================================================================
+# §2 P2 — execute-time manifest read failure (structured)
+# ===================================================================
+
+class TestExecuteManifestReadFailure:
+    """Verify execute_copy handles manifest read errors structurally."""
+
+    def test_manifest_not_found(self, tmp_path: Path):
+        """execute_copy with missing manifest → structured failure (not bare exception)."""
+        target = tmp_path / "target"
+        source = tmp_path / "source"
+        source.mkdir()
+        nonexistent = tmp_path / "no_such_manifest.csv"
+
+        res = execute_copy(
+            nonexistent, target,
+            approved_source_roots=[source],
+        )
+        assert res["failed"] >= 1
+        assert "Failed to read manifest" in res["failed_reason"]
+        assert len(res["errors"]) >= 1
+
+
+# ===================================================================
+# §4 P2 — TOCTOU: validate and execute use same snapshot
+# ===================================================================
+
+class TestManifestSnapshotReuse:
+    """Verify validate_manifest and execute_copy can use pre-read rows."""
+
+    def test_read_manifest_rows_success(self, tmp_path: Path):
+        """read_manifest_rows returns rows and no error for a valid CSV."""
+        manifest_path = tmp_path / "manifest.csv"
+        rows_data = [{
+            "row_id": "1", "source_path": "x.jpg",
+            "proposed_target_path": "y.jpg", "extension": ".jpg",
+            "size_bytes": "100", "selection_reason": "new_candidate",
+            "duplicate_key": "", "exclusion_reason": "",
+            "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows_data)
+
+        rows, err = read_manifest_rows(manifest_path)
+        assert err is None
+        assert len(rows) == 1
+        assert rows[0]["source_path"] == "x.jpg"
+
+    def test_read_manifest_rows_missing_file(self, tmp_path: Path):
+        """read_manifest_rows with non-existent file → structured error."""
+        rows, err = read_manifest_rows(tmp_path / "nope.csv")
+        assert rows == []
+        assert err is not None
+        assert "Failed to read manifest" in err
+
+    def test_validate_accepts_pre_read_rows(self, tmp_path: Path):
+        """validate_manifest with rows= skips file read, uses provided rows."""
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 1000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        pre_rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "1000",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        # NOTE: manifest_path does NOT exist on disk — rows= bypasses file read
+        result = validate_manifest(manifest_path, target_root, rows=pre_rows)
+        assert result["valid"] is True
+        assert result["total_rows"] == 1
+
+    def test_execute_accepts_pre_read_rows(self, tmp_path: Path):
+        """execute_copy with rows= uses provided rows, not file."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        pre_rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        # NOTE: manifest_path does NOT exist on disk — rows= bypasses file read
+        res = execute_copy(
+            manifest_path, target_root,
+            approved_source_roots=[src_root],
+            rows=pre_rows,
+        )
+        assert res["failed"] == 0
+        assert res["copied"] == 1
+        assert (target_root / "a.jpg").is_file()

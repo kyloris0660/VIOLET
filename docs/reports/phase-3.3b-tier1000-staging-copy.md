@@ -305,7 +305,109 @@ Python 3.12.0
 
 ---
 
-## 11. 下一步
+## 11. Codex Closeout Patch — 第四轮 (P1 ×1 + P2 ×3)
+
+### 11.1 P1: target_root 与 source/existing 根不相交守卫 (MUST FIX)
+
+**问题**: `execute_copy()` 未检查 `target_root` 是否与 source_root / existing_root 重叠。
+若用户误传 `--target` 为 iCloud 照片库或已有暂存目录，暂存复制会污染或覆盖源数据。
+
+**修复内容**:
+- 新增辅助函数 `_ensure_target_root_disjoint(target_root, protected_roots)`:
+  - 检查三种不安全关系: 精确相等、target 在 protected 内部、protected 在 target 内部
+  - 所有路径比较使用 `_is_under()` + case-insensitive 精确匹配
+- `execute_copy()` 中 `target_root.resolve()` 后、`mkdir()` 前调用
+- 不相交检查失败 → 结构化错误返回 (`failed=1, failed_reason`)
+- CLI 层收到 `failed > 0` → exit 3
+
+### 11.2 P2: 执行时 manifest 读取失败结构化
+
+**问题**: `execute_copy()` 中 `open(manifest_path)` 和 `csv.DictReader` 未 try/except。
+文件不存在或 CSV 解析错误会导致裸 traceback。
+
+**修复内容**:
+- 新增共享辅助函数 `read_manifest_rows(manifest_path)`:
+  - 返回 `tuple[list[dict], str | None]`
+  - `try/except (OSError, csv.Error)` → 结构化错误消息
+- `validate_manifest()` 和 `execute_copy()` 均可接受 `rows` 参数跳过文件读取
+
+### 11.3 P2: `target_root.resolve()` 失败结构化
+
+**问题**: `execute_copy()` 中 `target_root.resolve()` 未包裹 try/except。
+畸形路径会导致裸 `RuntimeError` 或 `OSError` traceback。
+
+**修复内容**:
+- `execute_copy()` 中 `target_root.resolve()` 包裹 `try/except (RuntimeError, OSError)`
+- 失败时 → 结构化错误返回 (`failed=1, failed_reason`)
+
+### 11.4 P2: TOCTOU 防护 — 冻结验证后 manifest
+
+**问题**: `main()` 中 `validate_manifest()` 和 `execute_copy()` 各自独立读取 CSV 文件。
+验证通过后、执行前 manifest 文件被修改会导致执行使用不同数据。
+
+**修复内容**:
+- `main()` 新增 Phase 0: 调用 `read_manifest_rows()` 一次性读取所有行
+- 读取失败 → `sys.exit(1)`
+- 读取成功 → 同一 `manifest_rows` 传入 `validate_manifest(rows=...)` 和 `execute_copy(rows=...)`
+- `validate_manifest()` 和 `execute_copy()` 新增 `rows: list[dict] | None` 参数
+
+### 11.5 主动审计
+
+| 模式 | 搜索结果 | 状态 |
+|------|----------|------|
+| `open(manifest_path` | 仅在 `read_manifest_rows()` 内 (try/except 包裹) | ✓ 安全 |
+| `target_root.resolve()` | `validate_manifest` + `execute_copy` 均已 try/except | ✓ 安全 |
+| `.mkdir(` | `target_root.mkdir` + `tp.parent.mkdir` 均已 try/except | ✓ 安全 |
+| `approved_source_roots` | 所有调用点正确传递 | ✓ 安全 |
+| `execute_copy(` | `main()` 调用传入 `rows=manifest_rows` | ✓ 安全 |
+
+### 11.6 新增测试
+
+| 测试类 | 测试数 | 说明 |
+|--------|--------|------|
+| `TestEnsureTargetRootDisjoint` | 4 | 辅助函数: 精确相等/target内部/protected内部/不相交 |
+| `TestExecuteDisjointGuard` | 3 | 集成: target==source/target内existing/CLI exit 3 |
+| `TestExecuteManifestReadFailure` | 1 | manifest 文件缺失 → 结构化失败 |
+| `TestManifestSnapshotReuse` | 4 | read_manifest_rows/validate rows=/execute rows= |
+| **新增合计** | **12** | |
+
+附: 修复 1 个因新增不相交守卫而需适配的预有测试 (`TestExecuteCopyTargetRootGuard.test_target_root_is_file_returns_failure` — 改用不相交的 source root)
+
+### 11.7 第四轮后测试结果
+
+| 测试文件 | 测试数 | 结果 |
+|----------|--------|------|
+| `test_generate_candidate_manifest.py` | 38 | 全部通过 |
+| `test_stage_pilot_files.py` | 83 | 全部通过 |
+| **合计** | **121** | **全部通过** |
+
+```
+命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_generate_candidate_manifest.py tests/test_stage_pilot_files.py -v
+sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
+Python 3.12.0
+121 passed in 1.56s
+```
+
+### 11.8 停止规则评估
+
+第四轮修复完成后，所有 copy-safety P1/P2 问题已关闭:
+- target_root 与 source/existing 不相交 ✓
+- manifest 读取结构化 ✓
+- resolve 失败结构化 ✓
+- TOCTOU 单次读取 ✓
+
+剩余潜在建议均为非 copy-safety 级别:
+- 回滚/事务性 (P3) — 超出 copy 脚本范畴
+- 重试逻辑 (P3) — 首错即停是设计选择
+- 日志框架 (P3) — 当前 print 足够
+- 进度条 (P3) — 低优先级 UX
+- 跨平台可移植性 (P3) — 项目限定 Windows
+
+**建议: 合并 PR #46，进入 Phase 3.4。**
+
+---
+
+## 12. 下一步
 
 1. **用户审查并合并 PR #46**
 2. **Phase 3.4: 元数据扫描** — 对 `E:\VioletPilotData_1000` 执行 `inspect_pilot_dataset.py`
