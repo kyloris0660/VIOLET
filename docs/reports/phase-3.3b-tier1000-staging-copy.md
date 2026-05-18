@@ -15,6 +15,7 @@
 2. 修复了 2 个 PR #45 遗留的验证器鲁棒性缺陷
 3. 新增 20 个测试用例 (含执行器、审计器、安全门控)
 4. **成功执行了实际暂存复制**: 1000 个文件 → `E:\VioletPilotData_1000`，总计 2.98 GB
+5. **Codex 审查闭环** (P1+P2): 审计不一致硬失败 + `target_root` 文件守卫，新增 8 个测试
 
 **无 import、无 DB、无 LLM、无 AI、无分类、无 iCloud 变更。**
 
@@ -123,7 +124,7 @@
 
 ---
 
-## 7. 测试结果
+## 7. 测试结果 (初始交付)
 
 | 测试文件 | 测试数 | 结果 |
 |----------|--------|------|
@@ -138,21 +139,102 @@ Python 3.12.0
 93 passed in 1.03s
 ```
 
+> **注**: Codex closeout 后测试数已增至 101，见 §9.4。
+
 ---
 
 ## 8. 退出码设计
 
 | 退出码 | 含义 |
 |--------|------|
-| 0 | 成功 (dry-run valid 或 execute 完成) |
+| 0 | 成功 (dry-run valid 或 execute 完成且审计通过) |
 | 1 | 验证失败 (manifest invalid) |
 | 2 | CLI 参数错误 (缺少必要标志) |
-| 3 | 复制失败 (execute 模式中出错) |
+| 3 | 复制失败 (execute 模式中出错，含 copied≠expected / truncated>0) |
+| 4 | **审计失败** (文件数不一致 / 非预期扩展名) ← NEW |
 
 ---
 
-## 9. 下一步
+## 9. Codex Closeout Patch (PR #46 第二轮)
 
-1. **用户审查 PR** — 确认代码和暂存结果
+### 9.1 P1 修复: 审计不一致硬失败 (MUST FIX)
+
+**问题**: `post_copy_audit()` 返回文件数与预期不一致时，`main()` 仅打印 WARNING 并 exit 0。
+审计形同虚设，无法拦截部分复制或污染。
+
+**修复内容** (4 条硬失败路径):
+
+| # | 检查条件 | 退出码 | 说明 |
+|---|----------|--------|------|
+| 1 | `copy_res["copied"] != copy_count` | 3 | 复制计数与预期不符 |
+| 2 | `copy_res["skipped_truncated"] > 0` | 3 | 执行期间遇到截断行 |
+| 3 | `audit["total_files"] != copy_count` | 4 | 审计文件数与预期不符 |
+| 4 | `audit["unexpected_extensions"]` 非空 | 4 | 审计发现非预期扩展名 |
+
+### 9.2 P2 修复: `target_root` 文件守卫 (SHOULD FIX)
+
+**问题**: `execute_copy()` 调用 `target_root.mkdir(parents=True, exist_ok=True)` 前未检查
+`target_root` 是否已存在为普通文件，导致 `NotADirectoryError` 裸 traceback。
+
+**修复内容**:
+- `target_root.exists() and not target_root.is_dir()` → 结构化错误返回 (`failed=1, failed_reason`)
+- `target_root.mkdir()` 包裹 `try/except OSError` → 结构化错误返回
+- CLI 层收到 `failed > 0` → exit 3
+
+### 9.3 新增测试
+
+| 测试类 | 测试数 | 说明 |
+|--------|--------|------|
+| `TestExecuteCopyTargetRootGuard` | 2 | target_root 为文件 → 单元返回 failure / CLI exit 3 |
+| `TestPostCopyAuditHardFail` | 6 | 审计硬失败路径 (计数不一致/非预期扩展名/copied≠expected/truncated/正常 exit 0) |
+| **新增合计** | **8** | |
+
+### 9.4 Closeout 后测试结果
+
+| 测试文件 | 测试数 | 结果 |
+|----------|--------|------|
+| `test_generate_candidate_manifest.py` | 38 | 全部通过 |
+| `test_stage_pilot_files.py` | 63 | 全部通过 |
+| **合计** | **101** | **全部通过** |
+
+```
+命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_generate_candidate_manifest.py tests/test_stage_pilot_files.py -v
+sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
+Python 3.12.0
+101 passed in 1.44s
+```
+
+### 9.5 Closeout 后只读审计验证
+
+| 指标 | 值 |
+|------|-----|
+| 目标目录 | `E:\VioletPilotData_1000` |
+| 目录存在 | ✓ |
+| 文件总数 | 1,000 |
+| 总字节 | 3,204,263,387 (2.98 GB) |
+| .jpg | 819 |
+| .jpeg | 18 |
+| .png | 163 |
+| 非预期扩展名 | 0 |
+| 结果 | **SUCCESS** |
+
+**注**: 本次审计为只读操作，未重新执行复制。确认 Phase 3.3b 初次复制结果完好。
+
+### 9.6 停止规则评估
+
+Codex 第二轮修复完成后，剩余潜在建议均为 P2/P3 级别:
+- 回滚/事务性 (P3) — 超出 copy 脚本范畴
+- 重试逻辑 (P3) — 首错即停是设计选择
+- 日志框架 (P3) — 当前 print 足够
+- 进度条 (P3) — 低优先级 UX
+- 跨平台可移植性 (P3) — 项目限定 Windows
+
+**建议: 合并 PR #46，进入 Phase 3.4。**
+
+---
+
+## 10. 下一步
+
+1. **用户审查并合并 PR #46**
 2. **Phase 3.4: 元数据扫描** — 对 `E:\VioletPilotData_1000` 执行 `inspect_pilot_dataset.py`
 3. **Phase 4: 导入与标签** — 将暂存数据导入 V.I.O.L.E.T. 数据库

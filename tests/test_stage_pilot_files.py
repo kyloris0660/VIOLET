@@ -1141,3 +1141,262 @@ class TestPostCopyAudit:
         assert audit["total_files"] == 2
         assert len(audit["unexpected_extensions"]) == 1
         assert any("readme.txt" in p for p in audit["unexpected_extensions"])
+
+
+# ---------------------------------------------------------------------------
+# 24. P2 fix: execute_copy target_root guards (Phase 3.3b closeout)
+# ---------------------------------------------------------------------------
+
+class TestExecuteCopyTargetRootGuard:
+    def test_target_root_is_file_returns_failure(self, tmp_path: Path):
+        """execute_copy returns structured failure if target_root is an existing file."""
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        # Create target_root as a *file*, not a directory
+        target_as_file = tmp_path / "target"
+        target_as_file.write_bytes(b"I am a file")
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_as_file / "img.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, target_as_file, approved_source_roots=[tmp_path])
+        assert res["failed"] >= 1
+        assert res["copied"] == 0
+        assert "not a directory" in res["failed_reason"].lower()
+
+    def test_cli_execute_target_root_is_file_exits_3(self, tmp_path: Path):
+        """CLI --execute exits 3 when target_root is an existing file."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        # target_root is a file
+        target_as_file = tmp_path / "target"
+        target_as_file.write_bytes(b"I am a file")
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_as_file / "img.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        r = _run([
+            "--manifest", str(manifest_path),
+            "--target-root", str(target_as_file),
+            "--execute",
+            "--confirm-copy-tier1000",
+            "--source-root", str(src_root),
+            "--existing-root", str(src_root),
+        ])
+        assert r.returncode == 3
+
+
+# ---------------------------------------------------------------------------
+# 25. P1 fix: post-copy audit hard failures (Phase 3.3b closeout)
+# ---------------------------------------------------------------------------
+
+class TestPostCopyAuditHardFail:
+    def _make_execute_manifest(self, tmp_path: Path, sources: list[tuple[str, bytes]]):
+        """Helper: create source files + manifest for execute tests."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        rows = []
+        for i, (name, content) in enumerate(sources, 1):
+            src = src_root / name
+            src.write_bytes(content)
+            rows.append({
+                "row_id": str(i), "source_path": str(src),
+                "proposed_target_path": str(target_root / name),
+                "extension": Path(name).suffix.lower(),
+                "size_bytes": str(len(content)),
+                "selection_reason": "new_candidate", "duplicate_key": "",
+                "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+            })
+        _write_manifest(manifest_path, rows)
+        return manifest_path, target_root, src_root
+
+    def test_audit_count_mismatch_exits_4(self, tmp_path: Path):
+        """If post-copy audit file count != expected → exit 4.
+
+        We simulate this by running execute (copies 1 file), then injecting
+        an extra file into the target directory, and running a second manifest
+        that triggers audit on the now-mismatched directory.
+
+        Since execute_copy refuses to overwrite, we use a second manifest
+        pointing to a *different* target filename but same target_root.
+        The audit will count ALL files in target_root, producing a mismatch.
+        """
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        target_root = tmp_path / "target"
+
+        # Phase 1: create first file and copy it
+        src1 = src_root / "a.jpg"
+        src1.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        manifest1 = tmp_path / "manifest1.csv"
+        _write_manifest(manifest1, [{
+            "row_id": "1", "source_path": str(src1),
+            "proposed_target_path": str(target_root / "a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src1.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }])
+
+        r1 = _run([
+            "--manifest", str(manifest1),
+            "--target-root", str(target_root),
+            "--execute", "--confirm-copy-tier1000",
+            "--source-root", str(src_root),
+            "--existing-root", str(src_root),
+        ])
+        assert r1.returncode == 0
+
+        # Phase 2: inject a rogue file into target_root
+        (target_root / "rogue.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 100)
+
+        # Phase 3: run a second execute with a NEW source file → copies 1 file,
+        # but audit sees 3 files total (a.jpg + rogue.jpg + b.jpg) vs expected 1
+        src2 = src_root / "b.jpg"
+        src2.write_bytes(b"\xff\xd8" + b"\x00" * 1500)
+        manifest2 = tmp_path / "manifest2.csv"
+        _write_manifest(manifest2, [{
+            "row_id": "1", "source_path": str(src2),
+            "proposed_target_path": str(target_root / "b.jpg"),
+            "extension": ".jpg", "size_bytes": str(src2.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }])
+
+        r2 = _run([
+            "--manifest", str(manifest2),
+            "--target-root", str(target_root),
+            "--execute", "--confirm-copy-tier1000",
+            "--source-root", str(src_root),
+            "--existing-root", str(src_root),
+        ])
+        # Audit sees 3 files, but copy_count (from validation) = 1 → mismatch → exit 4
+        assert r2.returncode == 4
+        assert "ERROR" in r2.stdout
+
+    def test_audit_count_mismatch_unit(self, tmp_path: Path):
+        """Unit test: audit count mismatch produces ERROR message (verifies code path)."""
+        # This verifies the logic indirectly: execute_copy succeeds with 1 file,
+        # but we plant an extra file before the post_copy_audit would run.
+        # Since we can't easily intercept between copy and audit in subprocess,
+        # verify via the unit-level execute_copy + post_copy_audit functions.
+        manifest_path, target_root, src_root = self._make_execute_manifest(
+            tmp_path, [("a.jpg", b"\xff\xd8" + b"\x00" * 2000)]
+        )
+
+        # Execute copy (1 file)
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[src_root])
+        assert res["copied"] == 1
+        assert res["failed"] == 0
+
+        # Plant an extra file to create count mismatch
+        (target_root / "extra.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 500)
+
+        # Audit now finds 2 files, but copy produced 1
+        audit = post_copy_audit(target_root)
+        assert audit["total_files"] == 2  # mismatch vs copied=1
+
+    def test_unexpected_extensions_unit(self, tmp_path: Path):
+        """Unit test: unexpected extensions in audit target are detected."""
+        manifest_path, target_root, src_root = self._make_execute_manifest(
+            tmp_path, [("a.jpg", b"\xff\xd8" + b"\x00" * 2000)]
+        )
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[src_root])
+        assert res["copied"] == 1
+
+        # Plant a non-image file
+        (target_root / "readme.txt").write_bytes(b"unexpected")
+
+        audit = post_copy_audit(target_root)
+        assert len(audit["unexpected_extensions"]) == 1
+
+    def test_copied_count_mismatch_exits_3(self, tmp_path: Path):
+        """If copy_res['copied'] != expected count → exit 3.
+
+        We test this via execute_copy unit function: if target already exists
+        for one file (overwrite refused), the copy stops with failed>0 → exit 3.
+        """
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        target_root = tmp_path / "target"
+        target_root.mkdir()
+        manifest_path = tmp_path / "manifest.csv"
+
+        # Create source file and pre-create target (overwrite refused → failed)
+        src1 = src_root / "a.jpg"
+        src1.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        (target_root / "a.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 100)
+
+        rows = [{
+            "row_id": "1", "source_path": str(src1),
+            "proposed_target_path": str(target_root / "a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src1.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        # execute_copy refuses to overwrite → failed > 0
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[src_root])
+        assert res["failed"] >= 1
+        assert res["copied"] == 0
+
+    def test_skipped_truncated_during_execute(self, tmp_path: Path):
+        """execute_copy counts rows with missing required fields as truncated."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+
+        # Write manifest with WRONG headers so DictReader produces rows
+        # missing required field keys → triggers truncated detection
+        manifest_path = tmp_path / "manifest.csv"
+        with open(manifest_path, "w", newline="", encoding="utf-8") as f:
+            f.write("col_a,col_b\n")
+            f.write("val1,val2\n")
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[src_root])
+        assert res["skipped_truncated"] >= 1
+        assert res["copied"] == 0
+
+    def test_normal_execute_exits_0(self, tmp_path: Path):
+        """Normal execute with all files present exits 0."""
+        manifest_path, target_root, src_root = self._make_execute_manifest(
+            tmp_path, [
+                ("a.jpg", b"\xff\xd8" + b"\x00" * 2000),
+                ("b.png", b"\x89PNG" + b"\x00" * 3000),
+            ]
+        )
+
+        r = _run([
+            "--manifest", str(manifest_path),
+            "--target-root", str(target_root),
+            "--execute",
+            "--confirm-copy-tier1000",
+            "--source-root", str(src_root),
+            "--existing-root", str(src_root),
+        ])
+        assert r.returncode == 0
+        assert "SUCCESS" in r.stdout

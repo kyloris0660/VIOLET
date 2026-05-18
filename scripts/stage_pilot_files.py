@@ -462,8 +462,23 @@ def execute_copy(
 
     resolved_root = target_root.resolve()
 
+    # Guard: target_root must not be an existing non-directory (e.g. a file)
+    if target_root.exists() and not target_root.is_dir():
+        msg = f"target_root exists but is not a directory: {target_root}"
+        copy_result["errors"].append(msg)
+        copy_result["failed"] = 1
+        copy_result["failed_reason"] = msg
+        return copy_result
+
     # Create target directory
-    target_root.mkdir(parents=True, exist_ok=True)
+    try:
+        target_root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        msg = f"Cannot create target directory {target_root}: {exc}"
+        copy_result["errors"].append(msg)
+        copy_result["failed"] = 1
+        copy_result["failed_reason"] = msg
+        return copy_result
 
     rows = []
     with open(manifest_path, "r", encoding="utf-8") as f:
@@ -783,6 +798,17 @@ def main():
         print(f"  Files copied before failure: {copy_res['copied']}")
         sys.exit(3)
 
+    # Post-copy integrity checks (before audit)
+    if copy_res["copied"] != copy_count:
+        print()
+        print(f"  ERROR: copied {copy_res['copied']} files, expected {copy_count}")
+        sys.exit(3)
+
+    if copy_res["skipped_truncated"] > 0:
+        print()
+        print(f"  ERROR: {copy_res['skipped_truncated']} truncated rows encountered during execute")
+        sys.exit(3)
+
     # --- Phase 3: Post-copy audit ---
     print()
     print("=" * 50)
@@ -806,15 +832,27 @@ def main():
     for p in audit["sample_files"]:
         print(f"    - {p}")
 
-    # Summary
+    # Summary — hard-fail on any audit discrepancy
     print()
     print("=" * 50)
-    if audit["total_files"] == copy_count:
-        print(f"  SUCCESS: {audit['total_files']} files staged, {_fmt_bytes(audit['total_bytes'])}")
-    else:
-        print(f"  WARNING: Expected {copy_count} files, found {audit['total_files']}")
 
-    sys.exit(0)
+    audit_ok = True
+
+    if audit["total_files"] != copy_count:
+        print(f"  ERROR: Expected {copy_count} files, found {audit['total_files']}")
+        audit_ok = False
+
+    if audit["unexpected_extensions"]:
+        print(f"  ERROR: {len(audit['unexpected_extensions'])} files with unexpected extensions")
+        audit_ok = False
+
+    if audit_ok:
+        print(f"  SUCCESS: {audit['total_files']} files staged, {_fmt_bytes(audit['total_bytes'])}")
+        sys.exit(0)
+    else:
+        print()
+        print("  Post-copy audit FAILED.")
+        sys.exit(4)
 
 
 if __name__ == "__main__":
