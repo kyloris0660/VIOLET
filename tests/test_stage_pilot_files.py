@@ -1,4 +1,4 @@
-"""Tests for scripts/stage_pilot_files.py — staging manifest validator (dry-run only)."""
+"""Tests for scripts/stage_pilot_files.py — staging manifest validator and executor."""
 import csv
 import importlib.util
 import subprocess
@@ -16,6 +16,9 @@ _module = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(_module)
 validate_manifest = _module.validate_manifest
+execute_copy = _module.execute_copy
+post_copy_audit = _module.post_copy_audit
+_clean_field = _module._clean_field
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -193,18 +196,37 @@ class TestEmptyManifest:
 # 6. --execute is blocked
 # ---------------------------------------------------------------------------
 
-class TestExecuteBlocked:
-    def test_execute_flag_exits_with_error(self, valid_manifest):
+class TestExecuteCLISafety:
+    def test_execute_without_confirm_exits_2(self, valid_manifest):
+        """--execute without --confirm-copy-tier1000 -> exit 2."""
         manifest_path, target_root = valid_manifest
         r = _run(["--manifest", str(manifest_path), "--target-root", str(target_root), "--execute"])
         assert r.returncode == 2
-        assert "not implemented" in r.stderr.lower() or "Phase 3.3b" in r.stderr
+        assert "--confirm-copy-tier1000" in r.stderr
 
-    def test_no_dry_run_flag_exits_with_error(self, valid_manifest):
+    def test_execute_without_source_root_exits_2(self, valid_manifest):
+        """--execute --confirm-copy-tier1000 without --source-root -> exit 2."""
+        manifest_path, target_root = valid_manifest
+        r = _run(["--manifest", str(manifest_path), "--target-root", str(target_root),
+                  "--execute", "--confirm-copy-tier1000"])
+        assert r.returncode == 2
+        assert "--source-root" in r.stderr
+
+    def test_execute_and_dryrun_mutually_exclusive(self, valid_manifest):
+        """--execute and --dry-run together -> exit 2."""
+        manifest_path, target_root = valid_manifest
+        r = _run(["--manifest", str(manifest_path), "--target-root", str(target_root),
+                  "--execute", "--dry-run", "--confirm-copy-tier1000",
+                  "--source-root", str(target_root), "--existing-root", str(target_root)])
+        assert r.returncode == 2
+        assert "mutually exclusive" in r.stderr.lower()
+
+    def test_no_mode_flag_exits_2(self, valid_manifest):
+        """Neither --dry-run nor --execute -> exit 2."""
         manifest_path, target_root = valid_manifest
         r = _run(["--manifest", str(manifest_path), "--target-root", str(target_root)])
         assert r.returncode == 2
-        assert "--dry-run" in r.stderr
+        assert "--dry-run" in r.stderr or "--execute" in r.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -770,3 +792,352 @@ class TestResolveFailureHandling:
             result = validate_manifest(manifest_path, target_root)
         assert result["valid"] is False
         assert any("resolve" in e.lower() for e in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# 18. _clean_field helper (Phase 3.3b)
+# ---------------------------------------------------------------------------
+
+class TestCleanField:
+    def test_normal_string(self):
+        """Normal string value is returned stripped."""
+        row = {"key": "  hello  "}
+        assert _clean_field(row, "key") == "hello"
+
+    def test_none_value(self):
+        """None value returns default."""
+        row = {"key": None}
+        assert _clean_field(row, "key") == ""
+
+    def test_missing_key(self):
+        """Missing key returns default."""
+        row = {}
+        assert _clean_field(row, "key") == ""
+
+    def test_custom_default(self):
+        """Custom default is returned for missing key."""
+        row = {}
+        assert _clean_field(row, "key", "fallback") == "fallback"
+
+
+# ---------------------------------------------------------------------------
+# 19. Blank extension validation (Phase 3.3b)
+# ---------------------------------------------------------------------------
+
+class TestBlankExtensionValidation:
+    def test_blank_extension_on_copy_row_invalidates(self, tmp_path: Path):
+        """A non-excluded copy row with blank extension → valid=False."""
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": "", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_extensions"] == 1
+        assert result["valid"] is False
+
+    def test_blank_extension_on_excluded_row_ok(self, tmp_path: Path):
+        """An excluded row with blank extension is fine (not a copy row)."""
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(tmp_path / "whatever.xyz"),
+            "proposed_target_path": "",
+            "extension": "", "size_bytes": "100",
+            "selection_reason": "", "duplicate_key": "",
+            "exclusion_reason": "unsupported_format:.xyz",
+            "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["blank_extensions"] == 0
+        assert result["excluded_rows"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 20. Truncated rows (Phase 3.3b)
+# ---------------------------------------------------------------------------
+
+class TestTruncatedRows:
+    def test_truncated_row_missing_fields_counted(self, tmp_path: Path):
+        """A row missing required CSV fields is counted as truncated."""
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        # Write a CSV with only 2 of the required fields
+        with open(manifest_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["row_id", "source_path"])
+            writer.writeheader()
+            writer.writerow({"row_id": "1", "source_path": "/some/file.jpg"})
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["truncated_rows"] == 1
+        assert result["valid"] is False
+        assert any("truncated" in e.lower() for e in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# 21. Approved source roots validation (Phase 3.3b)
+# ---------------------------------------------------------------------------
+
+class TestApprovedSourceRoots:
+    def test_source_outside_approved_root_invalidates(self, tmp_path: Path):
+        """Source path outside approved roots → valid=False."""
+        # Create source file outside the "approved" root
+        outside_dir = tmp_path / "outside"
+        outside_dir.mkdir()
+        src = outside_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        approved_root = tmp_path / "approved"
+        approved_root.mkdir()
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root, approved_source_roots=[approved_root])
+        assert result["source_root_violations"] == 1
+        assert result["valid"] is False
+
+    def test_source_inside_approved_root_passes(self, tmp_path: Path):
+        """Source path inside approved root → no violation."""
+        approved_root = tmp_path / "approved"
+        approved_root.mkdir()
+        src = approved_root / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root, approved_source_roots=[approved_root])
+        assert result["source_root_violations"] == 0
+        assert result["valid"] is True
+
+    def test_no_approved_roots_skips_check(self, valid_manifest):
+        """When approved_source_roots=None, source root check is skipped."""
+        manifest_path, target_root = valid_manifest
+        result = validate_manifest(manifest_path, target_root, approved_source_roots=None)
+        assert result["source_root_violations"] == 0
+        assert result["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# 22. execute_copy (Phase 3.3b)
+# ---------------------------------------------------------------------------
+
+class TestExecuteCopy:
+    def _make_manifest_and_files(self, tmp_path: Path, rows_data: list[dict] | None = None):
+        """Helper to create a manifest + source files for copy tests."""
+        source_root = tmp_path / "source"
+        source_root.mkdir()
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        if rows_data is None:
+            # Default: two valid source files
+            src1 = source_root / "img1.jpg"
+            src2 = source_root / "img2.png"
+            src1.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+            src2.write_bytes(b"\x89PNG" + b"\x00" * 3000)
+            rows_data = [
+                {
+                    "row_id": "1", "source_path": str(src1),
+                    "proposed_target_path": str(target_root / "img1.jpg"),
+                    "extension": ".jpg", "size_bytes": str(src1.stat().st_size),
+                    "selection_reason": "new_candidate", "duplicate_key": "",
+                    "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+                },
+                {
+                    "row_id": "2", "source_path": str(src2),
+                    "proposed_target_path": str(target_root / "img2.png"),
+                    "extension": ".png", "size_bytes": str(src2.stat().st_size),
+                    "selection_reason": "new_candidate", "duplicate_key": "",
+                    "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+                },
+            ]
+
+        _write_manifest(manifest_path, rows_data)
+        return manifest_path, target_root, source_root
+
+    def test_successful_copy(self, tmp_path: Path):
+        """Normal copy: 2 files → both copied, correct byte count."""
+        manifest_path, target_root, source_root = self._make_manifest_and_files(tmp_path)
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[source_root])
+        assert res["copied"] == 2
+        assert res["failed"] == 0
+        assert res["total_bytes_copied"] > 0
+        assert (target_root / "img1.jpg").is_file()
+        assert (target_root / "img2.png").is_file()
+
+    def test_copy_skips_excluded_rows(self, tmp_path: Path):
+        """Excluded rows are skipped, not copied."""
+        source_root = tmp_path / "source"
+        source_root.mkdir()
+        src = source_root / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        rows = [
+            {
+                "row_id": "1", "source_path": str(src),
+                "proposed_target_path": str(target_root / "img.jpg"),
+                "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+                "selection_reason": "new_candidate", "duplicate_key": "",
+                "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+            },
+            {
+                "row_id": "2", "source_path": str(source_root / "gone.gif"),
+                "proposed_target_path": "",
+                "extension": ".gif", "size_bytes": "0",
+                "selection_reason": "", "duplicate_key": "",
+                "exclusion_reason": "placeholder",
+                "placeholder_flag": "True", "stat_error": "False",
+            },
+        ]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[source_root])
+        assert res["copied"] == 1
+        assert res["skipped_excluded"] == 1
+        assert res["failed"] == 0
+
+    def test_copy_stops_on_missing_source(self, tmp_path: Path):
+        """Missing source file → copy stops with error."""
+        source_root = tmp_path / "source"
+        source_root.mkdir()
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        rows = [{
+            "row_id": "1", "source_path": str(source_root / "nonexistent.jpg"),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2000",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[source_root])
+        assert res["failed"] >= 1
+        assert res["copied"] == 0
+        assert "not found" in res["failed_reason"].lower()
+
+    def test_copy_refuses_overwrite(self, tmp_path: Path):
+        """If target already exists, copy refuses (never overwrite)."""
+        source_root = tmp_path / "source"
+        source_root.mkdir()
+        src = source_root / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        target_root.mkdir(parents=True)
+        existing_target = target_root / "img.jpg"
+        existing_target.write_bytes(b"existing content")
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(existing_target),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[source_root])
+        assert res["failed"] >= 1
+        assert res["copied"] == 0
+        assert "overwrite" in res["failed_reason"].lower() or "exists" in res["failed_reason"].lower()
+
+    def test_copy_rejects_source_outside_approved_root(self, tmp_path: Path):
+        """Source file outside approved roots → copy fails."""
+        outside_dir = tmp_path / "outside"
+        outside_dir.mkdir()
+        src = outside_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        approved_root = tmp_path / "approved"
+        approved_root.mkdir()
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[approved_root])
+        assert res["failed"] >= 1
+        assert res["copied"] == 0
+        assert "approved" in res["failed_reason"].lower() or "outside" in res["failed_reason"].lower()
+
+
+# ---------------------------------------------------------------------------
+# 23. post_copy_audit (Phase 3.3b)
+# ---------------------------------------------------------------------------
+
+class TestPostCopyAudit:
+    def test_audit_counts_files(self, tmp_path: Path):
+        """Audit correctly counts files, bytes, and extensions."""
+        target_root = tmp_path / "staged"
+        target_root.mkdir()
+        (target_root / "a.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 1000)
+        (target_root / "b.png").write_bytes(b"\x89PNG" + b"\x00" * 2000)
+        (target_root / "c.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 500)
+
+        audit = post_copy_audit(target_root)
+        assert audit["exists"] is True
+        assert audit["total_files"] == 3
+        assert audit["total_bytes"] > 0
+        assert audit["extension_counts"][".jpg"] == 2
+        assert audit["extension_counts"][".png"] == 1
+        assert len(audit["unexpected_extensions"]) == 0
+
+    def test_audit_nonexistent_dir(self, tmp_path: Path):
+        """Audit of non-existent directory returns exists=False."""
+        audit = post_copy_audit(tmp_path / "does_not_exist")
+        assert audit["exists"] is False
+        assert audit["total_files"] == 0
+
+    def test_audit_detects_unexpected_extensions(self, tmp_path: Path):
+        """Files with non-supported extensions are flagged."""
+        target_root = tmp_path / "staged"
+        target_root.mkdir()
+        (target_root / "a.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 1000)
+        (target_root / "readme.txt").write_bytes(b"hello")
+
+        audit = post_copy_audit(target_root)
+        assert audit["total_files"] == 2
+        assert len(audit["unexpected_extensions"]) == 1
+        assert any("readme.txt" in p for p in audit["unexpected_extensions"])
