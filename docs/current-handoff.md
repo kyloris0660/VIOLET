@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.2j — Manual Tag Translation Correction (2026-05-15).
+> Last updated after Phase 3.4 — Tier-1000 Pre-import Audit (2026-05-18).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -28,6 +28,9 @@
 | **Phase 3.2b status** | PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged — Pilot hardening, configuration audit, medium-scale readiness |
 | **Phase 3.2c status** | PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged — Medium-scale pilot preparation, env docs, LLM gate unification |
 | **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`), server runtime Python identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
+| **Phase 3.3a.1 status** | PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged — iCloud candidate manifest + copy-safety hardening |
+| **Phase 3.3b status** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy (1,000 files, 2.98 GB → `E:\VioletPilotData_1000`) |
+| **Phase 3.4 status** | PR pending — Tier-1000 pre-import audit (manifest-vs-disk verification, 1000/1000 PASS) |
 
 ## Mandatory Workflow Rules
 
@@ -667,53 +670,31 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - i18n: 4 new keys in en.json and zh-cn.json (update_translation, cancel_edit, translation_saved, translation_updated)
 - Tests: 11 unit tests covering 10 required cases (valid update, aliases, needs_review, empty body 422, empty display_name 422, 404, auth dependency, alias normalization, source priority protection, cache invalidation)
 
-## Recommended Next Phase: 3.2g.3
+**Phase 3.3a.1 — iCloud Candidate Manifest + Copy-Safety Hardening (PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged):**
+- `scripts/generate_candidate_manifest.py`: iCloud source scanning, duplicate-key resolution, candidate manifest generation (5,326 rows: 522 existing + 478 new + 4,326 excluded)
+- `scripts/stage_pilot_files.py`: copy-safety hardening — path preflight, schema validation, `_REQUIRED_FIELDS`, `_is_known_exclusion`, combined total cap (1,000), tier-500 blank path guard
+- Frozen manifest at `.local_manifests/phase-3.3a.1-candidate-manifest.csv`
+- 38 tests (`test_generate_candidate_manifest.py`) + 55 tests (`test_stage_pilot_files.py`)
 
-**Phase 3.2g.3 — Medium Pilot Tier 1: Complete AI Tagging + Tag Translation**
+**Phase 3.3b — Tier-1000 Staging Copy (PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged):**
+- Executed `stage_pilot_files.py --copy` to stage 1,000 files (2.98 GB) to `E:\VioletPilotData_1000`
+- 522 existing (from Tier-500) + 478 new candidates
+- 4 Codex closeout rounds: schema hardening, path preflight edge cases, validator copy-safety gaps
+- Delivery report: `docs/reports/phase-3.3b-tier1000-staging-copy.md`
 
-Resume medium-pilot AI tagging on `blombooru_test_medium` to tag remaining anime media, then run controlled tag translation.
+**Phase 3.4 — Tier-1000 Pre-import Audit (PR pending):**
+- New `scripts/audit_tier1000.py`: read-only manifest-vs-disk verification (no DB, no file mutation)
+- Audit result: 1,000/1,000 files PASS, 0 discrepancies, 2.98 GB verified
+- 30 tests (`test_audit_tier1000.py`), 14 test classes
+- Full suite: 123/123 tests pass
+- Delivery report: `docs/reports/phase-3.4-tier1000-dry-run.md`
+- JSON summary: `docs/reports/phase-3.4-audit-summary.json`
 
-### Known Medium State (last known from Phase 3.2g.2 report — re-audit before execution)
+## Recommended Next Phase: 3.5
 
-| Metric | Count |
-|--------|-------|
-| Total media | 522 |
-| anime | 500 |
-| non_anime | 14 |
-| unknown | 8 |
-| media_with_ai_tags | 197 |
-| Remaining anime without AI tags | ~306 |
-| non_anime AI-tagged | 0 |
-| unknown AI-tagged | 3 |
+**Phase 3.5 — Tier-1000 Database Import**
 
-> These counts are from the Phase 3.2g.2 report. Re-audit `blombooru_test_medium` before starting any new processing — counts may have drifted if interim operations were performed.
-
-### Prerequisites (all must pass before execution)
-
-1. PR #40 (Phase 3.2g.2a) merged and code on `main`
-2. Full preflight checklist from `docs/medium-pilot-workflow.md` § 7 completed
-3. Python/venv identity preflight passed (`scripts/check_python_env.py`)
-4. Server identity check passed with all `--expected-*` args including `--expected-storage-root "C:\Users\kyloris\VioletStorage\medium"`
-5. All 4 AI-only isolation env vars set for AI tagging phase (see `docs/medium-pilot-workflow.md` § 6.3)
-6. Translation worker confirmed stopped (`GET /api/admin/tag-localization/worker/status` → `running: false`)
-7. If any active/running translation jobs exist from prior phases, stop and report them before starting new AI tagging
-8. Database backup taken (`pg_dump -Fc -f backup_before_3.2g.3.dump blombooru_test_medium`)
-9. Re-audit medium DB state: verify actual media counts, `media_with_ai_tags`, tag counts against known state above
-10. CLIP model readiness verified (`scripts/check_clip_model_ready.py` exits 0)
-11. `HF_HUB_OFFLINE=1` set
-12. Dry-run AI tagging job completed and reviewed before real run
-13. Plan approved by user before execution begins
-
-### Next-Phase Requirement: Service Control UI
-
-The next development phase should include a developer/service control panel:
-
-- Show current local dev/background services status (running, stopped, port, PID)
-- Show server PID and listening port
-- Allow safe stop/restart of V.I.O.L.E.T. dev server (without killing unrelated Python processes)
-- Show background workers status (tag translation worker, entity alias resolver)
-- One-click restart after config changes (optional)
-- Diagnostics for port conflicts and stale server processes (optional)
+Import the 1,000 verified files from `E:\VioletPilotData_1000` into the V.I.O.L.E.T. database. Phase 3.4 audit confirmed all files present and consistent with the manifest.
 
 ## Test Environment
 

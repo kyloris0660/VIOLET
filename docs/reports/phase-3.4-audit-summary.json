@@ -1,0 +1,23 @@
+{
+  "phase": "3.4",
+  "timestamp": "2026-05-18T14:05:08.681586+00:00",
+  "manifest_total_rows": 5326,
+  "copy_rows": 1000,
+  "excluded_rows": 4326,
+  "truncated_rows": 0,
+  "target_pass": 1000,
+  "target_missing": 0,
+  "size_mismatches": 0,
+  "extension_mismatches": 0,
+  "target_escapes": 0,
+  "source_checked": true,
+  "source_missing": 0,
+  "total_verified_bytes": 3204263387,
+  "total_expected_bytes": 3204263387,
+  "unexpected_files_on_disk": 0,
+  "unexpected_file_samples": [],
+  "result": "PASS",
+  "errors": [],
+  "warnings": [],
+  "paths_redacted": true
+}
