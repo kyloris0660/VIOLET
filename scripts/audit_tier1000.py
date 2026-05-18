@@ -31,26 +31,66 @@ Exit codes:
 """
 import argparse
 import csv
-import importlib.util
 import json
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-_stage_spec = importlib.util.spec_from_file_location(
-    "stage_pilot_files",
-    Path(__file__).resolve().parent / "stage_pilot_files.py",
-)
-_stage_mod = importlib.util.module_from_spec(_stage_spec)
-assert _stage_spec.loader is not None
-_stage_spec.loader.exec_module(_stage_mod)
+# ---------------------------------------------------------------------------
+# Self-contained helpers (no cross-script imports)
+# ---------------------------------------------------------------------------
 
-_clean_field = _stage_mod._clean_field
-_is_under = _stage_mod._is_under
-_is_known_exclusion = _stage_mod._is_known_exclusion
-SUPPORTED_EXTENSIONS = _stage_mod.SUPPORTED_EXTENSIONS
-_REQUIRED_FIELDS = _stage_mod._REQUIRED_FIELDS
+SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+
+KNOWN_EXCLUSION_CODES = {"stat_error", "placeholder"}
+KNOWN_EXCLUSION_PREFIXES = ("unsupported_format:",)
+
+_REQUIRED_FIELDS = {
+    "source_path", "proposed_target_path", "extension",
+    "size_bytes", "selection_reason", "exclusion_reason",
+}
+
+
+def _clean_field(row: dict, key: str, default: str = "") -> str:
+    val = row.get(key)
+    if val is None:
+        return default
+    return str(val).strip()
+
+
+def _is_known_exclusion(reason: str) -> bool:
+    if reason in KNOWN_EXCLUSION_CODES:
+        return True
+    for prefix in KNOWN_EXCLUSION_PREFIXES:
+        if reason.startswith(prefix):
+            return True
+    return False
+
+
+def _path_key(p: Path) -> str:
+    s = str(p.resolve())
+    return s.lower() if os.name == "nt" else s
+
+
+def _is_under(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _row_has_required_values(row: dict) -> bool:
+    for field in _REQUIRED_FIELDS:
+        if field not in row or row[field] is None:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Audit output schema
+# ---------------------------------------------------------------------------
 
 AUDIT_FIELDNAMES = [
     "row_id", "proposed_target_path", "source_path",
@@ -69,6 +109,10 @@ def _fmt_bytes(n: int) -> str:
     else:
         return f"{n / (1024 * 1024 * 1024):.2f} GB"
 
+
+# ---------------------------------------------------------------------------
+# Core audit logic
+# ---------------------------------------------------------------------------
 
 def audit_manifest_vs_disk(
     manifest_path: Path,
@@ -93,6 +137,8 @@ def audit_manifest_vs_disk(
         "size_mismatches": 0,
         "extension_mismatches": 0,
         "target_escapes": 0,
+        "duplicate_target_paths": 0,
+        "invalid_size_rows": 0,
         "source_checked": check_source,
         "source_missing": 0,
         "total_verified_bytes": 0,
@@ -107,13 +153,17 @@ def audit_manifest_vs_disk(
         with open(manifest_path, encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
-    except (OSError, csv.Error) as exc:
+    except (OSError, csv.Error, UnicodeDecodeError) as exc:
         result["errors"].append(f"Manifest read error: {exc}")
         return result
 
     result["manifest_total_rows"] = len(rows)
 
-    resolved_root = target_root.resolve()
+    try:
+        resolved_root = target_root.resolve()
+    except OSError as exc:
+        result["errors"].append(f"Cannot resolve target root: {exc}")
+        return result
 
     for row in rows:
         audit_rec = {
@@ -129,7 +179,7 @@ def audit_manifest_vs_disk(
             "detail": "",
         }
 
-        if not _REQUIRED_FIELDS.issubset(row.keys()):
+        if not _row_has_required_values(row):
             result["truncated_rows"] += 1
             audit_rec["row_id"] = row.get("row_id", "")
             audit_rec["status"] = "SKIPPED_TRUNCATED"
@@ -159,23 +209,49 @@ def audit_manifest_vs_disk(
         result["copy_rows"] += 1
 
         try:
-            expected_size = int(size_str) if size_str else 0
+            if not size_str:
+                raise ValueError("blank")
+            expected_size = int(size_str)
+            if expected_size < 0:
+                raise ValueError("negative")
         except (ValueError, TypeError):
             expected_size = 0
+            result["invalid_size_rows"] += 1
+            audit_rec["expected_size"] = size_str
+            audit_rec["status"] = "INVALID_SIZE"
+            audit_rec["detail"] = f"Invalid size_bytes value: {size_str!r}"
+            result["audit_rows"].append(audit_rec)
+            continue
 
         audit_rec["expected_size"] = str(expected_size)
         result["total_expected_bytes"] += expected_size
 
         tp = Path(target_path)
 
-        if not _is_under(tp.resolve(), resolved_root):
+        try:
+            resolved_tp = tp.resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            result["target_escapes"] += 1
+            audit_rec["status"] = "TARGET_RESOLVE_ERROR"
+            audit_rec["detail"] = f"Cannot resolve target path: {exc}"
+            result["audit_rows"].append(audit_rec)
+            continue
+
+        if not _is_under(resolved_tp, resolved_root):
             result["target_escapes"] += 1
             audit_rec["status"] = "TARGET_ESCAPE"
             audit_rec["detail"] = "Target path resolves outside target_root"
             result["audit_rows"].append(audit_rec)
             continue
 
-        result["expected_targets"].add(str(tp.resolve()).lower())
+        key = _path_key(tp)
+        if key in result["expected_targets"]:
+            result["duplicate_target_paths"] += 1
+            audit_rec["status"] = "DUPLICATE_TARGET"
+            audit_rec["detail"] = "Duplicate proposed_target_path"
+            result["audit_rows"].append(audit_rec)
+            continue
+        result["expected_targets"].add(key)
 
         if not tp.is_file():
             result["target_missing"] += 1
@@ -240,7 +316,7 @@ def scan_unexpected_files(target_root: Path, expected_targets: set[str]) -> list
     for root, _dirs, files in os.walk(target_root):
         for fname in files:
             fpath = Path(root) / fname
-            if str(fpath.resolve()).lower() not in expected_targets:
+            if _path_key(fpath) not in expected_targets:
                 try:
                     rel = str(fpath.relative_to(target_root))
                 except ValueError:
@@ -250,7 +326,6 @@ def scan_unexpected_files(target_root: Path, expected_targets: set[str]) -> list
 
 
 def generate_audit_csv(audit_rows: list[dict], output_path: Path) -> None:
-    """Write per-row CSV audit log."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=AUDIT_FIELDNAMES)
@@ -259,7 +334,6 @@ def generate_audit_csv(audit_rows: list[dict], output_path: Path) -> None:
 
 
 def generate_audit_json(summary: dict, output_path: Path) -> None:
-    """Write JSON summary (privacy-safe: no absolute paths)."""
     safe = {
         "phase": "3.4",
         "timestamp": summary.get("timestamp", ""),
@@ -272,6 +346,8 @@ def generate_audit_json(summary: dict, output_path: Path) -> None:
         "size_mismatches": summary.get("size_mismatches", 0),
         "extension_mismatches": summary.get("extension_mismatches", 0),
         "target_escapes": summary.get("target_escapes", 0),
+        "duplicate_target_paths": summary.get("duplicate_target_paths", 0),
+        "invalid_size_rows": summary.get("invalid_size_rows", 0),
         "source_checked": summary.get("source_checked", False),
         "source_missing": summary.get("source_missing", 0),
         "total_verified_bytes": summary.get("total_verified_bytes", 0),
@@ -342,7 +418,10 @@ def main():
         or result["size_mismatches"] > 0
         or result["extension_mismatches"] > 0
         or result["target_escapes"] > 0
+        or result["duplicate_target_paths"] > 0
+        or result["invalid_size_rows"] > 0
         or result["unexpected_files_on_disk"] > 0
+        or result["truncated_rows"] > 0
         or (result["source_checked"] and result["source_missing"] > 0)
     )
     result["result"] = "FAIL" if has_discrepancy else "PASS"
@@ -366,8 +445,11 @@ def main():
         print(f"  Size mismatches:   {result['size_mismatches']}")
         print(f"  Ext mismatches:    {result['extension_mismatches']}")
         print(f"  Target escapes:    {result['target_escapes']}")
+        print(f"  Duplicate targets: {result['duplicate_target_paths']}")
+        print(f"  Invalid sizes:     {result['invalid_size_rows']}")
         if result["source_checked"]:
             print(f"  Source missing:    {result['source_missing']}")
+        print(f"  Truncated rows:    {result['truncated_rows']}")
         print(f"  Expected bytes:    {_fmt_bytes(result['total_expected_bytes'])}")
         print(f"  Verified bytes:    {_fmt_bytes(result['total_verified_bytes'])}")
         print()
