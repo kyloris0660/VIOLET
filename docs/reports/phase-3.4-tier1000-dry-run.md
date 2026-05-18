@@ -13,11 +13,12 @@
 完成了以下只读验证工作:
 
 1. 新建 `scripts/audit_tier1000.py` — 自包含的 manifest-vs-disk 验证脚本
-2. 新建 `tests/test_audit_tier1000.py` — 60 个测试用例，25 个测试类
+2. 新建 `tests/test_audit_tier1000.py` — 84 个测试用例，33 个测试类
 3. **成功执行实际审计**: 全部 1,000 个文件通过，零不一致
 4. 修复 1 个 Codex P1 和 2 个 P2 问题 (Round 1)
 5. 修复 5 个 Codex P2 问题 (Round 2, 详见 §6)
 6. 修复 5 个 Codex P2 问题 (Round 3, 详见 §6)
+7. 修复 1 个 Codex P1 和 7 个 P2/主动修复 (Round 4, 详见 §6)
 
 **无文件修改、无 import、无 DB、无 LLM、无 AI、无分类。只读验证。**
 
@@ -80,7 +81,7 @@
 
 ## 5. 代码变更
 
-### 新增: `scripts/audit_tier1000.py` (~535 行)
+### 新增: `scripts/audit_tier1000.py` (~621 行)
 
 | 函数 | 说明 |
 |------|------|
@@ -94,7 +95,7 @@
 `_clean_field`, `_is_under`, `_is_known_exclusion`, `_path_key`, `_row_has_required_values`,
 `SUPPORTED_EXTENSIONS`, `_REQUIRED_FIELDS`, `KNOWN_EXCLUSION_CODES`, `KNOWN_EXCLUSION_PREFIXES`
 
-### 新增: `tests/test_audit_tier1000.py` (~910 行, 60 个测试)
+### 新增: `tests/test_audit_tier1000.py` (~1262 行, 84 个测试)
 
 | 测试类 | 测试数 | 说明 |
 |--------|--------|------|
@@ -123,7 +124,15 @@
 | `TestBlankExtension` | 3 | 空 extension → 检测计数, exit 4 |
 | `TestTargetRootResolveError` | 2 | target_root 解析异常 → 错误记录 |
 | `TestScanErrors` | 2 | walk/path_key 错误收集 → discrepancy |
-| **合计** | **60** | |
+| `TestCopyRowsZeroFail` | 3 | copy_rows==0 非空 manifest → FAIL, exit 4 (R4 P1) |
+| `TestPrivacySafeJSON` | 3 | JSON 输出无绝对路径, scan_errors 脱敏 |
+| `TestUnsupportedExtension` | 3 | .bmp 等不支持扩展名 → exit 4 |
+| `TestTargetAccessError` | 2 | tp.is_file() OSError → 结构化错误 |
+| `TestSourceAccessError` | 3 | source_access_errors 计数器接线 + CLI exit 4 |
+| `TestInvalidSelectionReason` | 4 | 未知 selection_reason → exit 4 |
+| `TestZeroSize` | 3 | size_bytes==0 → ZERO_SIZE, exit 4 |
+| `TestCLIOutputWriterErrors` | 3 | 输出写入失败无 traceback |
+| **合计** | **84** | |
 
 ### 新增: `docs/reports/phase-3.4-audit-summary.json`
 
@@ -245,6 +254,72 @@
 
 **回归测试**: `TestScanErrors` (2 个测试: `_path_key` 异常收集 + walk 错误触发 discrepancy)
 
+### Round 4 (1 个 P1 + 7 个 P2/主动修复)
+
+#### P1: `copy_rows == 0` 非空 manifest 应判定 FAIL (已修复)
+
+**问题**: 全部行被排除时，`copy_rows == 0` 但 `manifest_total_rows > 0`，审计仍返回 exit 0 (PASS)，可能掩盖 manifest 配置错误。
+
+**修复**: 在 `has_discrepancy` 判断中添加 `(result["copy_rows"] == 0 and result["manifest_total_rows"] > 0)`，同时将此情况记录为 warning。
+
+**回归测试**: `TestCopyRowsZeroFail` (3 个测试: API 检测 + CLI exit 4 + 空 manifest 仍 PASS)
+
+#### P2-R4-1: JSON 输出隐私安全 (已修复)
+
+**问题**: `scan_errors` 和 `unexpected_file_samples` 可能泄露绝对路径。
+
+**修复**: 新增 `_redact_path()` 函数，对 JSON 输出 (文件和 stdout) 中的路径进行脱敏处理。`scan_errors` 脱敏为 `scan_errors_redacted`。
+
+**回归测试**: `TestPrivacySafeJSON` (3 个测试: 文件输出 + stdout + scan_errors 脱敏)
+
+#### P2-R4-2: 不支持的扩展名应失败 (已修复)
+
+**问题**: `.bmp` 等不在 `SUPPORTED_EXTENSIONS` 中的扩展名静默通过审计。
+
+**修复**: 在扩展名验证分支中，非空扩展名若不在 `SUPPORTED_EXTENSIONS` 中，记录 `UNSUPPORTED_EXT` 状态，计入 `unsupported_extensions` 计数器。
+
+**回归测试**: `TestUnsupportedExtension` (3 个测试: .bmp 检测 + CLI exit 4 + 支持扩展名通过)
+
+#### P2-R4-3: `tp.is_file()` 访问错误结构化 (已修复)
+
+**问题**: 目标文件 `tp.is_file()` 调用在权限拒绝等情况下抛出 `OSError`，产生未处理 traceback。
+
+**修复**: 包裹在 `try/except OSError`，记录为 `TARGET_ACCESS_ERROR` 状态，计入 `target_access_errors`。
+
+**回归测试**: `TestTargetAccessError` (2 个测试: 计数器接线 + CLI exit 4)
+
+#### P2-R4-4: `sp.is_file()` 源文件访问错误结构化 (已修复)
+
+**问题**: `--check-source` 时源文件 `sp.is_file()` 访问错误可能产生未处理 traceback。
+
+**修复**: 包裹在 `try/except OSError`，记录为源访问错误，计入 `source_access_errors`。
+
+**回归测试**: `TestSourceAccessError` (3 个测试: 计数器接线 + CLI exit 4 + 正常访问无误报)
+
+#### P2-R4-5: 未知 `selection_reason` 应失败 (已修复)
+
+**问题**: copy-row 的 `selection_reason` 若非 `existing_tier500` 或 `new_candidate`，静默通过。
+
+**修复**: 新增 `KNOWN_SELECTION_REASONS = {"existing_tier500", "new_candidate"}`，未知值记录为 `INVALID_SELECTION_REASON` 状态，计入 `invalid_selection_reasons`。
+
+**回归测试**: `TestInvalidSelectionReason` (4 个测试: 未知值 + 空值 + CLI exit 4 + 合法值不误报)
+
+#### P2-R4-6: `size_bytes == 0` 应独立于负数单独检测 (已修复)
+
+**问题**: 零字节 size 被归入 "negative" 分支，但零字节可能指示数据错误，应独立检测。
+
+**修复**: 将零字节从 `INVALID_SIZE` 分支独立为 `ZERO_SIZE` 状态，计入 `zero_size_rows`。
+
+**回归测试**: `TestZeroSize` (3 个测试: 零值检测 + CLI exit 4 + 正数通过)
+
+#### P2-R4-7: CLI 输出写入失败无 traceback (已修复)
+
+**问题**: `generate_audit_csv()` 和 `generate_audit_json()` 写入失败时，`main()` 中未捕获异常可能产生 traceback。
+
+**修复**: 在 `main()` 中包裹 `try/except OSError`，捕获写入异常输出结构化错误到 stderr。
+
+**回归测试**: `TestCLIOutputWriterErrors` (3 个测试: CSV 写入错误 + JSON 写入错误 + manifest 访问错误)
+
 ---
 
 ## 7. 退出码设计
@@ -262,14 +337,14 @@
 
 | 测试文件 | 测试数 | 结果 |
 |----------|--------|------|
-| `test_audit_tier1000.py` | 60 | 全部通过 |
-| 全套 (`tests/`) | 805 | 全部通过 (10 skipped) |
+| `test_audit_tier1000.py` | 84 | 全部通过 |
+| 全套 (`tests/`) | 829 | 全部通过 (10 skipped) |
 
 ```
 命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/ -v
 sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
 Python 3.12.0
-805 passed, 10 skipped in 22.96s
+829 passed, 10 skipped in 24.07s
 ```
 
 ---
@@ -294,7 +369,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 **不适用。** Phase 3.4 为 CLI 脚本 (manifest-vs-disk 验证)，无 UI 组件。
 验收通过以下方式完成:
 
-- 46 个单元/集成测试 (tmp_path 隔离, CLI subprocess)
+- 84 个单元/集成测试 (tmp_path 隔离, CLI subprocess)
 - 实际执行审计: 1,000 个文件全部通过
 - JSON/CSV 输出格式验证
 
@@ -302,7 +377,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 
 ## 11. 停止规则
 
-本轮 (Round 3) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
+本轮 (Round 4) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
 且不涉及 false PASS、traceback 或审计数据损坏，则停止扩展 PR #48，建议合并。
 
 ---

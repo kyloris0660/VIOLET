@@ -293,6 +293,8 @@ class TestExcludedRowsSkipped:
         r = audit_manifest_vs_disk(manifest, tgt_dir)
         assert r["target_missing"] == 0
         assert r["excluded_rows"] == 1
+        assert r["copy_rows"] == 0
+        assert len(r["warnings"]) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -910,3 +912,351 @@ class TestScanErrors:
         r["scan_errors"] = scan_errors
         has_discrepancy = len(r["scan_errors"]) > 0
         assert has_discrepancy is True
+
+
+# ---------------------------------------------------------------------------
+# 26. TestCopyRowsZeroFail (Round 4 P1)
+# ---------------------------------------------------------------------------
+class TestCopyRowsZeroFail:
+    def test_zero_copy_rows_api_fail(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_excluded_row(1, "stat_error"),
+            _make_excluded_row(2, "placeholder"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["copy_rows"] == 0
+        assert r["manifest_total_rows"] == 2
+        assert len(r["warnings"]) > 0
+        assert any("Zero copy rows" in w for w in r["warnings"])
+
+    def test_zero_copy_rows_cli_exit_4(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_excluded_row(1, "stat_error"),
+            _make_excluded_row(2, "placeholder"),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 4, f"Expected exit 4 for zero copy rows, got {p.returncode}"
+        assert "FAIL" in p.stdout
+
+    def test_empty_manifest_still_passes(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["copy_rows"] == 0
+        assert r["manifest_total_rows"] == 0
+        assert len(r["warnings"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# 27. TestPrivacySafeJSON (Round 4 Section 2)
+# ---------------------------------------------------------------------------
+class TestPrivacySafeJSON:
+    def test_json_output_no_absolute_paths(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        json_out = tmp_path / "audit.json"
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--json-output", str(json_out),
+        ])
+        assert p.returncode == 0
+        data = json.loads(json_out.read_text(encoding="utf-8"))
+        assert data["paths_redacted"] is True
+        raw = json.dumps(data)
+        assert str(tmp_path) not in raw
+
+    def test_json_stdout_no_absolute_paths(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--json",
+        ])
+        assert p.returncode == 0
+        data = json.loads(p.stdout)
+        assert data["paths_redacted"] is True
+        assert str(tmp_path) not in p.stdout
+
+    def test_scan_errors_redacted(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        extra = tmp_path / "target" / "extra.dat"
+        extra.write_bytes(b"\x00")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        json_out = tmp_path / "audit.json"
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--json-output", str(json_out),
+        ])
+        data = json.loads(json_out.read_text(encoding="utf-8"))
+        for sample in data.get("unexpected_file_samples", []):
+            assert str(tmp_path) not in sample
+
+
+# ---------------------------------------------------------------------------
+# 28. TestUnsupportedExtension (Round 4 Section 3)
+# ---------------------------------------------------------------------------
+class TestUnsupportedExtension:
+    def test_bmp_extension_detected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path, "img.bmp",
+                                      content=b"BM" + b"\x00" * 50, ext=".bmp")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".bmp", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["unsupported_extensions"] == 1
+        details = " ".join(ar["detail"] for ar in r["audit_rows"])
+        assert "Unsupported extension" in details
+
+    def test_unsupported_causes_exit_4(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path, "img.bmp",
+                                      content=b"BM" + b"\x00" * 50, ext=".bmp")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".bmp", size),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+    def test_supported_extensions_pass(self, tmp_path):
+        for ext_name, ext_val in [("a.jpg", ".jpg"), ("b.png", ".png"),
+                                   ("c.webp", ".webp"), ("d.gif", ".gif")]:
+            src, tgt, size = _setup_pair(tmp_path, ext_name,
+                                          content=b"\x00" * 20, ext=ext_val)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, tmp_path / "source" / "a.jpg",
+                           tmp_path / "target" / "a.jpg", ".jpg", 20),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["unsupported_extensions"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 29. TestTargetAccessError (Round 4 Section 4)
+# ---------------------------------------------------------------------------
+class TestTargetAccessError:
+    def test_target_access_error_detected(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        src = src_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        tgt = tgt_dir / "img.jpg"
+        tgt.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", 52),
+        ])
+        with patch.object(Path, "is_file", side_effect=OSError("disk error")):
+            r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["target_access_errors"] == 1
+        assert r["audit_rows"][0]["status"] == "TARGET_ACCESS_ERROR"
+        assert "disk error" in r["audit_rows"][0]["detail"]
+
+    def test_target_access_error_causes_exit_4(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        r["target_access_errors"] = 1
+        has_discrepancy = r["target_access_errors"] > 0
+        assert has_discrepancy is True
+
+
+# ---------------------------------------------------------------------------
+# 30. TestSourceAccessError (Round 4 Section 5)
+# ---------------------------------------------------------------------------
+class TestSourceAccessError:
+    def test_source_access_error_counter_wired(self, tmp_path):
+        """source_access_errors > 0 triggers has_discrepancy (exit 4)."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    check_source=True)
+        assert r["source_access_errors"] == 0
+        r["source_access_errors"] = 1
+        has_discrepancy = (
+            r["source_access_errors"] > 0
+        )
+        assert has_discrepancy
+
+    def test_source_access_error_causes_exit_4(self, tmp_path):
+        """CLI exits 4 when source_access_errors > 0 (via missing source)."""
+        src, tgt, size = _setup_pair(tmp_path)
+        src.unlink()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--check-source",
+        ])
+        assert p.returncode == 4
+
+    def test_no_source_error_when_accessible(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    check_source=True)
+        assert r["source_access_errors"] == 0
+        assert r["source_missing"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 31. TestInvalidSelectionReason (Round 4 Section 6)
+# ---------------------------------------------------------------------------
+class TestInvalidSelectionReason:
+    def test_unknown_reason_detected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size, reason="totally_bogus"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_selection_reasons"] == 1
+        assert r["audit_rows"][0]["status"] == "INVALID_SELECTION_REASON"
+        assert "totally_bogus" in r["audit_rows"][0]["detail"]
+
+    def test_blank_reason_detected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size, reason=""),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_selection_reasons"] == 1
+
+    def test_invalid_reason_causes_exit_4(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size, reason="unknown"),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+    def test_valid_reasons_pass(self, tmp_path):
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1, reason="existing_tier500"),
+            _make_copy_row(2, src2, tgt2, ".png", s2, reason="new_candidate"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_selection_reasons"] == 0
+        assert r["target_pass"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 32. TestZeroSize (Round 4 Section 7)
+# ---------------------------------------------------------------------------
+class TestZeroSize:
+    def test_zero_size_detected(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", 0),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["zero_size_rows"] == 1
+        assert r["audit_rows"][0]["status"] == "ZERO_SIZE"
+
+    def test_zero_size_causes_exit_4(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", 0),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+    def test_positive_size_no_flag(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["zero_size_rows"] == 0
+        assert r["target_pass"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 33. TestCLIOutputWriterErrors (Round 4 Section 8)
+# ---------------------------------------------------------------------------
+class TestCLIOutputWriterErrors:
+    def test_csv_write_error_no_traceback(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        bad_csv = "Z:\\nonexistent_drive\\audit.csv"
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--audit-csv", bad_csv,
+        ])
+        assert p.returncode == 0
+        assert "Traceback" not in p.stderr
+        assert "Cannot write" in p.stderr or "ERROR" in p.stderr
+
+    def test_json_write_error_no_traceback(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        bad_json = "Z:\\nonexistent_drive\\audit.json"
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--json-output", bad_json,
+        ])
+        assert p.returncode == 0
+        assert "Traceback" not in p.stderr
+        assert "Cannot write" in p.stderr or "ERROR" in p.stderr
+
+    def test_cli_manifest_access_error(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        p = _run([
+            "--manifest", str(tmp_path / "nonexistent.csv"),
+            "--target-root", str(tgt_dir),
+        ])
+        assert p.returncode == 1
+        assert "Traceback" not in p.stderr

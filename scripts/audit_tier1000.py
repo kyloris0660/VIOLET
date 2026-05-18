@@ -46,10 +46,20 @@ SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 KNOWN_EXCLUSION_CODES = {"stat_error", "placeholder"}
 KNOWN_EXCLUSION_PREFIXES = ("unsupported_format:",)
 
+KNOWN_SELECTION_REASONS = {"existing_tier500", "new_candidate"}
+
 _REQUIRED_FIELDS = {
     "source_path", "proposed_target_path", "extension",
     "size_bytes", "selection_reason", "exclusion_reason",
 }
+
+
+def _redact_path(s: str) -> str:
+    """Replace absolute path prefixes with <REDACTED> for privacy-safe output."""
+    import re
+    s = re.sub(r'[A-Za-z]:\\[^\s:,;"\'\]]+', "<REDACTED>", s)
+    s = re.sub(r'/(?:home|Users|tmp|var|mnt|media)/[^\s:,;"\'\]]+', "<REDACTED>", s)
+    return s
 
 
 def _clean_field(row: dict, key: str, default: str = "") -> str:
@@ -142,6 +152,11 @@ def audit_manifest_vs_disk(
         "invalid_exclusion_reasons": 0,
         "blank_source_paths": 0,
         "blank_extensions": 0,
+        "unsupported_extensions": 0,
+        "invalid_selection_reasons": 0,
+        "zero_size_rows": 0,
+        "target_access_errors": 0,
+        "source_access_errors": 0,
         "source_checked": check_source,
         "source_missing": 0,
         "total_verified_bytes": 0,
@@ -218,6 +233,14 @@ def audit_manifest_vs_disk(
 
         result["copy_rows"] += 1
 
+        selection_reason = _clean_field(row, "selection_reason")
+        if selection_reason not in KNOWN_SELECTION_REASONS:
+            result["invalid_selection_reasons"] += 1
+            audit_rec["status"] = "INVALID_SELECTION_REASON"
+            audit_rec["detail"] = f"Unknown selection_reason={selection_reason!r}"
+            result["audit_rows"].append(audit_rec)
+            continue
+
         try:
             if not size_str:
                 raise ValueError("blank")
@@ -230,6 +253,14 @@ def audit_manifest_vs_disk(
             audit_rec["expected_size"] = size_str
             audit_rec["status"] = "INVALID_SIZE"
             audit_rec["detail"] = f"Invalid size_bytes value: {size_str!r}"
+            result["audit_rows"].append(audit_rec)
+            continue
+
+        if expected_size == 0:
+            result["zero_size_rows"] += 1
+            audit_rec["expected_size"] = "0"
+            audit_rec["status"] = "ZERO_SIZE"
+            audit_rec["detail"] = "size_bytes is zero for copy row"
             result["audit_rows"].append(audit_rec)
             continue
 
@@ -263,7 +294,16 @@ def audit_manifest_vs_disk(
             continue
         result["expected_targets"].add(key)
 
-        if not tp.is_file():
+        try:
+            target_exists = tp.is_file()
+        except OSError as exc:
+            result["target_access_errors"] += 1
+            audit_rec["status"] = "TARGET_ACCESS_ERROR"
+            audit_rec["detail"] = f"Cannot access target: {exc}"
+            result["audit_rows"].append(audit_rec)
+            continue
+
+        if not target_exists:
             result["target_missing"] += 1
             audit_rec["status"] = "MISSING_TARGET"
             audit_rec["detail"] = "File not found on disk"
@@ -295,6 +335,9 @@ def audit_manifest_vs_disk(
         if not extension:
             result["blank_extensions"] += 1
             failures.append("Blank extension in copy row")
+        elif extension.lower() not in SUPPORTED_EXTENSIONS:
+            result["unsupported_extensions"] += 1
+            failures.append(f"Unsupported extension: {extension}")
 
         if actual_size != expected_size:
             result["size_mismatches"] += 1
@@ -306,7 +349,13 @@ def audit_manifest_vs_disk(
 
         if check_source and source_path:
             sp = Path(source_path)
-            if not sp.is_file():
+            try:
+                source_exists = sp.is_file()
+            except OSError as exc:
+                result["source_access_errors"] += 1
+                failures.append(f"Source access error: {exc}")
+                source_exists = False
+            if not source_exists:
                 result["source_missing"] += 1
                 failures.append("Source file no longer exists")
 
@@ -320,7 +369,7 @@ def audit_manifest_vs_disk(
         result["audit_rows"].append(audit_rec)
 
     if result["copy_rows"] == 0 and result["manifest_total_rows"] > 0:
-        result["warnings"].append("No copy rows found (all excluded or truncated)")
+        result["warnings"].append("Zero copy rows in non-empty manifest — likely misconfigured exclusion logic")
 
     return result
 
@@ -382,16 +431,26 @@ def generate_audit_json(summary: dict, output_path: Path) -> None:
         "invalid_exclusion_reasons": summary.get("invalid_exclusion_reasons", 0),
         "blank_source_paths": summary.get("blank_source_paths", 0),
         "blank_extensions": summary.get("blank_extensions", 0),
+        "unsupported_extensions": summary.get("unsupported_extensions", 0),
+        "invalid_selection_reasons": summary.get("invalid_selection_reasons", 0),
+        "zero_size_rows": summary.get("zero_size_rows", 0),
+        "target_access_errors": summary.get("target_access_errors", 0),
+        "source_access_errors": summary.get("source_access_errors", 0),
         "source_checked": summary.get("source_checked", False),
         "source_missing": summary.get("source_missing", 0),
         "total_verified_bytes": summary.get("total_verified_bytes", 0),
         "total_expected_bytes": summary.get("total_expected_bytes", 0),
         "unexpected_files_on_disk": summary.get("unexpected_files_on_disk", 0),
-        "unexpected_file_samples": summary.get("unexpected_file_samples", []),
+        "unexpected_file_samples": [
+            _redact_path(p) for p in summary.get("unexpected_file_samples", [])
+        ],
         "scan_error_count": len(summary.get("scan_errors", [])),
+        "scan_errors_redacted": [
+            _redact_path(e) for e in summary.get("scan_errors", [])
+        ],
         "result": summary.get("result", "UNKNOWN"),
-        "errors": summary.get("errors", []),
-        "warnings": summary.get("warnings", []),
+        "errors": [_redact_path(e) for e in summary.get("errors", [])],
+        "warnings": [_redact_path(w) for w in summary.get("warnings", [])],
         "paths_redacted": True,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -420,11 +479,21 @@ def main():
     manifest_path = Path(args.manifest)
     target_root = Path(args.target_root)
 
-    if not manifest_path.is_file():
+    try:
+        manifest_exists = manifest_path.is_file()
+    except OSError as exc:
+        print(f"ERROR: Cannot access manifest path: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if not manifest_exists:
         print(f"ERROR: Manifest file not found: {manifest_path}", file=sys.stderr)
         sys.exit(1)
 
-    if not target_root.is_dir():
+    try:
+        target_is_dir = target_root.is_dir()
+    except OSError as exc:
+        print(f"ERROR: Cannot access target root: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if not target_is_dir:
         print(f"ERROR: Target root is not a directory: {target_root}", file=sys.stderr)
         sys.exit(1)
 
@@ -459,10 +528,16 @@ def main():
         or result["invalid_exclusion_reasons"] > 0
         or result["blank_source_paths"] > 0
         or result["blank_extensions"] > 0
+        or result["unsupported_extensions"] > 0
+        or result["invalid_selection_reasons"] > 0
+        or result["zero_size_rows"] > 0
+        or result["target_access_errors"] > 0
+        or result["source_access_errors"] > 0
         or result["unexpected_files_on_disk"] > 0
         or result["truncated_rows"] > 0
         or len(result["scan_errors"]) > 0
         or (result["source_checked"] and result["source_missing"] > 0)
+        or (result["copy_rows"] == 0 and result["manifest_total_rows"] > 0)
     )
     result["result"] = "FAIL" if has_discrepancy else "PASS"
 
@@ -472,6 +547,12 @@ def main():
                              "manifest_path", "target_root")}
         safe["paths_redacted"] = True
         safe["scan_error_count"] = len(result["scan_errors"])
+        safe["scan_errors"] = [_redact_path(e) for e in result.get("scan_errors", [])]
+        safe["unexpected_file_samples"] = [
+            _redact_path(p) for p in result.get("unexpected_file_samples", [])
+        ]
+        safe["errors"] = [_redact_path(e) for e in result.get("errors", [])]
+        safe["warnings"] = [_redact_path(w) for w in result.get("warnings", [])]
         print(json.dumps(safe, indent=2, ensure_ascii=False))
     else:
         print("=== Manifest Summary ===")
@@ -518,14 +599,20 @@ def main():
                 print(f"WARNING: {w}")
 
     if args.audit_csv:
-        generate_audit_csv(result["audit_rows"], Path(args.audit_csv))
-        if not args.json:
-            print(f"\nAudit CSV written to: {args.audit_csv}")
+        try:
+            generate_audit_csv(result["audit_rows"], Path(args.audit_csv))
+            if not args.json:
+                print(f"\nAudit CSV written to: {args.audit_csv}")
+        except OSError as exc:
+            print(f"ERROR: Cannot write audit CSV: {exc}", file=sys.stderr)
 
     if args.json_output:
-        generate_audit_json(result, Path(args.json_output))
-        if not args.json:
-            print(f"JSON summary written to: {args.json_output}")
+        try:
+            generate_audit_json(result, Path(args.json_output))
+            if not args.json:
+                print(f"JSON summary written to: {args.json_output}")
+        except OSError as exc:
+            print(f"ERROR: Cannot write JSON output: {exc}", file=sys.stderr)
 
     sys.exit(4 if has_discrepancy else 0)
 
