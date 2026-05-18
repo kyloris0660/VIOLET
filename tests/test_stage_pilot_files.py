@@ -645,7 +645,100 @@ class TestCollisionByFullPath:
 
 
 # ---------------------------------------------------------------------------
-# 15. Path.resolve() failure handling (copy-safety)
+# 15. Target existing files on disk (Codex P1 round 2)
+# ---------------------------------------------------------------------------
+
+class TestTargetExistingFiles:
+    def test_target_already_exists_invalidates(self, tmp_path: Path):
+        """If proposed_target_path already exists on disk, valid=False."""
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        target_root.mkdir()
+        existing_target = target_root / "img.jpg"
+        existing_target.write_bytes(b"\xff\xd8" + b"\x00" * 1000)
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(existing_target),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["target_existing_files"] == 1
+        assert any("already exist" in e for e in result["errors"])
+
+    def test_target_not_existing_passes(self, valid_manifest):
+        """If proposed targets do not exist on disk, no target_existing_files error."""
+        manifest_path, target_root = valid_manifest
+        result = validate_manifest(manifest_path, target_root)
+        assert result["target_existing_files"] == 0
+        assert result["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# 16. Suffix consistency (Codex P2 round 2)
+# ---------------------------------------------------------------------------
+
+class TestSuffixConsistency:
+    def test_target_without_suffix_invalidates(self, tmp_path: Path):
+        """A copy row where proposed_target_path has no file extension → invalid."""
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img_no_ext"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["suffix_missing"] >= 1
+
+    def test_source_jpg_target_png_invalidates(self, tmp_path: Path):
+        """Source .jpg + target .png → extension mismatch → invalid."""
+        src = tmp_path / "photo.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "photo.png"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["extension_mismatches"] >= 1
+        assert any("extension mismatch" in e for e in result["errors"])
+
+    def test_matching_suffixes_pass(self, valid_manifest):
+        """Valid manifest with matching source/CSV/target suffixes passes."""
+        manifest_path, target_root = valid_manifest
+        result = validate_manifest(manifest_path, target_root)
+        assert result["extension_mismatches"] == 0
+        assert result["suffix_missing"] == 0
+        assert result["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# 17. Path.resolve() failure handling (copy-safety) [renumbered from 15]
 # ---------------------------------------------------------------------------
 
 class TestResolveFailureHandling:

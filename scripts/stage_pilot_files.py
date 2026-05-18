@@ -65,6 +65,9 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         "invalid_selection_reasons": 0,
         "invalid_exclusion_reasons": 0,
         "extension_mismatches": 0,
+        "suffix_missing": 0,
+        "target_existing_files": 0,
+        "target_existing_paths": [],
         "total_copy_bytes": 0,
         "target_root_exists": target_root.is_dir(),
         "target_root_is_local": True,
@@ -143,30 +146,48 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
             result["blank_target_paths"] += 1
 
         # Validate source file exists — missing source is an ERROR for copy rows
+        source_suffix = ""
         if source_path:
             sp = Path(source_path)
             if sp.is_file():
                 result["source_files_exist"] += 1
-
-                # 2F: Extension cross-validation (only when source exists)
                 source_suffix = sp.suffix.lower()
-                if source_suffix and source_suffix not in SUPPORTED_EXTENSIONS:
-                    result["extension_mismatches"] += 1
-                elif ext and ext != source_suffix:
-                    result["extension_mismatches"] += 1
             else:
                 result["source_files_missing"] += 1
                 if len(result["source_files_missing_paths"]) < 10:
                     result["source_files_missing_paths"].append(source_path)
+                # Derive suffix even for missing source (for consistency check)
+                source_suffix = sp.suffix.lower()
 
         # Validate extension from CSV field
         if ext and ext not in SUPPORTED_EXTENSIONS:
             result["unsupported_extensions"] += 1
 
-        # 2F: Also validate target path suffix
+        # 2F: Suffix consistency — all three must agree and be supported
+        target_suffix = ""
         if proposed_target:
             target_suffix = Path(proposed_target).suffix.lower()
-            if target_suffix and target_suffix not in SUPPORTED_EXTENSIONS:
+
+        if source_path:
+            # Source suffix must be non-empty and supported
+            if not source_suffix:
+                result["suffix_missing"] += 1
+            elif source_suffix not in SUPPORTED_EXTENSIONS:
+                result["extension_mismatches"] += 1
+
+            # CSV extension must match source suffix
+            if ext and source_suffix and ext != source_suffix:
+                result["extension_mismatches"] += 1
+
+        if proposed_target:
+            # Target suffix must be non-empty and supported
+            if not target_suffix:
+                result["suffix_missing"] += 1
+            elif target_suffix not in SUPPORTED_EXTENSIONS:
+                result["extension_mismatches"] += 1
+
+            # Target suffix must equal source suffix
+            if source_suffix and target_suffix and target_suffix != source_suffix:
                 result["extension_mismatches"] += 1
 
         # Check target path escapes target_root
@@ -196,6 +217,17 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
                     result["target_collision_paths"].append(proposed_target)
             else:
                 seen_targets[collision_key] = proposed_target
+
+        # 2I: Check if proposed target already exists on disk
+        if proposed_target:
+            try:
+                resolved_target = Path(proposed_target).resolve()
+                if resolved_target.exists():
+                    result["target_existing_files"] += 1
+                    if len(result["target_existing_paths"]) < 10:
+                        result["target_existing_paths"].append(proposed_target)
+            except (OSError, ValueError, RuntimeError):
+                pass  # resolve/exists failure — already caught by escape check
 
         result["total_copy_bytes"] += size
 
@@ -251,6 +283,18 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
     if result["extension_mismatches"] > 0:
         result["errors"].append(
             f"{result['extension_mismatches']} rows have extension mismatches"
+        )
+        result["valid"] = False
+
+    if result["suffix_missing"] > 0:
+        result["errors"].append(
+            f"{result['suffix_missing']} copy rows have missing file suffix"
+        )
+        result["valid"] = False
+
+    if result["target_existing_files"] > 0:
+        result["errors"].append(
+            f"{result['target_existing_files']} proposed target files already exist on disk"
         )
         result["valid"] = False
 
@@ -317,6 +361,8 @@ def main():
     print(f"  Unsupported extensions:    {result['unsupported_extensions']}")
     print(f"  Blank source paths:        {result['blank_source_paths']}")
     print(f"  Blank target paths:        {result['blank_target_paths']}")
+    print(f"  Suffix missing:            {result['suffix_missing']}")
+    print(f"  Target files exist on disk: {result['target_existing_files']}")
     print(f"  Total copy size:           {_fmt_bytes(result['total_copy_bytes'])}")
     print(f"  Target root exists:        {result['target_root_exists']}")
     print()

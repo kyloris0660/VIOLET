@@ -101,6 +101,8 @@
 | 10 | target_total 上限强制 | ✓ existing > cap 时 ValueError |
 | 11 | 空白 source_path 检查 | ✓ 非排除行空白 source_path 触发 invalid |
 | 12 | 空白 target_path 检查 | ✓ 非排除行空白 target_path 触发 invalid |
+| 13 | 目标文件已存在检查 | ✓ proposed_target 已在磁盘上存在 → invalid |
+| 14 | 后缀一致性校验 | ✓ source/CSV/target 三方后缀必须一致且为支持格式 |
 
 ---
 
@@ -108,9 +110,9 @@
 
 | 工具 | 测试数 | 结果 |
 |------|--------|------|
-| `generate_candidate_manifest.py` | 35 | 全部通过 |
-| `stage_pilot_files.py` | 29 | 全部通过 |
-| 合计 | 64 | 全部通过 |
+| `generate_candidate_manifest.py` | 38 | 全部通过 |
+| `stage_pilot_files.py` | 35 | 全部通过 |
+| 合计 | 73 | 全部通过 |
 
 ---
 
@@ -141,7 +143,26 @@
 
 ---
 
-## 11. 下一步
+## 11. Final Copy-Safety Closeout (第四轮)
+
+| # | 优先级 | 修复项 | 说明 | 状态 |
+|---|--------|--------|------|------|
+| 1 | P1 | 目标文件已存在检查 | `proposed_target_path` 已在磁盘上存在 → `target_existing_files` + `valid=False` | ✓ |
+| 2 | P2 | 后缀一致性完整校验 | source_suffix 非空+支持, CSV ext 匹配, target_suffix 非空+支持, target=source | ✓ |
+
+**主动审计 (Proactive Audit):**
+
+| # | 审查项 | 结论 |
+|---|--------|------|
+| A | target_root 存在性 | 当前为信息字段，dry-run 不需要存在。正确，无需修改 |
+| B | 允许的 source_root | 属于 generator 逻辑，defer 至 Phase 3.3a.2 |
+| C | 大小写碰撞规范化 | 已用 `.lower()` 处理，Windows 安全。无需修改 |
+| D | 畸形 size_bytes | 仅影响信息统计，非 copy-safety。Defer |
+| E | Manifest header/schema 校验 | `row.get()` 优雅降级。完整 schema 校验 defer 至 Phase 3.3a.2 |
+
+---
+
+## 12. 下一步
 
 1. **用户审批候选清单** — 查看 `.local_manifests/phase-3.3a.1-candidate-manifest.csv`
 2. **Phase 3.3b Stage A: 创建暂存目录** — `E:\VioletPilotData_1000`
