@@ -642,3 +642,38 @@ class TestCollisionByFullPath:
         assert result["target_filename_collisions"] == 1
         assert result["valid"] is False
         assert any("collision" in e for e in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# 15. Path.resolve() failure handling (copy-safety)
+# ---------------------------------------------------------------------------
+
+class TestResolveFailureHandling:
+    def test_target_root_resolve_failure_invalidates(self, tmp_path: Path):
+        """If target_root.resolve() throws RuntimeError, result is invalid (not crash)."""
+        from unittest.mock import patch
+
+        src = tmp_path / "src.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        original_resolve = Path.resolve
+
+        def _broken_resolve(self, *args, **kwargs):
+            if self == target_root:
+                raise RuntimeError("Simulated symlink loop")
+            return original_resolve(self, *args, **kwargs)
+
+        with patch.object(Path, "resolve", _broken_resolve):
+            result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert any("resolve" in e.lower() for e in result["errors"])

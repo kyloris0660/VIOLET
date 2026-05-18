@@ -51,10 +51,22 @@ def validate_output_paths(
 
     Raises ValueError if either output resolves inside source_root or target_root.
     """
-    abs_output = output_path.resolve()
-    abs_summary = summary_path.resolve()
-    abs_source = source_root.resolve()
-    abs_target = target_root.resolve()
+    try:
+        abs_output = output_path.resolve()
+        abs_summary = summary_path.resolve()
+        abs_source = source_root.resolve()
+        abs_target = target_root.resolve()
+    except (RuntimeError, OSError) as exc:
+        raise ValueError(
+            f"Cannot resolve paths for output validation: {exc}"
+        ) from exc
+
+    # Reject identical output and summary paths (CSV would be overwritten by JSON)
+    if abs_output == abs_summary:
+        raise ValueError(
+            f"output and summary-output resolve to the same file ({abs_output}). "
+            f"They must be distinct to avoid overwriting the CSV manifest with JSON."
+        )
 
     for label, p in [("output", abs_output), ("summary", abs_summary)]:
         for root_label, root_path in [("source_root", abs_source), ("target_root", abs_target)]:
@@ -422,7 +434,8 @@ def main():
         sys.exit(1)
 
     if not existing_root.is_dir():
-        print(f"WARNING: Existing root does not exist: {existing_root}", file=sys.stderr)
+        print(f"ERROR: Existing root does not exist: {existing_root}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"Source root:   {source_root}")
     print(f"Existing root: {existing_root}")

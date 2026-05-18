@@ -91,7 +91,12 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
 
     result["total_rows"] = len(rows)
 
-    resolved_root = target_root.resolve()
+    try:
+        resolved_root = target_root.resolve()
+    except (RuntimeError, OSError) as exc:
+        result["errors"].append(f"Cannot resolve target_root: {exc}")
+        result["valid"] = False
+        return result
     # Collision detection by full resolved target path (case-insensitive on Windows)
     seen_targets: dict[str, str] = {}
 
@@ -169,7 +174,7 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
             try:
                 resolved_target = Path(proposed_target).resolve()
                 resolved_target.relative_to(resolved_root)
-            except ValueError:
+            except (ValueError, RuntimeError, OSError):
                 result["target_root_escapes"] += 1
                 if len(result["target_root_escape_paths"]) < 10:
                     result["target_root_escape_paths"].append(proposed_target)
@@ -183,7 +188,7 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         if proposed_target:
             try:
                 collision_key = str(Path(proposed_target).resolve()).lower()
-            except (OSError, ValueError):
+            except (OSError, ValueError, RuntimeError):
                 collision_key = proposed_target.lower()
             if collision_key in seen_targets:
                 result["target_filename_collisions"] += 1

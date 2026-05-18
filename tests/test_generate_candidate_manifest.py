@@ -631,3 +631,69 @@ class TestOutputPathContainment:
 
         with pytest.raises(ValueError, match="must not be inside target_root"):
             validate_output_paths(output_csv, summary_json, source, target)
+
+    def test_identical_output_and_summary_rejected(self, tmp_path: Path):
+        """output and summary-output resolving to the same file must raise."""
+        source = tmp_path / "source"
+        source.mkdir()
+        target = tmp_path / "target"
+        same_file = tmp_path / "combined.out"
+
+        with pytest.raises(ValueError, match="same file"):
+            validate_output_paths(same_file, same_file, source, target)
+
+    def test_resolve_failure_raises_valueerror(self, tmp_path: Path):
+        """Path.resolve() failure (RuntimeError/OSError) → controlled ValueError."""
+        from unittest.mock import patch
+
+        source = tmp_path / "source"
+        source.mkdir()
+        target = tmp_path / "target"
+        output_csv = tmp_path / "manifest.csv"
+        summary_json = tmp_path / "summary.json"
+
+        original_resolve = Path.resolve
+
+        def _broken_resolve(self, *args, **kwargs):
+            if self == output_csv:
+                raise RuntimeError("Simulated symlink loop")
+            return original_resolve(self, *args, **kwargs)
+
+        with patch.object(Path, "resolve", _broken_resolve):
+            with pytest.raises(ValueError, match="Cannot resolve"):
+                validate_output_paths(output_csv, summary_json, source, target)
+
+
+# ---------------------------------------------------------------------------
+# 17. Missing existing_root must fail fast (Codex P1)
+# ---------------------------------------------------------------------------
+
+class TestMissingExistingRoot:
+    """generate_candidate_manifest main() must ERROR + exit(1) on missing existing_root."""
+
+    def test_missing_existing_root_exits_with_error(self, tmp_path: Path):
+        import subprocess
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "img.jpg").write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        nonexistent_existing = tmp_path / "no_such_dir"
+        target = tmp_path / "tgt"
+        output_csv = tmp_path / "manifest.csv"
+        summary_json = tmp_path / "summary.json"
+
+        r = subprocess.run(
+            [
+                sys.executable, str(SCRIPT_PATH),
+                "--source-root", str(src),
+                "--existing-root", str(nonexistent_existing),
+                "--target-root", str(target),
+                "--output", str(output_csv),
+                "--summary-output", str(summary_json),
+                "--dry-run",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert r.returncode == 1
+        assert "ERROR" in r.stderr
+        assert "Existing root" in r.stderr or "does not exist" in r.stderr
