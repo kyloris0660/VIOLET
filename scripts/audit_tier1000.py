@@ -139,6 +139,9 @@ def audit_manifest_vs_disk(
         "target_escapes": 0,
         "duplicate_target_paths": 0,
         "invalid_size_rows": 0,
+        "invalid_exclusion_reasons": 0,
+        "blank_source_paths": 0,
+        "blank_extensions": 0,
         "source_checked": check_source,
         "source_missing": 0,
         "total_verified_bytes": 0,
@@ -147,6 +150,7 @@ def audit_manifest_vs_disk(
         "audit_rows": [],
         "errors": [],
         "warnings": [],
+        "scan_errors": [],
     }
 
     try:
@@ -161,7 +165,7 @@ def audit_manifest_vs_disk(
 
     try:
         resolved_root = target_root.resolve()
-    except OSError as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         result["errors"].append(f"Cannot resolve target root: {exc}")
         return result
 
@@ -203,6 +207,12 @@ def audit_manifest_vs_disk(
             result["excluded_rows"] += 1
             audit_rec["status"] = "SKIPPED_EXCLUDED"
             audit_rec["detail"] = f"exclusion_reason={exclusion}"
+            result["audit_rows"].append(audit_rec)
+            continue
+        elif exclusion:
+            result["invalid_exclusion_reasons"] += 1
+            audit_rec["status"] = "INVALID_EXCLUSION_REASON"
+            audit_rec["detail"] = f"Unknown exclusion_reason={exclusion!r}"
             result["audit_rows"].append(audit_rec)
             continue
 
@@ -278,6 +288,14 @@ def audit_manifest_vs_disk(
 
         failures = []
 
+        if not source_path:
+            result["blank_source_paths"] += 1
+            failures.append("Blank source_path in copy row")
+
+        if not extension:
+            result["blank_extensions"] += 1
+            failures.append("Blank extension in copy row")
+
         if actual_size != expected_size:
             result["size_mismatches"] += 1
             failures.append(f"Size mismatch: expected {expected_size}, got {actual_size}")
@@ -307,22 +325,35 @@ def audit_manifest_vs_disk(
     return result
 
 
-def scan_unexpected_files(target_root: Path, expected_targets: set[str]) -> list[str]:
+def scan_unexpected_files(
+    target_root: Path,
+    expected_targets: set[str],
+) -> tuple[list[str], list[str]]:
     """Find files on disk that are NOT in the manifest expected set.
 
-    Returns relative paths (from target_root) of unexpected files.
+    Returns (unexpected_relative_paths, scan_errors).
     """
     unexpected = []
-    for root, _dirs, files in os.walk(target_root):
+    scan_errors = []
+
+    def _on_walk_error(err: OSError) -> None:
+        scan_errors.append(f"os.walk error: {err}")
+
+    for root, _dirs, files in os.walk(target_root, onerror=_on_walk_error):
         for fname in files:
             fpath = Path(root) / fname
-            if _path_key(fpath) not in expected_targets:
+            try:
+                key = _path_key(fpath)
+            except (OSError, RuntimeError, ValueError) as exc:
+                scan_errors.append(f"Cannot resolve path {fpath}: {exc}")
+                continue
+            if key not in expected_targets:
                 try:
                     rel = str(fpath.relative_to(target_root))
                 except ValueError:
                     rel = str(fpath)
                 unexpected.append(rel)
-    return unexpected
+    return unexpected, scan_errors
 
 
 def generate_audit_csv(audit_rows: list[dict], output_path: Path) -> None:
@@ -348,12 +379,16 @@ def generate_audit_json(summary: dict, output_path: Path) -> None:
         "target_escapes": summary.get("target_escapes", 0),
         "duplicate_target_paths": summary.get("duplicate_target_paths", 0),
         "invalid_size_rows": summary.get("invalid_size_rows", 0),
+        "invalid_exclusion_reasons": summary.get("invalid_exclusion_reasons", 0),
+        "blank_source_paths": summary.get("blank_source_paths", 0),
+        "blank_extensions": summary.get("blank_extensions", 0),
         "source_checked": summary.get("source_checked", False),
         "source_missing": summary.get("source_missing", 0),
         "total_verified_bytes": summary.get("total_verified_bytes", 0),
         "total_expected_bytes": summary.get("total_expected_bytes", 0),
         "unexpected_files_on_disk": summary.get("unexpected_files_on_disk", 0),
         "unexpected_file_samples": summary.get("unexpected_file_samples", []),
+        "scan_error_count": len(summary.get("scan_errors", [])),
         "result": summary.get("result", "UNKNOWN"),
         "errors": summary.get("errors", []),
         "warnings": summary.get("warnings", []),
@@ -409,9 +444,10 @@ def main():
             print(f"ERROR: {err}", file=sys.stderr)
         sys.exit(1)
 
-    unexpected = scan_unexpected_files(target_root, result["expected_targets"])
+    unexpected, scan_errors = scan_unexpected_files(target_root, result["expected_targets"])
     result["unexpected_files_on_disk"] = len(unexpected)
     result["unexpected_file_samples"] = unexpected[:20]
+    result["scan_errors"] = scan_errors
 
     has_discrepancy = (
         result["target_missing"] > 0
@@ -420,8 +456,12 @@ def main():
         or result["target_escapes"] > 0
         or result["duplicate_target_paths"] > 0
         or result["invalid_size_rows"] > 0
+        or result["invalid_exclusion_reasons"] > 0
+        or result["blank_source_paths"] > 0
+        or result["blank_extensions"] > 0
         or result["unexpected_files_on_disk"] > 0
         or result["truncated_rows"] > 0
+        or len(result["scan_errors"]) > 0
         or (result["source_checked"] and result["source_missing"] > 0)
     )
     result["result"] = "FAIL" if has_discrepancy else "PASS"
@@ -431,6 +471,7 @@ def main():
                 if k not in ("expected_targets", "audit_rows",
                              "manifest_path", "target_root")}
         safe["paths_redacted"] = True
+        safe["scan_error_count"] = len(result["scan_errors"])
         print(json.dumps(safe, indent=2, ensure_ascii=False))
     else:
         print("=== Manifest Summary ===")
@@ -447,9 +488,13 @@ def main():
         print(f"  Target escapes:    {result['target_escapes']}")
         print(f"  Duplicate targets: {result['duplicate_target_paths']}")
         print(f"  Invalid sizes:     {result['invalid_size_rows']}")
+        print(f"  Invalid exclusions:{result['invalid_exclusion_reasons']}")
+        print(f"  Blank sources:     {result['blank_source_paths']}")
+        print(f"  Blank extensions:  {result['blank_extensions']}")
         if result["source_checked"]:
             print(f"  Source missing:    {result['source_missing']}")
         print(f"  Truncated rows:    {result['truncated_rows']}")
+        print(f"  Scan errors:       {len(result['scan_errors'])}")
         print(f"  Expected bytes:    {_fmt_bytes(result['total_expected_bytes'])}")
         print(f"  Verified bytes:    {_fmt_bytes(result['total_verified_bytes'])}")
         print()
@@ -460,6 +505,10 @@ def main():
                 print(f"    {p}")
             if len(unexpected) > 20:
                 print(f"    ... and {len(unexpected) - 20} more")
+        if scan_errors:
+            print(f"  Scan errors: {len(scan_errors)}")
+            for e in scan_errors[:10]:
+                print(f"    {e}")
         print()
         print(f"=== Result: {result['result']} ===")
 

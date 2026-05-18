@@ -13,10 +13,11 @@
 完成了以下只读验证工作:
 
 1. 新建 `scripts/audit_tier1000.py` — 自包含的 manifest-vs-disk 验证脚本
-2. 新建 `tests/test_audit_tier1000.py` — 46 个测试用例，20 个测试类
+2. 新建 `tests/test_audit_tier1000.py` — 60 个测试用例，25 个测试类
 3. **成功执行实际审计**: 全部 1,000 个文件通过，零不一致
 4. 修复 1 个 Codex P1 和 2 个 P2 问题 (Round 1)
 5. 修复 5 个 Codex P2 问题 (Round 2, 详见 §6)
+6. 修复 5 个 Codex P2 问题 (Round 3, 详见 §6)
 
 **无文件修改、无 import、无 DB、无 LLM、无 AI、无分类。只读验证。**
 
@@ -79,7 +80,7 @@
 
 ## 5. 代码变更
 
-### 新增: `scripts/audit_tier1000.py` (~490 行)
+### 新增: `scripts/audit_tier1000.py` (~535 行)
 
 | 函数 | 说明 |
 |------|------|
@@ -93,7 +94,7 @@
 `_clean_field`, `_is_under`, `_is_known_exclusion`, `_path_key`, `_row_has_required_values`,
 `SUPPORTED_EXTENSIONS`, `_REQUIRED_FIELDS`, `KNOWN_EXCLUSION_CODES`, `KNOWN_EXCLUSION_PREFIXES`
 
-### 新增: `tests/test_audit_tier1000.py` (~750 行, 46 个测试)
+### 新增: `tests/test_audit_tier1000.py` (~910 行, 60 个测试)
 
 | 测试类 | 测试数 | 说明 |
 |--------|--------|------|
@@ -117,7 +118,12 @@
 | `TestDuplicateTarget` | 3 | 重复目标路径 → `DUPLICATE_TARGET`, exit 4 |
 | `TestInvalidSize` | 4 | 空/非整数/负数 size_bytes → `INVALID_SIZE`, exit 4 |
 | `TestUnicodeDecodeError` | 2 | 二进制 manifest → 错误报告, exit 1 |
-| **合计** | **46** | |
+| `TestInvalidExclusionReason` | 3 | 未知 exclusion_reason → `INVALID_EXCLUSION_REASON`, exit 4 |
+| `TestBlankSourcePath` | 3 | 空 source_path → 检测计数, exit 4 |
+| `TestBlankExtension` | 3 | 空 extension → 检测计数, exit 4 |
+| `TestTargetRootResolveError` | 2 | target_root 解析异常 → 错误记录 |
+| `TestScanErrors` | 2 | walk/path_key 错误收集 → discrepancy |
+| **合计** | **60** | |
 
 ### 新增: `docs/reports/phase-3.4-audit-summary.json`
 
@@ -193,6 +199,52 @@
 
 **回归测试**: `TestUnicodeDecodeError` (2 个测试: API 错误记录 + CLI exit 1)
 
+### Round 3 (5 个 P2 修复)
+
+#### P2-R3-1: 未知 `exclusion_reason` 导致 false-PASS (已修复)
+
+**问题**: manifest 行的 `exclusion_reason` 如果包含未知值 (例如拼写错误、新增但未注册的排除码)，`_is_known_exclusion()` 返回 `False`，该行被错误地视为 copy-row 继续验证，可能产生 false PASS 或误导性的 `MISSING_TARGET`。
+
+**修复**: 在排除判断分支中添加 `elif exclusion:` — 当 `exclusion_reason` 非空但未被 `_is_known_exclusion()` 识别时，记录 `INVALID_EXCLUSION_REASON` 状态，计入新增 `invalid_exclusion_reasons` 计数器，并纳入 `has_discrepancy` 判断 (触发 exit 4)。
+
+**回归测试**: `TestInvalidExclusionReason` (3 个测试: API 检测 + CLI exit 4 + 合法码不误报)
+
+#### P2-R3-2: 空 `source_path` 绕过检查 (已修复)
+
+**问题**: copy-row 的 `source_path` 为空时，`--check-source` 的 `Path("").is_file()` 返回 `False`，静默计入 `source_missing` — 但根因是数据错误 (空路径)，非真实文件缺失。无 `--check-source` 时空路径完全不被检测。
+
+**修复**: 在文件存在/大小/扩展名检查之前，新增无条件的 `if not source_path:` 检查。空 `source_path` 记录为失败 (`Blank source_path in copy row`)，计入新增 `blank_source_paths` 计数器，纳入 `has_discrepancy`。
+
+**回归测试**: `TestBlankSourcePath` (3 个测试: API 检测 + CLI exit 4 + 非空不误报)
+
+#### P2-R3-3: 空 `extension` 跳过验证 (已修复)
+
+**问题**: copy-row 的 `extension` 字段为空时，`if extension and actual_ext != extension.lower()` 条件短路为 `False`，扩展名校验被完全跳过。空扩展名在 manifest 中属于数据错误，应触发报告。
+
+**修复**: 新增无条件的 `if not extension:` 检查。空 `extension` 记录为失败 (`Blank extension in copy row`)，计入新增 `blank_extensions` 计数器，纳入 `has_discrepancy`。
+
+**回归测试**: `TestBlankExtension` (3 个测试: API 检测 + CLI exit 4 + 非空不误报)
+
+#### P2-R3-4: `target_root.resolve()` 仅捕获 `OSError` (已修复)
+
+**问题**: `target_root.resolve()` 在某些平台/边界情况下可能抛出 `RuntimeError` 或 `ValueError` (例如循环符号链接)，但 `except` 子句仅捕获 `OSError`，导致未处理 traceback。
+
+**修复**: 将 `except OSError` 扩展为 `except (OSError, RuntimeError, ValueError)`。
+
+**回归测试**: `TestTargetRootResolveError` (2 个测试: RuntimeError + ValueError)
+
+#### P2-R3-5: `scan_unexpected_files()` 静默跳过不可读子目录 (已修复)
+
+**问题**: `os.walk()` 默认静默跳过权限被拒的子目录，导致审计可能遗漏未预期文件。同时 `_path_key()` 在畸形路径上抛异常也未捕获。
+
+**修复**:
+1. `os.walk()` 添加 `onerror=_on_walk_error` 回调，收集 walk 错误至 `scan_errors` 列表
+2. `_path_key()` 调用包裹在 `try/except (OSError, RuntimeError, ValueError)`，异常也收集至 `scan_errors`
+3. 函数返回值从 `list[str]` 改为 `tuple[list[str], list[str]]` (unexpected, scan_errors)
+4. `main()` 中 `scan_errors` 长度计入 `has_discrepancy`
+
+**回归测试**: `TestScanErrors` (2 个测试: `_path_key` 异常收集 + walk 错误触发 discrepancy)
+
 ---
 
 ## 7. 退出码设计
@@ -210,14 +262,14 @@
 
 | 测试文件 | 测试数 | 结果 |
 |----------|--------|------|
-| `test_audit_tier1000.py` | 46 | 全部通过 |
-| 全套 (`tests/`) | 763 | 全部通过 (10 skipped) |
+| `test_audit_tier1000.py` | 60 | 全部通过 |
+| 全套 (`tests/`) | 805 | 全部通过 (10 skipped) |
 
 ```
 命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/ -v
 sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
 Python 3.12.0
-763 passed, 10 skipped in 20.68s
+805 passed, 10 skipped in 22.96s
 ```
 
 ---
@@ -250,7 +302,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 
 ## 11. 停止规则
 
-本轮 (Round 2) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
+本轮 (Round 3) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
 且不涉及 false PASS、traceback 或审计数据损坏，则停止扩展 PR #48，建议合并。
 
 ---

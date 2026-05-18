@@ -241,7 +241,7 @@ class TestUnexpectedFiles:
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
         r = audit_manifest_vs_disk(manifest, tmp_path / "target")
-        unexpected = scan_unexpected_files(tmp_path / "target", r["expected_targets"])
+        unexpected, _errors = scan_unexpected_files(tmp_path / "target", r["expected_targets"])
         assert len(unexpected) == 1
         assert "rogue.txt" in unexpected[0]
 
@@ -252,7 +252,7 @@ class TestUnexpectedFiles:
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
         r = audit_manifest_vs_disk(manifest, tmp_path / "target")
-        unexpected = scan_unexpected_files(tmp_path / "target", r["expected_targets"])
+        unexpected, _errors = scan_unexpected_files(tmp_path / "target", r["expected_targets"])
         assert len(unexpected) == 0
 
     def test_cli_exit_4_with_unexpected(self, tmp_path):
@@ -709,3 +709,204 @@ class TestUnicodeDecodeError:
         manifest.write_bytes(b"\xff\xfe" + b"\x00\x80\x81\x82" * 100)
         p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
         assert p.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# 21. TestInvalidExclusionReason (Round 3 P2-1)
+# ---------------------------------------------------------------------------
+class TestInvalidExclusionReason:
+    def test_unknown_exclusion_detected(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_excluded_row(1, "totally_unknown_reason"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["invalid_exclusion_reasons"] == 1
+        assert r["audit_rows"][0]["status"] == "INVALID_EXCLUSION_REASON"
+        assert "totally_unknown_reason" in r["audit_rows"][0]["detail"]
+
+    def test_unknown_exclusion_causes_exit_4(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_excluded_row(1, "bogus_exclusion"),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 4
+
+    def test_known_exclusions_still_pass(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+            _make_excluded_row(2, "stat_error"),
+            _make_excluded_row(3, "placeholder"),
+            _make_excluded_row(4, "unsupported_format:bmp"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_exclusion_reasons"] == 0
+        assert r["excluded_rows"] == 3
+        assert r["target_pass"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 22. TestBlankSourcePath (Round 3 P2-2)
+# ---------------------------------------------------------------------------
+class TestBlankSourcePath:
+    def test_blank_source_detected(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        tgt = tgt_dir / "img.jpg"
+        tgt.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        row = _make_copy_row(1, "", tgt, ".jpg", len(tgt.read_bytes()))
+        _write_manifest(manifest, [row])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["blank_source_paths"] == 1
+        statuses = [ar["status"] for ar in r["audit_rows"]]
+        details = " ".join(ar["detail"] for ar in r["audit_rows"])
+        assert "Blank source_path" in details
+
+    def test_blank_source_causes_exit_4(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        tgt = tgt_dir / "img.jpg"
+        tgt.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        row = _make_copy_row(1, "", tgt, ".jpg", len(tgt.read_bytes()))
+        _write_manifest(manifest, [row])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 4
+
+    def test_non_blank_source_no_flag(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["blank_source_paths"] == 0
+        assert r["target_pass"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 23. TestBlankExtension (Round 3 P2-3)
+# ---------------------------------------------------------------------------
+class TestBlankExtension:
+    def test_blank_extension_detected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, "", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["blank_extensions"] == 1
+        details = " ".join(ar["detail"] for ar in r["audit_rows"])
+        assert "Blank extension" in details
+
+    def test_blank_extension_causes_exit_4(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, "", size),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+    def test_valid_extension_no_flag(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["blank_extensions"] == 0
+        assert r["target_pass"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 24. TestTargetRootResolveExpanded (Round 3 P2-4)
+# ---------------------------------------------------------------------------
+class TestTargetRootResolveExpanded:
+    def test_resolve_catches_runtime_error(self, tmp_path):
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [])
+        with patch.object(Path, "resolve", side_effect=RuntimeError("symlink loop")):
+            r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert len(r["errors"]) > 0
+        assert any("resolve" in e.lower() or "symlink" in e.lower() for e in r["errors"])
+
+    def test_resolve_catches_value_error(self, tmp_path):
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [])
+        with patch.object(Path, "resolve", side_effect=ValueError("embedded null")):
+            r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert len(r["errors"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# 25. TestScanErrors (Round 3 P2-5)
+# ---------------------------------------------------------------------------
+class TestScanErrors:
+    def test_onerror_collects_walk_errors(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        (tgt_dir / "good.jpg").write_bytes(b"\xff")
+
+        original_walk = os.walk
+
+        def broken_walk(top, **kwargs):
+            onerror = kwargs.get("onerror")
+            if onerror:
+                onerror(OSError(13, "Permission denied", str(tgt_dir / "locked")))
+            yield from original_walk(top, **kwargs)
+
+        with patch("os.walk", side_effect=broken_walk):
+            unexpected, errors = scan_unexpected_files(tgt_dir, set())
+        assert len(errors) >= 1
+        assert any("Permission denied" in e for e in errors)
+
+    def test_path_key_failure_collected(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        (tgt_dir / "test.jpg").write_bytes(b"\xff")
+
+        original_path_key = _path_key
+
+        def failing_path_key(p):
+            if "test.jpg" in str(p):
+                raise OSError("cannot resolve")
+            return original_path_key(p)
+
+        with patch.object(_module, "_path_key", side_effect=failing_path_key):
+            unexpected, errors = scan_unexpected_files(tgt_dir, set())
+        assert len(errors) >= 1
+        assert any("cannot resolve" in e for e in errors)
+
+    def test_scan_errors_cause_exit_4(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+
+        original_walk = os.walk
+
+        def broken_walk(top, **kwargs):
+            onerror = kwargs.get("onerror")
+            if onerror:
+                onerror(OSError(13, "Permission denied", str(tmp_path / "target" / "sub")))
+            yield from original_walk(top, **kwargs)
+
+        with patch("os.walk", side_effect=broken_walk):
+            unexpected, scan_errors = scan_unexpected_files(
+                tmp_path / "target", r["expected_targets"])
+        assert len(scan_errors) >= 1
+        r["scan_errors"] = scan_errors
+        has_discrepancy = len(r["scan_errors"]) > 0
+        assert has_discrepancy is True
