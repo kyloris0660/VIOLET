@@ -233,7 +233,79 @@ Codex 第二轮修复完成后，剩余潜在建议均为 P2/P3 级别:
 
 ---
 
-## 10. 下一步
+## 10. Codex Closeout Patch — 第三轮 (P1 ×3)
+
+### 10.1 P1 #1: 父目录 mkdir 结构化失败
+
+**问题**: `execute_copy()` 中 `tp.parent.mkdir(parents=True, exist_ok=True)` 未包裹 try/except。
+若中间父路径已存在为普通文件，会导致裸 `NotADirectoryError` traceback 而非结构化 copy 失败。
+
+**修复内容**:
+- `tp.parent.mkdir()` 包裹 `try/except OSError`
+- 失败时: `copy_result["failed"] += 1`, `failed_path`, `failed_reason`, `errors` 填充
+- 立即 `return copy_result`
+- CLI 层收到 `failed > 0` → exit 3 (已有逻辑)
+
+### 10.2 P1 #2: csv.DictReader None-fill 截断行检测
+
+**问题**: `validate_manifest()` 和 `execute_copy()` 均使用 `_REQUIRED_FIELDS.issubset(row.keys())`
+检测截断行，但 `csv.DictReader` 对短行填充 None 而非移除 key，导致截断行永远不被检测。
+
+**修复内容**:
+- 新增共享辅助函数 `_row_has_required_values(row)`:
+  - 遍历 `_REQUIRED_FIELDS`，检查 key 是否存在 **且** value 不为 None
+  - 空字符串不视为截断 (已有独立 schema 验证器处理)
+- 替换两处 `_REQUIRED_FIELDS.issubset(row.keys())` 为 `_row_has_required_values(row)`
+
+### 10.3 P1 #3: 主动审计
+
+搜索全文件所有以下模式:
+
+| 模式 | 搜索结果 | 状态 |
+|------|----------|------|
+| `_REQUIRED_FIELDS.issubset(row.keys())` | 仅剩 docstring 注释 | ✓ 已全部替换 |
+| `.strip()` on potentially None | 仅在 `_clean_field` 内 (已有 None 守卫) | ✓ 安全 |
+| 未保护的 `.mkdir()` | `target_root.mkdir` 已有 try/except; `tp.parent.mkdir` 已修复 | ✓ 安全 |
+| `row.get()` 直接调用 | 仅在 `_clean_field` 内 (已有 None 守卫) | ✓ 安全 |
+
+### 10.4 新增测试
+
+| 测试类 | 测试数 | 说明 |
+|--------|--------|------|
+| `TestRowHasRequiredValues` | 4 | 辅助函数单元测试 (完整行/None值/缺失key/空字符串) |
+| `TestTruncatedRowNoneFill` | 2 | DictReader None-fill 截断检测 (validate + execute) |
+| `TestParentMkdirFailure` | 2 | 父目录 mkdir 失败 (单元 + CLI exit 3) |
+| **新增合计** | **8** | |
+
+### 10.5 第三轮后测试结果
+
+| 测试文件 | 测试数 | 结果 |
+|----------|--------|------|
+| `test_generate_candidate_manifest.py` | 38 | 全部通过 |
+| `test_stage_pilot_files.py` | 71 | 全部通过 |
+| **合计** | **109** | **全部通过** |
+
+```
+命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_generate_candidate_manifest.py tests/test_stage_pilot_files.py -v
+sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
+Python 3.12.0
+109 passed in 1.72s
+```
+
+### 10.6 停止规则评估
+
+第三轮修复完成后，所有 copy-safety P1 问题已关闭。剩余潜在建议均为非 copy-safety 级别:
+- 回滚/事务性 (P3) — 超出 copy 脚本范畴
+- 重试逻辑 (P3) — 首错即停是设计选择
+- 日志框架 (P3) — 当前 print 足够
+- 进度条 (P3) — 低优先级 UX
+- 跨平台可移植性 (P3) — 项目限定 Windows
+
+**建议: 合并 PR #46，进入 Phase 3.4。**
+
+---
+
+## 11. 下一步
 
 1. **用户审查并合并 PR #46**
 2. **Phase 3.4: 元数据扫描** — 对 `E:\VioletPilotData_1000` 执行 `inspect_pilot_dataset.py`

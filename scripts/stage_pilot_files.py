@@ -48,6 +48,24 @@ _REQUIRED_FIELDS = {
 }
 
 
+def _row_has_required_values(row: dict) -> bool:
+    """Check whether a CSV row has non-None values for all required fields.
+
+    csv.DictReader always populates header-defined keys even for short rows,
+    filling missing trailing cells with None.  A key-only check
+    (``_REQUIRED_FIELDS.issubset(row.keys())``) therefore never detects
+    truncated rows.  This helper inspects **values**: a field is considered
+    missing if the key is absent OR the value is None.
+
+    Empty string is NOT treated as missing here — existing schema validators
+    handle blank source/target/extension separately.
+    """
+    for field in _REQUIRED_FIELDS:
+        if field not in row or row[field] is None:
+            return False
+    return True
+
+
 def _clean_field(row: dict, key: str, default: str = "") -> str:
     """Safely get a string field from a CSV row, handling None values."""
     val = row.get(key)
@@ -162,8 +180,8 @@ def validate_manifest(
     seen_targets: dict[str, str] = {}
 
     for row in rows:
-        # Truncated row detection
-        if not _REQUIRED_FIELDS.issubset(row.keys()):
+        # Truncated row detection (value-level: None means missing cell)
+        if not _row_has_required_values(row):
             result["truncated_rows"] += 1
             continue
 
@@ -489,8 +507,8 @@ def execute_copy(
     copy_result["total_rows"] = len(rows)
 
     for row in rows:
-        # Skip truncated rows
-        if not _REQUIRED_FIELDS.issubset(row.keys()):
+        # Skip truncated rows (value-level: None means missing cell)
+        if not _row_has_required_values(row):
             copy_result["skipped_truncated"] += 1
             continue
 
@@ -554,7 +572,16 @@ def execute_copy(
             return copy_result
 
         # Create parent directories
-        tp.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            tp.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            copy_result["failed"] += 1
+            copy_result["failed_path"] = proposed_target
+            copy_result["failed_reason"] = f"Cannot create parent directory {tp.parent}: {exc}"
+            copy_result["errors"].append(
+                f"mkdir error for {proposed_target}: {exc}"
+            )
+            return copy_result
 
         # Copy with metadata preservation
         try:

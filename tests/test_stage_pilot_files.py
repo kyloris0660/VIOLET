@@ -19,6 +19,7 @@ validate_manifest = _module.validate_manifest
 execute_copy = _module.execute_copy
 post_copy_audit = _module.post_copy_audit
 _clean_field = _module._clean_field
+_row_has_required_values = _module._row_has_required_values
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -1400,3 +1401,169 @@ class TestPostCopyAuditHardFail:
         ])
         assert r.returncode == 0
         assert "SUCCESS" in r.stdout
+
+
+# ===================================================================
+# P1 Codex closeout — _row_has_required_values helper tests
+# ===================================================================
+
+class TestRowHasRequiredValues:
+    """Unit tests for _row_has_required_values helper."""
+
+    def test_complete_row_returns_true(self):
+        """Row with all required fields set to non-None → True."""
+        row = {
+            "source_path": "/a.jpg",
+            "proposed_target_path": "/t/a.jpg",
+            "extension": ".jpg",
+            "size_bytes": "1024",
+            "selection_reason": "new_candidate",
+            "exclusion_reason": "",
+        }
+        assert _row_has_required_values(row) is True
+
+    def test_none_value_returns_false(self):
+        """Row where csv.DictReader filled a trailing field with None → False."""
+        row = {
+            "source_path": "/a.jpg",
+            "proposed_target_path": "/t/a.jpg",
+            "extension": ".jpg",
+            "size_bytes": "1024",
+            "selection_reason": "new_candidate",
+            "exclusion_reason": None,  # DictReader sets this for short rows
+        }
+        assert _row_has_required_values(row) is False
+
+    def test_missing_key_returns_false(self):
+        """Row with a completely missing key → False (wrong headers)."""
+        row = {
+            "source_path": "/a.jpg",
+            # proposed_target_path missing entirely
+            "extension": ".jpg",
+            "size_bytes": "1024",
+            "selection_reason": "new_candidate",
+            "exclusion_reason": "",
+        }
+        assert _row_has_required_values(row) is False
+
+    def test_empty_string_is_not_truncated(self):
+        """Empty string is NOT treated as truncated — separate validators handle blanks."""
+        row = {
+            "source_path": "",
+            "proposed_target_path": "",
+            "extension": "",
+            "size_bytes": "",
+            "selection_reason": "",
+            "exclusion_reason": "",
+        }
+        assert _row_has_required_values(row) is True
+
+
+# ===================================================================
+# P1 — Truncated row detection with csv.DictReader None-fill
+# ===================================================================
+
+class TestTruncatedRowNoneFill:
+    """Verify truncated detection when DictReader fills short rows with None."""
+
+    def test_validate_detects_none_fill_truncation(self, tmp_path: Path):
+        """validate_manifest: short CSV row → DictReader fills None → truncated."""
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        # Write a manifest where the data row has fewer columns than the header.
+        # csv.DictReader will set missing trailing fields to None.
+        with open(manifest_path, "w", newline="", encoding="utf-8") as f:
+            f.write(",".join(FIELDNAMES) + "\n")
+            # Only provide first 3 of 10 fields; DictReader fills rest with None
+            f.write("1,/fake/source.jpg,/fake/target.jpg\n")
+
+        res = validate_manifest(manifest_path, target_root)
+        assert res["truncated_rows"] >= 1
+
+    def test_execute_detects_none_fill_truncation(self, tmp_path: Path):
+        """execute_copy: short CSV row → DictReader fills None → skipped_truncated."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+
+        with open(manifest_path, "w", newline="", encoding="utf-8") as f:
+            f.write(",".join(FIELDNAMES) + "\n")
+            f.write("1,/fake/source.jpg,/fake/target.jpg\n")
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[src_root])
+        assert res["skipped_truncated"] >= 1
+        assert res["copied"] == 0
+
+
+# ===================================================================
+# P1 — Parent mkdir structured failure
+# ===================================================================
+
+class TestParentMkdirFailure:
+    """Verify parent mkdir OSError produces structured copy failure."""
+
+    def test_parent_is_file_unit(self, tmp_path: Path):
+        """If an intermediate parent path already exists as a file → structured failure."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        target_root.mkdir()
+
+        # Create a FILE where the parent directory should be.
+        # The target path will be target/subdir/a.jpg but "subdir" is a file.
+        blocker_file = target_root / "subdir"
+        blocker_file.write_text("I am a file, not a directory")
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "subdir" / "a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        res = execute_copy(manifest_path, target_root, approved_source_roots=[src_root])
+        assert res["failed"] >= 1
+        assert res["copied"] == 0
+        assert res["failed_reason"]  # non-empty message
+        assert len(res["errors"]) >= 1
+
+    def test_parent_is_file_cli_exits_3(self, tmp_path: Path):
+        """CLI exits 3 when parent mkdir fails (file blocking the path)."""
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "a.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+
+        target_root = tmp_path / "target"
+        target_root.mkdir()
+
+        blocker_file = target_root / "subdir"
+        blocker_file.write_text("I am a file, not a directory")
+
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "subdir" / "a.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        r = _run([
+            "--manifest", str(manifest_path),
+            "--target-root", str(target_root),
+            "--execute",
+            "--confirm-copy-tier1000",
+            "--source-root", str(src_root),
+            "--existing-root", str(src_root),
+        ])
+        assert r.returncode == 3
