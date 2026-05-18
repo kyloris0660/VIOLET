@@ -1,6 +1,6 @@
 # Current Handoff — V.I.O.L.E.T.
 
-> Last updated after Phase 3.2j — Manual Tag Translation Correction (2026-05-15).
+> Last updated after Phase 3.4 — Tier-1000 Pre-import Audit (2026-05-18).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -28,6 +28,9 @@
 | **Phase 3.2b status** | PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged — Pilot hardening, configuration audit, medium-scale readiness |
 | **Phase 3.2c status** | PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged — Medium-scale pilot preparation, env docs, LLM gate unification |
 | **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`), server runtime Python identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
+| **Phase 3.3a.1 (PR #45)** | PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged — iCloud candidate manifest generation (5,326 rows: 522 existing + 478 new + 4,326 excluded) |
+| **Phase 3.3b (PR #46)** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy executor (1,000 files, 2.98 GB to `E:\VioletPilotData_1000`) |
+| **Phase 3.4 (PR pending)** | Pre-import audit — manifest-vs-disk verification of Tier-1000 staging, 1,000/1,000 PASS |
 
 ## Mandatory Workflow Rules
 
@@ -667,7 +670,43 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - i18n: 4 new keys in en.json and zh-cn.json (update_translation, cancel_edit, translation_saved, translation_updated)
 - Tests: 11 unit tests covering 10 required cases (valid update, aliases, needs_review, empty body 422, empty display_name 422, 404, auth dependency, alias normalization, source priority protection, cache invalidation)
 
-## Recommended Next Phase: 3.2g.3
+**Phase 3.3a.1 — iCloud Candidate Manifest (PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged):**
+- `scripts/generate_candidate_manifest.py`: generates frozen CSV manifest from iCloud source directories
+- 5,326 total rows: 522 existing (already in medium pilot), 478 new candidates, 4,326 excluded
+- Copy-safety boundaries: combined total cap, extension allowlist, path escape detection, size sanity checks
+- `scripts/stage_pilot_files.py`: staging executor with `--dry-run` default, `--manifest` and `--target-root` args
+- Tests: 38 manifest tests + 55 staging tests
+
+**Phase 3.3b — Tier-1000 Staging Copy (PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged):**
+- Executed controlled copy of 1,000 files (2.98 GB) to `E:\VioletPilotData_1000`
+- 522 existing files (from medium pilot) + 478 new files from iCloud source
+- Copy-safety: dry-run verification before real execution, file count/size limits enforced
+
+**Phase 3.4 — Tier-1000 Pre-import Audit (PR pending):**
+- `scripts/audit_tier1000.py`: self-contained manifest-vs-disk verification (no cross-script imports)
+- Verifies: target exists, size matches, extension matches, no path escapes, no unexpected files
+- Real audit: 1,000/1,000 files PASS, 3,204,263,387 bytes verified, zero discrepancies
+- `tests/test_audit_tier1000.py`: 32 tests across 15 classes
+- Codex fixes: P1 (self-contained, no importlib), P2a (truncated rows → exit 4), P2b (resolve() error handling)
+
+## Recommended Next Phase: 3.5
+
+**Phase 3.5 — Tier-1000 Database Import**
+
+Import the 1,000 verified files from `E:\VioletPilotData_1000` into the V.I.O.L.E.T. database. Phase 3.4 audit confirmed all files are intact and match the manifest.
+
+### Prerequisites
+
+1. Phase 3.4 PR merged
+2. Python/venv identity preflight passed
+3. Database backup taken before import
+4. Import plan approved by user
+
+---
+
+### Previously planned: Phase 3.2g.3 — Medium Pilot Tier 1
+
+> The following section is retained for reference. Phase 3.5 (Tier-1000 import) takes priority.
 
 **Phase 3.2g.3 — Medium Pilot Tier 1: Complete AI Tagging + Tag Translation**
 

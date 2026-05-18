@@ -1,0 +1,527 @@
+"""Tests for scripts/audit_tier1000.py — manifest-vs-disk verification."""
+import csv
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "audit_tier1000.py"
+SCRIPT = str(SCRIPT_PATH)
+
+_spec = importlib.util.spec_from_file_location("audit_tier1000", SCRIPT_PATH)
+_module = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(_module)
+audit_manifest_vs_disk = _module.audit_manifest_vs_disk
+scan_unexpected_files = _module.scan_unexpected_files
+generate_audit_csv = _module.generate_audit_csv
+generate_audit_json = _module.generate_audit_json
+AUDIT_FIELDNAMES = _module.AUDIT_FIELDNAMES
+
+
+def _run(args: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, SCRIPT] + args,
+        capture_output=True, text=True, timeout=30,
+    )
+
+
+FIELDNAMES = [
+    "row_id", "source_path", "proposed_target_path", "extension",
+    "size_bytes", "selection_reason", "duplicate_key", "exclusion_reason",
+    "placeholder_flag", "stat_error",
+]
+
+
+def _write_manifest(path: Path, rows: list[dict]):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _make_copy_row(row_id, source_path, target_path, ext, size, reason="new_candidate"):
+    return {
+        "row_id": str(row_id),
+        "source_path": str(source_path),
+        "proposed_target_path": str(target_path),
+        "extension": ext,
+        "size_bytes": str(size),
+        "selection_reason": reason,
+        "duplicate_key": "",
+        "exclusion_reason": "",
+        "placeholder_flag": "",
+        "stat_error": "",
+    }
+
+
+def _make_excluded_row(row_id, exclusion="stat_error"):
+    return {
+        "row_id": str(row_id),
+        "source_path": "",
+        "proposed_target_path": "",
+        "extension": "",
+        "size_bytes": "0",
+        "selection_reason": "",
+        "duplicate_key": "",
+        "exclusion_reason": exclusion,
+        "placeholder_flag": "",
+        "stat_error": "",
+    }
+
+
+def _setup_pair(tmp_path, name="img1.jpg", content=b"\xff\xd8" + b"\x00" * 100, ext=".jpg"):
+    """Create matching source and target files, return (src, tgt, size)."""
+    src_dir = tmp_path / "source"
+    tgt_dir = tmp_path / "target"
+    src_dir.mkdir(exist_ok=True)
+    tgt_dir.mkdir(exist_ok=True)
+
+    src = src_dir / name
+    tgt = tgt_dir / name
+    src.write_bytes(content)
+    tgt.write_bytes(content)
+    return src, tgt, len(content)
+
+
+# ---------------------------------------------------------------------------
+# 1. TestPerfectMatch
+# ---------------------------------------------------------------------------
+class TestPerfectMatch:
+    def test_single_file_pass(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["target_pass"] == 1
+        assert r["target_missing"] == 0
+        assert not r["errors"]
+
+    def test_multiple_files_pass(self, tmp_path):
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".png", s2),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["target_pass"] == 2
+        assert r["copy_rows"] == 2
+
+    def test_cli_exit_0(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 0
+        assert "PASS" in p.stdout
+
+
+# ---------------------------------------------------------------------------
+# 2. TestMissingTarget
+# ---------------------------------------------------------------------------
+class TestMissingTarget:
+    def test_target_file_absent(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        src = src_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt_dir / "img.jpg", ".jpg", 52),
+        ])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["target_missing"] == 1
+        assert r["target_pass"] == 0
+
+    def test_status_code(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        src = src_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt_dir / "img.jpg", ".jpg", 2),
+        ])
+        rows = audit_manifest_vs_disk(manifest, tgt_dir)["audit_rows"]
+        assert rows[0]["status"] == "MISSING_TARGET"
+
+    def test_cli_exit_4(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        src = src_dir / "x.jpg"
+        src.write_bytes(b"\xff\xd8")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt_dir / "x.jpg", ".jpg", 2),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 3. TestSizeMismatch
+# ---------------------------------------------------------------------------
+class TestSizeMismatch:
+    def test_size_differs(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path, content=b"\xff\xd8" + b"\x00" * 100)
+        tgt.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", 102),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["size_mismatches"] == 1
+        row = r["audit_rows"][0]
+        assert row["size_delta"] != "0"
+
+    def test_cli_exit_4_on_size(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path, content=b"\xff\xd8" + b"\x00" * 100)
+        tgt.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", 102),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 4. TestExtensionMismatch
+# ---------------------------------------------------------------------------
+class TestExtensionMismatch:
+    def test_ext_differs(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path, "img.jpg")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".png", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["extension_mismatches"] == 1
+
+    def test_ext_case_insensitive(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path, "img.JPG")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["extension_mismatches"] == 0
+        assert r["target_pass"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 5. TestUnexpectedFiles
+# ---------------------------------------------------------------------------
+class TestUnexpectedFiles:
+    def test_extra_file_detected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        extra = tmp_path / "target" / "rogue.txt"
+        extra.write_text("unexpected")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        unexpected = scan_unexpected_files(tmp_path / "target", r["expected_targets"])
+        assert len(unexpected) == 1
+        assert "rogue.txt" in unexpected[0]
+
+    def test_no_extra_files(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        unexpected = scan_unexpected_files(tmp_path / "target", r["expected_targets"])
+        assert len(unexpected) == 0
+
+    def test_cli_exit_4_with_unexpected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        extra = tmp_path / "target" / "extra.jpg"
+        extra.write_bytes(b"\xff\xd8")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 6. TestExcludedRowsSkipped
+# ---------------------------------------------------------------------------
+class TestExcludedRowsSkipped:
+    def test_excluded_counted(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+            _make_excluded_row(2, "stat_error"),
+            _make_excluded_row(3, "placeholder"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["excluded_rows"] == 2
+        assert r["copy_rows"] == 1
+
+    def test_excluded_not_verified(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_excluded_row(1, "stat_error"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["target_missing"] == 0
+        assert r["excluded_rows"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 7. TestTruncatedRowsSkipped
+# ---------------------------------------------------------------------------
+class TestTruncatedRowsSkipped:
+    def test_truncated_row(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        with open(manifest, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["row_id", "source_path"])
+            writer.writeheader()
+            writer.writerow({"row_id": "1", "source_path": "/some/path"})
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["truncated_rows"] == 1
+        assert r["audit_rows"][0]["status"] == "SKIPPED_TRUNCATED"
+
+    def test_truncated_row_causes_exit_4(self, tmp_path):
+        """P2 fix: truncated rows must cause exit 4, not silently pass."""
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        with open(manifest, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["row_id", "source_path"])
+            writer.writeheader()
+            writer.writerow({"row_id": "1", "source_path": "/some/path"})
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 4, f"Expected exit 4 for truncated rows, got {p.returncode}"
+
+
+# ---------------------------------------------------------------------------
+# 8. TestSourceCheck
+# ---------------------------------------------------------------------------
+class TestSourceCheck:
+    def test_source_exists(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target", check_source=True)
+        assert r["source_missing"] == 0
+        assert r["target_pass"] == 1
+
+    def test_source_missing(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        src.unlink()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target", check_source=True)
+        assert r["source_missing"] == 1
+
+    def test_source_not_checked_by_default(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        src.unlink()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target", check_source=False)
+        assert r["source_missing"] == 0
+        assert r["target_pass"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 9. TestCLISafety
+# ---------------------------------------------------------------------------
+class TestCLISafety:
+    def test_missing_manifest_arg(self, tmp_path):
+        p = _run(["--target-root", str(tmp_path)])
+        assert p.returncode == 2
+
+    def test_missing_target_root_arg(self, tmp_path):
+        manifest = tmp_path / "m.csv"
+        manifest.write_text("")
+        p = _run(["--manifest", str(manifest)])
+        assert p.returncode == 2
+
+    def test_nonexistent_manifest(self, tmp_path):
+        p = _run(["--manifest", str(tmp_path / "no.csv"),
+                   "--target-root", str(tmp_path)])
+        assert p.returncode == 1
+
+    def test_nonexistent_target_root(self, tmp_path):
+        manifest = tmp_path / "m.csv"
+        manifest.write_text("")
+        p = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "nodir")])
+        assert p.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# 10. TestAuditCSVOutput
+# ---------------------------------------------------------------------------
+class TestAuditCSVOutput:
+    def test_csv_written(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+            _make_excluded_row(2),
+        ])
+        out_csv = tmp_path / "audit.csv"
+        p = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--audit-csv", str(out_csv)])
+        assert p.returncode == 0
+        assert out_csv.is_file()
+        with open(out_csv, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        assert len(rows) == 2
+
+    def test_csv_has_correct_fields(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        out_csv = tmp_path / "audit.csv"
+        p = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--audit-csv", str(out_csv)])
+        assert p.returncode == 0
+        with open(out_csv, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            assert list(reader.fieldnames) == AUDIT_FIELDNAMES
+
+
+# ---------------------------------------------------------------------------
+# 11. TestJSONOutput
+# ---------------------------------------------------------------------------
+class TestJSONOutput:
+    def test_json_stdout(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--json"])
+        assert p.returncode == 0
+        data = json.loads(p.stdout)
+        assert data["result"] == "PASS"
+        assert "target_pass" in data
+
+    def test_json_file_output(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        out_json = tmp_path / "summary.json"
+        p = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--json-output", str(out_json)])
+        assert p.returncode == 0
+        assert out_json.is_file()
+        data = json.loads(out_json.read_text(encoding="utf-8"))
+        assert data["paths_redacted"] is True
+        assert data["result"] == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# 12. TestSourceNotModified
+# ---------------------------------------------------------------------------
+class TestSourceNotModified:
+    def test_target_dir_unchanged(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        tgt_dir = tmp_path / "target"
+        before_files = sorted(p.name for p in tgt_dir.iterdir())
+        before_sizes = {p.name: p.stat().st_size for p in tgt_dir.iterdir()}
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        audit_manifest_vs_disk(manifest, tgt_dir)
+        after_files = sorted(p.name for p in tgt_dir.iterdir())
+        after_sizes = {p.name: p.stat().st_size for p in tgt_dir.iterdir()}
+        assert before_files == after_files
+        assert before_sizes == after_sizes
+
+
+# ---------------------------------------------------------------------------
+# 13. TestEmptyManifest
+# ---------------------------------------------------------------------------
+class TestEmptyManifest:
+    def test_header_only(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["copy_rows"] == 0
+        assert r["manifest_total_rows"] == 0
+        assert not r["errors"]
+
+
+# ---------------------------------------------------------------------------
+# 14. TestTargetEscape
+# ---------------------------------------------------------------------------
+class TestTargetEscape:
+    def test_path_outside_root(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        escape_dir = tmp_path / "elsewhere"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        escape_dir.mkdir()
+        src = src_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        escape_file = escape_dir / "img.jpg"
+        escape_file.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, escape_file, ".jpg", 52),
+        ])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert r["target_escapes"] == 1
+        assert r["audit_rows"][0]["status"] == "TARGET_ESCAPE"
+
+
+# ---------------------------------------------------------------------------
+# 15. TestSelfContained (P1 regression guard)
+# ---------------------------------------------------------------------------
+class TestSelfContained:
+    def test_no_importlib_dependency(self):
+        """Verify audit_tier1000.py does not import from stage_pilot_files.py."""
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        assert "stage_pilot_files" not in source
+        assert "importlib.util.spec_from_file_location" not in source
