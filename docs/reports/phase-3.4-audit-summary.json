@@ -1,6 +1,6 @@
 {
   "phase": "3.4",
-  "timestamp": "2026-05-18T14:48:59.554820+00:00",
+  "timestamp": "2026-05-18T15:24:37.460746+00:00",
   "manifest_total_rows": 5326,
   "copy_rows": 1000,
   "excluded_rows": 4326,
@@ -10,6 +10,8 @@
   "size_mismatches": 0,
   "extension_mismatches": 0,
   "target_escapes": 0,
+  "duplicate_target_paths": 0,
+  "invalid_size_rows": 0,
   "source_checked": true,
   "source_missing": 0,
   "total_verified_bytes": 3204263387,

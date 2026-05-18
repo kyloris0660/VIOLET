@@ -2,9 +2,11 @@
 import csv
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -20,6 +22,7 @@ scan_unexpected_files = _module.scan_unexpected_files
 generate_audit_csv = _module.generate_audit_csv
 generate_audit_json = _module.generate_audit_json
 AUDIT_FIELDNAMES = _module.AUDIT_FIELDNAMES
+_path_key = _module._path_key
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -309,7 +312,6 @@ class TestTruncatedRowsSkipped:
         assert r["audit_rows"][0]["status"] == "SKIPPED_TRUNCATED"
 
     def test_truncated_row_causes_exit_4(self, tmp_path):
-        """P2 fix: truncated rows must cause exit 4, not silently pass."""
         tgt_dir = tmp_path / "target"
         tgt_dir.mkdir()
         manifest = tmp_path / "m.csv"
@@ -517,11 +519,193 @@ class TestTargetEscape:
 
 
 # ---------------------------------------------------------------------------
-# 15. TestSelfContained (P1 regression guard)
+# 15. TestSelfContained
 # ---------------------------------------------------------------------------
 class TestSelfContained:
     def test_no_importlib_dependency(self):
-        """Verify audit_tier1000.py does not import from stage_pilot_files.py."""
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         assert "stage_pilot_files" not in source
         assert "importlib.util.spec_from_file_location" not in source
+
+
+# ---------------------------------------------------------------------------
+# 16. TestPathKey (P2-1: case-insensitive path normalization on Windows)
+# ---------------------------------------------------------------------------
+class TestPathKey:
+    def test_returns_string(self, tmp_path):
+        result = _path_key(tmp_path / "SomeFile.jpg")
+        assert isinstance(result, str)
+
+    def test_windows_lowercased(self, tmp_path):
+        with patch.object(_module.os, "name", "nt"):
+            result = _path_key(tmp_path / "MyImage.JPG")
+            assert result == result.lower()
+
+    def test_posix_preserves_case(self, tmp_path):
+        with patch.object(_module.os, "name", "posix"):
+            result = _path_key(tmp_path / "MyImage.JPG")
+            assert "MyImage.JPG" in result
+
+
+# ---------------------------------------------------------------------------
+# 17. TestTargetResolveError (P2-2: per-row resolve failure)
+# ---------------------------------------------------------------------------
+class TestTargetResolveError:
+    def test_resolve_error_recorded(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        src = src_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+
+        bad_target = "\\\\?\\" + "A" * 500 + ".jpg"
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, bad_target, ".jpg", 52),
+        ])
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        has_resolve_or_escape = (
+            r["target_escapes"] > 0
+            or any(row["status"] in ("TARGET_RESOLVE_ERROR", "TARGET_ESCAPE", "MISSING_TARGET")
+                   for row in r["audit_rows"])
+        )
+        assert has_resolve_or_escape
+
+    def test_resolve_error_cli_exit_4(self, tmp_path):
+        src_dir = tmp_path / "source"
+        tgt_dir = tmp_path / "target"
+        src_dir.mkdir()
+        tgt_dir.mkdir()
+        src = src_dir / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 50)
+
+        bad_target = "\\\\?\\" + "A" * 500 + ".jpg"
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, bad_target, ".jpg", 52),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 18. TestDuplicateTarget (P2-3: duplicate proposed_target_path detection)
+# ---------------------------------------------------------------------------
+class TestDuplicateTarget:
+    def test_duplicate_detected(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+            _make_copy_row(2, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["duplicate_target_paths"] == 1
+        statuses = [row["status"] for row in r["audit_rows"]]
+        assert "DUPLICATE_TARGET" in statuses
+        assert statuses[0] == "PASS"
+        assert statuses[1] == "DUPLICATE_TARGET"
+
+    def test_duplicate_causes_exit_4(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+            _make_copy_row(2, src, tgt, ".jpg", size),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+    def test_different_targets_no_duplicate(self, tmp_path):
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.jpg")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".jpg", s2),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["duplicate_target_paths"] == 0
+        assert r["target_pass"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 19. TestInvalidSize (P2-4: invalid size_bytes handling)
+# ---------------------------------------------------------------------------
+class TestInvalidSize:
+    def _make_invalid_size_row(self, row_id, src, tgt, size_str):
+        return {
+            "row_id": str(row_id),
+            "source_path": str(src),
+            "proposed_target_path": str(tgt),
+            "extension": ".jpg",
+            "size_bytes": size_str,
+            "selection_reason": "new_candidate",
+            "duplicate_key": "",
+            "exclusion_reason": "",
+            "placeholder_flag": "",
+            "stat_error": "",
+        }
+
+    def test_blank_size(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            self._make_invalid_size_row(1, src, tgt, ""),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_size_rows"] == 1
+        assert r["audit_rows"][0]["status"] == "INVALID_SIZE"
+
+    def test_non_integer_size(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            self._make_invalid_size_row(1, src, tgt, "abc"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_size_rows"] == 1
+        assert r["audit_rows"][0]["status"] == "INVALID_SIZE"
+        assert "abc" in r["audit_rows"][0]["detail"]
+
+    def test_negative_size(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            self._make_invalid_size_row(1, src, tgt, "-1"),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["invalid_size_rows"] == 1
+        assert r["audit_rows"][0]["status"] == "INVALID_SIZE"
+
+    def test_invalid_size_causes_exit_4(self, tmp_path):
+        src, tgt, _ = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            self._make_invalid_size_row(1, src, tgt, "not_a_number"),
+        ])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        assert p.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 20. TestUnicodeDecodeError (P2-5: manifest with non-UTF-8 bytes)
+# ---------------------------------------------------------------------------
+class TestUnicodeDecodeError:
+    def test_binary_manifest_errors(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        manifest.write_bytes(b"\xff\xfe" + b"\x00\x80\x81\x82" * 100)
+        r = audit_manifest_vs_disk(manifest, tgt_dir)
+        assert len(r["errors"]) > 0
+        assert any("error" in e.lower() or "decode" in e.lower() for e in r["errors"])
+
+    def test_binary_manifest_cli_exit_1(self, tmp_path):
+        tgt_dir = tmp_path / "target"
+        tgt_dir.mkdir()
+        manifest = tmp_path / "m.csv"
+        manifest.write_bytes(b"\xff\xfe" + b"\x00\x80\x81\x82" * 100)
+        p = _run(["--manifest", str(manifest), "--target-root", str(tgt_dir)])
+        assert p.returncode == 1
