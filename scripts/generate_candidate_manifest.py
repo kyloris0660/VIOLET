@@ -37,6 +37,38 @@ SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 PLACEHOLDER_SIZE_THRESHOLD = 1024  # bytes
 
 
+def validate_output_paths(
+    output_path: Path,
+    summary_path: Path,
+    source_root: Path,
+    target_root: Path,
+) -> None:
+    """Ensure output/summary files are NOT inside source_root or target_root.
+
+    source_root is a read-only source (may be iCloud Photos) and target_root is
+    the staging copy destination.  Writing manifest / summary inside either would
+    pollute the source or contaminate the staging area.
+
+    Raises ValueError if either output resolves inside source_root or target_root.
+    """
+    abs_output = output_path.resolve()
+    abs_summary = summary_path.resolve()
+    abs_source = source_root.resolve()
+    abs_target = target_root.resolve()
+
+    for label, p in [("output", abs_output), ("summary", abs_summary)]:
+        for root_label, root_path in [("source_root", abs_source), ("target_root", abs_target)]:
+            # Check if p equals or is inside root_path
+            try:
+                p.relative_to(root_path)
+            except ValueError:
+                continue  # not inside — good
+            raise ValueError(
+                f"{label} path ({p}) must not be inside {root_label} ({root_path}). "
+                f"Move {label} outside of {root_label} to avoid polluting it."
+            )
+
+
 def is_icloud_placeholder(path: Path) -> bool:
     """Detect iCloud placeholder / stub files that haven't been downloaded."""
     try:
@@ -401,6 +433,7 @@ def main():
     print()
 
     try:
+        validate_output_paths(output_path, summary_path, source_root, target_root)
         result = generate_manifest(
             source_root=source_root,
             existing_root=existing_root,

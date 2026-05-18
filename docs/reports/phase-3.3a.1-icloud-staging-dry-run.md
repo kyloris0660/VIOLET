@@ -1,6 +1,6 @@
 # Phase 3.3a.1 — iCloud-safe Candidate Selection Dry-run Report
 
-**日期**: 2026-05-17
+**日期**: 2026-05-18 (updated)
 **阶段**: Phase 3.3a.1 — iCloud-safe 候选选择和暂存 (Dry-run)
 **分支**: `phase3.3a.1-icloud-candidate-manifest`
 **基线提交**: `eea8363` (origin/main)
@@ -34,9 +34,9 @@
 
 | 指标 | 值 |
 |------|-----|
-| 总扫描文件 | 38,127 |
-| 支持格式且合格 | 33,802 |
-| 不支持格式 | 4,325 |
+| 总扫描文件 | 38,217 |
+| 支持格式且合格 | 33,891 |
+| 不支持格式 | 4,326 |
 | 与 Tier-500 可能重复 | 522 |
 | iCloud 占位符 | 0 |
 | stat 错误 | 0 |
@@ -53,9 +53,9 @@
 | 已选新增 | 478 |
 | 其中可能与已有重复 | 5 |
 | 合计 | 1,000 |
-| 新增文件总大小 | 1.18 GB |
+| 新增文件总大小 | 1.14 GB |
 | 已有文件总大小 | 1.84 GB |
-| 总复制大小 | 3.02 GB |
+| 总复制大小 | 2.98 GB |
 
 ---
 
@@ -81,7 +81,7 @@
 | CSV manifest | `.local_manifests/phase-3.3a.1-candidate-manifest.csv` | 含完整路径，已 gitignore，不提交 |
 | JSON summary | `docs/reports/phase-3.3a.1-icloud-staging-summary.json` | 仅聚合计数，隐私安全，已提交 |
 
-**CSV manifest 行数**: 5,325 (522 existing + 478 new + 4,325 excluded)
+**CSV manifest 行数**: 5,326 (522 existing + 478 new + 4,326 excluded)
 
 ---
 
@@ -108,9 +108,9 @@
 
 | 工具 | 测试数 | 结果 |
 |------|--------|------|
-| `generate_candidate_manifest.py` | 31 | 全部通过 |
-| `stage_pilot_files.py` | 20 | 全部通过 |
-| 合计 | 51 | 全部通过 |
+| `generate_candidate_manifest.py` | 35 | 全部通过 |
+| `stage_pilot_files.py` | 29 | 全部通过 |
+| 合计 | 64 | 全部通过 |
 
 ---
 
@@ -126,7 +126,22 @@
 
 ---
 
-## 10. 下一步
+## 10. Manifest Schema Hardening (第三轮)
+
+| # | 修复项 | 说明 | 状态 |
+|---|--------|------|------|
+| 1 | 输出路径 containment | `validate_output_paths()` — 禁止 output/summary 在 source_root 或 target_root 内 | ✓ |
+| 2 | 字段规范化 | 所有字符串字段 `.strip()`，extension 小写 | ✓ |
+| 3 | selection_reason 校验 | 非排除行必须是 `existing_tier500` 或 `new_candidate` | ✓ |
+| 4 | exclusion_reason 校验 | 空白→非排除；未知值→invalid | ✓ |
+| 5 | 缺失源文件→ERROR | `valid=False`（原为 WARNING） | ✓ |
+| 6 | 扩展名交叉校验 | source suffix + CSV extension + target suffix 均须在 SUPPORTED_EXTENSIONS | ✓ |
+| 7 | 冲突检测改为全路径 | 按 resolved full path (case-insensitive) 检测，非 basename | ✓ |
+| 8 | 空白 target 计入 escape | 空 target 在 copy 行同时计入 blank_target + target_root_escapes | ✓ |
+
+---
+
+## 11. 下一步
 
 1. **用户审批候选清单** — 查看 `.local_manifests/phase-3.3a.1-candidate-manifest.csv`
 2. **Phase 3.3b Stage A: 创建暂存目录** — `E:\VioletPilotData_1000`

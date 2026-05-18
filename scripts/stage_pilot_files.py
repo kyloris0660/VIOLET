@@ -25,6 +25,20 @@ from pathlib import Path
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
+KNOWN_SELECTION_REASONS = {"existing_tier500", "new_candidate"}
+KNOWN_EXCLUSION_CODES = {"stat_error", "placeholder"}
+KNOWN_EXCLUSION_PREFIXES = ("unsupported_format:",)
+
+
+def _is_known_exclusion(reason: str) -> bool:
+    """Check if an exclusion_reason is a recognized value."""
+    if reason in KNOWN_EXCLUSION_CODES:
+        return True
+    for prefix in KNOWN_EXCLUSION_PREFIXES:
+        if reason.startswith(prefix):
+            return True
+    return False
+
 
 def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
     """Validate a staging manifest (dry-run).
@@ -48,6 +62,9 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
         "unsupported_extensions": 0,
         "blank_source_paths": 0,
         "blank_target_paths": 0,
+        "invalid_selection_reasons": 0,
+        "invalid_exclusion_reasons": 0,
+        "extension_mismatches": 0,
         "total_copy_bytes": 0,
         "target_root_exists": target_root.is_dir(),
         "target_root_is_local": True,
@@ -75,84 +92,114 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
     result["total_rows"] = len(rows)
 
     resolved_root = target_root.resolve()
+    # Collision detection by full resolved target path (case-insensitive on Windows)
     seen_targets: dict[str, str] = {}
 
     for row in rows:
-        selection = row.get("selection_reason", "")
-        exclusion = row.get("exclusion_reason", "")
-        source_path = row.get("source_path", "")
-        proposed_target = row.get("proposed_target_path", "")
-        ext = row.get("extension", "").lower()
-        size_str = row.get("size_bytes", "0")
+        # 2A: Normalize all string fields
+        selection = row.get("selection_reason", "").strip()
+        exclusion = row.get("exclusion_reason", "").strip()
+        source_path = row.get("source_path", "").strip()
+        proposed_target = row.get("proposed_target_path", "").strip()
+        ext = row.get("extension", "").strip().lower()
+        size_str = row.get("size_bytes", "0").strip()
 
         try:
             size = int(size_str)
         except (ValueError, TypeError):
             size = 0
 
+        # 2C: Exclusion reason validation
         if exclusion:
-            result["excluded_rows"] += 1
-            continue
+            if not _is_known_exclusion(exclusion):
+                result["invalid_exclusion_reasons"] += 1
+            else:
+                result["excluded_rows"] += 1
+                continue
+        # Note: whitespace-only exclusion was already stripped to "", so falls through
 
+        # --- Non-excluded (copy) row processing ---
+
+        # 2B: Selection reason validation
         if selection == "existing_tier500":
             result["existing_tier500_rows"] += 1
         elif selection == "new_candidate":
             result["new_candidate_rows"] += 1
 
+        if selection not in KNOWN_SELECTION_REASONS:
+            result["invalid_selection_reasons"] += 1
+
         # Reject non-excluded copy rows with blank source_path
-        if not source_path or not source_path.strip():
+        if not source_path:
             result["blank_source_paths"] += 1
 
         # Reject non-excluded copy rows with blank proposed_target_path
-        if not proposed_target or not proposed_target.strip():
+        if not proposed_target:
             result["blank_target_paths"] += 1
 
-        # Validate source file exists
+        # Validate source file exists — missing source is an ERROR for copy rows
         if source_path:
             sp = Path(source_path)
             if sp.is_file():
                 result["source_files_exist"] += 1
+
+                # 2F: Extension cross-validation (only when source exists)
+                source_suffix = sp.suffix.lower()
+                if source_suffix and source_suffix not in SUPPORTED_EXTENSIONS:
+                    result["extension_mismatches"] += 1
+                elif ext and ext != source_suffix:
+                    result["extension_mismatches"] += 1
             else:
                 result["source_files_missing"] += 1
                 if len(result["source_files_missing_paths"]) < 10:
                     result["source_files_missing_paths"].append(source_path)
 
-        # Validate extension
+        # Validate extension from CSV field
         if ext and ext not in SUPPORTED_EXTENSIONS:
             result["unsupported_extensions"] += 1
 
+        # 2F: Also validate target path suffix
+        if proposed_target:
+            target_suffix = Path(proposed_target).suffix.lower()
+            if target_suffix and target_suffix not in SUPPORTED_EXTENSIONS:
+                result["extension_mismatches"] += 1
+
         # Check target path escapes target_root
         if proposed_target:
-            if not proposed_target.strip():
+            try:
+                resolved_target = Path(proposed_target).resolve()
+                resolved_target.relative_to(resolved_root)
+            except ValueError:
                 result["target_root_escapes"] += 1
                 if len(result["target_root_escape_paths"]) < 10:
                     result["target_root_escape_paths"].append(proposed_target)
-            else:
-                try:
-                    resolved_target = Path(proposed_target).resolve()
-                    resolved_target.relative_to(resolved_root)
-                except ValueError:
-                    result["target_root_escapes"] += 1
-                    if len(result["target_root_escape_paths"]) < 10:
-                        result["target_root_escape_paths"].append(proposed_target)
+        else:
+            # Empty/blank target on a copy row — counts as escape
+            if not proposed_target:
+                # Already counted in blank_target_paths; also count as escape
+                result["target_root_escapes"] += 1
 
-        # Check target filename collisions
+        # 2H: Collision by full resolved target path (case-insensitive)
         if proposed_target:
-            target_name = Path(proposed_target).name.lower()
-            if target_name in seen_targets:
+            try:
+                collision_key = str(Path(proposed_target).resolve()).lower()
+            except (OSError, ValueError):
+                collision_key = proposed_target.lower()
+            if collision_key in seen_targets:
                 result["target_filename_collisions"] += 1
                 if len(result["target_collision_paths"]) < 10:
                     result["target_collision_paths"].append(proposed_target)
             else:
-                seen_targets[target_name] = proposed_target
+                seen_targets[collision_key] = proposed_target
 
         result["total_copy_bytes"] += size
 
-    # Validation checks
+    # Validation checks — errors that set valid=False
     if result["source_files_missing"] > 0:
-        result["warnings"].append(
-            f"{result['source_files_missing']} source files not found (may be iCloud-only)"
+        result["errors"].append(
+            f"{result['source_files_missing']} source files not found"
         )
+        result["valid"] = False
 
     if result["target_root_escapes"] > 0:
         result["errors"].append(
@@ -174,13 +221,31 @@ def validate_manifest(manifest_path: Path, target_root: Path) -> dict:
 
     if result["target_filename_collisions"] > 0:
         result["errors"].append(
-            f"{result['target_filename_collisions']} target filename collisions detected"
+            f"{result['target_filename_collisions']} target path collisions detected"
         )
         result["valid"] = False
 
     if result["unsupported_extensions"] > 0:
         result["errors"].append(
             f"{result['unsupported_extensions']} rows have unsupported extensions"
+        )
+        result["valid"] = False
+
+    if result["invalid_selection_reasons"] > 0:
+        result["errors"].append(
+            f"{result['invalid_selection_reasons']} non-excluded rows have invalid selection_reason"
+        )
+        result["valid"] = False
+
+    if result["invalid_exclusion_reasons"] > 0:
+        result["errors"].append(
+            f"{result['invalid_exclusion_reasons']} rows have invalid exclusion_reason"
+        )
+        result["valid"] = False
+
+    if result["extension_mismatches"] > 0:
+        result["errors"].append(
+            f"{result['extension_mismatches']} rows have extension mismatches"
         )
         result["valid"] = False
 

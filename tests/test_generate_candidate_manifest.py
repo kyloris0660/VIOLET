@@ -19,6 +19,7 @@ is_icloud_placeholder = _module.is_icloud_placeholder
 generate_manifest = _module.generate_manifest
 write_csv = _module.write_csv
 write_summary = _module.write_summary
+validate_output_paths = _module.validate_output_paths
 _scan_existing_dataset = _module._scan_existing_dataset
 _scan_source = _module._scan_source
 
@@ -591,3 +592,42 @@ class TestPrivacySafeSummary:
         assert str(source_dir) not in content
         assert str(existing_dir) not in content
         assert str(target) not in content
+
+
+# ---------------------------------------------------------------------------
+# 16. Output path containment guard (copy-safety)
+# ---------------------------------------------------------------------------
+
+class TestOutputPathContainment:
+    """validate_output_paths() must reject writing output/summary inside source or target."""
+
+    def test_output_inside_source_root_rejected(self, tmp_path: Path):
+        source = tmp_path / "source"
+        source.mkdir()
+        target = tmp_path / "target"
+        output_csv = source / "manifest.csv"  # inside source
+        summary_json = tmp_path / "summary.json"
+
+        with pytest.raises(ValueError, match="must not be inside source_root"):
+            validate_output_paths(output_csv, summary_json, source, target)
+
+    def test_summary_inside_source_root_rejected(self, tmp_path: Path):
+        source = tmp_path / "source"
+        source.mkdir()
+        target = tmp_path / "target"
+        output_csv = tmp_path / "manifest.csv"
+        summary_json = source / "summary.json"  # inside source
+
+        with pytest.raises(ValueError, match="must not be inside source_root"):
+            validate_output_paths(output_csv, summary_json, source, target)
+
+    def test_output_inside_target_root_rejected(self, tmp_path: Path):
+        source = tmp_path / "source"
+        source.mkdir()
+        target = tmp_path / "target"
+        target.mkdir()
+        output_csv = target / "manifest.csv"  # inside target
+        summary_json = tmp_path / "summary.json"
+
+        with pytest.raises(ValueError, match="must not be inside target_root"):
+            validate_output_paths(output_csv, summary_json, source, target)

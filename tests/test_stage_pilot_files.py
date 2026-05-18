@@ -95,7 +95,7 @@ class TestValidManifest:
 # ---------------------------------------------------------------------------
 
 class TestMissingSourceFiles:
-    def test_missing_source_warns(self, tmp_path: Path):
+    def test_missing_source_invalidates(self, tmp_path: Path):
         target_root = tmp_path / "target"
         manifest_path = tmp_path / "manifest.csv"
         rows = [{
@@ -109,8 +109,8 @@ class TestMissingSourceFiles:
 
         result = validate_manifest(manifest_path, target_root)
         assert result["source_files_missing"] == 1
-        assert result["valid"] is True  # missing source is a warning, not error
-        assert any("not found" in w for w in result["warnings"])
+        assert result["valid"] is False
+        assert any("not found" in e for e in result["errors"])
 
 
 # ---------------------------------------------------------------------------
@@ -458,3 +458,187 @@ class TestBlankTargetPath:
         result = validate_manifest(manifest_path, target_root)
         assert result["blank_target_paths"] == 0
         assert result["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# 11. Selection reason validation (copy-safety)
+# ---------------------------------------------------------------------------
+
+class TestSelectionReasonValidation:
+    def test_unknown_selection_reason_invalidates(self, tmp_path: Path):
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "random_pick", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["invalid_selection_reasons"] == 1
+        assert any("invalid selection_reason" in e for e in result["errors"])
+
+    def test_blank_selection_reason_on_non_excluded_invalidates(self, tmp_path: Path):
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["invalid_selection_reasons"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 12. Exclusion reason validation (copy-safety)
+# ---------------------------------------------------------------------------
+
+class TestExclusionReasonValidation:
+    def test_whitespace_only_exclusion_not_excluded(self, tmp_path: Path):
+        """Whitespace-only exclusion_reason is stripped to empty, so the row
+        is treated as non-excluded. With a valid selection_reason and real
+        source file, it should be processed as a copy row."""
+        src = tmp_path / "img.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "2002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "   ", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["excluded_rows"] == 0
+        assert result["new_candidate_rows"] == 1
+        assert result["valid"] is True
+
+    def test_unknown_exclusion_reason_invalidates(self, tmp_path: Path):
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(tmp_path / "img.jpg"),
+            "proposed_target_path": str(target_root / "img.jpg"),
+            "extension": ".jpg", "size_bytes": "5000",
+            "selection_reason": "", "duplicate_key": "",
+            "exclusion_reason": "bad_reason", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["invalid_exclusion_reasons"] == 1
+        assert any("invalid exclusion_reason" in e for e in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# 13. Extension cross-validation (copy-safety)
+# ---------------------------------------------------------------------------
+
+class TestExtensionCrossValidation:
+    def test_csv_extension_spoofing_invalidates(self, tmp_path: Path):
+        """CSV says .jpg but source file is .exe — must be caught."""
+        src = tmp_path / "malware.exe"
+        src.write_bytes(b"MZ" + b"\x00" * 5000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "malware.jpg"),
+            "extension": ".jpg", "size_bytes": "5002",
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["valid"] is False
+        assert result["extension_mismatches"] > 0
+        assert any("extension mismatch" in e for e in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# 14. Collision by full resolved target path (copy-safety)
+# ---------------------------------------------------------------------------
+
+class TestCollisionByFullPath:
+    def test_different_subdirs_same_basename_no_collision(self, tmp_path: Path):
+        """Two targets in different subdirs with the same basename are NOT collisions."""
+        src1 = tmp_path / "a.jpg"
+        src2 = tmp_path / "b.jpg"
+        src1.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        src2.write_bytes(b"\xff\xd8" + b"\x00" * 3000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [
+            {
+                "row_id": "1", "source_path": str(src1),
+                "proposed_target_path": str(target_root / "subA" / "img.jpg"),
+                "extension": ".jpg", "size_bytes": "2002",
+                "selection_reason": "new_candidate", "duplicate_key": "",
+                "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+            },
+            {
+                "row_id": "2", "source_path": str(src2),
+                "proposed_target_path": str(target_root / "subB" / "img.jpg"),
+                "extension": ".jpg", "size_bytes": "3002",
+                "selection_reason": "new_candidate", "duplicate_key": "",
+                "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+            },
+        ]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["target_filename_collisions"] == 0
+        assert result["valid"] is True
+
+    def test_same_full_path_collision_detected(self, tmp_path: Path):
+        """Two rows with the same full resolved target path → collision."""
+        src1 = tmp_path / "a.jpg"
+        src2 = tmp_path / "b.jpg"
+        src1.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        src2.write_bytes(b"\xff\xd8" + b"\x00" * 3000)
+
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        same_target = str(target_root / "subA" / "img.jpg")
+        rows = [
+            {
+                "row_id": "1", "source_path": str(src1),
+                "proposed_target_path": same_target,
+                "extension": ".jpg", "size_bytes": "2002",
+                "selection_reason": "new_candidate", "duplicate_key": "",
+                "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+            },
+            {
+                "row_id": "2", "source_path": str(src2),
+                "proposed_target_path": same_target,
+                "extension": ".jpg", "size_bytes": "3002",
+                "selection_reason": "new_candidate", "duplicate_key": "",
+                "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+            },
+        ]
+        _write_manifest(manifest_path, rows)
+
+        result = validate_manifest(manifest_path, target_root)
+        assert result["target_filename_collisions"] == 1
+        assert result["valid"] is False
+        assert any("collision" in e for e in result["errors"])
