@@ -1,0 +1,89 @@
+{
+  "import_run_id": "c964cc40-b152-43f5-b9ef-074b880b5064",
+  "mode": "dry_run",
+  "started_at": "2026-05-19T11:45:55.816970+00:00",
+  "finished_at": "2026-05-19T11:46:00.939796+00:00",
+  "source_label": "violet:tier1000:phase3.5",
+  "expected_copy_count": 1000,
+  "audit_summary": {
+    "result": "PASS",
+    "expected_copy_count": 1000,
+    "copy_rows": 1000,
+    "target_pass": 1000,
+    "copy_count_matches_expected": true,
+    "total_verified_bytes": 3204263387
+  },
+  "manifest": {
+    "total_rows": 5326,
+    "copy_rows": 1000,
+    "duplicate_target_rows": 0,
+    "duplicate_source_rows": 0
+  },
+  "database": {
+    "violet_env": "development",
+    "db_name": "blombooru",
+    "database_url_safe": "postgresql://postgres:***@localhost:5432/blombooru"
+  },
+  "storage": {
+    "storage_root_label": "app_storage",
+    "original_dir_label": "app_storage/media/original",
+    "thumbnail_dir_label": "app_storage/media/thumbnails",
+    "target_root_label": "tier1000_staging",
+    "paths_redacted": true,
+    "storage_root_redacted": true,
+    "target_root_redacted": true,
+    "target_outside_storage": true,
+    "media_source_label": "violet:tier1000:phase3.5"
+  },
+  "gates": {
+    "background_systems_disabled": true,
+    "disabled_flags": {
+      "AI_TAGGING_ENABLED": true,
+      "AI_AUTO_TAG_AFTER_IMPORT": true,
+      "AI_TAGGING_AUTO_LOCALIZATION": true,
+      "TAG_TRANSLATION_BACKGROUND_ENABLED": true,
+      "TAG_TRANSLATION_AUTO_ENABLED": true,
+      "TAG_TRANSLATION_LLM_ENABLED": true,
+      "ENTITY_ALIAS_RESOLVER_ENABLED": true,
+      "CONTENT_CLASSIFICATION_ENABLED": true,
+      "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT": true
+    },
+    "source_staging_mutation": false,
+    "ai_llm_classification_localization_entity_resolver": "disabled"
+  },
+  "counts": {
+    "invalid": 0,
+    "duplicates_by_hash": 1000,
+    "would_create": 0,
+    "imported": 0,
+    "failed": 0,
+    "skipped": 0,
+    "manifest_internal_hash_duplicates": 0,
+    "target_files_checked": 1000,
+    "manifest_copy_rows": 1000,
+    "estimated_bytes_to_copy": 0
+  },
+  "media_count": {
+    "before": 995,
+    "after": 995
+  },
+  "storage_stats": {
+    "before_original": {
+      "exists": true,
+      "file_count": 1279,
+      "bytes": 5400244517
+    },
+    "before_thumbnails": {
+      "exists": true,
+      "file_count": 1278,
+      "bytes": 21137513
+    }
+  },
+  "backup": {
+    "required_for_execute": false
+  },
+  "imported_media_ids_sample": [],
+  "post_import_audit": {},
+  "errors": [],
+  "warnings": []
+}
