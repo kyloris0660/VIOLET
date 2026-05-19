@@ -141,7 +141,25 @@ def _prepare_candidates(tmp_path: Path, count: int = 1):
     return target_root, valid
 
 
+def _clear_runtime_env(monkeypatch):
+    for name in [
+        "VIOLET_ENV",
+        "VIOLET_STORAGE_ROOT",
+        "TEST_DATABASE_URL",
+        "POSTGRES_DB",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+    ]:
+        monkeypatch.delenv(name, raising=False)
+    for name in _module.DISABLED_FLAG_DEFAULTS:
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_parse_requires_mode_and_execute_confirmation(tmp_path):
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"backup")
     common = [
         "--manifest",
         str(tmp_path / "manifest.csv"),
@@ -160,8 +178,128 @@ def test_parse_requires_mode_and_execute_confirmation(tmp_path):
         _module.parse_args(common)
     with pytest.raises(SystemExit):
         _module.parse_args(common + ["--execute", "--confirm-import-tier1000", "WRONG"])
-    args = _module.parse_args(common + ["--execute", "--confirm-import-tier1000", _module.CONFIRM_PHRASE])
+    with pytest.raises(SystemExit):
+        _module.parse_args(common + ["--execute", "--confirm-import-tier1000", _module.CONFIRM_PHRASE])
+    args = _module.parse_args(
+        common
+        + [
+            "--execute",
+            "--confirm-import-tier1000",
+            _module.CONFIRM_PHRASE,
+            "--db-backup-file",
+            str(backup),
+        ]
+    )
     assert args.execute is True
+
+
+def test_execute_rejects_limit(tmp_path, capsys):
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"backup")
+    with pytest.raises(SystemExit):
+        _module.parse_args(
+            [
+                "--manifest",
+                str(tmp_path / "manifest.csv"),
+                "--target-root",
+                str(tmp_path / "stage"),
+                "--audit-summary",
+                str(tmp_path / "audit.json"),
+                "--expected-copy-count",
+                "1",
+                "--execute",
+                "--confirm-import-tier1000",
+                _module.CONFIRM_PHRASE,
+                "--db-backup-file",
+                str(backup),
+                "--report-json",
+                str(tmp_path / "report.json"),
+                "--local-result-csv",
+                str(tmp_path / "result.csv"),
+                "--limit",
+                "1",
+            ]
+        )
+    assert "--limit is not allowed with --execute" in capsys.readouterr().err
+
+
+def test_dry_run_allows_limit(tmp_path):
+    args = _module.parse_args(
+        [
+            "--manifest",
+            str(tmp_path / "manifest.csv"),
+            "--target-root",
+            str(tmp_path / "stage"),
+            "--audit-summary",
+            str(tmp_path / "audit.json"),
+            "--expected-copy-count",
+            "1",
+            "--dry-run",
+            "--report-json",
+            str(tmp_path / "report.json"),
+            "--local-result-csv",
+            str(tmp_path / "result.csv"),
+            "--limit",
+            "1",
+        ]
+    )
+    assert args.dry_run is True
+    assert args.limit == 1
+
+
+def test_default_db_host_is_localhost(tmp_path, monkeypatch):
+    _clear_runtime_env(monkeypatch)
+
+    context = _module.build_runtime_context(repo_root=tmp_path)
+
+    assert context.database_url.host == "localhost"
+
+
+def test_postgres_host_env_wins_without_settings(tmp_path, monkeypatch):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("POSTGRES_HOST", "pg.example.local")
+
+    context = _module.build_runtime_context(repo_root=tmp_path)
+
+    assert context.database_url.host == "pg.example.local"
+
+
+def test_data_settings_host_wins_over_postgres_host(tmp_path, monkeypatch):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("POSTGRES_HOST", "env-host")
+    settings_dir = tmp_path / "data"
+    settings_dir.mkdir()
+    (settings_dir / "settings.json").write_text(
+        json.dumps({"database": {"host": "settings-host", "name": "blombooru"}}),
+        encoding="utf-8",
+    )
+
+    context = _module.build_runtime_context(repo_root=tmp_path)
+
+    assert context.database_url.host == "settings-host"
+
+
+def test_execute_backup_file_gate(tmp_path):
+    missing = tmp_path / "missing.dump"
+    empty = tmp_path / "empty.dump"
+    empty.write_bytes(b"")
+    valid = tmp_path / "valid.dump"
+    valid.write_bytes(b"backup")
+
+    with pytest.raises(_module.ImportGateError, match="requires --db-backup-file"):
+        _module.validate_db_backup_file(None)
+    with pytest.raises(_module.ImportGateError, match="does not exist"):
+        _module.validate_db_backup_file(missing)
+    with pytest.raises(_module.ImportGateError, match="empty"):
+        _module.validate_db_backup_file(empty)
+
+    info = _module.validate_db_backup_file(valid)
+    assert info == {
+        "required_for_execute": True,
+        "file_name": "valid.dump",
+        "bytes": 6,
+        "path_redacted": True,
+    }
 
 
 def test_audit_summary_mismatch_fails(tmp_path):
@@ -302,9 +440,42 @@ def test_report_omits_per_file_private_paths(tmp_path):
         target_root,
     )
     report.counts = {"would_create": 1}
+    report.errors = [
+        r"Staged target path is outside allowed root: C:\Users\kyloris\secret.png",
+        r"missing staged file: E:\VioletPilotData_1000\secret.png",
+        f"user home path: {Path.home()}",
+    ]
     report_path = tmp_path / "report.json"
     _module.write_report(report_path, report)
 
     payload = report_path.read_text(encoding="utf-8")
     assert valid[0].source_path not in payload
     assert valid[0].proposed_target_path not in payload
+    assert "C:\\" not in payload
+    assert "E:\\" not in payload
+    assert str(Path.home()) not in payload
+    assert "storage_root_label" in payload
+    assert "target_root_label" in payload
+    assert "paths_redacted" in payload
+
+
+def test_local_result_csv_may_contain_full_paths(tmp_path):
+    candidate = _module.ManifestCandidate(
+        row_number=2,
+        row_id="1",
+        source_path=r"C:\Users\kyloris\private-source.png",
+        proposed_target_path=r"E:\VioletPilotData_1000\private-source.png",
+        extension=".png",
+        size_bytes=1,
+        selection_reason="new_candidate",
+        staged_path=Path(r"E:\VioletPilotData_1000\private-source.png"),
+        file_hash="abc",
+    )
+    item = _module.ImportItem(candidate=candidate, status="would_create")
+    csv_path = tmp_path / "local-results.csv"
+
+    _module.write_local_result_csv(csv_path, "run", [item])
+
+    payload = csv_path.read_text(encoding="utf-8")
+    assert r"C:\Users\kyloris\private-source.png" in payload
+    assert r"E:\VioletPilotData_1000\private-source.png" in payload

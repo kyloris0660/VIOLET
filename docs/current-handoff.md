@@ -693,7 +693,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 **Phase 3.5 - Tier-1000 Database Import (branch `phase3.5-tier1000-db-import`):**
 - `scripts/import_staged_manifest.py`: manifest-driven copy-mode importer with dry-run, execute confirmation, privacy-safe JSON report, and local full-path CSV under `.local_manifests/`
 - Real import: 995 media rows created, 5 same-hash duplicates skipped, 0 failures
-- DB/storage: `blombooru`, app-managed storage under `C:\Users\kyloris\Documents\AnimeLocalBooru`, `Media.source='violet:tier1000:phase3.5'`
+- DB/storage: `blombooru`, app-managed storage recorded in public reports as `app_storage`, `Media.source='violet:tier1000:phase3.5'`
 - Post-import audit: 995 DB rows, 995 originals, 995 thumbnails, 0 missing, source label mismatches 0
 - App validation: `/api/media`, media detail, original file, thumbnail, gallery page, and Playwright Edge smoke all PASS
 - Background side effects: 0 AI jobs, 0 classification jobs, 0 translation jobs/translations since import start

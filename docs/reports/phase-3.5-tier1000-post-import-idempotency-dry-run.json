@@ -1,8 +1,8 @@
 {
-  "import_run_id": "bb032f50-e86d-4bb4-adde-1f3e229b2b55",
+  "import_run_id": "045080c8-8f33-44c2-a91e-2adfefda054d",
   "mode": "dry_run",
-  "started_at": "2026-05-19T08:27:51.728671+00:00",
-  "finished_at": "2026-05-19T08:27:56.893326+00:00",
+  "started_at": "2026-05-19T11:04:13.232258+00:00",
+  "finished_at": "2026-05-19T11:04:18.762494+00:00",
   "source_label": "violet:tier1000:phase3.5",
   "expected_copy_count": 1000,
   "audit_summary": {
@@ -25,10 +25,13 @@
     "database_url_safe": "postgresql://postgres:***@localhost:5432/blombooru"
   },
   "storage": {
-    "storage_root": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
-    "original_dir": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\media\\original",
-    "thumbnail_dir": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\media\\thumbnails",
-    "target_root": "E:\\VioletPilotData_1000",
+    "storage_root_label": "app_storage",
+    "original_dir_label": "app_storage/media/original",
+    "thumbnail_dir_label": "app_storage/media/thumbnails",
+    "target_root_label": "tier1000_staging",
+    "paths_redacted": true,
+    "storage_root_redacted": true,
+    "target_root_redacted": true,
     "target_outside_storage": true,
     "media_source_label": "violet:tier1000:phase3.5"
   },
@@ -75,6 +78,9 @@
       "file_count": 1278,
       "bytes": 21137513
     }
+  },
+  "backup": {
+    "required_for_execute": false
   },
   "imported_media_ids_sample": [],
   "post_import_audit": {},

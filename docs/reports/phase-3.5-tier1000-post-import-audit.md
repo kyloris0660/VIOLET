@@ -6,9 +6,10 @@ Date: 2026-05-19
 
 The first `pg_dump` attempt timed out while waiting for password input. The exact `pg_dump.exe` process was identified and stopped (`PID 35304`), then the backup was retried with `PGPASSWORD` loaded from local config without printing the value.
 
-Successful backup:
+Successful backup artifact:
 
-- Path: `backups\phase-3.5-tier1000-before-20260519-161743.dump`
+- File name: `phase-3.5-tier1000-before-20260519-161743.dump`
+- Path: redacted
 - Format: `pg_dump -Fc`
 - Size: 167,099 bytes
 - DB: `blombooru`
@@ -83,8 +84,8 @@ Temporary server:
 - Identity check: PASS
 - `VIOLET_ENV`: `development`
 - DB: `blombooru`
-- Storage root: `C:\Users\kyloris\Documents\AnimeLocalBooru`
-- Python executable: `C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`
+- Storage root label: `app_storage`
+- Python executable: project venv Python verified by server identity
 - Server process tree stopped after validation: `PID 24280`, `35072`, `35648`
 
 API/static smoke:

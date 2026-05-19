@@ -13,6 +13,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -41,6 +42,9 @@ DEFAULT_COPY_REASONS = {"existing_tier500", "new_candidate"}
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VALID_ENVS = {"development", "test", "production"}
 FORBIDDEN_TEST_DB_NAMES = {"blombooru", "production", "main", "postgres"}
+PUBLIC_STORAGE_LABEL = "app_storage"
+PUBLIC_TARGET_LABEL = "tier1000_staging"
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)\b[A-Z]:\\[^\n\r\"']*")
 
 DISABLED_FLAG_DEFAULTS = {
     "AI_TAGGING_ENABLED": False,
@@ -123,6 +127,7 @@ class ImportReport:
     counts: dict[str, int] = field(default_factory=dict)
     media_count: dict[str, int | None] = field(default_factory=dict)
     storage_stats: dict[str, Any] = field(default_factory=dict)
+    backup: dict[str, Any] = field(default_factory=dict)
     imported_media_ids_sample: list[int] = field(default_factory=list)
     post_import_audit: dict[str, Any] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
@@ -213,7 +218,7 @@ def build_runtime_context(repo_root: Path = REPO_ROOT) -> RuntimeContext:
             drivername="postgresql",
             username=database_settings.get("user") or os.getenv("POSTGRES_USER") or "postgres",
             password=database_settings.get("password") or os.getenv("POSTGRES_PASSWORD") or "",
-            host=database_settings.get("host") or os.getenv("POSTGRES_HOST") or "db",
+            host=database_settings.get("host") or os.getenv("POSTGRES_HOST") or "localhost",
             port=int(database_settings.get("port") or os.getenv("POSTGRES_PORT") or 5432),
             database=db_name,
         )
@@ -406,6 +411,23 @@ def validate_roots(context: RuntimeContext, target_root: Path, execute: bool) ->
             "Phase 3.5 requires AI/LLM/classification/localization/entity flags disabled: "
             + ", ".join(enabled)
         )
+
+
+def validate_db_backup_file(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        raise ImportGateError("--execute requires --db-backup-file")
+    backup_path = path.expanduser()
+    if not backup_path.exists() or not backup_path.is_file():
+        raise ImportGateError(f"DB backup file does not exist: {backup_path}")
+    backup_size = backup_path.stat().st_size
+    if backup_size <= 0:
+        raise ImportGateError(f"DB backup file is empty: {backup_path.name}")
+    return {
+        "required_for_execute": True,
+        "file_name": backup_path.name,
+        "bytes": backup_size,
+        "path_redacted": True,
+    }
 
 
 def validate_candidates(
@@ -768,9 +790,32 @@ def write_local_result_csv(path: Path, import_run_id: str, items: list[ImportIte
             )
 
 
+def sanitize_public_report_value(value: Any) -> Any:
+    """Remove local absolute paths from public report payloads.
+
+    Full per-file paths intentionally remain available only in the local CSV.
+    """
+    if isinstance(value, dict):
+        return {key: sanitize_public_report_value(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [sanitize_public_report_value(item) for item in value]
+    if isinstance(value, str):
+        sanitized = value
+        known_replacements = {
+            str(REPO_ROOT): "<repo_root>",
+            str(Path.home()): "<user_home>",
+        }
+        for needle, replacement in sorted(known_replacements.items(), key=lambda pair: len(pair[0]), reverse=True):
+            if needle:
+                sanitized = sanitized.replace(needle, replacement)
+        sanitized = WINDOWS_ABSOLUTE_PATH_RE.sub("<redacted_path>", sanitized)
+        return sanitized
+    return value
+
+
 def write_report(path: Path, report: ImportReport) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = report.__dict__.copy()
+    payload = sanitize_public_report_value(report.__dict__.copy())
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
@@ -809,10 +854,13 @@ def prepare_report(
             "database_url_safe": context.safe_database_url,
         },
         storage={
-            "storage_root": str(context.storage_root),
-            "original_dir": str(context.original_dir),
-            "thumbnail_dir": str(context.thumbnail_dir),
-            "target_root": str(target_root.resolve()),
+            "storage_root_label": PUBLIC_STORAGE_LABEL,
+            "original_dir_label": f"{PUBLIC_STORAGE_LABEL}/media/original",
+            "thumbnail_dir_label": f"{PUBLIC_STORAGE_LABEL}/media/thumbnails",
+            "target_root_label": PUBLIC_TARGET_LABEL,
+            "paths_redacted": True,
+            "storage_root_redacted": True,
+            "target_root_redacted": True,
             "target_outside_storage": True,
             "media_source_label": IMPORT_SOURCE_LABEL,
         },
@@ -832,6 +880,11 @@ def run_import(args: argparse.Namespace) -> int:
     context = build_runtime_context()
     target_root = Path(args.target_root).expanduser().resolve()
     validate_roots(context, target_root, execute=execute)
+    backup_info = (
+        validate_db_backup_file(Path(args.db_backup_file))
+        if execute
+        else {"required_for_execute": False}
+    )
     audit_summary = validate_audit_summary(Path(args.audit_summary), args.expected_copy_count)
     candidates, manifest_stats = read_manifest(Path(args.manifest))
     if manifest_stats.copy_rows != args.expected_copy_count:
@@ -842,6 +895,7 @@ def run_import(args: argparse.Namespace) -> int:
         candidates = candidates[: args.limit]
 
     report = prepare_report(mode, args.expected_copy_count, audit_summary, manifest_stats, context, target_root)
+    report.backup = backup_info
     engine = create_db_engine(context)
     pre_media_count = get_media_count(engine)
     report.media_count["before"] = pre_media_count
@@ -887,7 +941,7 @@ def run_import(args: argparse.Namespace) -> int:
         "report_json": str(Path(args.report_json)),
         "local_result_csv": str(Path(args.local_result_csv)),
         "db_name": context.db_name,
-        "storage_root": str(context.storage_root),
+        "storage_root_label": PUBLIC_STORAGE_LABEL,
         "counts": report.counts,
         "media_count": report.media_count,
         "post_import_audit": report.post_import_audit,
@@ -908,6 +962,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     group.add_argument("--dry-run", action="store_true")
     group.add_argument("--execute", action="store_true")
     parser.add_argument("--confirm-import-tier1000", default="")
+    parser.add_argument("--db-backup-file", default=None, help="Required nonzero pg_dump artifact for --execute")
     parser.add_argument("--report-json", required=True)
     parser.add_argument("--local-result-csv", required=True)
     parser.add_argument("--limit", type=int, default=None, help="Limit copy rows for isolated tests only")
@@ -915,8 +970,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     if not args.dry_run and not args.execute:
         parser.error("Specify exactly one of --dry-run or --execute")
+    if args.execute and args.limit is not None:
+        parser.error("--limit is not allowed with --execute")
     if args.execute and args.confirm_import_tier1000 != CONFIRM_PHRASE:
         parser.error(f"--execute requires --confirm-import-tier1000 {CONFIRM_PHRASE}")
+    if args.execute and not args.db_backup_file:
+        parser.error("--execute requires --db-backup-file")
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be positive")
     return args

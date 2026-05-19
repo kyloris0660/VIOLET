@@ -8,14 +8,14 @@ Date: 2026-05-19
 - Working branch: `phase3.5-tier1000-db-import`
 - Base commit: `6e98df8` (`feat: self-contained Tier-1000 pre-import audit (Phase 3.4) (#48)`)
 - PR #45, #46, and #48 were verified merged through GitHub CLI.
-- Approved Python: `C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`
+- Approved Python: project venv Python, verified by `scripts/check_python_env.py`
 - Phase 3.4 audit summary gate:
   - `result=PASS`
   - `expected_copy_count=1000`
   - `copy_rows=1000`
   - `target_pass=1000`
   - `copy_count_matches_expected=true`
-- Staging root exists: `E:\VioletPilotData_1000`
+- Staging root exists and is represented in public reports as `tier1000_staging`
 - Candidate manifest exists: `.local_manifests\phase-3.3a.1-candidate-manifest.csv`
 
 ## Architecture Choice
@@ -68,7 +68,7 @@ Required output:
 - Target root must exist and must not be inside app-managed storage.
 - App-managed storage must not be inside target root.
 - Phase 3.4 audit summary must be PASS and match expected count 1000.
-- Execute requires DB backup first.
+- Execute requires a nonzero DB backup artifact passed with `--db-backup-file`.
 - Execute requires exact confirmation flag.
 - AI tagging, AI auto-import, AI auto-localization, tag translation background/auto/LLM, Entity Resolver, and content classification flags must all be disabled.
 
