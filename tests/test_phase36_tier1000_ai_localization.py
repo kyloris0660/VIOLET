@@ -1,0 +1,274 @@
+"""Tests for the Phase 3.6 Tier-1000 controlled AI/localization runner.
+
+These tests use an in-memory SQLite database and do not run the AI model, LLM,
+classification, Entity Resolver, or any real import/copy path.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+
+ROOT = Path(__file__).resolve().parent.parent
+BACKEND_ROOT = ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+SCRIPT_PATH = ROOT / "scripts" / "run_phase36_tier1000_ai_localization.py"
+SPEC = importlib.util.spec_from_file_location("phase36_runner", SCRIPT_PATH)
+phase36 = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(phase36)
+
+from app.database import Base  # noqa: E402
+from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
+from app.models import Media, Tag, TagTranslation, blombooru_media_tags  # noqa: E402
+
+
+@pytest.fixture()
+def db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def _media(db, media_id: int, source: str):
+    item = Media(
+        id=media_id,
+        filename=f"m{media_id}.jpg",
+        path=f"media/original/m{media_id}.jpg",
+        thumbnail_path=f"media/thumbnails/m{media_id}.jpg",
+        hash=f"{media_id:064x}",
+        file_type=FileTypeEnum.image,
+        mime_type="image/jpeg",
+        file_size=123,
+        source=source,
+    )
+    db.add(item)
+    db.commit()
+    return item
+
+
+def _tag(db, tag_id: int, name: str, category: TagCategoryEnum, post_count: int = 1):
+    item = Tag(id=tag_id, name=name, category=category, post_count=post_count)
+    db.add(item)
+    db.commit()
+    return item
+
+
+def _ai_assoc(db, media_id: int, tag_id: int, *, suggestion: bool = False):
+    db.execute(
+        blombooru_media_tags.insert().values(
+            media_id=media_id,
+            tag_id=tag_id,
+            source=phase36.AI_SOURCE,
+            confidence=0.9,
+            is_locked=False,
+            is_suggestion=suggestion,
+        )
+    )
+    db.commit()
+
+
+def test_select_target_media_ids_scoped_to_phase35_source(db):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    _media(db, 2, phase36.SOURCE_LABEL)
+    _media(db, 3, "other-source")
+    _tag(db, 1, "already_ai_tagged", TagCategoryEnum.general)
+    _ai_assoc(db, 1, 1)
+
+    assert phase36.select_target_media_ids(db, phase36.SOURCE_LABEL) == [2]
+    assert phase36.select_target_media_ids(
+        db, phase36.SOURCE_LABEL, only_without_ai_tags=False
+    ) == [1, 2]
+
+
+def test_localization_candidates_are_visual_only_and_skip_proper_nouns(db):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    _tag(db, 1, "phase36_general_tag", TagCategoryEnum.general, post_count=5)
+    _tag(db, 2, "phase36_meta_tag", TagCategoryEnum.meta, post_count=4)
+    _tag(db, 3, "phase36_character_name", TagCategoryEnum.character, post_count=3)
+    _tag(db, 4, "phase36_copyright_name", TagCategoryEnum.copyright, post_count=2)
+    _tag(db, 5, "phase36_already_translated", TagCategoryEnum.general, post_count=1)
+    for tag_id in [1, 2, 3, 4, 5]:
+        _ai_assoc(db, 1, tag_id)
+    db.add(
+        TagTranslation(
+            tag_id=5,
+            canonical_name="phase36_already_translated",
+            language="zh-CN",
+            display_name="已翻译",
+            category="general",
+            source="manual",
+            status="translated",
+        )
+    )
+    db.commit()
+
+    visual = phase36.select_localization_candidates(
+        db, phase36.SOURCE_LABEL, phase36.LOCALIZABLE_CATEGORIES, limit=None
+    )
+    proper = phase36.select_localization_candidates(
+        db, phase36.SOURCE_LABEL, phase36.PROPER_NOUN_CATEGORIES, limit=None
+    )
+
+    assert [item["canonical_name"] for item in visual] == [
+        "phase36_general_tag",
+        "phase36_meta_tag",
+    ]
+    assert {item["canonical_name"] for item in proper} == {
+        "phase36_character_name",
+        "phase36_copyright_name",
+    }
+
+
+def test_metric_delta_reports_distinct_ai_and_translation_changes(db):
+    before = {
+        "target_media_with_ai_tags": 10,
+        "target_ai_confirmed_associations": 20,
+        "target_ai_suggestion_associations": 5,
+        "target_ai_associations": 25,
+        "total_tag_count": 100,
+        "translation_count": 40,
+        "classification_jobs": 0,
+        "translation_jobs": 1,
+    }
+    after = {
+        "target_media_with_ai_tags": 12,
+        "target_ai_confirmed_associations": 23,
+        "target_ai_suggestion_associations": 7,
+        "target_ai_associations": 30,
+        "total_tag_count": 104,
+        "translation_count": 43,
+        "classification_jobs": 0,
+        "translation_jobs": 2,
+    }
+
+    assert phase36.metric_delta(before, after) == {
+        "target_media_with_ai_tags": 2,
+        "target_ai_confirmed_associations": 3,
+        "target_ai_suggestion_associations": 2,
+        "target_ai_associations": 5,
+        "total_tag_count": 4,
+        "translation_count": 3,
+        "classification_jobs": 0,
+        "translation_jobs": 1,
+    }
+
+
+def test_public_sanitizer_redacts_paths_and_secrets():
+    text = (
+        "C:\\Users\\person\\repo\\file.jpg E:\\VioletPilotData_1000\\x.jpg "
+        "/mnt/e/VioletPilotData_1000/x.jpg /Volumes/Data/x.jpg "
+        "/workspace/project/file.jpg Bearer abc.def.ghi sk-secret123456"
+    )
+    sanitized = phase36.sanitize_public_text(text)
+
+    assert "C:\\" not in sanitized
+    assert "E:\\" not in sanitized
+    assert "/mnt/" not in sanitized
+    assert "/Volumes/" not in sanitized
+    assert "/workspace/" not in sanitized
+    assert "abc.def.ghi" not in sanitized
+    assert "sk-secret123456" not in sanitized
+
+
+def test_llm_config_summary_reports_presence_not_values(monkeypatch):
+    settings = SimpleNamespace(
+        TAG_TRANSLATION_LLM_ENABLED=True,
+        TAG_TRANSLATION_LLM_PROVIDER="openai_compatible",
+        TAG_TRANSLATION_LLM_BASE_URL="https://llm.example.invalid/v1",
+        TAG_TRANSLATION_LLM_MODEL="model-a",
+        TAG_TRANSLATION_LLM_API_KEY="sk-verysecretvalue",
+        TAG_TRANSLATION_LLM_FALLBACK_BASE_URL="https://fallback.example.invalid/v1",
+        TAG_TRANSLATION_LLM_FALLBACK_MODEL="model-b",
+        TAG_TRANSLATION_LLM_FALLBACK_API_KEY="key-anothersecret",
+    )
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example.invalid:8080")
+
+    summary = phase36.llm_config_summary(settings)
+    encoded = str(summary)
+
+    assert summary["api_key_configured"] is True
+    assert summary["fallback_api_key_configured"] is True
+    assert summary["base_url_host"] == "llm.example.invalid"
+    assert "sk-verysecretvalue" not in encoded
+    assert "key-anothersecret" not in encoded
+
+
+def test_write_gates_require_backup_and_disable_side_effect_systems(db, tmp_path):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    safe_settings = SimpleNamespace(
+        DB_NAME="blombooru",
+        IS_TEST_ENV=False,
+        CONTENT_CLASSIFICATION_ENABLED=False,
+        CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT=False,
+        ENTITY_ALIAS_RESOLVER_ENABLED=False,
+        TAG_TRANSLATION_BG_ENABLED=False,
+        TAG_TRANSLATION_AUTO_ENABLED=False,
+        AI_TAGGING_AUTO_LOCALIZATION=False,
+        VIOLET_ENV="development",
+        DB_USER="postgres",
+        DB_HOST="localhost",
+        DB_PORT=5432,
+    )
+
+    gates = phase36.validate_common_write_gates(
+        db=db,
+        settings=safe_settings,
+        source_label=phase36.SOURCE_LABEL,
+        expected_media_count=1,
+        confirm_phrase=phase36.CONFIRM_PHRASE,
+        backup_file=backup,
+    )
+    assert gates["backup"]["file_name"] == "backup.dump"
+
+    unsafe_settings = SimpleNamespace(**{**safe_settings.__dict__, "CONTENT_CLASSIFICATION_ENABLED": True})
+    with pytest.raises(RuntimeError, match="Content classification"):
+        phase36.validate_common_write_gates(
+            db=db,
+            settings=unsafe_settings,
+            source_label=phase36.SOURCE_LABEL,
+            expected_media_count=1,
+            confirm_phrase=phase36.CONFIRM_PHRASE,
+            backup_file=backup,
+        )
+
+
+def test_ai_gate_requires_llm_disabled_during_ai_tagging():
+    settings = SimpleNamespace(
+        AI_TAGGING_ENABLED=True,
+        TAG_TRANSLATION_LLM_ENABLED=True,
+        AI_TAGGING_BATCH_MAX_ITEMS=10,
+        AI_MODEL_NAME="wd-swinv2-tagger-v3",
+        AI_GENERAL_THRESHOLD=0.35,
+        AI_CHARACTER_THRESHOLD=0.65,
+        AI_RATING_THRESHOLD=0.5,
+        AI_SUGGESTION_THRESHOLD=0.2,
+    )
+
+    with pytest.raises(RuntimeError, match="TAG_TRANSLATION_LLM_ENABLED"):
+        phase36.validate_ai_gates(settings)
+
+
+def test_chunked_never_emits_empty_chunks():
+    assert phase36.chunked([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
+    assert phase36.chunked([], 2) == []
+    with pytest.raises(ValueError, match="chunk_size"):
+        phase36.chunked([1], 0)
