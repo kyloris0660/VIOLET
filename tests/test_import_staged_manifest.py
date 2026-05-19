@@ -360,6 +360,30 @@ def test_dry_run_plan_detects_internal_manifest_hash_duplicate(tmp_path):
     assert "duplicate hash within manifest" in items[1].message
     assert counts["duplicates_by_hash"] == 1
     assert counts["manifest_internal_hash_duplicates"] == 1
+    assert _module.estimate_bytes_to_copy(items) == valid[0].size_bytes
+
+
+def test_estimated_bytes_excludes_all_duplicate_rows(tmp_path):
+    _, valid = _prepare_candidates(tmp_path, count=2)
+    existing = {
+        candidate.file_hash: {"id": index, "path": f"media/original/{index}.png"}
+        for index, candidate in enumerate(valid, start=1)
+    }
+
+    items = _module.build_import_items(valid, [], existing)
+
+    assert [item.status for item in items] == ["duplicate_by_hash", "duplicate_by_hash"]
+    assert _module.estimate_bytes_to_copy(items) == 0
+
+
+def test_estimated_bytes_counts_only_new_rows(tmp_path):
+    _, valid = _prepare_candidates(tmp_path, count=2)
+    existing = {valid[0].file_hash: {"id": 1, "path": "media/original/already.png"}}
+
+    items = _module.build_import_items(valid, [], existing)
+
+    assert [item.status for item in items] == ["duplicate_by_hash", "would_create"]
+    assert _module.estimate_bytes_to_copy(items) == valid[1].size_bytes
 
 
 def test_execute_import_uses_relative_managed_paths_and_generates_thumbnail(tmp_path):
@@ -391,6 +415,22 @@ def test_execute_import_uses_relative_managed_paths_and_generates_thumbnail(tmp_
     assert (context.storage_root / row["thumbnail_path"]).exists()
 
 
+def test_execute_thumbnail_failure_prevents_insert_and_cleans_up(tmp_path, monkeypatch):
+    context = _context(tmp_path)
+    engine = _engine()
+    _, valid = _prepare_candidates(tmp_path, count=1)
+    items = _module.build_import_items(valid, [], {})
+    monkeypatch.setattr(_module, "generate_thumbnail", lambda *_args, **_kwargs: False)
+
+    executed = _module.execute_import_items(items, context, engine)
+
+    assert executed[0].status == "failed"
+    assert "Thumbnail generation failed" in executed[0].message
+    assert _module.get_media_count(engine) == 0
+    assert _module.directory_stats(context.original_dir)["file_count"] == 0
+    assert _module.directory_stats(context.thumbnail_dir)["file_count"] == 0
+
+
 def test_execute_rerun_is_duplicate_idempotent(tmp_path):
     context = _context(tmp_path)
     engine = _engine()
@@ -420,6 +460,42 @@ def test_execute_failure_rolls_back_and_removes_created_files(tmp_path):
     assert _module.get_media_count(engine) == 0
 
 
+def test_post_import_audit_counts_null_thumbnail_as_missing(tmp_path):
+    context = _context(tmp_path)
+    engine = _engine()
+    original = context.original_dir / "orphan.png"
+    _make_image(original)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO blombooru_media "
+                "(filename, path, thumbnail_path, hash, file_type, rating, source) "
+                "VALUES ('orphan.png', 'media/original/orphan.png', NULL, 'hash-1', 'image', 'safe', :source)"
+            ),
+            {"source": _module.IMPORT_SOURCE_LABEL},
+        )
+    item = _module.ImportItem(
+        candidate=_module.ManifestCandidate(
+            row_number=2,
+            row_id="1",
+            source_path="source.png",
+            proposed_target_path="stage.png",
+            extension=".png",
+            size_bytes=1,
+            selection_reason="new_candidate",
+        ),
+        status="imported",
+        media_id=1,
+    )
+
+    audit = _module.post_import_audit([item], context, engine)
+
+    assert audit["original_files_found"] == 1
+    assert audit["thumbnails_found"] == 0
+    assert audit["missing_count"] == 1
+    assert audit["missing"] == [{"id": 1, "kind": "thumbnail_null"}]
+
+
 def test_report_omits_per_file_private_paths(tmp_path):
     context = _context(tmp_path)
     target_root, valid = _prepare_candidates(tmp_path, count=1)
@@ -444,6 +520,9 @@ def test_report_omits_per_file_private_paths(tmp_path):
         r"Staged target path is outside allowed root: C:\Users\kyloris\secret.png",
         r"missing staged file: E:\VioletPilotData_1000\secret.png",
         f"user home path: {Path.home()}",
+        "linux staging path: /mnt/e/VioletPilotData_1000/private.png",
+        "mac staging path: /Volumes/VioletPilotData_1000/private.png",
+        "workspace path: /workspace/AnimeLocalBooru/storage/private.png",
     ]
     report_path = tmp_path / "report.json"
     _module.write_report(report_path, report)
@@ -454,6 +533,12 @@ def test_report_omits_per_file_private_paths(tmp_path):
     assert "C:\\" not in payload
     assert "E:\\" not in payload
     assert str(Path.home()) not in payload
+    assert "/mnt/" not in payload
+    assert "/Volumes/" not in payload
+    assert "/workspace/" not in payload
+    assert "source_path" not in payload
+    assert "proposed_target_path" not in payload
+    assert "staged_path" not in payload
     assert "storage_root_label" in payload
     assert "target_root_label" in payload
     assert "paths_redacted" in payload

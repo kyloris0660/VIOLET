@@ -60,7 +60,8 @@
                    "skipped":  0,
                    "target_files_checked":  1000,
                    "manifest_copy_rows":  1000,
-                   "estimated_bytes_to_copy":  3204263387,
+                   "estimated_bytes_to_copy":  3167838931,
+                   "bytes_imported":  3167838931,
                    "manifest_internal_hash_duplicates":  5
                },
     "media_count":  {

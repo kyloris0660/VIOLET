@@ -30,7 +30,8 @@ Report: `docs/reports/phase-3.5-tier1000-import-summary.json`
 | `failed` | 0 |
 | `media_count.before` | 0 |
 | `media_count.after` | 995 |
-| `estimated_bytes_to_copy` | 3,204,263,387 |
+| `estimated_bytes_to_copy` | 3,167,838,931 |
+| `bytes_imported` | 3,167,838,931 |
 
 The 5 duplicate rows were same-hash duplicates within the manifest, detected safely during per-file transaction recheck. No duplicate file copy was kept for those rows.
 
@@ -75,9 +76,11 @@ Remediation:
   - `content_class_locked`: 0
   - `content_class_reviewed`: 0
 
-## App-level Validation
+## Real Post-import Dev App Smoke
 
-Temporary server:
+This validation used the real imported Tier-1000 data in the development DB. It is useful evidence that the actual imported rows are browseable, but it is separate from the AGENTS.md controlled test-env browser gate.
+
+Temporary dev server:
 
 - URL: `http://127.0.0.1:8012`
 - Branch: `phase3.5-tier1000-db-import`
@@ -119,6 +122,41 @@ Background side-effect audit since import start:
 | `blombooru_tag_translation_jobs` | 0 |
 | `blombooru_tag_translations` | 0 |
 
+## Controlled Test-env App/Browser Smoke
+
+This validation satisfies the AGENTS.md agent-started server rule for non-destructive browser validation. It did not use the development DB and did not validate the real imported Tier-1000 rows; that is covered separately by the dev smoke above.
+
+Temporary test server:
+
+- URL: `http://127.0.0.1:8012`
+- Branch: `phase3.5-tier1000-db-import`
+- Identity check: PASS
+- `VIOLET_ENV`: `test`
+- DB: `blombooru_test`
+- Code root label: `main_repo`
+- Storage root label: `test_storage`
+- Python executable: project venv Python verified by server identity
+- Server process tree stopped after validation: `PID 10396`, `32368`, `28492`
+
+API/static smoke:
+
+| Check | Result |
+|---|---:|
+| `GET /` gallery page | HTTP 200, 117,153 bytes |
+| `GET /api/media?limit=5` total | 112 |
+| Returned items | 5 |
+
+Playwright with system Edge:
+
+| Check | Result |
+|---|---:|
+| Browser project | `msedge` |
+| Gallery status | 200 |
+| Gallery title | `V.I.O.L.E.T.` |
+| Gallery image count | 65 |
+
+The first controlled test-env attempt used a fresh empty storage label and failed the identity endpoint with `Database not initialized`. That server process tree was stopped (`PID 28752`, `34860`) and port 8012 was verified free before retrying with the standard dedicated test storage.
+
 ## Test Results
 
 Commands were run with the approved venv Python:
@@ -136,8 +174,10 @@ Results:
 
 - Python preflight: PASS, `sys.executable` matched approved venv Python, Python 3.12.0.
 - `git diff --check`: PASS.
-- Focused Phase 3.5/import safety suite: PASS.
-- Full non-E2E suite: 864 passed, 10 skipped, 3 warnings.
+- `py_compile scripts/import_staged_manifest.py`: PASS.
+- `tests/test_import_staged_manifest.py`: 20 passed.
+- Focused Phase 3.5/import safety suite: 224 passed, 1 skipped.
+- Full non-E2E suite: 875 passed, 10 skipped, 3 warnings.
 - Warnings: existing Pydantic V2 class-based config deprecation warnings.
 
 ## Safety Confirmation

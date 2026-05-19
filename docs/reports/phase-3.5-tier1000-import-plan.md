@@ -82,6 +82,10 @@ Required output:
 - Dry-run duplicate detection.
 - Internal manifest hash duplicate detection.
 - Execute path stores relative managed paths and generates thumbnails.
+- Execute treats thumbnail generation failure as a per-file failure and does not insert a row with `thumbnail_path=NULL`.
+- Post-import audit counts `thumbnail_path=NULL` as a missing thumbnail.
+- Dry-run `estimated_bytes_to_copy` excludes DB duplicates and internal manifest duplicates.
+- Public report sanitization redacts Windows and common POSIX absolute paths.
 - Rerun duplicate idempotency.
 - Per-file failure rollback and cleanup.
 - Privacy-safe JSON report behavior.

@@ -695,7 +695,9 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Real import: 995 media rows created, 5 same-hash duplicates skipped, 0 failures
 - DB/storage: `blombooru`, app-managed storage recorded in public reports as `app_storage`, `Media.source='violet:tier1000:phase3.5'`
 - Post-import audit: 995 DB rows, 995 originals, 995 thumbnails, 0 missing, source label mismatches 0
-- App validation: `/api/media`, media detail, original file, thumbnail, gallery page, and Playwright Edge smoke all PASS
+- Real post-import dev app smoke: `/api/media`, media detail, original file, thumbnail, gallery page, and Playwright Edge smoke all PASS against the actual imported Tier-1000 rows
+- Controlled test-env app/browser smoke: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, dedicated test storage, server identity PASS, gallery/API/Playwright Edge smoke PASS
+- Closeout hardening: execute rejects NULL-thumbnail imports, post-import audit counts `thumbnail_path=NULL`, public report sanitizer redacts Windows/POSIX absolute paths, and idempotency dry-run reports `estimated_bytes_to_copy=0`
 - Background side effects: 0 AI jobs, 0 classification jobs, 0 translation jobs/translations since import start
 
 ## Recommended Next Phase: 3.6

@@ -41,7 +41,7 @@ Report: `docs/reports/phase-3.5-tier1000-dry-run.json`
 | `invalid` | 0 |
 | `duplicates_by_hash` | 1000 |
 | `would_create` | 0 |
-| `estimated_bytes_to_copy` | 3,204,263,387 |
+| `estimated_bytes_to_copy` | 0 |
 | `media_count.before` | 995 |
 | `media_count.after` | 995 |
 
@@ -66,6 +66,7 @@ Report: `docs/reports/phase-3.5-tier1000-post-import-idempotency-dry-run.json`
 | `target_files_checked` | 1000 |
 | `duplicates_by_hash` | 1000 |
 | `would_create` | 0 |
+| `estimated_bytes_to_copy` | 0 |
 | `invalid` | 0 |
 | `failed` | 0 |
 

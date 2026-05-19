@@ -1,8 +1,8 @@
 {
-  "import_run_id": "045080c8-8f33-44c2-a91e-2adfefda054d",
+  "import_run_id": "4e9e7b3a-c4d8-40ed-bdc8-72fd2b7a7be4",
   "mode": "dry_run",
-  "started_at": "2026-05-19T11:04:13.232258+00:00",
-  "finished_at": "2026-05-19T11:04:18.762494+00:00",
+  "started_at": "2026-05-19T11:46:12.957637+00:00",
+  "finished_at": "2026-05-19T11:46:18.043314+00:00",
   "source_label": "violet:tier1000:phase3.5",
   "expected_copy_count": 1000,
   "audit_summary": {
@@ -61,7 +61,7 @@
     "manifest_internal_hash_duplicates": 0,
     "target_files_checked": 1000,
     "manifest_copy_rows": 1000,
-    "estimated_bytes_to_copy": 3204263387
+    "estimated_bytes_to_copy": 0
   },
   "media_count": {
     "before": 995,

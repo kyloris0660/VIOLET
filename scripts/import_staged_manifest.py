@@ -45,6 +45,10 @@ FORBIDDEN_TEST_DB_NAMES = {"blombooru", "production", "main", "postgres"}
 PUBLIC_STORAGE_LABEL = "app_storage"
 PUBLIC_TARGET_LABEL = "tier1000_staging"
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)\b[A-Z]:\\[^\n\r\"']*")
+POSIX_ABSOLUTE_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_:])/(?:mnt|Volumes|workspace|home|Users|var|tmp|private|opt|srv|data)"
+    r"(?:/[^\s\"']*)*"
+)
 
 DISABLED_FLAG_DEFAULTS = {
     "AI_TAGGING_ENABLED": False,
@@ -609,14 +613,10 @@ def execute_import_items(
             thumbnail_path = context.thumbnail_dir / thumb_filename
             thumb_ok = generate_thumbnail(copied_path, thumbnail_path, metadata["file_type"])
             if not thumb_ok:
-                thumbnail_path = None
+                raise RuntimeError("Thumbnail generation failed")
 
             managed_path = _ensure_storage_relative(copied_path, context.storage_root)
-            managed_thumbnail = (
-                _ensure_storage_relative(thumbnail_path, context.storage_root)
-                if thumbnail_path is not None
-                else None
-            )
+            managed_thumbnail = _ensure_storage_relative(thumbnail_path, context.storage_root)
             file_type = metadata["file_type"]
             if isinstance(file_type, FileTypeEnum):
                 file_type_value = file_type.value
@@ -738,6 +738,8 @@ def post_import_audit(items: list[ImportItem], context: RuntimeContext, engine: 
                 thumbnails_found += 1
             else:
                 missing.append({"id": row["id"], "kind": "thumbnail_missing"})
+        else:
+            missing.append({"id": row["id"], "kind": "thumbnail_null"})
 
         if row.get("source") != IMPORT_SOURCE_LABEL:
             source_label_mismatches += 1
@@ -809,8 +811,13 @@ def sanitize_public_report_value(value: Any) -> Any:
             if needle:
                 sanitized = sanitized.replace(needle, replacement)
         sanitized = WINDOWS_ABSOLUTE_PATH_RE.sub("<redacted_path>", sanitized)
+        sanitized = POSIX_ABSOLUTE_PATH_RE.sub("<redacted_path>", sanitized)
         return sanitized
     return value
+
+
+def estimate_bytes_to_copy(items: Iterable[ImportItem]) -> int:
+    return sum(item.candidate.size_bytes for item in items if item.status == "would_create")
 
 
 def write_report(path: Path, report: ImportReport) -> None:
@@ -902,9 +909,10 @@ def run_import(args: argparse.Namespace) -> int:
     report.storage_stats["before_original"] = directory_stats(context.original_dir)
     report.storage_stats["before_thumbnails"] = directory_stats(context.thumbnail_dir)
 
-    valid, invalid, estimated_bytes = validate_candidates(candidates, target_root)
+    valid, invalid, _ = validate_candidates(candidates, target_root)
     existing_by_hash = get_existing_media_by_hash(engine, [c.file_hash or "" for c in valid])
     items = build_import_items(valid, invalid, existing_by_hash)
+    estimated_bytes = estimate_bytes_to_copy(items)
 
     if execute:
         if invalid:
