@@ -1,0 +1,121 @@
+{
+  "import_run_id": "7b4d55ad-43b0-4ec9-8113-f19ab9aeca3b",
+  "mode": "execute",
+  "started_at": "2026-05-19T08:18:00.162401+00:00",
+  "finished_at": "2026-05-19T08:19:07.847293+00:00",
+  "source_label": "violet:tier1000:phase3.5",
+  "expected_copy_count": 1000,
+  "audit_summary": {
+    "result": "PASS",
+    "expected_copy_count": 1000,
+    "copy_rows": 1000,
+    "target_pass": 1000,
+    "copy_count_matches_expected": true,
+    "total_verified_bytes": 3204263387
+  },
+  "manifest": {
+    "total_rows": 5326,
+    "copy_rows": 1000,
+    "duplicate_target_rows": 0,
+    "duplicate_source_rows": 0
+  },
+  "database": {
+    "violet_env": "development",
+    "db_name": "blombooru",
+    "database_url_safe": "postgresql://postgres:***@localhost:5432/blombooru"
+  },
+  "storage": {
+    "storage_root": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
+    "original_dir": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\media\\original",
+    "thumbnail_dir": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\media\\thumbnails",
+    "target_root": "E:\\VioletPilotData_1000",
+    "target_outside_storage": true,
+    "media_source_label": "violet:tier1000:phase3.5"
+  },
+  "gates": {
+    "background_systems_disabled": true,
+    "disabled_flags": {
+      "AI_TAGGING_ENABLED": true,
+      "AI_AUTO_TAG_AFTER_IMPORT": true,
+      "AI_TAGGING_AUTO_LOCALIZATION": true,
+      "TAG_TRANSLATION_BACKGROUND_ENABLED": true,
+      "TAG_TRANSLATION_AUTO_ENABLED": true,
+      "TAG_TRANSLATION_LLM_ENABLED": true,
+      "ENTITY_ALIAS_RESOLVER_ENABLED": true,
+      "CONTENT_CLASSIFICATION_ENABLED": true,
+      "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT": true
+    },
+    "source_staging_mutation": false,
+    "ai_llm_classification_localization_entity_resolver": "disabled"
+  },
+  "counts": {
+    "invalid": 0,
+    "duplicates_by_hash": 5,
+    "would_create": 0,
+    "imported": 995,
+    "failed": 0,
+    "skipped": 0,
+    "target_files_checked": 1000,
+    "manifest_copy_rows": 1000,
+    "estimated_bytes_to_copy": 3204263387
+  },
+  "media_count": {
+    "before": 0,
+    "after": 995
+  },
+  "storage_stats": {
+    "before_original": {
+      "exists": true,
+      "file_count": 284,
+      "bytes": 2232405586
+    },
+    "before_thumbnails": {
+      "exists": true,
+      "file_count": 283,
+      "bytes": 4727154
+    },
+    "after_original": {
+      "exists": true,
+      "file_count": 1279,
+      "bytes": 5400244517
+    },
+    "after_thumbnails": {
+      "exists": true,
+      "file_count": 1278,
+      "bytes": 21137513
+    }
+  },
+  "imported_media_ids_sample": [
+    712,
+    713,
+    714,
+    715,
+    716,
+    717,
+    718,
+    719,
+    720,
+    721,
+    722,
+    723,
+    724,
+    725,
+    726,
+    727,
+    728,
+    729,
+    730,
+    731
+  ],
+  "post_import_audit": {
+    "imported_ids_checked": 995,
+    "db_rows_found": 995,
+    "original_files_found": 995,
+    "thumbnails_found": 995,
+    "missing": [],
+    "missing_count": 0,
+    "source_label_mismatches": 0
+  },
+  "errors": [],
+  "warnings": []
+}

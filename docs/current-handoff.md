@@ -1,6 +1,6 @@
-# Current Handoff — V.I.O.L.E.T.
+# Current Handoff - V.I.O.L.E.T.
 
-> Last updated after Phase 3.4 — Tier-1000 Pre-import Audit (2026-05-18).
+> Last updated during Phase 3.5 - Tier-1000 DB Import (2026-05-19).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` (all prior phases merged) |
+| **Branch** | `phase3.5-tier1000-db-import` (Phase 3.5 PR in review; `main` contains prior phases through PR #48) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -30,7 +30,8 @@
 | **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`), server runtime Python identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
 | **Phase 3.3a.1 (PR #45)** | PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged — iCloud candidate manifest generation (5,326 rows: 522 existing + 478 new + 4,326 excluded) |
 | **Phase 3.3b (PR #46)** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy executor (1,000 files, 2.98 GB to `E:\VioletPilotData_1000`) |
-| **Phase 3.4 (PR pending)** | Pre-import audit — manifest-vs-disk verification of Tier-1000 staging, 1,000/1,000 PASS |
+| **Phase 3.4 (PR #48)** | PR [#48](https://github.com/kyloris0660/AnimeLocalBooru/pull/48) merged - Tier-1000 pre-import audit, 1,000/1,000 PASS |
+| **Phase 3.5 (branch)** | `phase3.5-tier1000-db-import` - Tier-1000 DB import tooling executed: 995 imported, 5 duplicate hashes skipped, post-import audit PASS |
 
 ## Mandatory Workflow Rules
 
@@ -682,31 +683,38 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - 522 existing files (from medium pilot) + 478 new files from iCloud source
 - Copy-safety: dry-run verification before real execution, file count/size limits enforced
 
-**Phase 3.4 — Tier-1000 Pre-import Audit (PR pending):**
+**Phase 3.4 - Tier-1000 Pre-import Audit (PR [#48](https://github.com/kyloris0660/AnimeLocalBooru/pull/48) merged):**
 - `scripts/audit_tier1000.py`: self-contained manifest-vs-disk verification (no cross-script imports)
 - Verifies: target exists, size matches, extension matches, no path escapes, no unexpected files
 - Real audit: 1,000/1,000 files PASS, 3,204,263,387 bytes verified, zero discrepancies
-- `tests/test_audit_tier1000.py`: 97 tests across 37 classes
-- Codex fixes: Round 1 (P1 self-contained + 2 P2), Round 2 (5 P2), Round 3 (5 P2), Round 4 (1 P1 + 7 P2), Round 5 (4 P2 + 1 P3)
+- `tests/test_audit_tier1000.py`: 110 tests after Phase 3.4 hardening
+- Full non-E2E suite at Phase 3.4 closeout: 855 passed, 10 skipped
 
-## Recommended Next Phase: 3.5
+**Phase 3.5 - Tier-1000 Database Import (branch `phase3.5-tier1000-db-import`):**
+- `scripts/import_staged_manifest.py`: manifest-driven copy-mode importer with dry-run, execute confirmation, privacy-safe JSON report, and local full-path CSV under `.local_manifests/`
+- Real import: 995 media rows created, 5 same-hash duplicates skipped, 0 failures
+- DB/storage: `blombooru`, app-managed storage under `C:\Users\kyloris\Documents\AnimeLocalBooru`, `Media.source='violet:tier1000:phase3.5'`
+- Post-import audit: 995 DB rows, 995 originals, 995 thumbnails, 0 missing, source label mismatches 0
+- App validation: `/api/media`, media detail, original file, thumbnail, gallery page, and Playwright Edge smoke all PASS
+- Background side effects: 0 AI jobs, 0 classification jobs, 0 translation jobs/translations since import start
 
-**Phase 3.5 — Tier-1000 Database Import**
+## Recommended Next Phase: 3.6
 
-Import the 1,000 verified files from `E:\VioletPilotData_1000` into the V.I.O.L.E.T. database. Phase 3.4 audit confirmed all files are intact and match the manifest.
+**Phase 3.6 - Tier-1000 App Validation And Performance Readiness**
 
-### Prerequisites
+Validate the imported Tier-1000 dataset at the app layer before enabling larger pilots or background workers:
 
-1. Phase 3.4 PR merged
-2. Python/venv identity preflight passed
-3. Database backup taken before import
-4. Import plan approved by user
+1. Gallery/search/media-detail workflows with real imported data.
+2. Thumbnail and original-file serving checks across representative media.
+3. Query performance and pagination behavior for 1,000-item scale.
+4. Background worker disable-switch verification before any AI/classification/localization phase.
+5. Preparation for Phase 3.7 failure isolation and Phase 3.8 medium-scale staged imports.
 
 ---
 
 ### Previously planned: Phase 3.2g.3 — Medium Pilot Tier 1
 
-> The following section is retained for reference. Phase 3.5 (Tier-1000 import) takes priority.
+> The following section is retained for reference. Phase 3.6+ stability and scale validation take priority.
 
 **Phase 3.2g.3 — Medium Pilot Tier 1: Complete AI Tagging + Tag Translation**
 
