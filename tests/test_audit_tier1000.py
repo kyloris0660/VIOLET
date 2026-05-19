@@ -125,7 +125,8 @@ class TestPerfectMatch:
         _write_manifest(manifest, [
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
-        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target")])
+        p = _run(["--manifest", str(manifest), "--target-root", str(tmp_path / "target"),
+                  "--expected-copy-count", "1"])
         assert p.returncode == 0
         assert "PASS" in p.stdout
 
@@ -403,7 +404,8 @@ class TestAuditCSVOutput:
         out_csv = tmp_path / "audit.csv"
         p = _run(["--manifest", str(manifest),
                    "--target-root", str(tmp_path / "target"),
-                   "--audit-csv", str(out_csv)])
+                   "--audit-csv", str(out_csv),
+                   "--expected-copy-count", "1"])
         assert p.returncode == 0
         assert out_csv.is_file()
         with open(out_csv, encoding="utf-8") as f:
@@ -420,7 +422,8 @@ class TestAuditCSVOutput:
         out_csv = tmp_path / "audit.csv"
         p = _run(["--manifest", str(manifest),
                    "--target-root", str(tmp_path / "target"),
-                   "--audit-csv", str(out_csv)])
+                   "--audit-csv", str(out_csv),
+                   "--expected-copy-count", "1"])
         assert p.returncode == 0
         with open(out_csv, encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -439,7 +442,8 @@ class TestJSONOutput:
         ])
         p = _run(["--manifest", str(manifest),
                    "--target-root", str(tmp_path / "target"),
-                   "--json"])
+                   "--json",
+                   "--expected-copy-count", "1"])
         assert p.returncode == 0
         data = json.loads(p.stdout)
         assert data["result"] == "PASS"
@@ -454,7 +458,8 @@ class TestJSONOutput:
         out_json = tmp_path / "summary.json"
         p = _run(["--manifest", str(manifest),
                    "--target-root", str(tmp_path / "target"),
-                   "--json-output", str(out_json)])
+                   "--json-output", str(out_json),
+                   "--expected-copy-count", "1"])
         assert p.returncode == 0
         assert out_json.is_file()
         data = json.loads(out_json.read_text(encoding="utf-8"))
@@ -971,6 +976,7 @@ class TestPrivacySafeJSON:
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
             "--json-output", str(json_out),
+            "--expected-copy-count", "1",
         ])
         assert p.returncode == 0
         data = json.loads(json_out.read_text(encoding="utf-8"))
@@ -988,6 +994,7 @@ class TestPrivacySafeJSON:
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
             "--json",
+            "--expected-copy-count", "1",
         ])
         assert p.returncode == 0
         data = json.loads(p.stdout)
@@ -1231,6 +1238,7 @@ class TestCLIOutputWriterErrors:
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
             "--audit-csv", bad_csv,
+            "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
         assert "Traceback" not in p.stderr
@@ -1247,6 +1255,7 @@ class TestCLIOutputWriterErrors:
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
             "--json-output", bad_json,
+            "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
         assert "Traceback" not in p.stderr
@@ -1312,6 +1321,7 @@ class TestOutputWriteFailExitCode:
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
             "--audit-csv", "Z:\\nonexistent_drive\\audit.csv",
+            "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
 
@@ -1325,6 +1335,7 @@ class TestOutputWriteFailExitCode:
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
             "--json-output", "Z:\\nonexistent_drive\\audit.json",
+            "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
 
@@ -1416,3 +1427,205 @@ class TestTargetStatFailureIsAccessError:
         assert len(access_rows) >= 1
         detail = access_rows[0]["detail"]
         assert "stat failed" in detail or "Cannot access target" in detail
+
+
+# ---------------------------------------------------------------------------
+# 38. TestExpectedCopyCountDefault (Round 6 — default 1000)
+# ---------------------------------------------------------------------------
+class TestExpectedCopyCountDefault:
+    def test_1000_copies_passes(self, tmp_path):
+        """Manifest with exactly 1000 copy rows → PASS when expected=1000."""
+        rows = []
+        for i in range(1000):
+            fname = f"img{i:04d}.jpg"
+            src, tgt, size = _setup_pair(tmp_path, name=fname)
+            rows.append(_make_copy_row(i, src, tgt, ".jpg", size))
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, rows)
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    expected_copy_count=1000)
+        assert r["copy_count_matches_expected"] is True
+        assert r["copy_count_mismatch"] is None
+
+    def test_999_copies_fails(self, tmp_path):
+        """Manifest with 999 copy rows → FAIL when expected=1000."""
+        rows = []
+        for i in range(999):
+            fname = f"img{i:04d}.jpg"
+            src, tgt, size = _setup_pair(tmp_path, name=fname)
+            rows.append(_make_copy_row(i, src, tgt, ".jpg", size))
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, rows)
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    expected_copy_count=1000)
+        assert r["copy_count_matches_expected"] is False
+        assert r["copy_count_mismatch"] == -1
+
+
+# ---------------------------------------------------------------------------
+# 39. TestExpectedCopyCountExplicit (Round 6 — explicit override)
+# ---------------------------------------------------------------------------
+class TestExpectedCopyCountExplicit:
+    def test_override_2_with_2_rows_passes(self, tmp_path):
+        """--expected-copy-count 2 with 2 copy rows → PASS."""
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".png", s2),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    expected_copy_count=2)
+        assert r["copy_count_matches_expected"] is True
+        assert r["copy_count_mismatch"] is None
+
+    def test_override_3_with_2_rows_fails(self, tmp_path):
+        """--expected-copy-count 3 with 2 copy rows → FAIL."""
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".png", s2),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    expected_copy_count=3)
+        assert r["copy_count_matches_expected"] is False
+        assert r["copy_count_mismatch"] == -1
+
+    def test_cli_override_passes(self, tmp_path):
+        """CLI --expected-copy-count 2 with 2 copy rows → exit 0."""
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".png", s2),
+        ])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "2"])
+        assert r.returncode == 0
+
+    def test_cli_override_fails(self, tmp_path):
+        """CLI --expected-copy-count 3 with 2 copy rows → exit 4."""
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".png", s2),
+        ])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "3"])
+        assert r.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 40. TestExpectedCopyCountInvalid (Round 6 — invalid values)
+# ---------------------------------------------------------------------------
+class TestExpectedCopyCountInvalid:
+    def test_zero_exits_2(self, tmp_path):
+        """--expected-copy-count 0 → exit 2 (CLI error)."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "0"])
+        assert r.returncode == 2
+        assert "positive integer" in r.stderr.lower() or "must be" in r.stderr.lower()
+
+    def test_negative_exits_2(self, tmp_path):
+        """--expected-copy-count -5 → exit 2 (CLI error)."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "-5"])
+        assert r.returncode == 2
+
+    def test_non_integer_exits_2(self, tmp_path):
+        """--expected-copy-count abc → exit 2 (argparse error)."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "abc"])
+        assert r.returncode == 2
+
+
+# ---------------------------------------------------------------------------
+# 41. TestExpectedCopyCountJSON (Round 6 — JSON output fields)
+# ---------------------------------------------------------------------------
+class TestExpectedCopyCountJSON:
+    def test_json_stdout_includes_fields(self, tmp_path):
+        """--json output includes expected_copy_count and copy_count_matches_expected."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "1",
+                   "--json"])
+        assert r.returncode == 0
+        data = json.loads(r.stdout)
+        assert data["expected_copy_count"] == 1
+        assert data["copy_count_matches_expected"] is True
+        assert data["copy_count_mismatch"] is None
+
+    def test_json_file_includes_fields(self, tmp_path):
+        """JSON file output includes expected_copy_count fields."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        json_out = tmp_path / "out.json"
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "1",
+                   "--json-output", str(json_out)])
+        assert r.returncode == 0
+        data = json.loads(json_out.read_text(encoding="utf-8"))
+        assert data["expected_copy_count"] == 1
+        assert data["copy_count_matches_expected"] is True
+        assert data["copy_count_mismatch"] is None
+
+    def test_json_mismatch_fields(self, tmp_path):
+        """JSON output when count mismatches shows correct values."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        r = _run(["--manifest", str(manifest),
+                   "--target-root", str(tmp_path / "target"),
+                   "--expected-copy-count", "5",
+                   "--json"])
+        assert r.returncode == 4
+        data = json.loads(r.stdout)
+        assert data["expected_copy_count"] == 5
+        assert data["copy_count_matches_expected"] is False
+        assert data["copy_count_mismatch"] == -4
+
+
+# ---------------------------------------------------------------------------
+# 42. TestExpectedCopyCountNone (Round 6 — None when not specified via API)
+# ---------------------------------------------------------------------------
+class TestExpectedCopyCountNone:
+    def test_none_skips_check(self, tmp_path):
+        """expected_copy_count=None → no count check, fields remain None."""
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [_make_copy_row(1, src, tgt, ".jpg", size)])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    expected_copy_count=None)
+        assert r["expected_copy_count"] is None
+        assert r["copy_count_matches_expected"] is None
+        assert r["copy_count_mismatch"] is None
+        # With 1 copy row and no count check, result should be PASS-eligible

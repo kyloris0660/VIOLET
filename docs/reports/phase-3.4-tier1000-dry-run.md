@@ -13,13 +13,14 @@
 完成了以下只读验证工作:
 
 1. 新建 `scripts/audit_tier1000.py` — 自包含的 manifest-vs-disk 验证脚本
-2. 新建 `tests/test_audit_tier1000.py` — 97 个测试用例，37 个测试类
+2. 新建 `tests/test_audit_tier1000.py` — 110 个测试用例，42 个测试类
 3. **成功执行实际审计**: 全部 1,000 个文件通过，零不一致
 4. 修复 1 个 Codex P1 和 2 个 P2 问题 (Round 1)
 5. 修复 5 个 Codex P2 问题 (Round 2, 详见 §6)
 6. 修复 5 个 Codex P2 问题 (Round 3, 详见 §6)
 7. 修复 1 个 Codex P1 和 7 个 P2/主动修复 (Round 4, 详见 §6)
 8. 修复 4 个 Codex P2 和 1 个 P3 问题 (Round 5, 详见 §6)
+9. 修复 1 个 Codex P2 问题 (Round 6, 详见 §6)
 
 **无文件修改、无 import、无 DB、无 LLM、无 AI、无分类。只读验证。**
 
@@ -82,7 +83,7 @@
 
 ## 5. 代码变更
 
-### 新增: `scripts/audit_tier1000.py` (~626 行)
+### 新增: `scripts/audit_tier1000.py` (~662 行)
 
 | 函数 | 说明 |
 |------|------|
@@ -90,13 +91,13 @@
 | `scan_unexpected_files()` | 检测目标目录中不在 manifest 中的文件 |
 | `generate_audit_csv()` | 生成逐行 CSV 审计日志 |
 | `generate_audit_json()` | 生成隐私安全 JSON 摘要 (无绝对路径) |
-| `main()` | CLI 入口: `--manifest`, `--target-root`, `--check-source`, `--audit-csv`, `--json`, `--json-output` |
+| `main()` | CLI 入口: `--manifest`, `--target-root`, `--check-source`, `--audit-csv`, `--json`, `--json-output`, `--expected-copy-count` |
 
 **自包含设计**: 所有辅助函数直接内联，不依赖其他脚本:
 `_clean_field`, `_is_under`, `_is_known_exclusion`, `_path_key`, `_row_has_required_values`,
 `SUPPORTED_EXTENSIONS`, `_REQUIRED_FIELDS`, `KNOWN_EXCLUSION_CODES`, `KNOWN_EXCLUSION_PREFIXES`
 
-### 新增: `tests/test_audit_tier1000.py` (~1430 行, 97 个测试)
+### 新增: `tests/test_audit_tier1000.py` (~1631 行, 110 个测试)
 
 | 测试类 | 测试数 | 说明 |
 |--------|--------|------|
@@ -137,7 +138,12 @@
 | `TestOutputWriteFailExitCode` | 3 | 输出写入失败 → exit 1, 非 exit 0 |
 | `TestSourceAccessNotDoubleCounted` | 3 | 源访问错误不计入 source_missing |
 | `TestTargetStatFailureIsAccessError` | 2 | stat 失败计入 target_access_errors |
-| **合计** | **97** | |
+| `TestExpectedCopyCountDefault` | 2 | 默认 1000: 匹配通过/不匹配失败 |
+| `TestExpectedCopyCountExplicit` | 4 | 显式覆盖: API + CLI 通过/失败 |
+| `TestExpectedCopyCountInvalid` | 3 | 0/负数/非整数 → exit 2 |
+| `TestExpectedCopyCountJSON` | 3 | JSON 输出包含 expected_copy_count 字段 |
+| `TestExpectedCopyCountNone` | 1 | None 跳过检查 |
+| **合计** | **110** | |
 
 ### 新增: `docs/reports/phase-3.4-audit-summary.json`
 
@@ -365,6 +371,27 @@
 
 **修复**: 更新为 "97 tests across 37 classes"，同时更新 Codex 修复描述。
 
+### Round 6 (1 个 P2 修复)
+
+#### P2-R6-1: 审计缺少预期 copy 行数校验 (已修复)
+
+**问题**: 审计脚本不验证 `copy_rows` 是否等于预期的 Tier-1000 数量 (1000)。如果 manifest 因排除逻辑变更导致 copy 行减少 (例如 999 行)，审计仍返回 PASS，可能掩盖配置错误。
+
+**修复**:
+1. `audit_manifest_vs_disk()` 新增 `expected_copy_count: int | None = None` 参数
+2. 审计完成后比较 `copy_rows == expected_copy_count`，记录 `copy_count_matches_expected` (bool) 和 `copy_count_mismatch` (int delta)
+3. `has_discrepancy` 纳入 `copy_count_matches_expected is False`
+4. CLI 新增 `--expected-copy-count <int>` 参数 (默认 1000)，值 < 1 → exit 2
+5. 人类可读报告、JSON 输出 (`--json`, `--json-output`) 均包含新字段
+6. 现有 CLI 测试全部添加 `--expected-copy-count` 以匹配各自 copy 行数
+
+**回归测试**: 5 个新测试类, 13 个新测试:
+- `TestExpectedCopyCountDefault` (2 个): 1000 行匹配 / 999 行失败
+- `TestExpectedCopyCountExplicit` (4 个): API 和 CLI 显式覆盖
+- `TestExpectedCopyCountInvalid` (3 个): 0/负数/非整数 → exit 2
+- `TestExpectedCopyCountJSON` (3 个): JSON stdout/file 包含新字段
+- `TestExpectedCopyCountNone` (1 个): None 跳过检查
+
 ---
 
 ## 7. 退出码设计
@@ -382,14 +409,14 @@
 
 | 测试文件 | 测试数 | 结果 |
 |----------|--------|------|
-| `test_audit_tier1000.py` | 97 | 全部通过 |
-| 全套 (`tests/`) | 842 | 全部通过 (10 skipped) |
+| `test_audit_tier1000.py` | 110 | 全部通过 |
+| 全套 (`tests/`) | 855 | 全部通过 (10 skipped) |
 
 ```
 命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/ -v
 sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
 Python 3.12.0
-842 passed, 10 skipped in 24.07s
+855 passed, 10 skipped in 25.20s
 ```
 
 ---
@@ -401,6 +428,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
     --manifest ".local_manifests/phase-3.3a.1-candidate-manifest.csv" \
     --target-root "E:\VioletPilotData_1000" \
     --check-source \
+    --expected-copy-count 1000 \
     --audit-csv ".local_manifests/phase-3.4-audit.csv" \
     --json-output "docs/reports/phase-3.4-audit-summary.json"
 ```
@@ -414,7 +442,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 **不适用。** Phase 3.4 为 CLI 脚本 (manifest-vs-disk 验证)，无 UI 组件。
 验收通过以下方式完成:
 
-- 97 个单元/集成测试 (tmp_path 隔离, CLI subprocess)
+- 110 个单元/集成测试 (tmp_path 隔离, CLI subprocess)
 - 实际执行审计: 1,000 个文件全部通过
 - JSON/CSV 输出格式验证
 
@@ -422,7 +450,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 
 ## 11. 停止规则
 
-本轮 (Round 5) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
+本轮 (Round 6) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
 且不涉及 false PASS、traceback 或审计数据损坏，则停止扩展 PR #48，建议合并。
 
 ---

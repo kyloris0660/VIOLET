@@ -1,6 +1,6 @@
 {
   "phase": "3.4",
-  "timestamp": "2026-05-19T05:48:29.095444+00:00",
+  "timestamp": "2026-05-19T06:37:23.737002+00:00",
   "manifest_total_rows": 5326,
   "copy_rows": 1000,
   "excluded_rows": 4326,
@@ -29,6 +29,9 @@
   "scan_error_count": 0,
   "scan_errors_redacted": [],
   "result": "PASS",
+  "expected_copy_count": 1000,
+  "copy_count_matches_expected": true,
+  "copy_count_mismatch": null,
   "errors": [],
   "warnings": [],
   "paths_redacted": true

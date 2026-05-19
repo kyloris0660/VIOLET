@@ -129,6 +129,7 @@ def audit_manifest_vs_disk(
     target_root: Path,
     *,
     check_source: bool = False,
+    expected_copy_count: int | None = None,
 ) -> dict:
     """Verify each manifest copy-row against on-disk state.
 
@@ -166,6 +167,9 @@ def audit_manifest_vs_disk(
         "errors": [],
         "warnings": [],
         "scan_errors": [],
+        "expected_copy_count": expected_copy_count,
+        "copy_count_matches_expected": None,
+        "copy_count_mismatch": None,
     }
 
     try:
@@ -371,6 +375,14 @@ def audit_manifest_vs_disk(
     if result["copy_rows"] == 0 and result["manifest_total_rows"] > 0:
         result["warnings"].append("Zero copy rows in non-empty manifest — likely misconfigured exclusion logic")
 
+    if expected_copy_count is not None:
+        matches = result["copy_rows"] == expected_copy_count
+        result["copy_count_matches_expected"] = matches
+        result["copy_count_mismatch"] = (
+            None if matches
+            else result["copy_rows"] - expected_copy_count
+        )
+
     return result
 
 
@@ -449,6 +461,9 @@ def generate_audit_json(summary: dict, output_path: Path) -> None:
             _redact_path(e) for e in summary.get("scan_errors", [])
         ],
         "result": summary.get("result", "UNKNOWN"),
+        "expected_copy_count": summary.get("expected_copy_count"),
+        "copy_count_matches_expected": summary.get("copy_count_matches_expected"),
+        "copy_count_mismatch": summary.get("copy_count_mismatch"),
         "errors": [_redact_path(e) for e in summary.get("errors", [])],
         "warnings": [_redact_path(w) for w in summary.get("warnings", [])],
         "paths_redacted": True,
@@ -474,7 +489,15 @@ def main():
                         help="Print JSON summary to stdout")
     parser.add_argument("--json-output", type=str, default=None,
                         help="Save JSON summary to file")
+    parser.add_argument("--expected-copy-count", type=int, default=1000,
+                        help="Expected number of copy rows (default: 1000). "
+                             "Audit fails if copy_rows != this value.")
     args = parser.parse_args()
+
+    if args.expected_copy_count is not None and args.expected_copy_count < 1:
+        print(f"ERROR: --expected-copy-count must be a positive integer, got {args.expected_copy_count}",
+              file=sys.stderr)
+        sys.exit(2)
 
     manifest_path = Path(args.manifest)
     target_root = Path(args.target_root)
@@ -502,10 +525,12 @@ def main():
         print(f"  Manifest:    {manifest_path}")
         print(f"  Target root: {target_root}")
         print(f"  Check source: {args.check_source}")
+        print(f"  Expected copy count: {args.expected_copy_count}")
         print()
 
     result = audit_manifest_vs_disk(
         manifest_path, target_root, check_source=args.check_source,
+        expected_copy_count=args.expected_copy_count,
     )
 
     if result["errors"]:
@@ -538,6 +563,7 @@ def main():
         or len(result["scan_errors"]) > 0
         or (result["source_checked"] and result["source_missing"] > 0)
         or (result["copy_rows"] == 0 and result["manifest_total_rows"] > 0)
+        or result["copy_count_matches_expected"] is False
     )
     result["result"] = "FAIL" if has_discrepancy else "PASS"
 
@@ -558,6 +584,12 @@ def main():
         print("=== Manifest Summary ===")
         print(f"  Total rows:        {result['manifest_total_rows']}")
         print(f"  Copy rows:         {result['copy_rows']}")
+        if result["expected_copy_count"] is not None:
+            print(f"  Expected copies:   {result['expected_copy_count']}")
+            match_str = "YES" if result["copy_count_matches_expected"] else "NO"
+            print(f"  Count matches:     {match_str}")
+            if result["copy_count_mismatch"] is not None:
+                print(f"  Count mismatch:    {result['copy_count_mismatch']:+d}")
         print(f"  Excluded rows:     {result['excluded_rows']}")
         print(f"  Truncated rows:    {result['truncated_rows']}")
         print()
