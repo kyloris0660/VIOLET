@@ -686,8 +686,8 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - `scripts/audit_tier1000.py`: self-contained manifest-vs-disk verification (no cross-script imports)
 - Verifies: target exists, size matches, extension matches, no path escapes, no unexpected files
 - Real audit: 1,000/1,000 files PASS, 3,204,263,387 bytes verified, zero discrepancies
-- `tests/test_audit_tier1000.py`: 32 tests across 15 classes
-- Codex fixes: P1 (self-contained, no importlib), P2a (truncated rows → exit 4), P2b (resolve() error handling)
+- `tests/test_audit_tier1000.py`: 97 tests across 37 classes
+- Codex fixes: Round 1 (P1 self-contained + 2 P2), Round 2 (5 P2), Round 3 (5 P2), Round 4 (1 P1 + 7 P2), Round 5 (4 P2 + 1 P3)
 
 ## Recommended Next Phase: 3.5
 

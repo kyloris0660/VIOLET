@@ -57,8 +57,8 @@ _REQUIRED_FIELDS = {
 def _redact_path(s: str) -> str:
     """Replace absolute path prefixes with <REDACTED> for privacy-safe output."""
     import re
-    s = re.sub(r'[A-Za-z]:\\[^\s:,;"\'\]]+', "<REDACTED>", s)
-    s = re.sub(r'/(?:home|Users|tmp|var|mnt|media)/[^\s:,;"\'\]]+', "<REDACTED>", s)
+    s = re.sub(r'[A-Za-z]:\\(?:[^\s:,;"\'\]]+(?:\s[^\s:,;"\'\]]+)*)', "<REDACTED>", s)
+    s = re.sub(r'/(?:[A-Za-z0-9_.][^\s:,;"\'\]]*(?:\s[^\s:,;"\'\]]+)*)', "<REDACTED>", s)
     return s
 
 
@@ -313,8 +313,8 @@ def audit_manifest_vs_disk(
         try:
             actual_size = tp.stat().st_size
         except OSError as exc:
-            result["target_missing"] += 1
-            audit_rec["status"] = "MISSING_TARGET"
+            result["target_access_errors"] += 1
+            audit_rec["status"] = "TARGET_ACCESS_ERROR"
             audit_rec["detail"] = f"stat failed: {exc}"
             result["audit_rows"].append(audit_rec)
             continue
@@ -354,8 +354,8 @@ def audit_manifest_vs_disk(
             except OSError as exc:
                 result["source_access_errors"] += 1
                 failures.append(f"Source access error: {exc}")
-                source_exists = False
-            if not source_exists:
+                source_exists = None
+            if source_exists is False:
                 result["source_missing"] += 1
                 failures.append("Source file no longer exists")
 
@@ -598,6 +598,8 @@ def main():
             for w in result["warnings"]:
                 print(f"WARNING: {w}")
 
+    output_write_failed = False
+
     if args.audit_csv:
         try:
             generate_audit_csv(result["audit_rows"], Path(args.audit_csv))
@@ -605,6 +607,7 @@ def main():
                 print(f"\nAudit CSV written to: {args.audit_csv}")
         except OSError as exc:
             print(f"ERROR: Cannot write audit CSV: {exc}", file=sys.stderr)
+            output_write_failed = True
 
     if args.json_output:
         try:
@@ -613,8 +616,14 @@ def main():
                 print(f"JSON summary written to: {args.json_output}")
         except OSError as exc:
             print(f"ERROR: Cannot write JSON output: {exc}", file=sys.stderr)
+            output_write_failed = True
 
-    sys.exit(4 if has_discrepancy else 0)
+    if has_discrepancy:
+        sys.exit(4)
+    elif output_write_failed:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 
 if __name__ == "__main__":

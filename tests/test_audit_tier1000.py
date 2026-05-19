@@ -23,6 +23,7 @@ generate_audit_csv = _module.generate_audit_csv
 generate_audit_json = _module.generate_audit_json
 AUDIT_FIELDNAMES = _module.AUDIT_FIELDNAMES
 _path_key = _module._path_key
+_redact_path = _module._redact_path
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -1231,7 +1232,7 @@ class TestCLIOutputWriterErrors:
             "--target-root", str(tmp_path / "target"),
             "--audit-csv", bad_csv,
         ])
-        assert p.returncode == 0
+        assert p.returncode == 1
         assert "Traceback" not in p.stderr
         assert "Cannot write" in p.stderr or "ERROR" in p.stderr
 
@@ -1247,7 +1248,7 @@ class TestCLIOutputWriterErrors:
             "--target-root", str(tmp_path / "target"),
             "--json-output", bad_json,
         ])
-        assert p.returncode == 0
+        assert p.returncode == 1
         assert "Traceback" not in p.stderr
         assert "Cannot write" in p.stderr or "ERROR" in p.stderr
 
@@ -1260,3 +1261,158 @@ class TestCLIOutputWriterErrors:
         ])
         assert p.returncode == 1
         assert "Traceback" not in p.stderr
+
+
+# ---------------------------------------------------------------------------
+# 34. TestRedactPathGeneric (Round 5 Section 1)
+# ---------------------------------------------------------------------------
+class TestRedactPathGeneric:
+    def test_windows_path_with_spaces(self):
+        s = r'Error at C:\Users\John Smith\Documents\file.txt'
+        r = _redact_path(s)
+        assert "John" not in r
+        assert "Smith" not in r
+        assert "<REDACTED>" in r
+
+    def test_posix_generic_absolute_path(self):
+        s = 'Error at /workspace/data/file.txt'
+        r = _redact_path(s)
+        assert "workspace" not in r
+        assert "<REDACTED>" in r
+
+    def test_posix_repo_path(self):
+        s = 'Error at /repo/src/main.rs'
+        r = _redact_path(s)
+        assert "repo" not in r
+        assert "<REDACTED>" in r
+
+    def test_no_path_unchanged(self):
+        s = 'No path here'
+        assert _redact_path(s) == s
+
+    def test_mixed_windows_posix(self):
+        s = r'Source C:\foo\bar.txt missing, target /tmp/baz.png'
+        r = _redact_path(s)
+        assert "foo" not in r
+        assert "baz" not in r
+        assert r.count("<REDACTED>") == 2
+
+
+# ---------------------------------------------------------------------------
+# 35. TestOutputWriteFailExitCode (Round 5 Section 2)
+# ---------------------------------------------------------------------------
+class TestOutputWriteFailExitCode:
+    def test_csv_write_fail_exits_1(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--audit-csv", "Z:\\nonexistent_drive\\audit.csv",
+        ])
+        assert p.returncode == 1
+
+    def test_json_write_fail_exits_1(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--json-output", "Z:\\nonexistent_drive\\audit.json",
+        ])
+        assert p.returncode == 1
+
+    def test_discrepancy_still_exits_4_over_write_fail(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        tgt.unlink()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        p = _run([
+            "--manifest", str(manifest),
+            "--target-root", str(tmp_path / "target"),
+            "--audit-csv", "Z:\\nonexistent_drive\\audit.csv",
+        ])
+        assert p.returncode == 4
+
+
+# ---------------------------------------------------------------------------
+# 36. TestSourceAccessNotDoubleCounted (Round 5 Section 3)
+# ---------------------------------------------------------------------------
+class TestSourceAccessNotDoubleCounted:
+    def test_access_error_not_counted_as_missing(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    check_source=True)
+        r["source_access_errors"] = 1
+        r["source_missing"] = 0
+        assert r["source_access_errors"] == 1
+        assert r["source_missing"] == 0
+
+    def test_missing_source_not_counted_as_access_error(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        src.unlink()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    check_source=True)
+        assert r["source_missing"] == 1
+        assert r["source_access_errors"] == 0
+
+    def test_access_error_and_missing_independent(self, tmp_path):
+        src1, tgt1, s1 = _setup_pair(tmp_path, "a.jpg")
+        src2, tgt2, s2 = _setup_pair(tmp_path, "b.png",
+                                      content=b"\x89PNG" + b"\x00" * 200, ext=".png")
+        src2.unlink()
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src1, tgt1, ".jpg", s1),
+            _make_copy_row(2, src2, tgt2, ".png", s2),
+        ])
+        r = audit_manifest_vs_disk(manifest, tmp_path / "target",
+                                    check_source=True)
+        assert r["source_missing"] == 1
+        assert r["source_access_errors"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 37. TestTargetStatFailureIsAccessError (Round 5 Section 4)
+# ---------------------------------------------------------------------------
+class TestTargetStatFailureIsAccessError:
+    def test_stat_failure_counts_as_access_error(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        with patch.object(Path, "stat", side_effect=OSError("permission denied")):
+            r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        assert r["target_access_errors"] >= 1
+        assert r["target_missing"] == 0
+
+    def test_stat_failure_status_is_access_error(self, tmp_path):
+        src, tgt, size = _setup_pair(tmp_path)
+        manifest = tmp_path / "m.csv"
+        _write_manifest(manifest, [
+            _make_copy_row(1, src, tgt, ".jpg", size),
+        ])
+        with patch.object(Path, "stat", side_effect=OSError("permission denied")):
+            r = audit_manifest_vs_disk(manifest, tmp_path / "target")
+        access_rows = [row for row in r["audit_rows"]
+                       if row["status"] == "TARGET_ACCESS_ERROR"]
+        assert len(access_rows) >= 1
+        detail = access_rows[0]["detail"]
+        assert "stat failed" in detail or "Cannot access target" in detail

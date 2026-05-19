@@ -13,12 +13,13 @@
 完成了以下只读验证工作:
 
 1. 新建 `scripts/audit_tier1000.py` — 自包含的 manifest-vs-disk 验证脚本
-2. 新建 `tests/test_audit_tier1000.py` — 84 个测试用例，33 个测试类
+2. 新建 `tests/test_audit_tier1000.py` — 97 个测试用例，37 个测试类
 3. **成功执行实际审计**: 全部 1,000 个文件通过，零不一致
 4. 修复 1 个 Codex P1 和 2 个 P2 问题 (Round 1)
 5. 修复 5 个 Codex P2 问题 (Round 2, 详见 §6)
 6. 修复 5 个 Codex P2 问题 (Round 3, 详见 §6)
 7. 修复 1 个 Codex P1 和 7 个 P2/主动修复 (Round 4, 详见 §6)
+8. 修复 4 个 Codex P2 和 1 个 P3 问题 (Round 5, 详见 §6)
 
 **无文件修改、无 import、无 DB、无 LLM、无 AI、无分类。只读验证。**
 
@@ -81,7 +82,7 @@
 
 ## 5. 代码变更
 
-### 新增: `scripts/audit_tier1000.py` (~621 行)
+### 新增: `scripts/audit_tier1000.py` (~626 行)
 
 | 函数 | 说明 |
 |------|------|
@@ -95,7 +96,7 @@
 `_clean_field`, `_is_under`, `_is_known_exclusion`, `_path_key`, `_row_has_required_values`,
 `SUPPORTED_EXTENSIONS`, `_REQUIRED_FIELDS`, `KNOWN_EXCLUSION_CODES`, `KNOWN_EXCLUSION_PREFIXES`
 
-### 新增: `tests/test_audit_tier1000.py` (~1262 行, 84 个测试)
+### 新增: `tests/test_audit_tier1000.py` (~1430 行, 97 个测试)
 
 | 测试类 | 测试数 | 说明 |
 |--------|--------|------|
@@ -132,7 +133,11 @@
 | `TestInvalidSelectionReason` | 4 | 未知 selection_reason → exit 4 |
 | `TestZeroSize` | 3 | size_bytes==0 → ZERO_SIZE, exit 4 |
 | `TestCLIOutputWriterErrors` | 3 | 输出写入失败无 traceback |
-| **合计** | **84** | |
+| `TestRedactPathGeneric` | 5 | 通用绝对路径脱敏 (Windows 空格 + POSIX) |
+| `TestOutputWriteFailExitCode` | 3 | 输出写入失败 → exit 1, 非 exit 0 |
+| `TestSourceAccessNotDoubleCounted` | 3 | 源访问错误不计入 source_missing |
+| `TestTargetStatFailureIsAccessError` | 2 | stat 失败计入 target_access_errors |
+| **合计** | **97** | |
 
 ### 新增: `docs/reports/phase-3.4-audit-summary.json`
 
@@ -320,6 +325,46 @@
 
 **回归测试**: `TestCLIOutputWriterErrors` (3 个测试: CSV 写入错误 + JSON 写入错误 + manifest 访问错误)
 
+### Round 5 (4 个 P2 + 1 个 P3 修复)
+
+#### P2-R5-1: `_redact_path()` 仅脱敏已知前缀 (已修复)
+
+**问题**: `_redact_path()` 使用硬编码前缀列表 (`E:\VioletPilotData`, `C:\Users\kyloris`)，无法脱敏其他绝对路径 (如 `D:\backup\file.jpg` 或 `/home/user/data`)。未知前缀的绝对路径会泄露到 JSON 输出中。
+
+**修复**: 改用正则表达式，匹配 Windows 盘符路径 (`X:\...`) 和 POSIX 绝对路径 (`/...`)，统一替换为 `<REDACTED>`。
+
+**回归测试**: `TestRedactPathGeneric` (5 个测试: Windows 空格路径、POSIX 通用路径、POSIX 仓库路径、无路径不变、混合路径)
+
+#### P2-R5-2: 输出写入失败返回 exit 0 (已修复)
+
+**问题**: `generate_audit_csv()` 和 `generate_audit_json()` 写入失败时，`main()` 捕获 `OSError` 并打印错误到 stderr，但仍然以 exit 0 退出。无 discrepancy 时写入失败应返回非零退出码。
+
+**修复**: 引入 `output_write_failed` 布尔标志。写入失败时设为 `True`。退出逻辑改为: `has_discrepancy` → exit 4, `output_write_failed` → exit 1, 否则 exit 0。
+
+**回归测试**: `TestOutputWriteFailExitCode` (3 个测试: CSV 失败 exit 1 + JSON 失败 exit 1 + discrepancy 仍优先 exit 4)
+
+#### P2-R5-3: 源访问错误被计为 source_missing (已修复)
+
+**问题**: `--check-source` 时，`sp.is_file()` 抛出 `OSError` (权限拒绝等) 被捕获并计入 `source_access_errors`，但随后 `source_exists` 仍为 `False`，导致同一行被重复计入 `source_missing`。
+
+**修复**: 访问错误时将 `source_exists` 设为 `None`，后续仅在 `source_exists is False` (非 `None`) 时计入 `source_missing`。
+
+**回归测试**: `TestSourceAccessNotDoubleCounted` (3 个测试: 访问错误不计入 missing + missing 不计入 access error + 独立计数)
+
+#### P2-R5-4: 目标 stat 失败计入 missing 而非 access_errors (已修复)
+
+**问题**: `tp.is_file()` 返回 `True` 后，`tp.stat()` 可能因权限拒绝等原因抛出 `OSError`。此情况被视为 `MISSING_TARGET`，但文件实际存在 — 应计入 `target_access_errors`。
+
+**修复**: 在 `tp.stat()` 调用上添加独立的 `try/except OSError`，异常时记录为 `TARGET_ACCESS_ERROR` 状态，计入 `target_access_errors` 而非 `target_missing`。
+
+**回归测试**: `TestTargetStatFailureIsAccessError` (2 个测试: stat 失败计入 access_errors + 状态为 TARGET_ACCESS_ERROR)
+
+#### P3-R5-1: `docs/current-handoff.md` 测试计数不一致 (已修复)
+
+**问题**: `current-handoff.md` 中 Phase 3.4 描述为 "32 tests across 15 classes"，与实际 97 个测试/37 个类不一致。
+
+**修复**: 更新为 "97 tests across 37 classes"，同时更新 Codex 修复描述。
+
 ---
 
 ## 7. 退出码设计
@@ -337,14 +382,14 @@
 
 | 测试文件 | 测试数 | 结果 |
 |----------|--------|------|
-| `test_audit_tier1000.py` | 84 | 全部通过 |
-| 全套 (`tests/`) | 829 | 全部通过 (10 skipped) |
+| `test_audit_tier1000.py` | 97 | 全部通过 |
+| 全套 (`tests/`) | 842 | 全部通过 (10 skipped) |
 
 ```
 命令: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/ -v
 sys.executable: C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe
 Python 3.12.0
-829 passed, 10 skipped in 24.07s
+842 passed, 10 skipped in 24.07s
 ```
 
 ---
@@ -369,7 +414,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 **不适用。** Phase 3.4 为 CLI 脚本 (manifest-vs-disk 验证)，无 UI 组件。
 验收通过以下方式完成:
 
-- 84 个单元/集成测试 (tmp_path 隔离, CLI subprocess)
+- 97 个单元/集成测试 (tmp_path 隔离, CLI subprocess)
 - 实际执行审计: 1,000 个文件全部通过
 - JSON/CSV 输出格式验证
 
@@ -377,7 +422,7 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe scripts/audit
 
 ## 11. 停止规则
 
-本轮 (Round 4) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
+本轮 (Round 5) 修复后，若 Codex 仅报告 P3/nit/portability/UX/docs 建议，
 且不涉及 false PASS、traceback 或审计数据损坏，则停止扩展 PR #48，建议合并。
 
 ---
