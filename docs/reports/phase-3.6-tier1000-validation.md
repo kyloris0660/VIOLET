@@ -100,3 +100,52 @@ Checks:
 - No API keys or auth header values recorded
 - No push to `main`
 - No merge
+
+## Reviewer Closeout Hardening
+
+Implemented after the original Phase 3.6 run; no full AI tagging or full localization rerun was performed.
+
+- AI launch now checks `blombooru_ai_tag_jobs` for DB-backed active statuses: `pending`, `running`, `cancelling`.
+- Historical `completed`, `failed`, and `cancelled` AI jobs do not block new runs.
+- If classification jobs or translation jobs are created during the AI tagging portion, the runner now marks the report failed and exits nonzero.
+- Localization now exits nonzero when the LLM provider is unavailable with candidates, or when any localization candidate fails.
+- If translation save/finalization fails after a `TagTranslationJob` row exists, the runner rolls back the current transaction, marks that job `failed`, sets `finished_at`, records a sanitized error, writes the report, and exits nonzero.
+
+## Manual Inspection Questions
+
+### AI Tagging Admin Panel
+
+The current Admin AI tagging panel is expected to show job creation and job history, not an aggregate dashboard like the tag localization panel. Aggregate Phase 3.6 metrics are currently available in the reports and APIs, including:
+
+- `target_media_with_ai_tags`: `995`
+- confirmed AI associations: `41416`
+- AI suggestions: `11938`
+- media-tag association delta: `53354`
+
+Recommended future task: add a small read-only AI tagging aggregate summary to Admin, showing total scoped media, tagged media, untagged media, confirmed AI tags, and suggestions. This PR intentionally does not expand UI scope.
+
+### Tag Localization Pending Count
+
+Read-only DB validation after closeout:
+
+- total tags: `3267`
+- non-rejected `zh-CN` translations: `3162`
+- missing translations excluding static dictionary: `106`
+- missing breakdown: `character = 106`
+- target Phase 3.6 visual/general/meta missing translations: `0`
+- target Phase 3.6 proper-noun missing translations: `102` (`character = 102`)
+- review pending translations: `91` (`general = 14`, `character = 77`, source `llm`, status `translated`)
+
+The remaining pending count is expected because Phase 3.6 intentionally skipped proper nouns and did not run Entity Alias Resolver. No scoped localization fix is needed for visual/general/meta tags.
+
+### Content Classification Panel
+
+The classification panel showing `995` total, `0` classified, `995` unclassified is expected for Phase 3.6.
+
+- target Phase 3.6 media count: `995`
+- target classified count: `0`
+- target unclassified count: `995`
+- classification job delta during AI tagging: `0`
+- classification job statuses in DB: historical `completed = 4`, no new Phase 3.6 classification run
+
+Content classification was intentionally not triggered in Phase 3.6.

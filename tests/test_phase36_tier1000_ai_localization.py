@@ -10,6 +10,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -29,7 +30,7 @@ SPEC.loader.exec_module(phase36)
 
 from app.database import Base  # noqa: E402
 from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
-from app.models import Media, Tag, TagTranslation, blombooru_media_tags  # noqa: E402
+from app.models import AITagJob, Media, Tag, TagTranslation, TagTranslationJob, blombooru_media_tags  # noqa: E402
 
 
 @pytest.fixture()
@@ -265,6 +266,207 @@ def test_ai_gate_requires_llm_disabled_during_ai_tagging():
 
     with pytest.raises(RuntimeError, match="TAG_TRANSLATION_LLM_ENABLED"):
         phase36.validate_ai_gates(settings)
+
+
+def test_db_backed_active_ai_jobs_block_new_ai_chunks(db):
+    blocking = [
+        AITagJob(status="pending", trigger_source="manual"),
+        AITagJob(status="running", trigger_source="phase3.6"),
+        AITagJob(status="cancelling", trigger_source="manual"),
+    ]
+    historical = [
+        AITagJob(status="completed", trigger_source="phase3.6"),
+        AITagJob(status="failed", trigger_source="phase3.6"),
+        AITagJob(status="cancelled", trigger_source="phase3.6"),
+    ]
+    db.add_all(blocking + historical)
+    db.commit()
+
+    active = phase36.find_active_ai_jobs(db)
+    assert [job["status"] for job in active] == ["pending", "running", "cancelling"]
+    with pytest.raises(RuntimeError, match="Active AI tagging jobs"):
+        phase36.ensure_no_db_active_ai_jobs(db)
+
+    for job in blocking:
+        job.status = "completed"
+    db.commit()
+    assert phase36.find_active_ai_jobs(db) == []
+    phase36.ensure_no_db_active_ai_jobs(db)
+
+
+def test_db_active_ai_job_summary_is_sanitized(db):
+    db.add(AITagJob(status="pending", trigger_source="C:\\Users\\person\\secret"))
+    db.commit()
+
+    with pytest.raises(RuntimeError) as exc_info:
+        phase36.ensure_no_db_active_ai_jobs(db)
+
+    message = str(exc_info.value)
+    assert "C:\\" not in message
+    assert "secret" not in message
+
+
+def test_forbidden_side_effect_job_delta_fails_phase_isolation():
+    payload = {
+        "safety": {
+            "content_classification_jobs_delta": 1,
+            "translation_jobs_delta_during_ai": 0,
+        },
+        "errors": [],
+    }
+
+    with pytest.raises(phase36.Phase36RunFailed):
+        phase36.assert_no_forbidden_ai_side_effects(payload)
+
+    assert payload["success"] is False
+    assert payload["status"] == "failed_phase_isolation_violation"
+    assert payload["safety"]["phase_isolation_passed"] is False
+
+
+def test_translation_side_effect_job_delta_fails_phase_isolation():
+    payload = {
+        "safety": {
+            "content_classification_jobs_delta": 0,
+            "translation_jobs_delta_during_ai": 1,
+        },
+        "errors": [],
+    }
+
+    with pytest.raises(phase36.Phase36RunFailed):
+        phase36.assert_no_forbidden_ai_side_effects(payload)
+
+
+def test_zero_side_effect_job_delta_passes_phase_isolation():
+    payload = {
+        "safety": {
+            "content_classification_jobs_delta": 0,
+            "translation_jobs_delta_during_ai": 0,
+        },
+        "errors": [],
+    }
+
+    phase36.assert_no_forbidden_ai_side_effects(payload)
+    assert payload["safety"].get("phase_isolation_passed") is not False
+
+
+def test_main_exits_nonzero_for_failed_localization_payload(monkeypatch, capsys):
+    def fake_localize(_args):
+        return {
+            "mode": "controlled_localization_execute",
+            "success": False,
+            "status": "failed_provider_unavailable",
+            "candidates": 3,
+            "failed": 3,
+            "errors": ["LLM provider not available or not configured"],
+        }
+
+    monkeypatch.setattr(phase36, "run_controlled_localization", fake_localize)
+
+    code = phase36.main(
+        [
+            "localize",
+            "--confirm-phase36",
+            phase36.CONFIRM_PHRASE,
+            "--db-backup-file",
+            "backup.dump",
+            "--report-json",
+            "report.json",
+        ]
+    )
+
+    assert code == 1
+    assert "failed_provider_unavailable" in capsys.readouterr().out
+
+
+def test_main_exits_nonzero_for_failed_localization_candidates(monkeypatch):
+    def fake_localize(_args):
+        return {
+            "mode": "controlled_localization_execute",
+            "success": False,
+            "status": "failed_partial",
+            "candidates": 3,
+            "translated": 2,
+            "failed": 1,
+            "errors": ["one candidate failed"],
+        }
+
+    monkeypatch.setattr(phase36, "run_controlled_localization", fake_localize)
+
+    assert (
+        phase36.main(
+            [
+                "localize",
+                "--confirm-phase36",
+                phase36.CONFIRM_PHRASE,
+                "--db-backup-file",
+                "backup.dump",
+                "--report-json",
+                "report.json",
+            ]
+        )
+        == 1
+    )
+
+
+def test_main_allows_localization_noop_success(monkeypatch):
+    def fake_localize(_args):
+        return {
+            "mode": "controlled_localization_execute",
+            "success": True,
+            "status": "noop_no_candidates",
+            "candidates": 0,
+            "failed": 0,
+            "errors": [],
+        }
+
+    monkeypatch.setattr(phase36, "run_controlled_localization", fake_localize)
+
+    assert (
+        phase36.main(
+            [
+                "localize",
+                "--confirm-phase36",
+                phase36.CONFIRM_PHRASE,
+                "--db-backup-file",
+                "backup.dump",
+                "--report-json",
+                "report.json",
+            ]
+        )
+        == 0
+    )
+
+
+def test_translation_job_marked_failed_after_save_or_finalize_error(db):
+    job = TagTranslationJob(
+        status="running",
+        source="phase3.6",
+        language="zh-CN",
+        category="general,meta",
+        processed=0,
+        translated=0,
+        failed=0,
+        skipped=0,
+        remaining_before=2,
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    failed = phase36.mark_translation_job_failed(
+        db,
+        job,
+        error="save failed at C:\\Users\\person\\secret\\file.jpg",
+        total_candidates=2,
+        processed=1,
+    )
+
+    assert failed.status == "failed"
+    assert failed.processed == 1
+    assert failed.failed == 1
+    assert failed.finished_at is not None
+    assert "C:\\" not in (failed.last_error or "")
 
 
 def test_chunked_never_emits_empty_chunks():

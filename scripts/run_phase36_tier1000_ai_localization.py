@@ -36,6 +36,15 @@ PUBLIC_PATH_REDACTION = "<redacted_path>"
 SECRET_REDACTION = "<redacted_secret>"
 LOCALIZABLE_CATEGORIES = ("general", "meta")
 PROPER_NOUN_CATEGORIES = ("character", "copyright", "artist")
+ACTIVE_AI_JOB_STATUSES = ("pending", "running", "cancelling")
+
+
+class Phase36RunFailed(RuntimeError):
+    """A controlled Phase 3.6 command wrote its report but must exit nonzero."""
+
+    def __init__(self, message: str, payload: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.payload = payload
 
 
 def utc_now() -> str:
@@ -185,6 +194,86 @@ def count_translation_jobs(db: Session) -> int:
     from app.models import TagTranslationJob
 
     return int(db.query(func.count(TagTranslationJob.id)).scalar() or 0)
+
+
+def find_active_ai_jobs(db: Session) -> List[Dict[str, Any]]:
+    """Return DB-backed active AI jobs that could collide with Phase 3.6 chunks."""
+    from app.models import AITagJob
+
+    rows = (
+        db.query(AITagJob)
+        .filter(AITagJob.status.in_(ACTIVE_AI_JOB_STATUSES))
+        .order_by(AITagJob.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": int(job.id),
+            "status": str(job.status),
+            "trigger_source": str(job.trigger_source),
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+        }
+        for job in rows
+    ]
+
+
+def ensure_no_db_active_ai_jobs(db: Session) -> None:
+    active_jobs = find_active_ai_jobs(db)
+    if active_jobs:
+        safe_summary = json.dumps(sanitize_public_obj(active_jobs), ensure_ascii=False)
+        raise RuntimeError(f"Active AI tagging jobs already exist in DB: {safe_summary}")
+
+
+def apply_failure_status(payload: Dict[str, Any], *, status: str, error: str) -> Dict[str, Any]:
+    payload["success"] = False
+    payload["status"] = status
+    payload.setdefault("errors", []).append(sanitize_public_text(error))
+    payload["finished_at"] = utc_now()
+    return payload
+
+
+def assert_no_forbidden_ai_side_effects(payload: Dict[str, Any]) -> None:
+    safety = payload.get("safety", {})
+    violations = {}
+    if int(safety.get("content_classification_jobs_delta", 0) or 0) != 0:
+        violations["content_classification_jobs_delta"] = safety["content_classification_jobs_delta"]
+    if int(safety.get("translation_jobs_delta_during_ai", 0) or 0) != 0:
+        violations["translation_jobs_delta_during_ai"] = safety["translation_jobs_delta_during_ai"]
+    if violations:
+        safety["phase_isolation_passed"] = False
+        payload["safety"] = safety
+        apply_failure_status(
+            payload,
+            status="failed_phase_isolation_violation",
+            error=f"Forbidden Phase 3.6 side-effect jobs were created: {violations}",
+        )
+        raise Phase36RunFailed("Forbidden side-effect jobs were created during AI tagging", payload)
+
+
+def mark_translation_job_failed(
+    db: Session,
+    job: Any,
+    *,
+    error: str,
+    total_candidates: int,
+    processed: int = 0,
+) -> Any:
+    safe_error = sanitize_public_text(error)[:2000]
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    job = db.merge(job)
+    job.status = "failed"
+    job.processed = max(int(processed or 0), 0)
+    job.failed = max(int(total_candidates) - job.processed, int(total_candidates) if processed == 0 else 0)
+    job.last_error = safe_error
+    job.error_message = safe_error
+    job.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(job)
+    return job
 
 
 def count_missing_by_categories(
@@ -399,6 +488,7 @@ def run_ai_tagging_controlled(args: argparse.Namespace) -> Dict[str, Any]:
             backup_file=Path(args.db_backup_file) if args.db_backup_file else None,
         )
         ai_gates = validate_ai_gates(settings)
+        ensure_no_db_active_ai_jobs(db)
         if is_ai_job_active():
             raise RuntimeError("An AI tagging job is already active")
 
@@ -510,10 +600,19 @@ def run_ai_tagging_controlled(args: argparse.Namespace) -> Dict[str, Any]:
                 "translation_jobs_delta_during_ai": after["translation_jobs"] - before["translation_jobs"],
                 "entity_alias_resolver": "not_run",
                 "source_staging_mutation": False,
+                "phase_isolation_passed": True,
             },
+            "success": True,
+            "status": "completed",
             "errors": [],
             "warnings": [],
         }
+        try:
+            assert_no_forbidden_ai_side_effects(payload)
+        except Phase36RunFailed as exc:
+            if args.report_json:
+                write_public_json(Path(args.report_json), exc.payload or payload)
+            raise
         if args.report_json:
             write_public_json(Path(args.report_json), payload)
         return payload
@@ -645,27 +744,35 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
             "skipped": 0,
             "job_id": None,
             "provider_available": provider.is_available(),
+            "success": True,
+            "status": "running",
             "errors": [],
             "warnings": [],
         }
 
-        if not provider.is_available():
-            result["failed"] = len(candidates)
-            result["errors"].append("LLM provider not available or not configured")
+        if not candidates:
+            result["status"] = "noop_no_candidates"
             result["after"] = collect_baseline(db, args.source_label, lang=args.lang)
             result["delta"] = metric_delta(before, result["after"])
+            result["remaining_missing"] = result["after"]["target_missing_visual_translations"]
             result["finished_at"] = utc_now()
             if args.report_json:
                 write_public_json(Path(args.report_json), result)
             return result
 
-        if not candidates:
+        if not provider.is_available():
+            apply_failure_status(
+                result,
+                status="failed_provider_unavailable",
+                error="LLM provider not available or not configured",
+            )
+            result["failed"] = len(candidates)
             result["after"] = collect_baseline(db, args.source_label, lang=args.lang)
             result["delta"] = metric_delta(before, result["after"])
-            result["finished_at"] = utc_now()
+            result["remaining_missing"] = result["after"]["target_missing_visual_translations"]
             if args.report_json:
                 write_public_json(Path(args.report_json), result)
-            return result
+            raise Phase36RunFailed("LLM provider unavailable with localization candidates", result)
 
         job = TagTranslationJob(
             status="running",
@@ -694,66 +801,93 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
             translations = await_provider(provider, tag_inputs)
         except Exception as exc:
             safe_error = sanitize_public_text(_sanitize_error_message(str(exc)))[:2000]
-            job.status = "failed"
-            job.failed = len(candidates)
-            job.processed = len(candidates)
-            job.last_error = safe_error
-            job.error_message = safe_error
-            job.finished_at = datetime.now(timezone.utc)
-            db.commit()
+            job = mark_translation_job_failed(
+                db,
+                job,
+                error=safe_error,
+                total_candidates=len(candidates),
+                processed=0,
+            )
+            result["job_id"] = job.id
             result["failed"] = len(candidates)
-            result["errors"].append(safe_error)
+            apply_failure_status(result, status="failed_provider_error", error=safe_error)
             result["after"] = collect_baseline(db, args.source_label, lang=args.lang)
             result["delta"] = metric_delta(before, result["after"])
-            result["finished_at"] = utc_now()
+            result["remaining_missing"] = result["after"]["target_missing_visual_translations"]
             if args.report_json:
                 write_public_json(Path(args.report_json), result)
-            return result
+            raise Phase36RunFailed("LLM provider failed during controlled localization", result)
 
         candidate_by_name = {item["canonical_name"]: item for item in candidates}
         seen = set()
-        for translation in translations:
-            canonical = getattr(translation, "canonical_name", "")
-            if canonical not in candidate_by_name:
-                result["skipped"] += 1
-                continue
-            seen.add(canonical)
-            item = candidate_by_name[canonical]
-            saved = upsert_translation(
-                db,
-                canonical_name=canonical,
-                display_name=getattr(translation, "display_name_zh", ""),
-                lang=args.lang,
-                aliases=getattr(translation, "aliases_zh", []) or [],
-                category=item["category"],
-                source="llm",
-                status="translated",
-                confidence=getattr(translation, "confidence", None),
-                needs_review=bool(getattr(translation, "needs_review", False)),
-                provider=provider.get_provider_name(),
-            )
-            if saved is None:
-                result["skipped"] += 1
-            else:
-                result["translated"] += 1
+        try:
+            for translation in translations:
+                canonical = getattr(translation, "canonical_name", "")
+                if canonical not in candidate_by_name:
+                    result["skipped"] += 1
+                    continue
+                seen.add(canonical)
+                item = candidate_by_name[canonical]
+                saved = upsert_translation(
+                    db,
+                    canonical_name=canonical,
+                    display_name=getattr(translation, "display_name_zh", ""),
+                    lang=args.lang,
+                    aliases=getattr(translation, "aliases_zh", []) or [],
+                    category=item["category"],
+                    source="llm",
+                    status="translated",
+                    confidence=getattr(translation, "confidence", None),
+                    needs_review=bool(getattr(translation, "needs_review", False)),
+                    provider=provider.get_provider_name(),
+                )
+                if saved is None:
+                    result["skipped"] += 1
+                else:
+                    result["translated"] += 1
 
-        result["failed"] = max(0, len(candidates) - len(seen))
-        result["skipped"] += skipped_proper_nouns
-        invalidate_translation_cache()
-        after = collect_baseline(db, args.source_label, lang=args.lang)
-        job.status = "completed" if result["failed"] == 0 else "completed_errors"
-        job.processed = len(candidates)
-        job.translated = result["translated"]
-        job.failed = result["failed"]
-        job.skipped = result["skipped"]
-        job.remaining_after = after["target_missing_visual_translations"]
-        job.finished_at = datetime.now(timezone.utc)
-        db.commit()
+            result["failed"] = max(0, len(candidates) - len(seen))
+            result["skipped"] += skipped_proper_nouns
+            invalidate_translation_cache()
+            after = collect_baseline(db, args.source_label, lang=args.lang)
+            job.status = "completed" if result["failed"] == 0 else "failed"
+            job.processed = len(candidates)
+            job.translated = result["translated"]
+            job.failed = result["failed"]
+            job.skipped = result["skipped"]
+            job.remaining_after = after["target_missing_visual_translations"]
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
+        except Exception as exc:
+            safe_error = sanitize_public_text(_sanitize_error_message(str(exc)))[:2000]
+            job = mark_translation_job_failed(
+                db,
+                job,
+                error=safe_error,
+                total_candidates=len(candidates),
+                processed=len(seen),
+            )
+            result["job_id"] = job.id
+            result["failed"] = max(1, len(candidates) - len(seen))
+            apply_failure_status(result, status="failed_save_or_finalize_error", error=safe_error)
+            try:
+                result["after"] = collect_baseline(db, args.source_label, lang=args.lang)
+                result["delta"] = metric_delta(before, result["after"])
+                result["remaining_missing"] = result["after"]["target_missing_visual_translations"]
+            except Exception as audit_exc:
+                result["warnings"].append(
+                    f"post-failure baseline collection failed: {sanitize_public_text(str(audit_exc))}"
+                )
+            if args.report_json:
+                write_public_json(Path(args.report_json), result)
+            raise Phase36RunFailed("Controlled localization failed while saving/finalizing translations", result)
 
         result["after"] = after
         result["delta"] = metric_delta(before, after)
         result["remaining_missing"] = after["target_missing_visual_translations"]
         result["finished_at"] = utc_now()
+        result["status"] = "completed" if result["failed"] == 0 else "failed_partial"
+        result["success"] = result["failed"] == 0
         sys.stderr.write(
             f"completed_localization job_id={job.id} translated={result['translated']} "
             f"failed={result['failed']} skipped={result['skipped']}\n"
@@ -761,6 +895,8 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
         sys.stderr.flush()
         if args.report_json:
             write_public_json(Path(args.report_json), result)
+        if result["failed"]:
+            raise Phase36RunFailed("Controlled localization finished with failed candidates", result)
         return result
     finally:
         db.close()
@@ -810,11 +946,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             parser.error(f"Unknown command: {args.command}")
             return 2
+    except Phase36RunFailed as exc:
+        sys.stderr.write(sanitize_public_text(str(exc)) + "\n")
+        if exc.payload is not None:
+            sys.stdout.write(json.dumps(sanitize_public_obj(exc.payload), ensure_ascii=False, indent=2) + "\n")
+        return 1
     except Exception as exc:
         sys.stderr.write(sanitize_public_text(str(exc)) + "\n")
         return 1
 
     sys.stdout.write(json.dumps(sanitize_public_obj(payload), ensure_ascii=False, indent=2) + "\n")
+    if payload.get("success") is False:
+        return 1
     return 0
 
 

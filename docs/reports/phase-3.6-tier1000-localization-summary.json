@@ -108,5 +108,13 @@
     "translation_jobs": 1
   },
   "remaining_missing": 0,
-  "finished_at": "2026-05-19T13:13:09.630654+00:00"
+  "finished_at": "2026-05-19T13:13:09.630654+00:00",
+  "success": true,
+  "status": "completed",
+  "closeout_hardening": {
+    "provider_unavailable_with_candidates_exits_nonzero": true,
+    "failed_candidates_exit_nonzero": true,
+    "translation_job_save_or_finalize_errors_mark_failed": true,
+    "full_localization_rerun": false
+  }
 }

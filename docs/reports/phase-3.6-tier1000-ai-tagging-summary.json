@@ -802,7 +802,20 @@
     "content_classification_jobs_delta": 0,
     "translation_jobs_delta_during_ai": 0,
     "entity_alias_resolver": "not_run",
-    "source_staging_mutation": false
+    "source_staging_mutation": false,
+    "phase_isolation_passed": true
+  },
+  "success": true,
+  "status": "completed",
+  "closeout_hardening": {
+    "db_backed_active_ai_job_check": true,
+    "active_ai_statuses_blocked": [
+      "pending",
+      "running",
+      "cancelling"
+    ],
+    "forbidden_side_effect_job_deltas_exit_nonzero": true,
+    "full_ai_tagging_rerun": false
   },
   "errors": [],
   "warnings": []

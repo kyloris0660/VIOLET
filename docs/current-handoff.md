@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.6 - Tier-1000 AI Tagging + Localization (2026-05-19).
+> Last updated during Phase 3.6 - Tier-1000 AI Tagging + Localization closeout (2026-05-20).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -709,6 +709,8 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - AI isolation: classification job delta 0, translation job delta during AI 0, auto-localization skipped by `AI_TAGGING_AUTO_LOCALIZATION=false`
 - Localization result: 1196 visual/general/meta candidates translated, failed 0, remaining target visual missing translations 0, proper-noun candidates skipped 102, translation job ID 15
 - Validation: real dev DB API + Playwright Edge smoke PASS; controlled `VIOLET_ENV=test` server identity + API/browser smoke PASS
+- Closeout hardening: Phase 3.6 runner now blocks DB-backed active AI jobs (`pending`/`running`/`cancelling`), hard-fails forbidden classification/translation side-effect job deltas during AI, exits nonzero on localization provider/candidate failures, and marks `TagTranslationJob` failed on save/finalization exceptions
+- Manual inspection notes: Admin AI tagging currently lacks an aggregate dashboard by design; read-only DB validation found 106 pending translations are all `character` tags, target visual/general/meta pending is 0, and content classification remains intentionally unrun (`995` unclassified)
 - Phase 4 not started; Entity Resolver not run; content classification not run
 
 ## Recommended Next Step: Manual Validation Before Scaling
