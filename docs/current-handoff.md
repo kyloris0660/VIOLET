@@ -723,6 +723,8 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Side effects: classification jobs +10; AI jobs delta 0; translation jobs delta 0; tag rows delta 0; target AI association delta 0
 - Tag scope gate: future tag-derived workflows must include only `anime` and `unknown`; `illustration`, `non_anime`, and `unclassified` are excluded from future AI tagging candidate selection, localization candidate selection, tag statistics, and tag-driven similarity
 - Scope audit found 969 eligible media and 26 ineligible media. Existing Phase 3.6 AI associations on ineligible media are audit evidence only; no tag/media cleanup was performed.
+- Closeout fix: metadata extraction now recursively sanitizes PIL/EXIF/XMP values before JSON response, preventing `IFDRational`/`jsonable_encoder` 500s on `/api/media/{id}/metadata`.
+- Closeout validation: full read-only sweep passed for 995 metadata endpoints, 995 media detail endpoints, 995 thumbnails, and a 65-item original-file sample; content-class filters, canonical/localized search, AI review/tag APIs, browser smoke, and server-log scan all passed with 0 failures.
 - Phase 4 not started; similarity/clustering not started; Entity Resolver not run
 
 ## Recommended Next Step: Manual Validation Before Scaling
@@ -733,8 +735,9 @@ Do not start Phase 4 or a larger-scale pilot until a human pass reviews the Phas
 2. Check AI tag quality, obvious false positives, and suggestion volume.
 3. Check Chinese localized tag display and search for common visual tags.
 4. Inspect the 26 `non_anime` classified media before any future cleanup proposal.
-5. Check AI Tag Review usability and whether bulk-review workflow is practical.
-6. Record recurring tag/localization/classification problems before Phase 3.8.
+5. During media-detail browsing, verify sampled `/api/media/<id>/metadata` responses are HTTP 200 and browser Network shows no `/metadata` 500.
+6. Check AI Tag Review usability and whether bulk-review workflow is practical.
+7. Record recurring tag/localization/classification/API browsing problems before Phase 3.8.
 
 After manual validation, the next engineering phase should prioritize background task reliability/failure isolation and explicit tag-derived workflow gates before larger pilots.
 

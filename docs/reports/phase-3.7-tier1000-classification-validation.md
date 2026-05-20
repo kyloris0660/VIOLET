@@ -95,6 +95,33 @@ Validated:
 
 No import, AI tagging, localization, Entity Resolver, cleanup, reset, drop, truncate, or delete operation was run during app validation.
 
+## Media Metadata/API Closeout Validation
+
+Manual media-detail browsing found `/api/media/<id>/metadata` could return HTTP 500 when PIL EXIF/XMP metadata included non-JSON-safe values such as `IFDRational`.
+
+Closeout fix:
+
+- `backend/app/utils/media_helpers.py` now sanitizes metadata recursively before returning it.
+- Sanitization preserves JSON primitives, decodes bytes, converts tuples/sets to lists, converts rational-like values to floats when safe, stringifies unsupported objects, and never raises.
+- `/api/media/{id}/metadata` now returns JSON-safe content instead of surfacing FastAPI `jsonable_encoder` failures.
+
+Bounded broad validation was run against the actual Phase 3.5/3.7 dev DB scope:
+
+| Check | Result |
+|-------|--------|
+| Target media | 995 |
+| Metadata endpoint sweep | 995 checked, 995 success, 0 failed |
+| Media detail API sweep | 995 checked, 995 success, 0 failed |
+| Thumbnail endpoint sweep | 995 checked, 995 success, 0 failed |
+| Original file endpoint sample | 65 checked, 65 success, 0 failed |
+| Content-class filters | `anime`, `unknown`, `non_anime`, `anime,unknown` all HTTP 200 |
+| Search/localization smoke | `hetero`, `1girl`, `long_hair`, localized `hetero` query all HTTP 200 |
+| AI Review/tag API smoke | AI review, localization stats, translation batch, tag autocomplete all HTTP 200 |
+| Browser smoke | Edge/Playwright: gallery/filter pages and 13 media detail pages passed |
+| Server log scan | 0 matches for `ERROR`, `Traceback`, `500`, `IFDRational`, `jsonable_encoder`, `ValueError`, `TypeError` |
+
+Committed summary: `docs/reports/phase-3.7-media-api-validation-summary.json`.
+
 ## Tests
 
 - `git diff --check` - PASS
