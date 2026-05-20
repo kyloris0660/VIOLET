@@ -7,6 +7,7 @@ classification, Entity Resolver, or any real import/copy path.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -85,6 +86,41 @@ def _ai_assoc(db, media_id: int, tag_id: int, *, suggestion: bool = False):
     db.commit()
 
 
+def _phase36_settings(**overrides):
+    values = {
+        "DB_NAME": "blombooru",
+        "IS_TEST_ENV": False,
+        "CONTENT_CLASSIFICATION_ENABLED": False,
+        "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT": False,
+        "ENTITY_ALIAS_RESOLVER_ENABLED": False,
+        "TAG_TRANSLATION_BG_ENABLED": False,
+        "TAG_TRANSLATION_AUTO_ENABLED": False,
+        "AI_TAGGING_AUTO_LOCALIZATION": False,
+        "VIOLET_ENV": "development",
+        "DB_USER": "postgres",
+        "DB_HOST": "localhost",
+        "DB_PORT": 5432,
+        "AI_TAGGING_ENABLED": True,
+        "TAG_TRANSLATION_LLM_ENABLED": True,
+        "AI_TAGGING_BATCH_MAX_ITEMS": 10,
+        "AI_MODEL_NAME": "wd-swinv2-tagger-v3",
+        "AI_GENERAL_THRESHOLD": 0.35,
+        "AI_CHARACTER_THRESHOLD": 0.65,
+        "AI_RATING_THRESHOLD": 0.5,
+        "AI_SUGGESTION_THRESHOLD": 0.2,
+        "TAG_TRANSLATION_BATCH_MAX_ITEMS": 2,
+        "TAG_TRANSLATION_LLM_PROVIDER": "openai_compatible",
+        "TAG_TRANSLATION_LLM_BASE_URL": "https://llm.example.invalid/v1",
+        "TAG_TRANSLATION_LLM_MODEL": "model-a",
+        "TAG_TRANSLATION_LLM_API_KEY": "configured",
+        "TAG_TRANSLATION_LLM_FALLBACK_BASE_URL": "",
+        "TAG_TRANSLATION_LLM_FALLBACK_MODEL": "",
+        "TAG_TRANSLATION_LLM_FALLBACK_API_KEY": "",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def test_select_target_media_ids_scoped_to_phase35_source(db):
     _media(db, 1, phase36.SOURCE_LABEL)
     _media(db, 2, phase36.SOURCE_LABEL)
@@ -135,6 +171,141 @@ def test_localization_candidates_are_visual_only_and_skip_proper_nouns(db):
         "phase36_character_name",
         "phase36_copyright_name",
     }
+
+
+def test_effective_localization_limit_uses_configured_batch_cap():
+    assert phase36.effective_localization_limit(10, 2) == 2
+    assert phase36.effective_localization_limit(2, 10) == 2
+    with pytest.raises(RuntimeError, match="--max-items"):
+        phase36.effective_localization_limit(0, 10)
+    with pytest.raises(RuntimeError, match="TAG_TRANSLATION_BATCH_MAX_ITEMS"):
+        phase36.effective_localization_limit(10, 0)
+
+
+def test_localization_provider_receives_no_more_than_batch_cap(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    for tag_id in range(1, 5):
+        _tag(db, tag_id, f"phase36_batch_cap_tag_{tag_id}", TagCategoryEnum.general, post_count=10 - tag_id)
+        _ai_assoc(db, 1, tag_id)
+
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    report_json = tmp_path / "localization-report.json"
+    settings = _phase36_settings(TAG_TRANSLATION_BATCH_MAX_ITEMS=2)
+
+    class FakeProvider:
+        def __init__(self):
+            self.received = []
+
+        def is_available(self):
+            return True
+
+        def get_provider_name(self):
+            return "fake"
+
+        async def translate_tags(self, tag_inputs):
+            self.received = list(tag_inputs)
+            return [
+                SimpleNamespace(
+                    canonical_name=item["name"],
+                    display_name_zh=f"translated {item['name']}",
+                    aliases_zh=[],
+                    confidence=1.0,
+                    needs_review=False,
+                )
+                for item in tag_inputs
+            ]
+
+    provider = FakeProvider()
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+    import app.services.llm_translation_provider as provider_mod
+
+    monkeypatch.setattr(provider_mod, "get_llm_provider", lambda: provider)
+
+    payload = phase36.run_controlled_localization(
+        SimpleNamespace(
+            source_label=phase36.SOURCE_LABEL,
+            expected_media_count=1,
+            confirm_phase36=phase36.CONFIRM_PHRASE,
+            db_backup_file=str(backup),
+            report_json=str(report_json),
+            lang="zh-CN",
+            max_items=10,
+        )
+    )
+
+    assert len(provider.received) == 2
+    assert payload["requested_max_items"] == 10
+    assert payload["effective_max_items"] == 2
+    assert payload["configured_batch_max"] == 2
+    assert payload["candidates_selected"] == 2
+    assert json.loads(report_json.read_text(encoding="utf-8"))["candidates_selected"] == 2
+
+
+def test_localization_respects_requested_limit_when_below_batch_cap(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    for tag_id in range(1, 4):
+        _tag(db, tag_id, f"phase36_requested_limit_tag_{tag_id}", TagCategoryEnum.general)
+        _ai_assoc(db, 1, tag_id)
+
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    settings = _phase36_settings(TAG_TRANSLATION_BATCH_MAX_ITEMS=10)
+
+    class FakeProvider:
+        def __init__(self):
+            self.received = []
+
+        def is_available(self):
+            return True
+
+        def get_provider_name(self):
+            return "fake"
+
+        async def translate_tags(self, tag_inputs):
+            self.received = list(tag_inputs)
+            return [
+                SimpleNamespace(
+                    canonical_name=item["name"],
+                    display_name_zh=f"translated {item['name']}",
+                    aliases_zh=[],
+                    confidence=1.0,
+                    needs_review=False,
+                )
+                for item in tag_inputs
+            ]
+
+    provider = FakeProvider()
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+    import app.services.llm_translation_provider as provider_mod
+
+    monkeypatch.setattr(provider_mod, "get_llm_provider", lambda: provider)
+
+    payload = phase36.run_controlled_localization(
+        SimpleNamespace(
+            source_label=phase36.SOURCE_LABEL,
+            expected_media_count=1,
+            confirm_phase36=phase36.CONFIRM_PHRASE,
+            db_backup_file=str(backup),
+            report_json=str(tmp_path / "report.json"),
+            lang="zh-CN",
+            max_items=1,
+        )
+    )
+
+    assert len(provider.received) == 1
+    assert payload["requested_max_items"] == 1
+    assert payload["effective_max_items"] == 1
+    assert payload["configured_batch_max"] == 10
+    assert payload["candidates_selected"] == 1
 
 
 def test_metric_delta_reports_distinct_ai_and_translation_changes(db):
@@ -306,6 +477,79 @@ def test_db_active_ai_job_summary_is_sanitized(db):
     assert "secret" not in message
 
 
+def test_ai_chunk_failure_writes_report_before_abort(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    report_json = tmp_path / "ai-failure-report.json"
+    settings = _phase36_settings(
+        TAG_TRANSLATION_LLM_ENABLED=False,
+        AI_TAGGING_BATCH_MAX_ITEMS=5,
+        TAG_TRANSLATION_BATCH_MAX_ITEMS=5,
+    )
+
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+
+    import app.services.ai_tagging_job_service as job_service
+    import app.services.ai_tagging_service as ai_service
+
+    def fake_create_ai_tag_job(db_arg, **_kwargs):
+        job = AITagJob(
+            status="failed",
+            trigger_source="phase3.6",
+            processed=1,
+            failed=1,
+            tags_added=2,
+            suggestions_added=3,
+            skipped_locked=0,
+            ignored_low_confidence=4,
+            error_message="model failure at C:\\Users\\person\\secret\\model.onnx",
+        )
+        db_arg.add(job)
+        db_arg.commit()
+        db_arg.refresh(job)
+        return job
+
+    monkeypatch.setattr(job_service, "create_ai_tag_job", fake_create_ai_tag_job)
+    monkeypatch.setattr(job_service, "is_ai_job_active", lambda: False)
+    monkeypatch.setattr(job_service, "run_ai_tag_job", lambda _job_id: None)
+    monkeypatch.setattr(
+        ai_service,
+        "check_model_status",
+        lambda: {"enabled": True, "available": True, "error": None},
+    )
+
+    with pytest.raises(phase36.Phase36RunFailed):
+        phase36.run_ai_tagging_controlled(
+            SimpleNamespace(
+                source_label=phase36.SOURCE_LABEL,
+                expected_media_count=1,
+                confirm_phase36=phase36.CONFIRM_PHRASE,
+                db_backup_file=str(backup),
+                report_json=str(report_json),
+                lang="zh-CN",
+                limit=None,
+                chunk_size=5,
+            )
+        )
+
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+    assert payload["success"] is False
+    assert payload["status"] == "failed_ai_chunk"
+    assert payload["ai_tagging"]["failed_job"]["status"] == "failed"
+    assert payload["ai_tagging"]["failed_job"]["processed"] == 1
+    assert payload["ai_tagging"]["failed_job"]["failed"] == 1
+    assert payload["ai_tagging"]["failed_job"]["tags_added"] == 2
+    assert payload["ai_tagging"]["failed_job"]["suggestions_added"] == 3
+    assert payload["ai_tagging"]["failed_job"]["chunk_index"] == 1
+    assert payload["ai_tagging"]["failed_job"]["requested_media_count"] == 1
+    assert "C:\\" not in json.dumps(payload, ensure_ascii=False)
+
+
 def test_forbidden_side_effect_job_delta_fails_phase_isolation():
     payload = {
         "safety": {
@@ -467,6 +711,44 @@ def test_translation_job_marked_failed_after_save_or_finalize_error(db):
     assert failed.failed == 1
     assert failed.finished_at is not None
     assert "C:\\" not in (failed.last_error or "")
+
+
+def test_parser_rejects_non_positive_localize_max_items():
+    parser = phase36.build_parser()
+    base = [
+        "localize",
+        "--confirm-phase36",
+        phase36.CONFIRM_PHRASE,
+        "--db-backup-file",
+        "backup.dump",
+        "--report-json",
+        "report.json",
+    ]
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([*base, "--max-items", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args([*base, "--max-items", "-1"])
+    assert parser.parse_args([*base, "--max-items", "1"]).max_items == 1
+
+
+def test_parser_rejects_non_positive_ai_limit():
+    parser = phase36.build_parser()
+    base = [
+        "ai-tag",
+        "--confirm-phase36",
+        phase36.CONFIRM_PHRASE,
+        "--db-backup-file",
+        "backup.dump",
+        "--report-json",
+        "report.json",
+    ]
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([*base, "--limit", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args([*base, "--limit", "-1"])
+    assert parser.parse_args([*base, "--limit", "1"]).limit == 1
 
 
 def test_chunked_never_emits_empty_chunks():

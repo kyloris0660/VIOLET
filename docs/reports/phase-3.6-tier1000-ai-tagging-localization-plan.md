@@ -41,6 +41,7 @@ Additional localization gate:
 
 - `TAG_TRANSLATION_LLM_ENABLED=true`
 - proper-noun categories are not translated
+- actual candidate selection is capped to `min(--max-items, TAG_TRANSLATION_BATCH_MAX_ITEMS)` for a single controlled run
 
 ## Execution Strategy
 
@@ -61,3 +62,5 @@ Additional localization gate:
 - AI tag deltas are reported separately as `tags_added`, `suggestions_added`, `media_tags` delta, `tag row delta`, and `media_with_ai_tags` delta.
 - Admin AI tagging currently has job creation/history UI but no aggregate dashboard; Phase 3.6 keeps that as a future read-only UI task.
 - Remaining localization pending count after Phase 3.6 is proper-noun dominated and intentionally not freely translated in this phase.
+- `ai-tag --limit` and `localize --max-items` must be positive when provided.
+- AI chunk failures still write a partial failure report before the runner exits nonzero.

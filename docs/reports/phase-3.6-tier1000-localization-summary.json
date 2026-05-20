@@ -115,6 +115,11 @@
     "provider_unavailable_with_candidates_exits_nonzero": true,
     "failed_candidates_exit_nonzero": true,
     "translation_job_save_or_finalize_errors_mark_failed": true,
+    "candidate_batch_cap_enforced": true,
+    "effective_limit_formula": "min(requested_max_items, TAG_TRANSLATION_BATCH_MAX_ITEMS)",
+    "reports_requested_effective_configured_and_selected_counts": true,
+    "non_positive_max_items_rejected": true,
+    "original_real_run_predates_candidate_cap_closeout": true,
     "full_localization_rerun": false
   }
 }

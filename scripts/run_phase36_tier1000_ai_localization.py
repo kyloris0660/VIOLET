@@ -105,6 +105,16 @@ def safe_url_host(url: str) -> str:
         return ""
 
 
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
 def proxy_presence() -> Dict[str, bool]:
     return {
         "HTTPS_PROXY": bool(os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")),
@@ -249,6 +259,92 @@ def assert_no_forbidden_ai_side_effects(payload: Dict[str, Any]) -> None:
             error=f"Forbidden Phase 3.6 side-effect jobs were created: {violations}",
         )
         raise Phase36RunFailed("Forbidden side-effect jobs were created during AI tagging", payload)
+
+
+def effective_localization_limit(requested_max_items: int, configured_batch_max: int) -> int:
+    if requested_max_items <= 0:
+        raise RuntimeError("--max-items must be a positive integer")
+    if configured_batch_max <= 0:
+        raise RuntimeError("TAG_TRANSLATION_BATCH_MAX_ITEMS must be a positive integer")
+    return min(int(requested_max_items), int(configured_batch_max))
+
+
+def build_ai_chunk_failure_payload(
+    *,
+    started_at: str,
+    source_label: str,
+    common: Dict[str, Any],
+    ai_gates: Dict[str, Any],
+    model_status: Dict[str, Any],
+    expected_media_count: int,
+    target_ids: Sequence[int],
+    chunks: Sequence[Sequence[int]],
+    chunk_size: int,
+    before: Dict[str, Any],
+    jobs: List[Dict[str, Any]],
+    failed_job: Dict[str, Any],
+    totals: Dict[str, int],
+    db: Session,
+    lang: str,
+    error: str,
+) -> Dict[str, Any]:
+    safe_error = sanitize_public_text(error)
+    warnings: List[str] = []
+    after: Optional[Dict[str, Any]] = None
+    delta: Optional[Dict[str, int]] = None
+    safety: Dict[str, Any] = {
+        "content_classification_jobs_delta": None,
+        "translation_jobs_delta_during_ai": None,
+        "entity_alias_resolver": "not_run",
+        "source_staging_mutation": False,
+        "phase_isolation_passed": False,
+    }
+    try:
+        after = collect_baseline(db, source_label, lang=lang)
+        delta = metric_delta(before, after)
+        safety["content_classification_jobs_delta"] = (
+            after["classification_jobs"] - before["classification_jobs"]
+        )
+        safety["translation_jobs_delta_during_ai"] = after["translation_jobs"] - before["translation_jobs"]
+    except Exception as exc:
+        warnings.append(f"post-failure baseline collection failed: {sanitize_public_text(str(exc))}")
+
+    return {
+        "mode": "ai_tagging_execute",
+        "started_at": started_at,
+        "finished_at": utc_now(),
+        "source_label": source_label,
+        "database": common["database"],
+        "storage": {
+            "storage_root_label": "app_storage",
+            "paths_redacted": True,
+            "source_staging_mutation": False,
+        },
+        "backup": common["backup"],
+        "gates": {**common["gates"], **ai_gates},
+        "model_status": model_status,
+        "target": {
+            "expected_media_count": expected_media_count,
+            "selected_media_count": len(target_ids),
+            "chunk_size": chunk_size,
+            "chunk_count": len(chunks),
+        },
+        "before": before,
+        "after": after,
+        "delta": delta,
+        "ai_tagging": {
+            **totals,
+            "job_ids": [job["id"] for job in jobs],
+            "completed_jobs": [job for job in jobs if job.get("status") == "completed" and not job.get("failed")],
+            "failed_job": failed_job,
+            "jobs": jobs,
+        },
+        "safety": safety,
+        "success": False,
+        "status": "failed_ai_chunk",
+        "errors": [safe_error],
+        "warnings": warnings,
+    }
 
 
 def mark_translation_job_failed(
@@ -556,7 +652,30 @@ def run_ai_tagging_controlled(args: argparse.Namespace) -> Dict[str, Any]:
             }
             jobs.append(job_entry)
             if persisted.status != "completed" or persisted.failed:
-                raise RuntimeError(f"AI tag job {persisted.id} did not complete cleanly: {job_entry}")
+                failure_payload = build_ai_chunk_failure_payload(
+                    started_at=started_at,
+                    source_label=args.source_label,
+                    common=common,
+                    ai_gates=ai_gates,
+                    model_status=model_status,
+                    expected_media_count=args.expected_media_count,
+                    target_ids=target_ids,
+                    chunks=chunks,
+                    chunk_size=chunk_size,
+                    before=before,
+                    jobs=jobs,
+                    failed_job=job_entry,
+                    totals=totals,
+                    db=db,
+                    lang=args.lang,
+                    error=f"AI tag job {persisted.id} did not complete cleanly: {job_entry}",
+                )
+                if args.report_json:
+                    write_public_json(Path(args.report_json), failure_payload)
+                raise Phase36RunFailed(
+                    f"AI tag job {persisted.id} did not complete cleanly",
+                    failure_payload,
+                )
             for key in totals:
                 totals[key] += int(getattr(persisted, key) or 0)
             sys.stderr.write(
@@ -704,12 +823,15 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
         )
         localization_gates = validate_localization_gates(settings)
         before = collect_baseline(db, args.source_label, lang=args.lang)
+        requested_max_items = int(args.max_items)
+        configured_batch_max = int(settings.TAG_TRANSLATION_BATCH_MAX_ITEMS)
+        effective_max_items = effective_localization_limit(requested_max_items, configured_batch_max)
         candidates = select_localization_candidates(
             db,
             args.source_label,
             LOCALIZABLE_CATEGORIES,
             lang=args.lang,
-            limit=args.max_items,
+            limit=effective_max_items,
         )
         skipped_proper_nouns = len(
             select_localization_candidates(
@@ -736,6 +858,10 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
             "gates": {**common["gates"], **localization_gates},
             "before": before,
             "candidates": len(candidates),
+            "requested_max_items": requested_max_items,
+            "effective_max_items": effective_max_items,
+            "configured_batch_max": configured_batch_max,
+            "candidates_selected": len(candidates),
             "localizable_categories": list(LOCALIZABLE_CATEGORIES),
             "proper_noun_categories_skipped": list(PROPER_NOUN_CATEGORIES),
             "skipped_proper_nouns": skipped_proper_nouns,
@@ -779,8 +905,8 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
             source="phase3.6",
             language=args.lang,
             category="general,meta",
-            batch_size=min(len(candidates), settings.TAG_TRANSLATION_BATCH_MAX_ITEMS),
-            max_per_run=args.max_items,
+            batch_size=min(len(candidates), effective_max_items),
+            max_per_run=effective_max_items,
             processed=0,
             translated=0,
             failed=0,
@@ -921,14 +1047,14 @@ def build_parser() -> argparse.ArgumentParser:
     ai.add_argument("--confirm-phase36", required=True)
     ai.add_argument("--db-backup-file", required=True)
     ai.add_argument("--report-json", required=True)
-    ai.add_argument("--chunk-size", type=int, default=10)
-    ai.add_argument("--limit", type=int, default=None)
+    ai.add_argument("--chunk-size", type=positive_int, default=10)
+    ai.add_argument("--limit", type=positive_int, default=None)
 
     loc = sub.add_parser("localize", help="Execute scoped Phase 3.6 tag localization")
     loc.add_argument("--confirm-phase36", required=True)
     loc.add_argument("--db-backup-file", required=True)
     loc.add_argument("--report-json", required=True)
-    loc.add_argument("--max-items", type=int, default=500)
+    loc.add_argument("--max-items", type=positive_int, default=500)
 
     return parser
 
