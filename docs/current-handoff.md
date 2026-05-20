@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.6 - Tier-1000 AI Tagging + Localization closeout (2026-05-20).
+> Last updated during Phase 3.7 - Tier-1000 Content Classification Validation + Tag Scope Gate (2026-05-20).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.6-tier1000-ai-tagging-localization` (Phase 3.6 PR in progress; `main` contains prior phases through PR #49) |
+| **Branch** | `phase3.7-tier1000-classification-scope-gate` (Phase 3.7 PR in progress; `main` contains prior phases through PR #50) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -32,7 +32,8 @@
 | **Phase 3.3b (PR #46)** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy executor (1,000 files, 2.98 GB to privacy-safe `tier1000_staging` label) |
 | **Phase 3.4 (PR #48)** | PR [#48](https://github.com/kyloris0660/AnimeLocalBooru/pull/48) merged - Tier-1000 pre-import audit, 1,000/1,000 PASS |
 | **Phase 3.5 (PR #49)** | PR [#49](https://github.com/kyloris0660/AnimeLocalBooru/pull/49) merged - Tier-1000 DB import tooling executed: 995 imported, 5 duplicate hashes skipped, post-import audit PASS |
-| **Phase 3.6 (branch)** | `phase3.6-tier1000-ai-tagging-localization` - controlled AI tagging + visual tag localization executed for the Phase 3.5 source label; manual validation is next |
+| **Phase 3.6 (PR #50)** | PR [#50](https://github.com/kyloris0660/AnimeLocalBooru/pull/50) merged - controlled AI tagging + visual tag localization executed for the Phase 3.5 source label |
+| **Phase 3.7 (branch)** | `phase3.7-tier1000-classification-scope-gate` - Tier-1000 content classification validation and tag-derived workflow scope gate |
 
 ## Mandatory Workflow Rules
 
@@ -701,7 +702,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Closeout hardening: execute rejects NULL-thumbnail imports, post-import audit counts `thumbnail_path=NULL`, public report sanitizer redacts Windows/POSIX absolute paths, and idempotency dry-run reports `estimated_bytes_to_copy=0`
 - Background side effects: 0 AI jobs, 0 classification jobs, 0 translation jobs/translations since import start
 
-**Phase 3.6 - Tier-1000 AI Tagging + Localization (branch `phase3.6-tier1000-ai-tagging-localization`):**
+**Phase 3.6 - Tier-1000 AI Tagging + Localization (PR [#50](https://github.com/kyloris0660/AnimeLocalBooru/pull/50) merged):**
 - `scripts/run_phase36_tier1000_ai_localization.py`: narrow source-label runner with explicit media ID AI jobs and controlled visual/general localization
 - Backup before writes: `phase-3.6-tier1000-before-20260519-203857.dump` (`223388` bytes), path redacted in public docs
 - AI tagging target: 995 media where `Media.source='violet:tier1000:phase3.5'`
@@ -711,19 +712,31 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Validation: real dev DB API + Playwright Edge smoke PASS; controlled `VIOLET_ENV=test` server identity + API/browser smoke PASS
 - Closeout hardening: Phase 3.6 runner now locks write modes to `Media.source='violet:tier1000:phase3.5'`, requires `VIOLET_ENV=development`, blocks DB-backed active AI jobs (`pending`/`running`/`cancelling`), hard-fails forbidden classification/translation side-effect job deltas during AI, exits nonzero on localization provider/candidate failures including unsaved `upsert_translation()` results, marks `TagTranslationJob` failed on save/finalization exceptions, caps localization candidates to `min(--max-items, TAG_TRANSLATION_BATCH_MAX_ITEMS)`, writes partial AI failure reports before bad-chunk aborts with failed chunk stats included in top-level totals, and rejects non-positive `ai-tag --limit` / `localize --max-items`
 - Manual inspection notes: Admin AI tagging currently lacks an aggregate dashboard by design; read-only DB validation found 106 pending translations are all `character` tags, target visual/general/meta pending is 0, and content classification remains intentionally unrun (`995` unclassified)
-- Phase 4 not started; Entity Resolver not run; content classification not run
+- Phase 4 not started; Entity Resolver not run during Phase 3.6; content classification not run during Phase 3.6
+
+**Phase 3.7 - Tier-1000 Content Classification Validation + Tag Scope Gate (branch `phase3.7-tier1000-classification-scope-gate`):**
+- `scripts/run_phase37_tier1000_classification_scope_gate.py`: source-label-locked classification runner and read-only tag scope audit
+- Backup before writes: `phase-3.7-tier1000-before-20260520-125024.dump` (`1392536` bytes), path redacted in public docs
+- Target: 995 media where `Media.source='violet:tier1000:phase3.5'`
+- Classification result: processed 995, failed 0, classified 995, unclassified 0
+- Distribution: `anime=948`, `unknown=21`, `non_anime=26`, `illustration=0`
+- Side effects: classification jobs +10; AI jobs delta 0; translation jobs delta 0; tag rows delta 0; target AI association delta 0
+- Tag scope gate: future tag-derived workflows must include only `anime` and `unknown`; `illustration`, `non_anime`, and `unclassified` are excluded from future AI tagging candidate selection, localization candidate selection, tag statistics, and tag-driven similarity
+- Scope audit found 969 eligible media and 26 ineligible media. Existing Phase 3.6 AI associations on ineligible media are audit evidence only; no tag/media cleanup was performed.
+- Phase 4 not started; similarity/clustering not started; Entity Resolver not run
 
 ## Recommended Next Step: Manual Validation Before Scaling
 
-Do not start Phase 4 or a larger-scale pilot until a human pass reviews the Phase 3.6 output:
+Do not start Phase 4 or a larger-scale pilot until a human pass reviews the Phase 3.6/3.7 output:
 
 1. Randomly inspect 30-50 imported media across gallery and media detail.
 2. Check AI tag quality, obvious false positives, and suggestion volume.
 3. Check Chinese localized tag display and search for common visual tags.
-4. Check AI Tag Review usability and whether bulk-review workflow is practical.
-5. Record recurring tag/localization problems before Phase 3.7 or Phase 3.8.
+4. Inspect the 26 `non_anime` classified media before any future cleanup proposal.
+5. Check AI Tag Review usability and whether bulk-review workflow is practical.
+6. Record recurring tag/localization/classification problems before Phase 3.8.
 
-After manual validation, the next engineering phase should prioritize background task reliability/failure isolation before larger pilots.
+After manual validation, the next engineering phase should prioritize background task reliability/failure isolation and explicit tag-derived workflow gates before larger pilots.
 
 ---
 
