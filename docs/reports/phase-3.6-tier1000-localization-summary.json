@@ -1,0 +1,128 @@
+{
+  "mode": "controlled_localization_execute",
+  "started_at": "2026-05-19T12:56:38.619533+00:00",
+  "source_label": "violet:tier1000:phase3.5",
+  "database": {
+    "violet_env": "development",
+    "db_name": "blombooru",
+    "database_url_safe": "postgresql://postgres:***@localhost:5432/blombooru"
+  },
+  "storage": {
+    "storage_root_label": "app_storage",
+    "paths_redacted": true,
+    "source_staging_mutation": false
+  },
+  "backup": {
+    "file_name": "phase-3.6-tier1000-before-20260519-203857.dump",
+    "bytes": 223388,
+    "path_redacted": true
+  },
+  "gates": {
+    "target_media_count": 995,
+    "content_classification_disabled": true,
+    "entity_alias_resolver_disabled": true,
+    "tag_translation_background_disabled": true,
+    "tag_translation_auto_disabled": true,
+    "ai_auto_localization_disabled": true,
+    "source_staging_mutation": false,
+    "llm_enabled_for_controlled_localization": true,
+    "llm": {
+      "enabled": true,
+      "provider": "openai_compatible",
+      "base_url_host": "api.openai.com",
+      "model": "gpt-4.1-mini",
+      "api_key_configured": true,
+      "fallback_base_url_host": "",
+      "fallback_model": "",
+      "fallback_api_key_configured": false,
+      "proxy_present": {
+        "HTTPS_PROXY": false,
+        "HTTP_PROXY": false
+      }
+    }
+  },
+  "before": {
+    "source_label": "violet:tier1000:phase3.5",
+    "target_media_count": 995,
+    "target_media_with_ai_tags": 995,
+    "target_ai_confirmed_associations": 41416,
+    "target_ai_suggestion_associations": 11938,
+    "target_ai_associations": 53354,
+    "total_tag_count": 3267,
+    "tag_count_by_category": {
+      "character": 196,
+      "general": 3067,
+      "meta": 4
+    },
+    "translation_count": 1966,
+    "target_missing_visual_translations": 1196,
+    "target_missing_proper_noun_translations": 102,
+    "classification_jobs": 4,
+    "translation_jobs": 14
+  },
+  "candidates": 1196,
+  "localizable_categories": [
+    "general",
+    "meta"
+  ],
+  "proper_noun_categories_skipped": [
+    "character",
+    "copyright",
+    "artist"
+  ],
+  "skipped_proper_nouns": 102,
+  "translated": 1196,
+  "failed": 0,
+  "skipped": 102,
+  "job_id": 15,
+  "provider_available": true,
+  "errors": [],
+  "warnings": [],
+  "after": {
+    "source_label": "violet:tier1000:phase3.5",
+    "target_media_count": 995,
+    "target_media_with_ai_tags": 995,
+    "target_ai_confirmed_associations": 41416,
+    "target_ai_suggestion_associations": 11938,
+    "target_ai_associations": 53354,
+    "total_tag_count": 3267,
+    "tag_count_by_category": {
+      "character": 196,
+      "general": 3067,
+      "meta": 4
+    },
+    "translation_count": 3162,
+    "target_missing_visual_translations": 0,
+    "target_missing_proper_noun_translations": 102,
+    "classification_jobs": 4,
+    "translation_jobs": 15
+  },
+  "delta": {
+    "target_media_with_ai_tags": 0,
+    "target_ai_confirmed_associations": 0,
+    "target_ai_suggestion_associations": 0,
+    "target_ai_associations": 0,
+    "total_tag_count": 0,
+    "translation_count": 1196,
+    "classification_jobs": 0,
+    "translation_jobs": 1
+  },
+  "remaining_missing": 0,
+  "finished_at": "2026-05-19T13:13:09.630654+00:00",
+  "success": true,
+  "status": "completed",
+  "closeout_hardening": {
+    "write_modes_locked_to_source_label": "violet:tier1000:phase3.5",
+    "write_modes_require_violet_env": "development",
+    "provider_unavailable_with_candidates_exits_nonzero": true,
+    "failed_candidates_exit_nonzero": true,
+    "unsaved_translation_results_fail_run": true,
+    "translation_job_save_or_finalize_errors_mark_failed": true,
+    "candidate_batch_cap_enforced": true,
+    "effective_limit_formula": "min(requested_max_items, TAG_TRANSLATION_BATCH_MAX_ITEMS)",
+    "reports_requested_effective_configured_and_selected_counts": true,
+    "non_positive_max_items_rejected": true,
+    "original_real_run_predates_candidate_cap_closeout": true,
+    "full_localization_rerun": false
+  }
+}

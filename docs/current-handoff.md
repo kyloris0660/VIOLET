@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.5 - Tier-1000 DB Import (2026-05-19).
+> Last updated during Phase 3.6 - Tier-1000 AI Tagging + Localization closeout (2026-05-20).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.5-tier1000-db-import` (Phase 3.5 PR in review; `main` contains prior phases through PR #48) |
+| **Branch** | `phase3.6-tier1000-ai-tagging-localization` (Phase 3.6 PR in progress; `main` contains prior phases through PR #49) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -29,9 +29,10 @@
 | **Phase 3.2c status** | PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged — Medium-scale pilot preparation, env docs, LLM gate unification |
 | **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`), server runtime Python identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
 | **Phase 3.3a.1 (PR #45)** | PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged — iCloud candidate manifest generation (5,326 rows: 522 existing + 478 new + 4,326 excluded) |
-| **Phase 3.3b (PR #46)** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy executor (1,000 files, 2.98 GB to `E:\VioletPilotData_1000`) |
+| **Phase 3.3b (PR #46)** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy executor (1,000 files, 2.98 GB to privacy-safe `tier1000_staging` label) |
 | **Phase 3.4 (PR #48)** | PR [#48](https://github.com/kyloris0660/AnimeLocalBooru/pull/48) merged - Tier-1000 pre-import audit, 1,000/1,000 PASS |
-| **Phase 3.5 (branch)** | `phase3.5-tier1000-db-import` - Tier-1000 DB import tooling executed: 995 imported, 5 duplicate hashes skipped, post-import audit PASS |
+| **Phase 3.5 (PR #49)** | PR [#49](https://github.com/kyloris0660/AnimeLocalBooru/pull/49) merged - Tier-1000 DB import tooling executed: 995 imported, 5 duplicate hashes skipped, post-import audit PASS |
+| **Phase 3.6 (branch)** | `phase3.6-tier1000-ai-tagging-localization` - controlled AI tagging + visual tag localization executed for the Phase 3.5 source label; manual validation is next |
 
 ## Mandatory Workflow Rules
 
@@ -279,7 +280,7 @@ Full Playwright E2E test suite with real browser testing:
 - 26 smoke tests + 5 real workflow tests covering scan → AI tag → localize → search
 - Real browser testing via system Edge/Chrome (Chromium for CI)
 - Fixed 8+ backend/frontend bugs found during E2E (API paths, auth, path validation, LIKE escaping)
-- Dangerous path rejection verified for C:\, data/, media/original/, project root
+- Dangerous path rejection verified for drive roots, `data/`, `media/original/`, and project root
 
 ### Phase 2.3d — Continuous Background Tag Translation
 
@@ -679,7 +680,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Tests: 38 manifest tests + 55 staging tests
 
 **Phase 3.3b — Tier-1000 Staging Copy (PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged):**
-- Executed controlled copy of 1,000 files (2.98 GB) to `E:\VioletPilotData_1000`
+- Executed controlled copy of 1,000 files (2.98 GB) to privacy-safe `tier1000_staging` label
 - 522 existing files (from medium pilot) + 478 new files from iCloud source
 - Copy-safety: dry-run verification before real execution, file count/size limits enforced
 
@@ -700,17 +701,29 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Closeout hardening: execute rejects NULL-thumbnail imports, post-import audit counts `thumbnail_path=NULL`, public report sanitizer redacts Windows/POSIX absolute paths, and idempotency dry-run reports `estimated_bytes_to_copy=0`
 - Background side effects: 0 AI jobs, 0 classification jobs, 0 translation jobs/translations since import start
 
-## Recommended Next Phase: 3.6
+**Phase 3.6 - Tier-1000 AI Tagging + Localization (branch `phase3.6-tier1000-ai-tagging-localization`):**
+- `scripts/run_phase36_tier1000_ai_localization.py`: narrow source-label runner with explicit media ID AI jobs and controlled visual/general localization
+- Backup before writes: `phase-3.6-tier1000-before-20260519-203857.dump` (`223388` bytes), path redacted in public docs
+- AI tagging target: 995 media where `Media.source='violet:tier1000:phase3.5'`
+- AI tagging result: processed 995, failed 0, confirmed associations 41416, suggestions 11938, media_tags delta 53354, tag row delta 1301, media_with_ai_tags delta 995
+- AI isolation: classification job delta 0, translation job delta during AI 0, auto-localization skipped by `AI_TAGGING_AUTO_LOCALIZATION=false`
+- Localization result: 1196 visual/general/meta candidates translated, failed 0, remaining target visual missing translations 0, proper-noun candidates skipped 102, translation job ID 15
+- Validation: real dev DB API + Playwright Edge smoke PASS; controlled `VIOLET_ENV=test` server identity + API/browser smoke PASS
+- Closeout hardening: Phase 3.6 runner now locks write modes to `Media.source='violet:tier1000:phase3.5'`, requires `VIOLET_ENV=development`, blocks DB-backed active AI jobs (`pending`/`running`/`cancelling`), hard-fails forbidden classification/translation side-effect job deltas during AI, exits nonzero on localization provider/candidate failures including unsaved `upsert_translation()` results, marks `TagTranslationJob` failed on save/finalization exceptions, caps localization candidates to `min(--max-items, TAG_TRANSLATION_BATCH_MAX_ITEMS)`, writes partial AI failure reports before bad-chunk aborts with failed chunk stats included in top-level totals, and rejects non-positive `ai-tag --limit` / `localize --max-items`
+- Manual inspection notes: Admin AI tagging currently lacks an aggregate dashboard by design; read-only DB validation found 106 pending translations are all `character` tags, target visual/general/meta pending is 0, and content classification remains intentionally unrun (`995` unclassified)
+- Phase 4 not started; Entity Resolver not run; content classification not run
 
-**Phase 3.6 - Tier-1000 App Validation And Performance Readiness**
+## Recommended Next Step: Manual Validation Before Scaling
 
-Validate the imported Tier-1000 dataset at the app layer before enabling larger pilots or background workers:
+Do not start Phase 4 or a larger-scale pilot until a human pass reviews the Phase 3.6 output:
 
-1. Gallery/search/media-detail workflows with real imported data.
-2. Thumbnail and original-file serving checks across representative media.
-3. Query performance and pagination behavior for 1,000-item scale.
-4. Background worker disable-switch verification before any AI/classification/localization phase.
-5. Preparation for Phase 3.7 failure isolation and Phase 3.8 medium-scale staged imports.
+1. Randomly inspect 30-50 imported media across gallery and media detail.
+2. Check AI tag quality, obvious false positives, and suggestion volume.
+3. Check Chinese localized tag display and search for common visual tags.
+4. Check AI Tag Review usability and whether bulk-review workflow is practical.
+5. Record recurring tag/localization problems before Phase 3.7 or Phase 3.8.
+
+After manual validation, the next engineering phase should prioritize background task reliability/failure isolation before larger pilots.
 
 ---
 
@@ -742,7 +755,7 @@ Resume medium-pilot AI tagging on `blombooru_test_medium` to tag remaining anime
 1. PR #40 (Phase 3.2g.2a) merged and code on `main`
 2. Full preflight checklist from `docs/medium-pilot-workflow.md` § 7 completed
 3. Python/venv identity preflight passed (`scripts/check_python_env.py`)
-4. Server identity check passed with all `--expected-*` args including `--expected-storage-root "C:\Users\kyloris\VioletStorage\medium"`
+4. Server identity check passed with all `--expected-*` args including a dedicated medium-pilot storage root
 5. All 4 AI-only isolation env vars set for AI tagging phase (see `docs/medium-pilot-workflow.md` § 6.3)
 6. Translation worker confirmed stopped (`GET /api/admin/tag-localization/worker/status` → `running: false`)
 7. If any active/running translation jobs exist from prior phases, stop and report them before starting new AI tagging
@@ -772,7 +785,7 @@ The next development phase should include a developer/service control panel:
 . "$env:USERPROFILE\.violet\test-env.ps1"
 ```
 
-This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, `VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test`, `VIOLET_TEST_FIXTURE_PATH=C:\Users\kyloris\Pictures\VioletTestFixture`, and `APP_PORT=8001`. For E2E runs, agents override `VIOLET_BASE_URL` and `VIOLET_RUN_REAL_E2E` in the current session.
+This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, dedicated `VIOLET_STORAGE_ROOT`, dedicated `VIOLET_TEST_FIXTURE_PATH`, and `APP_PORT=8001`. For E2E runs, agents override `VIOLET_BASE_URL` and `VIOLET_RUN_REAL_E2E` in the current session.
 
 **HuggingFace Hub Offline Mode:** Set `HF_HUB_OFFLINE=1` when the CLIP model is already cached locally. This prevents HuggingFace Hub metadata network requests from failing in proxy environments. Required for medium-pilot tiers. See `docs/medium-pilot-workflow.md` § 3.1.
 
@@ -793,13 +806,13 @@ This sets core test variables: `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, 
 
 ### VioletTestFixture
 
-Location: `C:\Users\kyloris\Pictures\VioletTestFixture` — contains curated images for E2E testing (anime, non_anime, mixed subfolders). Read-only; never modified by tests.
+Location: dedicated `VioletTestFixture` path — contains curated images for E2E testing (anime, non_anime, mixed subfolders). Read-only; never modified by tests.
 
 ## Test Directory
 
-`C:\Users\kyloris\Pictures\AnimeLocalBooruTest` — 17 files (14 valid images already imported).
+Dedicated `AnimeLocalBooruTest` path — 17 files (14 valid images already imported).
 
-**Real target:** `C:\Users\kyloris\Pictures\iCloud Photos` — always use dry-run + max_files first.
+**Real target:** privacy-sensitive iCloud Photos path — always use dry-run + max_files first.
 
 ## Key References
 
