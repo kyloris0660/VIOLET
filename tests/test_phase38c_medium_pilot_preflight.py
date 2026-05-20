@@ -219,6 +219,7 @@ def test_build_phase38c_report_fails_strict_selected_count_mismatch(tmp_path: Pa
     )
     workflow_report = {
         "started_at": "2026-05-20T00:00:00+00:00",
+        "scope": {"source_label": "violet:custom-source"},
         "identity": {
             "repo": {"branch": "test"},
             "python": {"executable_label": "python.exe", "version": "3.12.0"},
@@ -237,6 +238,7 @@ def test_build_phase38c_report_fails_strict_selected_count_mismatch(tmp_path: Pa
     }
     candidate_summary = {
         "selected_total": 2,
+        "planned_new_count": 5,
         "candidate_total": 10,
         "excluded_total": 8,
         "approximate_byte_estimate": 4000,
@@ -268,6 +270,9 @@ def test_build_phase38c_report_fails_strict_selected_count_mismatch(tmp_path: Pa
 
     assert report["success"] is False
     assert report["status"] == "failed_contract"
+    assert report["scope"]["current_source_label"] == "violet:custom-source"
+    assert report["scope"]["planned_new_candidate_count"] == 5
+    assert report["scope"]["selected_new_candidate_count"] == 2
     assert any("expected_selected_count=3" in item for item in report["contract_failures"])
 
 

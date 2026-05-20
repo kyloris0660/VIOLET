@@ -8,6 +8,7 @@
 - Current source label: `violet:tier1000:phase3.5`
 - Future source label: `violet:medium1000:phase3.8d`
 - Planned new candidates: `1000`
+- Selected new candidates: `1000`
 - Planned total after execute: `1995`
 - Repo branch: `phase3.8c-medium-pilot-preflight-dryrun`
 - Python: `python.exe` `3.12.0`

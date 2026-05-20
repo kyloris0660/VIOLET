@@ -3,14 +3,15 @@
   "mode": "dry_run",
   "success": true,
   "status": "passed",
-  "started_at": "2026-05-20T16:19:04.090178+00:00",
-  "finished_at": "2026-05-20T16:19:04.366863+00:00",
+  "started_at": "2026-05-20T16:31:39.322045+00:00",
+  "finished_at": "2026-05-20T16:31:39.609634+00:00",
   "scope": {
     "current_source_label": "violet:tier1000:phase3.5",
     "future_source_label": "violet:medium1000:phase3.8d",
     "dry_run": true,
     "strict": true,
     "planned_new_candidate_count": 1000,
+    "selected_new_candidate_count": 1000,
     "planned_total_after_execute": 1995,
     "execute_phase": "3.8d"
   },
@@ -22,7 +23,7 @@
     "repo": {
       "root_label": "repo_root",
       "branch": "phase3.8c-medium-pilot-preflight-dryrun",
-      "report_git_head_before_commit": "545d40e00b60992d72ae77d8314369181ec10721",
+      "report_git_head_before_commit": "d1422b8f42c21491dfdd0c88f329d794591d7624",
       "tracked_dirty": true,
       "report_generated_from_worktree": true
     },
