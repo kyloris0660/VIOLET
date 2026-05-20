@@ -179,6 +179,39 @@ class TestEligibleScopeHelper:
         )
         assert result == {"eligible": 8, "ineligible": 7, "null_content_class": 5}
 
+    def test_partition_counts_unknown_content_class_buckets_as_ineligible(self):
+        result = workflow.partition_content_class_counts(
+            {
+                "anime": 2,
+                "unknown": 1,
+                "cosplay": 3,
+                "failed": 4,
+                "unclassified": 5,
+            }
+        )
+        assert result == {"eligible": 3, "ineligible": 12, "null_content_class": 5}
+
+    def test_collect_scope_audit_preserves_extra_distribution_buckets(self, db, monkeypatch):
+        monkeypatch.setattr(
+            workflow,
+            "_content_class_distribution",
+            lambda _db, _source: {
+                "anime": 2,
+                "unknown": 1,
+                "illustration": 0,
+                "non_anime": 1,
+                "unclassified": 0,
+                "cosplay": 2,
+            },
+        )
+
+        audit = workflow.collect_scope_audit(db, workflow.WorkflowScope(source_label=SOURCE_LABEL))
+
+        assert audit.target_media_count == 6
+        assert audit.eligible_media_count == 3
+        assert audit.ineligible_media_count == 3
+        assert audit.content_class_distribution["cosplay"] == 2
+
 
 class TestAITaggingScopePolicy:
     def test_refuses_ineligible_media_ids(self, db):
@@ -507,6 +540,17 @@ class TestPrivacyHelpers:
         assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
         assert workflow.find_privacy_leaks(safe) == []
 
+    def test_non_ascii_posix_paths_are_fully_redacted(self):
+        path = "/\u7528\u6237/\u56fe\u7247/foo.jpg"
+
+        safe = workflow.sanitize_public_text(f"error at {path}")
+
+        assert path not in safe
+        assert "\u7528\u6237" not in safe
+        assert "\u56fe\u7247" not in safe
+        assert workflow.find_privacy_leaks(path) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
     @pytest.mark.parametrize(
         "path",
         [
@@ -554,13 +598,37 @@ class TestPrivacyHelpers:
         assert workflow.find_privacy_leaks(raw) == ["secret_token"]
         assert workflow.find_privacy_leaks(safe) == []
 
+    def test_bearer_token_scheme_is_case_insensitive(self):
+        raw = "authorization: bearer abc.def=="
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert f"Bearer {workflow.SECRET_REDACTION}" in safe
+        assert "abc.def" not in safe
+        assert "==" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["secret_token"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_bearer_token68_tail_is_fully_redacted(self):
+        raw = "Authorization: Bearer abc~def=="
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert f"Bearer {workflow.SECRET_REDACTION}" in safe
+        assert "abc~def" not in safe
+        assert "~def" not in safe
+        assert "==" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["secret_token"]
+        assert workflow.find_privacy_leaks(safe) == []
+
     def test_privacy_scan_fails_before_redaction_and_passes_after(self):
         payload = {
             "windows": r"C:\Users\name\iCloud Photos\foo.jpg",
             "posix": "/private/var/folders/abc/file",
             "file_uri": "file:///Users/alice/Pictures/foo.jpg",
+            "unicode_posix": "/\u7528\u6237/\u56fe\u7247/foo.jpg",
             "apostrophe": r"C:\Users\O'Connor\Pictures\foo.jpg",
-            "token": "Bearer abc.def==",
+            "token": "bearer abc~def==",
         }
 
         assert workflow.find_privacy_leaks(payload) == ["absolute_path", "secret_token"]
@@ -570,7 +638,10 @@ class TestPrivacyHelpers:
         assert "iCloud Photos" not in text
         assert "/private/var" not in text
         assert "file://" not in text
+        assert "\u7528\u6237" not in text
+        assert "\u56fe\u7247" not in text
         assert "Connor" not in text
+        assert "~def" not in text
         assert "==" not in text
         assert workflow.find_privacy_leaks(safe) == []
 

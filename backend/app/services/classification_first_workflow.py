@@ -50,8 +50,8 @@ URL_RE = re.compile(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
 FILE_URI_RE = re.compile(r"file://(?:(?![\r\n\"<>|]).)+", re.IGNORECASE)
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"<>|]).)+")
 UNC_PATH_RE = re.compile(r"\\\\(?:(?![\r\n\"<>|]).)+")
-POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?!/)(?=[A-Za-z0-9._~'-])(?:(?![\r\n\"<>|]).)+")
-SECRET_TOKEN_RE = re.compile(r"Bearer\s+[A-Za-z0-9._\-+/=]+")
+POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?!/)(?=\S)(?:(?![\r\n\"<>|]).)+")
+SECRET_TOKEN_RE = re.compile(r"Bearer\s+[A-Za-z0-9._~+\-/]+=*", re.IGNORECASE)
 API_KEY_RE = re.compile(r"(sk-|key-)[A-Za-z0-9_\-]{8,}")
 URL_PASSWORD_RE = re.compile(r"([a-z0-9+.-]+://[^:\s/@]+:)(?!\*\*\*@)([^@\s]+)(@)", re.IGNORECASE)
 
@@ -649,13 +649,7 @@ def collect_scope_audit(db: Session, scope: WorkflowScope) -> ScopeAudit:
     distribution = _content_class_distribution(db, scope.source_label)
     target_media_count = int(sum(distribution.values()))
     partition = partition_content_class_counts(
-        {
-            "anime": distribution["anime"],
-            "unknown": distribution["unknown"],
-            "illustration": distribution["illustration"],
-            "non_anime": distribution["non_anime"],
-            "unclassified": distribution["unclassified"],
-        },
+        distribution,
         null_policy=scope.null_content_class_policy,
     )
     null_policy = scope.null_content_class_policy

@@ -3,8 +3,8 @@
   "mode": "dry_run",
   "success": true,
   "status": "passed",
-  "started_at": "2026-05-20T14:04:56.859536+00:00",
-  "finished_at": "2026-05-20T14:04:57.014301+00:00",
+  "started_at": "2026-05-20T14:24:12.712923+00:00",
+  "finished_at": "2026-05-20T14:24:12.872739+00:00",
   "scope": {
     "source_label": "violet:tier1000:phase3.5",
     "expected_current_media_count": 995,
@@ -23,7 +23,7 @@
     "repo": {
       "root_label": "repo_root",
       "branch": "phase3.8b-classification-first-e2e-foundation",
-      "report_git_head_before_commit": "70bff4d4ab565c959870ae821af21630a870415c",
+      "report_git_head_before_commit": "f77245cfaf150bc2c5bb19b80d96fb50e32df6ff",
       "tracked_dirty": true,
       "report_generated_from_worktree": true
     },
