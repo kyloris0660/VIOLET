@@ -107,6 +107,8 @@ Implemented after the original Phase 3.6 run; no full AI tagging or full localiz
 
 - AI launch now checks `blombooru_ai_tag_jobs` for DB-backed active statuses: `pending`, `running`, `cancelling`.
 - Historical `completed`, `failed`, and `cancelled` AI jobs do not block new runs.
+- Write modes (`ai-tag`, `localize`) are now locked to `Media.source='violet:tier1000:phase3.5'`; read-only baseline may still inspect alternate labels.
+- Write modes now require `VIOLET_ENV=development` and still require `DB_NAME=blombooru`, a non-empty backup artifact, and the Phase 3.6 confirmation phrase.
 - If classification jobs or translation jobs are created during the AI tagging portion, the runner now marks the report failed and exits nonzero.
 - Localization now exits nonzero when the LLM provider is unavailable with candidates, or when any localization candidate fails.
 - Localization now treats selected candidates whose `upsert_translation()` returns `None` as unsaved failures rather than successful translations.

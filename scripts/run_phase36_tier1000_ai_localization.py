@@ -470,9 +470,17 @@ def validate_common_write_gates(
     confirm_phrase: str,
     backup_file: Optional[Path],
 ) -> Dict[str, Any]:
+    if source_label != SOURCE_LABEL:
+        raise RuntimeError(
+            f"Phase 3.6 write modes are locked to source label {SOURCE_LABEL}"
+        )
+    if settings.VIOLET_ENV != "development":
+        raise RuntimeError("Phase 3.6 write modes require VIOLET_ENV=development")
     if confirm_phrase != CONFIRM_PHRASE:
         raise RuntimeError(f"--confirm-phase36 must be exactly {CONFIRM_PHRASE}")
     backup = validate_backup_file(backup_file)
+    if expected_media_count <= 0:
+        raise RuntimeError("--expected-media-count must be a positive integer")
     count = target_media_count(db, source_label)
     if count != expected_media_count:
         raise RuntimeError(

@@ -808,6 +808,8 @@
   "success": true,
   "status": "completed",
   "closeout_hardening": {
+    "write_modes_locked_to_source_label": "violet:tier1000:phase3.5",
+    "write_modes_require_violet_env": "development",
     "db_backed_active_ai_job_check": true,
     "active_ai_statuses_blocked": [
       "pending",

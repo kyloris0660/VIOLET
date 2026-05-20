@@ -550,6 +550,135 @@ def test_write_gates_require_backup_and_disable_side_effect_systems(db, tmp_path
         )
 
 
+def test_write_gates_lock_source_label_and_require_development_env(db, tmp_path):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    settings = _phase36_settings()
+
+    with pytest.raises(RuntimeError, match="locked to source label"):
+        phase36.validate_common_write_gates(
+            db=db,
+            settings=settings,
+            source_label="other-source",
+            expected_media_count=1,
+            confirm_phrase=phase36.CONFIRM_PHRASE,
+            backup_file=backup,
+        )
+
+    with pytest.raises(RuntimeError, match="VIOLET_ENV=development"):
+        phase36.validate_common_write_gates(
+            db=db,
+            settings=_phase36_settings(VIOLET_ENV="production", IS_TEST_ENV=False),
+            source_label=phase36.SOURCE_LABEL,
+            expected_media_count=1,
+            confirm_phrase=phase36.CONFIRM_PHRASE,
+            backup_file=backup,
+        )
+
+    with pytest.raises(RuntimeError, match="VIOLET_ENV=development"):
+        phase36.validate_common_write_gates(
+            db=db,
+            settings=_phase36_settings(VIOLET_ENV="test", IS_TEST_ENV=True),
+            source_label=phase36.SOURCE_LABEL,
+            expected_media_count=1,
+            confirm_phrase=phase36.CONFIRM_PHRASE,
+            backup_file=backup,
+        )
+
+    gates = phase36.validate_common_write_gates(
+        db=db,
+        settings=_phase36_settings(VIOLET_ENV="development", IS_TEST_ENV=False),
+        source_label=phase36.SOURCE_LABEL,
+        expected_media_count=1,
+        confirm_phrase=phase36.CONFIRM_PHRASE,
+        backup_file=backup,
+    )
+    assert gates["database"]["violet_env"] == "development"
+
+
+def test_ai_tag_wrong_source_label_fails_before_job_creation(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    settings = _phase36_settings(TAG_TRANSLATION_LLM_ENABLED=False)
+    called = {"create": False}
+
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+    import app.services.ai_tagging_job_service as job_service
+
+    def fake_create_ai_tag_job(*_args, **_kwargs):
+        called["create"] = True
+        raise AssertionError("create_ai_tag_job must not be called")
+
+    monkeypatch.setattr(job_service, "create_ai_tag_job", fake_create_ai_tag_job)
+
+    with pytest.raises(RuntimeError, match="locked to source label"):
+        phase36.run_ai_tagging_controlled(
+            SimpleNamespace(
+                source_label="other-source",
+                expected_media_count=1,
+                confirm_phase36=phase36.CONFIRM_PHRASE,
+                db_backup_file=str(backup),
+                report_json=str(tmp_path / "wrong-source-ai.json"),
+                lang="zh-CN",
+                limit=None,
+                chunk_size=5,
+            )
+        )
+
+    assert called["create"] is False
+    assert db.query(AITagJob).count() == 0
+
+
+def test_localize_wrong_source_label_fails_before_translation_job_creation(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    settings = _phase36_settings()
+
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+
+    with pytest.raises(RuntimeError, match="locked to source label"):
+        phase36.run_controlled_localization(
+            SimpleNamespace(
+                source_label="other-source",
+                expected_media_count=1,
+                confirm_phase36=phase36.CONFIRM_PHRASE,
+                db_backup_file=str(backup),
+                report_json=str(tmp_path / "wrong-source-localize.json"),
+                lang="zh-CN",
+                max_items=5,
+            )
+        )
+
+    assert db.query(TagTranslationJob).count() == 0
+
+
+def test_baseline_allows_alternate_source_label(db, monkeypatch):
+    _media(db, 1, "alternate-source")
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": _phase36_settings(), "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+
+    payload = phase36.run_baseline(
+        SimpleNamespace(source_label="alternate-source", lang="zh-CN", report_json=None)
+    )
+
+    assert payload["source_label"] == "alternate-source"
+    assert payload["baseline"]["target_media_count"] == 1
+
+
 def test_ai_gate_requires_llm_disabled_during_ai_tagging():
     settings = SimpleNamespace(
         AI_TAGGING_ENABLED=True,
