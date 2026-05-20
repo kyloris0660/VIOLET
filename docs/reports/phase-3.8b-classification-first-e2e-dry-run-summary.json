@@ -3,8 +3,8 @@
   "mode": "dry_run",
   "success": true,
   "status": "passed",
-  "started_at": "2026-05-20T14:51:56.246672+00:00",
-  "finished_at": "2026-05-20T14:51:56.406109+00:00",
+  "started_at": "2026-05-20T15:26:10.878791+00:00",
+  "finished_at": "2026-05-20T15:26:11.033086+00:00",
   "scope": {
     "source_label": "violet:tier1000:phase3.5",
     "expected_current_media_count": 995,
@@ -23,7 +23,7 @@
     "repo": {
       "root_label": "repo_root",
       "branch": "phase3.8b-classification-first-e2e-foundation",
-      "report_git_head_before_commit": "f2957899b7499ac3294bea312ccc42af8df34a25",
+      "report_git_head_before_commit": "a1725e625116c4a481b925dc644837935e6d4e74",
       "tracked_dirty": true,
       "report_generated_from_worktree": true
     },
@@ -413,6 +413,16 @@
       "server log scan",
       "browser smoke"
     ]
+  },
+  "public_report_text_policy": {
+    "raw_arbitrary_error_warning_text_allowed": false,
+    "structured_safe_fields_required": true,
+    "unsafe_raw_text_representation": {
+      "raw_text_redacted": true,
+      "redaction_reason": "local_path_or_secret_like_content",
+      "local_artifact_available": false,
+      "local_artifact_label": null
+    }
   },
   "contract_failures": [],
   "warnings": [],

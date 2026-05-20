@@ -45,10 +45,18 @@ NULL_POLICY_HARD_FAIL = "hard_fail"
 NULL_POLICY_TREAT_AS_UNKNOWN = "treat_as_unknown"
 
 PUBLIC_PATH_REDACTION = "<redacted_path>"
-PUBLIC_URL_REDACTION = "<redacted_url_with_private_data>"
+PUBLIC_URL_REDACTION = "<redacted_url>"
 SECRET_REDACTION = "<redacted_secret>"
+REDACTION_REASON_LOCAL_PATH_OR_SECRET = "local_path_or_secret_like_content"
+MAX_PRIVACY_DECODE_DEPTH = 3
 
 URL_RE = re.compile(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
+HTTP_URL_WITH_RAW_LOCAL_PATH_RE = re.compile(
+    r"https?://(?:(?![\r\n\"'<>]).)*(?:file://|(?<![A-Za-z0-9])[A-Za-z]:[\\/]|"
+    r"/(?:Users|home|root|etc|usr|private|var|Volumes|workspace|mnt|tmp|opt|srv|data|\u7528\u6237))"
+    r"(?:(?![\r\n\"'<>]).)+",
+    re.IGNORECASE,
+)
 FILE_URI_RE = re.compile(r"file://(?:(?![\r\n\"<>|]).)+", re.IGNORECASE)
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"<>|]).)+")
 UNC_PATH_RE = re.compile(r"\\\\(?:(?![\r\n\"<>|]).)+")
@@ -58,8 +66,9 @@ URL_EMBEDDED_LOCAL_POSIX_PATH_RE = re.compile(
     r"(?:(?![\r\n\"<>|]).)+"
 )
 SECRET_TOKEN_RE = re.compile(r"Bearer(?:\s|%20|\+)+[A-Za-z0-9._~+\-/]+=*", re.IGNORECASE)
-API_KEY_RE = re.compile(r"(sk-|key-|sk%2d|key%2d)[A-Za-z0-9_%\-]{8,}", re.IGNORECASE)
+API_KEY_RE = re.compile(r"(?:sk|key)(?:-|_|%2d|%5f)[A-Za-z0-9_%\-]{8,}", re.IGNORECASE)
 URL_PASSWORD_RE = re.compile(r"([a-z0-9+.-]+://[^:\s/@]+:)(?!\*\*\*@)([^@\s]+)(@)", re.IGNORECASE)
+TEXT_TOKEN_RE = re.compile(r"[^\s\"'<>]+")
 
 
 class WorkflowContractError(RuntimeError):
@@ -79,12 +88,23 @@ def enum_value(value: Any) -> str | None:
     return text.split(".", 1)[-1] if "." in text else text
 
 
-def _decoded_variants(text: str) -> tuple[str, str]:
-    try:
-        decoded = unquote_plus(text)
-    except Exception:
-        decoded = text
-    return (text, decoded) if decoded != text else (text,)
+def decode_layers(text: str, max_depth: int = MAX_PRIVACY_DECODE_DEPTH) -> list[str]:
+    """Return raw plus bounded URL-decoded forms for privacy checks."""
+
+    layers = [str(text)]
+    current = str(text)
+    seen = {current}
+    for _ in range(max_depth):
+        try:
+            decoded = unquote_plus(current)
+        except Exception:
+            break
+        if decoded == current or decoded in seen:
+            break
+        layers.append(decoded)
+        seen.add(decoded)
+        current = decoded
+    return layers
 
 
 def _text_contains_absolute_path(text: str, *, url_component: bool = False) -> bool:
@@ -93,13 +113,38 @@ def _text_contains_absolute_path(text: str, *, url_component: bool = False) -> b
     return any(pattern.search(text) for pattern in path_patterns)
 
 
+def _privacy_leak_categories_for_text(
+    text: str,
+    *,
+    url_component: bool = False,
+    include_url_password: bool = True,
+) -> set[str]:
+    leaks: set[str] = set()
+    for variant in decode_layers(text):
+        if SECRET_TOKEN_RE.search(variant) or API_KEY_RE.search(variant):
+            leaks.add("secret_token")
+        if _text_contains_absolute_path(variant, url_component=url_component):
+            leaks.add("absolute_path")
+        if include_url_password:
+            for match in URL_PASSWORD_RE.finditer(variant):
+                if match.group(2) != "***":
+                    leaks.add("url_password")
+                    break
+    return leaks
+
+
 def _url_privacy_leak_categories(url: str) -> set[str]:
     leaks: set[str] = set()
-    for variant in _decoded_variants(url):
+    for variant in decode_layers(url):
         parts = urlsplit(variant)
         component_text = " ".join([parts.path, parts.query, parts.fragment])
-        if _text_contains_absolute_path(component_text, url_component=True):
-            leaks.add("absolute_path")
+        leaks.update(
+            _privacy_leak_categories_for_text(
+                component_text,
+                url_component=True,
+                include_url_password=False,
+            )
+        )
         if SECRET_TOKEN_RE.search(variant) or API_KEY_RE.search(variant):
             leaks.add("secret_token")
         for match in URL_PASSWORD_RE.finditer(variant):
@@ -109,8 +154,22 @@ def _url_privacy_leak_categories(url: str) -> set[str]:
     return leaks
 
 
+def _redact_unsafe_tokens(text: str, *, secret_only: bool = False) -> str:
+    def replace(match: re.Match[str]) -> str:
+        token = match.group(0)
+        leaks = _privacy_leak_categories_for_text(token, include_url_password=False)
+        if "secret_token" in leaks:
+            return SECRET_REDACTION
+        if not secret_only and "absolute_path" in leaks:
+            return PUBLIC_PATH_REDACTION
+        return token
+
+    return TEXT_TOKEN_RE.sub(replace, text)
+
+
 def _redact_secret_markers(text: str) -> str:
-    redacted = SECRET_TOKEN_RE.sub(f"Bearer {SECRET_REDACTION}", text)
+    redacted = _redact_unsafe_tokens(text, secret_only=True)
+    redacted = SECRET_TOKEN_RE.sub(f"Bearer {SECRET_REDACTION}", redacted)
     redacted = API_KEY_RE.sub(SECRET_REDACTION, redacted)
     return URL_PASSWORD_RE.sub(r"\1***\3", redacted)
 
@@ -131,6 +190,10 @@ def _protect_urls(text: str) -> tuple[str, dict[str, str]]:
     return URL_RE.sub(replace, text), protected
 
 
+def _redact_raw_unsafe_http_urls(text: str) -> str:
+    return HTTP_URL_WITH_RAW_LOCAL_PATH_RE.sub(PUBLIC_URL_REDACTION, text)
+
+
 def _restore_urls(text: str, protected: Mapping[str, str]) -> str:
     restored = text
     for token, url in protected.items():
@@ -139,15 +202,14 @@ def _restore_urls(text: str, protected: Mapping[str, str]) -> str:
 
 
 def sanitize_public_text(value: str) -> str:
-    text = _redact_secret_markers(str(value))
-    text = FILE_URI_RE.sub(PUBLIC_PATH_REDACTION, text)
-    text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
-    text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
-    text = URL_EMBEDDED_LOCAL_POSIX_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
+    text = _redact_raw_unsafe_http_urls(str(value))
     protected_text, protected_urls = _protect_urls(text)
+    protected_text = FILE_URI_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
     protected_text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
     protected_text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
     protected_text = POSIX_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
+    protected_text = _redact_unsafe_tokens(protected_text)
+    protected_text = _redact_secret_markers(protected_text)
     return _restore_urls(protected_text, protected_urls)
 
 
@@ -170,8 +232,13 @@ def find_privacy_leaks(value: Any) -> list[str]:
     url_leaks: set[str] = set()
     for match in URL_RE.finditer(text):
         url_leaks.update(_url_privacy_leak_categories(match.group(0)))
+    raw_unsafe_url_text = _redact_raw_unsafe_http_urls(text)
+    if raw_unsafe_url_text != text:
+        url_leaks.add("absolute_path")
     path_scan_text = _redact_secret_markers(text)
+    path_scan_text = _redact_raw_unsafe_http_urls(path_scan_text)
     protected_text, _ = _protect_urls(path_scan_text)
+    text_leaks = _privacy_leak_categories_for_text(protected_text)
     leaks: list[str] = []
     if (
         FILE_URI_RE.search(path_scan_text)
@@ -179,9 +246,10 @@ def find_privacy_leaks(value: Any) -> list[str]:
         or UNC_PATH_RE.search(protected_text)
         or POSIX_ABSOLUTE_PATH_RE.search(protected_text)
         or "absolute_path" in url_leaks
+        or "absolute_path" in text_leaks
     ):
         leaks.append("absolute_path")
-    if SECRET_TOKEN_RE.search(text) or API_KEY_RE.search(text) or "secret_token" in url_leaks:
+    if "secret_token" in _privacy_leak_categories_for_text(text) or "secret_token" in url_leaks:
         leaks.append("secret_token")
     if "url_password" in url_leaks:
         leaks.append("url_password")
@@ -946,6 +1014,16 @@ def build_dry_run_report(
                 "browser smoke",
             ],
         },
+        "public_report_text_policy": {
+            "raw_arbitrary_error_warning_text_allowed": False,
+            "structured_safe_fields_required": True,
+            "unsafe_raw_text_representation": {
+                "raw_text_redacted": True,
+                "redaction_reason": REDACTION_REASON_LOCAL_PATH_OR_SECRET,
+                "local_artifact_available": False,
+                "local_artifact_label": None,
+            },
+        },
         "contract_failures": contract_failures,
         "warnings": warnings,
     }
@@ -975,6 +1053,8 @@ def render_markdown_report(report: Mapping[str, Any]) -> str:
     identity = report["identity"]
     mutation = report["mutation_safety"]
     privacy = report["privacy"]
+    text_policy = report["public_report_text_policy"]
+    unsafe_text_policy = text_policy["unsafe_raw_text_representation"]
     lines = [
         "# Phase 3.8b Classification-First E2E Dry-run",
         "",
@@ -1035,6 +1115,9 @@ def render_markdown_report(report: Mapping[str, Any]) -> str:
             "",
             f"- Passed: `{privacy['passed']}`",
             f"- Leaks: `{json.dumps(privacy['leaks'])}`",
+            f"- Raw arbitrary error/warning text allowed: `{text_policy['raw_arbitrary_error_warning_text_allowed']}`",
+            f"- Structured safe fields required: `{text_policy['structured_safe_fields_required']}`",
+            f"- Unsafe raw text representation: `{json.dumps(unsafe_text_policy, sort_keys=True)}`",
             "",
             "## Contract Failures",
             "",

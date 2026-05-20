@@ -7,7 +7,7 @@
 - Success: `True`
 - Source label: `violet:tier1000:phase3.5`
 - Repo branch: `phase3.8b-classification-first-e2e-foundation`
-- Report git head before commit: `f2957899b7499ac3294bea312ccc42af8df34a25`
+- Report git head before commit: `a1725e625116c4a481b925dc644837935e6d4e74`
 - Tracked dirty at report generation: `True`
 - Python: `python.exe` `3.12.0`
 - DB: `development` / `blombooru`
@@ -61,6 +61,9 @@
 
 - Passed: `True`
 - Leaks: `[]`
+- Raw arbitrary error/warning text allowed: `False`
+- Structured safe fields required: `True`
+- Unsafe raw text representation: `{"local_artifact_available": false, "local_artifact_label": null, "raw_text_redacted": true, "redaction_reason": "local_path_or_secret_like_content"}`
 
 ## Contract Failures
 

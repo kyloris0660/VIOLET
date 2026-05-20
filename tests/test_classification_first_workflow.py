@@ -364,6 +364,14 @@ class TestDryRunReport:
         assert report["counts"]["ineligible_media_count"] == 3
         assert report["legacy_contamination"]["status"] == "legacy_validation_artifact"
         assert report["mutation_safety"]["passed"] is True
+        assert report["public_report_text_policy"]["raw_arbitrary_error_warning_text_allowed"] is False
+        unsafe_text_policy = report["public_report_text_policy"]["unsafe_raw_text_representation"]
+        assert unsafe_text_policy == {
+            "raw_text_redacted": True,
+            "redaction_reason": workflow.REDACTION_REASON_LOCAL_PATH_OR_SECRET,
+            "local_artifact_available": False,
+            "local_artifact_label": None,
+        }
         assert before == after
         assert workflow.find_privacy_leaks(report) == []
 
@@ -603,6 +611,18 @@ class TestPrivacyHelpers:
                 ["%2FUsers", "alice", "Pictures"],
             ),
             (
+                "https://host/?origin=%252FUsers%252Falice%252FPictures%252Ffoo.jpg",
+                ["%252FUsers", "alice", "Pictures"],
+            ),
+            (
+                "https://host/?origin=%25252FUsers%25252Falice%25252FPictures%25252Ffoo.jpg",
+                ["%25252FUsers", "alice", "Pictures"],
+            ),
+            (
+                "https://host/?src=C%253A%252FUsers%252Falice%252Fsecret.jpg",
+                ["C%253A%252FUsers", "alice", "secret.jpg"],
+            ),
+            (
                 "https://host/#/Users/alice/Pictures/foo.jpg",
                 ["/Users", "alice", "Pictures/foo.jpg"],
             ),
@@ -627,6 +647,22 @@ class TestPrivacyHelpers:
 
         assert safe == raw
         assert workflow.find_privacy_leaks(raw) == []
+
+    @pytest.mark.parametrize(
+        "raw,fragments",
+        [
+            ("origin=%252Fhome%252Falice%252Fsecret.png", ["%252Fhome", "alice", "secret.png"]),
+            ("origin=%25252Fhome%25252Falice%25252Fsecret.png", ["%25252Fhome", "alice", "secret.png"]),
+            ("path=%252F\u7528\u6237%252F\u56fe\u7247%252Ffoo.jpg", ["%252F", "\u7528\u6237", "\u56fe\u7247"]),
+        ],
+    )
+    def test_double_encoded_local_path_tokens_are_redacted(self, raw, fragments):
+        safe = workflow.sanitize_public_text(raw)
+
+        assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+        for fragment in fragments:
+            assert fragment not in safe
 
     def test_bearer_token_padding_is_redacted(self):
         raw = "Authorization: Bearer abc.def=="
@@ -669,6 +705,12 @@ class TestPrivacyHelpers:
             "bearer%20abc~def==",
             "Bearer+abc+/def==",
             "Authorization%3A%20Bearer%20abc.def==",
+            "Bearer%20abc%2Fdef%2Bghi%3D%3D",
+            "bearer%20abc%2Fdef%2Bghi%3D%3D",
+            "Authorization%3A%20Bearer%20abc%2Fdef%2Bghi%3D%3D",
+            "Bearer%2520abc.def%253D%253D",
+            "authorization%253A%2520Bearer%2520abc.def%253D%253D",
+            "Bearer%252520abc.def%25253D%25253D",
         ],
     )
     def test_url_encoded_bearer_tokens_are_redacted(self, raw):
@@ -677,6 +719,11 @@ class TestPrivacyHelpers:
         assert "abc" not in safe
         assert "~def" not in safe
         assert "/def" not in safe
+        assert "%2Fdef" not in safe
+        assert "%2Bghi" not in safe
+        assert "%3D%3D" not in safe
+        assert "%253D%253D" not in safe
+        assert "%25253D%25253D" not in safe
         assert "==" not in safe
         assert workflow.find_privacy_leaks(raw) == ["secret_token"]
         assert workflow.find_privacy_leaks(safe) == []
@@ -697,6 +744,14 @@ class TestPrivacyHelpers:
             ("sk%2dabcdef1234567890", ["abcdef1234567890"]),
             ("key%2Dabcdef1234567890", ["abcdef1234567890"]),
             ("https://host/?api_key=sk%2Dabcdef1234567890", ["abcdef1234567890"]),
+            ("sk%252Dabcdef1234567890", ["abcdef1234567890"]),
+            ("key%252Dabcdef1234567890", ["abcdef1234567890"]),
+            ("sk%25252Dabcdef1234567890", ["abcdef1234567890"]),
+            ("sk_live_abcdef1234567890", ["abcdef1234567890", "live"]),
+            ("key_live_abcdef1234567890", ["abcdef1234567890", "live"]),
+            ("sk_test_abcdef1234567890", ["abcdef1234567890", "test"]),
+            ("key_test_abcdef1234567890", ["abcdef1234567890", "test"]),
+            ("https://host/?api_key=sk_live_abcdef1234567890", ["abcdef1234567890", "live"]),
         ],
     )
     def test_percent_encoded_api_key_prefixes_are_redacted(self, raw, fragments):
@@ -715,9 +770,10 @@ class TestPrivacyHelpers:
             "unicode_posix": "/\u7528\u6237/\u56fe\u7247/foo.jpg",
             "embedded_url_path": "https://host/?origin=/Users/alice/Pictures/foo.jpg",
             "encoded_url_path": "https://host/?path=C%3A%2FUsers%2Falice%2Fsecret.jpg",
+            "double_encoded_url_path": "https://host/?path=C%253A%252FUsers%252Falice%252Fsecret.jpg",
             "apostrophe": r"C:\Users\O'Connor\Pictures\foo.jpg",
-            "token": "bearer%20abc~def==",
-            "api_key": "sk%2Dabcdef1234567890",
+            "token": "bearer%2520abc~def%253D%253D",
+            "api_key": "sk_live_abcdef1234567890",
         }
 
         assert workflow.find_privacy_leaks(payload) == ["absolute_path", "secret_token"]
@@ -730,10 +786,12 @@ class TestPrivacyHelpers:
         assert "\u7528\u6237" not in text
         assert "\u56fe\u7247" not in text
         assert "C%3A%2FUsers" not in text
+        assert "C%253A%252FUsers" not in text
         assert "alice" not in text
         assert "Connor" not in text
         assert "~def" not in text
         assert "abcdef1234567890" not in text
+        assert "sk_live" not in text
         assert "==" not in text
         assert workflow.find_privacy_leaks(safe) == []
 
