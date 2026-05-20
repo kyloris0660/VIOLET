@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.7 - Tier-1000 Content Classification Validation + Tag Scope Gate (2026-05-20).
+> Last updated during Phase 3.8a - Classification-First Medium E2E Workflow Plan (2026-05-20).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.7-tier1000-classification-scope-gate` (Phase 3.7 PR in progress; `main` contains prior phases through PR #50) |
+| **Branch** | `phase3.8a-classification-first-e2e-plan` (plan-only branch from `main`; Phase 3.7 PR #51 is merged into `main`) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -33,7 +33,8 @@
 | **Phase 3.4 (PR #48)** | PR [#48](https://github.com/kyloris0660/AnimeLocalBooru/pull/48) merged - Tier-1000 pre-import audit, 1,000/1,000 PASS |
 | **Phase 3.5 (PR #49)** | PR [#49](https://github.com/kyloris0660/AnimeLocalBooru/pull/49) merged - Tier-1000 DB import tooling executed: 995 imported, 5 duplicate hashes skipped, post-import audit PASS |
 | **Phase 3.6 (PR #50)** | PR [#50](https://github.com/kyloris0660/AnimeLocalBooru/pull/50) merged - controlled AI tagging + visual tag localization executed for the Phase 3.5 source label |
-| **Phase 3.7 (branch)** | `phase3.7-tier1000-classification-scope-gate` - Tier-1000 content classification validation and tag-derived workflow scope gate |
+| **Phase 3.7 (PR #51)** | PR [#51](https://github.com/kyloris0660/AnimeLocalBooru/pull/51) merged - Tier-1000 content classification validation and tag-derived workflow scope gate |
+| **Phase 3.8a (branch)** | `phase3.8a-classification-first-e2e-plan` - plan-only classification-first medium E2E workflow design |
 
 ## Mandatory Workflow Rules
 
@@ -726,6 +727,15 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Closeout fix: metadata extraction now recursively sanitizes PIL/EXIF/XMP values before JSON response, preventing `IFDRational`/`jsonable_encoder` 500s on `/api/media/{id}/metadata`.
 - Closeout validation: full read-only sweep passed for 995 metadata endpoints, 995 media detail endpoints, 995 thumbnails, and a 65-item original-file sample; content-class filters, canonical/localized search, AI review/tag APIs, browser smoke, and server-log scan all passed with 0 failures.
 - Phase 4 not started; similarity/clustering not started; Entity Resolver not run
+
+**Phase 3.8a - Classification-First Medium E2E Workflow Plan (branch `phase3.8a-classification-first-e2e-plan`):**
+- Plan-only phase. No DB, storage, source, staging, import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup, reset, delete, drop, or truncate operation was run.
+- Planning report: `docs/reports/phase-3.8a-classification-first-e2e-plan.md`.
+- Core decision: existing Phase 3.5, Phase 3.6, and Phase 3.7 scripts remain phase-specific validation tools, not the formal production workflow.
+- Recommended Phase 3.8b implementation shape: reusable service-level classification-first pipeline helpers plus a thin CLI wrapper. Defer admin UI workflow execution and background orchestration until the CLI/service contract passes.
+- Required final workflow order: candidate manifest -> staging copy -> pre-import audit -> DB import -> content classification -> eligible media selection (`anime` + `unknown`) -> AI tagging only eligible media -> localization only eligible-derived `general`/`meta` tags -> post-run validation -> browser/API smoke -> report.
+- Legacy Phase 3.6 ineligible AI associations remain audit evidence only: 26 ineligible media, 771 AI associations; no cleanup is proposed for Phase 3.8.
+- Recommended next pilot after implementation: add about 1000 new media to reach roughly 2k total before attempting 3k/5k.
 
 ## Recommended Next Step: Manual Validation Before Scaling
 

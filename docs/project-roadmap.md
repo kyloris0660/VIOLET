@@ -279,6 +279,18 @@ See [Content Classification](content-classification.md) for full documentation.
 - Existing Phase 3.6 AI tag associations on newly classified ineligible media are retained as audit evidence; no cleanup is performed without a later approved cleanup plan.
 - Phase 4, similarity/clustering, Entity Resolver, and tag cleanup remain out of scope.
 
+### Phase 3.8a - Classification-First Medium E2E Workflow Plan
+
+**Goal:** Plan the guarded medium-scale workflow before Phase 4 by converting the validated pieces from Phases 3.5, 3.6, and 3.7 into a classification-first E2E design.
+
+- Plan-only phase; no implementation code, DB mutation, import, classification rerun, AI tagging, localization, Entity Resolver, similarity, cleanup, reset, delete, drop, or truncate.
+- Planning report: `docs/reports/phase-3.8a-classification-first-e2e-plan.md`.
+- Existing scripts (`import_staged_manifest.py`, `run_phase36_tier1000_ai_localization.py`, `run_phase37_tier1000_classification_scope_gate.py`, `validate_phase37_media_api_smoke.py`) are treated as phase-specific validation tools, not the production workflow entrypoint.
+- Recommended Phase 3.8b entrypoint: reusable service-level pipeline helpers plus a thin CLI wrapper; defer admin workflow actions and background orchestration until the CLI/service contract is validated.
+- Required order: candidate manifest -> staging copy -> pre-import audit -> DB import -> content classification -> eligible selection (`anime` + `unknown`) -> AI tagging only eligible media -> localization only eligible-derived `general`/`meta` tags -> post-run validation -> browser/API smoke -> report.
+- Legacy Phase 3.6 ineligible AI associations are retained as audit evidence: 26 ineligible media have 771 AI associations. Future tag stats, localization candidates, and similarity inputs must filter through eligible media; cleanup is a separate future plan if needed.
+- Recommended next pilot: add about 1000 new media to reach roughly 2k total, then consider 3k/5k only after the workflow passes.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
