@@ -291,6 +291,19 @@ See [Content Classification](content-classification.md) for full documentation.
 - Public dry-run reports: `docs/reports/phase-3.8b-classification-first-e2e-dry-run.md` and `docs/reports/phase-3.8b-classification-first-e2e-dry-run-summary.json`.
 - Real import/copy/classification/AI/localization execution, full 5k+ run, legacy tag cleanup, Entity Resolver, and similarity/clustering remain deferred.
 
+### Phase 3.8c - Medium Pilot Preflight + Classification-First E2E Dry-run
+
+**Goal:** Prepare the next +1000 medium pilot with temporal-diverse candidate selection and formal dry-run/no-mutation proof before any guarded execute stage.
+
+- Added `scripts/plan_phase38c_medium_pilot_preflight.py`, a dry-run-only preflight planner. `--execute` is rejected; real execution is deferred to Phase 3.8d after approval.
+- Candidate discovery is source read-only and uses filesystem modified time as the time signal. Known-time candidates are split into 16 quantile temporal buckets and sampled across all buckets.
+- Result: source inventory `38,356`, eligible not-yet-selected candidate pool `33,032`, selected `1,000`, excluded/not-selected `37,356`, timestamp_unknown `0`.
+- Temporal distribution: `b01-b08=63` each and `b09-b16=62` each; this avoids directory-order, newest-only, oldest-only, and contiguous-window selection.
+- Selected extension distribution: `.jpg=816`, `.png=173`, `.jpeg=10`, `.gif=1`; approximate future copy size `3,112,402,513` bytes.
+- Planned scale: current DB media count `995`; expected post-execute count around `1,995` before duplicate/import failures.
+- No-mutation proof passed for DB, app storage originals/thumbnails, source tree, and planned staging target. Public reports are privacy-safe; the full-path manifest remains local and gitignored at `.local_manifests/phase-3.8c-medium-candidate-manifest.csv`.
+- Real import/copy/classification/AI/localization execution, Entity Resolver, similarity/clustering, cleanup, delete, reset, drop, and truncate remain forbidden in Phase 3.8c.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.

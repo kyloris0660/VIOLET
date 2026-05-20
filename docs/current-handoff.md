@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8b - Classification-First E2E Workflow Foundation + Dry-run Orchestrator (2026-05-20).
+> Last updated during Phase 3.8c - Medium Pilot Preflight + Classification-First E2E Dry-run (2026-05-21).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8b-classification-first-e2e-foundation` (Phase 3.8b implementation branch; `main` contains Phase 3.7 via PR #51) |
+| **Branch** | `phase3.8c-medium-pilot-preflight-dryrun` (Phase 3.8c implementation branch; `main` contains Phase 3.8b via PR #53) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -34,7 +34,8 @@
 | **Phase 3.5 (PR #49)** | PR [#49](https://github.com/kyloris0660/AnimeLocalBooru/pull/49) merged - Tier-1000 DB import tooling executed: 995 imported, 5 duplicate hashes skipped, post-import audit PASS |
 | **Phase 3.6 (PR #50)** | PR [#50](https://github.com/kyloris0660/AnimeLocalBooru/pull/50) merged - controlled AI tagging + visual tag localization executed for the Phase 3.5 source label |
 | **Phase 3.7 (PR #51)** | PR [#51](https://github.com/kyloris0660/AnimeLocalBooru/pull/51) merged - Tier-1000 content classification validation and tag-derived workflow scope gate |
-| **Phase 3.8b (branch)** | `phase3.8b-classification-first-e2e-foundation` - reusable classification-first workflow helpers and dry-run CLI; execute workflow remains deferred |
+| **Phase 3.8b (PR #53)** | PR [#53](https://github.com/kyloris0660/AnimeLocalBooru/pull/53) merged - reusable classification-first workflow helpers and dry-run CLI; execute workflow remains deferred |
+| **Phase 3.8c (branch)** | `phase3.8c-medium-pilot-preflight-dryrun` - medium +1000 candidate preflight with temporal stratified selection; dry-run only |
 
 ## Mandatory Workflow Rules
 
@@ -737,15 +738,27 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Public reports: `docs/reports/phase-3.8b-classification-first-e2e-dry-run.md` and `docs/reports/phase-3.8b-classification-first-e2e-dry-run-summary.json`.
 - Phase 3.8b does not execute import/copy/classification/AI/localization, does not mutate DB/storage/source/staging, and does not start Phase 4, Entity Resolver, or similarity/clustering.
 
-## Recommended Next Step: Review Phase 3.8b Before Execute Pilot
+**Phase 3.8c - Medium Pilot Preflight + Classification-First E2E Dry-run (branch `phase3.8c-medium-pilot-preflight-dryrun`):**
+- Adds `scripts/plan_phase38c_medium_pilot_preflight.py`, a dry-run-only planner for the next +1000 medium pilot. `--execute` is explicitly rejected; Phase 3.8d remains the first possible execute phase after approval.
+- Candidate discovery scans the approved source read-only, uses filesystem modified time as the time signal, and samples across 16 quantile temporal buckets instead of directory order, newest-only, oldest-only, or one contiguous time window.
+- Candidate result: source inventory `38,356`, eligible not-yet-selected candidate pool `33,032`, selected `1,000`, excluded/not-selected `37,356`, timestamp_unknown `0`, approximate future copy size `3,112,402,513` bytes.
+- Selected bucket distribution: `b01-b08=63` each and `b09-b16=62` each. Extension distribution: `.jpg=816`, `.png=173`, `.jpeg=10`, `.gif=1`.
+- Planned future execute scale: current DB media `995`; expected post-execute media count around `1,995` before duplicate/import failures.
+- No-mutation proof passed for DB (`media`, `media_tags`, `ai_jobs`, `classification_jobs`, `translation_jobs` deltas all `0`), app storage originals/thumbnails, source tree, and planned staging target.
+- Public reports: `docs/reports/phase-3.8c-medium-pilot-preflight.md` and `docs/reports/phase-3.8c-medium-pilot-preflight-summary.json`.
+- Local full-path manifest: `.local_manifests/phase-3.8c-medium-candidate-manifest.csv`; it is gitignored and must not be committed.
+- Phase 3.8c does not execute real import, staging copy, DB import, content classification, AI tagging, localization, Entity Resolver, similarity/clustering, cleanup, delete, reset, drop, or truncate.
 
-Do not start Phase 4 or the real +1000/+2000 pilot until Phase 3.8b is reviewed and merged. The next implementation stage should be Phase 3.8c / Phase 3.8b follow-up only after approval:
+## Recommended Next Step: Review Phase 3.8c Before Guarded Execute
 
-1. Extract remaining phase-runner logic into reusable execute-stage services.
-2. Add explicit execute confirmations, DB backup gates, source/staging immutability checks, stale-server checks, and active-job checks.
-3. Keep `NULL content_class` fail-closed unless a future approved step explicitly converts NULL to `unknown`.
-4. Run only a guarded medium pilot after dry-run counts and gates are accepted.
-5. Continue treating the 26 ineligible media with 771 Phase 3.6 AI associations as legacy validation artifacts; do not clean/delete without a separate approved cleanup plan.
+Do not start Phase 4 or any real +1000 execute workflow until Phase 3.8c is reviewed and merged. The next implementation stage should be Phase 3.8d only after explicit user/ChatGPT approval:
+
+1. Preserve the Phase 3.8c candidate manifest as an untracked local artifact and verify it is not staged.
+2. Before any execute, take a DB backup and re-run candidate/staging/audit dry-run against the latest `main`.
+3. Add execute confirmations, source/staging immutability checks, stale-server checks, active-job checks, and background worker isolation before writes.
+4. Keep `NULL content_class` fail-closed unless a future approved step explicitly converts NULL to `unknown`.
+5. Execute classification before AI tagging, then restrict AI tagging to `anime` + `unknown`, and restrict localization to eligible-derived `general`/`meta` tags.
+6. Continue treating the 26 ineligible media with 771 Phase 3.6 AI associations as legacy validation artifacts; do not clean/delete without a separate approved cleanup plan.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 
