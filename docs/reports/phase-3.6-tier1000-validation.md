@@ -109,9 +109,10 @@ Implemented after the original Phase 3.6 run; no full AI tagging or full localiz
 - Historical `completed`, `failed`, and `cancelled` AI jobs do not block new runs.
 - If classification jobs or translation jobs are created during the AI tagging portion, the runner now marks the report failed and exits nonzero.
 - Localization now exits nonzero when the LLM provider is unavailable with candidates, or when any localization candidate fails.
+- Localization now treats selected candidates whose `upsert_translation()` returns `None` as unsaved failures rather than successful translations.
 - If translation save/finalization fails after a `TagTranslationJob` row exists, the runner rolls back the current transaction, marks that job `failed`, sets `finished_at`, records a sanitized error, writes the report, and exits nonzero.
 - Controlled localization now caps one run to `min(--max-items, TAG_TRANSLATION_BATCH_MAX_ITEMS)` before selecting candidates, and reports `requested_max_items`, `effective_max_items`, `configured_batch_max`, and `candidates_selected`.
-- If an AI chunk job fails, the runner writes a failure report before aborting, including completed prior jobs, the failed job entry, the before baseline, and best-effort after/safety deltas.
+- If an AI chunk job fails, the runner writes a failure report before aborting, including completed prior jobs, the failed job entry, the failed chunk's top-level partial totals, the before baseline, and best-effort after/safety deltas.
 - `localize --max-items` and `ai-tag --limit` now reject `0` and negative values during argument parsing, before any DB write path can run.
 
 ## Manual Inspection Questions

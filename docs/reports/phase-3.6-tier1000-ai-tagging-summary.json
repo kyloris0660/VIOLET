@@ -816,6 +816,7 @@
     ],
     "forbidden_side_effect_job_deltas_exit_nonzero": true,
     "bad_chunk_failure_report_before_abort": true,
+    "bad_chunk_failure_report_includes_failed_chunk_totals": true,
     "non_positive_limit_rejected": true,
     "full_ai_tagging_rerun": false
   },

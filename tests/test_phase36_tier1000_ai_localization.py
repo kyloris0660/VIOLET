@@ -308,6 +308,133 @@ def test_localization_respects_requested_limit_when_below_batch_cap(db, tmp_path
     assert payload["candidates_selected"] == 1
 
 
+def test_localization_unsaved_selected_candidate_fails_run(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    _tag(db, 1, "phase36_unsaved_tag", TagCategoryEnum.general)
+    _ai_assoc(db, 1, 1)
+
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    report_json = tmp_path / "unsaved-localization-report.json"
+    settings = _phase36_settings(TAG_TRANSLATION_BATCH_MAX_ITEMS=5)
+
+    class FakeProvider:
+        def is_available(self):
+            return True
+
+        def get_provider_name(self):
+            return "fake"
+
+        async def translate_tags(self, tag_inputs):
+            assert [item["name"] for item in tag_inputs] == ["phase36_unsaved_tag"]
+            return [
+                SimpleNamespace(
+                    canonical_name="phase36_unsaved_tag",
+                    display_name_zh="未保存",
+                    aliases_zh=[],
+                    confidence=1.0,
+                    needs_review=False,
+                )
+            ]
+
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+    import app.services.llm_translation_provider as provider_mod
+    import app.services.tag_localization_service as localization_service
+
+    monkeypatch.setattr(provider_mod, "get_llm_provider", lambda: FakeProvider())
+    monkeypatch.setattr(localization_service, "upsert_translation", lambda *args, **kwargs: None)
+
+    with pytest.raises(phase36.Phase36RunFailed):
+        phase36.run_controlled_localization(
+            SimpleNamespace(
+                source_label=phase36.SOURCE_LABEL,
+                expected_media_count=1,
+                confirm_phase36=phase36.CONFIRM_PHRASE,
+                db_backup_file=str(backup),
+                report_json=str(report_json),
+                lang="zh-CN",
+                max_items=5,
+            )
+        )
+
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+    assert payload["success"] is False
+    assert payload["status"] == "failed_partial"
+    assert payload["translated"] == 0
+    assert payload["unsaved"] == 1
+    assert payload["failed"] == 1
+    job = db.query(TagTranslationJob).one()
+    assert job.status == "failed"
+    assert job.failed == 1
+    assert job.finished_at is not None
+
+
+def test_localization_unknown_provider_output_is_skipped_not_failed(db, tmp_path, monkeypatch):
+    _media(db, 1, phase36.SOURCE_LABEL)
+    _tag(db, 1, "phase36_known_tag", TagCategoryEnum.general)
+    _ai_assoc(db, 1, 1)
+
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"not-empty")
+    settings = _phase36_settings(TAG_TRANSLATION_BATCH_MAX_ITEMS=5)
+
+    class FakeProvider:
+        def is_available(self):
+            return True
+
+        def get_provider_name(self):
+            return "fake"
+
+        async def translate_tags(self, tag_inputs):
+            return [
+                SimpleNamespace(
+                    canonical_name="phase36_known_tag",
+                    display_name_zh="已保存",
+                    aliases_zh=[],
+                    confidence=1.0,
+                    needs_review=False,
+                ),
+                SimpleNamespace(
+                    canonical_name="phase36_unknown_tag",
+                    display_name_zh="未知",
+                    aliases_zh=[],
+                    confidence=1.0,
+                    needs_review=False,
+                ),
+            ]
+
+    monkeypatch.setattr(
+        phase36,
+        "load_app_context",
+        lambda: {"settings": settings, "database": SimpleNamespace(SessionLocal=lambda: db)},
+    )
+    import app.services.llm_translation_provider as provider_mod
+
+    monkeypatch.setattr(provider_mod, "get_llm_provider", lambda: FakeProvider())
+
+    payload = phase36.run_controlled_localization(
+        SimpleNamespace(
+            source_label=phase36.SOURCE_LABEL,
+            expected_media_count=1,
+            confirm_phase36=phase36.CONFIRM_PHRASE,
+            db_backup_file=str(backup),
+            report_json=str(tmp_path / "unknown-output-report.json"),
+            lang="zh-CN",
+            max_items=5,
+        )
+    )
+
+    assert payload["success"] is True
+    assert payload["translated"] == 1
+    assert payload["failed"] == 0
+    assert payload["unknown_provider_outputs"] == 1
+    assert payload["skipped"] == 1
+
+
 def test_metric_delta_reports_distinct_ai_and_translation_changes(db):
     before = {
         "target_media_with_ai_tags": 10,
@@ -547,6 +674,11 @@ def test_ai_chunk_failure_writes_report_before_abort(db, tmp_path, monkeypatch):
     assert payload["ai_tagging"]["failed_job"]["suggestions_added"] == 3
     assert payload["ai_tagging"]["failed_job"]["chunk_index"] == 1
     assert payload["ai_tagging"]["failed_job"]["requested_media_count"] == 1
+    assert payload["ai_tagging"]["processed"] == 1
+    assert payload["ai_tagging"]["failed"] == 1
+    assert payload["ai_tagging"]["tags_added"] == 2
+    assert payload["ai_tagging"]["suggestions_added"] == 3
+    assert payload["ai_tagging"]["ignored_low_confidence"] == 4
     assert "C:\\" not in json.dumps(payload, ensure_ascii=False)
 
 

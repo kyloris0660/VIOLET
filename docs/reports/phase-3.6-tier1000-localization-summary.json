@@ -114,6 +114,7 @@
   "closeout_hardening": {
     "provider_unavailable_with_candidates_exits_nonzero": true,
     "failed_candidates_exit_nonzero": true,
+    "unsaved_translation_results_fail_run": true,
     "translation_job_save_or_finalize_errors_mark_failed": true,
     "candidate_batch_cap_enforced": true,
     "effective_limit_formula": "min(requested_max_items, TAG_TRANSLATION_BATCH_MAX_ITEMS)",

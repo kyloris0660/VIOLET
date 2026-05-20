@@ -652,6 +652,9 @@ def run_ai_tagging_controlled(args: argparse.Namespace) -> Dict[str, Any]:
             }
             jobs.append(job_entry)
             if persisted.status != "completed" or persisted.failed:
+                failed_totals = dict(totals)
+                for key in failed_totals:
+                    failed_totals[key] += int(getattr(persisted, key) or 0)
                 failure_payload = build_ai_chunk_failure_payload(
                     started_at=started_at,
                     source_label=args.source_label,
@@ -665,7 +668,7 @@ def run_ai_tagging_controlled(args: argparse.Namespace) -> Dict[str, Any]:
                     before=before,
                     jobs=jobs,
                     failed_job=job_entry,
-                    totals=totals,
+                    totals=failed_totals,
                     db=db,
                     lang=args.lang,
                     error=f"AI tag job {persisted.id} did not complete cleanly: {job_entry}",
@@ -868,6 +871,9 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
             "translated": 0,
             "failed": 0,
             "skipped": 0,
+            "unsaved": 0,
+            "unknown_provider_outputs": 0,
+            "duplicate_provider_outputs": 0,
             "job_id": None,
             "provider_available": provider.is_available(),
             "success": True,
@@ -945,14 +951,20 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
             raise Phase36RunFailed("LLM provider failed during controlled localization", result)
 
         candidate_by_name = {item["canonical_name"]: item for item in candidates}
-        seen = set()
+        seen_outputs = set()
+        saved_names = set()
         try:
             for translation in translations:
                 canonical = getattr(translation, "canonical_name", "")
                 if canonical not in candidate_by_name:
                     result["skipped"] += 1
+                    result["unknown_provider_outputs"] += 1
                     continue
-                seen.add(canonical)
+                if canonical in seen_outputs:
+                    result["skipped"] += 1
+                    result["duplicate_provider_outputs"] += 1
+                    continue
+                seen_outputs.add(canonical)
                 item = candidate_by_name[canonical]
                 saved = upsert_translation(
                     db,
@@ -968,11 +980,12 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
                     provider=provider.get_provider_name(),
                 )
                 if saved is None:
-                    result["skipped"] += 1
+                    result["unsaved"] += 1
                 else:
+                    saved_names.add(canonical)
                     result["translated"] += 1
 
-            result["failed"] = max(0, len(candidates) - len(seen))
+            result["failed"] = max(0, len(candidates) - len(saved_names))
             result["skipped"] += skipped_proper_nouns
             invalidate_translation_cache()
             after = collect_baseline(db, args.source_label, lang=args.lang)
@@ -991,10 +1004,10 @@ def run_controlled_localization(args: argparse.Namespace) -> Dict[str, Any]:
                 job,
                 error=safe_error,
                 total_candidates=len(candidates),
-                processed=len(seen),
+                processed=len(saved_names),
             )
             result["job_id"] = job.id
-            result["failed"] = max(1, len(candidates) - len(seen))
+            result["failed"] = max(1, len(candidates) - len(saved_names))
             apply_failure_status(result, status="failed_save_or_finalize_error", error=safe_error)
             try:
                 result["after"] = collect_baseline(db, args.source_label, lang=args.lang)
