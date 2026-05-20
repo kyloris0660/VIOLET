@@ -420,7 +420,7 @@ class TestPrivacyHelpers:
     def test_sanitizer_redacts_paths_and_secrets(self):
         payload = {
             "path": "C:\\Users\\someone\\AnimeLocalBooru E:\\VioletPilotData_1000 /workspace/project",
-            "token": "Bearer abc.def sk-secretsecret",
+            "token": "Bearer abc.def sk-secretsecret key-secretsecret",
             "url": "postgresql://postgres:password@localhost:5432/blombooru",
         }
         safe = workflow.sanitize_public_obj(payload)
@@ -460,6 +460,53 @@ class TestPrivacyHelpers:
         assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
         assert workflow.find_privacy_leaks(safe) == []
 
+    def test_file_uris_are_redacted_as_local_paths(self):
+        samples = [
+            "file:///Users/alice/Pictures/foo.jpg",
+            "file://localhost/C:/Users/alice/iCloud Photos/foo.jpg",
+            "file:///C:/Users/alice/iCloud Photos/foo.jpg",
+        ]
+        raw = " ".join(samples)
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "file://" not in safe
+        assert "/Users/alice" not in safe
+        assert "C:/Users/alice" not in safe
+        assert "iCloud Photos" not in safe
+        assert "Pictures/foo.jpg" not in safe
+        for sample in samples:
+            assert workflow.find_privacy_leaks(sample) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_windows_paths_with_apostrophes_are_fully_redacted(self):
+        raw = (
+            r"failed at C:\Users\O'Connor\Pictures\foo.jpg, "
+            r"quoted 'C:\Users\O'Connor\Pictures\bar.jpg'"
+        )
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "C:\\Users" not in safe
+        assert r"Connor\Pictures" not in safe
+        assert r"Pictures\foo.jpg" not in safe
+        assert r"Pictures\bar.jpg" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_posix_paths_with_apostrophes_are_fully_redacted(self):
+        raw = "failed at /home/o'connor/Pictures/foo.jpg and '/Users/o'connor/Pictures/bar.jpg'"
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "/home/o" not in safe
+        assert "/Users/o" not in safe
+        assert "connor/Pictures" not in safe
+        assert "Pictures/foo.jpg" not in safe
+        assert "Pictures/bar.jpg" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
     @pytest.mark.parametrize(
         "path",
         [
@@ -488,18 +535,43 @@ class TestPrivacyHelpers:
         assert "http://example.com/a/b" in safe
         assert workflow.find_privacy_leaks(safe) == []
 
+    def test_slash_separated_prose_is_not_redacted_as_posix_path(self):
+        raw = "candidate manifest / candidate selection"
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert safe == raw
+        assert workflow.find_privacy_leaks(raw) == []
+
+    def test_bearer_token_padding_is_redacted(self):
+        raw = "Authorization: Bearer abc.def=="
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert f"Bearer {workflow.SECRET_REDACTION}" in safe
+        assert "abc.def" not in safe
+        assert "==" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["secret_token"]
+        assert workflow.find_privacy_leaks(safe) == []
+
     def test_privacy_scan_fails_before_redaction_and_passes_after(self):
         payload = {
             "windows": r"C:\Users\name\iCloud Photos\foo.jpg",
             "posix": "/private/var/folders/abc/file",
+            "file_uri": "file:///Users/alice/Pictures/foo.jpg",
+            "apostrophe": r"C:\Users\O'Connor\Pictures\foo.jpg",
+            "token": "Bearer abc.def==",
         }
 
-        assert workflow.find_privacy_leaks(payload) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(payload) == ["absolute_path", "secret_token"]
         safe = workflow.sanitize_public_obj(payload)
 
         text = json.dumps(safe)
         assert "iCloud Photos" not in text
         assert "/private/var" not in text
+        assert "file://" not in text
+        assert "Connor" not in text
+        assert "==" not in text
         assert workflow.find_privacy_leaks(safe) == []
 
 

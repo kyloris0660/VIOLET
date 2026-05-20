@@ -3,8 +3,8 @@
   "mode": "dry_run",
   "success": true,
   "status": "passed",
-  "started_at": "2026-05-20T13:29:34.066286+00:00",
-  "finished_at": "2026-05-20T13:29:34.233065+00:00",
+  "started_at": "2026-05-20T14:04:56.859536+00:00",
+  "finished_at": "2026-05-20T14:04:57.014301+00:00",
   "scope": {
     "source_label": "violet:tier1000:phase3.5",
     "expected_current_media_count": 995,
@@ -23,7 +23,7 @@
     "repo": {
       "root_label": "repo_root",
       "branch": "phase3.8b-classification-first-e2e-foundation",
-      "report_git_head_before_commit": "d72238bf2b54cf3ca68e4ddb43074f0566acc092",
+      "report_git_head_before_commit": "70bff4d4ab565c959870ae821af21630a870415c",
       "tracked_dirty": true,
       "report_generated_from_worktree": true
     },
@@ -39,7 +39,7 @@
     }
   },
   "workflow_order": [
-    "candidate manifest <redacted_path>",
+    "candidate manifest / candidate selection",
     "staging copy",
     "pre-import audit",
     "DB import",
@@ -54,7 +54,7 @@
   "stage_contracts": [
     {
       "order": 1,
-      "name": "candidate manifest <redacted_path>",
+      "name": "candidate manifest / candidate selection",
       "expected_input": "source candidate roots or approved candidate manifest",
       "expected_output": "privacy-safe candidate manifest with run_id/source_label",
       "hard_gates": [

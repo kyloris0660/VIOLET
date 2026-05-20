@@ -47,10 +47,11 @@ PUBLIC_PATH_REDACTION = "<redacted_path>"
 SECRET_REDACTION = "<redacted_secret>"
 
 URL_RE = re.compile(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
-WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"'<>|]).)+")
-UNC_PATH_RE = re.compile(r"\\\\(?:(?![\r\n\"'<>|]).)+")
-POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?!/)(?:(?![\r\n\"'<>|]).)+")
-SECRET_TOKEN_RE = re.compile(r"Bearer\s+[A-Za-z0-9._\-]+")
+FILE_URI_RE = re.compile(r"file://(?:(?![\r\n\"<>|]).)+", re.IGNORECASE)
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"<>|]).)+")
+UNC_PATH_RE = re.compile(r"\\\\(?:(?![\r\n\"<>|]).)+")
+POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?!/)(?=[A-Za-z0-9._~'-])(?:(?![\r\n\"<>|]).)+")
+SECRET_TOKEN_RE = re.compile(r"Bearer\s+[A-Za-z0-9._\-+/=]+")
 API_KEY_RE = re.compile(r"(sk-|key-)[A-Za-z0-9_\-]{8,}")
 URL_PASSWORD_RE = re.compile(r"([a-z0-9+.-]+://[^:\s/@]+:)(?!\*\*\*@)([^@\s]+)(@)", re.IGNORECASE)
 
@@ -76,6 +77,8 @@ def _protect_urls(text: str) -> tuple[str, dict[str, str]]:
     protected: dict[str, str] = {}
 
     def replace(match: re.Match[str]) -> str:
+        if match.group(0).lower().startswith("file://"):
+            return match.group(0)
         token = f"__VIOLET_URL_{len(protected)}__"
         protected[token] = match.group(0)
         return token
@@ -95,6 +98,7 @@ def sanitize_public_text(value: str) -> str:
     text = SECRET_TOKEN_RE.sub(f"Bearer {SECRET_REDACTION}", text)
     text = API_KEY_RE.sub(r"\1***", text)
     text = URL_PASSWORD_RE.sub(r"\1***\3", text)
+    text = FILE_URI_RE.sub(PUBLIC_PATH_REDACTION, text)
     protected_text, protected_urls = _protect_urls(text)
     protected_text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
     protected_text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
@@ -121,7 +125,8 @@ def find_privacy_leaks(value: Any) -> list[str]:
     protected_text, _ = _protect_urls(text)
     leaks: list[str] = []
     if (
-        WINDOWS_ABSOLUTE_PATH_RE.search(protected_text)
+        FILE_URI_RE.search(text)
+        or WINDOWS_ABSOLUTE_PATH_RE.search(protected_text)
         or UNC_PATH_RE.search(protected_text)
         or POSIX_ABSOLUTE_PATH_RE.search(protected_text)
     ):

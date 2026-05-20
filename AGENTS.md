@@ -140,6 +140,8 @@ For every new major development phase or substantial feature scope, the agent mu
 
 This rule is permanent and applies to all future phases.
 
+Plan-only tasks must not create branches, commits, pushes, or PRs unless the user explicitly approves a documentation PR. Deliver plan-only output in chat or as a local untracked `.codex/plans/*.md` draft, then wait for user/ChatGPT approval before implementation.
+
 ### Development workflow
 
 See `docs/project-roadmap.md` § Development Standards. In short:
@@ -169,6 +171,20 @@ Additional PR rules:
 2. Before starting a new phase, verify: current branch, `git status`, `origin/main` latest commit, previous phase is actually merged into `origin/main`.
 3. Do not mix multiple phases in one branch or one PR.
 4. The final delivery report must include the real GitHub PR URL.
+
+### Automated reviewer closeout loop
+
+For implementation PRs, CodeX must handle reviewer closeout instead of asking the user to copy/paste reviewer comments.
+
+1. After each PR push, CodeX must post exactly `@codex review`.
+2. CodeX must poll GitHub efficiently for reviewer results, usually every 2-3 minutes, with a maximum wait of 30 minutes per reviewer trigger.
+3. CodeX must distinguish current-head reviewer feedback from outdated feedback before acting on it.
+4. CodeX may automatically fix current-head P1/P2 only when the issue is within PR scope, does not require a destructive operation, does not require a schema migration, does not mutate real DB/storage/source/staging without explicit authorization, and does not start a new phase.
+5. P3/nit/docs wording/logging suggestions are deferred unless they are tiny, safe, and local.
+6. Hard maximum: normal PRs get at most 3 reviewer-fix rounds; PR #53 trial gets at most 2 reviewer-fix rounds from the introduction of this policy.
+7. Stop and escalate to user/ChatGPT if P1/P2 remain after the round limit, the issue requires schema migration, DB cleanup/delete/reset/drop/truncate, source/iCloud/staging mutation, phase-scope changes, broad refactors outside the PR goal, unverifiable current-head reviewer results, GitHub auth/CLI failures, or tests fail and cannot be fixed safely.
+8. Before triggering reviewer again, CodeX must proactively audit same-class issues locally so reviewer is not used as a substitute for engineering judgment.
+9. CodeX must never auto-merge or push `main`.
 
 ### PR body format and task checklist standard
 
