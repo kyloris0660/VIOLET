@@ -166,6 +166,19 @@ class TestEligibleScopeHelper:
         )
         assert result == {"eligible": 3, "ineligible": 12, "null_content_class": 5}
 
+    def test_partition_counts_treat_null_as_unknown(self):
+        result = workflow.partition_content_class_counts(
+            {
+                "anime": 2,
+                "unknown": 1,
+                "non_anime": 3,
+                "illustration": 4,
+                "unclassified": 5,
+            },
+            null_policy=workflow.NULL_POLICY_TREAT_AS_UNKNOWN,
+        )
+        assert result == {"eligible": 8, "ineligible": 7, "null_content_class": 5}
+
 
 class TestAITaggingScopePolicy:
     def test_refuses_ineligible_media_ids(self, db):
@@ -192,6 +205,30 @@ class TestAITaggingScopePolicy:
         assert result["eligible_ids"] == [1, 2]
         assert result["ineligible_ids"] == []
 
+    def test_sql_and_python_null_policy_treat_as_unknown(self, db):
+        _media(db, 1, content_class=ContentClassEnum.anime)
+        _media(db, 2, content_class=ContentClassEnum.unknown)
+        _media(db, 3, content_class=None)
+        _media(db, 4, content_class=ContentClassEnum.non_anime)
+
+        assert workflow.select_eligible_media_ids(db, SOURCE_LABEL) == [1, 2]
+        assert workflow.select_eligible_media_ids(
+            db,
+            SOURCE_LABEL,
+            null_policy=workflow.NULL_POLICY_TREAT_AS_UNKNOWN,
+        ) == [1, 2, 3]
+
+        with pytest.raises(workflow.WorkflowContractError):
+            workflow.assert_ai_scope_media_ids_are_eligible(db, [1, 2, 3], source_label=SOURCE_LABEL)
+
+        result = workflow.assert_ai_scope_media_ids_are_eligible(
+            db,
+            [1, 2, 3],
+            source_label=SOURCE_LABEL,
+            null_policy=workflow.NULL_POLICY_TREAT_AS_UNKNOWN,
+        )
+        assert result["eligible_ids"] == [1, 2, 3]
+
 
 class TestLocalizationScopePolicy:
     def test_candidates_only_from_eligible_media_and_general_meta(self, db, monkeypatch):
@@ -209,6 +246,31 @@ class TestLocalizationScopePolicy:
         assert "eligible_character" not in {item["canonical_name"] for item in candidates}
         assert "already_translated" not in {item["canonical_name"] for item in candidates}
 
+    def test_null_media_candidates_only_when_policy_treats_null_as_unknown(self, db, monkeypatch):
+        _media(db, 1, content_class=ContentClassEnum.anime)
+        _media(db, 2, content_class=None)
+        _tag(db, 1, "anime_general", TagCategoryEnum.general)
+        _tag(db, 2, "null_general", TagCategoryEnum.general)
+        _assoc(db, 1, 1)
+        _assoc(db, 2, 2)
+        monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
+
+        hard_fail_names = {
+            item["canonical_name"]
+            for item in workflow.select_eligible_localization_candidates(db, SOURCE_LABEL)
+        }
+        treat_names = {
+            item["canonical_name"]
+            for item in workflow.select_eligible_localization_candidates(
+                db,
+                SOURCE_LABEL,
+                null_policy=workflow.NULL_POLICY_TREAT_AS_UNKNOWN,
+            )
+        }
+
+        assert hard_fail_names == {"anime_general"}
+        assert treat_names == {"anime_general", "null_general"}
+
 
 class TestLegacyContaminationAudit:
     def test_ineligible_ai_associations_are_counted_not_cleaned(self, db, monkeypatch):
@@ -225,6 +287,26 @@ class TestLegacyContaminationAudit:
         assert audit.legacy_contamination["ineligible_ai_associations"] == 2
         assert audit.legacy_contamination["cleanup_performed"] is False
         assert before == after
+
+    def test_treat_null_as_unknown_inverts_scope_counts(self, db, monkeypatch):
+        _seed_scope_fixture(db)
+        monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
+
+        hard_fail = workflow.collect_scope_audit(db, workflow.WorkflowScope(source_label=SOURCE_LABEL))
+        treat_as_unknown = workflow.collect_scope_audit(
+            db,
+            workflow.WorkflowScope(
+                source_label=SOURCE_LABEL,
+                null_content_class_policy=workflow.NULL_POLICY_TREAT_AS_UNKNOWN,
+            ),
+        )
+
+        assert hard_fail.eligible_media_count == 2
+        assert hard_fail.ineligible_media_count == 3
+        assert hard_fail.null_content_class_count == 1
+        assert treat_as_unknown.eligible_media_count == 3
+        assert treat_as_unknown.ineligible_media_count == 2
+        assert treat_as_unknown.null_content_class_count == 1
 
 
 class TestDryRunReport:
@@ -268,6 +350,23 @@ class TestDryRunReport:
         assert report["success"] is False
         assert any("expected_current_media_count=999" in item for item in report["contract_failures"])
 
+    def test_strict_expected_no_null_scope_fails_when_null_is_ineligible(self, db, monkeypatch):
+        _seed_scope_fixture(db)
+        monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
+        scope = workflow.WorkflowScope(
+            source_label=SOURCE_LABEL,
+            expected_current_media_count=5,
+            expected_eligible_count=2,
+            expected_ineligible_count=2,
+            strict=True,
+        )
+
+        report = workflow.build_dry_run_report(db, scope, repo_root=ROOT, settings=_settings())
+
+        assert report["success"] is False
+        assert report["counts"]["null_content_class_count"] == 1
+        assert any("expected_ineligible_count=2" in item for item in report["contract_failures"])
+
 
 class TestPrivacyHelpers:
     def test_sanitizer_redacts_paths_and_secrets(self):
@@ -288,6 +387,68 @@ class TestPrivacyHelpers:
 
 
 class TestDryRunCli:
+    @pytest.mark.parametrize(
+        "arg",
+        [
+            "--expected-current-media-count",
+            "--expected-eligible-count",
+            "--expected-ineligible-count",
+        ],
+    )
+    def test_expected_count_args_accept_zero(self, arg):
+        parsed = cli.build_parser().parse_args([arg, "0"])
+        attr = arg.removeprefix("--").replace("-", "_")
+        assert getattr(parsed, attr) == 0
+
+    @pytest.mark.parametrize(
+        "arg",
+        [
+            "--expected-current-media-count",
+            "--expected-eligible-count",
+            "--expected-ineligible-count",
+        ],
+    )
+    @pytest.mark.parametrize("value", ["-1", "not-an-int"])
+    def test_expected_count_args_reject_negative_and_non_integer(self, arg, value):
+        with pytest.raises(SystemExit):
+            cli.build_parser().parse_args([arg, value])
+
+    def test_cli_strict_zero_expected_counts_succeeds_on_empty_fixture(self, db, tmp_path):
+        out = StringIO()
+        report_json = tmp_path / "summary.json"
+        report_md = tmp_path / "summary.md"
+
+        code = cli.main(
+            [
+                "--dry-run",
+                "--source-label",
+                SOURCE_LABEL,
+                "--expected-current-media-count",
+                "0",
+                "--expected-eligible-count",
+                "0",
+                "--expected-ineligible-count",
+                "0",
+                "--report-json",
+                str(report_json),
+                "--report-md",
+                str(report_md),
+                "--strict",
+            ],
+            session_factory=lambda: db,
+            settings_obj=_settings(),
+            repo_root=ROOT,
+            out=out,
+            err=StringIO(),
+        )
+
+        assert code == 0
+        payload = json.loads(report_json.read_text(encoding="utf-8"))
+        assert payload["counts"]["target_media_count"] == 0
+        assert payload["counts"]["eligible_media_count"] == 0
+        assert payload["counts"]["ineligible_media_count"] == 0
+        assert "target=0 eligible=0 ineligible=0" in out.getvalue()
+
     def test_cli_dry_run_writes_reports(self, db, tmp_path, monkeypatch):
         _seed_scope_fixture(db)
         monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())

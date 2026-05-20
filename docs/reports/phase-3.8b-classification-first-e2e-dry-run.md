@@ -7,7 +7,8 @@
 - Success: `True`
 - Source label: `violet:tier1000:phase3.5`
 - Repo branch: `phase3.8b-classification-first-e2e-foundation`
-- Repo head: `b41fa4da8831eea857601e43e45200efe99ed90e`
+- Report git head before commit: `2c68c12a7ca5bbcbfea10770afe6517b5d07cf37`
+- Tracked dirty at report generation: `True`
 - Python: `python.exe` `3.12.0`
 - DB: `development` / `blombooru`
 - Storage: `app_storage` (paths redacted)

@@ -34,13 +34,13 @@ DEFAULT_REPORT_MD = REPO_ROOT / "docs" / "reports" / "phase-3.8b-classification-
 EXECUTE_REJECTION = "Phase 3.8b supports dry-run planning only; execute is not implemented in this phase."
 
 
-def _positive_int(value: str) -> int:
+def _non_negative_int(value: str) -> int:
     try:
         parsed = int(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("value must be a positive integer") from exc
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("value must be a positive integer")
+        raise argparse.ArgumentTypeError("value must be a non-negative integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be a non-negative integer")
     return parsed
 
 
@@ -50,9 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true", default=True, help="Run read-only dry-run planning.")
     mode.add_argument("--execute", action="store_true", help="Rejected in Phase 3.8b.")
     parser.add_argument("--source-label", default=DEFAULT_SOURCE_LABEL)
-    parser.add_argument("--expected-current-media-count", type=_positive_int)
-    parser.add_argument("--expected-eligible-count", type=_positive_int)
-    parser.add_argument("--expected-ineligible-count", type=_positive_int)
+    parser.add_argument("--expected-current-media-count", type=_non_negative_int)
+    parser.add_argument("--expected-eligible-count", type=_non_negative_int)
+    parser.add_argument("--expected-ineligible-count", type=_non_negative_int)
     parser.add_argument("--report-json", type=Path, default=DEFAULT_REPORT_JSON)
     parser.add_argument("--report-md", type=Path, default=DEFAULT_REPORT_MD)
     parser.add_argument("--strict", action="store_true")
@@ -78,7 +78,7 @@ def _print_summary(report: dict[str, Any], out: TextIO) -> None:
     print(f"mode={report['mode']} status={report['status']} success={report['success']}", file=out)
     print(
         f"python={identity['python']['executable_label']} {identity['python']['version']} "
-        f"repo={identity['repo']['branch']}@{identity['repo']['head_sha']}",
+        f"repo={identity['repo']['branch']}@{identity['repo']['report_git_head_before_commit']}",
         file=out,
     )
     print(

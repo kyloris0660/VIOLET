@@ -340,22 +340,31 @@ def _content_class_distribution(db: Session, source_label: str) -> dict[str, int
     return result
 
 
-def _eligible_condition():
-    return Media.content_class.in_([ContentClassEnum.anime, ContentClassEnum.unknown])
+def _eligible_condition(null_policy: str = NULL_POLICY_HARD_FAIL):
+    base = Media.content_class.in_([ContentClassEnum.anime, ContentClassEnum.unknown])
+    if null_policy == NULL_POLICY_TREAT_AS_UNKNOWN:
+        return or_(Media.content_class.is_(None), base)
+    return base
 
 
-def _ineligible_condition():
-    return or_(
-        Media.content_class.is_(None),
-        Media.content_class.in_([ContentClassEnum.non_anime, ContentClassEnum.illustration]),
-    )
+def _ineligible_condition(null_policy: str = NULL_POLICY_HARD_FAIL):
+    base = Media.content_class.in_([ContentClassEnum.non_anime, ContentClassEnum.illustration])
+    if null_policy == NULL_POLICY_TREAT_AS_UNKNOWN:
+        return base
+    return or_(Media.content_class.is_(None), base)
 
 
-def select_eligible_media_ids(db: Session, source_label: str, *, limit: int | None = None) -> list[int]:
+def select_eligible_media_ids(
+    db: Session,
+    source_label: str,
+    *,
+    limit: int | None = None,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
+) -> list[int]:
     query = (
         db.query(Media.id)
         .filter(Media.source == source_label)
-        .filter(_eligible_condition())
+        .filter(_eligible_condition(null_policy))
         .order_by(Media.id.asc())
     )
     if limit is not None:
@@ -431,7 +440,13 @@ def _count_target_ai_associations(db: Session, source_label: str, *, suggestions
     return int(query.scalar() or 0)
 
 
-def _count_media_with_ai_tags(db: Session, source_label: str, *, eligible: bool | None = None) -> int:
+def _count_media_with_ai_tags(
+    db: Session,
+    source_label: str,
+    *,
+    eligible: bool | None = None,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
+) -> int:
     query = (
         db.query(func.count(func.distinct(blombooru_media_tags.c.media_id)))
         .select_from(blombooru_media_tags)
@@ -440,13 +455,19 @@ def _count_media_with_ai_tags(db: Session, source_label: str, *, eligible: bool 
         .filter(blombooru_media_tags.c.source == AI_SOURCE)
     )
     if eligible is True:
-        query = query.filter(_eligible_condition())
+        query = query.filter(_eligible_condition(null_policy))
     elif eligible is False:
-        query = query.filter(_ineligible_condition())
+        query = query.filter(_ineligible_condition(null_policy))
     return int(query.scalar() or 0)
 
 
-def _count_distinct_ai_tags(db: Session, source_label: str, *, eligible: bool) -> int:
+def _count_distinct_ai_tags(
+    db: Session,
+    source_label: str,
+    *,
+    eligible: bool,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
+) -> int:
     query = (
         db.query(func.count(func.distinct(blombooru_media_tags.c.tag_id)))
         .select_from(blombooru_media_tags)
@@ -454,11 +475,17 @@ def _count_distinct_ai_tags(db: Session, source_label: str, *, eligible: bool) -
         .filter(Media.source == source_label)
         .filter(blombooru_media_tags.c.source == AI_SOURCE)
     )
-    query = query.filter(_eligible_condition() if eligible else _ineligible_condition())
+    query = query.filter(_eligible_condition(null_policy) if eligible else _ineligible_condition(null_policy))
     return int(query.scalar() or 0)
 
 
-def _count_ai_associations_by_scope(db: Session, source_label: str, *, eligible: bool) -> int:
+def _count_ai_associations_by_scope(
+    db: Session,
+    source_label: str,
+    *,
+    eligible: bool,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
+) -> int:
     query = (
         db.query(func.count())
         .select_from(blombooru_media_tags)
@@ -466,7 +493,7 @@ def _count_ai_associations_by_scope(db: Session, source_label: str, *, eligible:
         .filter(Media.source == source_label)
         .filter(blombooru_media_tags.c.source == AI_SOURCE)
     )
-    query = query.filter(_eligible_condition() if eligible else _ineligible_condition())
+    query = query.filter(_eligible_condition(null_policy) if eligible else _ineligible_condition(null_policy))
     return int(query.scalar() or 0)
 
 
@@ -487,6 +514,7 @@ def select_eligible_localization_candidates(
     lang: str = ZH_LANG,
     categories: Sequence[str] = LOCALIZABLE_CATEGORIES,
     limit: int | None = None,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
 ) -> list[dict[str, Any]]:
     category_enums = [TagCategoryEnum(category) for category in categories]
     translated = (
@@ -501,7 +529,7 @@ def select_eligible_localization_candidates(
         .join(blombooru_media_tags, blombooru_media_tags.c.tag_id == Tag.id)
         .join(Media, Media.id == blombooru_media_tags.c.media_id)
         .filter(Media.source == source_label)
-        .filter(_eligible_condition())
+        .filter(_eligible_condition(null_policy))
         .filter(Tag.category.in_(category_enums))
         .filter(~Tag.name.in_(db.query(translated.c.canonical_name)))
         .group_by(Tag.id, Tag.name, Tag.category)
@@ -529,6 +557,7 @@ def _count_missing_eligible_tags(
     *,
     lang: str = ZH_LANG,
     categories: Sequence[str],
+    null_policy: str = NULL_POLICY_HARD_FAIL,
 ) -> int:
     return len(
         select_eligible_localization_candidates(
@@ -537,15 +566,32 @@ def _count_missing_eligible_tags(
             lang=lang,
             categories=categories,
             limit=None,
+            null_policy=null_policy,
         )
     )
 
 
-def _count_deferred_proper_noun_tags(db: Session, source_label: str) -> int:
-    return _count_missing_eligible_tags(db, source_label, categories=PROPER_NOUN_CATEGORIES)
+def _count_deferred_proper_noun_tags(
+    db: Session,
+    source_label: str,
+    *,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
+) -> int:
+    return _count_missing_eligible_tags(
+        db,
+        source_label,
+        categories=PROPER_NOUN_CATEGORIES,
+        null_policy=null_policy,
+    )
 
 
-def _count_translated_tags_attached(db: Session, source_label: str, *, eligible: bool) -> int:
+def _count_translated_tags_attached(
+    db: Session,
+    source_label: str,
+    *,
+    eligible: bool,
+    null_policy: str = NULL_POLICY_HARD_FAIL,
+) -> int:
     query = (
         db.query(func.count(func.distinct(TagTranslation.canonical_name)))
         .select_from(TagTranslation)
@@ -556,7 +602,7 @@ def _count_translated_tags_attached(db: Session, source_label: str, *, eligible:
         .filter(TagTranslation.language == ZH_LANG)
         .filter(TagTranslation.status != "rejected")
     )
-    query = query.filter(_eligible_condition() if eligible else _ineligible_condition())
+    query = query.filter(_eligible_condition(null_policy) if eligible else _ineligible_condition(null_policy))
     return int(query.scalar() or 0)
 
 
@@ -585,10 +631,25 @@ def collect_scope_audit(db: Session, scope: WorkflowScope) -> ScopeAudit:
         },
         null_policy=scope.null_content_class_policy,
     )
-    eligible_ai = _count_ai_associations_by_scope(db, scope.source_label, eligible=True)
-    ineligible_ai = _count_ai_associations_by_scope(db, scope.source_label, eligible=False)
-    visual_candidates = _count_missing_eligible_tags(db, scope.source_label, categories=LOCALIZABLE_CATEGORIES)
-    proper_noun_deferred = _count_deferred_proper_noun_tags(db, scope.source_label)
+    null_policy = scope.null_content_class_policy
+    eligible_ai = _count_ai_associations_by_scope(db, scope.source_label, eligible=True, null_policy=null_policy)
+    ineligible_ai = _count_ai_associations_by_scope(
+        db,
+        scope.source_label,
+        eligible=False,
+        null_policy=null_policy,
+    )
+    visual_candidates = _count_missing_eligible_tags(
+        db,
+        scope.source_label,
+        categories=LOCALIZABLE_CATEGORIES,
+        null_policy=null_policy,
+    )
+    proper_noun_deferred = _count_deferred_proper_noun_tags(
+        db,
+        scope.source_label,
+        null_policy=null_policy,
+    )
     mutation_snapshot = collect_mutation_snapshot(db)
 
     return ScopeAudit(
@@ -607,10 +668,18 @@ def collect_scope_audit(db: Session, scope: WorkflowScope) -> ScopeAudit:
         },
         legacy_contamination={
             "status": "legacy_validation_artifact",
-            "ineligible_media_with_ai_tags": _count_media_with_ai_tags(db, scope.source_label, eligible=False),
+            "ineligible_media_with_ai_tags": _count_media_with_ai_tags(
+                db,
+                scope.source_label,
+                eligible=False,
+                null_policy=null_policy,
+            ),
             "ineligible_ai_associations": ineligible_ai,
             "distinct_ai_tags_on_ineligible_media": _count_distinct_ai_tags(
-                db, scope.source_label, eligible=False
+                db,
+                scope.source_label,
+                eligible=False,
+                null_policy=null_policy,
             ),
             "cleanup_performed": False,
             "policy": "report and filter from future tag-derived workflows; do not delete in Phase 3.8b",
@@ -621,16 +690,30 @@ def collect_scope_audit(db: Session, scope: WorkflowScope) -> ScopeAudit:
             "categories_allowed_now": list(LOCALIZABLE_CATEGORIES),
             "categories_deferred": list(PROPER_NOUN_CATEGORIES),
             "translated_tag_names_attached_to_eligible_media": _count_translated_tags_attached(
-                db, scope.source_label, eligible=True
+                db,
+                scope.source_label,
+                eligible=True,
+                null_policy=null_policy,
             ),
             "translated_tag_names_attached_to_ineligible_media": _count_translated_tags_attached(
-                db, scope.source_label, eligible=False
+                db,
+                scope.source_label,
+                eligible=False,
+                null_policy=null_policy,
             ),
         },
         tag_scope={
-            "distinct_ai_tags_on_eligible_media": _count_distinct_ai_tags(db, scope.source_label, eligible=True),
+            "distinct_ai_tags_on_eligible_media": _count_distinct_ai_tags(
+                db,
+                scope.source_label,
+                eligible=True,
+                null_policy=null_policy,
+            ),
             "distinct_ai_tags_on_ineligible_media": _count_distinct_ai_tags(
-                db, scope.source_label, eligible=False
+                db,
+                scope.source_label,
+                eligible=False,
+                null_policy=null_policy,
             ),
             "tag_stats_policy": "must use eligible media join; do not use global Tag.post_count for workflow stats",
             "similarity_policy": "must filter inputs through eligible media before tag-derived similarity",
@@ -672,8 +755,9 @@ def build_identity_summary(*, repo_root: Path, settings: Any) -> dict[str, Any]:
         "repo": {
             "root_label": "repo_root",
             "branch": branch,
-            "head_sha": head,
+            "report_git_head_before_commit": head,
             "tracked_dirty": tracked_dirty,
+            "report_generated_from_worktree": True,
         },
         "database": {
             "violet_env": getattr(settings, "VIOLET_ENV", ""),
@@ -822,7 +906,8 @@ def render_markdown_report(report: Mapping[str, Any]) -> str:
         f"- Success: `{report['success']}`",
         f"- Source label: `{report['scope']['source_label']}`",
         f"- Repo branch: `{identity['repo']['branch']}`",
-        f"- Repo head: `{identity['repo']['head_sha']}`",
+        f"- Report git head before commit: `{identity['repo']['report_git_head_before_commit']}`",
+        f"- Tracked dirty at report generation: `{identity['repo']['tracked_dirty']}`",
         f"- Python: `{identity['python']['executable_label']}` `{identity['python']['version']}`",
         f"- DB: `{identity['database']['violet_env']}` / `{identity['database']['db_name']}`",
         f"- Storage: `{identity['storage']['storage_root_label']}` (paths redacted)",
