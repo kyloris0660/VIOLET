@@ -350,6 +350,24 @@ class TestDryRunReport:
         assert report["success"] is False
         assert any("expected_current_media_count=999" in item for item in report["contract_failures"])
 
+    def test_non_strict_count_mismatch_warns_without_failure(self, db, monkeypatch):
+        _seed_scope_fixture(db)
+        monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
+        scope = workflow.WorkflowScope(
+            source_label=SOURCE_LABEL,
+            expected_current_media_count=999,
+            expected_eligible_count=999,
+            expected_ineligible_count=999,
+            strict=False,
+        )
+
+        report = workflow.build_dry_run_report(db, scope, repo_root=ROOT, settings=_settings())
+
+        assert report["success"] is True
+        assert report["status"] == "passed"
+        assert report["contract_failures"] == []
+        assert any("expected_current_media_count=999" in item for item in report["warnings"])
+
     def test_strict_expected_no_null_scope_fails_when_null_is_ineligible(self, db, monkeypatch):
         _seed_scope_fixture(db)
         monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
@@ -367,6 +385,36 @@ class TestDryRunReport:
         assert report["counts"]["null_content_class_count"] == 1
         assert any("expected_ineligible_count=2" in item for item in report["contract_failures"])
 
+    def test_mutation_delta_fails_even_when_not_strict(self, db, monkeypatch):
+        _seed_scope_fixture(db)
+        monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
+        before = workflow.MutationSnapshot(
+            media=0,
+            media_tags=0,
+            ai_jobs=0,
+            classification_jobs=0,
+            translation_jobs=0,
+        )
+        scope = workflow.WorkflowScope(source_label=SOURCE_LABEL, strict=False)
+
+        report = workflow.build_dry_run_report(db, scope, repo_root=ROOT, settings=_settings(), before_snapshot=before)
+
+        assert report["success"] is False
+        assert report["status"] == "failed_contract"
+        assert any("dry-run mutation detected" in item for item in report["contract_failures"])
+
+    def test_privacy_leak_fails_even_when_not_strict(self, db, monkeypatch):
+        _seed_scope_fixture(db)
+        monkeypatch.setattr(workflow, "_static_translation_names", lambda: set())
+        monkeypatch.setattr(workflow, "find_privacy_leaks", lambda _: ["absolute_path"])
+        scope = workflow.WorkflowScope(source_label=SOURCE_LABEL, strict=False)
+
+        report = workflow.build_dry_run_report(db, scope, repo_root=ROOT, settings=_settings())
+
+        assert report["success"] is False
+        assert report["status"] == "failed_privacy"
+        assert report["privacy"]["leaks"] == ["absolute_path"]
+
 
 class TestPrivacyHelpers:
     def test_sanitizer_redacts_paths_and_secrets(self):
@@ -383,6 +431,75 @@ class TestPrivacyHelpers:
         assert "abc.def" not in text
         assert "secretsecret" not in text
         assert "password@" not in text
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_windows_paths_with_spaces_are_fully_redacted(self):
+        raw = (
+            r'failed at "C:\Users\name\iCloud Photos\foo.jpg", '
+            r"then C:/Users/name/iCloud Photos/foo.jpg."
+        )
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "C:\\Users" not in safe
+        assert "C:/Users" not in safe
+        assert "iCloud Photos" not in safe
+        assert r"Photos\foo.jpg" not in safe
+        assert "Photos/foo.jpg" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_unc_paths_with_spaces_are_redacted(self):
+        raw = r'copy failed from "\\nas\Shared Folder\iCloud Photos\foo.jpg".'
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "\\\\nas" not in safe
+        assert "Shared Folder" not in safe
+        assert "iCloud Photos" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/root/foo/bar.png",
+            "/etc/app/config.yml",
+            "/usr/local/bin/tool",
+            "/private/var/folders/abc/file",
+            "/Volumes/Disk With Space/foo.jpg",
+            "/Users/name/Pictures/foo.jpg",
+        ],
+    )
+    def test_generic_posix_absolute_paths_are_redacted(self, path):
+        safe = workflow.sanitize_public_text(f"error at {path}")
+
+        assert path not in safe
+        assert workflow.PUBLIC_PATH_REDACTION in safe
+        assert workflow.find_privacy_leaks(path) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_urls_are_not_redacted_as_posix_paths(self):
+        raw = "GET https://example.com/a/b then http://example.com/a/b"
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "https://example.com/a/b" in safe
+        assert "http://example.com/a/b" in safe
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_privacy_scan_fails_before_redaction_and_passes_after(self):
+        payload = {
+            "windows": r"C:\Users\name\iCloud Photos\foo.jpg",
+            "posix": "/private/var/folders/abc/file",
+        }
+
+        assert workflow.find_privacy_leaks(payload) == ["absolute_path"]
+        safe = workflow.sanitize_public_obj(payload)
+
+        text = json.dumps(safe)
+        assert "iCloud Photos" not in text
+        assert "/private/var" not in text
         assert workflow.find_privacy_leaks(safe) == []
 
 

@@ -7,10 +7,10 @@
 - Success: `True`
 - Source label: `violet:tier1000:phase3.5`
 - Repo branch: `phase3.8b-classification-first-e2e-foundation`
-- Report git head before commit: `2c68c12a7ca5bbcbfea10770afe6517b5d07cf37`
+- Report git head before commit: `d72238bf2b54cf3ca68e4ddb43074f0566acc092`
 - Tracked dirty at report generation: `True`
 - Python: `python.exe` `3.12.0`
-- DB: `development` / `blombooru`
+- DB: `development` <redacted_path>
 - Storage: `app_storage` (paths redacted)
 
 ## Counts
@@ -38,7 +38,7 @@
 
 | # | stage | status | mutation risk |
 |---:|---|---|---|
-| 1 | candidate manifest / candidate selection | phase-runner only | read-only source discovery; no source mutation allowed |
+| 1 | candidate manifest <redacted_path> | phase-runner only | read-only source discovery; no source mutation allowed |
 | 2 | staging copy | phase-runner only | file copy only in future execute; forbidden in Phase 3.8b |
 | 3 | pre-import audit | phase-runner only | read-only staged file inspection |
 | 4 | DB import | phase-runner only | DB/storage write in future execute; forbidden in Phase 3.8b |

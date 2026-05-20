@@ -46,12 +46,10 @@ NULL_POLICY_TREAT_AS_UNKNOWN = "treat_as_unknown"
 PUBLIC_PATH_REDACTION = "<redacted_path>"
 SECRET_REDACTION = "<redacted_secret>"
 
-WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/][^\s\"'<>|]+")
-UNC_PATH_RE = re.compile(r"\\\\[^\\/\s]+\\[^\s\"'<>|]+")
-POSIX_ABSOLUTE_PATH_RE = re.compile(
-    r"(?<!https:)(?<!http:)/(?:mnt|Volumes|workspace|home|Users|tmp|var|opt|srv|data)"
-    r"(?:/[^\s\"'<>|]+)+"
-)
+URL_RE = re.compile(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"'<>|]).)+")
+UNC_PATH_RE = re.compile(r"\\\\(?:(?![\r\n\"'<>|]).)+")
+POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?!/)(?:(?![\r\n\"'<>|]).)+")
 SECRET_TOKEN_RE = re.compile(r"Bearer\s+[A-Za-z0-9._\-]+")
 API_KEY_RE = re.compile(r"(sk-|key-)[A-Za-z0-9_\-]{8,}")
 URL_PASSWORD_RE = re.compile(r"([a-z0-9+.-]+://[^:\s/@]+:)(?!\*\*\*@)([^@\s]+)(@)", re.IGNORECASE)
@@ -74,15 +72,34 @@ def enum_value(value: Any) -> str | None:
     return text.split(".", 1)[-1] if "." in text else text
 
 
+def _protect_urls(text: str) -> tuple[str, dict[str, str]]:
+    protected: dict[str, str] = {}
+
+    def replace(match: re.Match[str]) -> str:
+        token = f"__VIOLET_URL_{len(protected)}__"
+        protected[token] = match.group(0)
+        return token
+
+    return URL_RE.sub(replace, text), protected
+
+
+def _restore_urls(text: str, protected: Mapping[str, str]) -> str:
+    restored = text
+    for token, url in protected.items():
+        restored = restored.replace(token, url)
+    return restored
+
+
 def sanitize_public_text(value: str) -> str:
     text = str(value)
     text = SECRET_TOKEN_RE.sub(f"Bearer {SECRET_REDACTION}", text)
     text = API_KEY_RE.sub(r"\1***", text)
     text = URL_PASSWORD_RE.sub(r"\1***\3", text)
-    text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
-    text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
-    text = POSIX_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
-    return text
+    protected_text, protected_urls = _protect_urls(text)
+    protected_text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
+    protected_text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
+    protected_text = POSIX_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
+    return _restore_urls(protected_text, protected_urls)
 
 
 def sanitize_public_obj(value: Any) -> Any:
@@ -101,8 +118,13 @@ def find_privacy_leaks(value: Any) -> list[str]:
     """Return human-readable leak categories found in serialized public output."""
 
     text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+    protected_text, _ = _protect_urls(text)
     leaks: list[str] = []
-    if WINDOWS_ABSOLUTE_PATH_RE.search(text) or UNC_PATH_RE.search(text) or POSIX_ABSOLUTE_PATH_RE.search(text):
+    if (
+        WINDOWS_ABSOLUTE_PATH_RE.search(protected_text)
+        or UNC_PATH_RE.search(protected_text)
+        or POSIX_ABSOLUTE_PATH_RE.search(protected_text)
+    ):
         leaks.append("absolute_path")
     if SECRET_TOKEN_RE.search(text) or API_KEY_RE.search(text):
         leaks.append("secret_token")
@@ -772,19 +794,19 @@ def build_identity_summary(*, repo_root: Path, settings: Any) -> dict[str, Any]:
     }
 
 
-def _expected_count_failures(scope: WorkflowScope, audit: ScopeAudit) -> list[str]:
-    failures: list[str] = []
+def _expected_count_mismatches(scope: WorkflowScope, audit: ScopeAudit) -> list[str]:
+    mismatches: list[str] = []
     if scope.expected_current_media_count is not None and audit.target_media_count != scope.expected_current_media_count:
-        failures.append(
+        mismatches.append(
             f"expected_current_media_count={scope.expected_current_media_count}, found={audit.target_media_count}"
         )
     if scope.expected_eligible_count is not None and audit.eligible_media_count != scope.expected_eligible_count:
-        failures.append(f"expected_eligible_count={scope.expected_eligible_count}, found={audit.eligible_media_count}")
+        mismatches.append(f"expected_eligible_count={scope.expected_eligible_count}, found={audit.eligible_media_count}")
     if scope.expected_ineligible_count is not None and audit.ineligible_media_count != scope.expected_ineligible_count:
-        failures.append(
+        mismatches.append(
             f"expected_ineligible_count={scope.expected_ineligible_count}, found={audit.ineligible_media_count}"
         )
-    return failures
+    return mismatches
 
 
 def build_dry_run_report(
@@ -802,11 +824,17 @@ def build_dry_run_report(
     audit = collect_scope_audit(db, scope)
     after = after_snapshot or collect_mutation_snapshot(db)
     mutation_delta = compare_mutation_snapshots(before, after)
-    contract_failures = _expected_count_failures(scope, audit)
+    contract_failures: list[str] = []
+    warnings: list[str] = []
+    expected_mismatches = _expected_count_mismatches(scope, audit)
+    if expected_mismatches:
+        if scope.strict:
+            contract_failures.extend(expected_mismatches)
+        else:
+            warnings.extend(f"non-strict expected count mismatch: {item}" for item in expected_mismatches)
     if any(value != 0 for value in mutation_delta.values()):
         contract_failures.append(f"dry-run mutation detected: {mutation_delta}")
 
-    warnings: list[str] = []
     if audit.null_content_class_count:
         warnings.append(
             "NULL content_class rows are reported in dry-run; formal execute must hard fail unless approved."
