@@ -1,0 +1,435 @@
+{
+  "phase": "3.8b",
+  "mode": "dry_run",
+  "success": true,
+  "status": "passed",
+  "started_at": "2026-05-20T15:26:10.878791+00:00",
+  "finished_at": "2026-05-20T15:26:11.033086+00:00",
+  "scope": {
+    "source_label": "violet:tier1000:phase3.5",
+    "expected_current_media_count": 995,
+    "expected_eligible_count": 969,
+    "expected_ineligible_count": 26,
+    "strict": true,
+    "dry_run": true,
+    "null_content_class_policy": "hard_fail",
+    "report_title": "Phase 3.8b Classification-First E2E Dry-run"
+  },
+  "identity": {
+    "python": {
+      "executable_label": "python.exe",
+      "version": "3.12.0"
+    },
+    "repo": {
+      "root_label": "repo_root",
+      "branch": "phase3.8b-classification-first-e2e-foundation",
+      "report_git_head_before_commit": "a1725e625116c4a481b925dc644837935e6d4e74",
+      "tracked_dirty": true,
+      "report_generated_from_worktree": true
+    },
+    "database": {
+      "violet_env": "development",
+      "db_name": "blombooru",
+      "database_url_safe": "postgresql://postgres:***@localhost:5432/blombooru"
+    },
+    "storage": {
+      "storage_root_label": "app_storage",
+      "storage_root_explicitly_set": false,
+      "paths_redacted": true
+    }
+  },
+  "workflow_order": [
+    "candidate manifest / candidate selection",
+    "staging copy",
+    "pre-import audit",
+    "DB import",
+    "content classification",
+    "eligible media selection: anime + unknown",
+    "AI tagging only eligible media",
+    "localization only eligible-derived general/meta tags",
+    "post-run validation",
+    "browser/API smoke",
+    "report"
+  ],
+  "stage_contracts": [
+    {
+      "order": 1,
+      "name": "candidate manifest / candidate selection",
+      "expected_input": "source candidate roots or approved candidate manifest",
+      "expected_output": "privacy-safe candidate manifest with run_id/source_label",
+      "hard_gates": [
+        "repo identity",
+        "source read-only",
+        "manifest privacy split",
+        "expected candidate policy"
+      ],
+      "expected_count_fields": [
+        "candidate_total",
+        "candidate_selected",
+        "candidate_excluded",
+        "already_known"
+      ],
+      "mutation_risk": "read-only source discovery; no source mutation allowed",
+      "required_validation_artifacts": [
+        "candidate manifest",
+        "selection summary"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 2,
+      "name": "staging copy",
+      "expected_input": "candidate manifest",
+      "expected_output": "staging directory plus copy manifest",
+      "hard_gates": [
+        "source immutability",
+        "staging containment",
+        "disk space",
+        "copy hash verification"
+      ],
+      "expected_count_fields": [
+        "copied",
+        "skipped",
+        "failed",
+        "bytes"
+      ],
+      "mutation_risk": "file copy only in future execute; forbidden in Phase 3.8b",
+      "required_validation_artifacts": [
+        "copy manifest",
+        "copy summary"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 3,
+      "name": "pre-import audit",
+      "expected_input": "staged files and copy manifest",
+      "expected_output": "PASS/FAIL audit summary",
+      "hard_gates": [
+        "expected count",
+        "hash readable",
+        "MIME/media probe safe",
+        "privacy-safe report"
+      ],
+      "expected_count_fields": [
+        "audit_pass",
+        "audit_failed",
+        "missing",
+        "unsupported"
+      ],
+      "mutation_risk": "read-only staged file inspection",
+      "required_validation_artifacts": [
+        "pre-import audit summary"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 4,
+      "name": "DB import",
+      "expected_input": "audited staged manifest",
+      "expected_output": "Media rows and app-managed storage paths",
+      "hard_gates": [
+        "Python identity",
+        "DB identity",
+        "storage root identity",
+        "DB backup",
+        "execute confirmation"
+      ],
+      "expected_count_fields": [
+        "media_before",
+        "media_after",
+        "imported",
+        "duplicates",
+        "failed"
+      ],
+      "mutation_risk": "DB/storage write in future execute; forbidden in Phase 3.8b",
+      "required_validation_artifacts": [
+        "execute summary",
+        "post-import audit"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 5,
+      "name": "content classification",
+      "expected_input": "imported media set/source label",
+      "expected_output": "content_class populated for target media",
+      "hard_gates": [
+        "active job check",
+        "classifier availability",
+        "no AI/localization side effects"
+      ],
+      "expected_count_fields": [
+        "processed",
+        "anime",
+        "unknown",
+        "non_anime",
+        "illustration",
+        "failed"
+      ],
+      "mutation_risk": "classification DB writes in future execute; forbidden in Phase 3.8b",
+      "required_validation_artifacts": [
+        "classification summary"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 6,
+      "name": "eligible media selection: anime + unknown",
+      "expected_input": "classified media set",
+      "expected_output": "eligible media IDs and ineligible audit",
+      "hard_gates": [
+        "all target rows classified",
+        "NULL policy explicit",
+        "expected eligible/ineligible counts"
+      ],
+      "expected_count_fields": [
+        "eligible",
+        "ineligible",
+        "null_content_class",
+        "legacy_ineligible_ai_associations"
+      ],
+      "mutation_risk": "read-only scope query",
+      "required_validation_artifacts": [
+        "scope audit"
+      ],
+      "implementation_status": "available"
+    },
+    {
+      "order": 7,
+      "name": "AI tagging only eligible media",
+      "expected_input": "eligible media IDs",
+      "expected_output": "AI tag associations/suggestions for eligible media only",
+      "hard_gates": [
+        "active AI jobs none",
+        "translation workers isolated",
+        "eligible-only assertion"
+      ],
+      "expected_count_fields": [
+        "processed",
+        "failed",
+        "confirmed_associations",
+        "suggestions",
+        "media_with_ai_tags_delta"
+      ],
+      "mutation_risk": "AI DB writes in future execute; forbidden in Phase 3.8b",
+      "required_validation_artifacts": [
+        "AI tagging summary",
+        "AI failure report if needed"
+      ],
+      "implementation_status": "needs service extraction"
+    },
+    {
+      "order": 8,
+      "name": "localization only eligible-derived general/meta tags",
+      "expected_input": "tags attached to eligible media",
+      "expected_output": "TagTranslation rows for eligible-derived general/meta tags",
+      "hard_gates": [
+        "eligible-media join",
+        "proper nouns deferred",
+        "LLM/provider gate",
+        "worker isolation"
+      ],
+      "expected_count_fields": [
+        "candidates",
+        "translated",
+        "failed",
+        "skipped",
+        "proper_noun_deferred",
+        "remaining"
+      ],
+      "mutation_risk": "translation DB writes in future execute; forbidden in Phase 3.8b",
+      "required_validation_artifacts": [
+        "localization summary"
+      ],
+      "implementation_status": "needs service extraction"
+    },
+    {
+      "order": 9,
+      "name": "post-run validation",
+      "expected_input": "DB/storage/reports",
+      "expected_output": "read-only validation summary",
+      "hard_gates": [
+        "no cleanup/delete",
+        "count reconciliation",
+        "endpoint sweep contract"
+      ],
+      "expected_count_fields": [
+        "metadata_success",
+        "detail_success",
+        "thumbnail_success",
+        "file_sample_success"
+      ],
+      "mutation_risk": "read-only validation",
+      "required_validation_artifacts": [
+        "validation summary"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 10,
+      "name": "browser/API smoke",
+      "expected_input": "verified local server",
+      "expected_output": "browser/API smoke result",
+      "hard_gates": [
+        "server identity",
+        "no stale server",
+        "no destructive endpoints"
+      ],
+      "expected_count_fields": [
+        "pages_checked",
+        "flows_checked",
+        "failures"
+      ],
+      "mutation_risk": "read-only browser/API traffic",
+      "required_validation_artifacts": [
+        "browser smoke summary",
+        "server log scan"
+      ],
+      "implementation_status": "phase-runner only"
+    },
+    {
+      "order": 11,
+      "name": "report",
+      "expected_input": "all stage artifacts",
+      "expected_output": "privacy-safe final report",
+      "hard_gates": [
+        "no secrets",
+        "no local absolute paths",
+        "exact counts",
+        "failure artifact if needed"
+      ],
+      "expected_count_fields": [
+        "reports_written",
+        "privacy_leaks",
+        "contract_failures"
+      ],
+      "mutation_risk": "report file writes only",
+      "required_validation_artifacts": [
+        "dry-run summary",
+        "execute summary",
+        "failure report if any"
+      ],
+      "implementation_status": "available"
+    }
+  ],
+  "counts": {
+    "target_media_count": 995,
+    "content_class_distribution": {
+      "anime": 948,
+      "unknown": 21,
+      "illustration": 0,
+      "non_anime": 26,
+      "unclassified": 0
+    },
+    "eligible_media_count": 969,
+    "ineligible_media_count": 26,
+    "null_content_class_count": 0,
+    "ai_associations": {
+      "total": 53354,
+      "confirmed": 41416,
+      "suggestions": 11938,
+      "eligible": 52583,
+      "ineligible": 771,
+      "media_with_ai_tags": 995
+    },
+    "localization_scope": {
+      "eligible_missing_general_meta_candidates": 0,
+      "proper_noun_deferred_candidates": 101,
+      "categories_allowed_now": [
+        "general",
+        "meta"
+      ],
+      "categories_deferred": [
+        "character",
+        "copyright",
+        "artist"
+      ],
+      "translated_tag_names_attached_to_eligible_media": 2832,
+      "translated_tag_names_attached_to_ineligible_media": 385
+    },
+    "tag_scope": {
+      "distinct_ai_tags_on_eligible_media": 2933,
+      "distinct_ai_tags_on_ineligible_media": 387,
+      "tag_stats_policy": "must use eligible media join; do not use global Tag.post_count for workflow stats",
+      "similarity_policy": "must filter inputs through eligible media before tag-derived similarity"
+    }
+  },
+  "legacy_contamination": {
+    "status": "legacy_validation_artifact",
+    "ineligible_media_with_ai_tags": 26,
+    "ineligible_ai_associations": 771,
+    "distinct_ai_tags_on_ineligible_media": 387,
+    "cleanup_performed": false,
+    "policy": "report and filter from future tag-derived workflows; do not delete in Phase 3.8b"
+  },
+  "active_jobs": {
+    "ai": [],
+    "classification": [],
+    "translation": []
+  },
+  "mutation_safety": {
+    "before": {
+      "media": 995,
+      "media_tags": 53354,
+      "ai_jobs": 46,
+      "classification_jobs": 14,
+      "translation_jobs": 15
+    },
+    "after": {
+      "media": 995,
+      "media_tags": 53354,
+      "ai_jobs": 46,
+      "classification_jobs": 14,
+      "translation_jobs": 15
+    },
+    "delta": {
+      "media": 0,
+      "media_tags": 0,
+      "ai_jobs": 0,
+      "classification_jobs": 0,
+      "translation_jobs": 0
+    },
+    "passed": true
+  },
+  "execute_policy": {
+    "execute_supported_in_phase": false,
+    "execute_rejection_message": "Phase 3.8b supports dry-run planning only; execute is not implemented in this phase.",
+    "null_content_class_policy": "hard_fail",
+    "future_execute_requires_explicit_confirmation": true
+  },
+  "validation_contract": {
+    "endpoint_sweeps": [
+      "metadata endpoint sweep",
+      "media detail endpoint sweep",
+      "thumbnail sweep",
+      "file endpoint sample"
+    ],
+    "smoke_checks": [
+      "content_class filters",
+      "search/localization",
+      "AI Review",
+      "Admin status",
+      "server log scan",
+      "browser smoke"
+    ]
+  },
+  "public_report_text_policy": {
+    "raw_arbitrary_error_warning_text_allowed": false,
+    "structured_safe_fields_required": true,
+    "unsafe_raw_text_representation": {
+      "raw_text_redacted": true,
+      "redaction_reason": "local_path_or_secret_like_content",
+      "local_artifact_available": false,
+      "local_artifact_label": null
+    }
+  },
+  "contract_failures": [],
+  "warnings": [],
+  "privacy": {
+    "paths_redacted": true,
+    "secret_values_redacted": true,
+    "leaks": [],
+    "passed": true
+  }
+}

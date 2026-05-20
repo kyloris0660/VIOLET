@@ -4,6 +4,12 @@
 
 This document describes the test infrastructure, environment setup, and execution workflow for V.I.O.L.E.T.
 
+## Implementation PR Reviewer Closeout
+
+For implementation PRs, CodeX owns the reviewer closeout loop after local validation. After each push, post exactly `@codex review`, poll GitHub every 2-3 minutes for up to 30 minutes, and confirm feedback belongs to the current PR head before acting. CodeX may fix current-head P1/P2 only when the issue is in scope, non-destructive, migration-free, does not mutate real DB/storage/source/staging without explicit authorization, and does not start a new phase. P3/nit/docs wording/logging suggestions are deferred unless tiny, safe, and local. Normal PRs have a 3-round reviewer-fix limit; PR #53 is limited to 2 rounds from this policy's introduction. Stop and escalate if P1/P2 remain after the limit, reviewer results cannot be tied to the current head, GitHub auth/CLI fails, tests fail, or the fix would require schema migration, destructive DB work, source/iCloud/staging mutation, phase-scope changes, or broad refactors. Before requesting reviewer again, perform a same-class local audit; never auto-merge or push `main`.
+
+Plan-only tasks must not create branches, commits, pushes, or PRs unless explicitly approved as documentation PRs. Deliver plan-only output in chat or as a local untracked `.codex/plans/*.md` draft and wait for user/ChatGPT approval.
+
 ## Test Tiers
 
 ### Tier 1 — Unit Tests (no external dependencies)

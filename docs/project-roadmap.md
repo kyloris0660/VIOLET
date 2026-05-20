@@ -279,6 +279,18 @@ See [Content Classification](content-classification.md) for full documentation.
 - Existing Phase 3.6 AI tag associations on newly classified ineligible media are retained as audit evidence; no cleanup is performed without a later approved cleanup plan.
 - Phase 4, similarity/clustering, Entity Resolver, and tag cleanup remain out of scope.
 
+### Phase 3.8b - Classification-First E2E Workflow Foundation
+
+**Goal:** Formalize the classification-first medium E2E workflow as reusable dry-run contracts before any new execute pilot.
+
+- Reusable workflow service helpers define scope, stage contracts, eligible/ineligible content-class policy, localization candidate policy, mutation snapshots, legacy contamination audit, and privacy-safe reporting.
+- Thin CLI wrapper `scripts/plan_classification_first_e2e.py` is dry-run only; `--execute` is rejected until a later approved phase.
+- Formal order is encoded as: candidate manifest / candidate selection -> staging copy -> pre-import audit -> DB import -> content classification -> eligible media selection (`anime` + `unknown`) -> AI tagging only eligible media -> localization only eligible-derived `general`/`meta` tags -> post-run validation -> browser/API smoke -> report.
+- `NULL content_class` is not silently eligible. Dry-run reports NULL counts; future execute must fail closed unless an approved earlier step explicitly converts NULL to `unknown`.
+- Current Phase 3.5 source-label dry-run baseline: target `995`, eligible `969`, ineligible `26`, legacy ineligible AI associations `771`, and no mutation deltas.
+- Public dry-run reports: `docs/reports/phase-3.8b-classification-first-e2e-dry-run.md` and `docs/reports/phase-3.8b-classification-first-e2e-dry-run-summary.json`.
+- Real import/copy/classification/AI/localization execution, full 5k+ run, legacy tag cleanup, Entity Resolver, and similarity/clustering remain deferred.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
