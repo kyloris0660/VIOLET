@@ -571,13 +571,54 @@ class TestPrivacyHelpers:
         assert workflow.find_privacy_leaks(safe) == []
 
     def test_urls_are_not_redacted_as_posix_paths(self):
-        raw = "GET https://example.com/a/b then http://example.com/a/b"
+        raw = "GET https://example.com/a/b?x=1 then http://example.com/a/b"
 
         safe = workflow.sanitize_public_text(raw)
 
-        assert "https://example.com/a/b" in safe
+        assert "https://example.com/a/b?x=1" in safe
         assert "http://example.com/a/b" in safe
         assert workflow.find_privacy_leaks(safe) == []
+
+    @pytest.mark.parametrize(
+        "raw,fragments",
+        [
+            (
+                "https://host/?origin=/Users/alice/Pictures/foo.jpg",
+                ["/Users", "alice", "Pictures/foo.jpg"],
+            ),
+            (
+                "https://host/?src=C:/Users/alice/iCloud Photos/foo.jpg",
+                ["C:/Users", "alice", "iCloud Photos", "Photos/foo.jpg"],
+            ),
+            (
+                "https://host/path?file=file:///Users/alice/Pictures/foo.jpg",
+                ["file://", "/Users", "alice", "Pictures/foo.jpg"],
+            ),
+            (
+                "https://example.com/callback?path=C%3A%2FUsers%2Falice%2Fsecret.jpg",
+                ["C%3A%2FUsers", "alice", "secret.jpg"],
+            ),
+            (
+                "https://host/?origin=%2FUsers%2Falice%2FPictures%2Ffoo.jpg",
+                ["%2FUsers", "alice", "Pictures"],
+            ),
+            (
+                "https://host/#/Users/alice/Pictures/foo.jpg",
+                ["/Users", "alice", "Pictures/foo.jpg"],
+            ),
+            (
+                "https://host/path/Users/alice/Pictures/foo.jpg",
+                ["/Users", "alice", "Pictures/foo.jpg"],
+            ),
+        ],
+    )
+    def test_urls_with_embedded_local_paths_are_redacted(self, raw, fragments):
+        safe = workflow.sanitize_public_text(raw)
+
+        assert workflow.find_privacy_leaks(raw) == ["absolute_path"]
+        assert workflow.find_privacy_leaks(safe) == []
+        for fragment in fragments:
+            assert fragment not in safe
 
     def test_slash_separated_prose_is_not_redacted_as_posix_path(self):
         raw = "candidate manifest / candidate selection"
@@ -621,14 +662,62 @@ class TestPrivacyHelpers:
         assert workflow.find_privacy_leaks(raw) == ["secret_token"]
         assert workflow.find_privacy_leaks(safe) == []
 
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "Bearer%20abc.def==",
+            "bearer%20abc~def==",
+            "Bearer+abc+/def==",
+            "Authorization%3A%20Bearer%20abc.def==",
+        ],
+    )
+    def test_url_encoded_bearer_tokens_are_redacted(self, raw):
+        safe = workflow.sanitize_public_text(raw)
+
+        assert "abc" not in safe
+        assert "~def" not in safe
+        assert "/def" not in safe
+        assert "==" not in safe
+        assert workflow.find_privacy_leaks(raw) == ["secret_token"]
+        assert workflow.find_privacy_leaks(safe) == []
+
+    def test_normal_url_encoded_strings_are_not_over_redacted(self):
+        raw = "https://example.com/callback?message=hello%20world&state=ok"
+
+        safe = workflow.sanitize_public_text(raw)
+
+        assert raw in safe
+        assert workflow.find_privacy_leaks(raw) == []
+        assert workflow.find_privacy_leaks(safe) == []
+
+    @pytest.mark.parametrize(
+        "raw,fragments",
+        [
+            ("sk%2Dabcdef1234567890", ["abcdef1234567890"]),
+            ("sk%2dabcdef1234567890", ["abcdef1234567890"]),
+            ("key%2Dabcdef1234567890", ["abcdef1234567890"]),
+            ("https://host/?api_key=sk%2Dabcdef1234567890", ["abcdef1234567890"]),
+        ],
+    )
+    def test_percent_encoded_api_key_prefixes_are_redacted(self, raw, fragments):
+        safe = workflow.sanitize_public_text(raw)
+
+        for fragment in fragments:
+            assert fragment not in safe
+        assert workflow.find_privacy_leaks(raw) == ["secret_token"]
+        assert workflow.find_privacy_leaks(safe) == []
+
     def test_privacy_scan_fails_before_redaction_and_passes_after(self):
         payload = {
             "windows": r"C:\Users\name\iCloud Photos\foo.jpg",
             "posix": "/private/var/folders/abc/file",
             "file_uri": "file:///Users/alice/Pictures/foo.jpg",
             "unicode_posix": "/\u7528\u6237/\u56fe\u7247/foo.jpg",
+            "embedded_url_path": "https://host/?origin=/Users/alice/Pictures/foo.jpg",
+            "encoded_url_path": "https://host/?path=C%3A%2FUsers%2Falice%2Fsecret.jpg",
             "apostrophe": r"C:\Users\O'Connor\Pictures\foo.jpg",
-            "token": "bearer abc~def==",
+            "token": "bearer%20abc~def==",
+            "api_key": "sk%2Dabcdef1234567890",
         }
 
         assert workflow.find_privacy_leaks(payload) == ["absolute_path", "secret_token"]
@@ -640,8 +729,11 @@ class TestPrivacyHelpers:
         assert "file://" not in text
         assert "\u7528\u6237" not in text
         assert "\u56fe\u7247" not in text
+        assert "C%3A%2FUsers" not in text
+        assert "alice" not in text
         assert "Connor" not in text
         assert "~def" not in text
+        assert "abcdef1234567890" not in text
         assert "==" not in text
         assert workflow.find_privacy_leaks(safe) == []
 

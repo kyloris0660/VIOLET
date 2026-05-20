@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import unquote_plus, urlsplit
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -44,6 +45,7 @@ NULL_POLICY_HARD_FAIL = "hard_fail"
 NULL_POLICY_TREAT_AS_UNKNOWN = "treat_as_unknown"
 
 PUBLIC_PATH_REDACTION = "<redacted_path>"
+PUBLIC_URL_REDACTION = "<redacted_url_with_private_data>"
 SECRET_REDACTION = "<redacted_secret>"
 
 URL_RE = re.compile(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
@@ -51,8 +53,12 @@ FILE_URI_RE = re.compile(r"file://(?:(?![\r\n\"<>|]).)+", re.IGNORECASE)
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"<>|]).)+")
 UNC_PATH_RE = re.compile(r"\\\\(?:(?![\r\n\"<>|]).)+")
 POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?!/)(?=\S)(?:(?![\r\n\"<>|]).)+")
-SECRET_TOKEN_RE = re.compile(r"Bearer\s+[A-Za-z0-9._~+\-/]+=*", re.IGNORECASE)
-API_KEY_RE = re.compile(r"(sk-|key-)[A-Za-z0-9_\-]{8,}")
+URL_EMBEDDED_LOCAL_POSIX_PATH_RE = re.compile(
+    r"/(?:Users|home|root|etc|usr|private|var|Volumes|workspace|mnt|tmp|opt|srv|data|\u7528\u6237)"
+    r"(?:(?![\r\n\"<>|]).)+"
+)
+SECRET_TOKEN_RE = re.compile(r"Bearer(?:\s|%20|\+)+[A-Za-z0-9._~+\-/]+=*", re.IGNORECASE)
+API_KEY_RE = re.compile(r"(sk-|key-|sk%2d|key%2d)[A-Za-z0-9_%\-]{8,}", re.IGNORECASE)
 URL_PASSWORD_RE = re.compile(r"([a-z0-9+.-]+://[^:\s/@]+:)(?!\*\*\*@)([^@\s]+)(@)", re.IGNORECASE)
 
 
@@ -73,14 +79,53 @@ def enum_value(value: Any) -> str | None:
     return text.split(".", 1)[-1] if "." in text else text
 
 
+def _decoded_variants(text: str) -> tuple[str, str]:
+    try:
+        decoded = unquote_plus(text)
+    except Exception:
+        decoded = text
+    return (text, decoded) if decoded != text else (text,)
+
+
+def _text_contains_absolute_path(text: str, *, url_component: bool = False) -> bool:
+    path_patterns = [FILE_URI_RE, WINDOWS_ABSOLUTE_PATH_RE, UNC_PATH_RE]
+    path_patterns.append(URL_EMBEDDED_LOCAL_POSIX_PATH_RE if url_component else POSIX_ABSOLUTE_PATH_RE)
+    return any(pattern.search(text) for pattern in path_patterns)
+
+
+def _url_privacy_leak_categories(url: str) -> set[str]:
+    leaks: set[str] = set()
+    for variant in _decoded_variants(url):
+        parts = urlsplit(variant)
+        component_text = " ".join([parts.path, parts.query, parts.fragment])
+        if _text_contains_absolute_path(component_text, url_component=True):
+            leaks.add("absolute_path")
+        if SECRET_TOKEN_RE.search(variant) or API_KEY_RE.search(variant):
+            leaks.add("secret_token")
+        for match in URL_PASSWORD_RE.finditer(variant):
+            if match.group(2) != "***":
+                leaks.add("url_password")
+                break
+    return leaks
+
+
+def _redact_secret_markers(text: str) -> str:
+    redacted = SECRET_TOKEN_RE.sub(f"Bearer {SECRET_REDACTION}", text)
+    redacted = API_KEY_RE.sub(SECRET_REDACTION, redacted)
+    return URL_PASSWORD_RE.sub(r"\1***\3", redacted)
+
+
 def _protect_urls(text: str) -> tuple[str, dict[str, str]]:
     protected: dict[str, str] = {}
 
     def replace(match: re.Match[str]) -> str:
-        if match.group(0).lower().startswith("file://"):
-            return match.group(0)
+        url = match.group(0)
+        if url.lower().startswith("file://"):
+            return url
+        if _url_privacy_leak_categories(url):
+            return PUBLIC_URL_REDACTION
         token = f"__VIOLET_URL_{len(protected)}__"
-        protected[token] = match.group(0)
+        protected[token] = url
         return token
 
     return URL_RE.sub(replace, text), protected
@@ -94,11 +139,11 @@ def _restore_urls(text: str, protected: Mapping[str, str]) -> str:
 
 
 def sanitize_public_text(value: str) -> str:
-    text = str(value)
-    text = SECRET_TOKEN_RE.sub(f"Bearer {SECRET_REDACTION}", text)
-    text = API_KEY_RE.sub(r"\1***", text)
-    text = URL_PASSWORD_RE.sub(r"\1***\3", text)
+    text = _redact_secret_markers(str(value))
     text = FILE_URI_RE.sub(PUBLIC_PATH_REDACTION, text)
+    text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
+    text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
+    text = URL_EMBEDDED_LOCAL_POSIX_PATH_RE.sub(PUBLIC_PATH_REDACTION, text)
     protected_text, protected_urls = _protect_urls(text)
     protected_text = WINDOWS_ABSOLUTE_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
     protected_text = UNC_PATH_RE.sub(PUBLIC_PATH_REDACTION, protected_text)
@@ -122,17 +167,24 @@ def find_privacy_leaks(value: Any) -> list[str]:
     """Return human-readable leak categories found in serialized public output."""
 
     text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
-    protected_text, _ = _protect_urls(text)
+    url_leaks: set[str] = set()
+    for match in URL_RE.finditer(text):
+        url_leaks.update(_url_privacy_leak_categories(match.group(0)))
+    path_scan_text = _redact_secret_markers(text)
+    protected_text, _ = _protect_urls(path_scan_text)
     leaks: list[str] = []
     if (
-        FILE_URI_RE.search(text)
+        FILE_URI_RE.search(path_scan_text)
         or WINDOWS_ABSOLUTE_PATH_RE.search(protected_text)
         or UNC_PATH_RE.search(protected_text)
         or POSIX_ABSOLUTE_PATH_RE.search(protected_text)
+        or "absolute_path" in url_leaks
     ):
         leaks.append("absolute_path")
-    if SECRET_TOKEN_RE.search(text) or API_KEY_RE.search(text):
+    if SECRET_TOKEN_RE.search(text) or API_KEY_RE.search(text) or "secret_token" in url_leaks:
         leaks.append("secret_token")
+    if "url_password" in url_leaks:
+        leaks.append("url_password")
     for match in URL_PASSWORD_RE.finditer(text):
         if match.group(2) != "***":
             leaks.append("url_password")
