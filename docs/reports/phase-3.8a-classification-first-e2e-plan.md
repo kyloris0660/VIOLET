@@ -173,10 +173,10 @@ Verified from `phase-3.7-tier1000-classification-summary.json`, `phase-3.7-tag-s
 ### Summary
 
 - Local branches before cleanup: `51`
-- Remote branches before cleanup: `42` excluding `origin/HEAD`
+- Remote branches before cleanup: `41` excluding `origin/HEAD`
 - Open PR heads before cleanup: `[]`
-- Local branches after cleanup: `20`
-- Remote branches after cleanup: `13` excluding `origin/HEAD`
+- Local branches after safe cleanup: `20` (`21` after creating this Phase 3.8a branch)
+- Remote branches after safe cleanup: `12` excluding `origin/HEAD` (`13` after pushing this Phase 3.8a branch)
 - Local branches deleted: `31`
 - Remote branches deleted: `29`
 - Force delete used: `no`
