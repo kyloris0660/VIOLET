@@ -267,6 +267,18 @@ See [iCloud Safe Ingestion](icloud-safe-ingestion.md) for documentation.
 
 See [Content Classification](content-classification.md) for full documentation.
 
+### Phase 3.7 - Tier-1000 Classification Scope Gate
+
+**Goal:** Validate content classification on the imported Tier-1000 set and define the scope gate for future tag-derived workflows.
+
+- Target source label: `violet:tier1000:phase3.5`
+- Real validation: 995 media processed, 0 failed
+- Distribution: `anime=948`, `unknown=21`, `non_anime=26`, `illustration=0`
+- Future tag-derived workflows must include only `anime` and `unknown` media.
+- `illustration`, `non_anime`, and `unclassified` media are excluded from future AI tagging candidate selection, tag localization candidate selection, tag statistics, and tag-driven similarity/clustering signals.
+- Existing Phase 3.6 AI tag associations on newly classified ineligible media are retained as audit evidence; no cleanup is performed without a later approved cleanup plan.
+- Phase 4, similarity/clustering, Entity Resolver, and tag cleanup remain out of scope.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.

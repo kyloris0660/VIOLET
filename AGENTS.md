@@ -170,6 +170,34 @@ Additional PR rules:
 3. Do not mix multiple phases in one branch or one PR.
 4. The final delivery report must include the real GitHub PR URL.
 
+### PR body format and task checklist standard
+
+Do not invent a new PR body format for each phase. Future PRs must follow the established V.I.O.L.E.T. phase PR format:
+
+1. `# <Phase title>`
+2. `## Summary`
+3. `## Scope`
+4. `## Safety / Hard Constraints`
+5. `## Implementation`
+6. `## Validation`
+7. `## Test plan`
+8. `## Reviewer / Codex status`
+9. `## Safety confirmation`
+10. `## Next step`
+
+The `## Test plan` section must use GitHub task list syntax for major gates, for example:
+
+```markdown
+- [x] Python identity checked
+- [x] Unit/focused tests passed
+- [x] Full non-E2E suite passed
+- [x] Real dry-run / real audit / smoke validation passed
+- [x] Reviewer re-review requested
+- [ ] Manual review / user validation if not yet done
+```
+
+Checkboxes must reflect reality: do not mark incomplete items complete, and do not omit required gates to make the task list look clean. The `## Reviewer / Codex status` section must state whether reviewer/Codex reviewed the latest head SHA; if pending, say pending. The `## Safety confirmation` section must explicitly state no push main, no merge, no source/iCloud/staging mutation, no cleanup/reset/drop/truncate, no API key exposure, and no forbidden background systems. PR titles should stay consistent: `Phase X.Y: <clear phase title>` or `feat/fix/docs: <clear scope> (Phase X.Y)`.
+
 **Recommended**: Enable GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges and prevent accidental direct pushes. See GitHub docs for setup.
 
 ### Real browser validation (mandatory)

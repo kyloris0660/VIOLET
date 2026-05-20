@@ -1,4 +1,5 @@
 import json
+import math
 import mimetypes
 import uuid
 from pathlib import Path
@@ -15,6 +16,78 @@ from .logger import logger
 
 
 VALID_CONTENT_CLASSES = {"anime", "illustration", "non_anime", "unknown"}
+
+
+def _safe_string(value: Any) -> str:
+    """Best-effort string conversion that never propagates metadata errors."""
+    try:
+        return str(value)
+    except Exception:
+        return f"<unserializable {type(value).__name__}>"
+
+
+def _is_rational_like(value: Any) -> bool:
+    value_type = type(value)
+    if value_type.__name__ == "IFDRational":
+        return True
+    return hasattr(value, "numerator") and hasattr(value, "denominator")
+
+
+def _sanitize_metadata_value(value: Any, seen: set[int]) -> Any:
+    try:
+        if value is None or isinstance(value, (str, bool, int)):
+            return value
+
+        if isinstance(value, float):
+            return value if math.isfinite(value) else _safe_string(value)
+
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+
+        if _is_rational_like(value):
+            try:
+                rational = float(value)
+                return rational if math.isfinite(rational) else _safe_string(value)
+            except Exception:
+                return _safe_string(value)
+
+        if isinstance(value, dict):
+            value_id = id(value)
+            if value_id in seen:
+                return "[recursive]"
+            seen.add(value_id)
+            try:
+                return {
+                    _safe_string(_sanitize_metadata_value(key, seen)): _sanitize_metadata_value(item, seen)
+                    for key, item in value.items()
+                }
+            finally:
+                seen.discard(value_id)
+
+        if isinstance(value, (list, tuple, set, frozenset)):
+            value_id = id(value)
+            if value_id in seen:
+                return "[recursive]"
+            seen.add(value_id)
+            try:
+                return [_sanitize_metadata_value(item, seen) for item in value]
+            finally:
+                seen.discard(value_id)
+
+        return _safe_string(value)
+    except Exception:
+        return _safe_string(value)
+
+
+def sanitize_metadata_for_json(metadata: Any) -> Any:
+    """Return a recursively JSON-safe metadata payload.
+
+    PIL can expose EXIF/XMP values such as IFDRational that FastAPI's
+    jsonable_encoder cannot serialize. Metadata display should be best-effort:
+    preserve simple JSON primitives, convert known structured containers
+    recursively, and stringify anything unsupported instead of surfacing a 500.
+    """
+    return _sanitize_metadata_value(metadata, set())
 
 
 def apply_content_class_filter(query: SAQuery, content_class: Optional[str]) -> SAQuery:
@@ -172,7 +245,7 @@ def extract_image_metadata(file_path: Path) -> Dict[str, Any]:
                 except Exception:
                     pass
         
-        return metadata
+        return sanitize_metadata_for_json(metadata)
         
     except Exception as e:
         logger.error(f"Error reading metadata from {file_path}: {e}", exc_info=True)
@@ -213,7 +286,7 @@ def extract_video_metadata(file_path: Path) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting video metadata for {file_path}: {e}")
     
-    return metadata
+    return sanitize_metadata_for_json(metadata)
 
 def extract_media_metadata(file_path: Path) -> Dict[str, Any]:
     """Extract metadata from any media file (image or video)."""

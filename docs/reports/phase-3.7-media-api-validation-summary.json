@@ -1,0 +1,254 @@
+{
+  "source_label": "violet:tier1000:phase3.5",
+  "target_media_count": 995,
+  "content_class_distribution": {
+    "anime": 948,
+    "unknown": 21,
+    "non_anime": 26
+  },
+  "base_url_label": "local_validation_server",
+  "started_at_epoch": 1779271105.3667612,
+  "admin_login": {
+    "attempted": true,
+    "success": true,
+    "status_code": 200
+  },
+  "metadata": {
+    "checked": 995,
+    "success": 995,
+    "failed": 0,
+    "failures": [],
+    "representative_shape": {
+      "type": "dict",
+      "keys": [
+        "jfif",
+        "jfif_density",
+        "jfif_unit",
+        "jfif_version"
+      ]
+    }
+  },
+  "media_detail": {
+    "checked": 995,
+    "success": 995,
+    "failed": 0,
+    "failures": [],
+    "representative_shape": {
+      "type": "dict",
+      "keys": [
+        "content_class",
+        "content_class_confidence",
+        "content_class_source",
+        "description",
+        "duration",
+        "file_size",
+        "file_type",
+        "filename",
+        "has_children",
+        "hash",
+        "height",
+        "hierarchy",
+        "id",
+        "is_shared",
+        "mime_type",
+        "parent_id",
+        "path",
+        "rating",
+        "share_ai_metadata",
+        "share_language"
+      ]
+    }
+  },
+  "thumbnail": {
+    "checked": 995,
+    "success": 995,
+    "failed": 0,
+    "failures": []
+  },
+  "file_sample": {
+    "checked": 65,
+    "success": 65,
+    "failed": 0,
+    "failures": [],
+    "sample_ids": [
+      712,
+      713,
+      714,
+      715,
+      716,
+      717,
+      718,
+      719,
+      720,
+      721,
+      735,
+      757,
+      766,
+      857,
+      897,
+      914,
+      947,
+      961,
+      997,
+      1002,
+      1005,
+      1019,
+      1020,
+      1022,
+      1023,
+      1041,
+      1042,
+      1067,
+      1088,
+      1112,
+      1174,
+      1184,
+      1200,
+      1331,
+      1373,
+      1374,
+      1391,
+      1397,
+      1398,
+      1399,
+      1400,
+      1489,
+      1499,
+      1503,
+      1507,
+      1510,
+      1512,
+      1517,
+      1527,
+      1547,
+      1552,
+      1555,
+      1574,
+      1590,
+      1598,
+      1613,
+      1614,
+      1692,
+      1693,
+      1695,
+      1702,
+      1703,
+      1704,
+      1705,
+      1706
+    ]
+  },
+  "content_class_filters": {
+    "checked": 4,
+    "success": 4,
+    "failed": 0,
+    "failures": [],
+    "items": [
+      {
+        "content_class": "anime",
+        "total": 948,
+        "items": 50
+      },
+      {
+        "content_class": "unknown",
+        "total": 21,
+        "items": 21
+      },
+      {
+        "content_class": "non_anime",
+        "total": 26,
+        "items": 26
+      },
+      {
+        "content_class": "anime,unknown",
+        "total": 969,
+        "items": 50
+      }
+    ]
+  },
+  "search_localization": {
+    "checked": 4,
+    "success": 4,
+    "failed": 0,
+    "failures": [],
+    "items": [
+      {
+        "query_label": "canonical:hetero",
+        "total": 66,
+        "items": 50
+      },
+      {
+        "query_label": "canonical:1girl",
+        "total": 875,
+        "items": 50
+      },
+      {
+        "query_label": "canonical:long_hair",
+        "total": 824,
+        "items": 50
+      },
+      {
+        "query_label": "localized:zh_hetero",
+        "total": 66,
+        "items": 50
+      }
+    ]
+  },
+  "ai_review_tag_api": {
+    "checked": 4,
+    "success": 4,
+    "failed": 0,
+    "failures": [],
+    "items": [
+      {
+        "endpoint": "ai_review",
+        "shape": {
+          "type": "dict",
+          "keys": [
+            "items",
+            "limit",
+            "offset",
+            "total"
+          ]
+        },
+        "total": 11938
+      },
+      {
+        "endpoint": "localization_stats",
+        "shape": {
+          "type": "dict",
+          "keys": [
+            "missing",
+            "needs_review",
+            "source_breakdown",
+            "total_covered",
+            "total_tags",
+            "translated_db",
+            "translated_static_only"
+          ]
+        }
+      },
+      {
+        "endpoint": "translations_batch",
+        "shape": {
+          "type": "dict",
+          "keys": [
+            "1girl",
+            "hetero",
+            "long_hair"
+          ]
+        }
+      },
+      {
+        "endpoint": "tag_autocomplete",
+        "shape": {
+          "type": "list",
+          "length": 2
+        }
+      }
+    ]
+  },
+  "finished_at_epoch": 1779271138.173245,
+  "duration_seconds": 32.806,
+  "success": true
+}
