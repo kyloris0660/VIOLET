@@ -1,6 +1,6 @@
 {
   "phase": "3.8d-I3",
-  "created_at": "2026-05-21T13:20:32.874714+00:00",
+  "created_at": "2026-05-21T13:43:01.411482+00:00",
   "success": true,
   "cleanup_dry_run": {
     "phase": "3.8d-I3",
@@ -16,10 +16,13 @@
       "staging_copy_log_matches_target": true,
       "staging_copy_log_target_exact_match": true,
       "staging_copy_log_expected_count_correlated": true,
+      "staging_copy_log_files_copied_present": true,
+      "staging_copy_log_bytes_copied_present": true,
       "staging_copy_log_files_copied_matches": true,
       "staging_copy_log_bytes_copied_matches": true,
       "staging_copy_log_matching_entry_found": true,
       "staging_copy_log_entry_count": 1,
+      "relative_target_handling": "absolute_target",
       "expected_file_count_matches": true,
       "expected_total_bytes_matches": true,
       "unexpected_files_check_available": true,

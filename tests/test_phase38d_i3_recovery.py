@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -30,17 +31,19 @@ def _write_log(
     target: Path,
     expected_count: int,
     *,
-    files_copied: int | None = None,
-    bytes_copied: int | None = None,
+    files_copied: int = 1,
+    bytes_copied: int | str = 3,
+    include_files_copied: bool = True,
+    include_bytes_copied: bool = True,
 ):
     lines = [
         "=== Executing Copy ===",
         f"  Target: {target}",
         f"  Expected files: {expected_count}",
     ]
-    if files_copied is not None:
+    if include_files_copied:
         lines.append(f"  Files copied:   {files_copied}")
-    if bytes_copied is not None:
+    if include_bytes_copied:
         lines.append(f"  Bytes copied:   {bytes_copied}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -552,6 +555,202 @@ def test_staging_log_matching_target_with_wrong_copied_count_fails(tmp_path: Pat
 
     assert public["status"] == "blocked_identity_mismatch"
     assert public["dedicated_target_evidence"]["staging_copy_log_files_copied_matches"] is False
+
+
+def test_staging_log_target_expected_only_fails_incomplete(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000, include_files_copied=False, include_bytes_copied=False)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["status"] == "blocked_incomplete_staging_log"
+    assert "staging_copy_log_files_copied_missing" in public["identity_mismatch_reasons"]
+    assert "staging_copy_log_bytes_copied_missing" in public["identity_mismatch_reasons"]
+    assert public["dedicated_target_evidence"]["staging_copy_log_matches_target"] is False
+
+
+def test_staging_log_missing_bytes_fails_incomplete(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000, include_bytes_copied=False)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["status"] == "blocked_incomplete_staging_log"
+    assert "staging_copy_log_bytes_copied_missing" in public["identity_mismatch_reasons"]
+
+
+def test_staging_log_missing_copied_count_fails_incomplete(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000, include_files_copied=False)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["status"] == "blocked_incomplete_staging_log"
+    assert "staging_copy_log_files_copied_missing" in public["identity_mismatch_reasons"]
+
+
+def test_gb_byte_tolerance_uses_two_decimal_precision(tmp_path: Path):
+    gib = 1024 * 1024 * 1024
+    target = tmp_path / "target"
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000, bytes_copied="1.00 GB")
+
+    within_tolerance = recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=int(round(1.004 * gib)),
+        relative_target_base=tmp_path,
+    )
+    outside_tolerance = recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=int(round(1.10 * gib)),
+        relative_target_base=tmp_path,
+    )
+
+    assert within_tolerance.log_matches is True
+    assert outside_tolerance.log_matches is False
+    assert outside_tolerance.bytes_copied_matches is False
+
+
+def test_kb_mb_and_byte_tolerances(tmp_path: Path):
+    target = tmp_path / "target"
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000, bytes_copied="1.0 KB")
+    assert recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=1024 + 50,
+        relative_target_base=tmp_path,
+    ).log_matches is True
+    assert recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=1024 + 70,
+        relative_target_base=tmp_path,
+    ).log_matches is False
+
+    _write_log(log, target, 1000, bytes_copied="1.0 MB")
+    assert recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=1024 * 1024 + 52_000,
+        relative_target_base=tmp_path,
+    ).log_matches is True
+
+    _write_log(log, target, 1000, bytes_copied="3 B")
+    assert recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=3,
+        relative_target_base=tmp_path,
+    ).log_matches is True
+    assert recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=4,
+        relative_target_base=tmp_path,
+    ).log_matches is False
+
+
+def test_relative_target_resolves_against_stable_expected_root_parent(tmp_path: Path):
+    target = tmp_path / "staging"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, Path("staging"), 1000)
+    other_cwd = tmp_path / "other_cwd"
+    other_cwd.mkdir()
+    previous_cwd = Path.cwd()
+    try:
+        os.chdir(other_cwd)
+        public, _local = recovery.build_cleanup_dry_run(
+            target_root=target,
+            expected_staging_root=target,
+            protected_roots=_protected_roots(tmp_path),
+            expected_file_count=1,
+            expected_total_bytes=3,
+            expected_copy_count=1000,
+            execute_cleanup_requested=False,
+            confirm_cleanup="",
+            staging_log=log,
+        )
+    finally:
+        os.chdir(previous_cwd)
+
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["relative_target_handling"] == "stable_base"
+
+
+def test_ambiguous_relative_target_fails_closed(tmp_path: Path):
+    target = tmp_path / "staging"
+    log = tmp_path / "copy.log"
+    _write_log(log, Path("staging"), 1000)
+
+    match = recovery._staging_log_matches_target(
+        log,
+        target,
+        expected_copy_count=1000,
+        expected_file_count=1,
+        expected_total_bytes=3,
+        relative_target_base=None,
+    )
+
+    assert match.log_matches is False
+    assert match.relative_target_handling == "ambiguous_relative_target_failed_closed"
 
 
 def test_custom_local_details_label_is_propagated_without_full_path(tmp_path: Path):

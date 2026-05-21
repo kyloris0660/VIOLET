@@ -16,10 +16,12 @@
 - Target under expected staging root: `True`
 - Protected roots valid: `True`
 - Staging log exact target/count/copy correlation: `True`
+- Staging log files copied present: `True`
+- Staging log bytes copied present: `True`
 - Actual delete performed: `False`
 - Confirmation phrase required: `DELETE_PHASE38D_PARTIAL_STAGING`
 
-Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log target/count/copy evidence is correlated to the same run entry, and a separate user/ChatGPT cleanup approval is granted.
+Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log has exact target + expected count + copied count + copied bytes from the same run entry, and a separate user/ChatGPT cleanup approval is granted. Missing copied count or copied bytes fails closed.
 
 ## Controlled Read-probe / Hydration Policy
 

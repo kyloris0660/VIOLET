@@ -85,7 +85,7 @@ class StagingLogEntry:
     expected_files: int | None
     files_copied: int | None
     bytes_copied: int | None
-    bytes_copied_tolerance: int
+    bytes_copied_tolerance: int | None
 
 
 @dataclass(frozen=True)
@@ -96,8 +96,11 @@ class StagingLogMatch:
     expected_count_matches: bool
     files_copied_matches: bool | None
     bytes_copied_matches: bool | None
+    files_copied_present: bool
+    bytes_copied_present: bool
     matching_entry_found: bool
     entry_count: int
+    relative_target_handling: str
 
 
 def utc_now() -> str:
@@ -139,12 +142,22 @@ def _iter_files(root: Path) -> list[Path]:
     return sorted([path for path in root.rglob("*") if path.is_file()], key=lambda path: str(path).lower())
 
 
-def _path_key(path: Path) -> str:
+def _normalize_path(path: Path, *, base: Path | None = None) -> Path | None:
+    if not path.is_absolute():
+        if base is None:
+            return None
+        path = base / path
     try:
-        resolved = path.resolve(strict=False)
-    except (OSError, RuntimeError):
-        resolved = path
-    return os.path.normcase(str(resolved))
+        return path.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return path
+
+
+def _path_key(path: Path, *, base: Path | None = None) -> str | None:
+    normalized = _normalize_path(path, base=base)
+    if normalized is None:
+        return None
+    return os.path.normcase(str(normalized))
 
 
 def _decode_text_file(path: Path) -> str | None:
@@ -157,7 +170,7 @@ def _decode_text_file(path: Path) -> str | None:
     return raw.decode("utf-8", errors="replace")
 
 
-def _parse_log_bytes(value: str, unit: str | None) -> tuple[int, int]:
+def _parse_log_bytes(value: str, unit: str | None) -> tuple[int, int | None]:
     number = float(value)
     normalized_unit = (unit or "").upper()
     multipliers = {
@@ -170,7 +183,15 @@ def _parse_log_bytes(value: str, unit: str | None) -> tuple[int, int]:
     }
     multiplier = multipliers.get(normalized_unit, 1)
     bytes_value = int(round(number * multiplier))
-    tolerance = 0 if normalized_unit in {"", "B"} else int(round(0.05 * multiplier)) + 1
+    if normalized_unit in {"", "B"}:
+        tolerance = 0
+    elif "." in value:
+        decimal_places = len(value.split(".", 1)[1])
+        tolerance = int(round(0.5 * (10 ** -decimal_places) * multiplier)) + 1
+    else:
+        # Unit values without decimal precision are too ambiguous for cleanup
+        # identity proof. Fail closed rather than accepting a wide tolerance.
+        tolerance = None
     return bytes_value, tolerance
 
 
@@ -181,14 +202,14 @@ def _parse_staging_log_entries(text: str) -> list[StagingLogEntry]:
         if COPY_RUN_HEADING_RE.match(line):
             if current is not None:
                 entries.append(
-                StagingLogEntry(
-                    target=current.get("target"),
-                    expected_files=current.get("expected_files"),
-                    files_copied=current.get("files_copied"),
-                    bytes_copied=current.get("bytes_copied"),
-                    bytes_copied_tolerance=current.get("bytes_copied_tolerance", 0),
+                    StagingLogEntry(
+                        target=current.get("target"),
+                        expected_files=current.get("expected_files"),
+                        files_copied=current.get("files_copied"),
+                        bytes_copied=current.get("bytes_copied"),
+                        bytes_copied_tolerance=current.get("bytes_copied_tolerance"),
+                    )
                 )
-            )
             current = {}
             continue
         if current is None:
@@ -214,7 +235,7 @@ def _parse_staging_log_entries(text: str) -> list[StagingLogEntry]:
                 expected_files=current.get("expected_files"),
                 files_copied=current.get("files_copied"),
                 bytes_copied=current.get("bytes_copied"),
-                bytes_copied_tolerance=current.get("bytes_copied_tolerance", 0),
+                bytes_copied_tolerance=current.get("bytes_copied_tolerance"),
             )
         )
     return entries
@@ -227,23 +248,36 @@ def _staging_log_matches_target(
     expected_copy_count: int,
     expected_file_count: int,
     expected_total_bytes: int,
+    relative_target_base: Path | None,
 ) -> StagingLogMatch:
     if log_path is None or not log_path.is_file():
-        return StagingLogMatch(False, False, False, False, None, None, False, 0)
+        return StagingLogMatch(False, False, False, False, None, None, False, False, False, 0, "not_applicable")
     text = _decode_text_file(log_path)
     if text is None:
-        return StagingLogMatch(False, False, False, False, None, None, False, 0)
+        return StagingLogMatch(False, False, False, False, None, None, False, False, False, 0, "not_applicable")
     entries = _parse_staging_log_entries(text)
     target_key = _path_key(target_root)
+    if target_key is None:
+        return StagingLogMatch(True, False, False, False, None, None, False, False, False, len(entries), "target_unresolvable")
     target_exact_match = False
     expected_count_matches = False
     files_copied_matches: bool | None = None
     bytes_copied_matches: bool | None = None
+    files_copied_present = False
+    bytes_copied_present = False
     matching_entry_found = False
+    relative_target_seen = False
+    ambiguous_relative_target_seen = False
     for entry in entries:
         if entry.target is None:
             continue
-        entry_target_matches = _path_key(entry.target) == target_key
+        if entry.target.is_absolute():
+            entry_target_key = _path_key(entry.target)
+        else:
+            relative_target_seen = True
+            entry_target_key = _path_key(entry.target, base=relative_target_base) if relative_target_base else None
+            ambiguous_relative_target_seen = ambiguous_relative_target_seen or entry_target_key is None
+        entry_target_matches = entry_target_key == target_key
         target_exact_match = target_exact_match or entry_target_matches
         if not entry_target_matches:
             continue
@@ -251,15 +285,16 @@ def _staging_log_matches_target(
         expected_count_matches = expected_count_matches or entry_expected_matches
         if not entry_expected_matches:
             continue
-        entry_files_copied_matches = entry.files_copied is None or entry.files_copied == expected_file_count
+        files_copied_present = entry.files_copied is not None
+        bytes_copied_present = entry.bytes_copied is not None
+        entry_files_copied_matches = entry.files_copied is not None and entry.files_copied == expected_file_count
         entry_bytes_copied_matches = (
-            entry.bytes_copied is None
-            or abs(entry.bytes_copied - expected_total_bytes) <= entry.bytes_copied_tolerance
+            entry.bytes_copied is not None
+            and entry.bytes_copied_tolerance is not None
+            and abs(entry.bytes_copied - expected_total_bytes) <= entry.bytes_copied_tolerance
         )
-        if entry.files_copied is not None:
-            files_copied_matches = entry_files_copied_matches
-        if entry.bytes_copied is not None:
-            bytes_copied_matches = entry_bytes_copied_matches
+        files_copied_matches = entry_files_copied_matches
+        bytes_copied_matches = entry_bytes_copied_matches
         matching_entry_found = entry_files_copied_matches and entry_bytes_copied_matches
         if not matching_entry_found:
             continue
@@ -270,9 +305,17 @@ def _staging_log_matches_target(
             True,
             files_copied_matches,
             bytes_copied_matches,
+            files_copied_present,
+            bytes_copied_present,
             True,
             len(entries),
+            "stable_base" if relative_target_seen else "absolute_target",
         )
+    relative_target_handling = "absolute_target"
+    if ambiguous_relative_target_seen:
+        relative_target_handling = "ambiguous_relative_target_failed_closed"
+    elif relative_target_seen:
+        relative_target_handling = "stable_base"
     return StagingLogMatch(
         True,
         False,
@@ -280,8 +323,11 @@ def _staging_log_matches_target(
         expected_count_matches,
         files_copied_matches,
         bytes_copied_matches,
+        files_copied_present,
+        bytes_copied_present,
         matching_entry_found,
         len(entries),
+        relative_target_handling,
     )
 
 
@@ -324,7 +370,10 @@ def _expected_partial_target_keys(
         target = (row.get("proposed_target_path") or "").strip()
         if not target:
             continue
-        expected.add(_path_key(Path(target)))
+        target_key = _path_key(Path(target))
+        if target_key is None:
+            continue
+        expected.add(target_key)
         if len(expected) >= expected_file_count:
             break
     return expected
@@ -347,7 +396,7 @@ def build_cleanup_dry_run(
     target_exists = target_root.exists()
     target_is_dir = target_root.is_dir()
     files = _iter_files(target_root)
-    actual_file_keys = {_path_key(path) for path in files}
+    actual_file_keys = {key for path in files if (key := _path_key(path)) is not None}
     expected_file_keys = _expected_partial_target_keys(expected_manifest_rows, expected_file_count)
     unexpected_keys = actual_file_keys - expected_file_keys if expected_file_keys is not None else set()
     missing_expected_keys = expected_file_keys - actual_file_keys if expected_file_keys is not None else set()
@@ -407,6 +456,7 @@ def build_cleanup_dry_run(
         expected_copy_count=expected_copy_count,
         expected_file_count=expected_file_count,
         expected_total_bytes=expected_total_bytes,
+        relative_target_base=expected_staging_root.parent if expected_staging_root is not None else None,
     )
     file_count_matches = len(files) == expected_file_count
     byte_count_matches = total_bytes == expected_total_bytes
@@ -446,10 +496,13 @@ def build_cleanup_dry_run(
             "staging_copy_log_matches_target": log_match.log_matches,
             "staging_copy_log_target_exact_match": log_match.target_exact_match,
             "staging_copy_log_expected_count_correlated": log_match.expected_count_matches,
+            "staging_copy_log_files_copied_present": log_match.files_copied_present,
+            "staging_copy_log_bytes_copied_present": log_match.bytes_copied_present,
             "staging_copy_log_files_copied_matches": log_match.files_copied_matches,
             "staging_copy_log_bytes_copied_matches": log_match.bytes_copied_matches,
             "staging_copy_log_matching_entry_found": log_match.matching_entry_found,
             "staging_copy_log_entry_count": log_match.entry_count,
+            "relative_target_handling": log_match.relative_target_handling,
             "expected_file_count_matches": file_count_matches,
             "expected_total_bytes_matches": byte_count_matches,
             "unexpected_files_check_available": unexpected_files_check_available,
@@ -510,6 +563,11 @@ def build_cleanup_dry_run(
         identity_mismatch_reasons.append("staging_copy_log_missing")
     if log_match.log_present and not log_match.log_matches:
         identity_mismatch_reasons.append("staging_copy_log_mismatch")
+    if log_match.log_present and log_match.target_exact_match and log_match.expected_count_matches:
+        if not log_match.files_copied_present:
+            identity_mismatch_reasons.append("staging_copy_log_files_copied_missing")
+        if not log_match.bytes_copied_present:
+            identity_mismatch_reasons.append("staging_copy_log_bytes_copied_missing")
     if not file_count_matches:
         identity_mismatch_reasons.append("expected_partial_file_count_mismatch")
     if not byte_count_matches:
@@ -524,6 +582,8 @@ def build_cleanup_dry_run(
         public["status"] = "blocked_invalid_protected_root"
     elif not expected_staging_root_explicit:
         public["status"] = "blocked_missing_expected_staging_root"
+    elif "staging_copy_log_files_copied_missing" in identity_mismatch_reasons or "staging_copy_log_bytes_copied_missing" in identity_mismatch_reasons:
+        public["status"] = "blocked_incomplete_staging_log"
     elif identity_mismatch_reasons:
         public["status"] = "blocked_identity_mismatch"
     elif not required_labels_all_present:
@@ -771,10 +831,13 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Staging copy log target/count/copy correlation passed: `{evidence['staging_copy_log_matches_target']}`",
         f"- Staging copy log target exact match: `{evidence['staging_copy_log_target_exact_match']}`",
         f"- Staging copy log expected count correlated: `{evidence['staging_copy_log_expected_count_correlated']}`",
+        f"- Staging copy log files copied present: `{evidence['staging_copy_log_files_copied_present']}`",
+        f"- Staging copy log bytes copied present: `{evidence['staging_copy_log_bytes_copied_present']}`",
         f"- Staging copy log files copied matches: `{evidence['staging_copy_log_files_copied_matches']}`",
         f"- Staging copy log bytes copied matches: `{evidence['staging_copy_log_bytes_copied_matches']}`",
         f"- Staging copy log matching entry found: `{evidence['staging_copy_log_matching_entry_found']}`",
         f"- Staging copy log entry count: `{evidence['staging_copy_log_entry_count']}`",
+        f"- Relative target handling: `{evidence['relative_target_handling']}`",
         f"- Expected partial file count matches: `{evidence['expected_file_count_matches']}`",
         f"- Expected total bytes matches: `{evidence['expected_total_bytes_matches']}`",
         f"- Unexpected files check available: `{evidence['unexpected_files_check_available']}`",
@@ -791,7 +854,7 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Invalid protected root labels: `{json.dumps(report['invalid_protected_root_labels'], ensure_ascii=False)}`",
         f"- Unsafe reasons: `{json.dumps(report['unsafe_reasons'], ensure_ascii=False)}`",
         "",
-        "Cleanup dry-run is not approved for actual delete unless `--expected-staging-root` is explicit, all required protected roots exist and resolve as directories, the target is under the expected staging root, and the staging log has an exact correlated target/count/copy entry. Actual cleanup still requires separate user/ChatGPT approval.",
+        "Cleanup dry-run is not approved for actual delete unless `--expected-staging-root` is explicit, all required protected roots exist and resolve as directories, the target is under the expected staging root, and the staging log has exact target + expected count + copied count + copied bytes from the same run entry. Missing copied count or copied bytes fails closed. Actual cleanup still requires separate user/ChatGPT approval.",
         "",
         "## Extension Distribution",
         "",
@@ -856,10 +919,12 @@ def render_recovery_markdown(report: Mapping[str, Any]) -> str:
         f"- Target under expected staging root: `{cleanup['target_under_expected_staging_root']}`",
         f"- Protected roots valid: `{not cleanup['invalid_protected_root_labels']}`",
         f"- Staging log exact target/count/copy correlation: `{cleanup['dedicated_target_evidence']['staging_copy_log_matches_target']}`",
+        f"- Staging log files copied present: `{cleanup['dedicated_target_evidence']['staging_copy_log_files_copied_present']}`",
+        f"- Staging log bytes copied present: `{cleanup['dedicated_target_evidence']['staging_copy_log_bytes_copied_present']}`",
         f"- Actual delete performed: `{cleanup['deletion_plan']['actual_delete_performed']}`",
         f"- Confirmation phrase required: `{cleanup['deletion_plan']['confirmation_phrase_required']}`",
         "",
-        "Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log target/count/copy evidence is correlated to the same run entry, and a separate user/ChatGPT cleanup approval is granted.",
+        "Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log has exact target + expected count + copied count + copied bytes from the same run entry, and a separate user/ChatGPT cleanup approval is granted. Missing copied count or copied bytes fails closed.",
         "",
         "## Controlled Read-probe / Hydration Policy",
         "",
