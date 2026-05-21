@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from app.utils.cloud_files import CloudFileState
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "stage_pilot_files.py"
 SCRIPT = str(SCRIPT_PATH)
@@ -1807,3 +1808,80 @@ class TestManifestSnapshotReuse:
         assert res["failed"] == 0
         assert res["copied"] == 1
         assert (target_root / "a.jpg").is_file()
+
+
+class TestCloudAvailabilityGate:
+    def test_validate_manifest_blocks_cloud_risk(self, monkeypatch, tmp_path: Path):
+        src = tmp_path / "cloud.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "cloud.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+        _write_manifest(manifest_path, rows)
+
+        monkeypatch.setattr(
+            _module,
+            "classify_cloud_file_state",
+            lambda path: CloudFileState(
+                path=str(path),
+                supported_platform=True,
+                exists=True,
+                is_file=True,
+                recall_on_data_access=True,
+                likely_cloud_placeholder=True,
+            ),
+        )
+
+        result = validate_manifest(manifest_path, target_root)
+
+        assert result["valid"] is False
+        assert result["cloud_risk_files"] == 1
+        assert result["cloud_risk_by_reason"] == {"cloud_recall_on_data_access": 1}
+        assert any("cloud availability" in error for error in result["errors"])
+
+    def test_execute_copy_classifies_winerror_388(self, monkeypatch, tmp_path: Path):
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "cloud.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "cloud.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+
+        class FakeCopyError(OSError):
+            winerror = 388
+            errno = None
+
+        monkeypatch.setattr(_module.shutil, "copy2", lambda *_args, **_kwargs: (_ for _ in ()).throw(FakeCopyError("cloud sync unavailable")))
+        monkeypatch.setattr(
+            _module,
+            "classify_cloud_file_state",
+            lambda path: CloudFileState(
+                path=str(path),
+                supported_platform=True,
+                exists=True,
+                is_file=True,
+                recall_on_data_access=True,
+                likely_cloud_placeholder=True,
+            ),
+        )
+
+        result = execute_copy(manifest_path, target_root, approved_source_roots=[src_root], rows=rows)
+
+        assert result["failed"] == 1
+        assert result["copied"] == 0
+        assert result["failed_reason_code"] == "cloud_network_unavailable"
+        assert result["failed_cloud_state"]["likely_cloud_placeholder"] is True
+        assert not (target_root / "cloud.jpg").exists()

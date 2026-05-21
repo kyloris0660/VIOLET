@@ -1,7 +1,6 @@
 import json
 import multiprocessing
 import os
-import platform
 import shutil
 import threading
 from datetime import datetime, timezone
@@ -16,6 +15,10 @@ from ..schemas import RatingEnum
 from .logger import logger
 from .media_helpers import get_unique_filename
 from .media_processor import calculate_file_hash
+from .cloud_files import (
+    FILE_ATTRIBUTE_HIDDEN as _FILE_ATTRIBUTE_HIDDEN,
+    is_likely_cloud_placeholder,
+)
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
@@ -26,18 +29,6 @@ MAX_FAILED_REPORT = 50
 _PROGRESS_FLUSH_INTERVAL = 10
 
 _BLOCKED_DIR_NAMES = {"venv", "data", "media", "storage", ".git", "__pycache__"}
-
-_IS_WINDOWS = platform.system() == "Windows"
-
-_FILE_ATTRIBUTE_OFFLINE = 0x1000
-_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
-_FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x40000
-_FILE_ATTRIBUTE_HIDDEN = 0x2
-_CLOUD_ATTR_MASK = (
-    _FILE_ATTRIBUTE_OFFLINE
-    | _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
-    | _FILE_ATTRIBUTE_RECALL_ON_OPEN
-)
 
 _SKIP_REASON_STAT_MAP = {
     "icloud_placeholder": "skipped_cloud_placeholder",
@@ -155,27 +146,18 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
 def _is_cloud_only(file_path: Path) -> bool:
     """Check if a file is cloud-only (not locally hydrated) on Windows.
 
-    Uses GetFileAttributesW via ctypes to check for OFFLINE,
-    RECALL_ON_DATA_ACCESS, and RECALL_ON_OPEN attributes.
+    Uses the shared Cloud Files metadata helper to check for OFFLINE,
+    RECALL_ON_DATA_ACCESS, RECALL_ON_OPEN, and related cloud attributes.
     Returns False on non-Windows or on any error.
     """
-    if not _IS_WINDOWS:
-        return False
-    try:
-        import ctypes
-        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(file_path))
-        if attrs == -1:
-            return False
-        return bool(attrs & _CLOUD_ATTR_MASK)
-    except Exception:
-        return False
+    return is_likely_cloud_placeholder(file_path)
 
 
 def _is_hidden(file_path: Path) -> bool:
     """Check if a file is hidden (dotfile or Windows hidden attribute)."""
     if file_path.name.startswith("."):
         return True
-    if _IS_WINDOWS:
+    if os.name == "nt":
         try:
             import ctypes
             attrs = ctypes.windll.kernel32.GetFileAttributesW(str(file_path))

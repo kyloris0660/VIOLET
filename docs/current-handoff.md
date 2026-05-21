@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8c - Medium Pilot Preflight + Classification-First E2E Dry-run (2026-05-21).
+> Last updated during Phase 3.8d-I1 - iCloud / Windows Cloud Files Ingestion Reliability Incident & Hardening (2026-05-21).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8c-medium-pilot-preflight-dryrun` (Phase 3.8c implementation branch; `main` contains Phase 3.8b via PR #53) |
+| **Branch** | `phase3.8d-icloud-ingestion-hardening` (incident hardening branch; Phase 3.8d execute remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -35,7 +35,8 @@
 | **Phase 3.6 (PR #50)** | PR [#50](https://github.com/kyloris0660/AnimeLocalBooru/pull/50) merged - controlled AI tagging + visual tag localization executed for the Phase 3.5 source label |
 | **Phase 3.7 (PR #51)** | PR [#51](https://github.com/kyloris0660/AnimeLocalBooru/pull/51) merged - Tier-1000 content classification validation and tag-derived workflow scope gate |
 | **Phase 3.8b (PR #53)** | PR [#53](https://github.com/kyloris0660/AnimeLocalBooru/pull/53) merged - reusable classification-first workflow helpers and dry-run CLI; execute workflow remains deferred |
-| **Phase 3.8c (branch)** | `phase3.8c-medium-pilot-preflight-dryrun` - medium +1000 candidate preflight with temporal stratified selection; dry-run only |
+| **Phase 3.8c (PR #54)** | PR #54 merged - medium +1000 candidate preflight with temporal stratified selection; dry-run only |
+| **Phase 3.8d-I1 (branch)** | `phase3.8d-icloud-ingestion-hardening` - iCloud / Windows Cloud Files ingestion reliability incident hardening; Phase 3.8d execute blocked |
 
 ## Mandatory Workflow Rules
 
@@ -53,6 +54,8 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 10. **AI-only phase isolation** — When running AI-only phases (e.g. AI tagging without localization), all four translation env vars must be set: `AI_TAGGING_AUTO_LOCALIZATION=false`, `TAG_TRANSLATION_BACKGROUND_ENABLED=false`, `TAG_TRANSLATION_AUTO_ENABLED=false`, `TAG_TRANSLATION_LLM_ENABLED=false`. After server startup, verify the worker is stopped via `GET /api/admin/tag-localization/worker/status`. See `AGENTS.md` § AI-only phase isolation.
 11. **Admin auth mutation rule** — Agent-initiated admin password resets (e.g. via `psql UPDATE`) require explicit user consent in the chat before execution. Silent resets are prohibited. Document any auth mutation in the delivery report.
 12. **Reporting accuracy for tag deltas** — Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), `media_tags` row delta (net change in media↔tag associations), `tag row delta` (net change in Tag table rows), and `media_with_ai_tags delta` (net change in media items that have at least one AI-generated tag). If `media_tags` delta equals `tags_added + suggestions_added`, state so explicitly. Do not conflate these metrics.
+
+13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -749,16 +752,25 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Local full-path manifest: `.local_manifests/phase-3.8c-medium-candidate-manifest.csv`; it is gitignored and must not be committed.
 - Phase 3.8c does not execute real import, staging copy, DB import, content classification, AI tagging, localization, Entity Resolver, similarity/clustering, cleanup, delete, reset, drop, or truncate.
 
-## Recommended Next Step: Review Phase 3.8c Before Guarded Execute
+**Phase 3.8d-I1 - iCloud / Windows Cloud Files Ingestion Reliability Incident & Hardening (branch `phase3.8d-icloud-ingestion-hardening`):**
+- Phase 3.8d guarded execute remains blocked after real staging copy failed at manifest `row_id=98`, bucket `b02`, with WinError `388` (`The cloud sync provider failed to perform the operation due to network being unavailable`).
+- Impact was contained: DB import did not run; classification, AI tagging, localization, Entity Resolver, similarity/clustering, app-managed storage mutation, cleanup, delete, reset, drop, and truncate did not run.
+- Partial staging is evidence only: `97` copied files, `340,159,586` bytes, safe label `phase_3_8d_partial_staging`; do not auto-clean it.
+- The Phase 3.8d-I1 metadata-only cloud availability audit found selected_total `1000`, already copied `97`, not yet copied `903`, `RECALL_ON_DATA_ACCESS=613`, likely cloud placeholder / recall-risk `613`, and copy gate `blocked_requires_hydration_policy`.
+- Phase 2.4 solved scan-safety by skipping placeholders in hydrated-only scan mode; Phase 3.8d requires ingestion-availability, where selected real cloud-backed files need controlled hydrate/read-probe/backfill/resume policy before copy.
+- New shared helper `backend/app/utils/cloud_files.py` provides Windows Cloud Files attribute metadata and structured error classification without reading file content in metadata-only mode.
+- New audit script `scripts/audit_cloud_availability.py` produces privacy-safe public reports plus local full-path details; `--read-probe` is opt-in and must not be run without explicit approval.
+- Reports: `docs/reports/phase-3.8d-icloud-ingestion-incident.md`, `docs/reports/phase-3.8d-cloud-availability-audit.md`, and `docs/reports/phase-3.8d-cloud-availability-audit-summary.json`.
 
-Do not start Phase 4 or any real +1000 execute workflow until Phase 3.8c is reviewed and merged. The next implementation stage should be Phase 3.8d only after explicit user/ChatGPT approval:
+## Recommended Next Step: Resolve Phase 3.8d-I1 Before Any Execute
 
-1. Preserve the Phase 3.8c candidate manifest as an untracked local artifact and verify it is not staged.
-2. Before any execute, take a DB backup and re-run candidate/staging/audit dry-run against the latest `main`.
-3. Add execute confirmations, source/staging immutability checks, stale-server checks, active-job checks, and background worker isolation before writes.
-4. Keep `NULL content_class` fail-closed unless a future approved step explicitly converts NULL to `unknown`.
-5. Execute classification before AI tagging, then restrict AI tagging to `anime` + `unknown`, and restrict localization to eligible-derived `general`/`meta` tags.
-6. Continue treating the 26 ineligible media with 771 Phase 3.6 AI associations as legacy validation artifacts; do not clean/delete without a separate approved cleanup plan.
+Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
+
+1. Review and merge the Phase 3.8d-I1 hardening PR.
+2. Approve one recovery path: cleanup plus rerun from empty dedicated staging, or resume after verifying already-copied files by size/hash and refusing overwrite.
+3. Approve any read-probe/hydration attempt separately. Metadata-only audit remains the default.
+4. If bounded hydrate/read-probe fails for specific files, use same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
+5. Only after staging copy is complete and verified may Phase 3.8d DB import be reconsidered.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

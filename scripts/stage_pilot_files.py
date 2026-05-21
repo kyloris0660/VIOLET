@@ -35,6 +35,16 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_ROOT = REPO_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.utils.cloud_files import (  # noqa: E402
+    classify_cloud_file_state,
+    classify_file_access_error,
+)
+
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 KNOWN_SELECTION_REASONS = {"existing_tier500", "new_candidate"}
@@ -141,6 +151,9 @@ def validate_manifest(
         "suffix_missing": 0,
         "target_existing_files": 0,
         "target_existing_paths": [],
+        "cloud_risk_files": 0,
+        "cloud_risk_paths": [],
+        "cloud_risk_by_reason": {},
         "source_root_violations": 0,
         "source_root_violation_paths": [],
         "truncated_rows": 0,
@@ -250,6 +263,24 @@ def validate_manifest(
             if sp.is_file():
                 result["source_files_exist"] += 1
                 source_suffix = sp.suffix.lower()
+                cloud_state = classify_cloud_file_state(sp)
+                if cloud_state.likely_cloud_placeholder:
+                    result["cloud_risk_files"] += 1
+                    reasons = []
+                    if cloud_state.offline:
+                        reasons.append("cloud_offline")
+                    if cloud_state.recall_on_open:
+                        reasons.append("cloud_recall_on_open")
+                    if cloud_state.recall_on_data_access:
+                        reasons.append("cloud_recall_on_data_access")
+                    if cloud_state.reparse_point:
+                        reasons.append("cloud_reparse_point")
+                    if not reasons:
+                        reasons.append("cloud_hydration_risk")
+                    for reason in reasons:
+                        result["cloud_risk_by_reason"][reason] = result["cloud_risk_by_reason"].get(reason, 0) + 1
+                    if len(result["cloud_risk_paths"]) < 10:
+                        result["cloud_risk_paths"].append(source_path)
             else:
                 result["source_files_missing"] += 1
                 if len(result["source_files_missing_paths"]) < 10:
@@ -418,6 +449,13 @@ def validate_manifest(
         )
         result["valid"] = False
 
+    if result["cloud_risk_files"] > 0:
+        result["errors"].append(
+            f"{result['cloud_risk_files']} copy rows have cloud availability risk; "
+            "run cloud availability/hydration gate before execute"
+        )
+        result["valid"] = False
+
     if result["source_root_violations"] > 0:
         result["errors"].append(
             f"{result['source_root_violations']} source paths outside approved roots"
@@ -533,6 +571,8 @@ def execute_copy(
         "failed": 0,
         "failed_path": None,
         "failed_reason": None,
+        "failed_reason_code": None,
+        "failed_cloud_state": None,
         "total_bytes_copied": 0,
         "errors": [],
     }
@@ -626,9 +666,12 @@ def execute_copy(
 
         # Source must exist
         if not sp.is_file():
+            cloud_state = classify_cloud_file_state(sp)
             copy_result["failed"] += 1
             copy_result["failed_path"] = source_path
+            copy_result["failed_reason_code"] = "source_missing"
             copy_result["failed_reason"] = "Source file not found"
+            copy_result["failed_cloud_state"] = cloud_state.to_dict()
             copy_result["errors"].append(f"Source not found: {source_path}")
             return copy_result
 
@@ -642,6 +685,7 @@ def execute_copy(
         if not in_approved:
             copy_result["failed"] += 1
             copy_result["failed_path"] = source_path
+            copy_result["failed_reason_code"] = "permission_denied"
             copy_result["failed_reason"] = "Source outside approved roots"
             copy_result["errors"].append(f"Source outside approved roots: {source_path}")
             return copy_result
@@ -661,6 +705,7 @@ def execute_copy(
         if tp.exists():
             copy_result["failed"] += 1
             copy_result["failed_path"] = proposed_target
+            copy_result["failed_reason_code"] = "target_exists"
             copy_result["failed_reason"] = "Target already exists (refuse overwrite)"
             copy_result["errors"].append(f"Target exists: {proposed_target}")
             return copy_result
@@ -681,10 +726,14 @@ def execute_copy(
         try:
             shutil.copy2(str(sp), str(tp))
         except (OSError, shutil.SameFileError) as exc:
+            cloud_state = classify_cloud_file_state(sp)
+            reason_code = classify_file_access_error(exc, cloud_state)
             copy_result["failed"] += 1
             copy_result["failed_path"] = source_path
-            copy_result["failed_reason"] = f"Copy failed: {exc}"
-            copy_result["errors"].append(f"Copy error: {source_path} -> {proposed_target}: {exc}")
+            copy_result["failed_reason_code"] = reason_code
+            copy_result["failed_reason"] = f"Copy failed ({reason_code}): {exc}"
+            copy_result["failed_cloud_state"] = cloud_state.to_dict()
+            copy_result["errors"].append(f"Copy error ({reason_code}): {source_path} -> {proposed_target}: {exc}")
             return copy_result
 
         try:
@@ -858,6 +907,7 @@ def main():
     print(f"  Extension mismatches:      {result['extension_mismatches']}")
     print(f"  Source root violations:    {result['source_root_violations']}")
     print(f"  Target files exist on disk: {result['target_existing_files']}")
+    print(f"  Cloud availability risks:  {result['cloud_risk_files']}")
     print(f"  Total copy size:           {_fmt_bytes(result['total_copy_bytes'])}")
     print(f"  Target root exists:        {result['target_root_exists']}")
     print()
@@ -912,6 +962,8 @@ def main():
     print(f"  Excluded:       {copy_res['skipped_excluded']}")
     print(f"  Truncated:      {copy_res['skipped_truncated']}")
     print(f"  Failed:         {copy_res['failed']}")
+    if copy_res.get("failed_reason_code"):
+        print(f"  Failure code:   {copy_res['failed_reason_code']}")
     print(f"  Bytes copied:   {_fmt_bytes(copy_res['total_bytes_copied'])}")
 
     if copy_res["errors"]:

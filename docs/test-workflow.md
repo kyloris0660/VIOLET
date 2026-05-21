@@ -16,11 +16,16 @@ Plan-only tasks must not create branches, commits, pushes, or PRs unless explici
 
 Run with `pytest tests/` from the project root. These tests mock environment variables and never connect to a real database or server.
 
+Phase 3.8d-I1 adds a cloud availability gate requirement for ingestion/staging/copy workflows: metadata-only audits must not open or read source file contents, read-probe/hydration behavior must be opt-in, and staging copy failures must use structured cloud reason codes.
+
 | Test file | Coverage |
 |-----------|----------|
 | `tests/test_env_safety.py` | VIOLET_ENV, STORAGE_ROOT, test DB fail-closed, assert_test_db |
 | `tests/test_destructive_gate.py` | Destructive gate conditions, storage path containment |
+| `tests/test_cloud_files.py` | Windows Cloud Files attribute helper, structured cloud error classification, non-Windows safety |
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
+| `tests/test_audit_cloud_availability.py` | Metadata-only manifest cloud availability audit, opt-in read-probe, privacy-safe reports, same-bucket backfill, cleanup dry-run policy |
+| `tests/test_stage_pilot_files.py` | Staging manifest validation, cloud availability gate, structured copy failure reasons |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
 | `tests/test_server_identity.py` | Server identity endpoint fields, Python runtime identity, no secrets exposed |
@@ -146,7 +151,7 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_scanner_icloud.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py tests/test_ai_tagging_localization_gate.py tests/test_ai_tagging_content_class_filter.py tests/test_check_server_identity_script.py tests/test_media_processor_mime_magic_cache.py tests/test_config_precedence.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_cloud_files.py tests/test_scanner_icloud.py tests/test_audit_cloud_availability.py tests/test_stage_pilot_files.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py tests/test_ai_tagging_localization_gate.py tests/test_ai_tagging_content_class_filter.py tests/test_check_server_identity_script.py tests/test_media_processor_mime_magic_cache.py tests/test_config_precedence.py -v
 ```
 
 ### Smoke Validation (Tier 1)
