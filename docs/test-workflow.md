@@ -38,6 +38,7 @@ Phase 3.8d-I2 unifies this behind a Source Ingestion Gate. Tests must prove that
 | `tests/test_source_ingestion_gate.py` | Source kind classification, path-source cloud blocking, upload/staging/app-managed gate semantics, privacy-safe public summaries |
 | `tests/test_scanner_icloud.py` | Scanner iCloud safety, preflight, skip mapping |
 | `tests/test_audit_cloud_availability.py` | Metadata-only manifest cloud availability audit, opt-in read-probe, privacy-safe reports, same-bucket backfill, cleanup dry-run policy |
+| `tests/test_phase38d_i3_recovery.py` | Phase 3.8d recovery planner, manifest/filesystem cleanup proof, controlled cleanup executor safety, row 98 recovery semantics |
 | `tests/test_stage_pilot_files.py` | Staging manifest validation, cloud availability gate, structured copy failure reasons |
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |

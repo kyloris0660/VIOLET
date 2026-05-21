@@ -334,12 +334,23 @@ See [Content Classification](content-classification.md) for full documentation.
 
 - Added a Final Delivery Report Standard to project rules so implementation/review final reports must include PR URL, branch/head SHA, files changed, exact tests/results, validation/dry-run results, local artifacts, reviewer status, safety confirmation, blocked/ready status, and recommended next step in Chinese.
 - Replaced the standard automatic reviewer-fix loop with a Reviewer Feedback Handling Policy: CodeX triggers reviewer and reports current-head feedback, but does not modify code from reviewer comments unless the user explicitly authorizes a specific auto-fix loop.
-- Added `scripts/plan_phase38d_i3_recovery.py`, a dry-run-only recovery planner. It inspects the preserved partial staging target, writes privacy-safe public reports, and writes full local details only to ignored `.local_manifests` artifacts.
+- Added `scripts/plan_phase38d_i3_recovery.py`, originally as a dry-run recovery planner. It inspects the preserved partial staging target, writes privacy-safe public reports, and writes full local details only to ignored `.local_manifests` artifacts.
 - Partial staging cleanup dry-run confirms the dedicated target safe label `phase_3_8d_partial_staging` by manifest/filesystem proof: `97` files, `340,159,586` bytes, extension distribution `.jpg=68`, `.png=22`, `.jpeg=6`, `.gif=1`, no source/iCloud/repo/app-storage overlap, and no deletion performed. Staging logs are diagnostic only and are not used for cleanup authorization.
 - Controlled read-probe/hydration policy remains opt-in, bounded, and approval-gated; metadata-only audit remains the default and direct `CfHydratePlaceholder` integration is deferred as a future enhancement unless explicitly approved.
 - Same-bucket backfill is dry-run-only and may be applied only after bounded hydrate/read-probe failure. The failed row `98` has a same-bucket dry-run replacement candidate while preserving `selected_total=1000`; no manifest replacement is performed.
 - Current recovery recommendation is cleanup plus rerun after explicit cleanup approval, because only `97` files were copied and no DB/import/classification/AI/localization downstream state exists.
 - Phase 3.8d execute remains blocked until cleanup approval and controlled read-probe/hydration/backfill approval are handled in later stages.
+
+### Phase 3.8d-I4a - Controlled Partial Staging Cleanup Executor Support
+
+**Goal:** Add reviewed cleanup execution support before the approved partial staging cleanup stage.
+
+- Extends `scripts/plan_phase38d_i3_recovery.py` so `--execute-cleanup` is no longer an ad-hoc operation. It requires the exact confirmation phrase `DELETE_PHASE38D_PARTIAL_STAGING` and a fresh passing manifest/filesystem cleanup proof immediately before deleting anything.
+- The executor deletes only expected manifest/filesystem-matched regular files under the verified target root. It fails closed for invalid protected roots, protected-root overlap, target/root identity mismatch, unexpected files, missing expected files, size mismatches, path traversal, and symlink/reparse/hard-link escape hazards.
+- Staging logs remain diagnostic only and cannot authorize deletion.
+- Parent directories are left in place. The executor does not touch source/iCloud files, repo files, app-managed storage, DB data, staging copy, read-probe/hydration, classification, AI tagging, localization, Entity Resolver, or similarity workflows.
+- This phase adds support and tests only; real cleanup of the preserved Phase 3.8d partial staging target remains a separate approval stage.
+- Phase 3.8d execute remains blocked until actual cleanup, controlled read-probe/hydration, and any approved same-bucket backfill are completed and verified.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
