@@ -6,11 +6,27 @@
 - Target label: `phase_3_8d_partial_staging`
 - Target exists: `True`
 - Target is directory: `True`
+- Target under expected staging root: `True`
 - Dedicated Phase 3.8d target: `True`
-- File count: `97`
+- Actual copied file count: `97`
+- Expected partial file count: `97`
+- Requested expected copy count: `1000`
 - Total bytes: `340159586`
-- Expected file count: `97`
 - Expected total bytes: `340159586`
+
+## Dedicated Target Evidence
+
+- Staging copy log present: `True`
+- Staging copy log matches target and expected count: `True`
+- Staging copy log target seen: `True`
+- Staging copy log expected count seen: `True`
+- Expected partial file count matches: `True`
+- Expected total bytes matches: `True`
+- Unexpected files check available: `True`
+- Unexpected files check passed: `True`
+- Unexpected file count: `0`
+- Missing expected file count: `0`
+- Identity mismatch reasons: `[]`
 
 ## Safety Proof
 

@@ -15,6 +15,18 @@ def _protected(label: str, path: Path):
     return recovery.ProtectedRoot(label=label, path=path)
 
 
+def _protected_roots(tmp_path: Path):
+    return [
+        _protected("source_root", tmp_path / "source"),
+        _protected("repo_root", tmp_path / "repo"),
+        _protected("app_storage_root", tmp_path / "storage"),
+    ]
+
+
+def _write_log(path: Path, target: Path, expected_count: int):
+    path.write_text(f"Target: {target}\nExpected files: {expected_count}\n", encoding="utf-8")
+
+
 def _manifest_rows(tmp_path: Path):
     def row(row_id: int, bucket: str, selected: bool):
         return {
@@ -56,6 +68,7 @@ def test_cleanup_dry_run_refuses_unsafe_target(tmp_path: Path):
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
+        expected_staging_root=tmp_path / "target",
         protected_roots=[
             _protected("source_root", tmp_path / "source_root"),
             _protected("repo_root", tmp_path / "repo"),
@@ -63,12 +76,13 @@ def test_cleanup_dry_run_refuses_unsafe_target(tmp_path: Path):
         ],
         expected_file_count=1,
         expected_total_bytes=1,
+        expected_copy_count=1000,
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=None,
     )
 
-    assert public["status"] == "needs_manual_review"
+    assert public["status"] == "blocked_unsafe_target"
     assert public["target_is_not_source_icloud"] is False
     assert public["deletion_plan"]["actual_delete_performed"] is False
     assert (target / "copied.jpg").exists()
@@ -80,17 +94,15 @@ def test_cleanup_dry_run_does_not_delete_and_requires_confirmation(tmp_path: Pat
     copied = target / "copied.png"
     copied.write_bytes(b"123")
     log = tmp_path / "copy.log"
-    log.write_text(f"Target: {target}\nExpected files: 1000\n", encoding="utf-8")
+    _write_log(log, target, 1000)
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        protected_roots=[
-            _protected("source_root", tmp_path / "source"),
-            _protected("repo_root", tmp_path / "repo"),
-            _protected("app_storage_root", tmp_path / "storage"),
-        ],
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=3,
+        expected_copy_count=1000,
         execute_cleanup_requested=True,
         confirm_cleanup="",
         staging_log=log,
@@ -109,17 +121,15 @@ def test_cleanup_report_public_summary_is_privacy_safe(tmp_path: Path):
     target.mkdir()
     (target / "secret_file_name.jpg").write_bytes(b"x")
     log = tmp_path / "copy.log"
-    log.write_text(f"Target: {target}\nExpected files: 1000\n", encoding="utf-8")
+    _write_log(log, target, 1000)
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        protected_roots=[
-            _protected("source_root", tmp_path / "source"),
-            _protected("repo_root", tmp_path / "repo"),
-            _protected("app_storage_root", tmp_path / "storage"),
-        ],
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=1,
+        expected_copy_count=1000,
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -139,6 +149,142 @@ def test_cleanup_report_public_summary_is_privacy_safe(tmp_path: Path):
     assert str(tmp_path) not in text
     assert "secret_file_name" not in text
     assert report["privacy"]["passed"] is True
+
+
+def test_cleanup_byte_mismatch_blocks_dedicated_identity(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"x")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=2,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["target_is_dedicated_phase38d_target"] is False
+    assert public["dedicated_target_evidence"]["expected_file_count_matches"] is True
+    assert public["dedicated_target_evidence"]["expected_total_bytes_matches"] is False
+    assert public["status"] == "blocked_identity_mismatch"
+    assert "expected_total_bytes_mismatch" in public["identity_mismatch_reasons"]
+    assert copied.exists()
+
+
+def test_cleanup_count_and_byte_match_dedicated_identity(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["target_is_dedicated_phase38d_target"] is True
+    assert public["status"] == "dry_run_passed"
+    assert public["actual_copied_file_count"] == 1
+    assert public["requested_expected_copy_count"] == 1000
+
+
+def test_cleanup_missing_staging_log_blocks_identity(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+
+    assert public["target_is_dedicated_phase38d_target"] is False
+    assert public["status"] == "blocked_identity_mismatch"
+    assert "staging_copy_log_missing" in public["identity_mismatch_reasons"]
+
+
+def test_staging_log_expected_count_is_dynamic(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 500)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=500,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["staging_copy_log_expected_count_seen"] is True
+    assert public["requested_expected_copy_count"] == 500
+
+    public_mismatch, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+    assert public_mismatch["status"] == "blocked_identity_mismatch"
+    assert public_mismatch["dedicated_target_evidence"]["staging_copy_log_expected_count_seen"] is False
+
+
+def test_custom_local_details_label_is_propagated_without_full_path(tmp_path: Path):
+    cleanup = {"status": "dry_run_passed"}
+    backfill = recovery.build_backfill_policy(
+        manifest_rows=_manifest_rows(tmp_path),
+        failed_row_id=2,
+        selected_total=4,
+    )
+
+    default_report = recovery.build_recovery_report(
+        cleanup_dry_run=cleanup,
+        backfill_policy=backfill,
+        local_details_artifact=recovery.DEFAULT_LOCAL_DETAILS_JSON.name,
+    )
+    custom_report = recovery.build_recovery_report(
+        cleanup_dry_run=cleanup,
+        backfill_policy=backfill,
+        local_details_artifact=(tmp_path / "custom-local-details.json").name,
+    )
+
+    assert default_report["local_artifacts"]["local_details_artifact"] == "phase-3.8d-i3-recovery-local-details.json"
+    assert custom_report["local_artifacts"]["local_details_artifact"] == "custom-local-details.json"
+    assert str(tmp_path) not in str(custom_report)
 
 
 def test_read_probe_policy_is_opt_in():

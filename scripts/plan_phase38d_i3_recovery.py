@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ from app.services.classification_first_workflow import (  # noqa: E402
 
 from audit_cloud_availability import (  # noqa: E402
     CLEANUP_CONFIRM_PHRASE,
+    is_selected_copy_row,
     plan_same_bucket_backfill,
     read_manifest,
 )
@@ -51,6 +53,7 @@ DEFAULT_EXPECTED_FILE_COUNT = 97
 DEFAULT_EXPECTED_TOTAL_BYTES = 340_159_586
 DEFAULT_SELECTED_TOTAL = 1000
 DEFAULT_FAILED_ROW_ID = 98
+EXPECTED_FILES_RE = re.compile(r"Expected files:\s*(\d+)")
 
 
 @dataclass(frozen=True)
@@ -98,36 +101,85 @@ def _iter_files(root: Path) -> list[Path]:
     return sorted([path for path in root.rglob("*") if path.is_file()], key=lambda path: str(path).lower())
 
 
-def _staging_log_matches_target(log_path: Path | None, target_root: Path) -> tuple[bool, bool]:
-    """Return (log_present, target_seen). Local paths are never returned."""
+def _path_key(path: Path) -> str:
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError):
+        resolved = path
+    return os.path.normcase(str(resolved))
+
+
+def _staging_log_matches_target(
+    log_path: Path | None,
+    target_root: Path,
+    *,
+    expected_copy_count: int,
+) -> tuple[bool, bool, bool, bool]:
+    """Return (log_present, log_matches, target_seen, expected_count_seen)."""
     if log_path is None or not log_path.is_file():
-        return False, False
+        return False, False, False, False
     try:
         raw = log_path.read_bytes()
     except OSError:
-        return False, False
+        return False, False, False, False
     if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
         text = raw.decode("utf-16", errors="replace")
     else:
         text = raw.decode("utf-8", errors="replace")
     target_text = str(target_root)
-    return True, target_text in text and "Expected files: 1000" in text
+    expected_counts = {int(match) for match in EXPECTED_FILES_RE.findall(text)}
+    target_seen = target_text in text
+    expected_count_seen = expected_copy_count in expected_counts
+    return True, target_seen and expected_count_seen, target_seen, expected_count_seen
+
+
+def _expected_partial_target_keys(
+    rows: Sequence[dict[str, str]] | None,
+    expected_file_count: int,
+) -> set[str] | None:
+    if rows is None:
+        return None
+    expected: set[str] = set()
+    for row in rows:
+        if not is_selected_copy_row(row):
+            continue
+        target = (row.get("proposed_target_path") or "").strip()
+        if not target:
+            continue
+        expected.add(_path_key(Path(target)))
+        if len(expected) >= expected_file_count:
+            break
+    return expected
 
 
 def build_cleanup_dry_run(
     *,
     target_root: Path,
+    expected_staging_root: Path | None,
     protected_roots: Sequence[ProtectedRoot],
     expected_file_count: int,
     expected_total_bytes: int,
+    expected_copy_count: int,
     execute_cleanup_requested: bool,
     confirm_cleanup: str,
     staging_log: Path | None,
+    expected_manifest_rows: Sequence[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build a public cleanup dry-run plan plus local full-path evidence."""
     target_exists = target_root.exists()
     target_is_dir = target_root.is_dir()
     files = _iter_files(target_root)
+    actual_file_keys = {_path_key(path) for path in files}
+    expected_file_keys = _expected_partial_target_keys(expected_manifest_rows, expected_file_count)
+    unexpected_keys = actual_file_keys - expected_file_keys if expected_file_keys is not None else set()
+    missing_expected_keys = expected_file_keys - actual_file_keys if expected_file_keys is not None else set()
+    unexpected_files_check_available = expected_file_keys is not None
+    unexpected_files_check_passed = (
+        unexpected_files_check_available
+        and not unexpected_keys
+        and not missing_expected_keys
+        and len(expected_file_keys) == expected_file_count
+    )
     total_bytes = 0
     stat_errors = 0
     ext_counts: Counter[str] = Counter()
@@ -160,10 +212,24 @@ def build_cleanup_dry_run(
             unsafe_reasons.append(f"target overlaps protected root: {root.label}")
 
     labels = {root.label for root in protected_roots}
-    log_present, log_matches_target = _staging_log_matches_target(staging_log, target_root)
+    log_present, log_matches_target, log_target_seen, log_expected_count_seen = _staging_log_matches_target(
+        staging_log,
+        target_root,
+        expected_copy_count=expected_copy_count,
+    )
     file_count_matches = len(files) == expected_file_count
     byte_count_matches = total_bytes == expected_total_bytes
-    target_is_dedicated = target_exists and target_is_dir and log_matches_target and file_count_matches
+    expected_staging_root = expected_staging_root or target_root
+    target_under_expected_staging_root = _is_inside_or_same(target_root, expected_staging_root)
+    target_is_dedicated = (
+        target_exists
+        and target_is_dir
+        and target_under_expected_staging_root
+        and log_matches_target
+        and file_count_matches
+        and byte_count_matches
+        and (unexpected_files_check_passed if unexpected_files_check_available else True)
+    )
 
     public = {
         "phase": "3.8d-I3",
@@ -172,11 +238,18 @@ def build_cleanup_dry_run(
         "target_exists": _safe_public_bool(target_exists),
         "target_is_directory": _safe_public_bool(target_is_dir),
         "target_is_dedicated_phase38d_target": _safe_public_bool(target_is_dedicated),
+        "target_under_expected_staging_root": _safe_public_bool(target_under_expected_staging_root),
         "dedicated_target_evidence": {
             "staging_copy_log_present": log_present,
             "staging_copy_log_matches_target": log_matches_target,
+            "staging_copy_log_target_seen": log_target_seen,
+            "staging_copy_log_expected_count_seen": log_expected_count_seen,
             "expected_file_count_matches": file_count_matches,
             "expected_total_bytes_matches": byte_count_matches,
+            "unexpected_files_check_available": unexpected_files_check_available,
+            "unexpected_files_check_passed": unexpected_files_check_passed,
+            "unexpected_file_count": len(unexpected_keys),
+            "missing_expected_file_count": len(missing_expected_keys),
         },
         "protected_root_checks": protected_checks,
         "target_is_not_source_icloud": not any(check["overlaps_target"] for check in protected_checks if check["protected_label"] in {"source_root", "icloud_source_root"}),
@@ -192,6 +265,9 @@ def build_cleanup_dry_run(
             "app_storage_or_media": bool(labels & {"app_storage_root", "app_media_root", "app_originals_root", "app_thumbnails_root"}),
         },
         "file_count": len(files),
+        "actual_copied_file_count": len(files),
+        "expected_partial_file_count": expected_file_count,
+        "requested_expected_copy_count": expected_copy_count,
         "expected_file_count": expected_file_count,
         "total_bytes": total_bytes,
         "expected_total_bytes": expected_total_bytes,
@@ -213,28 +289,47 @@ def build_cleanup_dry_run(
         "unsafe_reasons": unsafe_reasons,
     }
 
-    public["status"] = (
-        "dry_run_passed"
-        if (
-            public["target_exists"]
-            and public["target_is_directory"]
-            and public["target_is_dedicated_phase38d_target"]
-            and public["target_is_not_source_icloud"]
-            and public["target_is_not_repo"]
-            and public["target_is_not_app_managed_storage"]
-            and public["required_protected_labels_present"]["source_or_icloud"]
-            and public["required_protected_labels_present"]["repo_root"]
-            and public["required_protected_labels_present"]["app_storage_or_media"]
-            and not unsafe_reasons
-        )
-        else "needs_manual_review"
-    )
+    identity_mismatch_reasons = []
+    if not public["target_exists"]:
+        identity_mismatch_reasons.append("target_missing")
+    if not public["target_is_directory"]:
+        identity_mismatch_reasons.append("target_not_directory")
+    if not public["target_under_expected_staging_root"]:
+        identity_mismatch_reasons.append("target_not_under_expected_staging_root")
+    if not log_present:
+        identity_mismatch_reasons.append("staging_copy_log_missing")
+    if log_present and not log_matches_target:
+        identity_mismatch_reasons.append("staging_copy_log_mismatch")
+    if not file_count_matches:
+        identity_mismatch_reasons.append("expected_partial_file_count_mismatch")
+    if not byte_count_matches:
+        identity_mismatch_reasons.append("expected_total_bytes_mismatch")
+    if unexpected_files_check_available and not unexpected_files_check_passed:
+        identity_mismatch_reasons.append("unexpected_or_missing_staging_files")
+    public["identity_mismatch_reasons"] = identity_mismatch_reasons
+
+    required_labels_present = public["required_protected_labels_present"]
+    if unsafe_reasons:
+        public["status"] = "blocked_unsafe_target"
+    elif identity_mismatch_reasons:
+        public["status"] = "blocked_identity_mismatch"
+    elif not (
+        required_labels_present["source_or_icloud"]
+        and required_labels_present["repo_root"]
+        and required_labels_present["app_storage_or_media"]
+    ):
+        public["status"] = "manual_review_required"
+    else:
+        public["status"] = "dry_run_passed"
 
     local = {
         "target_root": str(target_root),
+        "expected_staging_root": str(expected_staging_root),
         "protected_roots": [{"label": root.label, "path": str(root.path)} for root in protected_roots],
         "local_file_samples": local_file_samples,
         "staging_log": str(staging_log) if staging_log else None,
+        "unexpected_file_keys": sorted(unexpected_keys)[:20],
+        "missing_expected_file_keys": sorted(missing_expected_keys)[:20],
     }
     return public, local
 
@@ -290,6 +385,62 @@ def build_backfill_policy(
         "preserve_temporal_diversity": True,
         "failed_cloud_candidates_remain_reported": True,
         "dry_run_plan": dry_run_plan,
+    }
+
+
+def build_row98_recovery_semantics(backfill_policy: Mapping[str, Any]) -> dict[str, Any]:
+    replacement = None
+    replacements = backfill_policy.get("dry_run_plan", {}).get("replacements") or []
+    if replacements:
+        replacement = replacements[0]
+    return {
+        "question": "Can this handle the original row 98 failure?",
+        "current_i3_status": {
+            "row_98_abandoned": False,
+            "row_98_retried": False,
+            "read_probe_or_hydration_executed": False,
+            "actual_backfill_manifest_replacement_applied": False,
+            "cleanup_performed": False,
+            "proves_row_98_can_be_hydrated_or_copied": False,
+        },
+        "planned_recovery_path": [
+            "If the user approves cleanup, clean only the dedicated partial staging target after dry-run plus confirmation.",
+            "If the user approves controlled read-probe/hydration, test row 98 and other recall-risk rows with bounded prefix read, timeout, and retry.",
+            "If row 98 read-probe/hydration succeeds, keep original row 98 in the selected set and rerun staging copy from a clean target.",
+            "If row 98 fails after bounded hydrate/read-probe, use the same-bucket backfill candidate or equivalent while preserving selected_total=1000 and temporal bucket distribution.",
+            "DB import remains forbidden until staging copy and post-copy audit fully pass.",
+        ],
+        "formal_policy": {
+            "manual_download_is_formal_solution": False,
+            "skip_only_is_acceptable": False,
+            "backfill_is_primary_strategy": False,
+            "backfill_is_last_resort_after_bounded_recovery_failure": True,
+            "cloud_placeholder_is_not_permanent_failure": True,
+        },
+        "dry_run_backfill_candidate": replacement,
+        "terminal_failure_requires": [
+            "controlled hydrate/read-probe explicitly approved",
+            "bounded attempts made",
+            "structured failure reason captured",
+            "file not partially copied or imported",
+            "same-bucket replacement/backfill decision reported and approved",
+        ],
+        "structured_unrecovered_reasons": [
+            "cloud_network_unavailable",
+            "cloud_hydration_failed",
+            "cloud_provider_unavailable",
+            "source_missing",
+            "permission_denied",
+            "cloud_file_unrecoverable",
+        ],
+        "future_public_report_counts": [
+            "attempted_recovery_count",
+            "recovered_count",
+            "unrecovered_count",
+            "backfilled_count",
+            "unresolved_count",
+            "reason_distribution",
+        ],
     }
 
 
@@ -351,6 +502,7 @@ def build_recovery_report(
         "cleanup_dry_run": cleanup_dry_run,
         "controlled_read_probe_hydration_policy": controlled_read_probe_policy(),
         "same_bucket_backfill_policy": backfill_policy,
+        "row_98_recovery_semantics": build_row98_recovery_semantics(backfill_policy),
         "resume_vs_cleanup_rerun": resume_vs_cleanup_recommendation(),
         "local_artifacts": {
             "local_details_artifact": local_details_artifact,
@@ -385,6 +537,7 @@ def build_recovery_report(
 
 def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
     deletion = report["deletion_plan"]
+    evidence = report["dedicated_target_evidence"]
     lines = [
         "# Phase 3.8d-I3 Partial Staging Cleanup Dry-run",
         "",
@@ -394,11 +547,27 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Target label: `{report['target_safe_label']}`",
         f"- Target exists: `{report['target_exists']}`",
         f"- Target is directory: `{report['target_is_directory']}`",
+        f"- Target under expected staging root: `{report['target_under_expected_staging_root']}`",
         f"- Dedicated Phase 3.8d target: `{report['target_is_dedicated_phase38d_target']}`",
-        f"- File count: `{report['file_count']}`",
+        f"- Actual copied file count: `{report['actual_copied_file_count']}`",
+        f"- Expected partial file count: `{report['expected_partial_file_count']}`",
+        f"- Requested expected copy count: `{report['requested_expected_copy_count']}`",
         f"- Total bytes: `{report['total_bytes']}`",
-        f"- Expected file count: `{report['expected_file_count']}`",
         f"- Expected total bytes: `{report['expected_total_bytes']}`",
+        "",
+        "## Dedicated Target Evidence",
+        "",
+        f"- Staging copy log present: `{evidence['staging_copy_log_present']}`",
+        f"- Staging copy log matches target and expected count: `{evidence['staging_copy_log_matches_target']}`",
+        f"- Staging copy log target seen: `{evidence['staging_copy_log_target_seen']}`",
+        f"- Staging copy log expected count seen: `{evidence['staging_copy_log_expected_count_seen']}`",
+        f"- Expected partial file count matches: `{evidence['expected_file_count_matches']}`",
+        f"- Expected total bytes matches: `{evidence['expected_total_bytes_matches']}`",
+        f"- Unexpected files check available: `{evidence['unexpected_files_check_available']}`",
+        f"- Unexpected files check passed: `{evidence['unexpected_files_check_passed']}`",
+        f"- Unexpected file count: `{evidence['unexpected_file_count']}`",
+        f"- Missing expected file count: `{evidence['missing_expected_file_count']}`",
+        f"- Identity mismatch reasons: `{json.dumps(report['identity_mismatch_reasons'], ensure_ascii=False)}`",
         "",
         "## Safety Proof",
         "",
@@ -449,6 +618,7 @@ def render_recovery_markdown(report: Mapping[str, Any]) -> str:
     cleanup = report["cleanup_dry_run"]
     probe = report["controlled_read_probe_hydration_policy"]
     backfill = report["same_bucket_backfill_policy"]
+    row98 = report["row_98_recovery_semantics"]
     recommendation = report["resume_vs_cleanup_rerun"]
     lines = [
         "# Phase 3.8d-I3 Recovery Plan",
@@ -502,6 +672,50 @@ def render_recovery_markdown(report: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Can this handle the original row 98 failure?",
+            "",
+            "Short answer: I3 defines the recovery path for row 98, but it has not yet proven that row 98 can be hydrated or copied.",
+            "Row 98 is not abandoned; it remains the preferred original candidate unless bounded recovery fails after explicit approval.",
+            "",
+            "Current I3 status:",
+            f"- row 98 abandoned: `{row98['current_i3_status']['row_98_abandoned']}`",
+            f"- row 98 retried: `{row98['current_i3_status']['row_98_retried']}`",
+            f"- read-probe/hydration executed: `{row98['current_i3_status']['read_probe_or_hydration_executed']}`",
+            f"- actual backfill manifest replacement applied: `{row98['current_i3_status']['actual_backfill_manifest_replacement_applied']}`",
+            f"- cleanup performed: `{row98['current_i3_status']['cleanup_performed']}`",
+            f"- proves row 98 can be hydrated/copied: `{row98['current_i3_status']['proves_row_98_can_be_hydrated_or_copied']}`",
+            "",
+            "Planned recovery path:",
+        ]
+    )
+    for index, step in enumerate(row98["planned_recovery_path"], start=1):
+        lines.append(f"{index}. {step}")
+    lines.extend(
+        [
+            "",
+            "Policy notes:",
+            f"- Manual download is the formal solution: `{row98['formal_policy']['manual_download_is_formal_solution']}`",
+            f"- Skip-only is acceptable: `{row98['formal_policy']['skip_only_is_acceptable']}`",
+            f"- Backfill is primary strategy: `{row98['formal_policy']['backfill_is_primary_strategy']}`",
+            f"- Backfill is last resort after bounded recovery failure: `{row98['formal_policy']['backfill_is_last_resort_after_bounded_recovery_failure']}`",
+            f"- Cloud placeholder is permanent failure: `{not row98['formal_policy']['cloud_placeholder_is_not_permanent_failure']}`",
+            "",
+            "Manual download is not the formal solution because V.I.O.L.E.T. must handle iCloud-backed libraries at scale through deterministic availability gates. Skip-only is not acceptable because cloud placeholder status means the file needs a controlled availability workflow, not silent abandonment. Backfill is only a fallback after bounded read-probe/hydration failure so the original cloud-backed item remains usable whenever the provider can make it readable.",
+            "",
+            "Dry-run row 98 backfill candidate:",
+        ]
+    )
+    candidate = row98.get("dry_run_backfill_candidate")
+    if candidate:
+        lines.append(
+            f"- `{candidate['failed_safe_label']}` -> `{candidate['replacement_safe_label']}` "
+            f"in bucket `{candidate['bucket']}`"
+        )
+    else:
+        lines.append("- None")
+    lines.extend(
+        [
+            "",
             "## Resume vs Cleanup + Rerun",
             "",
             f"- Recommended: `{recommendation['recommended']}`",
@@ -540,6 +754,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--target-root", type=Path, required=True)
+    parser.add_argument("--expected-staging-root", type=Path, default=None)
     parser.add_argument("--protected-root", type=parse_protected_root, action="append", default=[])
     parser.add_argument("--staging-log", type=Path, default=DEFAULT_STAGING_LOG)
     parser.add_argument("--expected-file-count", type=int, default=DEFAULT_EXPECTED_FILE_COUNT)
@@ -566,9 +781,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     manifest_rows = read_manifest(args.manifest)
     cleanup_dry_run, local_cleanup_details = build_cleanup_dry_run(
         target_root=args.target_root,
+        expected_staging_root=args.expected_staging_root or args.target_root,
         protected_roots=args.protected_root,
         expected_file_count=args.expected_file_count,
         expected_total_bytes=args.expected_total_bytes,
+        expected_copy_count=args.selected_total,
+        expected_manifest_rows=manifest_rows,
         execute_cleanup_requested=args.execute_cleanup,
         confirm_cleanup=args.confirm_cleanup,
         staging_log=args.staging_log,
@@ -581,7 +799,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     recovery_report = build_recovery_report(
         cleanup_dry_run=cleanup_dry_run,
         backfill_policy=backfill_policy,
-        local_details_artifact="phase-3.8d-i3-recovery-local-details.json",
+        local_details_artifact=args.local_details_json.name,
     )
 
     cleanup_report = sanitize_public_obj(
