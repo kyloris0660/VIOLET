@@ -130,7 +130,7 @@ class TestIsCloudOnly:
     def test_non_windows_returns_false(self, tmp_path):
         f = tmp_path / "test.jpg"
         f.write_bytes(b"x")
-        with patch("app.utils.local_library_scanner._IS_WINDOWS", False):
+        with patch("app.utils.local_library_scanner.is_likely_cloud_placeholder", return_value=False):
             assert _is_cloud_only(f) is False
 
 

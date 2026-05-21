@@ -304,6 +304,19 @@ See [Content Classification](content-classification.md) for full documentation.
 - No-mutation proof passed for DB, app storage originals/thumbnails, source tree, and planned staging target. Public reports are privacy-safe; the full-path manifest remains local and gitignored at `.local_manifests/phase-3.8c-medium-candidate-manifest.csv`.
 - Real import/copy/classification/AI/localization execution, Entity Resolver, similarity/clustering, cleanup, delete, reset, drop, and truncate remain forbidden in Phase 3.8c.
 
+### Phase 3.8d-I1 - iCloud / Windows Cloud Files Ingestion Reliability Incident & Hardening
+
+**Goal:** Resolve a foundational ingestion reliability incident before Phase 3.8d execute can resume.
+
+- Phase 3.8d staging copy failed at manifest `row_id=98`, bucket `b02`, with Windows error `388` (`The cloud sync provider failed to perform the operation due to network being unavailable`).
+- The failed file showed Windows Cloud Files placeholder evidence (`Offline`, `ReparsePoint`, `SparseFile`, and later `RECALL_ON_DATA_ACCESS`).
+- Impact was contained: no DB import, content classification, AI tagging, localization, Entity Resolver, similarity/clustering, app-managed storage mutation, cleanup, delete, reset, drop, or truncate ran.
+- Partial staging remains preserved as evidence: `97` files, `340,159,586` bytes, safe label `phase_3_8d_partial_staging`.
+- Metadata-only cloud availability audit found `1000` selected files, `97` already copied, `903` not yet copied, and `613` likely cloud placeholder / recall-risk files. Direct copy is blocked by `blocked_requires_hydration_policy`.
+- Phase 2.4 solved scan-safety by avoiding unwanted mass downloads and hangs; Phase 3.8d-I1 adds ingestion-availability hardening for controlled copy of selected cloud-backed files.
+- Added shared Windows Cloud Files metadata helper, privacy-safe manifest cloud availability audit, structured copy failure classification, opt-in read-probe hooks, dry-run same-bucket backfill planning, and dry-run-only cleanup/resume policy documentation.
+- Phase 3.8d execute, Phase 4, and any larger import remain blocked until this incident is reviewed and a recovery path is explicitly approved.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -379,6 +392,8 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 **Goal:** Eliminate manual scan triggers.
 
+**Blocked by Phase 3.8d-I1:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the same cloud availability gate; manual mass hydration is not a formal workflow.
+
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place
 - Must handle iCloud sync edge cases (partial downloads, file locks, .icloud placeholders appearing/disappearing)
@@ -451,6 +466,17 @@ For every new major development phase or substantial feature scope, the agent mu
 - Implement AI tagging + anime filter + watcher + clustering in a single phase
 - Large-scale refactors or frontend framework replacements
 - Database migrations (must be planned and reviewed first)
+
+### Cloud Availability Gate for Ingestion/Staging/Copy
+
+Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must pass a cloud availability gate before content reads:
+
+- `stat()`, `exists()`, file size, and `is_file()` are insufficient for cloud-backed files.
+- Windows cloud attributes must be inspected before copy/import.
+- High cloud-risk selected sets must not proceed directly to copy.
+- Manual hydrate is an emergency workaround only, not the formal V.I.O.L.E.T. workflow.
+- Structured cloud failure reasons are required.
+- DB import must not run after failed or incomplete staging copy.
 
 ### Destructive DB Operation Safety (post-incident, 2026-05-10)
 

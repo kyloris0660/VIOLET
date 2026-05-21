@@ -1,0 +1,719 @@
+{
+  "phase": "3.8d-I1",
+  "mode": "cloud_availability_metadata_audit",
+  "created_at": "2026-05-21T11:22:35.830661+00:00",
+  "success": true,
+  "manifest_label": "phase-3.8c-medium-candidate-manifest.csv",
+  "target_root_label": "phase_3_8d_partial_staging",
+  "local_details_artifact": "local_cloud_availability_details",
+  "read_probe": {
+    "enabled": false,
+    "warning": "read_probe may trigger Cloud Files hydration and is opt-in only"
+  },
+  "summary": {
+    "selected_total": 1000,
+    "exists": 1000,
+    "missing": 0,
+    "stat_errors": 0,
+    "offline_count": 0,
+    "reparse_point_count": 0,
+    "recall_on_open_count": 0,
+    "recall_on_data_access_count": 613,
+    "pinned_count": 6,
+    "unpinned_count": 6,
+    "sparse_file_count": 0,
+    "likely_cloud_placeholder_count": 613,
+    "selected_count_by_bucket": {
+      "b01": 63,
+      "b02": 63,
+      "b03": 63,
+      "b04": 63,
+      "b05": 63,
+      "b06": 63,
+      "b07": 63,
+      "b08": 63,
+      "b09": 62,
+      "b10": 62,
+      "b11": 62,
+      "b12": 62,
+      "b13": 62,
+      "b14": 62,
+      "b15": 62,
+      "b16": 62
+    },
+    "selected_count_by_extension": {
+      ".gif": 1,
+      ".jpeg": 10,
+      ".jpg": 816,
+      ".png": 173
+    },
+    "risky_count_by_bucket": {
+      "b02": 24,
+      "b03": 63,
+      "b04": 62,
+      "b05": 63,
+      "b06": 62,
+      "b07": 61,
+      "b08": 53,
+      "b09": 12,
+      "b10": 14,
+      "b11": 30,
+      "b12": 51,
+      "b13": 27,
+      "b14": 27,
+      "b15": 42,
+      "b16": 22
+    },
+    "risky_count_by_extension": {
+      ".jpeg": 4,
+      ".jpg": 514,
+      ".png": 95
+    },
+    "already_copied_in_partial_staging": 97,
+    "not_yet_copied": 903,
+    "already_copied_by_bucket": {
+      "b01": 63,
+      "b02": 34
+    },
+    "already_copied_by_extension": {
+      ".gif": 1,
+      ".jpeg": 6,
+      ".jpg": 68,
+      ".png": 22
+    },
+    "first_risky_examples": [
+      {
+        "row_id": 98,
+        "source_safe_label": "source_row_0098.jpg",
+        "target_safe_label": "target_row_0098.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 256931,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "failed_row"
+      },
+      {
+        "row_id": 99,
+        "source_safe_label": "source_row_0099.png",
+        "target_safe_label": "target_row_0099.png",
+        "extension": ".png",
+        "bucket": "b02",
+        "expected_size": 9732282,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 100,
+        "source_safe_label": "source_row_0100.png",
+        "target_safe_label": "target_row_0100.png",
+        "extension": ".png",
+        "bucket": "b02",
+        "expected_size": 7450895,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 101,
+        "source_safe_label": "source_row_0101.jpg",
+        "target_safe_label": "target_row_0101.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 7255050,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 102,
+        "source_safe_label": "source_row_0102.jpg",
+        "target_safe_label": "target_row_0102.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 2427675,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 103,
+        "source_safe_label": "source_row_0103.jpg",
+        "target_safe_label": "target_row_0103.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 5687125,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 105,
+        "source_safe_label": "source_row_0105.jpg",
+        "target_safe_label": "target_row_0105.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 1072003,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 106,
+        "source_safe_label": "source_row_0106.png",
+        "target_safe_label": "target_row_0106.png",
+        "extension": ".png",
+        "bucket": "b02",
+        "expected_size": 22267677,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 108,
+        "source_safe_label": "source_row_0108.jpg",
+        "target_safe_label": "target_row_0108.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 1744774,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 110,
+        "source_safe_label": "source_row_0110.jpg",
+        "target_safe_label": "target_row_0110.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 831220,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 111,
+        "source_safe_label": "source_row_0111.jpg",
+        "target_safe_label": "target_row_0111.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 1365295,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 112,
+        "source_safe_label": "source_row_0112.png",
+        "target_safe_label": "target_row_0112.png",
+        "extension": ".png",
+        "bucket": "b02",
+        "expected_size": 6233986,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 113,
+        "source_safe_label": "source_row_0113.jpg",
+        "target_safe_label": "target_row_0113.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 814683,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 114,
+        "source_safe_label": "source_row_0114.jpg",
+        "target_safe_label": "target_row_0114.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 970774,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 115,
+        "source_safe_label": "source_row_0115.jpg",
+        "target_safe_label": "target_row_0115.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 3038064,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 116,
+        "source_safe_label": "source_row_0116.jpg",
+        "target_safe_label": "target_row_0116.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 739022,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 117,
+        "source_safe_label": "source_row_0117.png",
+        "target_safe_label": "target_row_0117.png",
+        "extension": ".png",
+        "bucket": "b02",
+        "expected_size": 6651600,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 118,
+        "source_safe_label": "source_row_0118.jpg",
+        "target_safe_label": "target_row_0118.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 157258,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 119,
+        "source_safe_label": "source_row_0119.png",
+        "target_safe_label": "target_row_0119.png",
+        "extension": ".png",
+        "bucket": "b02",
+        "expected_size": 18271016,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      },
+      {
+        "row_id": 120,
+        "source_safe_label": "source_row_0120.jpg",
+        "target_safe_label": "target_row_0120.jpg",
+        "extension": ".jpg",
+        "bucket": "b02",
+        "expected_size": 825683,
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "target_already_copied": false,
+        "prior_copy_status": "after_failed_row_or_unattempted"
+      }
+    ],
+    "copy_gate": {
+      "status": "blocked_requires_hydration_policy",
+      "reason": "Selected set contains cloud-backed files. Direct copy is forbidden until controlled hydration/read-probe/backfill policy passes."
+    }
+  },
+  "backfill_plan": null,
+  "cleanup_plan": null,
+  "privacy": {
+    "paths_redacted": true,
+    "safe_labels_only": true,
+    "leaks": [],
+    "passed": true
+  }
+}

@@ -18,6 +18,22 @@ Additionally, cloud-only files may block indefinitely when `open()` is called an
 | **Max file size** | Skip files larger than `SCAN_MAX_FILE_SIZE_MB` |
 | **Extended skip stats** | Per-reason counters instead of a blanket `skipped_unsupported` |
 
+## Phase 3.8d-I1 Ingestion Reliability Rule
+
+Phase 2.4 solved **scan safety**: avoid unwanted mass downloads and hangs by detecting cloud-only placeholders and skipping them in hydrated-only local-library scans.
+
+Phase 3.8d exposed a separate **ingestion availability** requirement: when a selected pilot manifest intentionally includes real cloud-backed source files, V.I.O.L.E.T. must detect cloud placeholder/recall state, attempt only approved controlled hydration/read-probe flows, retry with bounds, and either copy successfully or fail/backfill with a structured reason.
+
+All ingestion, staging, and copy workflows that can touch iCloud or Windows Cloud Files source paths must pass a cloud availability gate before reading or copying content:
+
+- `stat()`, `exists()`, file size, and `is_file()` are not sufficient for cloud-backed files.
+- Windows Cloud Files attributes must be inspected before content reads.
+- High cloud-risk selected sets must not proceed directly to `shutil.copy2` or other content reads.
+- Manual "Always keep on this device" may be an emergency workaround only; it is not the formal V.I.O.L.E.T. workflow.
+- Structured cloud failure reasons are required, including `cloud_offline`, `cloud_recall_on_open`, `cloud_recall_on_data_access`, `cloud_network_unavailable`, and `cloud_hydration_failed`.
+- No DB import may run after failed or incomplete staging copy.
+- Read-probe/hydration modes are opt-in because they may trigger provider-side downloads.
+
 ## Configuration
 
 | Environment Variable | Default | Description |
@@ -85,7 +101,7 @@ On Windows, files synced by iCloud/OneDrive have file attributes indicating they
 | `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS` | `0x400000` | Accessing data triggers recall from remote |
 | `FILE_ATTRIBUTE_RECALL_ON_OPEN` | `0x40000` | Opening triggers recall from remote |
 
-The `_is_cloud_only()` helper checks these via `ctypes.windll.kernel32.GetFileAttributesW`. On non-Windows platforms, it always returns `False`.
+The shared helper in `backend/app/utils/cloud_files.py` checks these via `ctypes.windll.kernel32.GetFileAttributesW`. On non-Windows platforms, it reports `supported_platform=false` and does not mark files as cloud-risk. The local library scanner's `_is_cloud_only()` wrapper now delegates to this shared helper so scan safety and pilot staging/copy preflights use one source of truth.
 
 When `hydrated_only=True` (the default), files with any of these attributes are skipped and counted as `skipped_cloud_placeholder`.
 
