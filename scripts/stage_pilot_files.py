@@ -38,7 +38,15 @@ from pathlib import Path
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 KNOWN_SELECTION_REASONS = {"existing_tier500", "new_candidate"}
-KNOWN_EXCLUSION_CODES = {"stat_error", "placeholder"}
+KNOWN_EXCLUSION_CODES = {
+    "stat_error",
+    "placeholder",
+    "hidden",
+    "already_imported_prior_manifest",
+    "duplicate_prior_manifest_key",
+    "not_selected_temporal_stratified",
+    "timestamp_unknown_over_cap",
+}
 KNOWN_EXCLUSION_PREFIXES = ("unsupported_format:",)
 
 # Minimum expected CSV fields for a non-truncated row
