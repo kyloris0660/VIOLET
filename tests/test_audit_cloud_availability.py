@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.utils.cloud_files import CloudFileState
+from app.services.source_ingestion_gate import SourceIngestionGateResult
 
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "audit_cloud_availability.py"
@@ -37,8 +38,8 @@ def _row(row_id: int, tmp_path: Path, *, bucket: str, selected: bool = True, ext
 def test_metadata_only_audit_does_not_read_probe(monkeypatch, tmp_path: Path):
     rows = [_row(1, tmp_path, bucket="b01"), _row(2, tmp_path, bucket="b02", ext=".png")]
 
-    def fake_state(path):
-        return CloudFileState(
+    def fake_gate(path, safe_label):
+        state = CloudFileState(
             path=str(path),
             supported_platform=True,
             exists=True,
@@ -46,8 +47,17 @@ def test_metadata_only_audit_does_not_read_probe(monkeypatch, tmp_path: Path):
             recall_on_data_access=str(path).endswith(".png"),
             likely_cloud_placeholder=str(path).endswith(".png"),
         )
+        return SourceIngestionGateResult(
+            allowed=not state.likely_cloud_placeholder,
+            blocked=state.likely_cloud_placeholder,
+            source_kind="path_source",
+            reason="cloud_recall_on_data_access" if state.likely_cloud_placeholder else "path_source_available",
+            required_policy="controlled_hydration_or_read_probe_or_backfill" if state.likely_cloud_placeholder else None,
+            cloud_state=state,
+            safe_label=safe_label,
+        )
 
-    monkeypatch.setattr(audit, "classify_cloud_file_state", fake_state)
+    monkeypatch.setattr(audit, "evaluate_source_gate", fake_gate)
     monkeypatch.setattr(
         audit,
         "read_probe_prefix",
@@ -65,14 +75,22 @@ def test_metadata_only_audit_does_not_read_probe(monkeypatch, tmp_path: Path):
     assert summary["risky_count_by_extension"] == {".png": 1}
     assert summary["copy_gate"]["status"] == "blocked_requires_hydration_policy"
     assert all(record["read_probe"] is None for record in records)
+    assert records[1]["source_ingestion_gate"]["reason"] == "cloud_recall_on_data_access"
 
 
 def test_read_probe_is_opt_in(monkeypatch, tmp_path: Path):
     rows = [_row(1, tmp_path, bucket="b01")]
     monkeypatch.setattr(
         audit,
-        "classify_cloud_file_state",
-        lambda path: CloudFileState(path=str(path), supported_platform=True, exists=True, is_file=True),
+        "evaluate_source_gate",
+        lambda path, safe_label: SourceIngestionGateResult(
+            allowed=True,
+            blocked=False,
+            source_kind="path_source",
+            reason="path_source_available",
+            cloud_state=CloudFileState(path=str(path), supported_platform=True, exists=True, is_file=True),
+            safe_label=safe_label,
+        ),
     )
     calls = []
 
@@ -90,18 +108,26 @@ def test_read_probe_is_opt_in(monkeypatch, tmp_path: Path):
 
 def test_public_report_is_privacy_safe(monkeypatch, tmp_path: Path):
     rows = [_row(1, tmp_path, bucket="b01")]
-    monkeypatch.setattr(
-        audit,
-        "classify_cloud_file_state",
-        lambda path: CloudFileState(
+    def fake_privacy_gate(path, safe_label):
+        state = CloudFileState(
             path=str(path),
             supported_platform=True,
             exists=True,
             is_file=True,
             recall_on_data_access=True,
             likely_cloud_placeholder=True,
-        ),
-    )
+        )
+        return SourceIngestionGateResult(
+            allowed=False,
+            blocked=True,
+            source_kind="path_source",
+            reason="cloud_recall_on_data_access",
+            required_policy="controlled_hydration_or_read_probe_or_backfill",
+            cloud_state=state,
+            safe_label=safe_label,
+        )
+
+    monkeypatch.setattr(audit, "evaluate_source_gate", fake_privacy_gate)
     records, _local = audit.selected_records(rows)
     summary = audit.summarize_records(records)
     report = audit.build_report(

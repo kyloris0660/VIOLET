@@ -27,9 +27,9 @@ from app.services.classification_first_workflow import (  # noqa: E402
     find_privacy_leaks,
     sanitize_public_obj,
 )
+from app.services.source_ingestion_gate import SourceIngestionGate  # noqa: E402
 from app.utils.cloud_files import (  # noqa: E402
     CloudFileState,
-    classify_cloud_file_state,
     read_probe_prefix,
 )
 
@@ -104,6 +104,14 @@ def safe_state_dict(state: CloudFileState) -> dict[str, Any]:
     return data
 
 
+def evaluate_source_gate(path: Path, safe_label: str):
+    return SourceIngestionGate.evaluate_path_source(
+        path,
+        safe_label=safe_label,
+        hydration_policy_enabled=False,
+    )
+
+
 def selected_records(
     rows: Sequence[dict[str, str]],
     *,
@@ -125,7 +133,15 @@ def selected_records(
         target_path = Path(row.get("proposed_target_path") or "")
         if target_root is not None and not target_path.is_absolute():
             target_path = target_root / target_path
-        state = classify_cloud_file_state(source_path)
+        safe_label = safe_row_label(row)
+        gate = evaluate_source_gate(source_path, safe_label)
+        state = gate.cloud_state or CloudFileState(
+            path=str(source_path),
+            supported_platform=False,
+            exists=False,
+            is_file=False,
+            error_message="source ingestion gate returned no cloud state",
+        )
         stat_error = None
         stat_size = None
         try:
@@ -145,7 +161,7 @@ def selected_records(
             )
         public = {
             "row_id": row_id,
-            "source_safe_label": safe_row_label(row),
+            "source_safe_label": safe_label,
             "target_safe_label": safe_row_label(row, prefix="target"),
             "extension": (row.get("extension") or "").lower(),
             "bucket": row.get("temporal_bucket") or "unknown",
@@ -155,6 +171,7 @@ def selected_records(
             "exists": state.exists,
             "is_file": state.is_file,
             "cloud_state": safe_state_dict(state),
+            "source_ingestion_gate": gate.to_public_dict(),
             "likely_cloud_placeholder": state.likely_cloud_placeholder,
             "target_already_copied": target_exists,
             "prior_copy_status": (

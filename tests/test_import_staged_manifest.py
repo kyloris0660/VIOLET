@@ -515,6 +515,12 @@ def test_report_omits_per_file_private_paths(tmp_path):
         context,
         target_root,
     )
+    gate = report.gates["source_ingestion_gate"]
+    assert gate["source_kind"] == "staging_file"
+    assert gate["source_cloud_gate_required"] is False
+    assert gate["staging_audit_required"] is True
+    assert gate["result"]["allowed"] is True
+    assert gate["result"]["reason"] == "staging_audit_passed"
     report.counts = {"would_create": 1}
     report.errors = [
         r"Staged target path is outside allowed root: C:\Users\kyloris\secret.png",

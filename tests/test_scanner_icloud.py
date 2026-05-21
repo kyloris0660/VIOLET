@@ -21,6 +21,8 @@ from app.utils.local_library_scanner import (
     preflight_analyze,
     scan_and_import,
 )
+from app.services.source_ingestion_gate import SourceIngestionGateResult
+from app.utils.cloud_files import CloudFileState
 
 
 @pytest.fixture
@@ -127,11 +129,39 @@ class TestIsHidden:
 
 class TestIsCloudOnly:
 
-    def test_non_windows_returns_false(self, tmp_path):
+    def test_source_gate_no_cloud_risk_returns_false(self, tmp_path):
         f = tmp_path / "test.jpg"
         f.write_bytes(b"x")
-        with patch("app.utils.local_library_scanner.is_likely_cloud_placeholder", return_value=False):
+        result = SourceIngestionGateResult(
+            allowed=True,
+            blocked=False,
+            source_kind="path_source",
+            reason="path_source_available",
+            cloud_state=CloudFileState(path=str(f), supported_platform=False, exists=True, is_file=True),
+        )
+        with patch("app.utils.local_library_scanner.SourceIngestionGate.evaluate_path_source", return_value=result):
             assert _is_cloud_only(f) is False
+
+    def test_source_gate_cloud_risk_returns_true(self, tmp_path):
+        f = tmp_path / "cloud.jpg"
+        f.write_bytes(b"x")
+        result = SourceIngestionGateResult(
+            allowed=False,
+            blocked=True,
+            source_kind="path_source",
+            reason="cloud_recall_on_data_access",
+            required_policy="controlled_hydration_or_read_probe_or_backfill",
+            cloud_state=CloudFileState(
+                path=str(f),
+                supported_platform=True,
+                exists=True,
+                is_file=True,
+                recall_on_data_access=True,
+                likely_cloud_placeholder=True,
+            ),
+        )
+        with patch("app.utils.local_library_scanner.SourceIngestionGate.evaluate_path_source", return_value=result):
+            assert _is_cloud_only(f) is True
 
 
 class TestPreflightAnalyze:

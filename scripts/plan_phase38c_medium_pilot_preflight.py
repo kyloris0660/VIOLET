@@ -41,6 +41,7 @@ from app.services.classification_first_workflow import (  # noqa: E402
     workflow_stage_contracts,
     write_json_report,
 )
+from app.services.source_ingestion_gate import SourceIngestionGate  # noqa: E402
 
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
@@ -508,6 +509,47 @@ def _counter_from(entries: Iterable[CandidateEntry], attr: str) -> dict[str, int
     return dict(sorted(Counter(getattr(entry, attr) for entry in entries).items()))
 
 
+def summarize_source_ingestion_gate(entries: Sequence[CandidateEntry]) -> dict[str, Any]:
+    """Metadata-only source gate summary for path-based candidate sets."""
+
+    blocked_by_reason: Counter[str] = Counter()
+    supported_platform_count = 0
+    likely_cloud_placeholder_count = 0
+    checked = 0
+    for entry in entries:
+        checked += 1
+        gate = SourceIngestionGate.evaluate_path_source(
+            entry.path,
+            safe_label=entry.filename,
+            hydration_policy_enabled=False,
+        )
+        state = gate.cloud_state
+        if state and state.supported_platform:
+            supported_platform_count += 1
+        if state and state.likely_cloud_placeholder:
+            likely_cloud_placeholder_count += 1
+        if gate.blocked and gate.reason.startswith("cloud_"):
+            blocked_by_reason[gate.reason] += 1
+
+    blocked_count = sum(blocked_by_reason.values())
+    return {
+        "source_kind": "path_source",
+        "metadata_only": True,
+        "checked_count": checked,
+        "allowed_count": checked - blocked_count,
+        "blocked_count": blocked_count,
+        "likely_cloud_placeholder_count": likely_cloud_placeholder_count,
+        "supported_platform_count": supported_platform_count,
+        "blocked_by_reason": dict(sorted(blocked_by_reason.items())),
+        "required_before_copy": (
+            "If blocked_count > 0, staging copy must not proceed until a "
+            "controlled hydration/read-probe/backfill policy is explicitly enabled and passes."
+        ),
+        "manual_hydrate_formal_workflow": False,
+        "paths_redacted": True,
+    }
+
+
 def build_candidate_selection(
     *,
     source_root: Path,
@@ -538,6 +580,8 @@ def build_candidate_selection(
         full_exclusion_counts["not_selected_temporal_stratified"] += unselected_count
 
     selected_bytes = sum(entry.size_bytes for entry in selected)
+    source_gate_candidates = summarize_source_ingestion_gate(candidates)
+    source_gate_selected = summarize_source_ingestion_gate(selected)
     summary = {
         "source_labels": {
             "source_root_label": "icloud_photos_source",
@@ -558,6 +602,10 @@ def build_candidate_selection(
             "prior_manifest_filename_size_keys_indexed": len(prior_duplicate_keys),
             "exact_hash_duplicate_scan_performed": False,
             "exact_hash_duplicate_scan_note": "Skipped to keep Phase 3.8c read-only and cheap; prior manifest path plus filename/size duplicate keys were excluded.",
+        },
+        "source_ingestion_gate": {
+            "candidate_pool": source_gate_candidates,
+            "selected": source_gate_selected,
         },
         **temporal_summary,
     }
