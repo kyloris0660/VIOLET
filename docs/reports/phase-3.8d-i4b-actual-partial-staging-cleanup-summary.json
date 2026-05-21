@@ -1,0 +1,126 @@
+{
+  "phase": "3.8d-I4b",
+  "created_at": "2026-05-21T16:05:05.967710+00:00",
+  "success": true,
+  "phase_3_8d_execute_status": "blocked",
+  "target_safe_label": "phase_3_8d_partial_staging",
+  "fresh_cleanup_proof": {
+    "status": "dry_run_passed",
+    "authorization_basis": "manifest_filesystem_proof",
+    "manifest_filesystem_check_passed": true,
+    "expected_file_count": 97,
+    "actual_file_count_before_cleanup": 97,
+    "expected_total_bytes": 340159586,
+    "actual_total_bytes_before_cleanup": 340159586,
+    "unexpected_file_count": 0,
+    "missing_expected_file_count": 0,
+    "size_mismatch_file_count": 0,
+    "duplicate_expected_target_count": 0,
+    "invalid_manifest_target_count": 0,
+    "symlink_or_reparse_hazard_count": 0,
+    "hardlink_hazard_count": 0,
+    "protected_roots_valid": true,
+    "target_is_not_source_icloud": true,
+    "target_is_not_repo": true,
+    "target_is_not_app_managed_storage": true,
+    "staging_log_authorization_role": "not_used_for_cleanup_authorization",
+    "staging_log_diagnostic_status": "matches_manifest_filesystem",
+    "identity_mismatch_reasons": [],
+    "unsafe_reasons": [],
+    "extension_distribution": {
+      ".gif": 1,
+      ".jpeg": 6,
+      ".jpg": 68,
+      ".png": 22
+    }
+  },
+  "cleanup_execution": {
+    "status": "cleanup_passed",
+    "requested": true,
+    "confirmation_phrase_accepted": true,
+    "fresh_cleanup_proof_status": "dry_run_passed",
+    "actual_delete_performed": true,
+    "deleted_file_count": 97,
+    "deleted_bytes": 340159586,
+    "post_cleanup_file_count": 0,
+    "post_cleanup_total_bytes": 0,
+    "errors": []
+  },
+  "post_cleanup_verification": {
+    "target_exists": true,
+    "target_is_directory": true,
+    "target_file_count": 0,
+    "target_total_bytes": 0,
+    "target_empty": true,
+    "deleted_file_count_matches_expected": true,
+    "deleted_bytes_match_expected": true
+  },
+  "db_no_mutation": {
+    "database": "blombooru",
+    "before": {
+      "media": 995,
+      "media_tags": 53354,
+      "ai_jobs": 46,
+      "classification_jobs": 14,
+      "translation_jobs": 15
+    },
+    "after": {
+      "media": 995,
+      "media_tags": 53354,
+      "ai_jobs": 46,
+      "classification_jobs": 14,
+      "translation_jobs": 15
+    },
+    "deltas": {
+      "media": 0,
+      "media_tags": 0,
+      "ai_jobs": 0,
+      "classification_jobs": 0,
+      "translation_jobs": 0
+    }
+  },
+  "app_managed_storage_no_mutation": {
+    "safe_label": "app_media_root",
+    "before_file_count": 2557,
+    "after_file_count": 2557,
+    "before_bytes": 5421382030,
+    "after_bytes": 5421382030,
+    "delta_files": 0,
+    "delta_bytes": 0
+  },
+  "source_icloud_no_mutation": {
+    "safe_label": "source_root",
+    "statement": "No source/iCloud write operation was invoked; cleanup proof verified the staging target is disjoint from the source root label.",
+    "full_source_scan_performed": false,
+    "reason_full_source_scan_skipped": "Avoid unnecessary traversal of cloud-backed source paths during cleanup-only stage."
+  },
+  "forbidden_operations": {
+    "staging_copy_rerun": false,
+    "read_probe_or_hydration": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "entity_resolver": false,
+    "similarity": false,
+    "push_main": false,
+    "merge": false
+  },
+  "local_artifacts": [
+    "phase-3.8d-i4b-pre-cleanup-proof-summary.json",
+    "phase-3.8d-i4b-pre-cleanup-proof.md",
+    "phase-3.8d-i4b-pre-cleanup-recovery.md",
+    "phase-3.8d-i4b-pre-cleanup-local-details.json",
+    "phase-3.8d-i4b-execution-cleanup-summary.json",
+    "phase-3.8d-i4b-execution-cleanup.md",
+    "phase-3.8d-i4b-execution-recovery.md",
+    "phase-3.8d-i4b-execution-local-details.json"
+  ],
+  "privacy": {
+    "safe_labels_only": true,
+    "full_local_paths_in_public_report": false,
+    "secrets_exposed": false,
+    "passed": true
+  },
+  "next_step": "Phase 3.8d-I5 controlled read-probe / hydration audit; do not resume Phase 3.8d execute yet."
+}

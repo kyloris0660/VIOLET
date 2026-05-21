@@ -352,6 +352,17 @@ See [Content Classification](content-classification.md) for full documentation.
 - This phase adds support and tests only; real cleanup of the preserved Phase 3.8d partial staging target remains a separate approval stage.
 - Phase 3.8d execute remains blocked until actual cleanup, controlled read-probe/hydration, and any approved same-bucket backfill are completed and verified.
 
+### Phase 3.8d-I4b - Actual Partial Staging Cleanup
+
+**Goal:** Execute the reviewed cleanup executor against only the verified Phase 3.8d partial staging target.
+
+- Fresh manifest/filesystem proof passed immediately before deletion: `97` expected files, `340,159,586` bytes, no unexpected files, no missing expected files, no size mismatches, no duplicate/invalid manifest targets, no symlink/reparse/hard-link hazards, and no protected-root overlap.
+- Actual cleanup deleted `97` files and `340,159,586` bytes from the dedicated partial staging target. The target directory remains empty with `0` files and `0` bytes.
+- DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
+- App-managed storage stayed unchanged at `2,557` files and `5,421,382,030` bytes.
+- Source/iCloud files were not mutated. Staging copy, read-probe/hydration, DB import, classification, AI tagging, localization, Entity Resolver, and similarity did not run.
+- Phase 3.8d execute remains blocked until controlled read-probe/hydration and any approved same-bucket backfill are completed and verified.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
