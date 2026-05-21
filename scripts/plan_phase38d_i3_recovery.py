@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Phase 3.8d-I3 recovery planning for partial staging and cloud hydration.
 
-This script is intentionally dry-run-only. It inspects the preserved partial
-Phase 3.8d staging target, produces privacy-safe cleanup planning reports, and
-documents the controlled read-probe/hydration and same-bucket backfill policies
-required before Phase 3.8d execute can be retried.
+By default this script is metadata/report-only. It inspects the preserved
+partial Phase 3.8d staging target, produces privacy-safe cleanup planning
+reports, and documents the controlled read-probe/hydration and same-bucket
+backfill policies required before Phase 3.8d execute can be retried.
+
+Cleanup execution is available only through the reviewed I4a path and requires
+``--execute-cleanup`` plus the exact confirmation phrase after the same
+manifest/filesystem proof passes. Read-probe/hydration remains out of scope.
 """
 
 from __future__ import annotations
@@ -52,6 +56,7 @@ DEFAULT_EXPECTED_FILE_COUNT = 97
 DEFAULT_EXPECTED_TOTAL_BYTES = 340_159_586
 DEFAULT_SELECTED_TOTAL = 1000
 DEFAULT_FAILED_ROW_ID = 98
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 COPY_RUN_HEADING_RE = re.compile(r"^\s*===\s*Executing Copy\s*===\s*$", re.IGNORECASE)
 TARGET_RE = re.compile(r"^\s*Target:\s*(?P<value>.+?)\s*$", re.IGNORECASE)
 EXPECTED_FILES_RE = re.compile(r"^\s*Expected files:\s*(?P<value>\d+)\s*$", re.IGNORECASE)
@@ -146,6 +151,35 @@ def _iter_files(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
     return sorted([path for path in root.rglob("*") if path.is_file()], key=lambda path: str(path).lower())
+
+
+def _iter_entries(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted(root.rglob("*"), key=lambda path: str(path).lower())
+
+
+def _entry_has_reparse_point(path: Path) -> bool:
+    try:
+        attrs = getattr(path.lstat(), "st_file_attributes", 0)
+    except OSError:
+        return True
+    return bool(attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _find_escape_risk_entries(root: Path) -> list[Path]:
+    risks = []
+    for entry in _iter_entries(root):
+        if entry.is_symlink() or _entry_has_reparse_point(entry):
+            risks.append(entry)
+    return risks
+
+
+def _safe_entry_labels(paths: Sequence[Path]) -> list[str]:
+    return [
+        f"staging_entry_{index:04d}{path.suffix.lower() or '.unknown'}"
+        for index, path in enumerate(paths[:10], start=1)
+    ]
 
 
 def _normalize_path(path: Path, *, base: Path | None = None) -> Path | None:
@@ -458,6 +492,7 @@ def build_cleanup_dry_run(
     target_exists = target_root.exists()
     target_is_dir = target_root.is_dir()
     files = _iter_files(target_root)
+    escape_risk_entries = _find_escape_risk_entries(target_root)
     actual_files: dict[str, int] = {}
     actual_unkeyed_files = 0
     duplicate_actual_keys = 0
@@ -619,6 +654,7 @@ def build_cleanup_dry_run(
         and byte_count_matches
         and manifest_filesystem_check_passed
         and protected_roots_valid
+        and not escape_risk_entries
         and not unsafe_reasons
     )
     if not log_match.log_present:
@@ -675,6 +711,8 @@ def build_cleanup_dry_run(
             "invalid_manifest_target_count": invalid_manifest_targets,
             "duplicate_actual_target_count": duplicate_actual_keys,
             "actual_unkeyed_file_count": actual_unkeyed_files,
+            "escape_hazard_entry_count": len(escape_risk_entries),
+            "escape_hazard_safe_labels": _safe_entry_labels(escape_risk_entries),
         },
         "protected_root_checks": protected_checks,
         "target_is_not_source_icloud": source_check_valid and not any(check["overlaps_target"] for check in source_checks),
@@ -744,6 +782,8 @@ def build_cleanup_dry_run(
         identity_mismatch_reasons.append("invalid_manifest_targets")
     if duplicate_actual_keys or actual_unkeyed_files:
         identity_mismatch_reasons.append("actual_target_scan_unreliable")
+    if escape_risk_entries:
+        identity_mismatch_reasons.append("target_contains_symlink_or_reparse_point")
     public["identity_mismatch_reasons"] = identity_mismatch_reasons
 
     if unsafe_reasons:
@@ -756,6 +796,12 @@ def build_cleanup_dry_run(
         public["status"] = "blocked_identity_mismatch"
     else:
         public["status"] = "dry_run_passed"
+    public["deletion_plan"]["execute_allowed"] = (
+        execute_cleanup_requested
+        and public["deletion_plan"]["confirmation_phrase_valid"]
+        and public["status"] == "dry_run_passed"
+    )
+    public["deletion_plan"]["dry_run_only"] = not execute_cleanup_requested
 
     local = {
         "target_root": str(target_root),
@@ -766,8 +812,160 @@ def build_cleanup_dry_run(
         "unexpected_file_keys": sorted(unexpected_keys)[:20],
         "missing_expected_file_keys": sorted(missing_expected_keys)[:20],
         "size_mismatch_file_keys": sorted(size_mismatch_keys)[:20],
+        "escape_hazard_paths": [str(path) for path in escape_risk_entries[:20]],
     }
     return public, local
+
+
+def _build_delete_targets(
+    *,
+    target_root: Path,
+    expected_manifest_rows: Sequence[dict[str, str]],
+    expected_file_count: int,
+) -> tuple[list[tuple[Path, int]], list[str]]:
+    errors: list[str] = []
+    expected_files, duplicate_count, invalid_count, expected_count = _expected_partial_files(
+        expected_manifest_rows,
+        expected_file_count,
+        target_root=target_root,
+    )
+    if expected_files is None:
+        return [], ["manifest_filesystem_proof_missing"]
+    if duplicate_count:
+        errors.append("duplicate_manifest_targets")
+    if invalid_count:
+        errors.append("invalid_manifest_targets")
+    if expected_count != expected_file_count:
+        errors.append("expected_manifest_file_count_mismatch")
+
+    delete_targets: list[tuple[Path, int]] = []
+    for expected in expected_files.values():
+        relative_path = Path(expected.relative_label)
+        candidate = target_root / relative_path
+        normalized = _normalize_path(candidate)
+        if normalized is None or not _is_inside_or_same(normalized, target_root):
+            errors.append("delete_target_outside_staging_root")
+            continue
+        if normalized == _normalize_path(target_root):
+            errors.append("delete_target_is_staging_root")
+            continue
+        if normalized.is_symlink() or _entry_has_reparse_point(normalized):
+            errors.append("delete_target_symlink_or_reparse_point")
+            continue
+        if not normalized.is_file():
+            errors.append("delete_target_not_regular_file")
+            continue
+        try:
+            size = normalized.stat().st_size
+        except OSError:
+            errors.append("delete_target_stat_failed")
+            continue
+        if expected.size_bytes is not None and size != expected.size_bytes:
+            errors.append("delete_target_size_mismatch")
+            continue
+        delete_targets.append((normalized, size))
+    return delete_targets, sorted(set(errors))
+
+
+def execute_verified_cleanup(
+    *,
+    target_root: Path,
+    expected_manifest_rows: Sequence[dict[str, str]],
+    cleanup_dry_run: Mapping[str, Any],
+    expected_file_count: int,
+    expected_total_bytes: int,
+    execute_cleanup_requested: bool,
+    confirm_cleanup: str,
+) -> dict[str, Any]:
+    """Delete only verified expected staging files after a passing dry-run proof."""
+    result: dict[str, Any] = {
+        "mode": "controlled_partial_staging_cleanup",
+        "requested": execute_cleanup_requested,
+        "confirmation_phrase_required": CLEANUP_CONFIRM_PHRASE,
+        "confirmation_phrase_valid": confirm_cleanup == CLEANUP_CONFIRM_PHRASE,
+        "pre_cleanup_status": cleanup_dry_run.get("status"),
+        "actual_delete_performed": False,
+        "deleted_file_count": 0,
+        "deleted_bytes": 0,
+        "post_cleanup_file_count": None,
+        "post_cleanup_total_bytes": None,
+        "errors": [],
+        "status": "not_requested",
+    }
+    if not execute_cleanup_requested:
+        return result
+    if confirm_cleanup != CLEANUP_CONFIRM_PHRASE:
+        result["status"] = "blocked_bad_confirmation"
+        result["errors"] = ["confirmation_phrase_mismatch"]
+        return result
+    if cleanup_dry_run.get("status") != "dry_run_passed":
+        result["status"] = "blocked_dry_run_not_passed"
+        result["errors"] = list(cleanup_dry_run.get("identity_mismatch_reasons") or []) or [
+            str(cleanup_dry_run.get("status"))
+        ]
+        return result
+    evidence = cleanup_dry_run.get("dedicated_target_evidence") or {}
+    if evidence.get("escape_hazard_entry_count"):
+        result["status"] = "blocked_escape_risk"
+        result["errors"] = ["target_contains_symlink_or_reparse_point"]
+        return result
+
+    escape_risk_entries = _find_escape_risk_entries(target_root)
+    if escape_risk_entries:
+        result["status"] = "blocked_escape_risk"
+        result["errors"] = ["target_contains_symlink_or_reparse_point"]
+        return result
+
+    delete_targets, target_errors = _build_delete_targets(
+        target_root=target_root,
+        expected_manifest_rows=expected_manifest_rows,
+        expected_file_count=expected_file_count,
+    )
+    if target_errors:
+        result["status"] = "blocked_delete_target_validation_failed"
+        result["errors"] = target_errors
+        return result
+    pre_delete_bytes = sum(size for _path, size in delete_targets)
+    if len(delete_targets) != expected_file_count:
+        result["status"] = "blocked_delete_target_count_mismatch"
+        result["errors"] = ["delete_target_count_mismatch"]
+        return result
+    if pre_delete_bytes != expected_total_bytes:
+        result["status"] = "blocked_delete_target_bytes_mismatch"
+        result["errors"] = ["delete_target_bytes_mismatch"]
+        return result
+
+    deleted_count = 0
+    deleted_bytes = 0
+    for path, size in delete_targets:
+        try:
+            path.unlink()
+        except OSError as exc:
+            result["status"] = "partial_cleanup_failed"
+            result["actual_delete_performed"] = deleted_count > 0
+            result["deleted_file_count"] = deleted_count
+            result["deleted_bytes"] = deleted_bytes
+            result["errors"] = [f"delete_failed_after_{deleted_count}_files: {exc.__class__.__name__}"]
+            remaining_files = _iter_files(target_root)
+            result["post_cleanup_file_count"] = len(remaining_files)
+            result["post_cleanup_total_bytes"] = sum(path.stat().st_size for path in remaining_files if path.exists())
+            return result
+        deleted_count += 1
+        deleted_bytes += size
+
+    remaining_files = _iter_files(target_root)
+    remaining_bytes = sum(path.stat().st_size for path in remaining_files if path.exists())
+    result["actual_delete_performed"] = True
+    result["deleted_file_count"] = deleted_count
+    result["deleted_bytes"] = deleted_bytes
+    result["post_cleanup_file_count"] = len(remaining_files)
+    result["post_cleanup_total_bytes"] = remaining_bytes
+    if deleted_count == expected_file_count and deleted_bytes == expected_total_bytes and not remaining_files:
+        result["status"] = "cleanup_passed"
+    else:
+        result["status"] = "post_cleanup_verification_failed"
+        result["errors"] = ["post_cleanup_target_not_empty_or_count_mismatch"]
+    return result
 
 
 def controlled_read_probe_policy() -> dict[str, Any]:
@@ -919,12 +1117,15 @@ def build_recovery_report(
     cleanup_dry_run: Mapping[str, Any],
     backfill_policy: Mapping[str, Any],
     local_details_artifact: str,
+    cleanup_execution: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    cleanup_execution = cleanup_execution or {"status": "not_requested", "actual_delete_performed": False}
     report = {
         "phase": "3.8d-I3",
         "mode": "recovery_cleanup_hydration_backfill_plan",
         "created_at": utc_now(),
-        "success": cleanup_dry_run.get("status") == "dry_run_passed",
+        "success": cleanup_dry_run.get("status") == "dry_run_passed"
+        and cleanup_execution.get("status") in {"not_requested", "cleanup_passed"},
         "incident_context": {
             "phase_3_8d_execute_status": "blocked",
             "partial_staging_preserved": True,
@@ -936,6 +1137,7 @@ def build_recovery_report(
             "known_cloud_recall_risk_count": 613,
         },
         "cleanup_dry_run": cleanup_dry_run,
+        "cleanup_execution": cleanup_execution,
         "controlled_read_probe_hydration_policy": controlled_read_probe_policy(),
         "same_bucket_backfill_policy": backfill_policy,
         "row_98_recovery_semantics": build_row98_recovery_semantics(backfill_policy),
@@ -945,7 +1147,7 @@ def build_recovery_report(
             "full_paths_committed": False,
         },
         "safety_confirmation": {
-            "actual_cleanup_delete_performed": False,
+            "actual_cleanup_delete_performed": bool(cleanup_execution.get("actual_delete_performed")),
             "staging_copy_rerun": False,
             "read_probe_or_hydration_executed": False,
             "source_icloud_mutation": False,
@@ -971,7 +1173,10 @@ def build_recovery_report(
     return safe
 
 
-def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
+def render_cleanup_markdown(
+    report: Mapping[str, Any],
+    cleanup_execution: Mapping[str, Any] | None = None,
+) -> str:
     deletion = report["deletion_plan"]
     evidence = report["dedicated_target_evidence"]
     lines = [
@@ -1026,6 +1231,7 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Size mismatch file count: `{evidence['size_mismatch_file_count']}`",
         f"- Duplicate expected target count: `{evidence['duplicate_expected_target_count']}`",
         f"- Invalid manifest target count: `{evidence['invalid_manifest_target_count']}`",
+        f"- Symlink/reparse escape hazard count: `{evidence['escape_hazard_entry_count']}`",
         f"- Identity mismatch reasons: `{json.dumps(report['identity_mismatch_reasons'], ensure_ascii=False)}`",
         "",
         "## Safety Proof",
@@ -1074,6 +1280,22 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
             "- Full local paths remain only in ignored local artifacts.",
         ]
     )
+    if cleanup_execution is not None:
+        lines.extend(
+            [
+                "",
+                "## Cleanup Execution",
+                "",
+                f"- Requested: `{cleanup_execution['requested']}`",
+                f"- Status: `{cleanup_execution['status']}`",
+                f"- Actual delete performed: `{cleanup_execution['actual_delete_performed']}`",
+                f"- Deleted file count: `{cleanup_execution['deleted_file_count']}`",
+                f"- Deleted bytes: `{cleanup_execution['deleted_bytes']}`",
+                f"- Post-cleanup file count: `{cleanup_execution['post_cleanup_file_count']}`",
+                f"- Post-cleanup total bytes: `{cleanup_execution['post_cleanup_total_bytes']}`",
+                f"- Errors: `{json.dumps(cleanup_execution['errors'], ensure_ascii=False)}`",
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -1255,8 +1477,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.manifest.is_file():
         parser.error(f"manifest not found: {args.manifest}")
-    if args.execute_cleanup:
-        parser.error("Phase 3.8d-I3 is dry-run-only; actual cleanup requires a later explicit approval stage.")
 
     manifest_rows = read_manifest(args.manifest)
     cleanup_dry_run, local_cleanup_details = build_cleanup_dry_run(
@@ -1272,6 +1492,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         staging_log=args.staging_log,
         allow_target_equals_expected_root=args.allow_target_equals_expected_staging_root,
     )
+    cleanup_execution = execute_verified_cleanup(
+        target_root=args.target_root,
+        expected_manifest_rows=manifest_rows,
+        cleanup_dry_run=cleanup_dry_run,
+        expected_file_count=args.expected_file_count,
+        expected_total_bytes=cleanup_dry_run.get("expected_total_bytes", args.expected_total_bytes),
+        execute_cleanup_requested=args.execute_cleanup,
+        confirm_cleanup=args.confirm_cleanup,
+    )
     backfill_policy = build_backfill_policy(
         manifest_rows=manifest_rows,
         failed_row_id=args.failed_row_id,
@@ -1281,14 +1510,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         cleanup_dry_run=cleanup_dry_run,
         backfill_policy=backfill_policy,
         local_details_artifact=args.local_details_json.name,
+        cleanup_execution=cleanup_execution,
     )
+    execution_success = cleanup_execution["status"] in {"not_requested", "cleanup_passed"}
 
     cleanup_report = sanitize_public_obj(
         {
             "phase": "3.8d-I3",
             "created_at": recovery_report["created_at"],
-            "success": cleanup_dry_run.get("status") == "dry_run_passed",
+            "success": cleanup_dry_run.get("status") == "dry_run_passed" and execution_success,
             "cleanup_dry_run": cleanup_dry_run,
+            "cleanup_execution": cleanup_execution,
             "privacy": {"paths_redacted": True, "safe_labels_only": True},
         }
     )
@@ -1299,13 +1531,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         cleanup_report["success"] = False
 
     write_json(args.cleanup_report_json, cleanup_report)
-    write_text(args.cleanup_report_md, render_cleanup_markdown(cleanup_dry_run))
+    write_text(args.cleanup_report_md, render_cleanup_markdown(cleanup_dry_run, cleanup_execution))
     write_text(args.recovery_report_md, render_recovery_markdown(recovery_report))
     write_json(
         args.local_details_json,
         {
             "created_at": recovery_report["created_at"],
             "cleanup": local_cleanup_details,
+            "cleanup_execution": cleanup_execution,
             "manifest": str(args.manifest),
             "target_root": str(args.target_root),
         },
