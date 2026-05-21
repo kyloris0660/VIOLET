@@ -789,15 +789,23 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Tests cover default no-delete behavior, wrong confirmation phrase, identity-proof failures, target changes after dry-run, valid temp-directory cleanup, path traversal blocking, symlink/reparse hazard blocking, and hard-link hazard blocking.
 - Report: `docs/reports/phase-3.8d-i4a-cleanup-executor-support.md`.
 
+**Phase 3.8d-I4b - Actual Partial Staging Cleanup (branch `phase3.8d-i4b-actual-partial-staging-cleanup`):**
+- Ran the reviewed cleanup executor against only the verified Phase 3.8d partial staging target after fresh manifest/filesystem proof passed.
+- Fresh proof confirmed `97` expected files, `340,159,586` bytes, no unexpected files, no missing expected files, no size mismatches, no invalid/duplicate manifest targets, no symlink/reparse/hard-link hazards, and no protected-root overlap.
+- Actual cleanup deleted `97` files and `340,159,586` bytes. The staging target remains as an empty directory with `0` files and `0` bytes.
+- DB no-mutation proof: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, and `translation_jobs=15` all had delta `0`.
+- App-managed storage no-mutation proof: file count stayed `2,557`, bytes stayed `5,421,382,030`.
+- Source/iCloud was not mutated; no source write path, read-probe/hydration, staging copy rerun, DB import, classification, AI tagging, localization, Entity Resolver, or similarity ran.
+- Reports: `docs/reports/phase-3.8d-i4b-actual-partial-staging-cleanup.md` and `docs/reports/phase-3.8d-i4b-actual-partial-staging-cleanup-summary.json`.
+
 ## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute
 
 Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
 
-1. Review and merge Phase 3.8d-I4a cleanup executor support.
-2. Start Phase 3.8d-I4b only after approval to run the reviewed executor against the dedicated partial staging target.
-3. Explicitly approve any controlled read-probe/hydration attempt separately. Metadata-only audit remains the default.
-4. If bounded hydrate/read-probe fails for specific files, approve same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
-5. Only after cleanup/recovery and staging copy are complete and verified may Phase 3.8d DB import be reconsidered.
+1. Review and merge Phase 3.8d-I4b actual cleanup report.
+2. Start Phase 3.8d-I5 only after explicit approval for controlled read-probe/hydration audit. Metadata-only audit remains the default.
+3. If bounded hydrate/read-probe fails for specific files, approve same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
+4. Only after cleanup/recovery and staging copy are complete and verified may Phase 3.8d DB import be reconsidered.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 
