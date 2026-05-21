@@ -12,8 +12,14 @@
 - Target label: `phase_3_8d_partial_staging`
 - File count: `97`
 - Total bytes: `340159586`
+- Expected staging root explicit: `True`
+- Target under expected staging root: `True`
+- Protected roots valid: `True`
+- Staging log exact target/count/copy correlation: `True`
 - Actual delete performed: `False`
 - Confirmation phrase required: `DELETE_PHASE38D_PARTIAL_STAGING`
+
+Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log target/count/copy evidence is correlated to the same run entry, and a separate user/ChatGPT cleanup approval is granted.
 
 ## Controlled Read-probe / Hydration Policy
 

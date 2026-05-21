@@ -53,13 +53,51 @@ DEFAULT_EXPECTED_FILE_COUNT = 97
 DEFAULT_EXPECTED_TOTAL_BYTES = 340_159_586
 DEFAULT_SELECTED_TOTAL = 1000
 DEFAULT_FAILED_ROW_ID = 98
-EXPECTED_FILES_RE = re.compile(r"Expected files:\s*(\d+)")
+COPY_RUN_HEADING_RE = re.compile(r"^\s*===\s*Executing Copy\s*===\s*$", re.IGNORECASE)
+TARGET_RE = re.compile(r"^\s*Target:\s*(?P<value>.+?)\s*$", re.IGNORECASE)
+EXPECTED_FILES_RE = re.compile(r"^\s*Expected files:\s*(?P<value>\d+)\s*$", re.IGNORECASE)
+FILES_COPIED_RE = re.compile(r"^\s*Files copied:\s*(?P<value>\d+)\s*$", re.IGNORECASE)
+BYTES_COPIED_RE = re.compile(
+    r"^\s*Bytes copied:\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>[KMGT]?B)?\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
 class ProtectedRoot:
     label: str
     path: Path
+
+
+@dataclass(frozen=True)
+class ProtectedRootCheck:
+    label: str
+    exists: bool
+    is_directory: bool
+    can_resolve: bool
+    overlaps_target: bool
+    resolved_path: Path | None
+
+
+@dataclass(frozen=True)
+class StagingLogEntry:
+    target: Path | None
+    expected_files: int | None
+    files_copied: int | None
+    bytes_copied: int | None
+    bytes_copied_tolerance: int
+
+
+@dataclass(frozen=True)
+class StagingLogMatch:
+    log_present: bool
+    log_matches: bool
+    target_exact_match: bool
+    expected_count_matches: bool
+    files_copied_matches: bool | None
+    bytes_copied_matches: bool | None
+    matching_entry_found: bool
+    entry_count: int
 
 
 def utc_now() -> str:
@@ -103,10 +141,83 @@ def _iter_files(root: Path) -> list[Path]:
 
 def _path_key(path: Path) -> str:
     try:
-        resolved = path.resolve()
+        resolved = path.resolve(strict=False)
     except (OSError, RuntimeError):
         resolved = path
     return os.path.normcase(str(resolved))
+
+
+def _decode_text_file(path: Path) -> str | None:
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16", errors="replace")
+    return raw.decode("utf-8", errors="replace")
+
+
+def _parse_log_bytes(value: str, unit: str | None) -> tuple[int, int]:
+    number = float(value)
+    normalized_unit = (unit or "").upper()
+    multipliers = {
+        "": 1,
+        "B": 1,
+        "KB": 1024,
+        "MB": 1024 * 1024,
+        "GB": 1024 * 1024 * 1024,
+        "TB": 1024 * 1024 * 1024 * 1024,
+    }
+    multiplier = multipliers.get(normalized_unit, 1)
+    bytes_value = int(round(number * multiplier))
+    tolerance = 0 if normalized_unit in {"", "B"} else int(round(0.05 * multiplier)) + 1
+    return bytes_value, tolerance
+
+
+def _parse_staging_log_entries(text: str) -> list[StagingLogEntry]:
+    entries: list[StagingLogEntry] = []
+    current: dict[str, Any] | None = None
+    for line in text.splitlines():
+        if COPY_RUN_HEADING_RE.match(line):
+            if current is not None:
+                entries.append(
+                StagingLogEntry(
+                    target=current.get("target"),
+                    expected_files=current.get("expected_files"),
+                    files_copied=current.get("files_copied"),
+                    bytes_copied=current.get("bytes_copied"),
+                    bytes_copied_tolerance=current.get("bytes_copied_tolerance", 0),
+                )
+            )
+            current = {}
+            continue
+        if current is None:
+            continue
+        if match := TARGET_RE.match(line):
+            current["target"] = Path(match.group("value").strip())
+            continue
+        if match := EXPECTED_FILES_RE.match(line):
+            current["expected_files"] = int(match.group("value"))
+            continue
+        if match := FILES_COPIED_RE.match(line):
+            current["files_copied"] = int(match.group("value"))
+            continue
+        if match := BYTES_COPIED_RE.match(line):
+            bytes_value, tolerance = _parse_log_bytes(match.group("value"), match.group("unit"))
+            current["bytes_copied"] = bytes_value
+            current["bytes_copied_tolerance"] = tolerance
+            continue
+    if current is not None:
+        entries.append(
+            StagingLogEntry(
+                target=current.get("target"),
+                expected_files=current.get("expected_files"),
+                files_copied=current.get("files_copied"),
+                bytes_copied=current.get("bytes_copied"),
+                bytes_copied_tolerance=current.get("bytes_copied_tolerance", 0),
+            )
+        )
+    return entries
 
 
 def _staging_log_matches_target(
@@ -114,23 +225,90 @@ def _staging_log_matches_target(
     target_root: Path,
     *,
     expected_copy_count: int,
-) -> tuple[bool, bool, bool, bool]:
-    """Return (log_present, log_matches, target_seen, expected_count_seen)."""
+    expected_file_count: int,
+    expected_total_bytes: int,
+) -> StagingLogMatch:
     if log_path is None or not log_path.is_file():
-        return False, False, False, False
+        return StagingLogMatch(False, False, False, False, None, None, False, 0)
+    text = _decode_text_file(log_path)
+    if text is None:
+        return StagingLogMatch(False, False, False, False, None, None, False, 0)
+    entries = _parse_staging_log_entries(text)
+    target_key = _path_key(target_root)
+    target_exact_match = False
+    expected_count_matches = False
+    files_copied_matches: bool | None = None
+    bytes_copied_matches: bool | None = None
+    matching_entry_found = False
+    for entry in entries:
+        if entry.target is None:
+            continue
+        entry_target_matches = _path_key(entry.target) == target_key
+        target_exact_match = target_exact_match or entry_target_matches
+        if not entry_target_matches:
+            continue
+        entry_expected_matches = entry.expected_files == expected_copy_count
+        expected_count_matches = expected_count_matches or entry_expected_matches
+        if not entry_expected_matches:
+            continue
+        entry_files_copied_matches = entry.files_copied is None or entry.files_copied == expected_file_count
+        entry_bytes_copied_matches = (
+            entry.bytes_copied is None
+            or abs(entry.bytes_copied - expected_total_bytes) <= entry.bytes_copied_tolerance
+        )
+        if entry.files_copied is not None:
+            files_copied_matches = entry_files_copied_matches
+        if entry.bytes_copied is not None:
+            bytes_copied_matches = entry_bytes_copied_matches
+        matching_entry_found = entry_files_copied_matches and entry_bytes_copied_matches
+        if not matching_entry_found:
+            continue
+        return StagingLogMatch(
+            True,
+            True,
+            True,
+            True,
+            files_copied_matches,
+            bytes_copied_matches,
+            True,
+            len(entries),
+        )
+    return StagingLogMatch(
+        True,
+        False,
+        target_exact_match,
+        expected_count_matches,
+        files_copied_matches,
+        bytes_copied_matches,
+        matching_entry_found,
+        len(entries),
+    )
+
+
+def _validate_protected_root(root: ProtectedRoot, target_root: Path) -> ProtectedRootCheck:
+    exists = root.path.exists()
+    is_directory = root.path.is_dir()
+    resolved_path: Path | None
     try:
-        raw = log_path.read_bytes()
-    except OSError:
-        return False, False, False, False
-    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
-        text = raw.decode("utf-16", errors="replace")
-    else:
-        text = raw.decode("utf-8", errors="replace")
-    target_text = str(target_root)
-    expected_counts = {int(match) for match in EXPECTED_FILES_RE.findall(text)}
-    target_seen = target_text in text
-    expected_count_seen = expected_copy_count in expected_counts
-    return True, target_seen and expected_count_seen, target_seen, expected_count_seen
+        resolved_path = root.path.resolve(strict=True)
+        can_resolve = True
+    except (OSError, RuntimeError, ValueError):
+        resolved_path = None
+        can_resolve = False
+    overlaps = (
+        can_resolve
+        and is_directory
+        and resolved_path is not None
+        and (_is_inside_or_same(target_root, resolved_path) or _is_inside_or_same(resolved_path, target_root))
+    )
+    return ProtectedRootCheck(
+        label=root.label,
+        exists=exists,
+        is_directory=is_directory,
+        can_resolve=can_resolve,
+        overlaps_target=overlaps,
+        resolved_path=resolved_path,
+    )
 
 
 def _expected_partial_target_keys(
@@ -199,36 +377,59 @@ def build_cleanup_dry_run(
     ]
 
     protected_checks = []
+    protected_root_validation = []
     unsafe_reasons: list[str] = []
     for root in protected_roots:
-        overlaps = _is_inside_or_same(target_root, root.path) or _is_inside_or_same(root.path, target_root)
+        check = _validate_protected_root(root, target_root)
         protected_checks.append(
             {
                 "protected_label": root.label,
-                "overlaps_target": overlaps,
+                "path_exists": check.exists,
+                "is_directory": check.is_directory,
+                "can_resolve": check.can_resolve,
+                "valid_existing_directory": check.exists and check.is_directory and check.can_resolve,
+                "overlaps_target": check.overlaps_target,
             }
         )
-        if overlaps:
+        protected_root_validation.append(check)
+        if check.overlaps_target:
             unsafe_reasons.append(f"target overlaps protected root: {root.label}")
 
     labels = {root.label for root in protected_roots}
-    log_present, log_matches_target, log_target_seen, log_expected_count_seen = _staging_log_matches_target(
+    required_labels_all_present = (
+        bool(labels & {"source_root", "icloud_source_root"})
+        and "repo_root" in labels
+        and "app_storage_root" in labels
+    )
+    log_match = _staging_log_matches_target(
         staging_log,
         target_root,
         expected_copy_count=expected_copy_count,
+        expected_file_count=expected_file_count,
+        expected_total_bytes=expected_total_bytes,
     )
     file_count_matches = len(files) == expected_file_count
     byte_count_matches = total_bytes == expected_total_bytes
-    expected_staging_root = expected_staging_root or target_root
-    target_under_expected_staging_root = _is_inside_or_same(target_root, expected_staging_root)
+    expected_staging_root_explicit = expected_staging_root is not None
+    target_under_expected_staging_root = (
+        _is_inside_or_same(target_root, expected_staging_root) if expected_staging_root is not None else False
+    )
+    invalid_protected_labels = [
+        check.label
+        for check in protected_root_validation
+        if not (check.exists and check.is_directory and check.can_resolve)
+    ]
     target_is_dedicated = (
         target_exists
         and target_is_dir
+        and expected_staging_root_explicit
         and target_under_expected_staging_root
-        and log_matches_target
+        and log_match.log_matches
         and file_count_matches
         and byte_count_matches
         and (unexpected_files_check_passed if unexpected_files_check_available else True)
+        and required_labels_all_present
+        and not invalid_protected_labels
     )
 
     public = {
@@ -238,12 +439,17 @@ def build_cleanup_dry_run(
         "target_exists": _safe_public_bool(target_exists),
         "target_is_directory": _safe_public_bool(target_is_dir),
         "target_is_dedicated_phase38d_target": _safe_public_bool(target_is_dedicated),
+        "expected_staging_root_explicit": _safe_public_bool(expected_staging_root_explicit),
         "target_under_expected_staging_root": _safe_public_bool(target_under_expected_staging_root),
         "dedicated_target_evidence": {
-            "staging_copy_log_present": log_present,
-            "staging_copy_log_matches_target": log_matches_target,
-            "staging_copy_log_target_seen": log_target_seen,
-            "staging_copy_log_expected_count_seen": log_expected_count_seen,
+            "staging_copy_log_present": log_match.log_present,
+            "staging_copy_log_matches_target": log_match.log_matches,
+            "staging_copy_log_target_exact_match": log_match.target_exact_match,
+            "staging_copy_log_expected_count_correlated": log_match.expected_count_matches,
+            "staging_copy_log_files_copied_matches": log_match.files_copied_matches,
+            "staging_copy_log_bytes_copied_matches": log_match.bytes_copied_matches,
+            "staging_copy_log_matching_entry_found": log_match.matching_entry_found,
+            "staging_copy_log_entry_count": log_match.entry_count,
             "expected_file_count_matches": file_count_matches,
             "expected_total_bytes_matches": byte_count_matches,
             "unexpected_files_check_available": unexpected_files_check_available,
@@ -262,8 +468,10 @@ def build_cleanup_dry_run(
         "required_protected_labels_present": {
             "source_or_icloud": bool(labels & {"source_root", "icloud_source_root"}),
             "repo_root": "repo_root" in labels,
-            "app_storage_or_media": bool(labels & {"app_storage_root", "app_media_root", "app_originals_root", "app_thumbnails_root"}),
+            "app_storage_root": "app_storage_root" in labels,
+            "app_media_root_if_provided": "app_media_root" in labels,
         },
+        "invalid_protected_root_labels": invalid_protected_labels,
         "file_count": len(files),
         "actual_copied_file_count": len(files),
         "expected_partial_file_count": expected_file_count,
@@ -294,11 +502,13 @@ def build_cleanup_dry_run(
         identity_mismatch_reasons.append("target_missing")
     if not public["target_is_directory"]:
         identity_mismatch_reasons.append("target_not_directory")
+    if not public["expected_staging_root_explicit"]:
+        identity_mismatch_reasons.append("expected_staging_root_missing")
     if not public["target_under_expected_staging_root"]:
         identity_mismatch_reasons.append("target_not_under_expected_staging_root")
-    if not log_present:
+    if not log_match.log_present:
         identity_mismatch_reasons.append("staging_copy_log_missing")
-    if log_present and not log_matches_target:
+    if log_match.log_present and not log_match.log_matches:
         identity_mismatch_reasons.append("staging_copy_log_mismatch")
     if not file_count_matches:
         identity_mismatch_reasons.append("expected_partial_file_count_mismatch")
@@ -308,23 +518,22 @@ def build_cleanup_dry_run(
         identity_mismatch_reasons.append("unexpected_or_missing_staging_files")
     public["identity_mismatch_reasons"] = identity_mismatch_reasons
 
-    required_labels_present = public["required_protected_labels_present"]
     if unsafe_reasons:
         public["status"] = "blocked_unsafe_target"
+    elif invalid_protected_labels:
+        public["status"] = "blocked_invalid_protected_root"
+    elif not expected_staging_root_explicit:
+        public["status"] = "blocked_missing_expected_staging_root"
     elif identity_mismatch_reasons:
         public["status"] = "blocked_identity_mismatch"
-    elif not (
-        required_labels_present["source_or_icloud"]
-        and required_labels_present["repo_root"]
-        and required_labels_present["app_storage_or_media"]
-    ):
+    elif not required_labels_all_present:
         public["status"] = "manual_review_required"
     else:
         public["status"] = "dry_run_passed"
 
     local = {
         "target_root": str(target_root),
-        "expected_staging_root": str(expected_staging_root),
+        "expected_staging_root": str(expected_staging_root) if expected_staging_root else None,
         "protected_roots": [{"label": root.label, "path": str(root.path)} for root in protected_roots],
         "local_file_samples": local_file_samples,
         "staging_log": str(staging_log) if staging_log else None,
@@ -547,6 +756,7 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Target label: `{report['target_safe_label']}`",
         f"- Target exists: `{report['target_exists']}`",
         f"- Target is directory: `{report['target_is_directory']}`",
+        f"- Expected staging root explicit: `{report['expected_staging_root_explicit']}`",
         f"- Target under expected staging root: `{report['target_under_expected_staging_root']}`",
         f"- Dedicated Phase 3.8d target: `{report['target_is_dedicated_phase38d_target']}`",
         f"- Actual copied file count: `{report['actual_copied_file_count']}`",
@@ -558,9 +768,13 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         "## Dedicated Target Evidence",
         "",
         f"- Staging copy log present: `{evidence['staging_copy_log_present']}`",
-        f"- Staging copy log matches target and expected count: `{evidence['staging_copy_log_matches_target']}`",
-        f"- Staging copy log target seen: `{evidence['staging_copy_log_target_seen']}`",
-        f"- Staging copy log expected count seen: `{evidence['staging_copy_log_expected_count_seen']}`",
+        f"- Staging copy log target/count/copy correlation passed: `{evidence['staging_copy_log_matches_target']}`",
+        f"- Staging copy log target exact match: `{evidence['staging_copy_log_target_exact_match']}`",
+        f"- Staging copy log expected count correlated: `{evidence['staging_copy_log_expected_count_correlated']}`",
+        f"- Staging copy log files copied matches: `{evidence['staging_copy_log_files_copied_matches']}`",
+        f"- Staging copy log bytes copied matches: `{evidence['staging_copy_log_bytes_copied_matches']}`",
+        f"- Staging copy log matching entry found: `{evidence['staging_copy_log_matching_entry_found']}`",
+        f"- Staging copy log entry count: `{evidence['staging_copy_log_entry_count']}`",
         f"- Expected partial file count matches: `{evidence['expected_file_count_matches']}`",
         f"- Expected total bytes matches: `{evidence['expected_total_bytes_matches']}`",
         f"- Unexpected files check available: `{evidence['unexpected_files_check_available']}`",
@@ -574,7 +788,10 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Not source/iCloud: `{report['target_is_not_source_icloud']}`",
         f"- Not repo: `{report['target_is_not_repo']}`",
         f"- Not app-managed storage: `{report['target_is_not_app_managed_storage']}`",
+        f"- Invalid protected root labels: `{json.dumps(report['invalid_protected_root_labels'], ensure_ascii=False)}`",
         f"- Unsafe reasons: `{json.dumps(report['unsafe_reasons'], ensure_ascii=False)}`",
+        "",
+        "Cleanup dry-run is not approved for actual delete unless `--expected-staging-root` is explicit, all required protected roots exist and resolve as directories, the target is under the expected staging root, and the staging log has an exact correlated target/count/copy entry. Actual cleanup still requires separate user/ChatGPT approval.",
         "",
         "## Extension Distribution",
         "",
@@ -635,8 +852,14 @@ def render_recovery_markdown(report: Mapping[str, Any]) -> str:
         f"- Target label: `{cleanup['target_safe_label']}`",
         f"- File count: `{cleanup['file_count']}`",
         f"- Total bytes: `{cleanup['total_bytes']}`",
+        f"- Expected staging root explicit: `{cleanup['expected_staging_root_explicit']}`",
+        f"- Target under expected staging root: `{cleanup['target_under_expected_staging_root']}`",
+        f"- Protected roots valid: `{not cleanup['invalid_protected_root_labels']}`",
+        f"- Staging log exact target/count/copy correlation: `{cleanup['dedicated_target_evidence']['staging_copy_log_matches_target']}`",
         f"- Actual delete performed: `{cleanup['deletion_plan']['actual_delete_performed']}`",
         f"- Confirmation phrase required: `{cleanup['deletion_plan']['confirmation_phrase_required']}`",
+        "",
+        "Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log target/count/copy evidence is correlated to the same run entry, and a separate user/ChatGPT cleanup approval is granted.",
         "",
         "## Controlled Read-probe / Hydration Policy",
         "",
@@ -781,7 +1004,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     manifest_rows = read_manifest(args.manifest)
     cleanup_dry_run, local_cleanup_details = build_cleanup_dry_run(
         target_root=args.target_root,
-        expected_staging_root=args.expected_staging_root or args.target_root,
+        expected_staging_root=args.expected_staging_root,
         protected_roots=args.protected_root,
         expected_file_count=args.expected_file_count,
         expected_total_bytes=args.expected_total_bytes,

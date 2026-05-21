@@ -1,6 +1,6 @@
 {
   "phase": "3.8d-I3",
-  "created_at": "2026-05-21T12:58:43.762791+00:00",
+  "created_at": "2026-05-21T13:20:32.874714+00:00",
   "success": true,
   "cleanup_dry_run": {
     "phase": "3.8d-I3",
@@ -9,12 +9,17 @@
     "target_exists": true,
     "target_is_directory": true,
     "target_is_dedicated_phase38d_target": true,
+    "expected_staging_root_explicit": true,
     "target_under_expected_staging_root": true,
     "dedicated_target_evidence": {
       "staging_copy_log_present": true,
       "staging_copy_log_matches_target": true,
-      "staging_copy_log_target_seen": true,
-      "staging_copy_log_expected_count_seen": true,
+      "staging_copy_log_target_exact_match": true,
+      "staging_copy_log_expected_count_correlated": true,
+      "staging_copy_log_files_copied_matches": true,
+      "staging_copy_log_bytes_copied_matches": true,
+      "staging_copy_log_matching_entry_found": true,
+      "staging_copy_log_entry_count": 1,
       "expected_file_count_matches": true,
       "expected_total_bytes_matches": true,
       "unexpected_files_check_available": true,
@@ -25,18 +30,34 @@
     "protected_root_checks": [
       {
         "protected_label": "source_root",
+        "path_exists": true,
+        "is_directory": true,
+        "can_resolve": true,
+        "valid_existing_directory": true,
         "overlaps_target": false
       },
       {
         "protected_label": "repo_root",
+        "path_exists": true,
+        "is_directory": true,
+        "can_resolve": true,
+        "valid_existing_directory": true,
         "overlaps_target": false
       },
       {
         "protected_label": "app_storage_root",
+        "path_exists": true,
+        "is_directory": true,
+        "can_resolve": true,
+        "valid_existing_directory": true,
         "overlaps_target": false
       },
       {
         "protected_label": "app_media_root",
+        "path_exists": true,
+        "is_directory": true,
+        "can_resolve": true,
+        "valid_existing_directory": true,
         "overlaps_target": false
       }
     ],
@@ -46,8 +67,10 @@
     "required_protected_labels_present": {
       "source_or_icloud": true,
       "repo_root": true,
-      "app_storage_or_media": true
+      "app_storage_root": true,
+      "app_media_root_if_provided": true
     },
+    "invalid_protected_root_labels": [],
     "file_count": 97,
     "actual_copied_file_count": 97,
     "expected_partial_file_count": 97,

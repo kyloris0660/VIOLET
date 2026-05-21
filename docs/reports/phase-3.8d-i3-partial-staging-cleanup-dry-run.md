@@ -6,6 +6,7 @@
 - Target label: `phase_3_8d_partial_staging`
 - Target exists: `True`
 - Target is directory: `True`
+- Expected staging root explicit: `True`
 - Target under expected staging root: `True`
 - Dedicated Phase 3.8d target: `True`
 - Actual copied file count: `97`
@@ -17,9 +18,13 @@
 ## Dedicated Target Evidence
 
 - Staging copy log present: `True`
-- Staging copy log matches target and expected count: `True`
-- Staging copy log target seen: `True`
-- Staging copy log expected count seen: `True`
+- Staging copy log target/count/copy correlation passed: `True`
+- Staging copy log target exact match: `True`
+- Staging copy log expected count correlated: `True`
+- Staging copy log files copied matches: `True`
+- Staging copy log bytes copied matches: `True`
+- Staging copy log matching entry found: `True`
+- Staging copy log entry count: `1`
 - Expected partial file count matches: `True`
 - Expected total bytes matches: `True`
 - Unexpected files check available: `True`
@@ -33,7 +38,10 @@
 - Not source/iCloud: `True`
 - Not repo: `True`
 - Not app-managed storage: `True`
+- Invalid protected root labels: `[]`
 - Unsafe reasons: `[]`
+
+Cleanup dry-run is not approved for actual delete unless `--expected-staging-root` is explicit, all required protected roots exist and resolve as directories, the target is under the expected staging root, and the staging log has an exact correlated target/count/copy entry. Actual cleanup still requires separate user/ChatGPT approval.
 
 ## Extension Distribution
 
