@@ -102,6 +102,28 @@ def test_full_read_verification_reads_all_bytes(tmp_path: Path):
     assert result["bytes_read_total"] == 6
 
 
+def test_full_read_rejects_zero_chunk_size_without_false_positive(tmp_path: Path):
+    source = tmp_path / "full.jpg"
+    source.write_bytes(b"abcdef")
+
+    result = read_verify_full_content(source, expected_size=None, timeout_seconds=10, retries=0, chunk_size=0)
+
+    assert result["ok"] is False
+    assert result["error_reason"] == "invalid_chunk_size"
+    assert result["bytes_read"] == 0
+    assert result["attempts"] == []
+
+
+def test_full_read_rejects_negative_chunk_size(tmp_path: Path):
+    source = tmp_path / "full.jpg"
+    source.write_bytes(b"abcdef")
+
+    result = read_verify_full_content(source, expected_size=6, timeout_seconds=10, retries=0, chunk_size=-1)
+
+    assert result["ok"] is False
+    assert result["error_reason"] == "invalid_chunk_size"
+
+
 def test_full_read_size_mismatch_is_structured(tmp_path: Path):
     source = tmp_path / "full.jpg"
     source.write_bytes(b"abcdef")
@@ -112,15 +134,115 @@ def test_full_read_size_mismatch_is_structured(tmp_path: Path):
     assert result["error_reason"] == "size_mismatch"
 
 
+def test_full_read_worker_eof_is_structured(monkeypatch, tmp_path: Path):
+    source = tmp_path / "full.jpg"
+    source.write_bytes(b"abcdef")
+
+    class FakeParent:
+        def poll(self, timeout=None):
+            return True
+
+        def recv(self):
+            raise EOFError
+
+        def close(self):
+            pass
+
+    class FakeChild:
+        def close(self):
+            pass
+
+    class FakeProcess:
+        exitcode = 17
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def join(self, timeout=None):
+            pass
+
+        def is_alive(self):
+            return False
+
+    monkeypatch.setattr(cloud_files.multiprocessing, "Pipe", lambda duplex=False: (FakeParent(), FakeChild()))
+    monkeypatch.setattr(cloud_files.multiprocessing, "Process", FakeProcess)
+
+    result = read_verify_full_content(source, expected_size=6, timeout_seconds=10, retries=0, chunk_size=2)
+
+    assert result["ok"] is False
+    assert result["error_reason"] == "read_worker_eof"
+    assert "17" in result["error_message"]
+
+
 def test_row98_is_always_in_sample(monkeypatch, tmp_path: Path):
     rows = [_row(98, tmp_path, bucket="b02"), _row(99, tmp_path, bucket="b02"), _row(200, tmp_path, bucket="b03")]
-    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids={99, 200}))
+    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids={98, 99, 200}))
     metadata, _local = i5.build_metadata_records(rows)
 
     sample = i5.select_sample_records(metadata, failed_row_id=98, sample_per_bucket=1, max_sample=2)
 
     assert [record["row_id"] for record in sample][0] == 98
     assert len(sample) == 2
+
+
+def test_no_recall_risk_empty_sample_is_not_applicable(monkeypatch, tmp_path: Path):
+    rows = [_row(98, tmp_path, bucket="b02"), _row(99, tmp_path, bucket="b02")]
+    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids=set()))
+    monkeypatch.setattr(i5, "read_probe_prefix", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("read probe should not run")))
+    monkeypatch.setattr(i5, "read_verify_full_content", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("full read should not run")))
+
+    report, _local = i5.run_hydration_audit(
+        rows,
+        failed_row_id=98,
+        stop_after="full",
+        sample_per_bucket=3,
+        max_sample=48,
+        policy={
+            "prefix_bytes": 1,
+            "prefix_timeout_seconds": 10,
+            "prefix_retries": 1,
+            "full_timeout_seconds": 60,
+            "full_retries": 1,
+            "full_chunk_size": 1024,
+        },
+    )
+
+    assert report["metadata_baseline"]["likely_cloud_placeholder_count"] == 0
+    assert report["sample_gate"]["status"] == "not_applicable_no_risk"
+    assert report["full_recall_verification"]["status"] == "not_applicable_no_risk"
+    assert report["safety"]["source_content_read_for_verification_only"] is False
+    assert report["safety"]["provider_side_hydration_may_have_occurred"] is False
+
+
+def test_risky_rows_with_empty_sample_selection_blocks(monkeypatch, tmp_path: Path):
+    rows = [_row(98, tmp_path, bucket="b02"), _row(99, tmp_path, bucket="b02")]
+    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids={98, 99}))
+    monkeypatch.setattr(i5, "select_sample_records", lambda *args, **kwargs: [])
+    monkeypatch.setattr(i5, "read_probe_prefix", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("read probe should not run")))
+    monkeypatch.setattr(i5, "read_verify_full_content", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("full read should not run")))
+
+    report, _local = i5.run_hydration_audit(
+        rows,
+        failed_row_id=98,
+        stop_after="full",
+        sample_per_bucket=3,
+        max_sample=48,
+        policy={
+            "prefix_bytes": 1,
+            "prefix_timeout_seconds": 10,
+            "prefix_retries": 1,
+            "full_timeout_seconds": 60,
+            "full_retries": 1,
+            "full_chunk_size": 1024,
+        },
+    )
+
+    assert report["metadata_baseline"]["likely_cloud_placeholder_count"] == 2
+    assert report["sample_gate"]["status"] == "blocked_empty_sample_selection"
+    assert report["full_recall_verification"]["status"] == "blocked_empty_sample_selection"
 
 
 def test_sample_gate_failure_stops_full_risk_set(monkeypatch, tmp_path: Path):

@@ -170,9 +170,6 @@ def select_sample_records(
     by_row_id = {int(record["row_id"]): dict(record) for record in metadata_records}
     chosen: list[dict[str, Any]] = []
     chosen_ids: set[int] = set()
-    if failed_row_id in by_row_id:
-        chosen.append(by_row_id[failed_row_id])
-        chosen_ids.add(failed_row_id)
 
     risky = [dict(record) for record in metadata_records if record.get("likely_cloud_placeholder")]
     by_bucket: dict[str, list[dict[str, Any]]] = {}
@@ -180,6 +177,10 @@ def select_sample_records(
         by_bucket.setdefault(str(record["bucket"]), []).append(record)
     for bucket_records in by_bucket.values():
         bucket_records.sort(key=lambda item: int(item["row_id"]))
+
+    if failed_row_id in by_row_id and by_row_id[failed_row_id].get("likely_cloud_placeholder"):
+        chosen.append(by_row_id[failed_row_id])
+        chosen_ids.add(failed_row_id)
 
     for bucket in sorted(by_bucket):
         picked_in_bucket = 0
@@ -205,6 +206,8 @@ def _normal_failure_reason(result: Mapping[str, Any] | None, state: Mapping[str,
         return "read_timeout"
     if reason in {"read_probe_no_result", "read_no_result"}:
         return "generic_read_failed"
+    if reason in {"invalid_chunk_size", "read_worker_eof"}:
+        return str(reason)
     if reason == "generic_copy_failed" and state.get("likely_cloud_placeholder"):
         return "cloud_hydration_failed"
     return str(reason) if reason else None
@@ -366,9 +369,21 @@ def run_hydration_audit(
             sample_results_public.append(verified["public"])
             sample_results_local.append(verified["local"])
         sample_summary = summarize_verifications(sample_results_public)
-        sample_gate_passed = sample_summary["attempted_count"] > 0 and sample_summary["failed_count"] == 0
+        risky_count = int(metadata_summary["likely_cloud_placeholder_count"])
+        if sample_summary["attempted_count"] == 0 and risky_count == 0:
+            sample_status = "not_applicable_no_risk"
+            sample_reason = "no recall-risk rows were present; sample verification was not required"
+        elif sample_summary["attempted_count"] == 0:
+            sample_status = "blocked_empty_sample_selection"
+            sample_reason = "recall-risk rows existed, but sample selection produced no rows"
+        elif sample_summary["failed_count"] == 0:
+            sample_status = "passed"
+            sample_reason = None
+        else:
+            sample_status = "failed"
+            sample_reason = "sample gate did not pass; full recall verification was not run"
         sample_stage = {
-            "status": "passed" if sample_gate_passed else "failed",
+            "status": sample_status,
             "row_98_included": any(int(item["row_id"]) == failed_row_id for item in sample_results_public),
             "sample_policy": {
                 "sample_per_bucket": sample_per_bucket,
@@ -378,19 +393,45 @@ def run_hydration_audit(
             "summary": sample_summary,
             "results": sample_results_public,
         }
+        if sample_reason:
+            sample_stage["reason"] = sample_reason
         local_details["sample"] = sample_results_local
-        if not sample_gate_passed:
+        if sample_status == "failed":
             full_stage = {
                 "status": "skipped_sample_gate_failed",
-                "reason": "sample gate did not pass; full recall verification was not run",
+                "reason": sample_reason,
+                "results": [],
+            }
+        elif sample_status == "blocked_empty_sample_selection":
+            full_stage = {
+                "status": "blocked_empty_sample_selection",
+                "reason": sample_reason,
+                "results": [],
+            }
+        elif sample_status == "not_applicable_no_risk":
+            full_stage = {
+                "status": "not_applicable_no_risk",
+                "reason": sample_reason,
                 "results": [],
             }
 
     if stop_after == "full":
-        if sample_stage.get("status") != "passed":
+        if sample_stage.get("status") == "failed":
             full_stage = {
                 "status": "skipped_sample_gate_failed",
-                "reason": "sample gate did not pass; full recall verification was not run",
+                "reason": sample_stage.get("reason") or "sample gate did not pass; full recall verification was not run",
+                "results": [],
+            }
+        elif sample_stage.get("status") == "blocked_empty_sample_selection":
+            full_stage = {
+                "status": "blocked_empty_sample_selection",
+                "reason": sample_stage.get("reason") or "recall-risk rows existed, but sample selection produced no rows",
+                "results": [],
+            }
+        elif sample_stage.get("status") == "not_applicable_no_risk":
+            full_stage = {
+                "status": "not_applicable_no_risk",
+                "reason": sample_stage.get("reason") or "no recall-risk rows were present; full recall verification was not required",
                 "results": [],
             }
         else:
@@ -461,8 +502,8 @@ def run_hydration_audit(
         "backfill_plan": backfill_plan,
         "network_proxy_observations": _proxy_observations(),
         "safety": {
-            "source_content_read_for_verification_only": stop_after in {"sample", "full"},
-            "provider_side_hydration_may_have_occurred": stop_after in {"sample", "full"},
+            "source_content_read_for_verification_only": bool(sample_results_public),
+            "provider_side_hydration_may_have_occurred": bool(sample_results_public),
             "source_file_content_write_mutation": False,
             "staging_copy": False,
             "staging_write": False,

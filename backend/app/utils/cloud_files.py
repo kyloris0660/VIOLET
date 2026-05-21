@@ -364,6 +364,22 @@ def read_verify_full_content(
     explicit approval gate.
     """
 
+    if chunk_size <= 0:
+        return {
+            "full_read": True,
+            "expected_size": expected_size,
+            "chunk_size": chunk_size,
+            "timeout_seconds": timeout_seconds,
+            "retries": retries,
+            "attempts": [],
+            "ok": False,
+            "bytes_read": 0,
+            "bytes_read_total": 0,
+            "duration_seconds": 0.0,
+            "error_reason": "invalid_chunk_size",
+            "error_message": "chunk_size must be greater than 0",
+        }
+
     attempts: list[dict[str, Any]] = []
     final: dict[str, Any] | None = None
     for attempt in range(retries + 1):
@@ -395,9 +411,21 @@ def read_verify_full_content(
                 "errno": None,
             }
         elif parent_conn.poll(timeout=1):
-            result = parent_conn.recv()
-            result["attempt"] = attempt + 1
-            result["duration_seconds"] = duration
+            try:
+                result = parent_conn.recv()
+                result["attempt"] = attempt + 1
+                result["duration_seconds"] = duration
+            except EOFError:
+                result = {
+                    "attempt": attempt + 1,
+                    "ok": False,
+                    "bytes_read": 0,
+                    "duration_seconds": duration,
+                    "error_reason": "read_worker_eof",
+                    "error_message": f"subprocess exited with code {proc.exitcode} before sending a result",
+                    "winerror": None,
+                    "errno": None,
+                }
         else:
             result = {
                 "attempt": attempt + 1,
