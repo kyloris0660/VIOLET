@@ -217,6 +217,34 @@ Stop-Process -Id <recorded-PID>
 9. **Singleton policy** — only one agent-started server per session. Diagnose port conflicts, do not silently skip.
 10. Final report must include: working directory, branch, server command, PID, port, VIOLET_BASE_URL, identity check result, E2E command, stop/cleanup result
 
+## Final Delivery Report Standard
+
+Every CodeX final report for implementation or review stages must be written in Chinese and include:
+
+1. PR URL, branch, head SHA
+2. Whether the PR was created, pushed, and merged
+3. Docs/code read
+4. Python identity and exact sys.executable
+5. Exact files changed
+6. Implementation summary
+7. Exact tests run and exact results
+8. Real validation / dry-run results
+9. Reviewer status, including whether the latest head was reviewed
+10. Local artifacts generated and confirmation they were not committed
+11. Safety confirmation:
+    - no push main
+    - no merge
+    - no source/iCloud mutation unless explicitly approved
+    - no cleanup/delete/reset/drop/truncate unless explicitly approved
+    - no DB import unless explicitly approved
+    - no classification/AI/localization unless explicitly approved
+    - no Entity Resolver / similarity unless explicitly approved
+12. Current blocked/ready status
+13. Recommended next step
+14. If stopped by a rule, the exact stop condition
+
+A short summary alone is not acceptable. If any item is not applicable, say "N/A" and why. Do not force the user to inspect the PR body or old logs to reconstruct test results.
+
 Manual server start (fallback only — if agent startup fails):
 
 ```powershell
