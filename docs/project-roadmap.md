@@ -328,6 +328,19 @@ See [Content Classification](content-classification.md) for full documentation.
 - Upload-bytes routes and app-managed storage reads are documented as outside the source cloud gate.
 - Phase 3.8d execute remains blocked until cleanup/resume and controlled read-probe/hydration/backfill recovery are explicitly approved.
 
+### Phase 3.8d-I3 - Recovery Cleanup Dry-run and Hydration Policy
+
+**Goal:** Turn the preserved partial staging incident state into an explicit recovery plan before any Phase 3.8d retry.
+
+- Added a Final Delivery Report Standard to project rules so implementation/review final reports must include PR URL, branch/head SHA, files changed, exact tests/results, validation/dry-run results, local artifacts, reviewer status, safety confirmation, blocked/ready status, and recommended next step in Chinese.
+- Replaced the standard automatic reviewer-fix loop with a Reviewer Feedback Handling Policy: CodeX triggers reviewer and reports current-head feedback, but does not modify code from reviewer comments unless the user explicitly authorizes a specific auto-fix loop.
+- Added `scripts/plan_phase38d_i3_recovery.py`, a dry-run-only recovery planner. It inspects the preserved partial staging target, writes privacy-safe public reports, and writes full local details only to ignored `.local_manifests` artifacts.
+- Partial staging cleanup dry-run confirms the dedicated target safe label `phase_3_8d_partial_staging` by manifest/filesystem proof: `97` files, `340,159,586` bytes, extension distribution `.jpg=68`, `.png=22`, `.jpeg=6`, `.gif=1`, no source/iCloud/repo/app-storage overlap, and no deletion performed. Staging logs are diagnostic only and are not used for cleanup authorization.
+- Controlled read-probe/hydration policy remains opt-in, bounded, and approval-gated; metadata-only audit remains the default and direct `CfHydratePlaceholder` integration is deferred as a future enhancement unless explicitly approved.
+- Same-bucket backfill is dry-run-only and may be applied only after bounded hydrate/read-probe failure. The failed row `98` has a same-bucket dry-run replacement candidate while preserving `selected_total=1000`; no manifest replacement is performed.
+- Current recovery recommendation is cleanup plus rerun after explicit cleanup approval, because only `97` files were copied and no DB/import/classification/AI/localization downstream state exists.
+- Phase 3.8d execute remains blocked until cleanup approval and controlled read-probe/hydration/backfill approval are handled in later stages.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -403,7 +416,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1/I2:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Blocked by Phase 3.8d-I1/I2/I3:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place

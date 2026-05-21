@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I2 - Source Ingestion Gate Unification (2026-05-21).
+> Last updated during Phase 3.8d-I3 - Recovery cleanup dry-run and hydration policy (2026-05-21).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i2-source-ingestion-gate` (source ingestion gate unification; Phase 3.8d execute remains blocked) |
+| **Branch** | `phase3.8d-i3-recovery-cleanup-hydration-plan` (recovery cleanup dry-run and hydration/backfill policy; Phase 3.8d execute remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -37,7 +37,8 @@
 | **Phase 3.8b (PR #53)** | PR [#53](https://github.com/kyloris0660/AnimeLocalBooru/pull/53) merged - reusable classification-first workflow helpers and dry-run CLI; execute workflow remains deferred |
 | **Phase 3.8c (PR #54)** | PR #54 merged - medium +1000 candidate preflight with temporal stratified selection; dry-run only |
 | **Phase 3.8d-I1 (PR #55)** | PR #55 merged - iCloud / Windows Cloud Files ingestion reliability incident hardening; Phase 3.8d execute blocked |
-| **Phase 3.8d-I2 (branch)** | `phase3.8d-i2-source-ingestion-gate` - unify path-based source ingestion through a Source Ingestion Gate; no execute/resume yet |
+| **Phase 3.8d-I2 (PR #56)** | PR #56 merged - source ingestion gate unification; no execute/resume yet |
+| **Phase 3.8d-I3 (branch)** | `phase3.8d-i3-recovery-cleanup-hydration-plan` - partial staging cleanup dry-run plus controlled hydration/read-probe and same-bucket backfill policy; no execute/resume yet |
 
 ## Mandatory Workflow Rules
 
@@ -770,15 +771,25 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Staging-to-DB import uses `staging_file` semantics and requires a passed staging audit artifact before DB import.
 - Report: `docs/reports/phase-3.8d-i2-source-ingestion-gate.md`.
 
+**Phase 3.8d-I3 - Recovery Cleanup Dry-run and Hydration Policy (branch `phase3.8d-i3-recovery-cleanup-hydration-plan`):**
+- Adds a Final Delivery Report Standard to `AGENTS.md`, `CLAUDE.md`, and `docs/test-workflow.md`; final implementation/review reports must be Chinese and include PR URL, branch/head SHA, files changed, exact tests/results, local artifacts, reviewer status, safety confirmation, blocked/ready status, and recommended next step.
+- Replaces the standard automatic reviewer-fix loop with a Reviewer Feedback Handling Policy: CodeX triggers reviewer and reports current-head feedback, but does not modify code from reviewer comments unless the user explicitly authorizes a specific auto-fix loop.
+- Adds `scripts/plan_phase38d_i3_recovery.py`, a dry-run-only recovery planner for the preserved partial staging target. It generates privacy-safe cleanup and recovery policy reports plus an ignored local details artifact.
+- Partial staging cleanup dry-run result: target safe label `phase_3_8d_partial_staging`, exists, dedicated Phase 3.8d target by manifest/filesystem proof, `97` files, `340,159,586` bytes, extension distribution `.jpg=68`, `.png=22`, `.jpeg=6`, `.gif=1`, no protected-root overlap, no deletion performed. Staging logs are diagnostic only and are not used for cleanup authorization.
+- Controlled read-probe/hydration remains opt-in only, with bounded prefix read policy; direct `CfHydratePlaceholder` integration remains future work unless explicitly approved.
+- Same-bucket backfill dry-run for failed row `98` finds one same-bucket replacement candidate and preserves `selected_total=1000`; no manifest replacement is performed.
+- Recommendation: cleanup plus rerun is preferred over resume because only `97` files were copied and no DB/downstream state exists, but actual cleanup and any read-probe/hydration both require explicit later approval.
+- Reports: `docs/reports/phase-3.8d-i3-recovery-plan.md`, `docs/reports/phase-3.8d-i3-partial-staging-cleanup-dry-run.md`, and `docs/reports/phase-3.8d-i3-partial-staging-cleanup-dry-run-summary.json`.
+
 ## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute
 
 Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
 
-1. Review and merge the Phase 3.8d-I2 gate unification PR after PR #55.
-2. Approve one recovery path: cleanup plus rerun from empty dedicated staging, or resume after verifying already-copied files by size/hash and refusing overwrite.
-3. Approve any read-probe/hydration attempt separately. Metadata-only audit remains the default.
-4. If bounded hydrate/read-probe fails for specific files, use same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
-5. Only after staging copy is complete and verified may Phase 3.8d DB import be reconsidered.
+1. Review the Phase 3.8d-I3 recovery plan and cleanup dry-run reports.
+2. If accepted, explicitly approve cleanup of only the dedicated partial staging target using the dry-run evidence and confirmation phrase.
+3. Explicitly approve any controlled read-probe/hydration attempt separately. Metadata-only audit remains the default.
+4. If bounded hydrate/read-probe fails for specific files, approve same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
+5. Only after cleanup/recovery and staging copy are complete and verified may Phase 3.8d DB import be reconsidered.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

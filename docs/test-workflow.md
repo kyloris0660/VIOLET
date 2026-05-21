@@ -4,9 +4,19 @@
 
 This document describes the test infrastructure, environment setup, and execution workflow for V.I.O.L.E.T.
 
-## Implementation PR Reviewer Closeout
+## Reviewer Feedback Handling Policy
 
-For implementation PRs, CodeX owns the reviewer closeout loop after local validation. After each push, post exactly `@codex review`, poll GitHub every 2-3 minutes for up to 30 minutes, and confirm feedback belongs to the current PR head before acting. CodeX may fix current-head P1/P2 only when the issue is in scope, non-destructive, migration-free, does not mutate real DB/storage/source/staging without explicit authorization, and does not start a new phase. P3/nit/docs wording/logging suggestions are deferred unless tiny, safe, and local. Normal PRs have a 3-round reviewer-fix limit; PR #53 is limited to 2 rounds from this policy's introduction. Stop and escalate if P1/P2 remain after the limit, reviewer results cannot be tied to the current head, GitHub auth/CLI fails, tests fail, or the fix would require schema migration, destructive DB work, source/iCloud/staging mutation, phase-scope changes, or broad refactors. Before requesting reviewer again, perform a same-class local audit; never auto-merge or push `main`.
+For implementation PRs, reviewer feedback is a controlled handoff point, not an automatic code-change trigger.
+
+1. After PR creation or a meaningful PR update, CodeX must trigger reviewer with exactly `@codex review`.
+2. CodeX may collect reviewer feedback and verify whether it applies to the current PR head.
+3. CodeX must summarize current-head P1/P2/P3 findings in the final report.
+4. CodeX must not automatically modify code based on reviewer feedback.
+5. CodeX must stop and report reviewer findings to the user/ChatGPT.
+6. User/ChatGPT decides whether to fix now, defer, change implementation strategy, split into another PR, or merge.
+7. Automatic reviewer-fix loops are disabled by default and may only be used when the user explicitly authorizes them for a specific PR with a specific round limit and scope.
+8. Even when explicitly authorized, automatic fix loops must never push `main`, merge, run destructive operations, mutate source/iCloud/staging/DB unless explicitly approved, change phase scope, or start a new phase.
+9. Before triggering reviewer, CodeX must perform a local pre-review / same-class self-audit so reviewer is not used as a substitute for engineering judgment.
 
 Plan-only tasks must not create branches, commits, pushes, or PRs unless explicitly approved as documentation PRs. Deliver plan-only output in chat or as a local untracked `.codex/plans/*.md` draft and wait for user/ChatGPT approval.
 
@@ -216,6 +226,34 @@ Stop-Process -Id <recorded-PID>
 8. No iCloud paths, no VioletTestFixture mutation
 9. **Singleton policy** — only one agent-started server per session. Diagnose port conflicts, do not silently skip.
 10. Final report must include: working directory, branch, server command, PID, port, VIOLET_BASE_URL, identity check result, E2E command, stop/cleanup result
+
+## Final Delivery Report Standard
+
+Every CodeX final report for implementation or review stages must be written in Chinese and include:
+
+1. PR URL, branch, head SHA
+2. Whether the PR was created, pushed, and merged
+3. Docs/code read
+4. Python identity and exact sys.executable
+5. Exact files changed
+6. Implementation summary
+7. Exact tests run and exact results
+8. Real validation / dry-run results
+9. Reviewer status, including whether the latest head was reviewed
+10. Local artifacts generated and confirmation they were not committed
+11. Safety confirmation:
+    - no push main
+    - no merge
+    - no source/iCloud mutation unless explicitly approved
+    - no cleanup/delete/reset/drop/truncate unless explicitly approved
+    - no DB import unless explicitly approved
+    - no classification/AI/localization unless explicitly approved
+    - no Entity Resolver / similarity unless explicitly approved
+12. Current blocked/ready status
+13. Recommended next step
+14. If stopped by a rule, the exact stop condition
+
+A short summary alone is not acceptable. If any item is not applicable, say "N/A" and why. Do not force the user to inspect the PR body or old logs to reconstruct test results.
 
 Manual server start (fallback only — if agent startup fails):
 
