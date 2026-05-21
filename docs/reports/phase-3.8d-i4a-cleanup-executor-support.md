@@ -31,6 +31,7 @@ It must fail closed before deleting when any of these are present:
 - file size mismatch
 - path traversal target
 - symlink or Windows reparse-point escape hazard
+- hard-link escape hazard (`st_nlink > 1`) or unavailable link-count evidence
 - wrong or missing confirmation phrase
 
 Parent directories are left in place. Source/iCloud files, repo files, app-managed storage, DB data, staging copy, read-probe/hydration, classification, AI tagging, localization, Entity Resolver, and similarity workflows are out of scope.
@@ -44,6 +45,7 @@ Parent directories are left in place. Source/iCloud files, repo files, app-manag
 - deleted count and bytes are reported
 - target directory remains after temp-dir cleanup
 - symlink/reparse hazard blocks deletion
+- hard-link hazard blocks deletion
 - path traversal manifest target blocks deletion
 - public report privacy remains safe
 

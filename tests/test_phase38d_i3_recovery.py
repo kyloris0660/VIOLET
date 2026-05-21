@@ -449,6 +449,123 @@ def test_cleanup_executor_blocks_symlink_or_reparse_risk(tmp_path: Path, monkeyp
     assert copied.exists()
 
 
+def test_cleanup_executor_blocks_hardlinked_target(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    outside_hardlink = tmp_path / "outside-hardlink.jpg"
+    try:
+        os.link(copied, outside_hardlink)
+    except OSError as exc:
+        import pytest
+
+        pytest.skip(f"hard links not supported on this test volume: {exc}")
+    rows = _single_file_manifest(target)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+    result = recovery.execute_verified_cleanup(
+        target_root=target,
+        expected_manifest_rows=rows,
+        cleanup_dry_run=public,
+        expected_file_count=1,
+        expected_total_bytes=3,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["hardlink_hazard_entry_count"] == 1
+    assert "hardlink_escape_risk" in public["identity_mismatch_reasons"]
+    assert result["status"] == "blocked_dry_run_not_passed"
+    assert result["actual_delete_performed"] is False
+    assert copied.exists()
+    assert outside_hardlink.exists()
+
+
+def test_cleanup_executor_rescans_hardlink_risk_after_passing_dry_run(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    rows = _single_file_manifest(target)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+    assert public["status"] == "dry_run_passed"
+
+    outside_hardlink = tmp_path / "outside-hardlink-after-dry-run.jpg"
+    try:
+        os.link(copied, outside_hardlink)
+    except OSError as exc:
+        import pytest
+
+        pytest.skip(f"hard links not supported on this test volume: {exc}")
+
+    result = recovery.execute_verified_cleanup(
+        target_root=target,
+        expected_manifest_rows=rows,
+        cleanup_dry_run=public,
+        expected_file_count=1,
+        expected_total_bytes=3,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+    )
+
+    assert result["status"] == "blocked_hardlink_escape_risk"
+    assert result["errors"] == ["hardlink_escape_risk"]
+    assert result["actual_delete_performed"] is False
+    assert copied.exists()
+    assert outside_hardlink.exists()
+
+
+def test_cleanup_dry_run_fails_closed_when_link_count_unavailable(tmp_path: Path, monkeypatch):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    monkeypatch.setattr(recovery, "_hardlink_hazard_reason", lambda path: "delete_target_link_count_unavailable")
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["hardlink_hazard_entry_count"] == 1
+    assert "hardlink_escape_risk" in public["identity_mismatch_reasons"]
+    assert copied.exists()
+
+
 def test_cleanup_executor_path_traversal_manifest_target_blocks(tmp_path: Path):
     target = tmp_path / "target"
     target.mkdir()

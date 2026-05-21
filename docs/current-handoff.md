@@ -784,9 +784,9 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 
 **Phase 3.8d-I4a - Controlled Partial Staging Cleanup Executor Support (branch `phase3.8d-i4a-cleanup-executor-support`):**
 - Adds reviewed cleanup execution support to `scripts/plan_phase38d_i3_recovery.py`, but this phase does not run it against the real partial staging target.
-- Execute mode requires `--execute-cleanup`, exact confirmation phrase `DELETE_PHASE38D_PARTIAL_STAGING`, a fresh passing cleanup dry-run proof, valid protected roots, manifest/filesystem identity proof, no unexpected/missing/size-mismatched files, and no symlink/reparse escape hazard under the target.
+- Execute mode requires `--execute-cleanup`, exact confirmation phrase `DELETE_PHASE38D_PARTIAL_STAGING`, a fresh passing cleanup dry-run proof, valid protected roots, manifest/filesystem identity proof, no unexpected/missing/size-mismatched files, and no symlink/reparse/hard-link escape hazard under the target.
 - Deletion scope is limited to expected manifest/filesystem-matched regular files under the verified target. Parent directories are left in place; source/iCloud, repo files, app-managed storage, DB data, staging copy, read-probe/hydration, classification, AI tagging, localization, Entity Resolver, and similarity remain untouched.
-- Tests cover default no-delete behavior, wrong confirmation phrase, identity-proof failures, valid temp-directory cleanup, path traversal blocking, and symlink/reparse hazard blocking.
+- Tests cover default no-delete behavior, wrong confirmation phrase, identity-proof failures, valid temp-directory cleanup, path traversal blocking, symlink/reparse hazard blocking, and hard-link hazard blocking.
 - Report: `docs/reports/phase-3.8d-i4a-cleanup-executor-support.md`.
 
 ## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute

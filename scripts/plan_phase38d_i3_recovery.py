@@ -167,12 +167,33 @@ def _entry_has_reparse_point(path: Path) -> bool:
     return bool(attrs & FILE_ATTRIBUTE_REPARSE_POINT)
 
 
+def _hardlink_hazard_reason(path: Path) -> str | None:
+    try:
+        stat_result = path.stat()
+    except OSError:
+        return "delete_target_link_count_unavailable"
+    link_count = getattr(stat_result, "st_nlink", None)
+    if link_count is None:
+        return "delete_target_link_count_unavailable"
+    if link_count > 1:
+        return "delete_target_hardlink"
+    return None
+
+
 def _find_escape_risk_entries(root: Path) -> list[Path]:
     risks = []
     for entry in _iter_entries(root):
         if entry.is_symlink() or _entry_has_reparse_point(entry):
             risks.append(entry)
     return risks
+
+
+def _find_hardlink_hazard_entries(root: Path) -> list[Path]:
+    hazards = []
+    for path in _iter_files(root):
+        if _hardlink_hazard_reason(path):
+            hazards.append(path)
+    return hazards
 
 
 def _safe_entry_labels(paths: Sequence[Path]) -> list[str]:
@@ -493,6 +514,7 @@ def build_cleanup_dry_run(
     target_is_dir = target_root.is_dir()
     files = _iter_files(target_root)
     escape_risk_entries = _find_escape_risk_entries(target_root)
+    hardlink_hazard_entries = _find_hardlink_hazard_entries(target_root)
     actual_files: dict[str, int] = {}
     actual_unkeyed_files = 0
     duplicate_actual_keys = 0
@@ -655,6 +677,7 @@ def build_cleanup_dry_run(
         and manifest_filesystem_check_passed
         and protected_roots_valid
         and not escape_risk_entries
+        and not hardlink_hazard_entries
         and not unsafe_reasons
     )
     if not log_match.log_present:
@@ -713,6 +736,8 @@ def build_cleanup_dry_run(
             "actual_unkeyed_file_count": actual_unkeyed_files,
             "escape_hazard_entry_count": len(escape_risk_entries),
             "escape_hazard_safe_labels": _safe_entry_labels(escape_risk_entries),
+            "hardlink_hazard_entry_count": len(hardlink_hazard_entries),
+            "hardlink_hazard_safe_labels": _safe_entry_labels(hardlink_hazard_entries),
         },
         "protected_root_checks": protected_checks,
         "target_is_not_source_icloud": source_check_valid and not any(check["overlaps_target"] for check in source_checks),
@@ -784,6 +809,8 @@ def build_cleanup_dry_run(
         identity_mismatch_reasons.append("actual_target_scan_unreliable")
     if escape_risk_entries:
         identity_mismatch_reasons.append("target_contains_symlink_or_reparse_point")
+    if hardlink_hazard_entries:
+        identity_mismatch_reasons.append("hardlink_escape_risk")
     public["identity_mismatch_reasons"] = identity_mismatch_reasons
 
     if unsafe_reasons:
@@ -813,6 +840,7 @@ def build_cleanup_dry_run(
         "missing_expected_file_keys": sorted(missing_expected_keys)[:20],
         "size_mismatch_file_keys": sorted(size_mismatch_keys)[:20],
         "escape_hazard_paths": [str(path) for path in escape_risk_entries[:20]],
+        "hardlink_hazard_paths": [str(path) for path in hardlink_hazard_entries[:20]],
     }
     return public, local
 
@@ -856,9 +884,17 @@ def _build_delete_targets(
             errors.append("delete_target_not_regular_file")
             continue
         try:
-            size = normalized.stat().st_size
+            stat_result = normalized.stat()
+            size = stat_result.st_size
         except OSError:
             errors.append("delete_target_stat_failed")
+            continue
+        link_count = getattr(stat_result, "st_nlink", None)
+        if link_count is None:
+            errors.append("delete_target_link_count_unavailable")
+            continue
+        if link_count > 1:
+            errors.append("delete_target_hardlink")
             continue
         if expected.size_bytes is not None and size != expected.size_bytes:
             errors.append("delete_target_size_mismatch")
@@ -909,11 +945,20 @@ def execute_verified_cleanup(
         result["status"] = "blocked_escape_risk"
         result["errors"] = ["target_contains_symlink_or_reparse_point"]
         return result
+    if evidence.get("hardlink_hazard_entry_count"):
+        result["status"] = "blocked_hardlink_escape_risk"
+        result["errors"] = ["hardlink_escape_risk"]
+        return result
 
     escape_risk_entries = _find_escape_risk_entries(target_root)
     if escape_risk_entries:
         result["status"] = "blocked_escape_risk"
         result["errors"] = ["target_contains_symlink_or_reparse_point"]
+        return result
+    hardlink_hazard_entries = _find_hardlink_hazard_entries(target_root)
+    if hardlink_hazard_entries:
+        result["status"] = "blocked_hardlink_escape_risk"
+        result["errors"] = ["hardlink_escape_risk"]
         return result
 
     delete_targets, target_errors = _build_delete_targets(
@@ -1232,6 +1277,7 @@ def render_cleanup_markdown(
         f"- Duplicate expected target count: `{evidence['duplicate_expected_target_count']}`",
         f"- Invalid manifest target count: `{evidence['invalid_manifest_target_count']}`",
         f"- Symlink/reparse escape hazard count: `{evidence['escape_hazard_entry_count']}`",
+        f"- Hard-link escape hazard count: `{evidence['hardlink_hazard_entry_count']}`",
         f"- Identity mismatch reasons: `{json.dumps(report['identity_mismatch_reasons'], ensure_ascii=False)}`",
         "",
         "## Safety Proof",
