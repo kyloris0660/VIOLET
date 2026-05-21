@@ -317,6 +317,17 @@ See [Content Classification](content-classification.md) for full documentation.
 - Added shared Windows Cloud Files metadata helper, privacy-safe manifest cloud availability audit, structured copy failure classification, opt-in read-probe hooks, dry-run same-bucket backfill planning, and dry-run-only cleanup/resume policy documentation.
 - Phase 3.8d execute, Phase 4, and any larger import remain blocked until this incident is reviewed and a recovery path is explicitly approved.
 
+### Phase 3.8d-I2 - Source Ingestion Gate Unification
+
+**Goal:** Ensure cloud/iCloud handling is a shared project foundation rather than isolated script patches.
+
+- Added a shared Source Ingestion Gate for source kinds: `path_source`, `upload_bytes`, `staging_file`, and `app_managed_file`.
+- Path-based source workflows must inspect Cloud Files metadata through the gate before content reads/copies.
+- Local library scan/preflight, legacy candidate manifest generation, Phase 3.8c candidate preflight, cloud availability audit, and staging copy validation/execute now route source availability checks through the shared gate.
+- Staging-to-DB import is classified as `staging_file`: it does not repeat source/iCloud cloud checks, but it requires a passed staging audit artifact before import.
+- Upload-bytes routes and app-managed storage reads are documented as outside the source cloud gate.
+- Phase 3.8d execute remains blocked until cleanup/resume and controlled read-probe/hydration/backfill recovery are explicitly approved.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -392,7 +403,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the same cloud availability gate; manual mass hydration is not a formal workflow.
+**Blocked by Phase 3.8d-I1/I2:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place
@@ -469,7 +480,7 @@ For every new major development phase or substantial feature scope, the agent mu
 
 ### Cloud Availability Gate for Ingestion/Staging/Copy
 
-Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must pass a cloud availability gate before content reads:
+Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must pass the Source Ingestion Gate before content reads:
 
 - `stat()`, `exists()`, file size, and `is_file()` are insufficient for cloud-backed files.
 - Windows cloud attributes must be inspected before copy/import.
@@ -477,6 +488,7 @@ Any workflow that can read or copy from iCloud / Windows Cloud Files source path
 - Manual hydrate is an emergency workaround only, not the formal V.I.O.L.E.T. workflow.
 - Structured cloud failure reasons are required.
 - DB import must not run after failed or incomplete staging copy.
+- Upload-bytes routes and app-managed storage reads do not require the source cloud gate.
 
 ### Destructive DB Operation Safety (post-incident, 2026-05-10)
 

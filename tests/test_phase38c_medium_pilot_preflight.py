@@ -82,6 +82,10 @@ def test_temporal_stratified_selection_spans_all_time_buckets(tmp_path: Path):
     assert selected_buckets == {"b01", "b02", "b03", "b04", "b05", "b06"}
     assert summary["temporal_diversity_check"]["passed"] is True
     assert summary["strategy"] == "filesystem_mtime_quantile_stratified"
+    assert summary["source_ingestion_gate"]["selected"]["source_kind"] == "path_source"
+    assert summary["source_ingestion_gate"]["selected"]["metadata_only"] is True
+    assert summary["source_ingestion_gate"]["selected"]["blocked_count"] == 0
+    assert summary["source_ingestion_gate"]["selected"]["manual_hydrate_formal_workflow"] is False
 
 
 def test_candidate_selection_excludes_prior_manifest_paths_and_duplicate_keys(tmp_path: Path):

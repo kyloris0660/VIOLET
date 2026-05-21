@@ -32,6 +32,13 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_ROOT = REPO_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.services.source_ingestion_gate import SourceIngestionGate  # noqa: E402
+
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 PLACEHOLDER_SIZE_THRESHOLD = 1024  # bytes
@@ -83,6 +90,13 @@ def validate_output_paths(
 
 def is_icloud_placeholder(path: Path) -> bool:
     """Detect iCloud placeholder / stub files that haven't been downloaded."""
+    gate = SourceIngestionGate.evaluate_path_source(
+        path,
+        safe_label=path.name,
+        hydration_policy_enabled=False,
+    )
+    if gate.blocked and gate.reason.startswith("cloud_"):
+        return True
     try:
         size = path.stat().st_size
     except OSError:
@@ -157,6 +171,13 @@ def _scan_source(source_root: Path):
                 continue
 
             entry["is_placeholder"] = is_icloud_placeholder(fpath)
+            gate = SourceIngestionGate.evaluate_path_source(
+                fpath,
+                safe_label=fname,
+                hydration_policy_enabled=False,
+            )
+            entry["source_gate_blocked"] = gate.blocked and gate.reason.startswith("cloud_")
+            entry["source_gate_reason"] = gate.reason if entry["source_gate_blocked"] else ""
             yield entry
 
 
@@ -366,6 +387,14 @@ def generate_manifest(
         "existing_total_bytes": existing_total_bytes,
         "combined_total": existing_count + len(selected),
         "manifest_total_rows": len(rows),
+        "source_ingestion_gate": {
+            "source_kind": "path_source",
+            "metadata_only": True,
+            "applied": True,
+            "cloud_blocked_count": sum(1 for entry in all_source_entries if entry.get("source_gate_blocked")),
+            "manual_hydrate_formal_workflow": False,
+            "paths_redacted": True,
+        },
     }
 
     return {"candidates": rows, "summary": summary}

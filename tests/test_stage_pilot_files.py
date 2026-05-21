@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from app.utils.cloud_files import CloudFileState
+from app.services.source_ingestion_gate import SourceIngestionGateResult
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "stage_pilot_files.py"
 SCRIPT = str(SCRIPT_PATH)
@@ -1825,18 +1826,26 @@ class TestCloudAvailabilityGate:
         }]
         _write_manifest(manifest_path, rows)
 
-        monkeypatch.setattr(
-            _module,
-            "classify_cloud_file_state",
-            lambda path: CloudFileState(
+        def fake_gate(path, safe_label=None, hydration_policy_enabled=False):
+            state = CloudFileState(
                 path=str(path),
                 supported_platform=True,
                 exists=True,
                 is_file=True,
                 recall_on_data_access=True,
                 likely_cloud_placeholder=True,
-            ),
-        )
+            )
+            return SourceIngestionGateResult(
+                allowed=False,
+                blocked=True,
+                source_kind="path_source",
+                reason="cloud_recall_on_data_access",
+                required_policy="controlled_hydration_or_read_probe_or_backfill",
+                cloud_state=state,
+                safe_label=safe_label,
+            )
+
+        monkeypatch.setattr(_module.SourceIngestionGate, "evaluate_path_source", staticmethod(fake_gate))
 
         result = validate_manifest(manifest_path, target_root)
 
@@ -1865,18 +1874,26 @@ class TestCloudAvailabilityGate:
             errno = None
 
         monkeypatch.setattr(_module.shutil, "copy2", lambda *_args, **_kwargs: (_ for _ in ()).throw(FakeCopyError("cloud sync unavailable")))
-        monkeypatch.setattr(
-            _module,
-            "classify_cloud_file_state",
-            lambda path: CloudFileState(
+
+        def fake_gate(path, safe_label=None, hydration_policy_enabled=False):
+            state = CloudFileState(
                 path=str(path),
                 supported_platform=True,
                 exists=True,
                 is_file=True,
-                recall_on_data_access=True,
-                likely_cloud_placeholder=True,
-            ),
-        )
+                recall_on_data_access=hydration_policy_enabled,
+                likely_cloud_placeholder=hydration_policy_enabled,
+            )
+            return SourceIngestionGateResult(
+                allowed=True,
+                blocked=False,
+                source_kind="path_source",
+                reason="path_source_available",
+                cloud_state=state,
+                safe_label=safe_label,
+            )
+
+        monkeypatch.setattr(_module.SourceIngestionGate, "evaluate_path_source", staticmethod(fake_gate))
 
         result = execute_copy(manifest_path, target_root, approved_source_roots=[src_root], rows=rows)
 
@@ -1884,4 +1901,52 @@ class TestCloudAvailabilityGate:
         assert result["copied"] == 0
         assert result["failed_reason_code"] == "cloud_network_unavailable"
         assert result["failed_cloud_state"]["likely_cloud_placeholder"] is True
+        assert not (target_root / "cloud.jpg").exists()
+
+    def test_execute_copy_refuses_cloud_risk_before_copy2(self, monkeypatch, tmp_path: Path):
+        src_root = tmp_path / "src"
+        src_root.mkdir()
+        src = src_root / "cloud.jpg"
+        src.write_bytes(b"\xff\xd8" + b"\x00" * 2000)
+        target_root = tmp_path / "target"
+        manifest_path = tmp_path / "manifest.csv"
+        rows = [{
+            "row_id": "1", "source_path": str(src),
+            "proposed_target_path": str(target_root / "cloud.jpg"),
+            "extension": ".jpg", "size_bytes": str(src.stat().st_size),
+            "selection_reason": "new_candidate", "duplicate_key": "",
+            "exclusion_reason": "", "placeholder_flag": "False", "stat_error": "False",
+        }]
+
+        def fail_copy(*_args, **_kwargs):
+            pytest.fail("copy2 must not run after source ingestion gate blocks")
+
+        def fake_gate(path, safe_label=None, hydration_policy_enabled=False):
+            state = CloudFileState(
+                path=str(path),
+                supported_platform=True,
+                exists=True,
+                is_file=True,
+                offline=True,
+                likely_cloud_placeholder=True,
+            )
+            return SourceIngestionGateResult(
+                allowed=False,
+                blocked=True,
+                source_kind="path_source",
+                reason="cloud_offline",
+                required_policy="controlled_hydration_or_read_probe_or_backfill",
+                cloud_state=state,
+                safe_label=safe_label,
+            )
+
+        monkeypatch.setattr(_module.shutil, "copy2", fail_copy)
+        monkeypatch.setattr(_module.SourceIngestionGate, "evaluate_path_source", staticmethod(fake_gate))
+
+        result = execute_copy(manifest_path, target_root, approved_source_roots=[src_root], rows=rows)
+
+        assert result["failed"] == 1
+        assert result["copied"] == 0
+        assert result["failed_reason_code"] == "cloud_offline"
+        assert result["failed_cloud_state"]["offline"] is True
         assert not (target_root / "cloud.jpg").exists()

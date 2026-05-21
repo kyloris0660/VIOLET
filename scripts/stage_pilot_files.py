@@ -41,8 +41,11 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.utils.cloud_files import (  # noqa: E402
-    classify_cloud_file_state,
     classify_file_access_error,
+)
+from app.services.source_ingestion_gate import (  # noqa: E402
+    SourceIngestionGate,
+    cloud_block_reasons,
 )
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
@@ -263,20 +266,15 @@ def validate_manifest(
             if sp.is_file():
                 result["source_files_exist"] += 1
                 source_suffix = sp.suffix.lower()
-                cloud_state = classify_cloud_file_state(sp)
-                if cloud_state.likely_cloud_placeholder:
+                gate = SourceIngestionGate.evaluate_path_source(
+                    sp,
+                    safe_label=f"manifest_row_{_clean_field(row, 'row_id', '?')}{source_suffix}",
+                    hydration_policy_enabled=False,
+                )
+                cloud_state = gate.cloud_state
+                if gate.blocked and gate.reason.startswith("cloud_") and cloud_state:
                     result["cloud_risk_files"] += 1
-                    reasons = []
-                    if cloud_state.offline:
-                        reasons.append("cloud_offline")
-                    if cloud_state.recall_on_open:
-                        reasons.append("cloud_recall_on_open")
-                    if cloud_state.recall_on_data_access:
-                        reasons.append("cloud_recall_on_data_access")
-                    if cloud_state.reparse_point:
-                        reasons.append("cloud_reparse_point")
-                    if not reasons:
-                        reasons.append("cloud_hydration_risk")
+                    reasons = cloud_block_reasons(cloud_state) or (gate.reason,)
                     for reason in reasons:
                         result["cloud_risk_by_reason"][reason] = result["cloud_risk_by_reason"].get(reason, 0) + 1
                     if len(result["cloud_risk_paths"]) < 10:
@@ -666,12 +664,18 @@ def execute_copy(
 
         # Source must exist
         if not sp.is_file():
-            cloud_state = classify_cloud_file_state(sp)
+            gate = SourceIngestionGate.evaluate_path_source(
+                sp,
+                safe_label=f"manifest_row_{_clean_field(row, 'row_id', '?')}{sp.suffix.lower()}",
+                hydration_policy_enabled=False,
+            )
             copy_result["failed"] += 1
             copy_result["failed_path"] = source_path
             copy_result["failed_reason_code"] = "source_missing"
             copy_result["failed_reason"] = "Source file not found"
-            copy_result["failed_cloud_state"] = cloud_state.to_dict()
+            copy_result["failed_cloud_state"] = (
+                gate.cloud_state.to_dict() if gate.cloud_state else None
+            )
             copy_result["errors"].append(f"Source not found: {source_path}")
             return copy_result
 
@@ -688,6 +692,27 @@ def execute_copy(
             copy_result["failed_reason_code"] = "permission_denied"
             copy_result["failed_reason"] = "Source outside approved roots"
             copy_result["errors"].append(f"Source outside approved roots: {source_path}")
+            return copy_result
+
+        gate = SourceIngestionGate.evaluate_path_source(
+            sp,
+            safe_label=f"manifest_row_{_clean_field(row, 'row_id', '?')}{sp.suffix.lower()}",
+            hydration_policy_enabled=False,
+        )
+        if gate.blocked:
+            copy_result["failed"] += 1
+            copy_result["failed_path"] = source_path
+            copy_result["failed_reason_code"] = gate.reason
+            copy_result["failed_reason"] = (
+                f"Source ingestion gate blocked ({gate.reason}); "
+                f"required_policy={gate.required_policy}"
+            )
+            copy_result["failed_cloud_state"] = (
+                gate.cloud_state.to_dict() if gate.cloud_state else None
+            )
+            copy_result["errors"].append(
+                f"Source ingestion gate blocked ({gate.reason}): {source_path}"
+            )
             return copy_result
 
         # Target must be inside target_root
@@ -726,13 +751,20 @@ def execute_copy(
         try:
             shutil.copy2(str(sp), str(tp))
         except (OSError, shutil.SameFileError) as exc:
-            cloud_state = classify_cloud_file_state(sp)
+            gate = SourceIngestionGate.evaluate_path_source(
+                sp,
+                safe_label=f"manifest_row_{_clean_field(row, 'row_id', '?')}{sp.suffix.lower()}",
+                hydration_policy_enabled=True,
+            )
+            cloud_state = gate.cloud_state
             reason_code = classify_file_access_error(exc, cloud_state)
             copy_result["failed"] += 1
             copy_result["failed_path"] = source_path
             copy_result["failed_reason_code"] = reason_code
             copy_result["failed_reason"] = f"Copy failed ({reason_code}): {exc}"
-            copy_result["failed_cloud_state"] = cloud_state.to_dict()
+            copy_result["failed_cloud_state"] = (
+                cloud_state.to_dict() if cloud_state else None
+            )
             copy_result["errors"].append(f"Copy error ({reason_code}): {source_path} -> {proposed_target}: {exc}")
             return copy_result
 

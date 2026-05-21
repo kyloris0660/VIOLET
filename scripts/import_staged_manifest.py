@@ -35,6 +35,7 @@ from app.enums import FileTypeEnum, RatingEnum  # noqa: E402
 from app.utils.media_helpers import get_unique_filename  # noqa: E402
 from app.utils.media_processor import calculate_file_hash, process_media_file  # noqa: E402
 from app.utils.thumbnail_generator import generate_thumbnail  # noqa: E402
+from app.services.source_ingestion_gate import SourceIngestionGate  # noqa: E402
 
 CONFIRM_PHRASE = "IMPORT_TIER1000_TO_DB"
 IMPORT_SOURCE_LABEL = "violet:tier1000:phase3.5"
@@ -836,6 +837,13 @@ def prepare_report(
     context: RuntimeContext,
     target_root: Path,
 ) -> ImportReport:
+    staging_gate = SourceIngestionGate.evaluate_staging_file(
+        staging_audit_passed=(
+            audit_summary.get("result") == "PASS"
+            and audit_summary.get("copy_count_matches_expected") is True
+        ),
+        safe_label=PUBLIC_TARGET_LABEL,
+    )
     return ImportReport(
         import_run_id=str(uuid.uuid4()),
         mode=mode,
@@ -876,6 +884,12 @@ def prepare_report(
             "disabled_flags": context.disabled_flags,
             "source_staging_mutation": False,
             "ai_llm_classification_localization_entity_resolver": "disabled",
+            "source_ingestion_gate": {
+                "source_kind": "staging_file",
+                "source_cloud_gate_required": False,
+                "staging_audit_required": True,
+                "result": staging_gate.to_public_dict(),
+            },
         },
     )
 

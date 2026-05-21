@@ -17,8 +17,8 @@ from .media_helpers import get_unique_filename
 from .media_processor import calculate_file_hash
 from .cloud_files import (
     FILE_ATTRIBUTE_HIDDEN as _FILE_ATTRIBUTE_HIDDEN,
-    is_likely_cloud_placeholder,
 )
+from ..services.source_ingestion_gate import SourceIngestionGate
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
@@ -146,11 +146,15 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
 def _is_cloud_only(file_path: Path) -> bool:
     """Check if a file is cloud-only (not locally hydrated) on Windows.
 
-    Uses the shared Cloud Files metadata helper to check for OFFLINE,
-    RECALL_ON_DATA_ACCESS, RECALL_ON_OPEN, and related cloud attributes.
-    Returns False on non-Windows or on any error.
+    Uses the shared Source Ingestion Gate, which delegates to Cloud Files
+    metadata helpers without opening or hydrating file contents.
     """
-    return is_likely_cloud_placeholder(file_path)
+    gate = SourceIngestionGate.evaluate_path_source(
+        file_path,
+        safe_label=file_path.name,
+        hydration_policy_enabled=False,
+    )
+    return gate.blocked and gate.reason.startswith("cloud_")
 
 
 def _is_hidden(file_path: Path) -> bool:

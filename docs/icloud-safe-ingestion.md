@@ -34,6 +34,30 @@ All ingestion, staging, and copy workflows that can touch iCloud or Windows Clou
 - No DB import may run after failed or incomplete staging copy.
 - Read-probe/hydration modes are opt-in because they may trigger provider-side downloads.
 
+## Phase 3.8d-I2 Source Ingestion Gate
+
+Cloud/iCloud handling must not live as isolated script patches.  All path-based source ingestion workflows now route source availability policy through `backend/app/services/source_ingestion_gate.py`.
+
+The gate distinguishes source kinds:
+
+| Source kind | Gate behavior |
+|-------------|---------------|
+| `path_source` | Inspect Cloud Files metadata and block content reads/copies when cloud risk exists unless an approved hydration/read-probe/backfill policy is active |
+| `upload_bytes` | No source cloud gate; bytes are already supplied by the client request |
+| `staging_file` | No source cloud gate; DB import requires a passed staging audit artifact proving source copy completed |
+| `app_managed_file` | No source cloud gate; app storage consistency checks apply separately |
+
+Path-based local source ingestion includes local library scans, preflight scans, candidate manifest generation, cloud availability audit, staging copy validation, and staging copy execution.  Upload endpoints that receive `UploadFile` request bytes are not path-source workflows and should not be forced through Cloud Files checks.
+
+The formal rule is:
+
+- `stat()`, `exists()`, file size, and `is_file()` are insufficient for cloud-backed source paths.
+- Cloud attributes must be inspected before source content is read or copied.
+- High cloud-risk selected sets must not proceed directly to copy.
+- Manual hydrate is not the formal workflow.
+- Structured cloud failure reasons are required.
+- Staging-to-DB import must require a passed staging audit and must not run after incomplete staging copy.
+
 ## Configuration
 
 | Environment Variable | Default | Description |
@@ -101,7 +125,7 @@ On Windows, files synced by iCloud/OneDrive have file attributes indicating they
 | `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS` | `0x400000` | Accessing data triggers recall from remote |
 | `FILE_ATTRIBUTE_RECALL_ON_OPEN` | `0x40000` | Opening triggers recall from remote |
 
-The shared helper in `backend/app/utils/cloud_files.py` checks these via `ctypes.windll.kernel32.GetFileAttributesW`. On non-Windows platforms, it reports `supported_platform=false` and does not mark files as cloud-risk. The local library scanner's `_is_cloud_only()` wrapper now delegates to this shared helper so scan safety and pilot staging/copy preflights use one source of truth.
+The metadata helper in `backend/app/utils/cloud_files.py` checks these via `ctypes.windll.kernel32.GetFileAttributesW`. On non-Windows platforms, it reports `supported_platform=false` and does not mark files as cloud-risk. The local library scanner's `_is_cloud_only()` wrapper now delegates to the shared Source Ingestion Gate, which uses this helper so scan safety and pilot staging/copy preflights use one source of truth.
 
 When `hydrated_only=True` (the default), files with any of these attributes are skipped and counted as `skipped_cloud_placeholder`.
 

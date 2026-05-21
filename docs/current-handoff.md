@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I1 - iCloud / Windows Cloud Files Ingestion Reliability Incident & Hardening (2026-05-21).
+> Last updated during Phase 3.8d-I2 - Source Ingestion Gate Unification (2026-05-21).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-icloud-ingestion-hardening` (incident hardening branch; Phase 3.8d execute remains blocked) |
+| **Branch** | `phase3.8d-i2-source-ingestion-gate` (source ingestion gate unification; Phase 3.8d execute remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -36,7 +36,8 @@
 | **Phase 3.7 (PR #51)** | PR [#51](https://github.com/kyloris0660/AnimeLocalBooru/pull/51) merged - Tier-1000 content classification validation and tag-derived workflow scope gate |
 | **Phase 3.8b (PR #53)** | PR [#53](https://github.com/kyloris0660/AnimeLocalBooru/pull/53) merged - reusable classification-first workflow helpers and dry-run CLI; execute workflow remains deferred |
 | **Phase 3.8c (PR #54)** | PR #54 merged - medium +1000 candidate preflight with temporal stratified selection; dry-run only |
-| **Phase 3.8d-I1 (branch)** | `phase3.8d-icloud-ingestion-hardening` - iCloud / Windows Cloud Files ingestion reliability incident hardening; Phase 3.8d execute blocked |
+| **Phase 3.8d-I1 (PR #55)** | PR #55 merged - iCloud / Windows Cloud Files ingestion reliability incident hardening; Phase 3.8d execute blocked |
+| **Phase 3.8d-I2 (branch)** | `phase3.8d-i2-source-ingestion-gate` - unify path-based source ingestion through a Source Ingestion Gate; no execute/resume yet |
 
 ## Mandatory Workflow Rules
 
@@ -55,7 +56,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 11. **Admin auth mutation rule** — Agent-initiated admin password resets (e.g. via `psql UPDATE`) require explicit user consent in the chat before execution. Silent resets are prohibited. Document any auth mutation in the delivery report.
 12. **Reporting accuracy for tag deltas** — Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), `media_tags` row delta (net change in media↔tag associations), `tag row delta` (net change in Tag table rows), and `media_with_ai_tags delta` (net change in media items that have at least one AI-generated tag). If `media_tags` delta equals `tags_added + suggestions_added`, state so explicitly. Do not conflate these metrics.
 
-13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging.
+13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes through the Source Ingestion Gate before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging. Upload-bytes and app-managed storage reads do not require the source cloud gate.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -762,11 +763,18 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - New audit script `scripts/audit_cloud_availability.py` produces privacy-safe public reports plus local full-path details; `--read-probe` is opt-in and must not be run without explicit approval.
 - Reports: `docs/reports/phase-3.8d-icloud-ingestion-incident.md`, `docs/reports/phase-3.8d-cloud-availability-audit.md`, and `docs/reports/phase-3.8d-cloud-availability-audit-summary.json`.
 
-## Recommended Next Step: Resolve Phase 3.8d-I1 Before Any Execute
+**Phase 3.8d-I2 - Source Ingestion Gate Unification (branch `phase3.8d-i2-source-ingestion-gate`):**
+- Adds `backend/app/services/source_ingestion_gate.py` as the shared policy point for path-based source availability.
+- Path-based source workflows must use `path_source` gate checks before content reads/copies.
+- Upload-bytes and app-managed storage reads are explicitly outside the source cloud gate; their normal validation/storage checks still apply.
+- Staging-to-DB import uses `staging_file` semantics and requires a passed staging audit artifact before DB import.
+- Report: `docs/reports/phase-3.8d-i2-source-ingestion-gate.md`.
+
+## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute
 
 Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
 
-1. Review and merge the Phase 3.8d-I1 hardening PR.
+1. Review and merge the Phase 3.8d-I2 gate unification PR after PR #55.
 2. Approve one recovery path: cleanup plus rerun from empty dedicated staging, or resume after verifying already-copied files by size/hash and refusing overwrite.
 3. Approve any read-probe/hydration attempt separately. Metadata-only audit remains the default.
 4. If bounded hydrate/read-probe fails for specific files, use same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
