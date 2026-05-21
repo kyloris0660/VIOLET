@@ -248,7 +248,7 @@ def _staging_log_matches_target(
     expected_copy_count: int,
     expected_file_count: int,
     expected_total_bytes: int,
-    relative_target_base: Path | None,
+    relative_target_bases: Sequence[Path],
 ) -> StagingLogMatch:
     if log_path is None or not log_path.is_file():
         return StagingLogMatch(False, False, False, False, None, None, False, False, False, 0, "not_applicable")
@@ -275,9 +275,16 @@ def _staging_log_matches_target(
             entry_target_key = _path_key(entry.target)
         else:
             relative_target_seen = True
-            entry_target_key = _path_key(entry.target, base=relative_target_base) if relative_target_base else None
-            ambiguous_relative_target_seen = ambiguous_relative_target_seen or entry_target_key is None
-        entry_target_matches = entry_target_key == target_key
+            entry_target_keys = [
+                key for base in relative_target_bases if (key := _path_key(entry.target, base=base)) is not None
+            ]
+            ambiguous_relative_target_seen = ambiguous_relative_target_seen or not entry_target_keys
+            entry_target_key = entry_target_keys[0] if entry_target_keys else None
+        entry_target_matches = (
+            entry_target_key == target_key
+            if entry.target.is_absolute()
+            else target_key in entry_target_keys
+        )
         target_exact_match = target_exact_match or entry_target_matches
         if not entry_target_matches:
             continue
@@ -360,6 +367,8 @@ def _validate_protected_root(root: ProtectedRoot, target_root: Path) -> Protecte
 def _expected_partial_target_keys(
     rows: Sequence[dict[str, str]] | None,
     expected_file_count: int,
+    *,
+    relative_target_base: Path,
 ) -> set[str] | None:
     if rows is None:
         return None
@@ -370,7 +379,7 @@ def _expected_partial_target_keys(
         target = (row.get("proposed_target_path") or "").strip()
         if not target:
             continue
-        target_key = _path_key(Path(target))
+        target_key = _path_key(Path(target), base=relative_target_base)
         if target_key is None:
             continue
         expected.add(target_key)
@@ -397,7 +406,11 @@ def build_cleanup_dry_run(
     target_is_dir = target_root.is_dir()
     files = _iter_files(target_root)
     actual_file_keys = {key for path in files if (key := _path_key(path)) is not None}
-    expected_file_keys = _expected_partial_target_keys(expected_manifest_rows, expected_file_count)
+    expected_file_keys = _expected_partial_target_keys(
+        expected_manifest_rows,
+        expected_file_count,
+        relative_target_base=target_root,
+    )
     unexpected_keys = actual_file_keys - expected_file_keys if expected_file_keys is not None else set()
     missing_expected_keys = expected_file_keys - actual_file_keys if expected_file_keys is not None else set()
     unexpected_files_check_available = expected_file_keys is not None
@@ -450,13 +463,16 @@ def build_cleanup_dry_run(
         and "repo_root" in labels
         and "app_storage_root" in labels
     )
+    relative_target_bases = []
+    if expected_staging_root is not None:
+        relative_target_bases.extend([expected_staging_root, expected_staging_root.parent])
     log_match = _staging_log_matches_target(
         staging_log,
         target_root,
         expected_copy_count=expected_copy_count,
         expected_file_count=expected_file_count,
         expected_total_bytes=expected_total_bytes,
-        relative_target_base=expected_staging_root.parent if expected_staging_root is not None else None,
+        relative_target_bases=relative_target_bases,
     )
     file_count_matches = len(files) == expected_file_count
     byte_count_matches = total_bytes == expected_total_bytes

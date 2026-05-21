@@ -640,7 +640,7 @@ def test_gb_byte_tolerance_uses_two_decimal_precision(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=int(round(1.004 * gib)),
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     )
     outside_tolerance = recovery._staging_log_matches_target(
         log,
@@ -648,7 +648,7 @@ def test_gb_byte_tolerance_uses_two_decimal_precision(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=int(round(1.10 * gib)),
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     )
 
     assert within_tolerance.log_matches is True
@@ -666,7 +666,7 @@ def test_kb_mb_and_byte_tolerances(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=1024 + 50,
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     ).log_matches is True
     assert recovery._staging_log_matches_target(
         log,
@@ -674,7 +674,7 @@ def test_kb_mb_and_byte_tolerances(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=1024 + 70,
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     ).log_matches is False
 
     _write_log(log, target, 1000, bytes_copied="1.0 MB")
@@ -684,7 +684,7 @@ def test_kb_mb_and_byte_tolerances(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=1024 * 1024 + 52_000,
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     ).log_matches is True
 
     _write_log(log, target, 1000, bytes_copied="3 B")
@@ -694,7 +694,7 @@ def test_kb_mb_and_byte_tolerances(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=3,
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     ).log_matches is True
     assert recovery._staging_log_matches_target(
         log,
@@ -702,7 +702,7 @@ def test_kb_mb_and_byte_tolerances(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=4,
-        relative_target_base=tmp_path,
+        relative_target_bases=[tmp_path],
     ).log_matches is False
 
 
@@ -735,6 +735,30 @@ def test_relative_target_resolves_against_stable_expected_root_parent(tmp_path: 
     assert public["dedicated_target_evidence"]["relative_target_handling"] == "stable_base"
 
 
+def test_relative_target_resolves_against_expected_staging_root(tmp_path: Path):
+    expected_root = tmp_path / "expected_staging_root"
+    target = expected_root / "phase_3_8d"
+    target.mkdir(parents=True)
+    (target / "copied.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, Path("phase_3_8d"), 1000)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=expected_root,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["relative_target_handling"] == "stable_base"
+
+
 def test_ambiguous_relative_target_fails_closed(tmp_path: Path):
     target = tmp_path / "staging"
     log = tmp_path / "copy.log"
@@ -746,11 +770,57 @@ def test_ambiguous_relative_target_fails_closed(tmp_path: Path):
         expected_copy_count=1000,
         expected_file_count=1,
         expected_total_bytes=3,
-        relative_target_base=None,
+        relative_target_bases=[],
     )
 
     assert match.log_matches is False
     assert match.relative_target_handling == "ambiguous_relative_target_failed_closed"
+
+
+def test_relative_manifest_target_paths_normalize_against_staging_target(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000)
+    rows = [
+        {
+            "row_id": "1",
+            "source_path": str(tmp_path / "source.jpg"),
+            "proposed_target_path": "copied.jpg",
+            "extension": ".jpg",
+            "size_bytes": "3",
+            "selection_reason": "new_candidate",
+            "duplicate_key": "",
+            "exclusion_reason": "",
+            "placeholder_flag": "False",
+            "stat_error": "False",
+            "temporal_bucket": "b01",
+        }
+    ]
+    other_cwd = tmp_path / "other_cwd"
+    other_cwd.mkdir()
+    previous_cwd = Path.cwd()
+    try:
+        os.chdir(other_cwd)
+        public, _local = recovery.build_cleanup_dry_run(
+            target_root=target,
+            expected_staging_root=target,
+            protected_roots=_protected_roots(tmp_path),
+            expected_file_count=1,
+            expected_total_bytes=3,
+            expected_copy_count=1000,
+            expected_manifest_rows=rows,
+            execute_cleanup_requested=False,
+            confirm_cleanup="",
+            staging_log=log,
+        )
+    finally:
+        os.chdir(previous_cwd)
+
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["unexpected_files_check_passed"] is True
 
 
 def test_custom_local_details_label_is_propagated_without_full_path(tmp_path: Path):
