@@ -1,0 +1,202 @@
+{
+  "phase": "3.8d-I5",
+  "title": "Controlled read-probe / hydration audit",
+  "status": "blocked_sample_gate_failed",
+  "audit_completed": true,
+  "phase_3_8d_execute_status": "blocked",
+  "policy": {
+    "metadata_only_baseline_no_content_read": true,
+    "prefix_read_bytes": 1,
+    "prefix_timeout_seconds": 10,
+    "prefix_retries": 1,
+    "full_read_timeout_seconds": 60,
+    "full_read_retries": 1,
+    "full_read_chunk_size": 4194304,
+    "full_read_required_for_copy_readiness": true,
+    "cfhydrateplaceholder_called": false
+  },
+  "metadata_baseline": {
+    "selected_total": 1000,
+    "exists": 1000,
+    "missing": 0,
+    "offline_count": 0,
+    "reparse_point_count": 0,
+    "recall_on_open_count": 0,
+    "recall_on_data_access_count": 613,
+    "pinned_count": 6,
+    "unpinned_count": 6,
+    "sparse_file_count": 0,
+    "likely_cloud_placeholder_count": 613,
+    "risky_count_by_bucket": {
+      "b02": 24,
+      "b03": 63,
+      "b04": 62,
+      "b05": 63,
+      "b06": 62,
+      "b07": 61,
+      "b08": 53,
+      "b09": 12,
+      "b10": 14,
+      "b11": 30,
+      "b12": 51,
+      "b13": 27,
+      "b14": 27,
+      "b15": 42,
+      "b16": 22
+    },
+    "risky_count_by_extension": {
+      ".jpeg": 4,
+      ".jpg": 514,
+      ".png": 95
+    }
+  },
+  "row_98": {
+    "row_id": 98,
+    "source_safe_label": "source_row_0098.jpg",
+    "bucket": "b02",
+    "extension": ".jpg",
+    "expected_size": 256931,
+    "baseline_cloud_state": "recall_on_data_access",
+    "sample_included": true,
+    "prefix_read_ok": false,
+    "prefix_bytes_read": 0,
+    "prefix_duration_seconds": 20.031,
+    "full_read_ok": false,
+    "full_read_skipped": true,
+    "failure_reason": "read_timeout",
+    "remaining_cloud_state_after_sample": "recall_on_data_access"
+  },
+  "sample_gate": {
+    "status": "failed",
+    "attempted_count": 46,
+    "success_count": 44,
+    "failed_count": 2,
+    "bytes_read": 121073270,
+    "duration_seconds": 114.109,
+    "failures_by_reason": {
+      "read_timeout": 2
+    },
+    "failures_by_bucket": {
+      "b02": 1,
+      "b15": 1
+    },
+    "failures_by_extension": {
+      ".jpg": 1,
+      ".png": 1
+    },
+    "failed_rows": [
+      {
+        "row_id": 98,
+        "source_safe_label": "source_row_0098.jpg",
+        "bucket": "b02",
+        "extension": ".jpg",
+        "reason": "read_timeout"
+      },
+      {
+        "row_id": 881,
+        "source_safe_label": "source_row_0881.png",
+        "bucket": "b15",
+        "extension": ".png",
+        "reason": "read_timeout"
+      }
+    ]
+  },
+  "full_recall_verification": {
+    "status": "skipped_sample_gate_failed",
+    "reason": "sample gate did not pass; full recall verification was not run",
+    "attempted_count": 0
+  },
+  "post_sample_metadata": {
+    "likely_cloud_placeholder_count": 569,
+    "recall_on_data_access_count": 569,
+    "risky_count_by_bucket": {
+      "b02": 21,
+      "b03": 60,
+      "b04": 59,
+      "b05": 60,
+      "b06": 59,
+      "b07": 58,
+      "b08": 50,
+      "b09": 9,
+      "b10": 11,
+      "b11": 27,
+      "b12": 48,
+      "b13": 24,
+      "b14": 24,
+      "b15": 40,
+      "b16": 19
+    },
+    "risky_count_by_extension": {
+      ".jpeg": 4,
+      ".jpg": 477,
+      ".png": 88
+    }
+  },
+  "backfill_dry_run": {
+    "applied": false,
+    "requested_failures": 2,
+    "replacement_count": 2,
+    "unresolved_count": 0,
+    "replacements": [
+      {
+        "failed_row_id": 98,
+        "failed_safe_label": "source_row_0098.jpg",
+        "replacement_row_id": 1029,
+        "replacement_safe_label": "replacement_row_1029.png",
+        "bucket": "b02",
+        "reason": "same_bucket_backfill_after_bounded_hydration_failure"
+      },
+      {
+        "failed_row_id": 881,
+        "failed_safe_label": "source_row_0881.png",
+        "replacement_row_id": 1041,
+        "replacement_safe_label": "replacement_row_1041.jpg",
+        "bucket": "b15",
+        "reason": "same_bucket_backfill_after_bounded_hydration_failure"
+      }
+    ]
+  },
+  "network": {
+    "proxy_env_detected": false,
+    "proxy_values_redacted": true,
+    "network_related_failures": true
+  },
+  "safety": {
+    "source_content_read_for_verification_only": true,
+    "provider_side_hydration_may_have_occurred": true,
+    "source_file_content_write_mutation": false,
+    "staging_copy": false,
+    "staging_write": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "entity_resolver": false,
+    "similarity": false,
+    "cleanup_delete": false,
+    "app_managed_storage_mutation": false,
+    "push_main": false,
+    "merge": false
+  },
+  "local_artifacts": [
+    "phase-3.8d-i5-metadata-baseline-summary.json",
+    "phase-3.8d-i5-metadata-baseline.md",
+    "phase-3.8d-i5-metadata-baseline-details.json",
+    "phase-3.8d-i5-sample-gate-summary.json",
+    "phase-3.8d-i5-sample-gate.md",
+    "phase-3.8d-i5-sample-gate-details.json",
+    "phase-3.8d-i5-post-sample-metadata-summary.json",
+    "phase-3.8d-i5-post-sample-metadata.md",
+    "phase-3.8d-i5-post-sample-metadata-details.json",
+    "phase-3.8d-i5-hydration-audit-details.json"
+  ],
+  "privacy": {
+    "safe_labels_only": true,
+    "full_local_paths_in_public_report": false,
+    "source_paths_redacted": true,
+    "proxy_values_redacted": true,
+    "secrets_exposed": false,
+    "passed": true
+  },
+  "next_step": "Do not resume Phase 3.8d execute. Decide targeted retry/hydration policy for failed rows or approve same-bucket backfill before any staging copy retry."
+}
