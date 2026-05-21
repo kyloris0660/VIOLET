@@ -136,7 +136,6 @@ Backfill remains a future approval decision. The selected manifest was not modif
 - `phase-3.8d-i5-post-sample-metadata-summary.json`
 - `phase-3.8d-i5-post-sample-metadata.md`
 - `phase-3.8d-i5-post-sample-metadata-details.json`
-- `phase-3.8d-i5-hydration-audit-details.json`
 
 These local artifacts remain under ignored local artifact storage and must not be committed.
 

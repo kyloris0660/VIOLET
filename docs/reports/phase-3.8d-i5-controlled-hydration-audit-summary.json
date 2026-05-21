@@ -187,8 +187,7 @@
     "phase-3.8d-i5-sample-gate-details.json",
     "phase-3.8d-i5-post-sample-metadata-summary.json",
     "phase-3.8d-i5-post-sample-metadata.md",
-    "phase-3.8d-i5-post-sample-metadata-details.json",
-    "phase-3.8d-i5-hydration-audit-details.json"
+    "phase-3.8d-i5-post-sample-metadata-details.json"
   ],
   "privacy": {
     "safe_labels_only": true,
