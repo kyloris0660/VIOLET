@@ -1,6 +1,6 @@
 {
   "phase": "3.8d-I3",
-  "created_at": "2026-05-21T13:57:03.763699+00:00",
+  "created_at": "2026-05-21T14:34:09.137258+00:00",
   "success": true,
   "cleanup_dry_run": {
     "phase": "3.8d-I3",
@@ -10,9 +10,16 @@
     "target_is_directory": true,
     "target_is_dedicated_phase38d_target": true,
     "expected_staging_root_explicit": true,
+    "expected_staging_root_exists": true,
+    "expected_staging_root_is_directory": true,
     "target_under_expected_staging_root": true,
+    "target_equals_expected_staging_root": true,
+    "target_equals_expected_staging_root_allowed": true,
     "dedicated_target_evidence": {
+      "authorization_basis": "manifest_filesystem_proof",
       "staging_copy_log_present": true,
+      "staging_log_authorization_role": "not_used_for_cleanup_authorization",
+      "staging_log_diagnostic_status": "matches_manifest_filesystem",
       "staging_copy_log_matches_target": true,
       "staging_copy_log_target_exact_match": true,
       "staging_copy_log_expected_count_correlated": true,
@@ -25,10 +32,21 @@
       "relative_target_handling": "absolute_target",
       "expected_file_count_matches": true,
       "expected_total_bytes_matches": true,
+      "expected_total_bytes_source": "manifest",
+      "manifest_filesystem_check_available": true,
+      "manifest_filesystem_check_passed": true,
+      "expected_manifest_file_count": 97,
+      "expected_manifest_size_available_count": 97,
+      "expected_manifest_total_bytes": 340159586,
       "unexpected_files_check_available": true,
       "unexpected_files_check_passed": true,
       "unexpected_file_count": 0,
-      "missing_expected_file_count": 0
+      "missing_expected_file_count": 0,
+      "size_mismatch_file_count": 0,
+      "duplicate_expected_target_count": 0,
+      "invalid_manifest_target_count": 0,
+      "duplicate_actual_target_count": 0,
+      "actual_unkeyed_file_count": 0
     },
     "protected_root_checks": [
       {
@@ -74,6 +92,7 @@
       "app_media_root_if_provided": true
     },
     "invalid_protected_root_labels": [],
+    "missing_required_protected_labels": [],
     "file_count": 97,
     "actual_copied_file_count": 97,
     "expected_partial_file_count": 97,
@@ -81,6 +100,7 @@
     "expected_file_count": 97,
     "total_bytes": 340159586,
     "expected_total_bytes": 340159586,
+    "input_expected_total_bytes": 340159586,
     "stat_errors": 0,
     "extension_distribution": {
       ".gif": 1,

@@ -37,7 +37,6 @@ from app.services.classification_first_workflow import (  # noqa: E402
 
 from audit_cloud_availability import (  # noqa: E402
     CLEANUP_CONFIRM_PHRASE,
-    is_selected_copy_row,
     plan_same_bucket_backfill,
     read_manifest,
 )
@@ -103,6 +102,13 @@ class StagingLogMatch:
     relative_target_handling: str
 
 
+@dataclass(frozen=True)
+class ExpectedStagingFile:
+    relative_key: str
+    relative_label: str
+    size_bytes: int | None
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -158,6 +164,23 @@ def _path_key(path: Path, *, base: Path | None = None) -> str | None:
     if normalized is None:
         return None
     return os.path.normcase(str(normalized))
+
+
+def _relative_key(path: Path) -> str:
+    return os.path.normcase(path.as_posix())
+
+
+def _relative_path_from_target(target_root: Path, path: Path) -> Path | None:
+    normalized_target = _normalize_path(target_root)
+    if normalized_target is None:
+        return None
+    normalized_path = _normalize_path(path, base=target_root)
+    if normalized_path is None:
+        return None
+    try:
+        return normalized_path.relative_to(normalized_target)
+    except ValueError:
+        return None
 
 
 def _decode_text_file(path: Path) -> str | None:
@@ -364,28 +387,57 @@ def _validate_protected_root(root: ProtectedRoot, target_root: Path) -> Protecte
     )
 
 
-def _expected_partial_target_keys(
+def _is_manifest_copy_row(row: Mapping[str, str]) -> bool:
+    return (row.get("selection_reason") or "").strip() in {"new_candidate", "existing_tier500"} and not (
+        row.get("exclusion_reason") or ""
+    ).strip()
+
+
+def _parse_manifest_size(row: Mapping[str, str]) -> int | None:
+    raw = (row.get("size_bytes") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _expected_partial_files(
     rows: Sequence[dict[str, str]] | None,
     expected_file_count: int,
     *,
-    relative_target_base: Path,
-) -> set[str] | None:
+    target_root: Path,
+) -> tuple[dict[str, ExpectedStagingFile] | None, int, int, int]:
     if rows is None:
-        return None
-    expected: set[str] = set()
+        return None, 0, 0, 0
+    expected: dict[str, ExpectedStagingFile] = {}
+    duplicate_count = 0
+    invalid_target_count = 0
     for row in rows:
-        if not is_selected_copy_row(row):
+        if not _is_manifest_copy_row(row):
             continue
         target = (row.get("proposed_target_path") or "").strip()
         if not target:
+            invalid_target_count += 1
             continue
-        target_key = _path_key(Path(target), base=relative_target_base)
-        if target_key is None:
+        relative_path = _relative_path_from_target(target_root, Path(target))
+        if relative_path is None:
+            invalid_target_count += 1
             continue
-        expected.add(target_key)
+        relative_key = _relative_key(relative_path)
+        if relative_key in expected:
+            duplicate_count += 1
+            continue
+        expected[relative_key] = ExpectedStagingFile(
+            relative_key=relative_key,
+            relative_label=relative_path.as_posix(),
+            size_bytes=_parse_manifest_size(row),
+        )
         if len(expected) >= expected_file_count:
             break
-    return expected
+    return expected, duplicate_count, invalid_target_count, len(expected)
 
 
 def build_cleanup_dry_run(
@@ -400,25 +452,67 @@ def build_cleanup_dry_run(
     confirm_cleanup: str,
     staging_log: Path | None,
     expected_manifest_rows: Sequence[dict[str, str]] | None = None,
+    allow_target_equals_expected_root: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build a public cleanup dry-run plan plus local full-path evidence."""
     target_exists = target_root.exists()
     target_is_dir = target_root.is_dir()
     files = _iter_files(target_root)
-    actual_file_keys = {key for path in files if (key := _path_key(path)) is not None}
-    expected_file_keys = _expected_partial_target_keys(
+    actual_files: dict[str, int] = {}
+    actual_unkeyed_files = 0
+    duplicate_actual_keys = 0
+    for path in files:
+        relative_path = _relative_path_from_target(target_root, path)
+        if relative_path is None:
+            actual_unkeyed_files += 1
+            continue
+        relative_key = _relative_key(relative_path)
+        if relative_key in actual_files:
+            duplicate_actual_keys += 1
+            continue
+        try:
+            actual_files[relative_key] = path.stat().st_size
+        except OSError:
+            actual_files[relative_key] = -1
+    expected_files, duplicate_expected_keys, invalid_manifest_targets, expected_manifest_count = _expected_partial_files(
         expected_manifest_rows,
         expected_file_count,
-        relative_target_base=target_root,
+        target_root=target_root,
     )
-    unexpected_keys = actual_file_keys - expected_file_keys if expected_file_keys is not None else set()
-    missing_expected_keys = expected_file_keys - actual_file_keys if expected_file_keys is not None else set()
-    unexpected_files_check_available = expected_file_keys is not None
-    unexpected_files_check_passed = (
-        unexpected_files_check_available
+    actual_file_keys = set(actual_files)
+    expected_file_keys = set(expected_files or {})
+    unexpected_keys = actual_file_keys - expected_file_keys if expected_files is not None else set()
+    missing_expected_keys = expected_file_keys - actual_file_keys if expected_files is not None else set()
+    size_mismatch_keys = (
+        {
+            key
+            for key in actual_file_keys & expected_file_keys
+            if expected_files
+            and expected_files[key].size_bytes is not None
+            and actual_files.get(key) != expected_files[key].size_bytes
+        }
+        if expected_files is not None
+        else set()
+    )
+    expected_manifest_sizes_available = (
+        sum(1 for item in expected_files.values() if item.size_bytes is not None) if expected_files is not None else 0
+    )
+    expected_manifest_total_bytes = (
+        sum(item.size_bytes for item in expected_files.values() if item.size_bytes is not None)
+        if expected_files is not None
+        else None
+    )
+    manifest_filesystem_check_available = expected_files is not None
+    manifest_filesystem_check_passed = (
+        manifest_filesystem_check_available
+        and expected_manifest_count == expected_file_count
+        and not duplicate_expected_keys
+        and not invalid_manifest_targets
+        and not duplicate_actual_keys
+        and not actual_unkeyed_files
         and not unexpected_keys
         and not missing_expected_keys
-        and len(expected_file_keys) == expected_file_count
+        and not size_mismatch_keys
     )
     total_bytes = 0
     stat_errors = 0
@@ -458,11 +552,7 @@ def build_cleanup_dry_run(
             unsafe_reasons.append(f"target overlaps protected root: {root.label}")
 
     labels = {root.label for root in protected_roots}
-    required_labels_all_present = (
-        bool(labels & {"source_root", "icloud_source_root"})
-        and "repo_root" in labels
-        and "app_storage_root" in labels
-    )
+    required_labels_all_present = bool(labels & {"source_root", "icloud_source_root"}) and "repo_root" in labels and "app_storage_root" in labels
     relative_target_bases = []
     if expected_staging_root is not None:
         relative_target_bases.extend([expected_staging_root, expected_staging_root.parent])
@@ -475,28 +565,70 @@ def build_cleanup_dry_run(
         relative_target_bases=relative_target_bases,
     )
     file_count_matches = len(files) == expected_file_count
-    byte_count_matches = total_bytes == expected_total_bytes
+    expected_bytes_for_identity = (
+        expected_manifest_total_bytes
+        if expected_manifest_total_bytes is not None and expected_manifest_sizes_available == expected_file_count
+        else expected_total_bytes
+    )
+    byte_count_matches = total_bytes == expected_bytes_for_identity
     expected_staging_root_explicit = expected_staging_root is not None
+    expected_staging_root_exists = expected_staging_root.exists() if expected_staging_root is not None else False
+    expected_staging_root_is_directory = expected_staging_root.is_dir() if expected_staging_root is not None else False
     target_under_expected_staging_root = (
         _is_inside_or_same(target_root, expected_staging_root) if expected_staging_root is not None else False
+    )
+    target_equals_expected_staging_root = False
+    if expected_staging_root is not None:
+        target_key = _path_key(target_root)
+        expected_root_key = _path_key(expected_staging_root)
+        target_equals_expected_staging_root = target_key is not None and target_key == expected_root_key
+    target_location_allowed = (
+        expected_staging_root_is_directory
+        and target_under_expected_staging_root
+        and (not target_equals_expected_staging_root or allow_target_equals_expected_root)
     )
     invalid_protected_labels = [
         check.label
         for check in protected_root_validation
         if not (check.exists and check.is_directory and check.can_resolve)
     ]
+    missing_required_protected_labels = []
+    if not labels & {"source_root", "icloud_source_root"}:
+        missing_required_protected_labels.append("source_root_or_icloud_source_root")
+    if "repo_root" not in labels:
+        missing_required_protected_labels.append("repo_root")
+    if "app_storage_root" not in labels:
+        missing_required_protected_labels.append("app_storage_root")
+    protected_roots_valid = required_labels_all_present and not invalid_protected_labels
+    source_checks = [check for check in protected_checks if check["protected_label"] in {"source_root", "icloud_source_root"}]
+    repo_checks = [check for check in protected_checks if check["protected_label"] == "repo_root"]
+    app_storage_checks = [
+        check
+        for check in protected_checks
+        if check["protected_label"] in {"app_storage_root", "app_media_root", "app_originals_root", "app_thumbnails_root"}
+    ]
+    source_check_valid = bool(source_checks) and all(check["valid_existing_directory"] for check in source_checks)
+    repo_check_valid = bool(repo_checks) and all(check["valid_existing_directory"] for check in repo_checks)
+    app_storage_check_valid = bool(app_storage_checks) and all(check["valid_existing_directory"] for check in app_storage_checks)
     target_is_dedicated = (
         target_exists
         and target_is_dir
         and expected_staging_root_explicit
-        and target_under_expected_staging_root
-        and log_match.log_matches
+        and target_location_allowed
         and file_count_matches
         and byte_count_matches
-        and (unexpected_files_check_passed if unexpected_files_check_available else True)
-        and required_labels_all_present
-        and not invalid_protected_labels
+        and manifest_filesystem_check_passed
+        and protected_roots_valid
+        and not unsafe_reasons
     )
+    if not log_match.log_present:
+        staging_log_diagnostic_status = "unavailable"
+    elif log_match.log_matches and manifest_filesystem_check_passed:
+        staging_log_diagnostic_status = "matches_manifest_filesystem"
+    elif log_match.log_matches:
+        staging_log_diagnostic_status = "matches_but_manifest_filesystem_failed"
+    else:
+        staging_log_diagnostic_status = "mismatch_diagnostic_only"
 
     public = {
         "phase": "3.8d-I3",
@@ -506,9 +638,16 @@ def build_cleanup_dry_run(
         "target_is_directory": _safe_public_bool(target_is_dir),
         "target_is_dedicated_phase38d_target": _safe_public_bool(target_is_dedicated),
         "expected_staging_root_explicit": _safe_public_bool(expected_staging_root_explicit),
+        "expected_staging_root_exists": _safe_public_bool(expected_staging_root_exists),
+        "expected_staging_root_is_directory": _safe_public_bool(expected_staging_root_is_directory),
         "target_under_expected_staging_root": _safe_public_bool(target_under_expected_staging_root),
+        "target_equals_expected_staging_root": _safe_public_bool(target_equals_expected_staging_root),
+        "target_equals_expected_staging_root_allowed": _safe_public_bool(allow_target_equals_expected_root),
         "dedicated_target_evidence": {
+            "authorization_basis": "manifest_filesystem_proof",
             "staging_copy_log_present": log_match.log_present,
+            "staging_log_authorization_role": "not_used_for_cleanup_authorization",
+            "staging_log_diagnostic_status": staging_log_diagnostic_status,
             "staging_copy_log_matches_target": log_match.log_matches,
             "staging_copy_log_target_exact_match": log_match.target_exact_match,
             "staging_copy_log_expected_count_correlated": log_match.expected_count_matches,
@@ -521,19 +660,27 @@ def build_cleanup_dry_run(
             "relative_target_handling": log_match.relative_target_handling,
             "expected_file_count_matches": file_count_matches,
             "expected_total_bytes_matches": byte_count_matches,
-            "unexpected_files_check_available": unexpected_files_check_available,
-            "unexpected_files_check_passed": unexpected_files_check_passed,
+            "expected_total_bytes_source": "manifest" if expected_manifest_total_bytes is not None and expected_manifest_sizes_available == expected_file_count else "input",
+            "manifest_filesystem_check_available": manifest_filesystem_check_available,
+            "manifest_filesystem_check_passed": manifest_filesystem_check_passed,
+            "expected_manifest_file_count": expected_manifest_count,
+            "expected_manifest_size_available_count": expected_manifest_sizes_available,
+            "expected_manifest_total_bytes": expected_manifest_total_bytes,
+            "unexpected_files_check_available": manifest_filesystem_check_available,
+            "unexpected_files_check_passed": manifest_filesystem_check_passed and not unexpected_keys and not missing_expected_keys,
             "unexpected_file_count": len(unexpected_keys),
             "missing_expected_file_count": len(missing_expected_keys),
+            "size_mismatch_file_count": len(size_mismatch_keys),
+            "duplicate_expected_target_count": duplicate_expected_keys,
+            "invalid_manifest_target_count": invalid_manifest_targets,
+            "duplicate_actual_target_count": duplicate_actual_keys,
+            "actual_unkeyed_file_count": actual_unkeyed_files,
         },
         "protected_root_checks": protected_checks,
-        "target_is_not_source_icloud": not any(check["overlaps_target"] for check in protected_checks if check["protected_label"] in {"source_root", "icloud_source_root"}),
-        "target_is_not_repo": not any(check["overlaps_target"] for check in protected_checks if check["protected_label"] == "repo_root"),
-        "target_is_not_app_managed_storage": not any(
-            check["overlaps_target"]
-            for check in protected_checks
-            if check["protected_label"] in {"app_storage_root", "app_media_root", "app_originals_root", "app_thumbnails_root"}
-        ),
+        "target_is_not_source_icloud": source_check_valid and not any(check["overlaps_target"] for check in source_checks),
+        "target_is_not_repo": repo_check_valid and not any(check["overlaps_target"] for check in repo_checks),
+        "target_is_not_app_managed_storage": app_storage_check_valid
+        and not any(check["overlaps_target"] for check in app_storage_checks),
         "required_protected_labels_present": {
             "source_or_icloud": bool(labels & {"source_root", "icloud_source_root"}),
             "repo_root": "repo_root" in labels,
@@ -541,13 +688,15 @@ def build_cleanup_dry_run(
             "app_media_root_if_provided": "app_media_root" in labels,
         },
         "invalid_protected_root_labels": invalid_protected_labels,
+        "missing_required_protected_labels": missing_required_protected_labels,
         "file_count": len(files),
         "actual_copied_file_count": len(files),
         "expected_partial_file_count": expected_file_count,
         "requested_expected_copy_count": expected_copy_count,
         "expected_file_count": expected_file_count,
         "total_bytes": total_bytes,
-        "expected_total_bytes": expected_total_bytes,
+        "expected_total_bytes": expected_bytes_for_identity,
+        "input_expected_total_bytes": expected_total_bytes,
         "stat_errors": stat_errors,
         "extension_distribution": dict(sorted(ext_counts.items())),
         "sample_safe_labels": sample_safe_labels,
@@ -573,37 +722,38 @@ def build_cleanup_dry_run(
         identity_mismatch_reasons.append("target_not_directory")
     if not public["expected_staging_root_explicit"]:
         identity_mismatch_reasons.append("expected_staging_root_missing")
+    if public["expected_staging_root_explicit"] and not public["expected_staging_root_is_directory"]:
+        identity_mismatch_reasons.append("expected_staging_root_not_directory")
     if not public["target_under_expected_staging_root"]:
         identity_mismatch_reasons.append("target_not_under_expected_staging_root")
-    if not log_match.log_present:
-        identity_mismatch_reasons.append("staging_copy_log_missing")
-    if log_match.log_present and not log_match.log_matches:
-        identity_mismatch_reasons.append("staging_copy_log_mismatch")
-    if log_match.log_present and log_match.target_exact_match and log_match.expected_count_matches:
-        if not log_match.files_copied_present:
-            identity_mismatch_reasons.append("staging_copy_log_files_copied_missing")
-        if not log_match.bytes_copied_present:
-            identity_mismatch_reasons.append("staging_copy_log_bytes_copied_missing")
+    if public["target_equals_expected_staging_root"] and not public["target_equals_expected_staging_root_allowed"]:
+        identity_mismatch_reasons.append("target_equals_expected_staging_root_not_allowed")
     if not file_count_matches:
         identity_mismatch_reasons.append("expected_partial_file_count_mismatch")
     if not byte_count_matches:
         identity_mismatch_reasons.append("expected_total_bytes_mismatch")
-    if unexpected_files_check_available and not unexpected_files_check_passed:
+    if not manifest_filesystem_check_available:
+        identity_mismatch_reasons.append("manifest_filesystem_proof_missing")
+    elif not manifest_filesystem_check_passed:
         identity_mismatch_reasons.append("unexpected_or_missing_staging_files")
+    if size_mismatch_keys:
+        identity_mismatch_reasons.append("manifest_size_mismatch")
+    if duplicate_expected_keys:
+        identity_mismatch_reasons.append("duplicate_manifest_targets")
+    if invalid_manifest_targets:
+        identity_mismatch_reasons.append("invalid_manifest_targets")
+    if duplicate_actual_keys or actual_unkeyed_files:
+        identity_mismatch_reasons.append("actual_target_scan_unreliable")
     public["identity_mismatch_reasons"] = identity_mismatch_reasons
 
     if unsafe_reasons:
         public["status"] = "blocked_unsafe_target"
-    elif invalid_protected_labels:
+    elif invalid_protected_labels or missing_required_protected_labels:
         public["status"] = "blocked_invalid_protected_root"
     elif not expected_staging_root_explicit:
         public["status"] = "blocked_missing_expected_staging_root"
-    elif "staging_copy_log_files_copied_missing" in identity_mismatch_reasons or "staging_copy_log_bytes_copied_missing" in identity_mismatch_reasons:
-        public["status"] = "blocked_incomplete_staging_log"
     elif identity_mismatch_reasons:
         public["status"] = "blocked_identity_mismatch"
-    elif not required_labels_all_present:
-        public["status"] = "manual_review_required"
     else:
         public["status"] = "dry_run_passed"
 
@@ -615,6 +765,7 @@ def build_cleanup_dry_run(
         "staging_log": str(staging_log) if staging_log else None,
         "unexpected_file_keys": sorted(unexpected_keys)[:20],
         "missing_expected_file_keys": sorted(missing_expected_keys)[:20],
+        "size_mismatch_file_keys": sorted(size_mismatch_keys)[:20],
     }
     return public, local
 
@@ -833,7 +984,10 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Target exists: `{report['target_exists']}`",
         f"- Target is directory: `{report['target_is_directory']}`",
         f"- Expected staging root explicit: `{report['expected_staging_root_explicit']}`",
+        f"- Expected staging root is directory: `{report['expected_staging_root_is_directory']}`",
         f"- Target under expected staging root: `{report['target_under_expected_staging_root']}`",
+        f"- Target equals expected staging root: `{report['target_equals_expected_staging_root']}`",
+        f"- Target equals expected staging root allowed: `{report['target_equals_expected_staging_root_allowed']}`",
         f"- Dedicated Phase 3.8d target: `{report['target_is_dedicated_phase38d_target']}`",
         f"- Actual copied file count: `{report['actual_copied_file_count']}`",
         f"- Expected partial file count: `{report['expected_partial_file_count']}`",
@@ -843,8 +997,17 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         "",
         "## Dedicated Target Evidence",
         "",
+        f"- Cleanup proof basis: `{evidence['authorization_basis']}`",
+        f"- Manifest/filesystem check available: `{evidence['manifest_filesystem_check_available']}`",
+        f"- Manifest/filesystem check passed: `{evidence['manifest_filesystem_check_passed']}`",
+        f"- Expected manifest file count: `{evidence['expected_manifest_file_count']}`",
+        f"- Expected manifest size available count: `{evidence['expected_manifest_size_available_count']}`",
+        f"- Expected manifest total bytes: `{evidence['expected_manifest_total_bytes']}`",
+        f"- Expected total bytes source: `{evidence['expected_total_bytes_source']}`",
         f"- Staging copy log present: `{evidence['staging_copy_log_present']}`",
-        f"- Staging copy log target/count/copy correlation passed: `{evidence['staging_copy_log_matches_target']}`",
+        f"- Staging log authorization role: `{evidence['staging_log_authorization_role']}`",
+        f"- Staging log diagnostic status: `{evidence['staging_log_diagnostic_status']}`",
+        f"- Staging copy log target/count/copy diagnostic match: `{evidence['staging_copy_log_matches_target']}`",
         f"- Staging copy log target exact match: `{evidence['staging_copy_log_target_exact_match']}`",
         f"- Staging copy log expected count correlated: `{evidence['staging_copy_log_expected_count_correlated']}`",
         f"- Staging copy log files copied present: `{evidence['staging_copy_log_files_copied_present']}`",
@@ -860,6 +1023,9 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Unexpected files check passed: `{evidence['unexpected_files_check_passed']}`",
         f"- Unexpected file count: `{evidence['unexpected_file_count']}`",
         f"- Missing expected file count: `{evidence['missing_expected_file_count']}`",
+        f"- Size mismatch file count: `{evidence['size_mismatch_file_count']}`",
+        f"- Duplicate expected target count: `{evidence['duplicate_expected_target_count']}`",
+        f"- Invalid manifest target count: `{evidence['invalid_manifest_target_count']}`",
         f"- Identity mismatch reasons: `{json.dumps(report['identity_mismatch_reasons'], ensure_ascii=False)}`",
         "",
         "## Safety Proof",
@@ -868,9 +1034,10 @@ def render_cleanup_markdown(report: Mapping[str, Any]) -> str:
         f"- Not repo: `{report['target_is_not_repo']}`",
         f"- Not app-managed storage: `{report['target_is_not_app_managed_storage']}`",
         f"- Invalid protected root labels: `{json.dumps(report['invalid_protected_root_labels'], ensure_ascii=False)}`",
+        f"- Missing required protected labels: `{json.dumps(report['missing_required_protected_labels'], ensure_ascii=False)}`",
         f"- Unsafe reasons: `{json.dumps(report['unsafe_reasons'], ensure_ascii=False)}`",
         "",
-        "Cleanup dry-run is not approved for actual delete unless `--expected-staging-root` is explicit, all required protected roots exist and resolve as directories, the target is under the expected staging root, and the staging log has exact target + expected count + copied count + copied bytes from the same run entry. Missing copied count or copied bytes fails closed. Actual cleanup still requires separate user/ChatGPT approval.",
+        "Cleanup authorization is based on explicit target/root inputs, valid protected roots, target/protected-root disjointness, manifest-derived expected staging files, and an actual filesystem scan of the target. Staging logs are diagnostic only and are not used for cleanup authorization. Actual cleanup still requires separate user/ChatGPT approval.",
         "",
         "## Extension Distribution",
         "",
@@ -932,15 +1099,19 @@ def render_recovery_markdown(report: Mapping[str, Any]) -> str:
         f"- File count: `{cleanup['file_count']}`",
         f"- Total bytes: `{cleanup['total_bytes']}`",
         f"- Expected staging root explicit: `{cleanup['expected_staging_root_explicit']}`",
+        f"- Expected staging root is directory: `{cleanup['expected_staging_root_is_directory']}`",
         f"- Target under expected staging root: `{cleanup['target_under_expected_staging_root']}`",
-        f"- Protected roots valid: `{not cleanup['invalid_protected_root_labels']}`",
-        f"- Staging log exact target/count/copy correlation: `{cleanup['dedicated_target_evidence']['staging_copy_log_matches_target']}`",
-        f"- Staging log files copied present: `{cleanup['dedicated_target_evidence']['staging_copy_log_files_copied_present']}`",
-        f"- Staging log bytes copied present: `{cleanup['dedicated_target_evidence']['staging_copy_log_bytes_copied_present']}`",
+        f"- Target equals expected staging root: `{cleanup['target_equals_expected_staging_root']}`",
+        f"- Target equals expected staging root allowed: `{cleanup['target_equals_expected_staging_root_allowed']}`",
+        f"- Protected roots valid: `{not cleanup['invalid_protected_root_labels'] and not cleanup['missing_required_protected_labels']}`",
+        f"- Cleanup authorization basis: `{cleanup['dedicated_target_evidence']['authorization_basis']}`",
+        f"- Manifest/filesystem proof passed: `{cleanup['dedicated_target_evidence']['manifest_filesystem_check_passed']}`",
+        f"- Staging log authorization role: `{cleanup['dedicated_target_evidence']['staging_log_authorization_role']}`",
+        f"- Staging log diagnostic status: `{cleanup['dedicated_target_evidence']['staging_log_diagnostic_status']}`",
         f"- Actual delete performed: `{cleanup['deletion_plan']['actual_delete_performed']}`",
         f"- Confirmation phrase required: `{cleanup['deletion_plan']['confirmation_phrase_required']}`",
         "",
-        "Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log has exact target + expected count + copied count + copied bytes from the same run entry, and a separate user/ChatGPT cleanup approval is granted. Missing copied count or copied bytes fails closed.",
+        "Cleanup authorization is based on manifest/filesystem proof, not human staging logs. Staging logs are diagnostic only. Actual cleanup still requires separate user/ChatGPT approval.",
         "",
         "## Controlled Read-probe / Hydration Policy",
         "",
@@ -1065,6 +1236,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-total-bytes", type=int, default=DEFAULT_EXPECTED_TOTAL_BYTES)
     parser.add_argument("--selected-total", type=int, default=DEFAULT_SELECTED_TOTAL)
     parser.add_argument("--failed-row-id", type=int, default=DEFAULT_FAILED_ROW_ID)
+    parser.add_argument(
+        "--allow-target-equals-expected-staging-root",
+        action="store_true",
+        help="Explicitly allow the dedicated staging target itself to be used as the expected staging root.",
+    )
     parser.add_argument("--execute-cleanup", action="store_true")
     parser.add_argument("--confirm-cleanup", default="")
     parser.add_argument("--recovery-report-md", type=Path, default=DEFAULT_RECOVERY_REPORT_MD)
@@ -1094,6 +1270,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         execute_cleanup_requested=args.execute_cleanup,
         confirm_cleanup=args.confirm_cleanup,
         staging_log=args.staging_log,
+        allow_target_equals_expected_root=args.allow_target_equals_expected_staging_root,
     )
     backfill_policy = build_backfill_policy(
         manifest_rows=manifest_rows,

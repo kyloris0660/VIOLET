@@ -172,19 +172,19 @@ Additional PR rules:
 3. Do not mix multiple phases in one branch or one PR.
 4. The final delivery report must include the real GitHub PR URL.
 
-### Automated reviewer closeout loop
+### Reviewer feedback handling policy
 
-For implementation PRs, CodeX must handle reviewer closeout instead of asking the user to copy/paste reviewer comments.
+For implementation PRs, reviewer feedback is a controlled handoff point, not an automatic code-change trigger.
 
-1. After each PR push, CodeX must post exactly `@codex review`.
-2. CodeX must poll GitHub efficiently for reviewer results, usually every 2-3 minutes, with a maximum wait of 30 minutes per reviewer trigger.
-3. CodeX must distinguish current-head reviewer feedback from outdated feedback before acting on it.
-4. CodeX may automatically fix current-head P1/P2 only when the issue is within PR scope, does not require a destructive operation, does not require a schema migration, does not mutate real DB/storage/source/staging without explicit authorization, and does not start a new phase.
-5. P3/nit/docs wording/logging suggestions are deferred unless they are tiny, safe, and local.
-6. Hard maximum: normal PRs get at most 3 reviewer-fix rounds; PR #53 trial gets at most 2 reviewer-fix rounds from the introduction of this policy.
-7. Stop and escalate to user/ChatGPT if P1/P2 remain after the round limit, the issue requires schema migration, DB cleanup/delete/reset/drop/truncate, source/iCloud/staging mutation, phase-scope changes, broad refactors outside the PR goal, unverifiable current-head reviewer results, GitHub auth/CLI failures, or tests fail and cannot be fixed safely.
-8. Before triggering reviewer again, CodeX must proactively audit same-class issues locally so reviewer is not used as a substitute for engineering judgment.
-9. CodeX must never auto-merge or push `main`.
+1. After PR creation or a meaningful PR update, CodeX must trigger reviewer with exactly `@codex review`.
+2. CodeX may collect reviewer feedback and verify whether it applies to the current PR head.
+3. CodeX must summarize current-head P1/P2/P3 findings in the final report.
+4. CodeX must not automatically modify code based on reviewer feedback.
+5. CodeX must stop and report reviewer findings to the user/ChatGPT.
+6. User/ChatGPT decides whether to fix now, defer, change implementation strategy, split into another PR, or merge.
+7. Automatic reviewer-fix loops are disabled by default and may only be used when the user explicitly authorizes them for a specific PR with a specific round limit and scope.
+8. Even when explicitly authorized, automatic fix loops must never push `main`, merge, run destructive operations, mutate source/iCloud/staging/DB unless explicitly approved, change phase scope, or start a new phase.
+9. Before triggering reviewer, CodeX must perform a local pre-review / same-class self-audit so reviewer is not used as a substitute for engineering judgment.
 
 ### PR body format and task checklist standard
 

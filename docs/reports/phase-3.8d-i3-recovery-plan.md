@@ -13,15 +13,19 @@
 - File count: `97`
 - Total bytes: `340159586`
 - Expected staging root explicit: `True`
+- Expected staging root is directory: `True`
 - Target under expected staging root: `True`
+- Target equals expected staging root: `True`
+- Target equals expected staging root allowed: `True`
 - Protected roots valid: `True`
-- Staging log exact target/count/copy correlation: `True`
-- Staging log files copied present: `True`
-- Staging log bytes copied present: `True`
+- Cleanup authorization basis: `manifest_filesystem_proof`
+- Manifest/filesystem proof passed: `True`
+- Staging log authorization role: `not_used_for_cleanup_authorization`
+- Staging log diagnostic status: `matches_manifest_filesystem`
 - Actual delete performed: `False`
 - Confirmation phrase required: `DELETE_PHASE38D_PARTIAL_STAGING`
 
-Cleanup dry-run is not approved for actual delete unless the expected staging root is explicit, all required protected roots exist and resolve as directories, the staging log has exact target + expected count + copied count + copied bytes from the same run entry, and a separate user/ChatGPT cleanup approval is granted. Missing copied count or copied bytes fails closed.
+Cleanup authorization is based on manifest/filesystem proof, not human staging logs. Staging logs are diagnostic only. Actual cleanup still requires separate user/ChatGPT approval.
 
 ## Controlled Read-probe / Hydration Policy
 

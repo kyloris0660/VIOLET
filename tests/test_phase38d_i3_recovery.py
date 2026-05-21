@@ -72,6 +72,38 @@ def _manifest_rows(tmp_path: Path):
     ]
 
 
+def _target_manifest_rows(target: Path, files: list[tuple[str, bytes]], *, reason: str = "new_candidate"):
+    rows = []
+    for index, (name, content) in enumerate(files, start=1):
+        rows.append(
+            {
+                "row_id": str(index),
+                "source_path": str(target.parent / f"source_{index}{Path(name).suffix}"),
+                "proposed_target_path": str(target / name),
+                "extension": Path(name).suffix.lower(),
+                "size_bytes": str(len(content)),
+                "selection_reason": reason,
+                "duplicate_key": "",
+                "exclusion_reason": "",
+                "placeholder_flag": "False",
+                "stat_error": "False",
+                "temporal_bucket": "b01",
+            }
+        )
+    return rows
+
+
+def _single_file_manifest(target: Path, name: str = "copied.jpg", content: bytes = b"abc"):
+    return _target_manifest_rows(target, [(name, content)])
+
+
+def _write_target_files(target: Path, files: list[tuple[str, bytes]]):
+    for name, content in files:
+        path = target / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+
 def test_final_delivery_report_standard_docs_presence():
     repo = Path(__file__).resolve().parent.parent
     for rel in ["AGENTS.md", "CLAUDE.md", "docs/test-workflow.md"]:
@@ -80,6 +112,9 @@ def test_final_delivery_report_standard_docs_presence():
         assert "PR URL, branch, head SHA" in text
         assert "exact sys.executable" in text
         assert "If any item is not applicable" in text
+        assert "Reviewer feedback handling policy" in text or "Reviewer Feedback Handling Policy" in text
+        assert "must not automatically modify code based on reviewer feedback" in text
+        assert "Automatic reviewer-fix loops are disabled by default" in text
 
 
 def test_cleanup_dry_run_refuses_unsafe_target(tmp_path: Path):
@@ -119,11 +154,12 @@ def test_cleanup_dry_run_does_not_delete_and_requires_confirmation(tmp_path: Pat
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target, "copied.png", b"123"),
         execute_cleanup_requested=True,
         confirm_cleanup="",
         staging_log=log,
@@ -146,11 +182,12 @@ def test_cleanup_report_public_summary_is_privacy_safe(tmp_path: Path):
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=1,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target, "secret_file_name.jpg", b"x"),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -182,11 +219,12 @@ def test_cleanup_byte_mismatch_blocks_dedicated_identity(tmp_path: Path):
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=2,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target, "copied.jpg", b"xx"),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -209,11 +247,12 @@ def test_cleanup_count_and_byte_match_dedicated_identity(tmp_path: Path):
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -225,26 +264,28 @@ def test_cleanup_count_and_byte_match_dedicated_identity(tmp_path: Path):
     assert public["requested_expected_copy_count"] == 1000
 
 
-def test_cleanup_missing_staging_log_blocks_identity(tmp_path: Path):
+def test_cleanup_missing_staging_log_is_diagnostic_only(tmp_path: Path):
     target = tmp_path / "target"
     target.mkdir()
     (target / "copied.jpg").write_bytes(b"abc")
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=None,
     )
 
-    assert public["target_is_dedicated_phase38d_target"] is False
-    assert public["status"] == "blocked_identity_mismatch"
-    assert "staging_copy_log_missing" in public["identity_mismatch_reasons"]
+    assert public["target_is_dedicated_phase38d_target"] is True
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["staging_log_authorization_role"] == "not_used_for_cleanup_authorization"
+    assert public["dedicated_target_evidence"]["staging_log_diagnostic_status"] == "unavailable"
 
 
 def test_cleanup_missing_expected_staging_root_blocks_pass(tmp_path: Path):
@@ -368,11 +409,12 @@ def test_staging_log_expected_count_is_dynamic(tmp_path: Path):
 
     public, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=500,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -383,17 +425,19 @@ def test_staging_log_expected_count_is_dynamic(tmp_path: Path):
 
     public_mismatch, _local = recovery.build_cleanup_dry_run(
         target_root=target,
-        expected_staging_root=target,
+        expected_staging_root=tmp_path,
         protected_roots=_protected_roots(tmp_path),
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
-    assert public_mismatch["status"] == "blocked_identity_mismatch"
+    assert public_mismatch["status"] == "dry_run_passed"
     assert public_mismatch["dedicated_target_evidence"]["staging_copy_log_expected_count_correlated"] is False
+    assert public_mismatch["dedicated_target_evidence"]["staging_log_diagnostic_status"] == "mismatch_diagnostic_only"
 
 
 def test_staging_log_target_exact_match_not_substring(tmp_path: Path):
@@ -412,14 +456,16 @@ def test_staging_log_target_exact_match_not_substring(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_identity_mismatch"
+    assert public["status"] == "dry_run_passed"
     assert public["dedicated_target_evidence"]["staging_copy_log_target_exact_match"] is False
     assert public["dedicated_target_evidence"]["staging_copy_log_matches_target"] is False
+    assert public["dedicated_target_evidence"]["staging_log_diagnostic_status"] == "mismatch_diagnostic_only"
 
 
 def test_staging_log_equivalent_normalized_target_matches(tmp_path: Path):
@@ -436,6 +482,7 @@ def test_staging_log_equivalent_normalized_target_matches(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -459,12 +506,13 @@ def test_staging_log_missing_target_line_fails_closed(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_identity_mismatch"
+    assert public["status"] == "dry_run_passed"
     assert public["dedicated_target_evidence"]["staging_copy_log_target_exact_match"] is False
     assert public["dedicated_target_evidence"]["staging_copy_log_matches_target"] is False
 
@@ -498,12 +546,13 @@ def test_staging_log_count_must_correlate_with_same_target_entry(tmp_path: Path)
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_identity_mismatch"
+    assert public["status"] == "dry_run_passed"
     assert public["dedicated_target_evidence"]["staging_copy_log_target_exact_match"] is True
     assert public["dedicated_target_evidence"]["staging_copy_log_expected_count_correlated"] is False
     assert public["dedicated_target_evidence"]["staging_copy_log_matches_target"] is False
@@ -523,6 +572,7 @@ def test_staging_log_matching_target_count_and_bytes_pass(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -548,12 +598,13 @@ def test_staging_log_matching_target_with_wrong_copied_count_fails(tmp_path: Pat
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_identity_mismatch"
+    assert public["status"] == "dry_run_passed"
     assert public["dedicated_target_evidence"]["staging_copy_log_files_copied_matches"] is False
 
 
@@ -571,14 +622,13 @@ def test_staging_log_target_expected_only_fails_incomplete(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_incomplete_staging_log"
-    assert "staging_copy_log_files_copied_missing" in public["identity_mismatch_reasons"]
-    assert "staging_copy_log_bytes_copied_missing" in public["identity_mismatch_reasons"]
+    assert public["status"] == "dry_run_passed"
     assert public["dedicated_target_evidence"]["staging_copy_log_matches_target"] is False
 
 
@@ -596,13 +646,14 @@ def test_staging_log_missing_bytes_fails_incomplete(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_incomplete_staging_log"
-    assert "staging_copy_log_bytes_copied_missing" in public["identity_mismatch_reasons"]
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["staging_log_diagnostic_status"] == "mismatch_diagnostic_only"
 
 
 def test_staging_log_missing_copied_count_fails_incomplete(tmp_path: Path):
@@ -619,13 +670,14 @@ def test_staging_log_missing_copied_count_fails_incomplete(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
     )
 
-    assert public["status"] == "blocked_incomplete_staging_log"
-    assert "staging_copy_log_files_copied_missing" in public["identity_mismatch_reasons"]
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["staging_log_diagnostic_status"] == "mismatch_diagnostic_only"
 
 
 def test_gb_byte_tolerance_uses_two_decimal_precision(tmp_path: Path):
@@ -719,11 +771,12 @@ def test_relative_target_resolves_against_stable_expected_root_parent(tmp_path: 
         os.chdir(other_cwd)
         public, _local = recovery.build_cleanup_dry_run(
             target_root=target,
-            expected_staging_root=target,
+            expected_staging_root=tmp_path,
             protected_roots=_protected_roots(tmp_path),
             expected_file_count=1,
             expected_total_bytes=3,
             expected_copy_count=1000,
+            expected_manifest_rows=_single_file_manifest(target),
             execute_cleanup_requested=False,
             confirm_cleanup="",
             staging_log=log,
@@ -750,6 +803,7 @@ def test_relative_target_resolves_against_expected_staging_root(tmp_path: Path):
         expected_file_count=1,
         expected_total_bytes=3,
         expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
         execute_cleanup_requested=False,
         confirm_cleanup="",
         staging_log=log,
@@ -806,7 +860,7 @@ def test_relative_manifest_target_paths_normalize_against_staging_target(tmp_pat
         os.chdir(other_cwd)
         public, _local = recovery.build_cleanup_dry_run(
             target_root=target,
-            expected_staging_root=target,
+            expected_staging_root=tmp_path,
             protected_roots=_protected_roots(tmp_path),
             expected_file_count=1,
             expected_total_bytes=3,
@@ -821,6 +875,201 @@ def test_relative_manifest_target_paths_normalize_against_staging_target(tmp_pat
 
     assert public["status"] == "dry_run_passed"
     assert public["dedicated_target_evidence"]["unexpected_files_check_passed"] is True
+
+
+def test_manifest_filesystem_unexpected_file_blocks(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    (target / "unexpected.jpg").write_bytes(b"abc")
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["unexpected_file_count"] == 1
+    assert "unexpected_or_missing_staging_files" in public["identity_mismatch_reasons"]
+
+
+def test_manifest_filesystem_missing_expected_file_blocks(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+    rows = _target_manifest_rows(target, [("copied.jpg", b"abc"), ("missing.jpg", b"def")])
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=2,
+        expected_total_bytes=6,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["missing_expected_file_count"] == 1
+    assert "unexpected_or_missing_staging_files" in public["identity_mismatch_reasons"]
+
+
+def test_manifest_filesystem_path_diff_blocks_even_with_same_count_and_bytes(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "wrong.jpg").write_bytes(b"abc")
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target, "copied.jpg", b"abc"),
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["unexpected_file_count"] == 1
+    assert public["dedicated_target_evidence"]["missing_expected_file_count"] == 1
+
+
+def test_manifest_filesystem_size_mismatch_blocks(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=4,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target, "copied.jpg", b"abcd"),
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["size_mismatch_file_count"] == 1
+    assert "manifest_size_mismatch" in public["identity_mismatch_reasons"]
+
+
+def test_manifest_copy_rows_include_existing_tier500_and_ignore_excluded(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    _write_target_files(target, [("tier500.jpg", b"abc"), ("candidate.png", b"defg")])
+    rows = _target_manifest_rows(target, [("tier500.jpg", b"abc")], reason="existing_tier500")
+    rows.extend(_target_manifest_rows(target, [("candidate.png", b"defg")], reason="new_candidate"))
+    rows.append(
+        {
+            "row_id": "99",
+            "source_path": str(target.parent / "excluded.jpg"),
+            "proposed_target_path": str(target / "excluded.jpg"),
+            "extension": ".jpg",
+            "size_bytes": "3",
+            "selection_reason": "",
+            "duplicate_key": "",
+            "exclusion_reason": "not_selected_temporal_stratified",
+            "placeholder_flag": "False",
+            "stat_error": "False",
+            "temporal_bucket": "b01",
+        }
+    )
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=2,
+        expected_total_bytes=7,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+
+    assert public["status"] == "dry_run_passed"
+    assert public["dedicated_target_evidence"]["expected_manifest_file_count"] == 2
+    assert public["dedicated_target_evidence"]["unexpected_file_count"] == 0
+
+
+def test_log_match_cannot_override_manifest_filesystem_failure(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "wrong.jpg").write_bytes(b"abc")
+    log = tmp_path / "copy.log"
+    _write_log(log, target, 1000, files_copied=1, bytes_copied=3)
+
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target, "copied.jpg", b"abc"),
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=log,
+    )
+
+    assert public["status"] == "blocked_identity_mismatch"
+    assert public["dedicated_target_evidence"]["staging_copy_log_matches_target"] is True
+    assert public["dedicated_target_evidence"]["manifest_filesystem_check_passed"] is False
+
+
+def test_target_equal_expected_root_requires_explicit_allow(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "copied.jpg").write_bytes(b"abc")
+
+    blocked, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+    )
+    allowed, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=target,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=_single_file_manifest(target),
+        execute_cleanup_requested=False,
+        confirm_cleanup="",
+        staging_log=None,
+        allow_target_equals_expected_root=True,
+    )
+
+    assert blocked["status"] == "blocked_identity_mismatch"
+    assert "target_equals_expected_staging_root_not_allowed" in blocked["identity_mismatch_reasons"]
+    assert allowed["status"] == "dry_run_passed"
 
 
 def test_custom_local_details_label_is_propagated_without_full_path(tmp_path: Path):
@@ -845,6 +1094,48 @@ def test_custom_local_details_label_is_propagated_without_full_path(tmp_path: Pa
     assert default_report["local_artifacts"]["local_details_artifact"] == "phase-3.8d-i3-recovery-local-details.json"
     assert custom_report["local_artifacts"]["local_details_artifact"] == "custom-local-details.json"
     assert str(tmp_path) not in str(custom_report)
+
+
+def test_recovery_report_contains_row98_clarification(tmp_path: Path):
+    cleanup = {
+        "status": "dry_run_passed",
+        "target_safe_label": "phase_3_8d_partial_staging",
+        "file_count": 97,
+        "total_bytes": 340159586,
+        "expected_staging_root_explicit": True,
+        "expected_staging_root_is_directory": True,
+        "target_under_expected_staging_root": True,
+        "target_equals_expected_staging_root": False,
+        "target_equals_expected_staging_root_allowed": False,
+        "invalid_protected_root_labels": [],
+        "missing_required_protected_labels": [],
+        "dedicated_target_evidence": {
+            "authorization_basis": "manifest_filesystem_proof",
+            "manifest_filesystem_check_passed": True,
+            "staging_log_authorization_role": "not_used_for_cleanup_authorization",
+            "staging_log_diagnostic_status": "unavailable",
+        },
+        "deletion_plan": {
+            "actual_delete_performed": False,
+            "confirmation_phrase_required": recovery.CLEANUP_CONFIRM_PHRASE,
+        },
+    }
+    backfill = recovery.build_backfill_policy(
+        manifest_rows=_manifest_rows(tmp_path),
+        failed_row_id=2,
+        selected_total=4,
+    )
+    report = recovery.build_recovery_report(
+        cleanup_dry_run=cleanup,
+        backfill_policy=backfill,
+        local_details_artifact="local-details.json",
+    )
+    markdown = recovery.render_recovery_markdown(report)
+
+    assert "Can this handle the original row 98 failure?" in markdown
+    assert "has not yet proven that row 98 can be hydrated or copied" in markdown
+    assert "row 98 read-probe/hydration succeeds" in markdown
+    assert "Backfill is only a fallback" in markdown
 
 
 def test_read_probe_policy_is_opt_in():
