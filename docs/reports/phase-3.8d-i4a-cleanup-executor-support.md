@@ -13,6 +13,7 @@
 - Execute mode requires `--execute-cleanup`.
 - Execute mode requires exact confirmation phrase `DELETE_PHASE38D_PARTIAL_STAGING`.
 - A fresh cleanup dry-run proof must pass immediately before execution.
+- The executor re-runs the manifest/filesystem proof after confirmation and before any `unlink()` call; if target contents changed after the earlier dry-run, cleanup fails closed with no deletion.
 - Cleanup proof is based on explicit target/root inputs, valid protected roots, protected-root disjointness, manifest-derived expected staging files, and actual filesystem scan.
 - Staging logs are diagnostic only and cannot authorize deletion.
 - No ad-hoc deletion outside the reviewed executor is allowed.
@@ -41,6 +42,7 @@ Parent directories are left in place. Source/iCloud files, repo files, app-manag
 - default no-delete behavior
 - wrong confirmation phrase blocks deletion
 - invalid identity proof blocks deletion
+- target changes after dry-run block deletion before any file is removed
 - valid proof plus confirmation deletes only temp-dir expected files
 - deleted count and bytes are reported
 - target directory remains after temp-dir cleanup

@@ -908,10 +908,15 @@ def execute_verified_cleanup(
     target_root: Path,
     expected_manifest_rows: Sequence[dict[str, str]],
     cleanup_dry_run: Mapping[str, Any],
+    expected_staging_root: Path | None,
+    protected_roots: Sequence[ProtectedRoot],
     expected_file_count: int,
     expected_total_bytes: int,
+    expected_copy_count: int,
     execute_cleanup_requested: bool,
     confirm_cleanup: str,
+    staging_log: Path | None = None,
+    allow_target_equals_expected_root: bool = False,
 ) -> dict[str, Any]:
     """Delete only verified expected staging files after a passing dry-run proof."""
     result: dict[str, Any] = {
@@ -925,6 +930,7 @@ def execute_verified_cleanup(
         "deleted_bytes": 0,
         "post_cleanup_file_count": None,
         "post_cleanup_total_bytes": None,
+        "fresh_cleanup_proof_status": None,
         "errors": [],
         "status": "not_requested",
     }
@@ -940,6 +946,29 @@ def execute_verified_cleanup(
             str(cleanup_dry_run.get("status"))
         ]
         return result
+
+    fresh_cleanup_dry_run, _fresh_local_details = build_cleanup_dry_run(
+        target_root=target_root,
+        expected_staging_root=expected_staging_root,
+        protected_roots=protected_roots,
+        expected_file_count=expected_file_count,
+        expected_total_bytes=expected_total_bytes,
+        expected_copy_count=expected_copy_count,
+        expected_manifest_rows=expected_manifest_rows,
+        execute_cleanup_requested=execute_cleanup_requested,
+        confirm_cleanup=confirm_cleanup,
+        staging_log=staging_log,
+        allow_target_equals_expected_root=allow_target_equals_expected_root,
+    )
+    result["fresh_cleanup_proof_status"] = fresh_cleanup_dry_run.get("status")
+    if fresh_cleanup_dry_run.get("status") != "dry_run_passed":
+        result["status"] = "blocked_fresh_cleanup_proof_failed"
+        result["errors"] = list(fresh_cleanup_dry_run.get("identity_mismatch_reasons") or []) or [
+            str(fresh_cleanup_dry_run.get("status"))
+        ]
+        return result
+    expected_total_bytes = int(fresh_cleanup_dry_run.get("expected_total_bytes", expected_total_bytes))
+
     evidence = cleanup_dry_run.get("dedicated_target_evidence") or {}
     if evidence.get("escape_hazard_entry_count"):
         result["status"] = "blocked_escape_risk"
@@ -1334,6 +1363,7 @@ def render_cleanup_markdown(
                 "",
                 f"- Requested: `{cleanup_execution['requested']}`",
                 f"- Status: `{cleanup_execution['status']}`",
+                f"- Fresh cleanup proof status: `{cleanup_execution['fresh_cleanup_proof_status']}`",
                 f"- Actual delete performed: `{cleanup_execution['actual_delete_performed']}`",
                 f"- Deleted file count: `{cleanup_execution['deleted_file_count']}`",
                 f"- Deleted bytes: `{cleanup_execution['deleted_bytes']}`",
@@ -1542,10 +1572,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         target_root=args.target_root,
         expected_manifest_rows=manifest_rows,
         cleanup_dry_run=cleanup_dry_run,
+        expected_staging_root=args.expected_staging_root,
+        protected_roots=args.protected_root,
         expected_file_count=args.expected_file_count,
         expected_total_bytes=cleanup_dry_run.get("expected_total_bytes", args.expected_total_bytes),
+        expected_copy_count=args.selected_total,
         execute_cleanup_requested=args.execute_cleanup,
         confirm_cleanup=args.confirm_cleanup,
+        staging_log=args.staging_log,
+        allow_target_equals_expected_root=args.allow_target_equals_expected_staging_root,
     )
     backfill_policy = build_backfill_policy(
         manifest_rows=manifest_rows,

@@ -113,6 +113,32 @@ def _write_manifest(path: Path, rows: list[dict[str, str]]):
         writer.writerows(rows)
 
 
+def _execute_cleanup(
+    tmp_path: Path,
+    target: Path,
+    rows: list[dict[str, str]],
+    public: dict,
+    *,
+    expected_file_count: int = 1,
+    expected_total_bytes: int = 3,
+    execute_cleanup_requested: bool = True,
+    confirm_cleanup: str | None = None,
+):
+    return recovery.execute_verified_cleanup(
+        target_root=target,
+        expected_manifest_rows=rows,
+        cleanup_dry_run=public,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=expected_file_count,
+        expected_total_bytes=expected_total_bytes,
+        expected_copy_count=1000,
+        execute_cleanup_requested=execute_cleanup_requested,
+        confirm_cleanup=confirm_cleanup if confirm_cleanup is not None else recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+
+
 def test_final_delivery_report_standard_docs_presence():
     repo = Path(__file__).resolve().parent.parent
     for rel in ["AGENTS.md", "CLAUDE.md", "docs/test-workflow.md"]:
@@ -291,12 +317,11 @@ def test_cleanup_executor_not_requested_deletes_nothing(tmp_path: Path):
         staging_log=None,
     )
 
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=_single_file_manifest(target),
-        cleanup_dry_run=public,
-        expected_file_count=1,
-        expected_total_bytes=3,
+    result = _execute_cleanup(
+        tmp_path,
+        target,
+        _single_file_manifest(target),
+        public,
         execute_cleanup_requested=False,
         confirm_cleanup="",
     )
@@ -325,12 +350,11 @@ def test_cleanup_executor_wrong_confirmation_deletes_nothing(tmp_path: Path):
         staging_log=None,
     )
 
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
-        expected_file_count=1,
-        expected_total_bytes=3,
+    result = _execute_cleanup(
+        tmp_path,
+        target,
+        rows,
+        public,
         execute_cleanup_requested=True,
         confirm_cleanup="WRONG",
     )
@@ -358,14 +382,13 @@ def test_cleanup_executor_valid_proof_and_confirmation_deletes_expected_files(tm
         staging_log=None,
     )
 
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
+    result = _execute_cleanup(
+        tmp_path,
+        target,
+        rows,
+        public,
         expected_file_count=2,
         expected_total_bytes=7,
-        execute_cleanup_requested=True,
-        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
     )
 
     assert result["status"] == "cleanup_passed"
@@ -375,6 +398,131 @@ def test_cleanup_executor_valid_proof_and_confirmation_deletes_expected_files(tm
     assert result["post_cleanup_file_count"] == 0
     assert target.exists()
     assert list(target.rglob("*")) == [target / "nested"]
+
+
+def test_cleanup_executor_reruns_fresh_proof_before_delete(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    rows = _single_file_manifest(target)
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+    assert public["status"] == "dry_run_passed"
+
+    unexpected = target / "unexpected.jpg"
+    unexpected.write_bytes(b"late")
+
+    result = _execute_cleanup(tmp_path, target, rows, public)
+
+    assert result["status"] == "blocked_fresh_cleanup_proof_failed"
+    assert result["fresh_cleanup_proof_status"] == "blocked_identity_mismatch"
+    assert "unexpected_or_missing_staging_files" in result["errors"]
+    assert result["actual_delete_performed"] is False
+    assert copied.exists()
+    assert unexpected.exists()
+
+
+def test_cleanup_executor_aborts_if_expected_file_size_changes_after_dry_run(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    rows = _single_file_manifest(target)
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+    assert public["status"] == "dry_run_passed"
+
+    copied.write_bytes(b"abcd")
+
+    result = _execute_cleanup(tmp_path, target, rows, public)
+
+    assert result["status"] == "blocked_fresh_cleanup_proof_failed"
+    assert result["fresh_cleanup_proof_status"] == "blocked_identity_mismatch"
+    assert "manifest_size_mismatch" in result["errors"]
+    assert result["actual_delete_performed"] is False
+    assert copied.exists()
+    assert copied.read_bytes() == b"abcd"
+
+
+def test_cleanup_executor_aborts_if_expected_file_missing_after_dry_run(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    rows = _single_file_manifest(target)
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+    assert public["status"] == "dry_run_passed"
+
+    copied.unlink()
+
+    result = _execute_cleanup(tmp_path, target, rows, public)
+
+    assert result["status"] == "blocked_fresh_cleanup_proof_failed"
+    assert result["fresh_cleanup_proof_status"] == "blocked_identity_mismatch"
+    assert "unexpected_or_missing_staging_files" in result["errors"]
+    assert result["actual_delete_performed"] is False
+
+
+def test_cleanup_executor_aborts_if_reparse_risk_appears_after_dry_run(tmp_path: Path, monkeypatch):
+    target = tmp_path / "target"
+    target.mkdir()
+    copied = target / "copied.jpg"
+    copied.write_bytes(b"abc")
+    rows = _single_file_manifest(target)
+    public, _local = recovery.build_cleanup_dry_run(
+        target_root=target,
+        expected_staging_root=tmp_path,
+        protected_roots=_protected_roots(tmp_path),
+        expected_file_count=1,
+        expected_total_bytes=3,
+        expected_copy_count=1000,
+        expected_manifest_rows=rows,
+        execute_cleanup_requested=True,
+        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
+        staging_log=None,
+    )
+    assert public["status"] == "dry_run_passed"
+    monkeypatch.setattr(recovery, "_entry_has_reparse_point", lambda path: path.name == "copied.jpg")
+
+    result = _execute_cleanup(tmp_path, target, rows, public)
+
+    assert result["status"] == "blocked_fresh_cleanup_proof_failed"
+    assert result["fresh_cleanup_proof_status"] == "blocked_identity_mismatch"
+    assert "target_contains_symlink_or_reparse_point" in result["errors"]
+    assert result["actual_delete_performed"] is False
+    assert copied.exists()
 
 
 def test_cleanup_executor_requires_passing_identity_proof(tmp_path: Path):
@@ -396,14 +544,12 @@ def test_cleanup_executor_requires_passing_identity_proof(tmp_path: Path):
         staging_log=None,
     )
 
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
-        expected_file_count=1,
+    result = _execute_cleanup(
+        tmp_path,
+        target,
+        rows,
+        public,
         expected_total_bytes=4,
-        execute_cleanup_requested=True,
-        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
     )
 
     assert public["status"] == "blocked_identity_mismatch"
@@ -432,15 +578,7 @@ def test_cleanup_executor_blocks_symlink_or_reparse_risk(tmp_path: Path, monkeyp
         confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
         staging_log=None,
     )
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
-        expected_file_count=1,
-        expected_total_bytes=3,
-        execute_cleanup_requested=True,
-        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
-    )
+    result = _execute_cleanup(tmp_path, target, rows, public)
 
     assert public["status"] == "blocked_identity_mismatch"
     assert "target_contains_symlink_or_reparse_point" in public["identity_mismatch_reasons"]
@@ -475,15 +613,7 @@ def test_cleanup_executor_blocks_hardlinked_target(tmp_path: Path):
         confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
         staging_log=None,
     )
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
-        expected_file_count=1,
-        expected_total_bytes=3,
-        execute_cleanup_requested=True,
-        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
-    )
+    result = _execute_cleanup(tmp_path, target, rows, public)
 
     assert public["status"] == "blocked_identity_mismatch"
     assert public["dedicated_target_evidence"]["hardlink_hazard_entry_count"] == 1
@@ -523,18 +653,10 @@ def test_cleanup_executor_rescans_hardlink_risk_after_passing_dry_run(tmp_path: 
 
         pytest.skip(f"hard links not supported on this test volume: {exc}")
 
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
-        expected_file_count=1,
-        expected_total_bytes=3,
-        execute_cleanup_requested=True,
-        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
-    )
+    result = _execute_cleanup(tmp_path, target, rows, public)
 
-    assert result["status"] == "blocked_hardlink_escape_risk"
-    assert result["errors"] == ["hardlink_escape_risk"]
+    assert result["status"] == "blocked_fresh_cleanup_proof_failed"
+    assert "hardlink_escape_risk" in result["errors"]
     assert result["actual_delete_performed"] is False
     assert copied.exists()
     assert outside_hardlink.exists()
@@ -599,15 +721,7 @@ def test_cleanup_executor_path_traversal_manifest_target_blocks(tmp_path: Path):
         confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
         staging_log=None,
     )
-    result = recovery.execute_verified_cleanup(
-        target_root=target,
-        expected_manifest_rows=rows,
-        cleanup_dry_run=public,
-        expected_file_count=1,
-        expected_total_bytes=3,
-        execute_cleanup_requested=True,
-        confirm_cleanup=recovery.CLEANUP_CONFIRM_PHRASE,
-    )
+    result = _execute_cleanup(tmp_path, target, rows, public)
 
     assert public["status"] == "blocked_identity_mismatch"
     assert "invalid_manifest_targets" in public["identity_mismatch_reasons"]

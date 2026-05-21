@@ -345,7 +345,7 @@ See [Content Classification](content-classification.md) for full documentation.
 
 **Goal:** Add reviewed cleanup execution support before the approved partial staging cleanup stage.
 
-- Extends `scripts/plan_phase38d_i3_recovery.py` so `--execute-cleanup` is no longer an ad-hoc operation. It requires the exact confirmation phrase `DELETE_PHASE38D_PARTIAL_STAGING` and a fresh passing manifest/filesystem cleanup proof before deleting anything.
+- Extends `scripts/plan_phase38d_i3_recovery.py` so `--execute-cleanup` is no longer an ad-hoc operation. It requires the exact confirmation phrase `DELETE_PHASE38D_PARTIAL_STAGING` and a fresh passing manifest/filesystem cleanup proof immediately before deleting anything.
 - The executor deletes only expected manifest/filesystem-matched regular files under the verified target root. It fails closed for invalid protected roots, protected-root overlap, target/root identity mismatch, unexpected files, missing expected files, size mismatches, path traversal, and symlink/reparse/hard-link escape hazards.
 - Staging logs remain diagnostic only and cannot authorize deletion.
 - Parent directories are left in place. The executor does not touch source/iCloud files, repo files, app-managed storage, DB data, staging copy, read-probe/hydration, classification, AI tagging, localization, Entity Resolver, or similarity workflows.
