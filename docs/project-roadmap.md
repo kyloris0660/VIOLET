@@ -400,6 +400,25 @@ See [Content Classification](content-classification.md) for full documentation.
 - Source content was read only for replacement validation. Provider-side hydration/cache may have occurred for the replacement reads, but no source/iCloud write mutation, staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
 - Phase 3.8d execute remains blocked until the I5c PR is reviewed/merged and a separate staging-copy retry plan is approved.
 
+### Phase 3.8d-I6 - Staging Copy Retry with Backfilled Manifest
+
+**Goal:** Retry staging copy using the I5c backfilled local selected manifest, without DB import or downstream jobs.
+
+- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, a narrow operational runner that validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and executes copy only after explicit approval.
+- The runner now supports an explicit cloud-aware copy policy for production-like iCloud ingestion: recall-risk rows remain blocked by default, but `--allow-cloud-recall-copy` plus `--confirm-cloud-aware-copy COPY_PHASE38D_BACKFILLED_STAGING_WITH_CLOUD_RECALL` lets provider-side hydration/cache happen through source reads while item-level failures are classified and recorded.
+- Structural safety failures still block the whole run. Per-item source failures are recorded in an ignored item ledger and excluded from DB import eligibility. The I6 medium pilot failure budget is `max_item_failures=20`, `max_failure_rate=0.05`, `max_consecutive_failures=10`, and `max_same_reason_failures=20`.
+- I6 manifest validation passed: active selected total `1000`, rows `98`/`881` absent, replacement rows `1029`/`1041` present, bucket distribution unchanged, duplicate source/target counts `0`, expected bytes `3,109,318,484`.
+- Pre-copy staging target check passed: the target label is empty (`0` files / `0` bytes), protected roots are valid/disjoint, and no symlink/reparse/hard-link hazards were found.
+- Staging copy dry-run reported `566` metadata-level `cloud_recall_on_data_access` rows; these were treated as cloud-backed recall-risk rows, not proven failures, after explicit cloud-aware copy approval.
+- Actual staging copy completed with item-level failures within budget: attempted `1000`, staged `994`, failed `6`, copied `3,063,523,992` bytes, failure rate `0.006`, max consecutive failures `3`, budget exceeded `False`.
+- Failed item rows were `799`, `839`, `922`, `970`, `971`, and `972`, all with `cloud_network_unavailable`. They are not eligible for DB import and must be handled by later backfill, targeted retry, or an explicitly approved partial-import strategy.
+- Post-copy audit passed for the staged subset: `994` files / `3,063,523,992` bytes, no unexpected files, no missing staged files, no size mismatches, no hazards, rows `1029`/`1041` staged, rows `98`/`881` not staged.
+- Full `1000` DB import remains blocked. Any later partial-import plan must consume the I6 item ledger / staged-success set as the source of truth and must not blindly import the full `1000` manifest.
+- DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
+- No DB import, DB mutation, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
+- Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
+- Next decision: approve same-bucket backfill for the 6 failed rows, perform a targeted provider/network retry, or explicitly approve partial-import planning for the `994` staged rows from the item ledger. Full `1000` DB import remains blocked until a complete staged set is produced and separately approved.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -476,15 +495,26 @@ Fixed crash during scan import when files with certain Unicode characters in the
 **Goal:** Before any full-library import, implement a production-grade per-run ledger that records final state for every source item in each ingestion run, manifest, or job.
 
 - Required states include: succeeded, failed, failure reason, retried, backfilled, deferred for later cloud recovery, imported into DB, excluded as ineligible, and unresolved.
+- Required per-item fields include: row id or safe label, source state, staging status, failure reason, bytes copied, `eligible_for_db_import`, deferred/backfilled/unresolved state, and imported media ID if later imported.
 - Reports must be scoped to the current run/manifest/job, not only global library totals.
 - Failed cloud-backed items must remain visible and must not be mixed with successfully imported items or hidden behind aggregate counts.
-- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c.
+- Full-library import must not run until this production ledger exists and can prove which staged-success rows are eligible for DB import.
+- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c or I6.
+
+### Future prerequisite - Over-selection Buffer for Large Imports
+
+**Goal:** Large imports should select enough candidates to reach the desired successful import size while preserving item-level failure visibility.
+
+- Use `desired_success_count=N` and `candidate_count=N * buffer_ratio`.
+- The buffer must account for cloud failures, duplicate targets/sources, unsupported files, non-anime or otherwise ineligible classification results, and user exclusions.
+- Buffering is not silent skipping: every failed, excluded, deferred, backfilled, unresolved, and imported item must remain scoped to the current run/manifest/job in the production ledger.
+- The buffer design belongs in a future ingestion planning phase before full-library import. It must not bypass staging audit, item-ledger, or DB import approval gates.
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1/I2/I3/I4/I5/I5b/I5c and staging-copy retry validation:** Do not start Phase 4 until cloud availability/hydration/backfill handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Blocked by Phase 3.8d-I1/I2/I3/I4/I5/I5b/I5c/I6 and DB-import readiness:** Do not start Phase 4 until cloud availability/hydration/backfill handling for ingestion/staging/copy is reviewed, merged, and the Phase 3.8d import path is explicitly approved. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place
@@ -565,11 +595,17 @@ Any workflow that can read or copy from iCloud / Windows Cloud Files source path
 
 - `stat()`, `exists()`, file size, and `is_file()` are insufficient for cloud-backed files.
 - Windows cloud attributes must be inspected before copy/import.
-- High cloud-risk selected sets must not proceed directly to copy.
+- Phase 2.4 solved scan safety; staging copy also requires ingestion availability.
+- Cloud recall-risk is a risk signal, not a permanent exclusion.
+- Default behavior blocks recall-risk rows, but an explicit cloud-aware copy policy may allow recall-risk rows into controlled copy with bounded reporting.
 - Manual hydrate is an emergency workaround only, not the formal V.I.O.L.E.T. workflow.
 - Structured cloud failure reasons are required.
 - DB import must not run after failed or incomplete staging copy.
 - Upload-bytes routes and app-managed storage reads do not require the source cloud gate.
+
+Safety gates should make workflows controlled, observable, and recoverable rather than infinite blockers for expected iCloud / Cloud Files states. Structural blockers stop the whole run, including server/DB identity mismatch, unsafe staging target, target escape, protected-root overlap, invalid manifest schema, duplicate target paths, report generation failure, privacy leak, DB/app-storage/source-root confusion, and unexpected DB/app-storage/source mutation.
+
+Per-item failures are recorded, excluded from DB import eligibility, and handled through retry/backfill/deferred recovery when they stay within the approved failure budget. Examples include `cloud_hydration_failed`, `cloud_network_unavailable`, `read_timeout`, `source_missing`, `permission_denied`, `unsupported_extension`, `size_mismatch`, and `unreadable_source`. The current medium pilot failure budget is `max_item_failures=20`, `max_failure_rate=0.05`, `max_consecutive_failures=10`, and `max_same_reason_failures=20`; exceeding it indicates possible systemic provider/network/workflow failure and should stop the run.
 
 ### Destructive DB Operation Safety (post-incident, 2026-05-10)
 

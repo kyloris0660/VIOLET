@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I5c - Same-bucket backfill application (2026-05-22).
+> Last updated during Phase 3.8d-I6 - Staging copy retry with item-level failure budget (2026-05-22).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i5c-apply-backfill` (same-bucket backfill application report; Phase 3.8d execute remains blocked) |
+| **Branch** | `phase3.8d-i6-staging-copy-retry` (staging copy retry report; Phase 3.8d DB import remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -43,7 +43,8 @@
 | **Phase 3.8d-I4b (PR #59)** | PR #59 merged - actual partial staging cleanup completed: `97` files / `340,159,586` bytes deleted from the dedicated staging target; DB/source/app storage unchanged |
 | **Phase 3.8d-I5 (PR #60)** | PR #60 merged - controlled read-probe / hydration audit; sample gate failed for rows `98` and `881`, so full recall verification and Phase 3.8d execute remain blocked |
 | **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
-| **Phase 3.8d-I5c (branch)** | `phase3.8d-i5c-apply-backfill` - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
+| **Phase 3.8d-I5c (PR #62)** | PR #62 merged - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
+| **Phase 3.8d-I6 (branch)** | `phase3.8d-i6-staging-copy-retry` - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; DB import remains blocked for full `1000` |
 
 ## Mandatory Workflow Rules
 
@@ -64,6 +65,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 
 13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes through the Source Ingestion Gate before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging. Upload-bytes and app-managed storage reads do not require the source cloud gate.
 14. **Ingestion observability / per-run source item state** - Future production ingestion must record a clear final state for every source item in each run, manifest, or job: succeeded, failed, failure reason, retried, backfilled, deferred for cloud recovery, imported into DB, excluded as ineligible, or unresolved. Do not mix failed cloud-backed items with successful imported items, hide failed rows behind aggregate counts, or report only global library totals. Reporting must be scoped to the current run/manifest/job. Phase 3.8d-I5c records this as a principle and local deferred ledger only; it does not add a DB migration or full production ledger.
+15. **Bugfix root-cause closure** - For every non-trivial bugfix, CodeX must identify the root cause, decide whether it is part of a broader same-pattern class, search and fix adjacent occurrences within the active PR scope, add tests for the class of issue, and report what was searched plus what was intentionally deferred. This does not authorize automatic reviewer-fix loops or scope creep; default reviewer flow remains implement/test/push/`@codex review`/report/stop unless user/ChatGPT explicitly authorizes a bounded fix round.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -813,14 +815,41 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Source content was read for verification only; provider-side hydration/cache may have occurred. No staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i5-controlled-hydration-audit.md` and `docs/reports/phase-3.8d-i5-controlled-hydration-audit-summary.json`.
 
-## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute
+**Phase 3.8d-I5b - Targeted Hydration Retry (branch `phase3.8d-i5b-targeted-hydration-retry`):**
+- Targeted only rows `98` and `881` after the I5 sample gate failure.
+- Result: `2` attempted, `0` succeeded, `2` failed with `cloud_hydration_failed`; both rows stayed `recall_on_data_access`, read `0` bytes, and were not staging-copy-ready.
+- Backfill stayed dry-run-only in I5b. No staging copy, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
+- Reports: `docs/reports/phase-3.8d-i5b-targeted-hydration-retry.md` and `docs/reports/phase-3.8d-i5b-targeted-hydration-retry-summary.json`.
 
-Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
+**Phase 3.8d-I5c - Validate and Apply Same-bucket Backfill (branch `phase3.8d-i5c-apply-backfill`):**
+- Replacement validation targeted only row `1029` for failed row `98` and row `1041` for failed row `881`; both replacements passed controlled full-read verification and are staging-copy-ready.
+- Backfill was applied only to the ignored local selected manifest artifact. Active selected total stayed `1000`, bucket distribution stayed unchanged, rows `98`/`881` were removed from the active selected set, and rows `1029`/`1041` were activated.
+- Rows `98` and `881` were recorded in the ignored deferred cloud recovery ledger with structured `cloud_hydration_failed` reasons. This is deferred recovery, not silent skipping.
+- I5c records the ingestion observability principle: future production ingestion must track per-run final state for every source item before full-library import. No DB migration or production ledger was implemented in I5c.
+- No staging copy, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
+- Reports: `docs/reports/phase-3.8d-i5c-backfill-application.md` and `docs/reports/phase-3.8d-i5c-backfill-application-summary.json`.
 
-1. Review Phase 3.8d-I5 results: row `98` and row `881` failed bounded read with `read_timeout`; full recall verification did not run.
-2. Decide whether to run a targeted recovery retry/hydration stage for the failed rows, adjust bounded timeout policy, or approve same-bucket backfill for the two failed rows.
-3. Do not retry staging copy until the failed rows are resolved by approved retry/hydration or approved backfill.
-4. Only after recovery/backfill and a successful staging copy plus post-copy audit may Phase 3.8d DB import be reconsidered.
+**Phase 3.8d-I6 - Staging Copy Retry (branch `phase3.8d-i6-staging-copy-retry`):**
+- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, which validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and executes copy only after explicit approval.
+- I6 manifest validation passed: active selected total `1000`, rows `98`/`881` absent, rows `1029`/`1041` present, bucket distribution unchanged, duplicate source/target counts `0`, expected bytes `3,109,318,484`.
+- Pre-copy target check passed: target exists, is a directory, is empty (`0` files / `0` bytes), protected roots are valid/disjoint, and no symlink/reparse/hard-link hazards were found.
+- Staging copy dry-run reported `566` metadata-level `cloud_recall_on_data_access` rows; these are cloud-backed recall-risk rows, not proven failures. The explicit cloud-aware copy policy was enabled with confirmation, so item-level failures were recorded instead of blocking the whole run.
+- Actual staging copy completed with item-level failures within budget: attempted `1000`, staged `994`, failed `6`, copied `3,063,523,992` bytes, failure rate `0.006`, max consecutive failures `3`, budget exceeded `False`.
+- Failed item rows: `799` (`source_row_0799.jpg`, b13), `839` (`source_row_0839.jpg`, b14), `922` (`source_row_0922.jpg`, b15), `970` (`source_row_0970.png`, b16), `971` (`source_row_0971.png`, b16), `972` (`source_row_0972.jpg`, b16), all with `cloud_network_unavailable`.
+- Post-copy audit passed for the staged subset: `994` files / `3,063,523,992` bytes, no unexpected files, no missing staged files, no size mismatches, no hazards; rows `1029`/`1041` staged and rows `98`/`881` not staged.
+- Full `1000` DB import planning is not eligible because `staged_success_count < 1000`; only a later explicitly approved backfill or partial-import planning path may proceed. Any future DB import planning must consume the ignored I6 item ledger / staged-success set, not blindly import the full `1000` manifest. Failed rows must never be imported and must remain recorded for retry/backfill/deferred recovery.
+- DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
+- No DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
+- Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
+
+## Recommended Next Step: Backfill or Partial-import Planning Decision
+
+Do not resume full Phase 3.8d execute, start Phase 4, or run any larger import until the staged subset and failed-item ledger are reviewed and an explicit recovery/import path is approved:
+
+1. Review Phase 3.8d-I6 results: `994` files staged successfully; rows `799`, `839`, `922`, `970`, `971`, and `972` failed item-level copy with `cloud_network_unavailable`.
+2. Decide whether to approve same-bucket backfill for the 6 failed rows, a targeted provider/network retry, or a separately scoped partial-import plan for the `994` staged rows using the I6 item ledger as the source of truth.
+3. Do not run DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, or Phase 4 until that next decision is explicitly approved.
+4. DB import of the full `1000` remains blocked unless a complete staged set is produced by backfill/retry and a separate DB import plan is approved.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

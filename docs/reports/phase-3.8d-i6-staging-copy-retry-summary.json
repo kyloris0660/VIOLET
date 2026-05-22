@@ -1,0 +1,372 @@
+{
+  "phase": "3.8d-I6",
+  "mode": "staging_copy_retry_with_backfilled_manifest",
+  "created_at": "2026-05-22T12:23:26.672011+00:00",
+  "status": "completed_with_item_failures",
+  "success": true,
+  "closeout_hardening": {
+    "safe_filesystem_probe_layer": true,
+    "safe_json_loading": true,
+    "source_probe_failures_recorded_as_item_failures": true,
+    "target_probe_failures_recorded_as_structured_blockers_or_failures": true,
+    "current_operational_result_preserved_not_rerun": true
+  },
+  "bugfix_root_cause_audit": {
+    "root_cause": "scattered raw filesystem and JSON probes could raise in Windows/iCloud/permission/network edge cases",
+    "related_patterns_searched": [
+      "exists",
+      "is_file",
+      "is_dir",
+      "stat",
+      "lstat",
+      "resolve",
+      "read_text",
+      "json.loads"
+    ],
+    "files_functions_inspected": [
+      "scripts/run_phase38d_i6_staging_copy_retry.py setup input loading",
+      "target safety checks",
+      "tree scanning",
+      "source pre-checks",
+      "copy result validation",
+      "failed-item recording",
+      "target artifact cleanup",
+      "post-copy audit"
+    ],
+    "fixes_applied": [
+      "runtime-sensitive filesystem probes routed through safe helpers",
+      "JSON loading fails closed with structured blocked reasons",
+      "source probe failures become source-specific item-level failures",
+      "target probe failures become structural blockers or structured uncertain-target failures"
+    ],
+    "tests_added": [
+      "malformed JSON input blocks without crashing",
+      "invalid UTF-8 JSON input blocks without crashing",
+      "source exists probe failure becomes item failure",
+      "source is_file probe failure becomes item failure",
+      "target exists probe failure before copy blocks",
+      "mark_failed target probe failure does not crash",
+      "post-copy target stat failure is structured"
+    ],
+    "remaining_similar_risks": [
+      "raw Path calls remain inside the safe helper implementations by design",
+      "module root derivation uses Path(__file__).resolve and is not source/staging runtime artifact probing"
+    ],
+    "deferred_items": [
+      "public report artifact basename precision for overridden local artifact paths"
+    ],
+    "phase_boundary_assessment": "bounded to the active I6 runner and report semantics; no DB migration, staging copy rerun, source/iCloud mutation, app-managed storage mutation, or new phase required"
+  },
+  "duration_seconds": 638.86,
+  "setup": {
+    "backfilled_manifest_present": true,
+    "deferred_ledger_present": true,
+    "i5c_summary_present": true,
+    "i3_local_context_present": true,
+    "errors": []
+  },
+  "manifest_validation": {
+    "status": "passed",
+    "selected_total": 1000,
+    "expected_selected_total": 1000,
+    "failed_rows_absent": true,
+    "replacement_rows_present": [
+      1029,
+      1041
+    ],
+    "bucket_distribution": {
+      "b01": 63,
+      "b02": 63,
+      "b03": 63,
+      "b04": 63,
+      "b05": 63,
+      "b06": 63,
+      "b07": 63,
+      "b08": 63,
+      "b09": 62,
+      "b10": 62,
+      "b11": 62,
+      "b12": 62,
+      "b13": 62,
+      "b14": 62,
+      "b15": 62,
+      "b16": 62
+    },
+    "bucket_distribution_unchanged_from_i5c": true,
+    "extension_distribution": {
+      ".gif": 1,
+      ".jpeg": 10,
+      ".jpg": 816,
+      ".png": 173
+    },
+    "expected_total_bytes": 3109318484,
+    "duplicate_source_count": 0,
+    "duplicate_target_path_count": 0,
+    "duplicate_detectable_hash_key_count": 0,
+    "deferred_ledger_rows": [
+      98,
+      881
+    ],
+    "errors": []
+  },
+  "pre_copy_target_check": {
+    "status": "passed",
+    "target_label": "phase_3_8d_i6_backfilled_staging_target",
+    "target_exists": true,
+    "target_is_directory": true,
+    "target_root_hazard_count": 0,
+    "expected_staging_root_provided": true,
+    "target_under_expected_staging_root": true,
+    "target_equals_expected_staging_root": true,
+    "protected_roots": [
+      {
+        "label": "source_root",
+        "valid_directory": true,
+        "error_reason": null
+      },
+      {
+        "label": "repo_root",
+        "valid_directory": true,
+        "error_reason": null
+      },
+      {
+        "label": "app_storage_root",
+        "valid_directory": true,
+        "error_reason": null
+      },
+      {
+        "label": "app_media_root",
+        "valid_directory": true,
+        "error_reason": null
+      }
+    ],
+    "protected_root_overlap": false,
+    "file_count": 0,
+    "total_bytes": 0,
+    "hazard_count": 0,
+    "errors": []
+  },
+  "cloud_aware_copy_policy": {
+    "enabled": true,
+    "confirmation_required": true,
+    "confirmation_phrase_accepted": true,
+    "cloud_recall_rows_are_metadata_level_not_proven_failures": true
+  },
+  "failure_budget": {
+    "max_item_failures": 20,
+    "max_failure_rate": 0.05,
+    "max_consecutive_failures": 10,
+    "max_same_reason_failures": 20
+  },
+  "dry_run": {
+    "status": "passed_with_item_level_risks",
+    "stage_pilot_valid": false,
+    "expected_copy_rows": 1000,
+    "copy_rows": 1000,
+    "existing_tier500_rows": 0,
+    "new_candidate_rows": 1000,
+    "source_files_missing": 0,
+    "unsupported_extensions": 0,
+    "target_root_escapes": 0,
+    "target_collisions": 0,
+    "duplicate_target_paths": 0,
+    "source_root_violations": 0,
+    "target_existing_files": 0,
+    "cloud_risk_files": 566,
+    "cloud_availability_reason_counts": {
+      "cloud_recall_on_data_access": 566
+    },
+    "item_level_risk_counts": {
+      "source_files_missing": 0,
+      "unsupported_extensions": 0,
+      "cloud_risk_files": 566
+    },
+    "item_level_failures_allowed": true,
+    "cloud_recall_allowed_by_policy": true,
+    "cloud_recall_allowed_reasons": [
+      "cloud_recall_on_data_access"
+    ],
+    "cloud_recall_blocking_errors": [],
+    "non_cloud_dry_run_errors": [],
+    "structural_dry_run_errors": [],
+    "total_copy_bytes": 3109318484,
+    "rows_98_881_absent": true,
+    "rows_1029_1041_present": [
+      1029,
+      1041
+    ],
+    "errors": [],
+    "stage_pilot_error_count": 1
+  },
+  "actual_staging_copy": {
+    "attempted": true,
+    "status": "completed_with_item_failures",
+    "duration_seconds": 637.797,
+    "attempted_count": 1000,
+    "staged_success_count": 994,
+    "item_failure_count": 6,
+    "failure_rate": 0.006,
+    "max_consecutive_failures_observed": 3,
+    "failure_reason_distribution": {
+      "cloud_network_unavailable": 6
+    },
+    "failed_rows": [
+      {
+        "row_id": 799,
+        "safe_label": "source_row_0799.jpg",
+        "bucket": "b13",
+        "extension": ".jpg",
+        "reason": "cloud_network_unavailable",
+        "status": "failed_cloud_hydration"
+      },
+      {
+        "row_id": 839,
+        "safe_label": "source_row_0839.jpg",
+        "bucket": "b14",
+        "extension": ".jpg",
+        "reason": "cloud_network_unavailable",
+        "status": "failed_cloud_hydration"
+      },
+      {
+        "row_id": 922,
+        "safe_label": "source_row_0922.jpg",
+        "bucket": "b15",
+        "extension": ".jpg",
+        "reason": "cloud_network_unavailable",
+        "status": "failed_cloud_hydration"
+      },
+      {
+        "row_id": 970,
+        "safe_label": "source_row_0970.png",
+        "bucket": "b16",
+        "extension": ".png",
+        "reason": "cloud_network_unavailable",
+        "status": "failed_cloud_hydration"
+      },
+      {
+        "row_id": 971,
+        "safe_label": "source_row_0971.png",
+        "bucket": "b16",
+        "extension": ".png",
+        "reason": "cloud_network_unavailable",
+        "status": "failed_cloud_hydration"
+      },
+      {
+        "row_id": 972,
+        "safe_label": "source_row_0972.jpg",
+        "bucket": "b16",
+        "extension": ".jpg",
+        "reason": "cloud_network_unavailable",
+        "status": "failed_cloud_hydration"
+      }
+    ],
+    "budget_exceeded": false,
+    "structural_failure": false,
+    "structural_reason": null,
+    "copied_files": 994,
+    "copied_bytes": 3063523992,
+    "failed": 6,
+    "failed_reason_code": "cloud_network_unavailable",
+    "failed_safe_label": "source_row_0799.jpg"
+  },
+  "failed_item_target_artifact_policy": {
+    "partial_target_artifacts_removed_when_possible": true,
+    "size_mismatch_target_artifacts_removed_when_possible": true,
+    "artifact_removal_failure_blocks_run": true,
+    "current_operational_result_preserved_not_rerun": true
+  },
+  "post_copy_audit": {
+    "status": "completed_with_item_failures",
+    "target_label": "phase_3_8d_i6_backfilled_staging_target",
+    "expected_selected_total": 1000,
+    "expected_success_file_count": 994,
+    "actual_file_count": 994,
+    "expected_total_bytes": 3063523992,
+    "actual_total_bytes": 3063523992,
+    "known_failed_item_count": 6,
+    "missing_due_to_known_failed_item_count": 6,
+    "missing_file_count": 0,
+    "unexpected_file_count": 0,
+    "size_mismatch_count": 0,
+    "hazard_count": 0,
+    "rows_98_881_staged": [],
+    "rows_1029_1041_staged": [
+      1029,
+      1041
+    ],
+    "errors": []
+  },
+  "db_import_eligibility": {
+    "eligible_for_full_1000_import_planning": false,
+    "eligible_for_partial_import_planning": true,
+    "full_import_blocked_reason": "staged_success_count_less_than_selected_total"
+  },
+  "item_ledger_import_contract": {
+    "future_db_import_must_use_item_ledger_staged_success_set": true,
+    "failed_rows_must_not_be_imported": true,
+    "full_1000_import_requires_staged_success_count_1000": true,
+    "partial_import_requires_separate_user_chatgpt_approval": true
+  },
+  "db_no_mutation": {
+    "available": true,
+    "before": {
+      "media": 995,
+      "media_tags": 53354,
+      "ai_jobs": 46,
+      "classification_jobs": 14,
+      "translation_jobs": 15
+    },
+    "after": {
+      "media": 995,
+      "media_tags": 53354,
+      "ai_jobs": 46,
+      "classification_jobs": 14,
+      "translation_jobs": 15
+    },
+    "delta": {
+      "media": 0,
+      "media_tags": 0,
+      "ai_jobs": 0,
+      "classification_jobs": 0,
+      "translation_jobs": 0
+    },
+    "unchanged": true
+  },
+  "source_icloud_statement": {
+    "source_content_read_for_staging_copy_only": true,
+    "source_write_mutation": false,
+    "provider_side_hydration_cache_may_have_occurred": true
+  },
+  "app_managed_storage_statement": {
+    "mutation": false,
+    "statement": "No app-managed storage write path was invoked; staging copy target is disjoint from app storage labels."
+  },
+  "safety": {
+    "db_import": false,
+    "db_mutation": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "entity_resolver": false,
+    "similarity": false,
+    "cleanup_delete": false,
+    "source_icloud_write_mutation": false,
+    "app_managed_storage_mutation": false,
+    "full_phase38d_execute": false,
+    "push_main": false,
+    "merge": false
+  },
+  "local_artifacts": {
+    "details": "phase-3.8d-i6-staging-copy-retry-details.json",
+    "log": "phase-3.8d-i6-staging-copy-retry.log",
+    "item_ledger": "phase-3.8d-i6-staging-copy-item-ledger.json",
+    "must_remain_untracked": true
+  },
+  "next_step": "Stop: item failures stayed within budget; user/ChatGPT must approve backfill or partial import planning.",
+  "privacy": {
+    "paths_redacted": true,
+    "safe_labels_only": true,
+    "leaks": [],
+    "passed": true
+  }
+}
