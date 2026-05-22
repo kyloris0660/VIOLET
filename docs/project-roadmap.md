@@ -400,6 +400,19 @@ See [Content Classification](content-classification.md) for full documentation.
 - Source content was read only for replacement validation. Provider-side hydration/cache may have occurred for the replacement reads, but no source/iCloud write mutation, staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
 - Phase 3.8d execute remains blocked until the I5c PR is reviewed/merged and a separate staging-copy retry plan is approved.
 
+### Phase 3.8d-I6 - Staging Copy Retry with Backfilled Manifest
+
+**Goal:** Retry staging copy using the I5c backfilled local selected manifest, without DB import or downstream jobs.
+
+- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, a narrow operational runner that validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and only executes copy if that gate passes.
+- I6 manifest validation passed: active selected total `1000`, rows `98`/`881` absent, replacement rows `1029`/`1041` present, bucket distribution unchanged, duplicate source/target counts `0`, expected bytes `3,109,318,484`.
+- Pre-copy staging target check passed: the target label is empty (`0` files / `0` bytes), protected roots are valid/disjoint, and no symlink/reparse/hard-link hazards were found.
+- Staging copy dry-run failed before any copy because `566` selected source rows still reported `cloud_recall_on_data_access` through the Source Ingestion Gate. Actual staging copy did not run.
+- DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
+- No DB import, DB mutation, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
+- Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
+- Next decision: resolve the remaining cloud availability blocker before another staging copy attempt. Options include broader full recall-risk verification/hydration, explicit copy-with-read policy review, or provider/network investigation.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
