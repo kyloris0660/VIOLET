@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I5b - Targeted hydration retry (2026-05-22).
+> Last updated during Phase 3.8d-I5c - Same-bucket backfill application (2026-05-22).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i5-controlled-hydration-audit` (controlled hydration audit; Phase 3.8d execute remains blocked) |
+| **Branch** | `phase3.8d-i5c-apply-backfill` (same-bucket backfill application report; Phase 3.8d execute remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -42,7 +42,8 @@
 | **Phase 3.8d-I4a (PR #58)** | PR #58 merged - controlled partial staging cleanup executor support and tests; no real cleanup performed |
 | **Phase 3.8d-I4b (PR #59)** | PR #59 merged - actual partial staging cleanup completed: `97` files / `340,159,586` bytes deleted from the dedicated staging target; DB/source/app storage unchanged |
 | **Phase 3.8d-I5 (PR #60)** | PR #60 merged - controlled read-probe / hydration audit; sample gate failed for rows `98` and `881`, so full recall verification and Phase 3.8d execute remain blocked |
-| **Phase 3.8d-I5b (branch)** | `phase3.8d-i5b-targeted-hydration-retry` - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remains dry-run only, and Phase 3.8d execute remains blocked |
+| **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
+| **Phase 3.8d-I5c (branch)** | `phase3.8d-i5c-apply-backfill` - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger; no staging copy or DB import |
 
 ## Mandatory Workflow Rules
 

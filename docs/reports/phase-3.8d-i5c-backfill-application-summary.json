@@ -1,0 +1,491 @@
+{
+  "phase": "3.8d-I5c",
+  "mode": "validate_and_apply_same_bucket_backfill",
+  "created_at": "2026-05-22T07:27:49.160711+00:00",
+  "status": "backfill_applied",
+  "success": true,
+  "duration_seconds": 3.516,
+  "input_manifest_selected_total": 1000,
+  "selected_total_before": 1000,
+  "selected_total_after": 1000,
+  "selected_total_preserved": true,
+  "bucket_distribution_before": {
+    "b01": 63,
+    "b02": 63,
+    "b03": 63,
+    "b04": 63,
+    "b05": 63,
+    "b06": 63,
+    "b07": 63,
+    "b08": 63,
+    "b09": 62,
+    "b10": 62,
+    "b11": 62,
+    "b12": 62,
+    "b13": 62,
+    "b14": 62,
+    "b15": 62,
+    "b16": 62
+  },
+  "bucket_distribution_after": {
+    "b01": 63,
+    "b02": 63,
+    "b03": 63,
+    "b04": 63,
+    "b05": 63,
+    "b06": 63,
+    "b07": 63,
+    "b08": 63,
+    "b09": 62,
+    "b10": 62,
+    "b11": 62,
+    "b12": 62,
+    "b13": 62,
+    "b14": 62,
+    "b15": 62,
+    "b16": 62
+  },
+  "extension_distribution_before": {
+    ".gif": 1,
+    ".jpeg": 10,
+    ".jpg": 816,
+    ".png": 173
+  },
+  "extension_distribution_after": {
+    ".gif": 1,
+    ".jpeg": 10,
+    ".jpg": 816,
+    ".png": 173
+  },
+  "failed_to_replacement_mapping": [
+    {
+      "failed_row_id": 98,
+      "failed_safe_label": "source_row_0098.jpg",
+      "replacement_row_id": 1029,
+      "replacement_safe_label": "replacement_row_1029.png",
+      "bucket": "b02",
+      "replacement_bucket": "b02",
+      "same_bucket": true
+    },
+    {
+      "failed_row_id": 881,
+      "failed_safe_label": "source_row_0881.png",
+      "replacement_row_id": 1041,
+      "replacement_safe_label": "replacement_row_1041.jpg",
+      "bucket": "b15",
+      "replacement_bucket": "b15",
+      "same_bucket": true
+    }
+  ],
+  "mapping_errors": [],
+  "replacement_validation": {
+    "status": "passed",
+    "summary": {
+      "attempted_count": 2,
+      "success_count": 2,
+      "failed_count": 0,
+      "bytes_read": 620591,
+      "duration_seconds": 2.968,
+      "failures_by_reason": {},
+      "failures_by_bucket": {},
+      "failures_by_extension": {},
+      "failed_rows": []
+    },
+    "results": [
+      {
+        "row_id": 1029,
+        "source_safe_label": "replacement_row_1029.png",
+        "bucket": "b02",
+        "extension": ".png",
+        "expected_size": 403770,
+        "metadata_before": {
+          "source_ingestion_gate": {
+            "allowed": true,
+            "blocked": false,
+            "source_kind": "path_source",
+            "reason": "path_source_available",
+            "required_policy": null,
+            "safe_label": "replacement_row_1029.png",
+            "cloud_state": {
+              "supported_platform": true,
+              "exists": true,
+              "is_file": true,
+              "attributes_raw": 4194336,
+              "attributes_hex": "0x00400020",
+              "attribute_names": [
+                "archive",
+                "recall_on_data_access"
+              ],
+              "offline": false,
+              "reparse_point": false,
+              "recall_on_open": false,
+              "recall_on_data_access": true,
+              "pinned": false,
+              "unpinned": false,
+              "sparse_file": false,
+              "likely_cloud_placeholder": true,
+              "error_code": null,
+              "error_message": null
+            },
+            "paths_redacted": true
+          },
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 4194336,
+            "attributes_hex": "0x00400020",
+            "attribute_names": [
+              "archive",
+              "recall_on_data_access"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": true,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": true,
+            "error_code": null,
+            "error_message": null
+          },
+          "source_missing": false,
+          "source_not_file": false
+        },
+        "prefix_read": {
+          "ok": true,
+          "attempted": true,
+          "attempt_count": 1,
+          "bytes_read": 1,
+          "bytes_read_total": 1,
+          "duration_seconds": 2.015,
+          "error_reason": null
+        },
+        "full_read": {
+          "ok": true,
+          "attempted": true,
+          "attempt_count": 1,
+          "bytes_read": 403770,
+          "bytes_read_total": 403770,
+          "duration_seconds": 0.328,
+          "error_reason": null,
+          "ran_even_if_prefix_failed": false
+        },
+        "metadata_after": {
+          "source_ingestion_gate": {
+            "allowed": true,
+            "blocked": false,
+            "source_kind": "path_source",
+            "reason": "path_source_available",
+            "required_policy": null,
+            "safe_label": "replacement_row_1029.png",
+            "cloud_state": {
+              "supported_platform": true,
+              "exists": true,
+              "is_file": true,
+              "attributes_raw": 32,
+              "attributes_hex": "0x00000020",
+              "attribute_names": [
+                "archive"
+              ],
+              "offline": false,
+              "reparse_point": false,
+              "recall_on_open": false,
+              "recall_on_data_access": false,
+              "pinned": false,
+              "unpinned": false,
+              "sparse_file": false,
+              "likely_cloud_placeholder": false,
+              "error_code": null,
+              "error_message": null
+            },
+            "paths_redacted": true
+          },
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 32,
+            "attributes_hex": "0x00000020",
+            "attribute_names": [
+              "archive"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": false,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": false,
+            "error_code": null,
+            "error_message": null
+          },
+          "source_missing": false,
+          "source_not_file": false
+        },
+        "still_recall_on_data_access": false,
+        "staging_copy_ready": true,
+        "ok": true,
+        "failure_reason": null,
+        "audit_bytes_read": 403771,
+        "duration_seconds": 2.343
+      },
+      {
+        "row_id": 1041,
+        "source_safe_label": "replacement_row_1041.jpg",
+        "bucket": "b15",
+        "extension": ".jpg",
+        "expected_size": 216819,
+        "metadata_before": {
+          "source_ingestion_gate": {
+            "allowed": true,
+            "blocked": false,
+            "source_kind": "path_source",
+            "reason": "path_source_available",
+            "required_policy": null,
+            "safe_label": "replacement_row_1041.jpg",
+            "cloud_state": {
+              "supported_platform": true,
+              "exists": true,
+              "is_file": true,
+              "attributes_raw": 32,
+              "attributes_hex": "0x00000020",
+              "attribute_names": [
+                "archive"
+              ],
+              "offline": false,
+              "reparse_point": false,
+              "recall_on_open": false,
+              "recall_on_data_access": false,
+              "pinned": false,
+              "unpinned": false,
+              "sparse_file": false,
+              "likely_cloud_placeholder": false,
+              "error_code": null,
+              "error_message": null
+            },
+            "paths_redacted": true
+          },
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 32,
+            "attributes_hex": "0x00000020",
+            "attribute_names": [
+              "archive"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": false,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": false,
+            "error_code": null,
+            "error_message": null
+          },
+          "source_missing": false,
+          "source_not_file": false
+        },
+        "prefix_read": {
+          "ok": true,
+          "attempted": true,
+          "attempt_count": 1,
+          "bytes_read": 1,
+          "bytes_read_total": 1,
+          "duration_seconds": 0.313,
+          "error_reason": null
+        },
+        "full_read": {
+          "ok": true,
+          "attempted": true,
+          "attempt_count": 1,
+          "bytes_read": 216819,
+          "bytes_read_total": 216819,
+          "duration_seconds": 0.312,
+          "error_reason": null,
+          "ran_even_if_prefix_failed": false
+        },
+        "metadata_after": {
+          "source_ingestion_gate": {
+            "allowed": true,
+            "blocked": false,
+            "source_kind": "path_source",
+            "reason": "path_source_available",
+            "required_policy": null,
+            "safe_label": "replacement_row_1041.jpg",
+            "cloud_state": {
+              "supported_platform": true,
+              "exists": true,
+              "is_file": true,
+              "attributes_raw": 32,
+              "attributes_hex": "0x00000020",
+              "attribute_names": [
+                "archive"
+              ],
+              "offline": false,
+              "reparse_point": false,
+              "recall_on_open": false,
+              "recall_on_data_access": false,
+              "pinned": false,
+              "unpinned": false,
+              "sparse_file": false,
+              "likely_cloud_placeholder": false,
+              "error_code": null,
+              "error_message": null
+            },
+            "paths_redacted": true
+          },
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 32,
+            "attributes_hex": "0x00000020",
+            "attribute_names": [
+              "archive"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": false,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": false,
+            "error_code": null,
+            "error_message": null
+          },
+          "source_missing": false,
+          "source_not_file": false
+        },
+        "still_recall_on_data_access": false,
+        "staging_copy_ready": true,
+        "ok": true,
+        "failure_reason": null,
+        "audit_bytes_read": 216820,
+        "duration_seconds": 0.625
+      }
+    ]
+  },
+  "backfill_application": {
+    "applied": true,
+    "local_manifest_written": true,
+    "active_backfilled_replacements": [
+      1029,
+      1041
+    ],
+    "unrecovered_original_rows": [
+      98,
+      881
+    ],
+    "manifest_details": {
+      "target_root_derivation": "passed",
+      "target_root_label": "derived_from_selected_manifest_targets",
+      "duplicate_checks": "passed",
+      "errors": []
+    },
+    "manifest_errors": [],
+    "alternate_candidates_if_blocked": {}
+  },
+  "deferred_cloud_recovery_ledger": {
+    "status": "deferred_not_abandoned",
+    "unrecovered_original_rows": [
+      98,
+      881
+    ],
+    "rows": [
+      {
+        "row_id": 98,
+        "source_safe_label": "source_row_0098.jpg",
+        "bucket": "b02",
+        "extension": ".jpg",
+        "expected_size": 256931,
+        "deferred_reason": "cloud_hydration_failed",
+        "current_state": {
+          "recall_on_data_access": true,
+          "likely_cloud_placeholder": true
+        },
+        "replacement_row_id": 1029,
+        "replacement_safe_label": "replacement_row_1029.png",
+        "action": "excluded_from_active_medium_pilot_manifest_via_same_bucket_backfill",
+        "future_recovery_options": [
+          "provider_or_network_investigation",
+          "manual_user_inspection",
+          "separate_cfhydrateplaceholder_experiment",
+          "retry_after_provider_state_changes"
+        ]
+      },
+      {
+        "row_id": 881,
+        "source_safe_label": "source_row_0881.png",
+        "bucket": "b15",
+        "extension": ".png",
+        "expected_size": 3447687,
+        "deferred_reason": "cloud_hydration_failed",
+        "current_state": {
+          "recall_on_data_access": true,
+          "likely_cloud_placeholder": true
+        },
+        "replacement_row_id": 1041,
+        "replacement_safe_label": "replacement_row_1041.jpg",
+        "action": "excluded_from_active_medium_pilot_manifest_via_same_bucket_backfill",
+        "future_recovery_options": [
+          "provider_or_network_investigation",
+          "manual_user_inspection",
+          "separate_cfhydrateplaceholder_experiment",
+          "retry_after_provider_state_changes"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "prefix_read_bytes": 1,
+    "prefix_timeout_seconds": 30,
+    "prefix_retries": 1,
+    "full_read_timeout_seconds": 180,
+    "full_read_retries": 1,
+    "full_read_chunk_size": 4194304,
+    "retry_wait_seconds": 0,
+    "full_read_required_for_replacement_readiness": true,
+    "cfhydrateplaceholder_called": false,
+    "backfill_applied_only_after_validation_passes": true
+  },
+  "safety": {
+    "source_content_read_for_replacement_validation_only": true,
+    "provider_side_hydration_may_have_occurred": true,
+    "source_file_content_write_mutation": false,
+    "staging_copy": false,
+    "staging_write": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "entity_resolver": false,
+    "similarity": false,
+    "cleanup_delete": false,
+    "manifest_modified_in_repo": false,
+    "backfill_applied_to_local_manifest_artifact_only": true,
+    "app_managed_storage_mutation": false,
+    "push_main": false,
+    "merge": false
+  },
+  "local_artifacts": {
+    "backfilled_selected_manifest": "phase-3.8d-i5c-backfilled-selected-manifest.csv",
+    "deferred_cloud_recovery_ledger": "phase-3.8d-i5c-deferred-cloud-recovery-ledger.json",
+    "validation_details": "phase-3.8d-i5c-backfill-validation-details.json",
+    "must_remain_untracked": true
+  },
+  "next_step": "Proceed to Phase 3.8d staging copy retry planning if the PR is reviewed and merged.",
+  "privacy": {
+    "paths_redacted": true,
+    "safe_labels_only": true,
+    "leaks": [],
+    "passed": true
+  },
+  "manifest_label": "phase-3.8c-medium-candidate-manifest.csv"
+}
