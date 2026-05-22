@@ -153,10 +153,8 @@ def selected_rows(rows: Sequence[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def _path_key(path: str | Path) -> str:
-    try:
-        resolved = Path(path).resolve()
-    except (OSError, RuntimeError):
-        resolved = Path(path)
+    probe = safe_resolve(Path(path))
+    resolved = probe["path"] if probe.get("ok") else Path(path)
     return os.path.normcase(str(resolved))
 
 
@@ -190,6 +188,84 @@ def _counter_dict(values: Sequence[str]) -> dict[str, int]:
     return dict(sorted(Counter(values).items()))
 
 
+def _probe_error(reason: str, exc: BaseException) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "reason": reason,
+        "exception_class": type(exc).__name__,
+    }
+
+
+def safe_lstat(path: Path) -> dict[str, Any]:
+    try:
+        return {"ok": True, "stat": path.lstat(), "reason": None, "exception_class": None}
+    except FileNotFoundError:
+        return {"ok": True, "stat": None, "reason": "missing", "exception_class": None}
+    except (OSError, RuntimeError) as exc:
+        return _probe_error("lstat_failed", exc)
+
+
+def safe_resolve(path: Path) -> dict[str, Any]:
+    try:
+        return {"ok": True, "path": path.resolve(), "reason": None, "exception_class": None}
+    except (OSError, RuntimeError) as exc:
+        return _probe_error("resolve_failed", exc)
+
+
+def safe_exists(path: Path) -> dict[str, Any]:
+    try:
+        return {"ok": True, "exists": path.exists(), "reason": None, "exception_class": None}
+    except (OSError, RuntimeError) as exc:
+        return _probe_error("exists_failed", exc)
+
+
+def safe_is_file(path: Path) -> dict[str, Any]:
+    try:
+        return {"ok": True, "is_file": path.is_file(), "reason": None, "exception_class": None}
+    except (OSError, RuntimeError) as exc:
+        return _probe_error("is_file_failed", exc)
+
+
+def safe_is_dir(path: Path) -> dict[str, Any]:
+    try:
+        return {"ok": True, "is_dir": path.is_dir(), "reason": None, "exception_class": None}
+    except (OSError, RuntimeError) as exc:
+        return _probe_error("is_dir_failed", exc)
+
+
+def safe_stat_size(path: Path) -> dict[str, Any]:
+    stat_probe = safe_lstat(path)
+    if not stat_probe.get("ok"):
+        return stat_probe
+    stat_result = stat_probe.get("stat")
+    if stat_result is None:
+        return {"ok": True, "exists": False, "size": 0, "reason": "missing", "exception_class": None}
+    return {
+        "ok": True,
+        "exists": True,
+        "size": int(getattr(stat_result, "st_size", 0) or 0),
+        "reason": None,
+        "exception_class": None,
+        "stat": stat_result,
+    }
+
+
+def safe_target_exists(path: Path) -> dict[str, Any]:
+    return safe_exists(path)
+
+
+def _probe_reason(probe: Mapping[str, Any]) -> str:
+    reason = str(probe.get("reason") or "probe_failed")
+    exc = probe.get("exception_class")
+    return f"{reason}_{exc}" if exc else reason
+
+
+def _source_probe_failure_reason(probe: Mapping[str, Any]) -> str:
+    if probe.get("exception_class") == "PermissionError":
+        return "permission_denied"
+    return "source_stat_failed"
+
+
 def _single_target_root(rows: Sequence[dict[str, str]]) -> tuple[Path | None, list[str]]:
     roots: set[str] = set()
     errors: list[str] = []
@@ -213,12 +289,24 @@ def _single_target_root(rows: Sequence[dict[str, str]]) -> tuple[Path | None, li
 
 
 def load_json(path: Path) -> dict[str, Any]:
+    text_probe = safe_read_json(path)
+    if text_probe.get("ok"):
+        return dict(text_probe.get("data") or {})
+    return {JSON_LOAD_ERROR_KEY: text_probe.get("reason") or "json_read_failed"}
+
+
+def safe_read_json(path: Path) -> dict[str, Any]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return {JSON_LOAD_ERROR_KEY: "malformed_json"}
-    except OSError:
-        return {}
+        return {"ok": False, "reason": "malformed_json", "exception_class": "JSONDecodeError", "data": {}}
+    except UnicodeDecodeError:
+        return {"ok": False, "reason": "invalid_json_encoding", "exception_class": "UnicodeDecodeError", "data": {}}
+    except (OSError, RuntimeError) as exc:
+        return {**_probe_error("json_read_failed", exc), "data": {}}
+    if not isinstance(data, dict):
+        return {"ok": False, "reason": "json_not_object", "exception_class": None, "data": {}}
+    return {"ok": True, "reason": None, "exception_class": None, "data": data}
 
 
 def json_load_error(data: Mapping[str, Any], label: str) -> str | None:
@@ -260,13 +348,19 @@ def parse_protected_root(value: str) -> dict[str, str]:
 
 
 def _resolve_directory(path: Path) -> tuple[Path | None, str | None]:
-    try:
-        resolved = path.resolve()
-    except (OSError, RuntimeError) as exc:
-        return None, f"resolve_failed_{type(exc).__name__}"
-    if not resolved.exists():
+    resolve_probe = safe_resolve(path)
+    if not resolve_probe.get("ok"):
+        return None, _probe_reason(resolve_probe)
+    resolved = resolve_probe["path"]
+    exists_probe = safe_exists(resolved)
+    if not exists_probe.get("ok"):
+        return None, _probe_reason(exists_probe)
+    if not exists_probe.get("exists"):
         return None, "missing"
-    if not resolved.is_dir():
+    is_dir_probe = safe_is_dir(resolved)
+    if not is_dir_probe.get("ok"):
+        return None, _probe_reason(is_dir_probe)
+    if not is_dir_probe.get("is_dir"):
         return None, "not_directory"
     return resolved, None
 
@@ -278,11 +372,13 @@ def _entry_is_reparse(stat_result: os.stat_result) -> bool:
 
 def root_escape_hazards(path: Path) -> list[str]:
     hazards: list[str] = []
-    try:
-        stat_result = path.lstat()
-    except OSError as exc:
-        return [f"target_root_lstat_failed_{type(exc).__name__}"]
-    if path.is_symlink():
+    stat_probe = safe_lstat(path)
+    if not stat_probe.get("ok"):
+        return [f"target_root_{_probe_reason(stat_probe)}"]
+    stat_result = stat_probe.get("stat")
+    if stat_result is None:
+        return []
+    if stat.S_ISLNK(stat_result.st_mode):
         hazards.append("target_root_symlink")
     if _entry_is_reparse(stat_result):
         hazards.append("target_root_reparse_point")
@@ -293,7 +389,16 @@ def scan_tree(root: Path) -> dict[str, Any]:
     files: dict[str, int] = {}
     hazards: list[dict[str, Any]] = []
     total_bytes = 0
-    if not root.exists():
+    root_dir_probe = safe_is_dir(root)
+    if not root_dir_probe.get("ok"):
+        return {
+            "exists": False,
+            "file_count": 0,
+            "total_bytes": 0,
+            "files": files,
+            "hazards": [{"safe_label": "target_root", "reason": _probe_reason(root_dir_probe)}],
+        }
+    if not root_dir_probe.get("is_dir"):
         return {
             "exists": False,
             "file_count": 0,
@@ -306,12 +411,12 @@ def scan_tree(root: Path) -> dict[str, Any]:
         kept_dirs: list[str] = []
         for dirname in dirs:
             dpath = current_path / dirname
-            try:
-                dstat = dpath.lstat()
-            except OSError as exc:
-                hazards.append({"safe_label": f"tree_entry_{len(hazards) + 1:04d}", "reason": f"stat_failed_{type(exc).__name__}"})
+            dstat_probe = safe_lstat(dpath)
+            if not dstat_probe.get("ok") or dstat_probe.get("stat") is None:
+                hazards.append({"safe_label": f"tree_entry_{len(hazards) + 1:04d}", "reason": _probe_reason(dstat_probe)})
                 continue
-            if dpath.is_symlink():
+            dstat = dstat_probe["stat"]
+            if stat.S_ISLNK(dstat.st_mode):
                 hazards.append({"safe_label": f"tree_entry_{len(hazards) + 1:04d}", "reason": "symlink_directory"})
                 continue
             if _entry_is_reparse(dstat):
@@ -321,13 +426,13 @@ def scan_tree(root: Path) -> dict[str, Any]:
         dirs[:] = kept_dirs
         for filename in filenames:
             fpath = current_path / filename
-            try:
-                fstat = fpath.lstat()
-            except OSError as exc:
-                hazards.append({"safe_label": f"tree_entry_{len(hazards) + 1:04d}", "reason": f"stat_failed_{type(exc).__name__}"})
+            fstat_probe = safe_lstat(fpath)
+            if not fstat_probe.get("ok") or fstat_probe.get("stat") is None:
+                hazards.append({"safe_label": f"tree_entry_{len(hazards) + 1:04d}", "reason": _probe_reason(fstat_probe)})
                 continue
+            fstat = fstat_probe["stat"]
             rel = fpath.relative_to(root).as_posix()
-            if fpath.is_symlink():
+            if stat.S_ISLNK(fstat.st_mode):
                 hazards.append({"safe_label": rel, "reason": "symlink_file"})
                 continue
             if _entry_is_reparse(fstat):
@@ -342,7 +447,7 @@ def scan_tree(root: Path) -> dict[str, Any]:
             files[rel] = int(fstat.st_size)
             total_bytes += int(fstat.st_size)
     return {
-        "exists": root.is_dir(),
+        "exists": bool(root_dir_probe.get("is_dir")),
         "file_count": len(files),
         "total_bytes": total_bytes,
         "files": files,
@@ -353,19 +458,23 @@ def scan_tree(root: Path) -> dict[str, Any]:
 def expected_file_map(rows: Sequence[dict[str, str]], target_root: Path) -> tuple[dict[str, dict[str, Any]], list[str]]:
     expected: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
-    try:
-        resolved_root = target_root.resolve()
-    except (OSError, RuntimeError) as exc:
-        return {}, [f"target_root_resolve_failed_{type(exc).__name__}"]
+    root_probe = safe_resolve(target_root)
+    if not root_probe.get("ok"):
+        return {}, [f"target_root_{_probe_reason(root_probe)}"]
+    resolved_root = root_probe["path"]
     for row in selected_rows(rows):
         target = (row.get("proposed_target_path") or "").strip()
         if not target:
             errors.append(f"row_{row_id(row)}_missing_target")
             continue
         try:
-            target_path = Path(target).resolve()
+            target_probe = safe_resolve(Path(target))
+            if not target_probe.get("ok"):
+                errors.append(f"row_{row_id(row)}_target_{_probe_reason(target_probe)}")
+                continue
+            target_path = target_probe["path"]
             rel = target_path.relative_to(resolved_root).as_posix()
-        except (OSError, RuntimeError, ValueError):
+        except ValueError:
             errors.append(f"row_{row_id(row)}_target_escape")
             continue
         if rel in expected:
@@ -454,7 +563,15 @@ def validate_target_safety(
     errors: list[str] = []
     resolved_protected: list[Path] = []
     protected_public: list[dict[str, Any]] = []
-    target_root_hazards = root_escape_hazards(target_root) if target_root.exists() or target_root.is_symlink() else []
+    target_root_exists_probe = safe_exists(target_root)
+    target_root_lstat_probe = safe_lstat(target_root)
+    target_root_hazards = []
+    if not target_root_exists_probe.get("ok"):
+        errors.append(f"target_root_{_probe_reason(target_root_exists_probe)}")
+    if target_root_lstat_probe.get("ok") and target_root_lstat_probe.get("stat") is not None:
+        target_root_hazards = root_escape_hazards(target_root)
+    elif not target_root_lstat_probe.get("ok"):
+        errors.append(f"target_root_{_probe_reason(target_root_lstat_probe)}")
     target_resolved, target_error = _resolve_directory(target_root)
     if target_error:
         errors.append(f"target_root_{target_error}")
@@ -505,8 +622,8 @@ def validate_target_safety(
     check = {
         "status": "passed" if not errors else "failed",
         "target_label": "phase_3_8d_i6_backfilled_staging_target",
-        "target_exists": bool(target_root.exists()),
-        "target_is_directory": bool(target_root.is_dir()),
+        "target_exists": bool(target_root_exists_probe.get("exists")),
+        "target_is_directory": bool(safe_is_dir(target_root).get("is_dir")),
         "target_root_hazard_count": len(target_root_hazards),
         "expected_staging_root_provided": expected_staging_root is not None,
         "target_under_expected_staging_root": bool(
@@ -734,9 +851,11 @@ def item_status_from_reason(reason: str) -> str:
         "cloud_offline": "failed_cloud_hydration",
         "read_timeout": "failed_timeout",
         "permission_denied": "failed_permission",
+        "source_stat_failed": "failed_generic_read",
         "source_missing": "failed_missing_source",
         "unsupported_extension": "skipped_unsupported",
         "size_mismatch": "failed_size_mismatch",
+        "target_probe_failed": "failed_size_mismatch",
     }
     return mapping.get(reason, "failed_generic_read")
 
@@ -765,9 +884,14 @@ def failure_budget_exceeded(
 def _blank_ledger_item(row: Mapping[str, str], target_root: Path) -> dict[str, Any]:
     rid = row_id(row)
     target = Path((row.get("proposed_target_path") or ""))
-    try:
-        target_label = target.resolve().relative_to(target_root.resolve()).as_posix()
-    except (OSError, RuntimeError, ValueError):
+    target_probe = safe_resolve(target)
+    root_probe = safe_resolve(target_root)
+    if target_probe.get("ok") and root_probe.get("ok"):
+        try:
+            target_label = target_probe["path"].relative_to(root_probe["path"]).as_posix()
+        except ValueError:
+            target_label = f"target_row_{rid:04d}"
+    else:
         target_label = f"target_row_{rid:04d}"
     return {
         "row_id": rid,
@@ -785,6 +909,7 @@ def _blank_ledger_item(row: Mapping[str, str], target_root: Path) -> dict[str, A
         "target_artifact_cleanup_attempted": False,
         "target_artifact_removed": None,
         "target_artifact_cleanup_error": None,
+        "target_probe_error": None,
         "eligible_for_db_import": False,
     }
 
@@ -796,14 +921,14 @@ def cleanup_failed_target_artifact(target: Path) -> dict[str, Any]:
         "error_reason": None,
         "bytes_observed": 0,
     }
-    try:
-        stat_result = target.lstat()
-    except FileNotFoundError:
+    stat_probe = safe_lstat(target)
+    if stat_probe.get("ok") and stat_probe.get("stat") is None:
         return result
-    except OSError as exc:
+    if not stat_probe.get("ok"):
         result["attempted"] = True
-        result["error_reason"] = f"target_artifact_lstat_failed_{type(exc).__name__}"
+        result["error_reason"] = f"target_artifact_{_probe_reason(stat_probe)}"
         return result
+    stat_result = stat_probe["stat"]
     result["attempted"] = True
     result["bytes_observed"] = int(getattr(stat_result, "st_size", 0) or 0)
     if not stat.S_ISREG(stat_result.st_mode):
@@ -823,10 +948,12 @@ def apply_target_artifact_cleanup(item: dict[str, Any], target: Path, cleanup: M
     item["target_artifact_removed"] = bool(cleanup.get("removed")) if cleanup.get("attempted") else None
     item["target_artifact_cleanup_error"] = cleanup.get("error_reason")
     item["bytes_copied_observed"] = _safe_int(cleanup.get("bytes_observed"))
-    try:
-        item["staging_target_exists"] = target.exists()
-    except OSError:
+    exists_probe = safe_target_exists(target)
+    if exists_probe.get("ok"):
+        item["staging_target_exists"] = bool(exists_probe.get("exists"))
+    else:
         item["staging_target_exists"] = None
+        item["target_probe_error"] = _probe_reason(exists_probe)
 
 
 def copy_with_item_failure_budget(
@@ -839,16 +966,16 @@ def copy_with_item_failure_budget(
     started = time.monotonic()
     selected = selected_rows(rows)
     total_selected = len(selected)
-    try:
-        resolved_root = target_root.resolve()
-        resolved_sources = [root.resolve() for root in approved_source_roots]
-    except (OSError, RuntimeError) as exc:
+    root_probe = safe_resolve(target_root)
+    source_root_probes = [safe_resolve(root) for root in approved_source_roots]
+    failed_probe = next((probe for probe in [root_probe, *source_root_probes] if not probe.get("ok")), None)
+    if failed_probe is not None:
         return (
             {
                 "attempted": True,
                 "status": "structural_failure",
                 "structural_failure": True,
-                "structural_reason": f"root_resolve_failed_{type(exc).__name__}",
+                "structural_reason": f"root_{_probe_reason(failed_probe)}",
                 "attempted_count": 0,
                 "staged_success_count": 0,
                 "item_failure_count": 0,
@@ -863,6 +990,8 @@ def copy_with_item_failure_budget(
             },
             [],
         )
+    resolved_root = root_probe["path"]
+    resolved_sources = [probe["path"] for probe in source_root_probes]
 
     ledger: list[dict[str, Any]] = []
     reason_counts: Counter[str] = Counter()
@@ -890,7 +1019,12 @@ def copy_with_item_failure_budget(
             item["status"] = item_status_from_reason(reason)
             item["reason"] = reason
             item["bytes_copied"] = bytes_copied
-            item["staging_target_exists"] = target.exists()
+            exists_probe = safe_target_exists(target)
+            if exists_probe.get("ok"):
+                item["staging_target_exists"] = bool(exists_probe.get("exists"))
+            else:
+                item["staging_target_exists"] = None
+                item["target_probe_error"] = _probe_reason(exists_probe)
             item["eligible_for_db_import"] = False
             item_failure_count += 1
             reason_counts[reason] += 1
@@ -908,63 +1042,100 @@ def copy_with_item_failure_budget(
         if ext not in stage_pilot.SUPPORTED_EXTENSIONS:
             mark_failed("unsupported_extension")
             ledger.append(item)
-        elif not source.exists():
-            mark_failed("source_missing")
-            ledger.append(item)
-        elif not source.is_file():
-            mark_failed("unreadable_source")
-            ledger.append(item)
         else:
-            try:
-                resolved_source = source.resolve()
-                if not any(_is_under_or_equal(resolved_source, root) for root in resolved_sources):
+            source_exists = safe_exists(source)
+            source_is_file = safe_is_file(source) if source_exists.get("ok") and source_exists.get("exists") else None
+            if not source_exists.get("ok"):
+                mark_failed(_source_probe_failure_reason(source_exists))
+                ledger.append(item)
+            elif not source_exists.get("exists"):
+                mark_failed("source_missing")
+                ledger.append(item)
+            elif source_is_file is not None and not source_is_file.get("ok"):
+                mark_failed(_source_probe_failure_reason(source_is_file))
+                ledger.append(item)
+            elif source_is_file is not None and not source_is_file.get("is_file"):
+                mark_failed("unreadable_source")
+                ledger.append(item)
+            else:
+                try:
+                    resolved_source_probe = safe_resolve(source)
+                    if not resolved_source_probe.get("ok"):
+                        mark_failed(_source_probe_failure_reason(resolved_source_probe))
+                        ledger.append(item)
+                        continue
+                    resolved_source = resolved_source_probe["path"]
+                    if not any(_is_under_or_equal(resolved_source, root) for root in resolved_sources):
+                        structural_failure = True
+                        structural_reason = "source_outside_approved_roots"
+                        item["status"] = "deferred"
+                        item["reason"] = structural_reason
+                        ledger.append(item)
+                        break
+                    resolved_target_probe = safe_resolve(target)
+                    if not resolved_target_probe.get("ok"):
+                        structural_failure = True
+                        structural_reason = f"target_{_probe_reason(resolved_target_probe)}"
+                        item["status"] = "deferred"
+                        item["reason"] = structural_reason
+                        ledger.append(item)
+                        break
+                    resolved_target = resolved_target_probe["path"]
+                    resolved_target.relative_to(resolved_root)
+                except ValueError:
                     structural_failure = True
-                    structural_reason = "source_outside_approved_roots"
+                    structural_reason = "target_escape_or_resolve_failed"
                     item["status"] = "deferred"
                     item["reason"] = structural_reason
                     ledger.append(item)
                     break
-                resolved_target = target.resolve()
-                resolved_target.relative_to(resolved_root)
-            except (OSError, RuntimeError, ValueError):
-                structural_failure = True
-                structural_reason = "target_escape_or_resolve_failed"
-                item["status"] = "deferred"
-                item["reason"] = structural_reason
-                ledger.append(item)
-                break
-            if target.exists():
-                structural_failure = True
-                structural_reason = "target_already_exists"
-                item["status"] = "deferred"
-                item["reason"] = structural_reason
-                ledger.append(item)
-                break
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(str(source), str(target))
-                copied = int(target.stat().st_size)
-                if expected_size and copied != expected_size:
-                    mark_failed("size_mismatch", bytes_copied=copied)
-                    item["bytes_copied_observed"] = copied
+                target_exists_probe = safe_target_exists(target)
+                if not target_exists_probe.get("ok"):
+                    structural_failure = True
+                    structural_reason = f"target_{_probe_reason(target_exists_probe)}"
+                    item["status"] = "deferred"
+                    item["reason"] = structural_reason
+                    item["target_probe_error"] = _probe_reason(target_exists_probe)
+                    ledger.append(item)
+                    break
+                if target_exists_probe.get("exists"):
+                    structural_failure = True
+                    structural_reason = "target_already_exists"
+                    item["status"] = "deferred"
+                    item["reason"] = structural_reason
+                    ledger.append(item)
+                    break
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(source), str(target))
+                    size_probe = safe_stat_size(target)
+                    if not size_probe.get("ok") or not size_probe.get("exists"):
+                        mark_failed("target_probe_failed")
+                        item["target_probe_error"] = _probe_reason(size_probe)
+                        cleanup_failed_artifact_or_block()
+                    else:
+                        copied = _safe_int(size_probe.get("size"))
+                        if expected_size and copied != expected_size:
+                            mark_failed("size_mismatch", bytes_copied=copied)
+                            item["bytes_copied_observed"] = copied
+                            cleanup_failed_artifact_or_block()
+                        else:
+                            item["status"] = "staged"
+                            item["reason"] = None
+                            item["bytes_copied"] = copied
+                            item["staging_target_exists"] = True
+                            item["eligible_for_db_import"] = True
+                            staged_success_count += 1
+                            copied_bytes += copied
+                            consecutive_failures = 0
+                except (OSError, shutil.SameFileError) as exc:
+                    state = classify_cloud_file_state(source)
+                    mark_failed(classify_file_access_error(exc, state))
                     cleanup_failed_artifact_or_block()
-                else:
-                    item["status"] = "staged"
-                    item["reason"] = None
-                    item["bytes_copied"] = copied
-                    item["staging_target_exists"] = target.exists()
-                    item["eligible_for_db_import"] = True
-                    staged_success_count += 1
-                    copied_bytes += copied
-                    consecutive_failures = 0
-            except (OSError, shutil.SameFileError) as exc:
-                state = classify_cloud_file_state(source)
-                mark_failed(classify_file_access_error(exc, state))
-                cleanup_failed_artifact_or_block()
-            ledger.append(item)
+                ledger.append(item)
 
-            if structural_failure:
-                break
+                if structural_failure:
+                    break
 
         if item["status"] != "staged" and not structural_failure:
             budget_exceeded = failure_budget_exceeded(
@@ -1151,12 +1322,23 @@ def run_staging_copy_retry(
         error = json_load_error(data, label)
         if error:
             setup_errors.append(error)
-    if not manifest_path.is_file():
+    manifest_file_probe = safe_is_file(manifest_path)
+    deferred_ledger_file_probe = safe_is_file(deferred_ledger_path)
+    i5c_summary_file_probe = safe_is_file(i5c_summary_path)
+    i3_context_file_probe = safe_is_file(i3_local_details_path)
+    if not manifest_file_probe.get("ok"):
+        setup_errors.append(f"blocked_backfilled_manifest_{_probe_reason(manifest_file_probe)}")
+    elif not manifest_file_probe.get("is_file"):
         setup_errors.append("blocked_missing_backfilled_manifest")
-    if not deferred_ledger_path.is_file():
+    if not deferred_ledger_file_probe.get("ok"):
+        setup_errors.append(f"blocked_deferred_ledger_{_probe_reason(deferred_ledger_file_probe)}")
+    elif not deferred_ledger_file_probe.get("is_file"):
         setup_errors.append("blocked_missing_deferred_ledger")
     if not setup_errors:
-        rows = read_manifest(manifest_path)
+        try:
+            rows = read_manifest(manifest_path)
+        except (OSError, RuntimeError, UnicodeError, csv.Error) as exc:
+            setup_errors.append(f"blocked_manifest_read_failed_{type(exc).__name__}")
     if target_root is None:
         derived_target, target_errors = _single_target_root(rows) if rows else (None, [])
         setup_errors.extend(target_errors)
@@ -1315,12 +1497,19 @@ def run_staging_copy_retry(
         "created_at": utc_now(),
         "status": status,
         "success": success,
+        "closeout_hardening": {
+            "safe_filesystem_probe_layer": True,
+            "safe_json_loading": True,
+            "source_probe_failures_recorded_as_item_failures": True,
+            "target_probe_failures_recorded_as_structured_blockers_or_failures": True,
+            "current_operational_result_preserved_not_rerun": True,
+        },
         "duration_seconds": round(time.monotonic() - started, 3),
         "setup": {
-            "backfilled_manifest_present": manifest_path.is_file(),
-            "deferred_ledger_present": deferred_ledger_path.is_file(),
-            "i5c_summary_present": i5c_summary_path.is_file(),
-            "i3_local_context_present": i3_local_details_path.is_file(),
+            "backfilled_manifest_present": bool(manifest_file_probe.get("is_file")),
+            "deferred_ledger_present": bool(deferred_ledger_file_probe.get("is_file")),
+            "i5c_summary_present": bool(i5c_summary_file_probe.get("is_file")),
+            "i3_local_context_present": bool(i3_context_file_probe.get("is_file")),
             "errors": setup_errors,
         },
         "manifest_validation": manifest_validation,
@@ -1431,6 +1620,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     app_storage = report.get("app_managed_storage_statement") or {}
     safety = report.get("safety") or {}
     privacy = report.get("privacy") or {}
+    hardening = report.get("closeout_hardening") or {}
     lines = [
         "# Phase 3.8d-I6 Staging Copy Retry",
         "",
@@ -1438,6 +1628,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "",
         f"- Status: `{report.get('status')}`",
         f"- Success: `{report.get('success')}`",
+        f"- Closeout hardening: `{json.dumps(hardening, sort_keys=True)}`",
         f"- Backfilled manifest present: `{setup.get('backfilled_manifest_present')}`",
         f"- Deferred ledger present: `{setup.get('deferred_ledger_present')}`",
         f"- Setup errors: `{json.dumps(setup.get('errors') or [], ensure_ascii=False)}`",

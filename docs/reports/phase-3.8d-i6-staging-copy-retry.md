@@ -4,6 +4,7 @@
 
 - Status: `completed_with_item_failures`
 - Success: `True`
+- Closeout hardening: I6 runner now centralizes filesystem and JSON probes behind safe helpers. Source probe failures become item-level failures when source-specific; target probe failures become structured blockers/failures when staging safety cannot be verified. Current operational result is preserved and was not rerun.
 - Backfilled manifest present: `True`
 - Deferred ledger present: `True`
 - Setup errors: `[]`
@@ -100,6 +101,17 @@
 - Rows 98/881 staged: `[]`
 - Rows 1029/1041 staged: `[1029, 1041]`
 - Errors: `[]`
+
+## Engineering Judgment / Bugfix Root-Cause Audit
+
+- Root cause: the I6 staging copy runner still had scattered raw filesystem and JSON probes that could raise in Windows, iCloud, permission, or network edge cases.
+- Related patterns searched: `.exists()`, `.is_file()`, `.is_dir()`, `.stat()`, `.lstat()`, `.resolve()`, `read_text()`, and `json.loads()`.
+- Files/functions inspected: `scripts/run_phase38d_i6_staging_copy_retry.py`, including setup input loading, target safety checks, tree scanning, source pre-checks, copy result validation, failed-item recording, target artifact cleanup, and post-copy audit.
+- Fixes applied: runtime-sensitive filesystem probes now go through safe helpers; JSON loading fails closed with structured blocked reasons; source probe failures become item-level failures when source-specific; target probe failures become structural blockers or structured uncertain-target failures when staging safety cannot be verified.
+- Tests added: malformed and invalid-encoding JSON inputs, source probe permission failures, target pre-check probe failure, failed-item target probe failure, and post-copy target stat failure.
+- Remaining raw probes intentionally left unchanged: helper implementations themselves call the underlying `Path` APIs, and `Path(__file__).resolve()` is retained for module root derivation because it is not source/staging/runtime artifact probing.
+- Deferred item: public report artifact basename precision for overridden local artifact paths remains non-blocking P3 reporting hardening.
+- Phase boundary judgment: the fix is bounded to the active I6 runner and report semantics; it does not require DB migration, staging copy rerun, source/iCloud mutation, app-managed storage mutation, or a new phase.
 
 ## DB Import Eligibility
 

@@ -4,6 +4,59 @@
   "created_at": "2026-05-22T12:23:26.672011+00:00",
   "status": "completed_with_item_failures",
   "success": true,
+  "closeout_hardening": {
+    "safe_filesystem_probe_layer": true,
+    "safe_json_loading": true,
+    "source_probe_failures_recorded_as_item_failures": true,
+    "target_probe_failures_recorded_as_structured_blockers_or_failures": true,
+    "current_operational_result_preserved_not_rerun": true
+  },
+  "bugfix_root_cause_audit": {
+    "root_cause": "scattered raw filesystem and JSON probes could raise in Windows/iCloud/permission/network edge cases",
+    "related_patterns_searched": [
+      "exists",
+      "is_file",
+      "is_dir",
+      "stat",
+      "lstat",
+      "resolve",
+      "read_text",
+      "json.loads"
+    ],
+    "files_functions_inspected": [
+      "scripts/run_phase38d_i6_staging_copy_retry.py setup input loading",
+      "target safety checks",
+      "tree scanning",
+      "source pre-checks",
+      "copy result validation",
+      "failed-item recording",
+      "target artifact cleanup",
+      "post-copy audit"
+    ],
+    "fixes_applied": [
+      "runtime-sensitive filesystem probes routed through safe helpers",
+      "JSON loading fails closed with structured blocked reasons",
+      "source probe failures become source-specific item-level failures",
+      "target probe failures become structural blockers or structured uncertain-target failures"
+    ],
+    "tests_added": [
+      "malformed JSON input blocks without crashing",
+      "invalid UTF-8 JSON input blocks without crashing",
+      "source exists probe failure becomes item failure",
+      "source is_file probe failure becomes item failure",
+      "target exists probe failure before copy blocks",
+      "mark_failed target probe failure does not crash",
+      "post-copy target stat failure is structured"
+    ],
+    "remaining_similar_risks": [
+      "raw Path calls remain inside the safe helper implementations by design",
+      "module root derivation uses Path(__file__).resolve and is not source/staging runtime artifact probing"
+    ],
+    "deferred_items": [
+      "public report artifact basename precision for overridden local artifact paths"
+    ],
+    "phase_boundary_assessment": "bounded to the active I6 runner and report semantics; no DB migration, staging copy rerun, source/iCloud mutation, app-managed storage mutation, or new phase required"
+  },
   "duration_seconds": 638.86,
   "setup": {
     "backfilled_manifest_present": true,

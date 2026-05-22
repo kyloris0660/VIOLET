@@ -44,6 +44,21 @@ For implementation PRs, reviewer feedback is a controlled handoff point, not an 
 9. Before triggering reviewer, CodeX must perform a local pre-review / same-class self-audit so reviewer is not used as a substitute for engineering judgment.
 10. Default flow is implement/test/push/review/report/stop. Do not start another fix round from reviewer feedback unless explicitly authorized for that PR.
 
+### Bugfix Root-Cause Closure Policy
+
+When reviewer feedback, tests, or runtime reports expose a bug, CodeX must not treat the issue only as a single-line patch unless it is clearly isolated.
+
+For every non-trivial bugfix, CodeX must perform a bounded root-cause and pattern audit:
+
+1. Identify the root cause. Examples: raw filesystem probes can raise, stale dry-run proof used for destructive action, report success flag does not match blocked state, failed item can leave target artifact, manifest mapping can silently overwrite operator intent, or per-item failure is incorrectly treated as batch failure.
+2. Decide whether the issue belongs to a broader pattern. If yes, search within the current PR scope for adjacent occurrences of the same pattern.
+3. Fix the pattern within the current PR scope. The fix should be systematic but bounded. Do not expand into unrelated modules or future phases without user/ChatGPT approval.
+4. Add tests for the class of issue, not only the exact reviewed line. Tests should cover the originally reported case, at least one adjacent/similar case when practical, and the expected fail-closed or item-level failure behavior.
+5. Report what was searched and what was intentionally left unchanged. Final reports for non-trivial bugfixes must include an `Engineering judgment / bugfix root-cause audit` section with: root cause, related patterns searched, files/functions inspected, fixes applied, tests added, remaining similar risks if any, deferred items and why, and whether the issue suggests the phase boundary is too narrow or too broad.
+6. Stop and ask user/ChatGPT if the root-cause fix requires a DB migration, destructive operation, source/iCloud mutation, app-managed storage mutation, large refactor outside current PR scope, new phase, or project strategy change.
+7. This policy does not authorize automatic reviewer-fix loops. Default reviewer workflow remains: implement -> test -> push -> `@codex review` -> collect current-head feedback -> stop and report. CodeX must not automatically fix new reviewer feedback unless the user explicitly authorizes a bounded auto-fix loop for that specific PR.
+8. This policy does not authorize scope creep. It authorizes bounded same-root-cause cleanup inside the active PR scope. When in doubt, report the pattern and wait for user/ChatGPT decision.
+
 ### Cloud-aware ingestion progress and safety policy
 
 Safety gates should make workflows controlled, observable, and recoverable. They must not become infinite blockers for expected iCloud / Windows Cloud Files states. Cloud recall-risk is a risk signal, not a permanent exclusion.

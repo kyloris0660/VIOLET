@@ -362,6 +362,20 @@ def test_malformed_json_input_blocks_without_crashing(monkeypatch, tmp_path: Pat
     assert report["actual_staging_copy"]["attempted"] is False
 
 
+def test_invalid_utf8_json_input_blocks_without_crashing(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    fixture["i5c_summary"].write_bytes(b"\xff\xfe\x00{")
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=True)
+    markdown = i6.render_markdown(report)
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "blocked_invalid_json_encoding_i5c_summary" in report["setup"]["errors"]
+    assert "blocked_invalid_json_encoding_i5c_summary" in markdown
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
 def test_valid_json_input_still_runs(monkeypatch, tmp_path: Path):
     fixture = _fixture(tmp_path)
 
@@ -621,6 +635,164 @@ def test_per_item_failure_within_budget_does_not_abort_whole_run(monkeypatch, tm
     assert failed[0]["eligible_for_db_import"] is False
     assert report["db_import_eligibility"]["eligible_for_full_1000_import_planning"] is False
     assert report["db_import_eligibility"]["eligible_for_partial_import_planning"] is True
+
+
+def test_source_exists_probe_failure_becomes_item_failure(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_safe_exists = i6.safe_exists
+    failed_source = fixture["source_root"] / "source_row_0002.png"
+
+    def fake_safe_exists(path: Path):
+        if path == failed_source:
+            return {"ok": False, "reason": "exists_failed", "exception_class": "PermissionError"}
+        return original_safe_exists(path)
+
+    monkeypatch.setattr(i6, "safe_exists", fake_safe_exists)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 0
+    assert report["status"] == "completed_with_item_failures"
+    assert failed["reason"] == "permission_denied"
+    assert failed["eligible_for_db_import"] is False
+    assert report["actual_staging_copy"]["item_failure_count"] == 1
+
+
+def test_source_is_file_probe_failure_becomes_item_failure(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_safe_is_file = i6.safe_is_file
+    failed_source = fixture["source_root"] / "source_row_0002.png"
+
+    def fake_safe_is_file(path: Path):
+        if path == failed_source:
+            return {"ok": False, "reason": "is_file_failed", "exception_class": "PermissionError"}
+        return original_safe_is_file(path)
+
+    monkeypatch.setattr(i6, "safe_is_file", fake_safe_is_file)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 0
+    assert report["status"] == "completed_with_item_failures"
+    assert failed["reason"] == "permission_denied"
+    assert failed["eligible_for_db_import"] is False
+
+
+def test_target_exists_probe_failure_before_copy_blocks(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_safe_target_exists = i6.safe_target_exists
+    failed_target = fixture["target_root"] / "source_row_0002.png"
+
+    def fake_safe_target_exists(path: Path):
+        if path == failed_target:
+            return {"ok": False, "reason": "exists_failed", "exception_class": "PermissionError"}
+        return original_safe_target_exists(path)
+
+    monkeypatch.setattr(i6, "safe_target_exists", fake_safe_target_exists)
+
+    report, local, exit_code = _run_fixture(monkeypatch, fixture, execute=True)
+
+    item = [entry for entry in local["item_ledger"] if entry["row_id"] == 2][0]
+    assert exit_code == 1
+    assert report["status"] == "blocked_structural_copy_failure"
+    assert report["actual_staging_copy"]["structural_reason"] == "target_exists_failed_PermissionError"
+    assert item["target_probe_error"] == "exists_failed_PermissionError"
+    assert item["eligible_for_db_import"] is False
+
+
+def test_mark_failed_target_probe_failure_does_not_crash(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_copy2 = shutil.copy2
+    original_safe_target_exists = i6.safe_target_exists
+    failed_target = fixture["target_root"] / "source_row_0002.png"
+    state = {"after_copy_failure": False}
+
+    def fail_copy(src: str, dst: str):
+        if src.endswith("source_row_0002.png"):
+            state["after_copy_failure"] = True
+            raise OSError("simulated read failure")
+        return original_copy2(src, dst)
+
+    def fake_safe_target_exists(path: Path):
+        if path == failed_target and state["after_copy_failure"]:
+            return {"ok": False, "reason": "exists_failed", "exception_class": "PermissionError"}
+        return original_safe_target_exists(path)
+
+    monkeypatch.setattr(i6.shutil, "copy2", fail_copy)
+    monkeypatch.setattr(i6, "safe_target_exists", fake_safe_target_exists)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 0
+    assert report["status"] == "completed_with_item_failures"
+    assert failed["target_probe_error"] == "exists_failed_PermissionError"
+    assert failed["eligible_for_db_import"] is False
+
+
+def test_post_copy_target_stat_failure_is_structured(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_safe_stat_size = i6.safe_stat_size
+    failed_target = fixture["target_root"] / "source_row_0002.png"
+
+    def fake_safe_stat_size(path: Path):
+        if path == failed_target:
+            return {"ok": False, "reason": "lstat_failed", "exception_class": "PermissionError"}
+        return original_safe_stat_size(path)
+
+    monkeypatch.setattr(i6, "safe_stat_size", fake_safe_stat_size)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 0
+    assert report["status"] == "completed_with_item_failures"
+    assert failed["reason"] == "target_probe_failed"
+    assert failed["target_probe_error"] == "lstat_failed_PermissionError"
+    assert failed["target_artifact_removed"] is True
+    assert failed_target.exists() is False
 
 
 def test_partial_target_artifact_removed_on_copy_exception(monkeypatch, tmp_path: Path):
