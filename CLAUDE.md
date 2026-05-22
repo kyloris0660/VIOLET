@@ -42,6 +42,55 @@ For implementation PRs, reviewer feedback is a controlled handoff point, not an 
 7. Automatic reviewer-fix loops are disabled by default and may only be used when the user explicitly authorizes them for a specific PR with a specific round limit and scope.
 8. Even when explicitly authorized, automatic fix loops must never push `main`, merge, run destructive operations, mutate source/iCloud/staging/DB unless explicitly approved, change phase scope, or start a new phase.
 9. Before triggering reviewer, CodeX must perform a local pre-review / same-class self-audit so reviewer is not used as a substitute for engineering judgment.
+10. Default flow is implement/test/push/review/report/stop. Do not start another fix round from reviewer feedback unless explicitly authorized for that PR.
+
+### Cloud-aware ingestion progress and safety policy
+
+Safety gates should make workflows controlled, observable, and recoverable. They must not become infinite blockers for expected iCloud / Windows Cloud Files states. Cloud recall-risk is a risk signal, not a permanent exclusion.
+
+Distinguish structural blockers from per-item failures.
+
+Structural blockers stop the whole run:
+- server identity mismatch
+- DB identity mismatch
+- unsafe staging target
+- target path escape
+- protected root overlap
+- manifest schema invalid
+- duplicate target paths
+- report generation failure
+- privacy leak
+- DB/app-storage/source-root confusion
+- unexpected DB/app-storage/source mutation
+
+Per-item failures are recorded, excluded from DB import eligibility, and kept visible for retry/backfill/deferred recovery. They do not automatically block the whole batch when they stay within the approved failure budget:
+- cloud_hydration_failed
+- cloud_network_unavailable
+- read_timeout
+- source_missing
+- permission_denied
+- unsupported_extension
+- size_mismatch
+- unreadable_source
+
+Medium pilot staging copy uses this default failure budget:
+- `max_item_failures=20`
+- `max_failure_rate=0.05`
+- `max_consecutive_failures=10`
+- `max_same_reason_failures=20`
+
+Exceeding the budget indicates possible systemic provider/network/workflow failure and should stop the run.
+
+iCloud / Cloud Files policy:
+- Phase 2.4 solved scan safety; staging copy also requires ingestion availability.
+- Default behavior blocks recall-risk rows.
+- An explicit cloud-aware copy policy may allow recall-risk rows into controlled copy with bounded reporting.
+- Source/iCloud write mutation remains forbidden unless separately and explicitly approved.
+- DB import remains forbidden until staging audit passes and a separate DB import stage is approved.
+
+Every staging/import workflow must produce per-item state records with: row id or safe label, source state, staging status, failure reason, bytes copied, `eligible_for_db_import`, deferred/backfilled/unresolved state, and imported media ID if later imported.
+
+Future full-library import requires a production Ingestion Run Ledger / Source Item State Ledger before execution. Future large imports should support an over-selection buffer: `desired_success_count=N`, `candidate_count=N * buffer_ratio`, accounting for cloud failures, duplicates, unsupported files, non-anime/ineligible classification, and user exclusions.
 
 ### PR body format and task checklist standard
 
@@ -124,6 +173,14 @@ Every CodeX final report for implementation or review stages must be written in 
 12. Current blocked/ready status
 13. Recommended next step
 14. If stopped by a rule, the exact stop condition
+15. Engineering judgment / operator notes:
+    - blockers vs deferable issues
+    - risks in the current design
+    - whether the phase boundary seems too narrow or too broad
+    - whether the prompt missed important issues
+    - recommended next step
+
+This engineering judgment section is advisory only. Do not expand scope without user/ChatGPT approval.
 
 A short summary alone is not acceptable. If any item is not applicable, say "N/A" and why. Do not force the user to inspect the PR body or old logs to reconstruct test results.
 

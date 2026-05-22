@@ -495,9 +495,20 @@ Fixed crash during scan import when files with certain Unicode characters in the
 **Goal:** Before any full-library import, implement a production-grade per-run ledger that records final state for every source item in each ingestion run, manifest, or job.
 
 - Required states include: succeeded, failed, failure reason, retried, backfilled, deferred for later cloud recovery, imported into DB, excluded as ineligible, and unresolved.
+- Required per-item fields include: row id or safe label, source state, staging status, failure reason, bytes copied, `eligible_for_db_import`, deferred/backfilled/unresolved state, and imported media ID if later imported.
 - Reports must be scoped to the current run/manifest/job, not only global library totals.
 - Failed cloud-backed items must remain visible and must not be mixed with successfully imported items or hidden behind aggregate counts.
-- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c.
+- Full-library import must not run until this production ledger exists and can prove which staged-success rows are eligible for DB import.
+- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c or I6.
+
+### Future prerequisite - Over-selection Buffer for Large Imports
+
+**Goal:** Large imports should select enough candidates to reach the desired successful import size while preserving item-level failure visibility.
+
+- Use `desired_success_count=N` and `candidate_count=N * buffer_ratio`.
+- The buffer must account for cloud failures, duplicate targets/sources, unsupported files, non-anime or otherwise ineligible classification results, and user exclusions.
+- Buffering is not silent skipping: every failed, excluded, deferred, backfilled, unresolved, and imported item must remain scoped to the current run/manifest/job in the production ledger.
+- The buffer design belongs in a future ingestion planning phase before full-library import. It must not bypass staging audit, item-ledger, or DB import approval gates.
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 
@@ -584,11 +595,17 @@ Any workflow that can read or copy from iCloud / Windows Cloud Files source path
 
 - `stat()`, `exists()`, file size, and `is_file()` are insufficient for cloud-backed files.
 - Windows cloud attributes must be inspected before copy/import.
-- High cloud-risk selected sets must not proceed directly to copy.
+- Phase 2.4 solved scan safety; staging copy also requires ingestion availability.
+- Cloud recall-risk is a risk signal, not a permanent exclusion.
+- Default behavior blocks recall-risk rows, but an explicit cloud-aware copy policy may allow recall-risk rows into controlled copy with bounded reporting.
 - Manual hydrate is an emergency workaround only, not the formal V.I.O.L.E.T. workflow.
 - Structured cloud failure reasons are required.
 - DB import must not run after failed or incomplete staging copy.
 - Upload-bytes routes and app-managed storage reads do not require the source cloud gate.
+
+Safety gates should make workflows controlled, observable, and recoverable rather than infinite blockers for expected iCloud / Cloud Files states. Structural blockers stop the whole run, including server/DB identity mismatch, unsafe staging target, target escape, protected-root overlap, invalid manifest schema, duplicate target paths, report generation failure, privacy leak, DB/app-storage/source-root confusion, and unexpected DB/app-storage/source mutation.
+
+Per-item failures are recorded, excluded from DB import eligibility, and handled through retry/backfill/deferred recovery when they stay within the approved failure budget. Examples include `cloud_hydration_failed`, `cloud_network_unavailable`, `read_timeout`, `source_missing`, `permission_denied`, `unsupported_extension`, `size_mismatch`, and `unreadable_source`. The current medium pilot failure budget is `max_item_failures=20`, `max_failure_rate=0.05`, `max_consecutive_failures=10`, and `max_same_reason_failures=20`; exceeding it indicates possible systemic provider/network/workflow failure and should stop the run.
 
 ### Destructive DB Operation Safety (post-incident, 2026-05-10)
 
