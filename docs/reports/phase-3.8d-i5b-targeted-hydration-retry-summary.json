@@ -1,0 +1,704 @@
+{
+  "phase": "3.8d-I5b",
+  "mode": "targeted_hydration_retry",
+  "created_at": "2026-05-22T06:46:05.613006+00:00",
+  "status": "targeted_retry_failed",
+  "success": false,
+  "duration_seconds": 779.234,
+  "manifest_selected_total": 1000,
+  "target_row_ids": [
+    98,
+    881
+  ],
+  "target_row_ids_found": [
+    98,
+    881
+  ],
+  "missing_target_row_ids": [],
+  "policy": {
+    "prefix_read_bytes": 1,
+    "prefix_timeout_seconds": 30,
+    "prefix_retries": 2,
+    "full_read_timeout_seconds": 180,
+    "full_read_retries": 2,
+    "full_read_chunk_size": 4194304,
+    "retry_wait_seconds": 10,
+    "full_read_runs_even_if_prefix_times_out": true,
+    "full_read_required_for_copy_readiness": true,
+    "cfhydrateplaceholder_called": false
+  },
+  "summary": {
+    "attempted_count": 2,
+    "success_count": 0,
+    "failed_count": 2,
+    "bytes_read": 0,
+    "duration_seconds": 699.062,
+    "failures_by_reason": {
+      "cloud_hydration_failed": 2
+    },
+    "failures_by_bucket": {
+      "b02": 1,
+      "b15": 1
+    },
+    "failures_by_extension": {
+      ".jpg": 1,
+      ".png": 1
+    },
+    "failed_rows": [
+      {
+        "row_id": 98,
+        "source_safe_label": "source_row_0098.jpg",
+        "bucket": "b02",
+        "extension": ".jpg",
+        "reason": "cloud_hydration_failed"
+      },
+      {
+        "row_id": 881,
+        "source_safe_label": "source_row_0881.png",
+        "bucket": "b15",
+        "extension": ".png",
+        "reason": "cloud_hydration_failed"
+      }
+    ]
+  },
+  "target_results": [
+    {
+      "row_id": 98,
+      "source_safe_label": "source_row_0098.jpg",
+      "bucket": "b02",
+      "extension": ".jpg",
+      "expected_size": 256931,
+      "metadata_before": {
+        "source_ingestion_gate": {
+          "allowed": true,
+          "blocked": false,
+          "source_kind": "path_source",
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "source_row_0098.jpg",
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 4194336,
+            "attributes_hex": "0x00400020",
+            "attribute_names": [
+              "archive",
+              "recall_on_data_access"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": true,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": true,
+            "error_code": null,
+            "error_message": null
+          },
+          "paths_redacted": true
+        },
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "source_missing": false,
+        "source_not_file": false
+      },
+      "prefix_read": {
+        "ok": false,
+        "attempted": true,
+        "attempt_count": 3,
+        "bytes_read": 0,
+        "bytes_read_total": 0,
+        "duration_seconds": 61.407,
+        "error_reason": "cloud_hydration_failed"
+      },
+      "full_read": {
+        "ok": false,
+        "attempted": true,
+        "attempt_count": 3,
+        "bytes_read": 0,
+        "bytes_read_total": 0,
+        "duration_seconds": 303.827,
+        "error_reason": "cloud_hydration_failed",
+        "ran_even_if_prefix_failed": true
+      },
+      "metadata_after": {
+        "source_ingestion_gate": {
+          "allowed": true,
+          "blocked": false,
+          "source_kind": "path_source",
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "source_row_0098.jpg",
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 4194336,
+            "attributes_hex": "0x00400020",
+            "attribute_names": [
+              "archive",
+              "recall_on_data_access"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": true,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": true,
+            "error_code": null,
+            "error_message": null
+          },
+          "paths_redacted": true
+        },
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "source_missing": false,
+        "source_not_file": false
+      },
+      "still_recall_on_data_access": true,
+      "staging_copy_ready": false,
+      "ok": false,
+      "failure_reason": "cloud_hydration_failed",
+      "audit_bytes_read": 0,
+      "duration_seconds": 365.234
+    },
+    {
+      "row_id": 881,
+      "source_safe_label": "source_row_0881.png",
+      "bucket": "b15",
+      "extension": ".png",
+      "expected_size": 3447687,
+      "metadata_before": {
+        "source_ingestion_gate": {
+          "allowed": true,
+          "blocked": false,
+          "source_kind": "path_source",
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "source_row_0881.png",
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 4194336,
+            "attributes_hex": "0x00400020",
+            "attribute_names": [
+              "archive",
+              "recall_on_data_access"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": true,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": true,
+            "error_code": null,
+            "error_message": null
+          },
+          "paths_redacted": true
+        },
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "source_missing": false,
+        "source_not_file": false
+      },
+      "prefix_read": {
+        "ok": false,
+        "attempted": true,
+        "attempt_count": 3,
+        "bytes_read": 0,
+        "bytes_read_total": 0,
+        "duration_seconds": 90.047,
+        "error_reason": "read_timeout"
+      },
+      "full_read": {
+        "ok": false,
+        "attempted": true,
+        "attempt_count": 3,
+        "bytes_read": 0,
+        "bytes_read_total": 0,
+        "duration_seconds": 243.781,
+        "error_reason": "cloud_hydration_failed",
+        "ran_even_if_prefix_failed": true
+      },
+      "metadata_after": {
+        "source_ingestion_gate": {
+          "allowed": true,
+          "blocked": false,
+          "source_kind": "path_source",
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "source_row_0881.png",
+          "cloud_state": {
+            "supported_platform": true,
+            "exists": true,
+            "is_file": true,
+            "attributes_raw": 4194336,
+            "attributes_hex": "0x00400020",
+            "attribute_names": [
+              "archive",
+              "recall_on_data_access"
+            ],
+            "offline": false,
+            "reparse_point": false,
+            "recall_on_open": false,
+            "recall_on_data_access": true,
+            "pinned": false,
+            "unpinned": false,
+            "sparse_file": false,
+            "likely_cloud_placeholder": true,
+            "error_code": null,
+            "error_message": null
+          },
+          "paths_redacted": true
+        },
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "source_missing": false,
+        "source_not_file": false
+      },
+      "still_recall_on_data_access": true,
+      "staging_copy_ready": false,
+      "ok": false,
+      "failure_reason": "cloud_hydration_failed",
+      "audit_bytes_read": 0,
+      "duration_seconds": 333.828
+    }
+  ],
+  "row_98_result": {
+    "row_id": 98,
+    "source_safe_label": "source_row_0098.jpg",
+    "bucket": "b02",
+    "extension": ".jpg",
+    "expected_size": 256931,
+    "metadata_before": {
+      "source_ingestion_gate": {
+        "allowed": true,
+        "blocked": false,
+        "source_kind": "path_source",
+        "reason": "path_source_available",
+        "required_policy": null,
+        "safe_label": "source_row_0098.jpg",
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "paths_redacted": true
+      },
+      "cloud_state": {
+        "supported_platform": true,
+        "exists": true,
+        "is_file": true,
+        "attributes_raw": 4194336,
+        "attributes_hex": "0x00400020",
+        "attribute_names": [
+          "archive",
+          "recall_on_data_access"
+        ],
+        "offline": false,
+        "reparse_point": false,
+        "recall_on_open": false,
+        "recall_on_data_access": true,
+        "pinned": false,
+        "unpinned": false,
+        "sparse_file": false,
+        "likely_cloud_placeholder": true,
+        "error_code": null,
+        "error_message": null
+      },
+      "source_missing": false,
+      "source_not_file": false
+    },
+    "prefix_read": {
+      "ok": false,
+      "attempted": true,
+      "attempt_count": 3,
+      "bytes_read": 0,
+      "bytes_read_total": 0,
+      "duration_seconds": 61.407,
+      "error_reason": "cloud_hydration_failed"
+    },
+    "full_read": {
+      "ok": false,
+      "attempted": true,
+      "attempt_count": 3,
+      "bytes_read": 0,
+      "bytes_read_total": 0,
+      "duration_seconds": 303.827,
+      "error_reason": "cloud_hydration_failed",
+      "ran_even_if_prefix_failed": true
+    },
+    "metadata_after": {
+      "source_ingestion_gate": {
+        "allowed": true,
+        "blocked": false,
+        "source_kind": "path_source",
+        "reason": "path_source_available",
+        "required_policy": null,
+        "safe_label": "source_row_0098.jpg",
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "paths_redacted": true
+      },
+      "cloud_state": {
+        "supported_platform": true,
+        "exists": true,
+        "is_file": true,
+        "attributes_raw": 4194336,
+        "attributes_hex": "0x00400020",
+        "attribute_names": [
+          "archive",
+          "recall_on_data_access"
+        ],
+        "offline": false,
+        "reparse_point": false,
+        "recall_on_open": false,
+        "recall_on_data_access": true,
+        "pinned": false,
+        "unpinned": false,
+        "sparse_file": false,
+        "likely_cloud_placeholder": true,
+        "error_code": null,
+        "error_message": null
+      },
+      "source_missing": false,
+      "source_not_file": false
+    },
+    "still_recall_on_data_access": true,
+    "staging_copy_ready": false,
+    "ok": false,
+    "failure_reason": "cloud_hydration_failed",
+    "audit_bytes_read": 0,
+    "duration_seconds": 365.234
+  },
+  "row_881_result": {
+    "row_id": 881,
+    "source_safe_label": "source_row_0881.png",
+    "bucket": "b15",
+    "extension": ".png",
+    "expected_size": 3447687,
+    "metadata_before": {
+      "source_ingestion_gate": {
+        "allowed": true,
+        "blocked": false,
+        "source_kind": "path_source",
+        "reason": "path_source_available",
+        "required_policy": null,
+        "safe_label": "source_row_0881.png",
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "paths_redacted": true
+      },
+      "cloud_state": {
+        "supported_platform": true,
+        "exists": true,
+        "is_file": true,
+        "attributes_raw": 4194336,
+        "attributes_hex": "0x00400020",
+        "attribute_names": [
+          "archive",
+          "recall_on_data_access"
+        ],
+        "offline": false,
+        "reparse_point": false,
+        "recall_on_open": false,
+        "recall_on_data_access": true,
+        "pinned": false,
+        "unpinned": false,
+        "sparse_file": false,
+        "likely_cloud_placeholder": true,
+        "error_code": null,
+        "error_message": null
+      },
+      "source_missing": false,
+      "source_not_file": false
+    },
+    "prefix_read": {
+      "ok": false,
+      "attempted": true,
+      "attempt_count": 3,
+      "bytes_read": 0,
+      "bytes_read_total": 0,
+      "duration_seconds": 90.047,
+      "error_reason": "read_timeout"
+    },
+    "full_read": {
+      "ok": false,
+      "attempted": true,
+      "attempt_count": 3,
+      "bytes_read": 0,
+      "bytes_read_total": 0,
+      "duration_seconds": 243.781,
+      "error_reason": "cloud_hydration_failed",
+      "ran_even_if_prefix_failed": true
+    },
+    "metadata_after": {
+      "source_ingestion_gate": {
+        "allowed": true,
+        "blocked": false,
+        "source_kind": "path_source",
+        "reason": "path_source_available",
+        "required_policy": null,
+        "safe_label": "source_row_0881.png",
+        "cloud_state": {
+          "supported_platform": true,
+          "exists": true,
+          "is_file": true,
+          "attributes_raw": 4194336,
+          "attributes_hex": "0x00400020",
+          "attribute_names": [
+            "archive",
+            "recall_on_data_access"
+          ],
+          "offline": false,
+          "reparse_point": false,
+          "recall_on_open": false,
+          "recall_on_data_access": true,
+          "pinned": false,
+          "unpinned": false,
+          "sparse_file": false,
+          "likely_cloud_placeholder": true,
+          "error_code": null,
+          "error_message": null
+        },
+        "paths_redacted": true
+      },
+      "cloud_state": {
+        "supported_platform": true,
+        "exists": true,
+        "is_file": true,
+        "attributes_raw": 4194336,
+        "attributes_hex": "0x00400020",
+        "attribute_names": [
+          "archive",
+          "recall_on_data_access"
+        ],
+        "offline": false,
+        "reparse_point": false,
+        "recall_on_open": false,
+        "recall_on_data_access": true,
+        "pinned": false,
+        "unpinned": false,
+        "sparse_file": false,
+        "likely_cloud_placeholder": true,
+        "error_code": null,
+        "error_message": null
+      },
+      "source_missing": false,
+      "source_not_file": false
+    },
+    "still_recall_on_data_access": true,
+    "staging_copy_ready": false,
+    "ok": false,
+    "failure_reason": "cloud_hydration_failed",
+    "audit_bytes_read": 0,
+    "duration_seconds": 333.828
+  },
+  "backfill_dry_run": {
+    "mode": "dry_run_only",
+    "selected_total_preserved": true,
+    "policy": "same temporal bucket replacement when possible; never silently drop failed rows",
+    "requested_failures": 2,
+    "replacement_count": 2,
+    "unresolved_count": 0,
+    "replacements": [
+      {
+        "failed_row_id": 98,
+        "failed_safe_label": "source_row_0098.jpg",
+        "replacement_row_id": 1029,
+        "replacement_safe_label": "replacement_row_1029.png",
+        "bucket": "b02",
+        "reason": "same_bucket_backfill_after_bounded_hydration_failure"
+      },
+      {
+        "failed_row_id": 881,
+        "failed_safe_label": "source_row_0881.png",
+        "replacement_row_id": 1041,
+        "replacement_safe_label": "replacement_row_1041.jpg",
+        "bucket": "b15",
+        "reason": "same_bucket_backfill_after_bounded_hydration_failure"
+      }
+    ],
+    "unresolved": []
+  },
+  "network_proxy_observations": {
+    "proxy_env_detected": false,
+    "proxy_env_names_redacted": {
+      "HTTP_PROXY": false,
+      "HTTPS_PROXY": false,
+      "ALL_PROXY": false,
+      "NO_PROXY": false
+    },
+    "note": "Proxy values are local environment details and are intentionally redacted."
+  },
+  "safety": {
+    "source_content_read_for_verification_only": true,
+    "provider_side_hydration_may_have_occurred": true,
+    "source_file_content_write_mutation": false,
+    "staging_copy": false,
+    "staging_write": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "entity_resolver": false,
+    "similarity": false,
+    "cleanup_delete": false,
+    "manifest_modified": false,
+    "backfill_applied": false,
+    "app_managed_storage_mutation": false,
+    "push_main": false,
+    "merge": false
+  },
+  "local_artifacts": {
+    "details_artifact": "phase-3.8d-i5b-targeted-hydration-details.json",
+    "full_paths_in_public_reports": false,
+    "must_remain_untracked": true
+  },
+  "next_step": "Do not apply backfill automatically; user/ChatGPT must decide backfill, provider/network investigation, lower-level hydration API investigation, or another approved policy.",
+  "privacy": {
+    "paths_redacted": true,
+    "safe_labels_only": true,
+    "proxy_values_redacted": true,
+    "leaks": [],
+    "passed": true
+  },
+  "manifest_label": "phase-3.8c-medium-candidate-manifest.csv"
+}
