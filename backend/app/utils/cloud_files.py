@@ -10,6 +10,7 @@ import errno
 import multiprocessing
 import os
 import platform
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -245,6 +246,49 @@ def _read_prefix_worker(path: str, max_bytes: int, conn: Any) -> None:
         conn.close()
 
 
+def _read_full_worker(path: str, chunk_size: int, conn: Any) -> None:
+    bytes_read = 0
+    try:
+        with open(path, "rb") as handle:
+            while True:
+                chunk = handle.read(chunk_size)
+                if not chunk:
+                    break
+                bytes_read += len(chunk)
+        conn.send(
+            {
+                "ok": True,
+                "bytes_read": bytes_read,
+                "error_reason": None,
+                "error_message": None,
+                "winerror": None,
+                "errno": None,
+            }
+        )
+    except Exception as exc:
+        conn.send(
+            {
+                "ok": False,
+                "bytes_read": bytes_read,
+                "error_reason": classify_file_access_error(exc),
+                "error_message": str(exc),
+                "winerror": getattr(exc, "winerror", None),
+                "errno": getattr(exc, "errno", None),
+            }
+        )
+    finally:
+        conn.close()
+
+
+def _close_ipc_handle(handle: Any) -> None:
+    if handle is None:
+        return
+    try:
+        handle.close()
+    except Exception:
+        pass
+
+
 def read_probe_prefix(
     path: str | Path,
     *,
@@ -308,6 +352,150 @@ def read_probe_prefix(
         "attempts": attempts,
         "ok": bool(final and final.get("ok")),
         "bytes_read": int(final.get("bytes_read", 0) if final else 0),
+        "error_reason": final.get("error_reason") if final else None,
+        "error_message": final.get("error_message") if final else None,
+    }
+
+
+def read_verify_full_content(
+    path: str | Path,
+    *,
+    expected_size: int | None = None,
+    timeout_seconds: int = 60,
+    retries: int = 1,
+    chunk_size: int = 4 * 1024 * 1024,
+) -> dict[str, Any]:
+    """Opt-in full-content read verification.
+
+    The function streams the entire file in a subprocess so callers can bound
+    per-file read time.  It writes nothing.  On Cloud Files sources this may
+    trigger provider-side hydration, so callers must keep it behind an
+    explicit approval gate.
+    """
+
+    if chunk_size <= 0:
+        return {
+            "full_read": True,
+            "expected_size": expected_size,
+            "chunk_size": chunk_size,
+            "timeout_seconds": timeout_seconds,
+            "retries": retries,
+            "attempts": [],
+            "ok": False,
+            "bytes_read": 0,
+            "bytes_read_total": 0,
+            "duration_seconds": 0.0,
+            "error_reason": "invalid_chunk_size",
+            "error_message": "chunk_size must be greater than 0",
+        }
+
+    attempts: list[dict[str, Any]] = []
+    final: dict[str, Any] | None = None
+    for attempt in range(retries + 1):
+        started = time.monotonic()
+        parent_conn: Any = None
+        child_conn: Any = None
+        try:
+            parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+            proc = multiprocessing.Process(
+                target=_read_full_worker,
+                args=(str(Path(path)), chunk_size, child_conn),
+                daemon=True,
+            )
+            proc.start()
+        except Exception as exc:
+            result = {
+                "attempt": attempt + 1,
+                "ok": False,
+                "bytes_read": 0,
+                "duration_seconds": time.monotonic() - started,
+                "error_reason": "read_worker_start_failed",
+                "error_message": f"read worker failed to start: {type(exc).__name__}",
+                "winerror": getattr(exc, "winerror", None),
+                "errno": getattr(exc, "errno", None),
+            }
+            _close_ipc_handle(child_conn)
+            _close_ipc_handle(parent_conn)
+            attempts.append(result)
+            final = result
+            break
+        child_conn.close()
+        proc.join(timeout_seconds)
+        duration = time.monotonic() - started
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=2)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(timeout=2)
+            result = {
+                "attempt": attempt + 1,
+                "ok": False,
+                "bytes_read": 0,
+                "duration_seconds": duration,
+                "error_reason": "read_timeout",
+                "error_message": f"full read timed out after {timeout_seconds}s",
+                "winerror": None,
+                "errno": None,
+            }
+        elif parent_conn.poll(timeout=1):
+            try:
+                result = parent_conn.recv()
+                result["attempt"] = attempt + 1
+                result["duration_seconds"] = duration
+            except EOFError:
+                result = {
+                    "attempt": attempt + 1,
+                    "ok": False,
+                    "bytes_read": 0,
+                    "duration_seconds": duration,
+                    "error_reason": "read_worker_eof",
+                    "error_message": f"subprocess exited with code {proc.exitcode} before sending a result",
+                    "winerror": None,
+                    "errno": None,
+                }
+        else:
+            result = {
+                "attempt": attempt + 1,
+                "ok": False,
+                "bytes_read": 0,
+                "duration_seconds": duration,
+                "error_reason": "read_no_result",
+                "error_message": f"subprocess exited with code {proc.exitcode} and no result",
+                "winerror": None,
+                "errno": None,
+            }
+        parent_conn.close()
+
+        if result.get("ok") and expected_size is not None and int(result.get("bytes_read", 0)) != expected_size:
+            result = {
+                **result,
+                "ok": False,
+                "error_reason": "size_mismatch",
+                "error_message": (
+                    f"full read size mismatch: read {int(result.get('bytes_read', 0))} "
+                    f"bytes, expected {expected_size}"
+                ),
+            }
+
+        attempts.append(result)
+        final = result
+        if result.get("ok"):
+            break
+
+    total_attempt_bytes = sum(int(attempt.get("bytes_read", 0) or 0) for attempt in attempts)
+    total_duration = sum(float(attempt.get("duration_seconds", 0.0) or 0.0) for attempt in attempts)
+    return {
+        "full_read": True,
+        "expected_size": expected_size,
+        "chunk_size": chunk_size,
+        "timeout_seconds": timeout_seconds,
+        "retries": retries,
+        "attempts": attempts,
+        "ok": bool(final and final.get("ok")),
+        "bytes_read": int(final.get("bytes_read", 0) if final else 0),
+        "bytes_read_total": total_attempt_bytes,
+        "duration_seconds": total_duration,
         "error_reason": final.get("error_reason") if final else None,
         "error_message": final.get("error_message") if final else None,
     }

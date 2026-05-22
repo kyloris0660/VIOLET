@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I4a - Controlled cleanup executor support (2026-05-21).
+> Last updated during Phase 3.8d-I5 - Controlled read-probe / hydration audit (2026-05-21).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i3-recovery-cleanup-hydration-plan` (recovery cleanup dry-run and hydration/backfill policy; Phase 3.8d execute remains blocked) |
+| **Branch** | `phase3.8d-i5-controlled-hydration-audit` (controlled hydration audit; Phase 3.8d execute remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -39,7 +39,9 @@
 | **Phase 3.8d-I1 (PR #55)** | PR #55 merged - iCloud / Windows Cloud Files ingestion reliability incident hardening; Phase 3.8d execute blocked |
 | **Phase 3.8d-I2 (PR #56)** | PR #56 merged - source ingestion gate unification; no execute/resume yet |
 | **Phase 3.8d-I3 (PR #57)** | PR #57 merged - partial staging cleanup dry-run plus controlled hydration/read-probe and same-bucket backfill policy; no execute/resume yet |
-| **Phase 3.8d-I4a (branch)** | `phase3.8d-i4a-cleanup-executor-support` - controlled partial staging cleanup executor support and tests; no real cleanup performed |
+| **Phase 3.8d-I4a (PR #58)** | PR #58 merged - controlled partial staging cleanup executor support and tests; no real cleanup performed |
+| **Phase 3.8d-I4b (PR #59)** | PR #59 merged - actual partial staging cleanup completed: `97` files / `340,159,586` bytes deleted from the dedicated staging target; DB/source/app storage unchanged |
+| **Phase 3.8d-I5 (branch)** | `phase3.8d-i5-controlled-hydration-audit` - controlled read-probe / hydration audit; sample gate failed for rows `98` and `881`, so full recall verification and Phase 3.8d execute remain blocked |
 
 ## Mandatory Workflow Rules
 
@@ -798,14 +800,24 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Source/iCloud was not mutated; no source write path, read-probe/hydration, staging copy rerun, DB import, classification, AI tagging, localization, Entity Resolver, or similarity ran.
 - Reports: `docs/reports/phase-3.8d-i4b-actual-partial-staging-cleanup.md` and `docs/reports/phase-3.8d-i4b-actual-partial-staging-cleanup-summary.json`.
 
+**Phase 3.8d-I5 - Controlled Read-probe / Hydration Audit (branch `phase3.8d-i5-controlled-hydration-audit`):**
+- Added `scripts/run_phase38d_i5_hydration_audit.py`, which supports metadata-only baseline, explicit bounded prefix read, full-content read verification, sample-gated full recall verification, privacy-safe reports, and ignored local per-file details.
+- Metadata-only baseline over the selected `1,000` manifest rows found `613` likely cloud placeholder / recall-risk files. Row `98` remained `recall_on_data_access`.
+- Sample gate included row `98` and risky rows across temporal buckets: `46` attempted, `44` full-read successes, `2` failures, `121,073,270` bytes read, `114.109` seconds.
+- Failed sample rows: row `98` (`source_row_0098.jpg`, bucket `b02`) and row `881` (`source_row_0881.png`, bucket `b15`), both `read_timeout`.
+- Because the sample gate failed, full recall verification did not run. A post-sample metadata recheck found `569` remaining recall-risk files.
+- Backfill remains dry-run-only and was not applied: row `98` -> `replacement_row_1029.png`; row `881` -> `replacement_row_1041.jpg`.
+- Source content was read for verification only; provider-side hydration/cache may have occurred. No staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
+- Reports: `docs/reports/phase-3.8d-i5-controlled-hydration-audit.md` and `docs/reports/phase-3.8d-i5-controlled-hydration-audit-summary.json`.
+
 ## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute
 
 Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
 
-1. Review and merge Phase 3.8d-I4b actual cleanup report.
-2. Start Phase 3.8d-I5 only after explicit approval for controlled read-probe/hydration audit. Metadata-only audit remains the default.
-3. If bounded hydrate/read-probe fails for specific files, approve same-bucket backfill planning to preserve `selected_total=1000` and temporal diversity.
-4. Only after cleanup/recovery and staging copy are complete and verified may Phase 3.8d DB import be reconsidered.
+1. Review Phase 3.8d-I5 results: row `98` and row `881` failed bounded read with `read_timeout`; full recall verification did not run.
+2. Decide whether to run a targeted recovery retry/hydration stage for the failed rows, adjust bounded timeout policy, or approve same-bucket backfill for the two failed rows.
+3. Do not retry staging copy until the failed rows are resolved by approved retry/hydration or approved backfill.
+4. Only after recovery/backfill and a successful staging copy plus post-copy audit may Phase 3.8d DB import be reconsidered.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

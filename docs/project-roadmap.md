@@ -363,6 +363,18 @@ See [Content Classification](content-classification.md) for full documentation.
 - Source/iCloud files were not mutated. Staging copy, read-probe/hydration, DB import, classification, AI tagging, localization, Entity Resolver, and similarity did not run.
 - Phase 3.8d execute remains blocked until controlled read-probe/hydration and any approved same-bucket backfill are completed and verified.
 
+### Phase 3.8d-I5 - Controlled Read-probe / Hydration Audit
+
+**Goal:** Determine whether selected iCloud / Windows Cloud Files recall-risk source files can be made readable through bounded source reads before retrying staging copy.
+
+- Added `scripts/run_phase38d_i5_hydration_audit.py`, an operational audit tool with metadata-only baseline, explicit prefix read-probe, full-content read verification, sample-gated full recall verification, privacy-safe public reports, and local ignored per-file details.
+- Metadata-only baseline over the selected Phase 3.8c/3.8d manifest found `1,000` selected files, `613` likely cloud placeholder / recall-risk files, and row `98` still in `recall_on_data_access` state.
+- Sample gate included row `98` and covered risky temporal buckets: `46` attempted, `44` full-read successes, `2` failures, `121,073,270` bytes read, `114.109` seconds. Failed rows were `98` (`source_row_0098.jpg`, bucket `b02`) and `881` (`source_row_0881.png`, bucket `b15`), both with `read_timeout`.
+- Because the sample gate failed, full recall verification for the remaining recall-risk set did not run. A post-sample metadata recheck found `569` remaining likely cloud placeholder / recall-risk files.
+- Same-bucket backfill was dry-run-only and not applied: row `98` -> `replacement_row_1029.png`; row `881` -> `replacement_row_1041.jpg`.
+- Source content was read for verification only; provider-side hydration/cache may have occurred. No staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
+- Phase 3.8d execute remains blocked. Next step is a targeted recovery/backfill decision for failed rows before any staging-copy retry.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -438,7 +450,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1/I2/I3:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Blocked by Phase 3.8d-I1/I2/I3/I4/I5:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place

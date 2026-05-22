@@ -69,7 +69,7 @@ def read_manifest(path: Path) -> list[dict[str, str]]:
 
 
 def is_selected_copy_row(row: Mapping[str, str]) -> bool:
-    return (row.get("selection_reason") or "").strip() == "new_candidate" and not (
+    return (row.get("selection_reason") or "").strip() in {"new_candidate", "existing_tier500"} and not (
         row.get("exclusion_reason") or ""
     ).strip()
 
