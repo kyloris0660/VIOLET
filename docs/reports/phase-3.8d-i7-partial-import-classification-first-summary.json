@@ -392,7 +392,7 @@
     "excluded_i6_failed": 6,
     "committed": false
   },
-  "finished_at": "2026-05-22T15:30:23.318875+00:00",
+  "finished_at": "2026-05-22T16:19:22.582152+00:00",
   "privacy_scan": {
     "public_report_leaks": []
   },
@@ -449,13 +449,91 @@
   "tests": {
     "git_diff_check": "passed (warnings only: CRLF normalization)",
     "py_compile": "passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py",
-    "focused_pytest": "passed: 6 passed",
-    "full_non_e2e_pytest": "passed: 1166 passed, 12 skipped, 12 warnings",
+    "focused_pytest": "passed: 14 passed",
+    "full_non_e2e_pytest": "passed: 1174 passed, 12 skipped, 12 warnings",
     "commands": [
       "git diff --check",
       "& \"$PY\" -m py_compile scripts/run_phase38d_i7_partial_import_classification_first.py tests/test_phase38d_i7_partial_import_classification_first.py",
       "& \"$PY\" -m pytest tests/test_phase38d_i7_partial_import_classification_first.py -v",
       "& \"$PY\" -m pytest tests/ -v --ignore=tests/e2e"
     ]
+  },
+  "db_identity_closeout": {
+    "violet_env": "development",
+    "db_name": "blombooru",
+    "db_host": "localhost",
+    "db_port": 5432,
+    "storage_root_label": "app_storage",
+    "repo_root_label": "repo_root",
+    "branch": "phase3.8d-i7-partial-import-classification-first",
+    "git_sha": "808c07ab9354ef2a572636aadb5708a071e96803",
+    "active_jobs": {
+      "ai_jobs": 0,
+      "classification_jobs": 0,
+      "translation_jobs": 0
+    },
+    "paths_redacted": true
+  },
+  "localization_continuation": {
+    "status": "completed",
+    "additional_candidate_count": 370,
+    "additional_translated_count": 370,
+    "additional_failed_count": 0,
+    "remaining_missing_general_meta_after": 0,
+    "skipped_proper_nouns": 101,
+    "localizable_categories": [
+      "general",
+      "meta"
+    ],
+    "proper_noun_categories_skipped": [
+      "character",
+      "copyright",
+      "artist"
+    ],
+    "provider_available": true,
+    "job_id": 17,
+    "max_additional_candidates": 500,
+    "db_import_reran": false,
+    "classification_reran": false,
+    "ai_tagging_reran": false
+  },
+  "localization_final": {
+    "initial_translated_count": 200,
+    "initial_failed_count": 0,
+    "initial_remaining_missing_general_meta": 370,
+    "continuation_translated_count": 370,
+    "continuation_failed_count": 0,
+    "remaining_missing_general_meta_after": 0,
+    "proper_noun_categories_skipped": [
+      "character",
+      "copyright",
+      "artist"
+    ]
+  },
+  "db_counts_after_closeout": {
+    "media": 1989,
+    "media_source_label": 994,
+    "media_tags": 105699,
+    "ai_jobs": 51,
+    "classification_jobs": 25,
+    "translation_jobs": 17
+  },
+  "closeout_hardening": {
+    "public_report_privacy_gate": "fail_closed_before_persisting_leaking_public_outputs",
+    "resume_media_ids_source": "current_db_source_label_rows_matched_by_file_hash",
+    "classification_resume_gate": "media_id_identity_proof_or_db_source_label_content_class_state",
+    "db_import_reran": false,
+    "classification_reran": false,
+    "ai_tagging_reran": false,
+    "localization_continuation_ran": true
+  },
+  "closeout_safety": {
+    "db_import_reran": false,
+    "classification_reran": false,
+    "ai_tagging_reran": false,
+    "staging_copy_reran": false,
+    "source_icloud_write_mutation": false,
+    "entity_resolver_ran": false,
+    "similarity_or_clustering_ran": false
   }
 }

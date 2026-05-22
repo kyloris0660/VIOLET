@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I7 - Partial import and classification-first pipeline (2026-05-22).
+> Last updated during Phase 3.8d-I7 - Partial import and classification-first pipeline closeout (2026-05-23).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i6-staging-copy-retry` (staging copy retry report; Phase 3.8d DB import remains blocked) |
+| **Branch** | `phase3.8d-i7-partial-import-classification-first` (PR #64 closeout; partial import/classification-first report) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -45,7 +45,7 @@
 | **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
 | **Phase 3.8d-I5c (PR #62)** | PR #62 merged - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
 | **Phase 3.8d-I6 (PR #63)** | PR #63 merged - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; full `1000` DB import remains blocked |
-| **Phase 3.8d-I7 (branch)** | `phase3.8d-i7-partial-import-classification-first` - partial import from the I6 item ledger staged-success set completed for `994` rows; failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded; classification processed `994` with `0` failures; AI tagging processed `967` anime/unknown rows with `0` failures; controlled localization translated `200` general/meta tags |
+| **Phase 3.8d-I7 (PR #64)** | `phase3.8d-i7-partial-import-classification-first` - partial import from the I6 item ledger staged-success set completed for `994` rows; failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded; classification processed `994` with `0` failures; AI tagging processed `967` anime/unknown rows with `0` failures; initial controlled localization translated `200` general/meta tags, then closeout continuation translated the remaining `370` eligible general/meta tags with `0` failures and `0` remaining general/meta missing translations |
 
 ## Mandatory Workflow Rules
 
@@ -847,10 +847,10 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 
 Do not start Phase 4 or run Entity Resolver/similarity/clustering until Phase 3.8d-I7 is reviewed and merged:
 
-1. Review Phase 3.8d-I7 results and local item ledger: `994` staged-success rows imported under source label `violet:phase3.8d:i7:staged-success`; the 6 I6 failed rows were not imported.
-2. Perform a human quality pass on imported media, content classification distribution, AI tag suggestions, and newly translated general/meta tags before broader feature work.
+1. Review PR #64 current head and local item ledger: `994` staged-success rows imported/resumed under source label `violet:phase3.8d:i7:staged-success`; the 6 I6 failed rows were not imported.
+2. Perform a human quality pass on imported media, content classification distribution, AI tag suggestions, and the now-complete eligible general/meta localization set before broader feature work.
 3. Decide a separate recovery path for rows `799`, `839`, `922`, `970`, `971`, and `972`: targeted provider/network retry, same-bucket backfill, or deferred cloud recovery.
-4. Remaining localization candidates (`370` general/meta tags after I7 batch) require a separately approved continuation if full localization coverage is desired.
+4. Treat PR #64 closeout hardening as active safety policy for this runner: public report privacy leaks fail closed, import resume media IDs come from DB source-label rows, and classification resume requires media ID identity proof or DB-backed classification state.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

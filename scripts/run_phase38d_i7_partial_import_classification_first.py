@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import hashlib
 import json
 import os
 import re
@@ -136,6 +137,74 @@ def scan_privacy_leaks(data: Any) -> list[str]:
     if FILE_URI_RE.search(text_value):
         leaks.append("file_uri")
     return leaks
+
+
+def media_ids_identity_proof(media_ids: Sequence[int]) -> dict[str, Any]:
+    normalized = sorted({int(media_id) for media_id in media_ids})
+    digest = hashlib.sha256(",".join(map(str, normalized)).encode("utf-8")).hexdigest()
+    return {
+        "media_ids_count": len(normalized),
+        "media_ids_sha256": digest,
+        "media_ids_sample": normalized[:20],
+    }
+
+
+def prior_classification_matches_media_ids(prior: Any, media_ids: Sequence[int]) -> bool:
+    if not isinstance(prior, dict) or prior.get("status") != "completed":
+        return False
+    proof = prior.get("identity_proof")
+    if not isinstance(proof, dict):
+        return False
+    expected = media_ids_identity_proof(media_ids)
+    return (
+        int(proof.get("media_ids_count") or -1) == expected["media_ids_count"]
+        and str(proof.get("media_ids_sha256") or "") == expected["media_ids_sha256"]
+    )
+
+
+def build_safe_privacy_blocked_summary(
+    summary: MappingLike,
+    *,
+    summary_leaks: Sequence[str] | None = None,
+    markdown_leaks: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "phase": "3.8d-I7",
+        "source_label": SOURCE_LABEL,
+        "status": "blocked_public_report_privacy_leak",
+        "success": False,
+        "started_at": summary.get("started_at"),
+        "finished_at": utc_now(),
+        "privacy_scan": {
+            "summary_leaks": sorted(set(summary_leaks or [])),
+            "markdown_leaks": sorted(set(markdown_leaks or [])),
+            "summary_leak_count": len(set(summary_leaks or [])),
+            "markdown_leak_count": len(set(markdown_leaks or [])),
+            "public_outputs_fail_closed": True,
+        },
+        "safe_blocked_report": True,
+        "paths_redacted": True,
+    }
+
+
+def render_safe_privacy_blocked_report(summary: MappingLike) -> str:
+    privacy = summary.get("privacy_scan", {}) if isinstance(summary.get("privacy_scan"), dict) else {}
+    lines = [
+        "# Phase 3.8d-I7 Partial Import Classification-first Pipeline",
+        "",
+        "## Summary",
+        "- Status: `blocked_public_report_privacy_leak`",
+        "- Success: `False`",
+        "- Public output fail-closed before persisting unsafe report content.",
+        "",
+        "## Privacy Gate",
+        f"- Summary leak count: `{privacy.get('summary_leak_count', 0)}`",
+        f"- Markdown leak count: `{privacy.get('markdown_leak_count', 0)}`",
+        f"- Leak reasons: `{sorted(set((privacy.get('summary_leaks') or []) + (privacy.get('markdown_leaks') or [])))}`",
+        "- Unsafe fields were not persisted in the public report.",
+        "- Local diagnostic details remain local/untracked when present.",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def resolve_under_root(label: str, root: Path) -> Path:
@@ -650,6 +719,71 @@ def media_ids_for_source(engine: Engine, source_label: str) -> list[int]:
     return [int(row[0]) for row in rows]
 
 
+def media_rows_for_source(engine: Engine, source_label: str) -> list[dict[str, Any]]:
+    with engine.connect() as conn:
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT id, path, thumbnail_path, hash "
+                    "FROM blombooru_media WHERE source = :source ORDER BY id ASC"
+                ),
+                {"source": source_label},
+            )
+            .mappings()
+            .all()
+        )
+    return [dict(row) for row in rows]
+
+
+def resume_import_items_from_db_source(
+    engine: Engine,
+    dry_run_items: Sequence[staged_import.ImportItem],
+    *,
+    expected_count: int,
+) -> list[staged_import.ImportItem]:
+    rows = media_rows_for_source(engine, SOURCE_LABEL)
+    if len(rows) != expected_count:
+        raise PhaseI7Error(f"resume_db_source_label_count_mismatch:{len(rows)}")
+
+    by_hash: dict[str, dict[str, Any]] = {}
+    duplicate_hashes: set[str] = set()
+    for row in rows:
+        file_hash = str(row.get("hash") or "")
+        if not file_hash:
+            raise PhaseI7Error("resume_db_source_label_row_missing_hash")
+        if file_hash in by_hash:
+            duplicate_hashes.add(file_hash)
+        by_hash[file_hash] = row
+    if duplicate_hashes:
+        raise PhaseI7Error(f"resume_db_source_label_duplicate_hashes:{len(duplicate_hashes)}")
+
+    result: list[staged_import.ImportItem] = []
+    missing_hash_rows: list[str] = []
+    for item in dry_run_items:
+        if item.status != "duplicate_by_hash":
+            raise PhaseI7Error(f"resume_dry_run_item_not_duplicate:{item.candidate.row_id}")
+        file_hash = item.candidate.file_hash or ""
+        row = by_hash.get(file_hash)
+        if row is None:
+            missing_hash_rows.append(str(item.candidate.row_id))
+            continue
+        result.append(
+            staged_import.ImportItem(
+                candidate=item.candidate,
+                status="imported",
+                media_id=int(row["id"]),
+                managed_path=str(row.get("path") or ""),
+                thumbnail_path=str(row.get("thumbnail_path") or ""),
+                message="resumed from current DB source-label media row",
+            )
+        )
+    if missing_hash_rows:
+        raise PhaseI7Error("resume_db_source_label_hash_mismatch:" + ",".join(missing_hash_rows[:20]))
+    if len(result) != expected_count:
+        raise PhaseI7Error(f"resume_db_source_label_import_item_count_mismatch:{len(result)}")
+    return result
+
+
 def content_class_distribution(db: Session, media_ids: Sequence[int]) -> dict[str, int]:
     from app.models import Media
 
@@ -669,6 +803,96 @@ def content_class_distribution(db: Session, media_ids: Sequence[int]) -> dict[st
             key = "failed_or_unclassified"
         result[key] += int(count)
     return result
+
+
+def normalize_content_class(value: Any) -> str | None:
+    raw = getattr(value, "value", value)
+    if raw is None:
+        return None
+    return str(raw)
+
+
+def build_classification_resume_from_records(
+    imported_media_ids: Sequence[int],
+    records: Sequence[MappingLike],
+    *,
+    identity_source: str,
+) -> dict[str, Any]:
+    expected_ids = {int(media_id) for media_id in imported_media_ids}
+    found_ids = {int(record.get("id")) for record in records if record.get("id") is not None}
+    if found_ids != expected_ids:
+        raise PhaseI7Error(
+            "classification_resume_media_id_set_mismatch:"
+            + json.dumps(
+                {
+                    "expected_count": len(expected_ids),
+                    "found_count": len(found_ids),
+                    "missing_count": len(expected_ids - found_ids),
+                    "unexpected_count": len(found_ids - expected_ids),
+                },
+                sort_keys=True,
+            )
+        )
+
+    distribution = {"anime": 0, "unknown": 0, "non_anime": 0, "illustration": 0, "failed_or_unclassified": 0}
+    unclassified: list[int] = []
+    for record in records:
+        media_id = int(record.get("id"))
+        content_class = normalize_content_class(record.get("content_class"))
+        if content_class is None:
+            unclassified.append(media_id)
+            distribution["failed_or_unclassified"] += 1
+        elif content_class in distribution:
+            distribution[content_class] += 1
+        else:
+            distribution["failed_or_unclassified"] += 1
+
+    if unclassified:
+        raise PhaseI7Error(f"classification_resume_unclassified_media:{len(unclassified)}")
+
+    proof = media_ids_identity_proof(list(expected_ids))
+    proof["identity_source"] = identity_source
+    return {
+        "status": "completed",
+        "jobs": [],
+        "processed": len(expected_ids),
+        "failed": distribution["failed_or_unclassified"],
+        "distribution": distribution,
+        "resume_status": "resumed_with_identity_proof",
+        "identity_proof": proof,
+    }
+
+
+def build_classification_resume_from_db(imported_media_ids: Sequence[int]) -> dict[str, Any]:
+    if not imported_media_ids:
+        return {"status": "noop_no_imported_media", "jobs": [], "processed": 0, "failed": 0, "distribution": {}}
+    db = get_db_session()
+    try:
+        from app.models import Media
+
+        rows = (
+            db.query(Media.id, Media.content_class)
+            .filter(Media.source == SOURCE_LABEL)
+            .filter(Media.id.in_(list(imported_media_ids)))
+            .all()
+        )
+        records = [{"id": int(row.id), "content_class": row.content_class} for row in rows]
+    finally:
+        db.close()
+    return build_classification_resume_from_records(
+        imported_media_ids,
+        records,
+        identity_source="db_source_label_content_class",
+    )
+
+
+def resolve_classification_resume(imported_media_ids: Sequence[int], prior_classification: Any) -> dict[str, Any]:
+    if prior_classification_matches_media_ids(prior_classification, imported_media_ids):
+        classification = dict(prior_classification)
+        classification["resume_status"] = "resumed_with_prior_identity_proof"
+        classification["identity_proof_source"] = "validation_details_identity_proof"
+        return classification
+    return build_classification_resume_from_db(imported_media_ids)
 
 
 def run_classification(media_ids: Sequence[int], chunk_size: int) -> dict[str, Any]:
@@ -970,6 +1194,142 @@ def run_localization(limit: int | None = None, lang: str = "zh-CN") -> dict[str,
         db.close()
 
 
+def localization_candidate_snapshot(lang: str = "zh-CN") -> dict[str, Any]:
+    from app.services.classification_first_workflow import (
+        LOCALIZABLE_CATEGORIES,
+        PROPER_NOUN_CATEGORIES,
+        select_eligible_localization_candidates,
+    )
+
+    db = get_db_session()
+    try:
+        localizable = select_eligible_localization_candidates(
+            db,
+            SOURCE_LABEL,
+            lang=lang,
+            categories=LOCALIZABLE_CATEGORIES,
+            limit=None,
+        )
+        proper_nouns = select_eligible_localization_candidates(
+            db,
+            SOURCE_LABEL,
+            lang=lang,
+            categories=PROPER_NOUN_CATEGORIES,
+            limit=None,
+        )
+    finally:
+        db.close()
+    return {
+        "candidate_count": len(localizable),
+        "skipped_proper_nouns": len(proper_nouns),
+        "localizable_categories": list(LOCALIZABLE_CATEGORIES),
+        "proper_noun_categories_skipped": list(PROPER_NOUN_CATEGORIES),
+    }
+
+
+def run_localization_continuation(args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        summary = read_json(args.summary_json)
+    except PhaseI7Error:
+        summary = build_base_summary(args)
+    if not isinstance(summary, dict):
+        summary = build_base_summary(args)
+    summary.setdefault("phase", "3.8d-I7")
+    summary.setdefault("source_label", SOURCE_LABEL)
+
+    context = staged_import.build_runtime_context(REPO_ROOT)
+    engine = create_db_engine(context)
+    try:
+        summary["db_identity_closeout"] = verify_db_identity(context, engine)
+        imported_media_ids = media_ids_for_source(engine, SOURCE_LABEL)
+        if len(imported_media_ids) != EXPECTED_STAGED_ROWS:
+            summary["status"] = "blocked_resume_db_source_label_count_mismatch"
+            summary["success"] = False
+            summary["localization_continuation"] = {
+                "status": "blocked_resume_db_source_label_count_mismatch",
+                "db_source_label_count": len(imported_media_ids),
+                "expected_count": EXPECTED_STAGED_ROWS,
+            }
+            summary["finished_at"] = utc_now()
+            return summary
+
+        before = localization_candidate_snapshot(lang=args.lang)
+        candidate_count = int(before["candidate_count"])
+        if candidate_count > args.max_additional_localization_candidates:
+            summary["status"] = "blocked_unexpected_localization_candidate_count"
+            summary["success"] = False
+            summary["localization_continuation"] = {
+                "status": "blocked_unexpected_localization_candidate_count",
+                "additional_candidate_count": candidate_count,
+                "max_additional_candidates": args.max_additional_localization_candidates,
+                **before,
+            }
+            summary["finished_at"] = utc_now()
+            return summary
+
+        if candidate_count:
+            continuation = run_localization(limit=candidate_count, lang=args.lang)
+        else:
+            continuation = {
+                "status": "noop_no_candidates",
+                "candidate_count": 0,
+                "translated_count": 0,
+                "failed_count": 0,
+                "remaining_missing_translations": 0,
+                **before,
+            }
+        after = localization_candidate_snapshot(lang=args.lang)
+        initial = summary.get("localization", {}) if isinstance(summary.get("localization"), dict) else {}
+        summary["localization_continuation"] = {
+            "status": continuation.get("status"),
+            "additional_candidate_count": candidate_count,
+            "additional_translated_count": int(continuation.get("translated_count") or 0),
+            "additional_failed_count": int(continuation.get("failed_count") or 0),
+            "remaining_missing_general_meta_after": int(after["candidate_count"]),
+            "skipped_proper_nouns": int(after["skipped_proper_nouns"]),
+            "localizable_categories": after["localizable_categories"],
+            "proper_noun_categories_skipped": after["proper_noun_categories_skipped"],
+            "provider_available": continuation.get("provider_available"),
+            "job_id": continuation.get("job_id"),
+            "max_additional_candidates": args.max_additional_localization_candidates,
+            "db_import_reran": False,
+            "classification_reran": False,
+            "ai_tagging_reran": False,
+        }
+        summary["localization_final"] = {
+            "initial_translated_count": int(initial.get("translated_count") or 0),
+            "initial_failed_count": int(initial.get("failed_count") or 0),
+            "initial_remaining_missing_general_meta": int(initial.get("remaining_missing_translations") or candidate_count),
+            "continuation_translated_count": int(continuation.get("translated_count") or 0),
+            "continuation_failed_count": int(continuation.get("failed_count") or 0),
+            "remaining_missing_general_meta_after": int(after["candidate_count"]),
+            "proper_noun_categories_skipped": after["proper_noun_categories_skipped"],
+        }
+        if continuation.get("status") in {"completed", "noop_no_candidates"} and int(after["candidate_count"]) == 0:
+            summary["status"] = "completed"
+            summary["success"] = bool(summary.get("success", True))
+        elif continuation.get("status") == "failed_provider_unavailable":
+            summary["status"] = "localization_continuation_provider_unavailable"
+            summary["success"] = False
+        else:
+            summary["status"] = "completed_with_localization_continuation_failures"
+            summary["success"] = False
+        summary["closeout_safety"] = {
+            "db_import_reran": False,
+            "classification_reran": False,
+            "ai_tagging_reran": False,
+            "staging_copy_reran": False,
+            "source_icloud_write_mutation": False,
+            "entity_resolver_ran": False,
+            "similarity_or_clustering_ran": False,
+        }
+        summary["db_counts_after_closeout"] = database_counts(engine, SOURCE_LABEL)
+        summary["finished_at"] = utc_now()
+        return summary
+    finally:
+        engine.dispose()
+
+
 def validate_imported_db_and_storage(
     engine: Engine,
     context: staged_import.RuntimeContext,
@@ -1032,6 +1392,8 @@ def render_markdown_report(summary: MappingLike) -> str:
     classification = summary.get("classification", {})
     ai = summary.get("ai_tagging", {})
     localization = summary.get("localization", {})
+    localization_continuation = summary.get("localization_continuation", {})
+    localization_final = summary.get("localization_final", {})
     api = summary.get("api_browser_smoke", {})
     lines = [
         "# Phase 3.8d-I7 Partial Import Classification-first Pipeline",
@@ -1079,6 +1441,12 @@ def render_markdown_report(summary: MappingLike) -> str:
         f"- Translated: `{localization.get('translated_count')}`",
         f"- Localization failed: `{localization.get('failed_count')}`",
         f"- Skipped proper nouns: `{localization.get('skipped_proper_nouns')}`",
+        f"- Localization continuation status: `{localization_continuation.get('status', 'not_run')}`",
+        f"- Additional localization candidates: `{localization_continuation.get('additional_candidate_count', 0)}`",
+        f"- Additional translated: `{localization_continuation.get('additional_translated_count', 0)}`",
+        f"- Additional failed: `{localization_continuation.get('additional_failed_count', 0)}`",
+        f"- Final remaining general/meta: `{localization_final.get('remaining_missing_general_meta_after', localization.get('remaining_missing_translations'))}`",
+        f"- Proper noun categories skipped: `{localization_final.get('proper_noun_categories_skipped', localization.get('proper_noun_categories_skipped'))}`",
         "",
         "## Validation",
         f"- DB/storage validation: `{summary.get('db_storage_validation', {}).get('status')}`",
@@ -1189,7 +1557,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             and dry_run["duplicate_by_hash"] == len(candidates)
             and len(source_media_ids_before_execute) == len(candidates)
         ):
-            executed_items = load_prior_import_items(args.validation_details, candidates)
+            executed_items = resume_import_items_from_db_source(engine, items, expected_count=len(candidates))
             imported_media_ids = [int(item.media_id) for item in executed_items if item.media_id]
             import_result = {
                 "status": "resumed_after_prior_successful_import",
@@ -1204,7 +1572,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 "app_managed_storage_writes": 0,
                 "previous_app_managed_storage_writes": len(imported_media_ids),
                 "db_stores_app_relative_paths_only": True,
-                "resume_reason": "previous I7 attempt completed DB import before downstream blocker",
+                "resume_reason": "current DB source-label rows prove previous I7 import completed",
+                "resume_identity_source": "db_source_label_hash_match",
+                "resume_db_source_label_count": len(source_media_ids_before_execute),
             }
         else:
             executed_items, import_result = execute_import(items, context, engine)
@@ -1234,14 +1604,27 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             else None
         )
         if (
-            isinstance(prior_classification, dict)
-            and prior_classification.get("status") == "completed"
-            and int(prior_classification.get("processed") or 0) >= len(imported_media_ids)
+            import_result["status"] == "resumed_after_prior_successful_import"
         ):
-            classification = dict(prior_classification)
-            classification["resume_status"] = "resumed_after_prior_successful_classification"
+            try:
+                classification = resolve_classification_resume(imported_media_ids, prior_classification)
+            except PhaseI7Error as exc:
+                summary["classification"] = {
+                    "status": "blocked_resume_identity_unverified",
+                    "error": sanitize_public_text(str(exc))[:500],
+                    "processed": 0,
+                    "failed": 0,
+                    "identity_required": True,
+                }
+                summary["status"] = "blocked_classification_resume_identity_unverified"
+                summary["success"] = False
+                return summary
         else:
             classification = run_classification(imported_media_ids, args.classification_chunk_size)
+            if classification.get("status") == "completed":
+                proof = media_ids_identity_proof(imported_media_ids)
+                proof["identity_source"] = "current_run_imported_media_ids"
+                classification["identity_proof"] = proof
         summary["classification"] = classification
         if classification["status"] != "completed":
             summary["status"] = "blocked_classification_failed"
@@ -1301,16 +1684,29 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def write_public_outputs(summary: dict[str, Any], report_md: Path, summary_json: Path) -> None:
-    summary["privacy_scan"] = {"public_report_leaks": scan_privacy_leaks(summary)}
-    if summary["privacy_scan"]["public_report_leaks"]:
-        summary["success"] = False
-        summary["status"] = "blocked_public_report_privacy_leak"
     report_md.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+
+    summary["privacy_scan"] = {"public_report_leaks": []}
+    summary_leaks = scan_privacy_leaks(summary)
+    if summary_leaks:
+        safe_summary = build_safe_privacy_blocked_summary(summary, summary_leaks=summary_leaks)
+        report_md.write_text(render_safe_privacy_blocked_report(safe_summary), encoding="utf-8")
+        write_json(summary_json, safe_summary)
+        summary.clear()
+        summary.update(safe_summary)
+        return
+
     text = render_markdown_report(summary)
-    if scan_privacy_leaks(text):
-        summary["success"] = False
-        summary["status"] = "blocked_public_report_privacy_leak"
-        text = render_markdown_report(summary)
+    markdown_leaks = scan_privacy_leaks(text)
+    if markdown_leaks:
+        safe_summary = build_safe_privacy_blocked_summary(summary, markdown_leaks=markdown_leaks)
+        report_md.write_text(render_safe_privacy_blocked_report(safe_summary), encoding="utf-8")
+        write_json(summary_json, safe_summary)
+        summary.clear()
+        summary.update(safe_summary)
+        return
+
     report_md.write_text(text, encoding="utf-8")
     write_json(summary_json, summary)
 
@@ -1330,6 +1726,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--classification-chunk-size", type=int, default=100)
     parser.add_argument("--ai-chunk-size", type=int, default=200)
     parser.add_argument("--localization-limit", type=int)
+    parser.add_argument("--localization-continuation-only", action="store_true")
+    parser.add_argument("--max-additional-localization-candidates", type=int, default=500)
     parser.add_argument("--lang", default="zh-CN")
     return parser.parse_args(argv)
 
@@ -1337,7 +1735,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        summary = run_pipeline(args)
+        if args.localization_continuation_only:
+            summary = run_localization_continuation(args)
+        else:
+            summary = run_pipeline(args)
     except Exception as exc:
         summary = build_base_summary(args)
         summary["status"] = "blocked_exception"

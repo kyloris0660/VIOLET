@@ -24,6 +24,7 @@
 - Imported media count: `994`
 - Import failures: `0`
 - Resume note: `previous I7 attempt completed DB import before downstream blocker`
+- Closeout resume identity: future resume paths rebuild media IDs from current DB source-label rows and file-hash matching, not local validation details.
 - App-managed writes in final resume run: `0`
 - Prior successful import writes preserved: `994`
 
@@ -31,6 +32,7 @@
 - Classification status: `completed`
 - Classification processed: `994`
 - Classification failed: `0`
+- Closeout classification resume identity: classification resume now requires media ID identity proof or DB-backed content_class state for the same source-label media set.
 - Distribution: `{'anime': 934, 'unknown': 33, 'non_anime': 27, 'illustration': 0, 'failed_or_unclassified': 0}`
 - AI eligible count: `967`
 - AI tagging status: `completed`
@@ -43,6 +45,18 @@
 - Translated: `200`
 - Localization failed: `0`
 - Skipped proper nouns: `101`
+- Localization continuation status: `completed`
+- Additional localization candidates: `370`
+- Additional translated: `370`
+- Additional failed: `0`
+- Final remaining general/meta: `0`
+- Proper noun categories skipped: `['character', 'copyright', 'artist']`
+
+## PR #64 Closeout Hardening
+- Public report privacy gate now fails closed: if summary or rendered Markdown would leak a local absolute path, file URI, or secret-like unsafe field, only a minimal safe blocked report is written.
+- Import resume media IDs are rebuilt from current DB rows for `Media.source='violet:phase3.8d:i7:staged-success'` and matched by staged file hash.
+- Classification resume no longer trusts processed count alone; it requires an identity proof for the same imported media ID set or DB-backed content_class state for that set.
+- Localization continuation was intentionally limited to the current I7 eligible-derived `general`/`meta` candidates. Character/copyright/artist proper-noun categories remained skipped.
 
 ## Validation
 - DB/storage validation: `passed`
@@ -52,8 +66,8 @@
 ## Tests
 - Diff check: `passed (warnings only: CRLF normalization)`
 - Py compile: `passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py`
-- Focused tests: `passed: 6 passed`
-- Full non-E2E suite: `passed: 1166 passed, 12 skipped, 12 warnings`
+- Focused tests: `passed: 14 passed`
+- Full non-E2E suite: `passed: 1174 passed, 12 skipped, 12 warnings`
 
 ## Safety Confirmation
 - Failed I6 rows were not imported.
