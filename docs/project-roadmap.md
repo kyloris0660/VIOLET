@@ -375,6 +375,18 @@ See [Content Classification](content-classification.md) for full documentation.
 - Source content was read for verification only; provider-side hydration/cache may have occurred. No staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
 - Phase 3.8d execute remains blocked. Next step is a targeted recovery/backfill decision for failed rows before any staging-copy retry.
 
+### Phase 3.8d-I5b - Targeted Hydration Retry
+
+**Goal:** Retry only the two failed I5 sample rows before deciding whether to backfill or investigate lower-level provider hydration.
+
+- Added `scripts/run_phase38d_i5b_targeted_hydration_retry.py`, a narrow operational audit tool for explicit target rows only. It does not run full recall verification and does not modify the manifest.
+- Target rows were `98` (`source_row_0098.jpg`, bucket `b02`) and `881` (`source_row_0881.png`, bucket `b15`).
+- Retry policy was more patient but bounded: prefix read `1` byte, prefix timeout `30` seconds, prefix retries `2`, full-read timeout `180` seconds, full-read retries `2`, and `10` seconds between retries. For I5b, full-read rescue still runs when prefix fails.
+- Result: `2` attempted, `0` succeeded, `2` failed. Both rows remained `recall_on_data_access`, read `0` bytes, and are not staging-copy-ready. Failure reason distribution: `cloud_hydration_failed=2`.
+- Same-bucket backfill remains dry-run-only and was not applied: row `98` -> `replacement_row_1029.png`; row `881` -> `replacement_row_1041.jpg`.
+- Source content was read only for approved verification. Provider-side hydration/cache may have occurred, but no source/iCloud write mutation, staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
+- Phase 3.8d execute remains blocked. Next decision should be backfill approval, provider/network investigation, lower-level hydration API investigation, or another explicitly approved retry policy.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -450,7 +462,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1/I2/I3/I4/I5:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Blocked by Phase 3.8d-I1/I2/I3/I4/I5/I5b:** Do not start Phase 4 until cloud availability/hydration handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place
