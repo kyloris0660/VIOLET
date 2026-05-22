@@ -836,7 +836,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Actual staging copy completed with item-level failures within budget: attempted `1000`, staged `994`, failed `6`, copied `3,063,523,992` bytes, failure rate `0.006`, max consecutive failures `3`, budget exceeded `False`.
 - Failed item rows: `799` (`source_row_0799.jpg`, b13), `839` (`source_row_0839.jpg`, b14), `922` (`source_row_0922.jpg`, b15), `970` (`source_row_0970.png`, b16), `971` (`source_row_0971.png`, b16), `972` (`source_row_0972.jpg`, b16), all with `cloud_network_unavailable`.
 - Post-copy audit passed for the staged subset: `994` files / `3,063,523,992` bytes, no unexpected files, no missing staged files, no size mismatches, no hazards; rows `1029`/`1041` staged and rows `98`/`881` not staged.
-- Full `1000` DB import planning is not eligible because `staged_success_count < 1000`; only a later explicitly approved backfill or partial-import planning path may proceed. Failed rows must never be imported.
+- Full `1000` DB import planning is not eligible because `staged_success_count < 1000`; only a later explicitly approved backfill or partial-import planning path may proceed. Any future DB import planning must consume the ignored I6 item ledger / staged-success set, not blindly import the full `1000` manifest. Failed rows must never be imported and must remain recorded for retry/backfill/deferred recovery.
 - DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
 - No DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
@@ -846,7 +846,7 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 Do not resume full Phase 3.8d execute, start Phase 4, or run any larger import until the staged subset and failed-item ledger are reviewed and an explicit recovery/import path is approved:
 
 1. Review Phase 3.8d-I6 results: `994` files staged successfully; rows `799`, `839`, `922`, `970`, `971`, and `972` failed item-level copy with `cloud_network_unavailable`.
-2. Decide whether to approve same-bucket backfill for the 6 failed rows, a targeted provider/network retry, or a separately scoped partial-import plan for the `994` staged rows.
+2. Decide whether to approve same-bucket backfill for the 6 failed rows, a targeted provider/network retry, or a separately scoped partial-import plan for the `994` staged rows using the I6 item ledger as the source of truth.
 3. Do not run DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, or Phase 4 until that next decision is explicitly approved.
 4. DB import of the full `1000` remains blocked unless a complete staged set is produced by backfill/retry and a separate DB import plan is approved.
 

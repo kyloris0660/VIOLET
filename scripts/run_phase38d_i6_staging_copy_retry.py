@@ -76,10 +76,22 @@ DEFAULT_FAILURE_BUDGET = {
     "max_consecutive_failures": 10,
     "max_same_reason_failures": 20,
 }
-ITEM_LEVEL_DRY_RUN_FIELDS = {
-    "source_files_missing",
-    "unsupported_extensions",
-    "cloud_risk_files",
+APPROVED_SOURCE_ROOT_LABELS = {
+    "source_root",
+    "existing_root",
+    "icloud_source_root",
+    "icloud_root",
+    "icloud_photos_root",
+    "source_icloud_root",
+    "source_icloud",
+}
+ALLOWED_CLOUD_RECALL_DRY_RUN_REASONS = {
+    "cloud_offline",
+    "cloud_recall_on_open",
+    "cloud_recall_on_data_access",
+    "cloud_reparse_point",
+    "cloud_sparse_file",
+    "cloud_hydration_failed",
 }
 EXPECTED_BUCKET_DISTRIBUTION = {
     "b01": 63,
@@ -430,12 +442,12 @@ def validate_target_safety(
     errors: list[str] = []
     resolved_protected: list[Path] = []
     protected_public: list[dict[str, Any]] = []
+    target_root_hazards = root_escape_hazards(target_root) if target_root.exists() or target_root.is_symlink() else []
     target_resolved, target_error = _resolve_directory(target_root)
     if target_error:
         errors.append(f"target_root_{target_error}")
     else:
-        for hazard in root_escape_hazards(target_root):
-            errors.append(hazard)
+        errors.extend(target_root_hazards)
     expected_resolved = None
     if expected_staging_root is None:
         errors.append("missing_expected_staging_root")
@@ -446,7 +458,7 @@ def validate_target_safety(
     if target_resolved and expected_resolved:
         if not _is_under_or_equal(target_resolved, expected_resolved):
             errors.append("target_not_under_expected_staging_root")
-    required_labels = {"source_root", "repo_root", "app_storage_root"}
+    required_labels = {"repo_root", "app_storage_root"}
     labels_seen: set[str] = set()
     for item in protected_roots:
         label = str(item.get("label") or "").strip()
@@ -483,9 +495,7 @@ def validate_target_safety(
         "target_label": "phase_3_8d_i6_backfilled_staging_target",
         "target_exists": bool(target_root.exists()),
         "target_is_directory": bool(target_root.is_dir()),
-        "target_root_hazard_count": sum(
-            1 for error in errors if error.startswith("target_root_symlink") or error.startswith("target_root_reparse")
-        ),
+        "target_root_hazard_count": len(target_root_hazards),
         "expected_staging_root_provided": expected_staging_root is not None,
         "target_under_expected_staging_root": bool(
             target_resolved and expected_resolved and _is_under_or_equal(target_resolved, expected_resolved)
@@ -516,8 +526,10 @@ def summarize_dry_run(
     active_ids = {row_id(row) for row in selected_rows(rows)}
     copy_count = _safe_int(result.get("existing_tier500_rows")) + _safe_int(result.get("new_candidate_rows"))
     errors: list[str] = []
+    structural_errors: list[str] = []
+    non_cloud_errors: list[str] = []
     if copy_count != expected_copy_count:
-        errors.append(f"copy_count_expected_{expected_copy_count}_actual_{copy_count}")
+        structural_errors.append(f"copy_count_expected_{expected_copy_count}_actual_{copy_count}")
     required_zero_fields = (
         "target_root_escapes",
         "target_filename_collisions",
@@ -534,24 +546,48 @@ def summarize_dry_run(
     )
     for field in required_zero_fields:
         if _safe_int(result.get(field)) != 0:
-            errors.append(f"{field}_nonzero")
-    item_level_counts = {
+            structural_errors.append(f"{field}_nonzero")
+    non_cloud_item_counts = {
         "source_files_missing": _safe_int(result.get("source_files_missing")),
         "unsupported_extensions": _safe_int(result.get("unsupported_extensions")),
+    }
+    for field, count in non_cloud_item_counts.items():
+        if count:
+            non_cloud_errors.append(f"{field}_nonzero")
+    cloud_reason_counts = result.get("cloud_risk_by_reason") or {}
+    if not isinstance(cloud_reason_counts, dict):
+        cloud_reason_counts = {}
+    cloud_risk_count = _safe_int(result.get("cloud_risk_files"))
+    cloud_risk_reasons = {str(reason) for reason, count in cloud_reason_counts.items() if _safe_int(count) > 0}
+    disallowed_cloud_reasons = sorted(cloud_risk_reasons - ALLOWED_CLOUD_RECALL_DRY_RUN_REASONS)
+    cloud_risk_blocking_errors: list[str] = []
+    cloud_risk_allowed_by_policy = False
+    if cloud_risk_count:
+        if not allow_item_level_failures:
+            cloud_risk_blocking_errors.append("cloud_availability_files_nonzero")
+        elif not cloud_risk_reasons:
+            cloud_risk_blocking_errors.append("cloud_risk_reason_missing")
+        elif disallowed_cloud_reasons:
+            cloud_risk_blocking_errors.append("cloud_risk_reason_not_allowed")
+        else:
+            cloud_risk_allowed_by_policy = True
+    errors.extend(structural_errors)
+    errors.extend(non_cloud_errors)
+    errors.extend(cloud_risk_blocking_errors)
+    item_level_counts = {
+        **non_cloud_item_counts,
         "cloud_risk_files": _safe_int(result.get("cloud_risk_files")),
     }
-    if not allow_item_level_failures:
-        for field, count in item_level_counts.items():
-            if count:
-                errors.append("cloud_availability_files_nonzero" if field == "cloud_risk_files" else f"{field}_nonzero")
     if FAILED_ROWS & active_ids:
         errors.append("failed_rows_present_in_dry_run_rows")
     if not REPLACEMENT_ROWS.issubset(active_ids):
         errors.append("replacement_rows_missing_in_dry_run_rows")
+    if not result.get("valid") and not cloud_risk_allowed_by_policy and "stage_pilot_dry_run_invalid" not in errors:
+        errors.append("stage_pilot_dry_run_invalid")
     status = "passed"
     if errors:
         status = "failed"
-    elif allow_item_level_failures and any(item_level_counts.values()):
+    elif cloud_risk_allowed_by_policy:
         status = "passed_with_item_level_risks"
     summary = {
         "status": status,
@@ -568,9 +604,14 @@ def summarize_dry_run(
         "source_root_violations": _safe_int(result.get("source_root_violations")),
         "target_existing_files": _safe_int(result.get("target_existing_files")),
         "cloud_risk_files": _safe_int(result.get("cloud_risk_files")),
-        "cloud_availability_reason_counts": result.get("cloud_risk_by_reason") or {},
+        "cloud_availability_reason_counts": cloud_reason_counts,
         "item_level_risk_counts": item_level_counts,
         "item_level_failures_allowed": allow_item_level_failures,
+        "cloud_recall_allowed_by_policy": cloud_risk_allowed_by_policy,
+        "cloud_recall_allowed_reasons": sorted(cloud_risk_reasons & ALLOWED_CLOUD_RECALL_DRY_RUN_REASONS),
+        "cloud_recall_blocking_errors": cloud_risk_blocking_errors,
+        "non_cloud_dry_run_errors": non_cloud_errors,
+        "structural_dry_run_errors": structural_errors,
         "total_copy_bytes": _safe_int(result.get("total_copy_bytes")),
         "rows_98_881_absent": not bool(FAILED_ROWS & active_ids),
         "rows_1029_1041_present": sorted(REPLACEMENT_ROWS & active_ids),
@@ -1060,7 +1101,7 @@ def run_staging_copy_retry(
     source_roots = [
         Path(str(item["path"]))
         for item in effective_protected
-        if str(item.get("label")) in {"source_root", "existing_root"}
+        if str(item.get("label")) in APPROVED_SOURCE_ROOT_LABELS
     ]
     if not source_roots:
         target_errors.append("missing_approved_source_root")
@@ -1201,6 +1242,12 @@ def run_staging_copy_retry(
         "actual_staging_copy": copy_result_public,
         "post_copy_audit": post_copy_public,
         "db_import_eligibility": db_import_eligibility,
+        "item_ledger_import_contract": {
+            "future_db_import_must_use_item_ledger_staged_success_set": True,
+            "failed_rows_must_not_be_imported": True,
+            "full_1000_import_requires_staged_success_count_1000": True,
+            "partial_import_requires_separate_user_chatgpt_approval": True,
+        },
         "db_no_mutation": db_no_mutation,
         "source_icloud_statement": {
             "source_content_read_for_staging_copy_only": bool(copy_result_public.get("attempted")),
@@ -1282,6 +1329,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     copy = report.get("actual_staging_copy") or {}
     post = report.get("post_copy_audit") or {}
     eligibility = report.get("db_import_eligibility") or {}
+    item_contract = report.get("item_ledger_import_contract") or {}
     db = report.get("db_no_mutation") or {}
     source = report.get("source_icloud_statement") or {}
     app_storage = report.get("app_managed_storage_statement") or {}
@@ -1347,6 +1395,11 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Target collisions: `{dry_run.get('target_collisions')}`",
         f"- Cloud risk files: `{dry_run.get('cloud_risk_files')}`",
         f"- Item-level failures allowed: `{dry_run.get('item_level_failures_allowed')}`",
+        f"- Cloud recall allowed by policy: `{dry_run.get('cloud_recall_allowed_by_policy')}`",
+        f"- Cloud recall allowed reasons: `{dry_run.get('cloud_recall_allowed_reasons')}`",
+        f"- Cloud recall blocking errors: `{json.dumps(dry_run.get('cloud_recall_blocking_errors') or [], ensure_ascii=False)}`",
+        f"- Non-cloud dry-run errors: `{json.dumps(dry_run.get('non_cloud_dry_run_errors') or [], ensure_ascii=False)}`",
+        f"- Structural dry-run errors: `{json.dumps(dry_run.get('structural_dry_run_errors') or [], ensure_ascii=False)}`",
         f"- Item-level risk counts: `{json.dumps(dry_run.get('item_level_risk_counts') or {}, sort_keys=True)}`",
         f"- Cloud risk by reason: `{json.dumps(dry_run.get('cloud_availability_reason_counts') or {}, sort_keys=True)}`",
         f"- Rows 98/881 absent: `{dry_run.get('rows_98_881_absent')}`",
@@ -1390,6 +1443,9 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Eligible for full 1000 import planning: `{eligibility.get('eligible_for_full_1000_import_planning')}`",
         f"- Eligible for partial import planning: `{eligibility.get('eligible_for_partial_import_planning')}`",
         f"- Full import blocked reason: `{eligibility.get('full_import_blocked_reason')}`",
+        f"- Future DB import must use item ledger staged-success set: `{item_contract.get('future_db_import_must_use_item_ledger_staged_success_set')}`",
+        f"- Failed rows must not be imported: `{item_contract.get('failed_rows_must_not_be_imported')}`",
+        f"- Partial import requires separate approval: `{item_contract.get('partial_import_requires_separate_user_chatgpt_approval')}`",
         "",
         "## DB No-mutation Proof",
         "",

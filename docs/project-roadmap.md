@@ -413,10 +413,11 @@ See [Content Classification](content-classification.md) for full documentation.
 - Actual staging copy completed with item-level failures within budget: attempted `1000`, staged `994`, failed `6`, copied `3,063,523,992` bytes, failure rate `0.006`, max consecutive failures `3`, budget exceeded `False`.
 - Failed item rows were `799`, `839`, `922`, `970`, `971`, and `972`, all with `cloud_network_unavailable`. They are not eligible for DB import and must be handled by later backfill, targeted retry, or an explicitly approved partial-import strategy.
 - Post-copy audit passed for the staged subset: `994` files / `3,063,523,992` bytes, no unexpected files, no missing staged files, no size mismatches, no hazards, rows `1029`/`1041` staged, rows `98`/`881` not staged.
+- Full `1000` DB import remains blocked. Any later partial-import plan must consume the I6 item ledger / staged-success set as the source of truth and must not blindly import the full `1000` manifest.
 - DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
 - No DB import, DB mutation, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
-- Next decision: approve same-bucket backfill for the 6 failed rows, perform a targeted provider/network retry, or explicitly approve partial-import planning for the `994` staged rows. Full `1000` DB import remains blocked until a complete staged set is produced and separately approved.
+- Next decision: approve same-bucket backfill for the 6 failed rows, perform a targeted provider/network retry, or explicitly approve partial-import planning for the `994` staged rows from the item ledger. Full `1000` DB import remains blocked until a complete staged set is produced and separately approved.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 

@@ -129,6 +129,13 @@
       "cloud_risk_files": 566
     },
     "item_level_failures_allowed": true,
+    "cloud_recall_allowed_by_policy": true,
+    "cloud_recall_allowed_reasons": [
+      "cloud_recall_on_data_access"
+    ],
+    "cloud_recall_blocking_errors": [],
+    "non_cloud_dry_run_errors": [],
+    "structural_dry_run_errors": [],
     "total_copy_bytes": 3109318484,
     "rows_98_881_absent": true,
     "rows_1029_1041_present": [
@@ -234,6 +241,12 @@
     "eligible_for_full_1000_import_planning": false,
     "eligible_for_partial_import_planning": true,
     "full_import_blocked_reason": "staged_success_count_less_than_selected_total"
+  },
+  "item_ledger_import_contract": {
+    "future_db_import_must_use_item_ledger_staged_success_set": true,
+    "failed_rows_must_not_be_imported": true,
+    "full_1000_import_requires_staged_success_count_1000": true,
+    "partial_import_requires_separate_user_chatgpt_approval": true
   },
   "db_no_mutation": {
     "available": true,

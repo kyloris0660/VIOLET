@@ -57,6 +57,11 @@
 - Target collisions: `0`
 - Cloud risk files: `566`
 - Item-level failures allowed: `True`
+- Cloud recall allowed by policy: `True`
+- Cloud recall allowed reasons: `['cloud_recall_on_data_access']`
+- Cloud recall blocking errors: `[]`
+- Non-cloud dry-run errors: `[]`
+- Structural dry-run errors: `[]`
 - Item-level risk counts: `{"cloud_risk_files": 566, "source_files_missing": 0, "unsupported_extensions": 0}`
 - Cloud risk by reason: `{"cloud_recall_on_data_access": 566}`
 - Rows 98/881 absent: `True`
@@ -100,6 +105,9 @@
 - Eligible for full 1000 import planning: `False`
 - Eligible for partial import planning: `True`
 - Full import blocked reason: `staged_success_count_less_than_selected_total`
+- Future DB import must use item ledger staged-success set: `True`
+- Failed rows must not be imported: `True`
+- Partial import requires separate approval: `True`
 
 ## DB No-mutation Proof
 

@@ -5,6 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "run_phase38d_i6_staging_copy_retry.py"
 _spec = importlib.util.spec_from_file_location("run_phase38d_i6_staging_copy_retry", SCRIPT_PATH)
@@ -179,8 +181,8 @@ def _run_fixture(
     )
 
 
-def _cloud_risk_dry_run_result() -> dict:
-    return {
+def _cloud_risk_dry_run_result(**overrides) -> dict:
+    result = {
         "valid": False,
         "existing_tier500_rows": 0,
         "new_candidate_rows": 4,
@@ -203,6 +205,16 @@ def _cloud_risk_dry_run_result() -> dict:
         "total_copy_bytes": 52,
         "errors": ["cloud_availability_files_nonzero"],
     }
+    result.update(overrides)
+    return result
+
+
+def _replace_source_root_label(fixture: dict, label: str) -> None:
+    data = json.loads(fixture["i3_details"].read_text(encoding="utf-8"))
+    for item in data["cleanup"]["protected_roots"]:
+        if item["label"] == "source_root":
+            item["label"] = label
+    _write_json(fixture["i3_details"], data)
 
 
 def test_successful_temp_copy_and_post_copy_audit(monkeypatch, tmp_path: Path):
@@ -262,6 +274,29 @@ def test_target_root_hazard_blocks_preflight(monkeypatch, tmp_path: Path):
     assert report["actual_staging_copy"]["attempted"] is False
 
 
+def test_symlink_target_root_blocks_preflight(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    link_root = tmp_path / "target-link"
+    try:
+        link_root.symlink_to(fixture["target_root"], target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlink unavailable on this platform: {exc}")
+    protected = [
+        {"label": "source_root", "path": str(fixture["source_root"])},
+        {"label": "repo_root", "path": str(tmp_path / "repo")},
+        {"label": "app_storage_root", "path": str(tmp_path / "media")},
+    ]
+
+    check, errors, _resolved = i6.validate_target_safety(
+        link_root,
+        expected_staging_root=link_root,
+        protected_roots=protected,
+    )
+
+    assert check["status"] == "failed"
+    assert "target_root_symlink" in errors
+
+
 def test_blocked_report_shape_renders_without_key_error(monkeypatch, tmp_path: Path):
     fixture = _fixture(tmp_path)
     fixture["manifest"].unlink()
@@ -313,9 +348,110 @@ def test_explicit_cloud_aware_copy_allows_recall_risk_rows(monkeypatch, tmp_path
     assert exit_code == 0
     assert report["status"] == "staging_copy_passed"
     assert report["dry_run"]["status"] == "passed_with_item_level_risks"
+    assert report["dry_run"]["cloud_recall_allowed_by_policy"] is True
     assert report["cloud_aware_copy_policy"]["confirmation_phrase_accepted"] is True
     assert report["actual_staging_copy"]["staged_success_count"] == 4
     assert {item["status"] for item in local["item_ledger"]} == {"staged"}
+
+
+def test_cloud_aware_copy_does_not_allow_missing_sources(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    monkeypatch.setattr(
+        i6.stage_pilot,
+        "validate_manifest",
+        lambda *_args, **_kwargs: _cloud_risk_dry_run_result(source_files_missing=1),
+    )
+
+    report, _local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        allow_cloud_recall_copy=True,
+        confirm_cloud_aware_copy=i6.CLOUD_AWARE_CONFIRM_PHRASE,
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_dry_run_failed"
+    assert "source_files_missing_nonzero" in report["dry_run"]["errors"]
+    assert report["dry_run"]["cloud_recall_allowed_by_policy"] is True
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
+def test_cloud_aware_copy_does_not_allow_unsupported_extensions(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    monkeypatch.setattr(
+        i6.stage_pilot,
+        "validate_manifest",
+        lambda *_args, **_kwargs: _cloud_risk_dry_run_result(unsupported_extensions=1),
+    )
+
+    report, _local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        allow_cloud_recall_copy=True,
+        confirm_cloud_aware_copy=i6.CLOUD_AWARE_CONFIRM_PHRASE,
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_dry_run_failed"
+    assert "unsupported_extensions_nonzero" in report["dry_run"]["errors"]
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
+def test_cloud_aware_copy_does_not_allow_target_collisions(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    monkeypatch.setattr(
+        i6.stage_pilot,
+        "validate_manifest",
+        lambda *_args, **_kwargs: _cloud_risk_dry_run_result(target_filename_collisions=1),
+    )
+
+    report, _local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        allow_cloud_recall_copy=True,
+        confirm_cloud_aware_copy=i6.CLOUD_AWARE_CONFIRM_PHRASE,
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_dry_run_failed"
+    assert "target_filename_collisions_nonzero" in report["dry_run"]["errors"]
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
+def test_existing_root_label_is_accepted(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    _replace_source_root_label(fixture, "existing_root")
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=False)
+
+    assert exit_code == 0
+    assert report["status"] == "dry_run_passed"
+    assert "missing_approved_source_root" not in report["pre_copy_target_check"]["errors"]
+
+
+def test_icloud_source_label_is_accepted(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    _replace_source_root_label(fixture, "icloud_source_root")
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=False)
+
+    assert exit_code == 0
+    assert report["status"] == "dry_run_passed"
+    assert "missing_approved_source_root" not in report["pre_copy_target_check"]["errors"]
+
+
+def test_missing_approved_source_root_label_blocks(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    _replace_source_root_label(fixture, "photo_archive_root")
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=False)
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "missing_approved_source_root" in report["pre_copy_target_check"]["errors"]
 
 
 def test_per_item_failure_within_budget_does_not_abort_whole_run(monkeypatch, tmp_path: Path):
