@@ -73,6 +73,28 @@ DEFAULT_PREFIX_RETRIES = 1
 DEFAULT_FULL_TIMEOUT_SECONDS = 180
 DEFAULT_FULL_RETRIES = 1
 DEFAULT_RETRY_WAIT_SECONDS = 0
+INGESTION_OBSERVABILITY_PRINCIPLE = {
+    "name": "per_run_source_item_final_state",
+    "scope": "future_production_ingestion_workflow",
+    "description": (
+        "Every source item in each run, manifest, or job must have a clear final state. "
+        "Reporting must be scoped to the current run and must not hide failed rows behind aggregate counts."
+    ),
+    "required_state_fields": [
+        "succeeded",
+        "failed",
+        "failure_reason",
+        "retried",
+        "backfilled",
+        "deferred_for_cloud_recovery",
+        "imported_into_db",
+        "excluded_as_ineligible",
+        "unresolved",
+    ],
+    "current_i5c_scope": "principle_and_local_deferred_ledger_only",
+    "db_migration_in_this_pr": False,
+    "full_production_ledger_in_this_pr": False,
+}
 
 
 def utc_now() -> str:
@@ -380,6 +402,19 @@ def build_deferred_ledger(
             "replacement_row_id": int(replacement_id),
             "replacement_safe_label": safe_row_label(by_id.get(int(replacement_id), {}), prefix="replacement"),
             "action": "excluded_from_active_medium_pilot_manifest_via_same_bucket_backfill",
+            "per_run_final_state": {
+                "succeeded": False,
+                "failed": True,
+                "failure_reason": reason,
+                "retried": True,
+                "retry_scope": "I5_sample_gate_and_I5b_targeted_retry",
+                "backfilled": True,
+                "deferred_for_cloud_recovery": True,
+                "imported_into_db": False,
+                "excluded_as_ineligible": False,
+                "unresolved": False,
+                "still_unresolved_for_cloud_recovery": True,
+            },
             "future_recovery_options": [
                 "provider_or_network_investigation",
                 "manual_user_inspection",
@@ -392,6 +427,7 @@ def build_deferred_ledger(
     public_ledger = {
         "status": "deferred_not_abandoned",
         "unrecovered_original_rows": [int(row_id) for row_id in mapping],
+        "reason": "cloud_hydration_failed_after_I5_and_I5b_bounded_read_based_recovery_attempts",
         "rows": public_rows,
     }
     local_ledger = {
@@ -499,6 +535,7 @@ def run_backfill_application(
             "alternate_candidates_if_blocked": alternate_candidates,
         },
         "deferred_cloud_recovery_ledger": public_ledger,
+        "ingestion_observability_principle": INGESTION_OBSERVABILITY_PRINCIPLE,
         "policy": {
             "prefix_read_bytes": int(policy["prefix_bytes"]),
             "prefix_timeout_seconds": int(policy["prefix_timeout_seconds"]),
@@ -631,6 +668,24 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"- Original `{row['source_safe_label']}` is deferred with reason `{row['deferred_reason']}` "
             f"and replacement `{row['replacement_safe_label']}`."
         )
+        state = row.get("per_run_final_state", {})
+        lines.append(
+            f"  Final state: failed=`{state.get('failed')}`, retried=`{state.get('retried')}`, "
+            f"backfilled=`{state.get('backfilled')}`, deferred_for_cloud_recovery=`{state.get('deferred_for_cloud_recovery')}`, "
+            f"imported_into_db=`{state.get('imported_into_db')}`, unresolved=`{state.get('unresolved')}`."
+        )
+    lines.extend(
+        [
+            "",
+            "## Ingestion Observability Principle",
+            "",
+            "- Future production ingestion must record a per-run final state for every source item.",
+            "- Reports must answer which source items succeeded, failed, retried, backfilled, deferred for cloud recovery, imported into DB, excluded as ineligible, or remain unresolved.",
+            "- Failed cloud-backed items must not be mixed with successfully imported items or hidden behind aggregate totals.",
+            "- Reporting must be scoped to the current run, manifest, or job rather than only global library totals.",
+            "- I5c records this principle and the current deferred cloud recovery ledger only; it does not add a DB migration or full production ledger.",
+        ]
+    )
     lines.extend(["", "## Safety", ""])
     for key, value in report["safety"].items():
         lines.append(f"- {key}: `{value}`")

@@ -43,7 +43,7 @@
 | **Phase 3.8d-I4b (PR #59)** | PR #59 merged - actual partial staging cleanup completed: `97` files / `340,159,586` bytes deleted from the dedicated staging target; DB/source/app storage unchanged |
 | **Phase 3.8d-I5 (PR #60)** | PR #60 merged - controlled read-probe / hydration audit; sample gate failed for rows `98` and `881`, so full recall verification and Phase 3.8d execute remain blocked |
 | **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
-| **Phase 3.8d-I5c (branch)** | `phase3.8d-i5c-apply-backfill` - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger; no staging copy or DB import |
+| **Phase 3.8d-I5c (branch)** | `phase3.8d-i5c-apply-backfill` - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
 
 ## Mandatory Workflow Rules
 
@@ -63,6 +63,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 12. **Reporting accuracy for tag deltas** — Reports involving AI tagging phases must separately state: `tags_added` (new Tag rows), `suggestions_added` (new AI suggestion rows), `media_tags` row delta (net change in media↔tag associations), `tag row delta` (net change in Tag table rows), and `media_with_ai_tags delta` (net change in media items that have at least one AI-generated tag). If `media_tags` delta equals `tags_added + suggestions_added`, state so explicitly. Do not conflate these metrics.
 
 13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes through the Source Ingestion Gate before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging. Upload-bytes and app-managed storage reads do not require the source cloud gate.
+14. **Ingestion observability / per-run source item state** - Future production ingestion must record a clear final state for every source item in each run, manifest, or job: succeeded, failed, failure reason, retried, backfilled, deferred for cloud recovery, imported into DB, excluded as ineligible, or unresolved. Do not mix failed cloud-backed items with successful imported items, hide failed rows behind aggregate counts, or report only global library totals. Reporting must be scoped to the current run/manifest/job. Phase 3.8d-I5c records this as a principle and local deferred ledger only; it does not add a DB migration or full production ledger.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 

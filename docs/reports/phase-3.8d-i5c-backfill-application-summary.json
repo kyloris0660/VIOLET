@@ -418,7 +418,20 @@
           "manual_user_inspection",
           "separate_cfhydrateplaceholder_experiment",
           "retry_after_provider_state_changes"
-        ]
+        ],
+        "per_run_final_state": {
+          "succeeded": false,
+          "failed": true,
+          "failure_reason": "cloud_hydration_failed",
+          "retried": true,
+          "retry_scope": "I5_sample_gate_and_I5b_targeted_retry",
+          "backfilled": true,
+          "deferred_for_cloud_recovery": true,
+          "imported_into_db": false,
+          "excluded_as_ineligible": false,
+          "unresolved": false,
+          "still_unresolved_for_cloud_recovery": true
+        }
       },
       {
         "row_id": 881,
@@ -439,9 +452,23 @@
           "manual_user_inspection",
           "separate_cfhydrateplaceholder_experiment",
           "retry_after_provider_state_changes"
-        ]
+        ],
+        "per_run_final_state": {
+          "succeeded": false,
+          "failed": true,
+          "failure_reason": "cloud_hydration_failed",
+          "retried": true,
+          "retry_scope": "I5_sample_gate_and_I5b_targeted_retry",
+          "backfilled": true,
+          "deferred_for_cloud_recovery": true,
+          "imported_into_db": false,
+          "excluded_as_ineligible": false,
+          "unresolved": false,
+          "still_unresolved_for_cloud_recovery": true
+        }
       }
-    ]
+    ],
+    "reason": "cloud_hydration_failed_after_I5_and_I5b_bounded_read_based_recovery_attempts"
   },
   "policy": {
     "prefix_read_bytes": 1,
@@ -487,5 +514,24 @@
     "leaks": [],
     "passed": true
   },
-  "manifest_label": "phase-3.8c-medium-candidate-manifest.csv"
+  "manifest_label": "phase-3.8c-medium-candidate-manifest.csv",
+  "ingestion_observability_principle": {
+    "name": "per_run_source_item_final_state",
+    "scope": "future_production_ingestion_workflow",
+    "description": "Every source item in each run, manifest, or job must have a clear final state. Reporting must be scoped to the current run and must not hide failed rows behind aggregate counts.",
+    "required_state_fields": [
+      "succeeded",
+      "failed",
+      "failure_reason",
+      "retried",
+      "backfilled",
+      "deferred_for_cloud_recovery",
+      "imported_into_db",
+      "excluded_as_ineligible",
+      "unresolved"
+    ],
+    "current_i5c_scope": "principle_and_local_deferred_ledger_only",
+    "db_migration_in_this_pr": false,
+    "full_production_ledger_in_this_pr": false
+  }
 }

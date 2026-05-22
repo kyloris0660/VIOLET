@@ -395,6 +395,8 @@ See [Content Classification](content-classification.md) for full documentation.
 - Replacement validation targeted only row `1029` for failed row `98` and row `1041` for failed row `881`. Both replacements passed controlled full-read verification and are staging-copy-ready.
 - Backfill was applied only to `.local_manifests/phase-3.8d-i5c-backfilled-selected-manifest.csv`: active selected total stayed `1000`, bucket distribution stayed unchanged, and rows `98`/`881` were removed from the active set while rows `1029`/`1041` were activated.
 - Rows `98` and `881` were recorded in `.local_manifests/phase-3.8d-i5c-deferred-cloud-recovery-ledger.json` with structured reason `cloud_hydration_failed`; this is deferred recovery, not silent skipping.
+- I5c records the project-level ingestion observability principle: every future production ingestion run/manifest/job must be able to report a final state for every source item, including success, failure reason, retry, backfill, deferred cloud recovery, DB import, ineligible exclusion, and unresolved status.
+- This PR does not add a DB migration or full production ledger. A future Ingestion Run Ledger / Source Item State Ledger is required before full-library import so failed cloud-backed items cannot be mixed with successful imported items or hidden behind aggregate/global counts.
 - Source content was read only for replacement validation. Provider-side hydration/cache may have occurred for the replacement reads, but no source/iCloud write mutation, staging copy, staging write, DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, app-managed storage mutation, push main, or merge occurred.
 - Phase 3.8d execute remains blocked until the I5c PR is reviewed/merged and a separate staging-copy retry plan is approved.
 
@@ -468,6 +470,15 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Frontend entity resolve UX lifecycle (loading → success/error)
 
 ## Upcoming Phases
+
+### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
+
+**Goal:** Before any full-library import, implement a production-grade per-run ledger that records final state for every source item in each ingestion run, manifest, or job.
+
+- Required states include: succeeded, failed, failure reason, retried, backfilled, deferred for later cloud recovery, imported into DB, excluded as ineligible, and unresolved.
+- Reports must be scoped to the current run/manifest/job, not only global library totals.
+- Failed cloud-backed items must remain visible and must not be mixed with successfully imported items or hidden behind aggregate counts.
+- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c.
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 

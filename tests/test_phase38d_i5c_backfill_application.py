@@ -242,7 +242,12 @@ def test_deferred_ledger_records_failed_rows_without_public_paths(monkeypatch, t
 
     ledger = report["deferred_cloud_recovery_ledger"]
     assert ledger["unrecovered_original_rows"] == [98, 881]
+    assert ledger["reason"] == "cloud_hydration_failed_after_I5_and_I5b_bounded_read_based_recovery_attempts"
     assert {row["deferred_reason"] for row in ledger["rows"]} == {"cloud_hydration_failed"}
+    assert all(row["per_run_final_state"]["retried"] is True for row in ledger["rows"])
+    assert all(row["per_run_final_state"]["backfilled"] is True for row in ledger["rows"])
+    assert all(row["per_run_final_state"]["deferred_for_cloud_recovery"] is True for row in ledger["rows"])
+    assert all(row["per_run_final_state"]["imported_into_db"] is False for row in ledger["rows"])
     public_text = json.dumps(report, ensure_ascii=False)
     assert str(tmp_path) not in public_text
     assert "source_path" not in public_text
@@ -262,6 +267,8 @@ def test_public_report_is_privacy_safe(monkeypatch, tmp_path: Path):
     )
 
     assert report["privacy"]["passed"] is True
+    assert report["ingestion_observability_principle"]["db_migration_in_this_pr"] is False
+    assert report["ingestion_observability_principle"]["full_production_ledger_in_this_pr"] is False
     assert str(tmp_path) not in json.dumps(report, ensure_ascii=False)
     assert report["safety"]["staging_copy"] is False
     assert report["safety"]["db_import"] is False

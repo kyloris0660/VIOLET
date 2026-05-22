@@ -68,7 +68,17 @@
 
 - Status: `deferred_not_abandoned`
 - Original `source_row_0098.jpg` is deferred with reason `cloud_hydration_failed` and replacement `replacement_row_1029.png`.
+  Final state: failed=`True`, retried=`True`, backfilled=`True`, deferred_for_cloud_recovery=`True`, imported_into_db=`False`, unresolved=`False`.
 - Original `source_row_0881.png` is deferred with reason `cloud_hydration_failed` and replacement `replacement_row_1041.jpg`.
+  Final state: failed=`True`, retried=`True`, backfilled=`True`, deferred_for_cloud_recovery=`True`, imported_into_db=`False`, unresolved=`False`.
+
+## Ingestion Observability Principle
+
+- Future production ingestion must record a per-run final state for every source item.
+- Reports must answer which source items succeeded, failed, retried, backfilled, deferred for cloud recovery, imported into DB, excluded as ineligible, or remain unresolved.
+- Failed cloud-backed items must not be mixed with successfully imported items or hidden behind aggregate totals.
+- Reporting must be scoped to the current run, manifest, or job rather than only global library totals.
+- I5c records this principle and the current deferred cloud recovery ledger only; it does not add a DB migration or full production ledger.
 
 ## Safety
 
