@@ -141,6 +141,35 @@ def _fake_verify(ok_by_row: dict[int, bool]):
     return fake
 
 
+def _i5b_summary(
+    *,
+    rows: dict[int, dict] | None = None,
+    reasons: dict[int, str] | None = None,
+) -> dict:
+    reasons = reasons or {98: "cloud_hydration_failed", 881: "cloud_hydration_failed"}
+    target_results = []
+    for row_id in (98, 881):
+        result = {
+            "row_id": row_id,
+            "source_safe_label": f"source_row_{row_id:04d}",
+            "bucket": "b02" if row_id == 98 else "b15",
+            "extension": ".jpg" if row_id == 98 else ".png",
+            "expected_size": row_id + 10,
+            "ok": False,
+            "staging_copy_ready": False,
+            "failure_reason": reasons.get(row_id, "cloud_hydration_failed"),
+            "metadata_after": {"cloud_state": {"recall_on_data_access": True, "likely_cloud_placeholder": True}},
+        }
+        if rows and row_id in rows:
+            result.update(rows[row_id])
+        target_results.append(result)
+    return {"target_results": target_results}
+
+
+def _write_i5b_summary(path: Path, summary: dict | None = None) -> None:
+    path.write_text(json.dumps(summary or _i5b_summary()), encoding="utf-8")
+
+
 def test_successful_backfill_preserves_selected_total_and_bucket_distribution(monkeypatch, tmp_path: Path):
     rows = _manifest_rows(tmp_path)
     monkeypatch.setattr(i5c, "verify_target_row", _fake_verify({1029: True, 1041: True}))
@@ -149,7 +178,7 @@ def test_successful_backfill_preserves_selected_total_and_bucket_distribution(mo
         rows,
         mapping={98: 1029, 881: 1041},
         policy=_policy(),
-        i5b_summary={},
+        i5b_summary=_i5b_summary(),
         sleeper=lambda _seconds: None,
     )
 
@@ -165,6 +194,7 @@ def test_successful_backfill_preserves_selected_total_and_bucket_distribution(mo
     assert updated_by_id[1029]["selection_reason"] == "new_candidate"
     assert updated_by_id[1029]["exclusion_reason"] == ""
     assert updated_by_id[1029]["proposed_target_path"]
+    assert all(row["per_run_final_state"]["backfilled"] is True for row in report["deferred_cloud_recovery_ledger"]["rows"])
 
 
 def test_failed_replacement_blocks_backfill_and_manifest_write(monkeypatch, tmp_path: Path):
@@ -175,13 +205,17 @@ def test_failed_replacement_blocks_backfill_and_manifest_write(monkeypatch, tmp_
     details = tmp_path / "details.json"
     ledger = tmp_path / "ledger.json"
     output_manifest = tmp_path / "backfilled.csv"
+    i5b_summary = tmp_path / "i5b.json"
     _write_manifest(manifest, rows)
+    _write_i5b_summary(i5b_summary)
     monkeypatch.setattr(i5c, "verify_target_row", _fake_verify({1029: True, 1041: False}))
 
     exit_code = i5c.main(
         [
             "--manifest",
             str(manifest),
+            "--i5b-summary",
+            str(i5b_summary),
             "--report-json",
             str(report_json),
             "--report-md",
@@ -201,6 +235,9 @@ def test_failed_replacement_blocks_backfill_and_manifest_write(monkeypatch, tmp_
     assert exit_code == 1
     assert report["status"] == "blocked_replacement_validation_failed"
     assert report["backfill_application"]["applied"] is False
+    assert report["safety"]["source_content_read_for_replacement_validation_only"] is True
+    assert all(row["per_run_final_state"]["backfilled"] is False for row in report["deferred_cloud_recovery_ledger"]["rows"])
+    assert all(row["per_run_final_state"]["unresolved"] is True for row in report["deferred_cloud_recovery_ledger"]["rows"])
     assert not output_manifest.exists()
     assert ledger.exists()
 
@@ -215,12 +252,101 @@ def test_same_bucket_replacement_required(monkeypatch, tmp_path: Path):
         rows,
         mapping={98: 1029, 881: 1041},
         policy=_policy(),
-        i5b_summary={},
+        i5b_summary=_i5b_summary(),
         sleeper=lambda _seconds: None,
     )
 
     assert report["status"] == "blocked_replacement_mapping_invalid"
     assert "replacement_bucket_mismatch_98_1029" in report["mapping_errors"]
+    assert report["replacement_validation"]["source_read_attempted"] is False
+    assert report["safety"]["source_content_read_for_replacement_validation_only"] is False
+    assert all(row["per_run_final_state"]["backfilled"] is False for row in report["deferred_cloud_recovery_ledger"]["rows"])
+
+
+def test_partial_mapping_missing_unrecovered_row_is_blocked(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    monkeypatch.setattr(i5c, "verify_target_row", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not validate")))
+
+    report, _local = i5c.run_backfill_application(
+        rows,
+        mapping={98: 1029},
+        policy=_policy(),
+        i5b_summary=_i5b_summary(),
+        sleeper=lambda _seconds: None,
+    )
+
+    assert report["status"] == "blocked_i5b_failed_row_validation"
+    assert "missing_replacement_for_unrecovered_row_881" in report["mapping_errors"]
+    assert report["backfill_application"]["applied"] is False
+
+
+def test_extra_mapping_row_not_failed_in_i5b_is_blocked(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    monkeypatch.setattr(i5c, "verify_target_row", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not validate")))
+
+    report, _local = i5c.run_backfill_application(
+        rows,
+        mapping={98: 1029, 881: 1041, 777: 1029},
+        policy=_policy(),
+        i5b_summary=_i5b_summary(),
+        sleeper=lambda _seconds: None,
+    )
+
+    assert report["status"] == "blocked_i5b_failed_row_validation"
+    assert "failed_row_not_in_i5b_results_777" in report["mapping_errors"]
+    assert "unexpected_replacement_failed_row_777" in report["mapping_errors"]
+    assert report["backfill_application"]["applied"] is False
+
+
+def test_failed_row_missing_from_i5b_summary_blocks_backfill(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    monkeypatch.setattr(i5c, "verify_target_row", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not validate")))
+
+    report, _local = i5c.run_backfill_application(
+        rows,
+        mapping={98: 1029, 881: 1041},
+        policy=_policy(),
+        i5b_summary={"target_results": [_i5b_summary()["target_results"][0]]},
+        sleeper=lambda _seconds: None,
+    )
+
+    assert report["status"] == "blocked_i5b_failed_row_validation"
+    assert "failed_row_not_in_i5b_results_881" in report["mapping_errors"]
+    assert report["i5b_failed_row_validation"]["status"] == "failed"
+    assert report["backfill_application"]["applied"] is False
+
+
+def test_failed_row_present_but_recovered_blocks_backfill(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    monkeypatch.setattr(i5c, "verify_target_row", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not validate")))
+
+    report, _local = i5c.run_backfill_application(
+        rows,
+        mapping={98: 1029, 881: 1041},
+        policy=_policy(),
+        i5b_summary=_i5b_summary(rows={98: {"ok": True, "staging_copy_ready": True, "failure_reason": None}}),
+        sleeper=lambda _seconds: None,
+    )
+
+    assert report["status"] == "blocked_i5b_failed_row_validation"
+    assert "failed_row_not_unrecovered_98" in report["mapping_errors"]
+    assert report["backfill_application"]["applied"] is False
+
+
+def test_deferred_ledger_uses_i5b_failure_reason(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    monkeypatch.setattr(i5c, "verify_target_row", _fake_verify({1029: True, 1041: True}))
+
+    report, _local = i5c.run_backfill_application(
+        rows,
+        mapping={98: 1029, 881: 1041},
+        policy=_policy(),
+        i5b_summary=_i5b_summary(reasons={98: "cloud_provider_timeout", 881: "cloud_hydration_failed"}),
+        sleeper=lambda _seconds: None,
+    )
+
+    reasons = {row["row_id"]: row["deferred_reason"] for row in report["deferred_cloud_recovery_ledger"]["rows"]}
+    assert reasons == {98: "cloud_provider_timeout", 881: "cloud_hydration_failed"}
 
 
 def test_deferred_ledger_records_failed_rows_without_public_paths(monkeypatch, tmp_path: Path):
@@ -231,12 +357,7 @@ def test_deferred_ledger_records_failed_rows_without_public_paths(monkeypatch, t
         rows,
         mapping={98: 1029, 881: 1041},
         policy=_policy(),
-        i5b_summary={
-            "target_results": [
-                {"row_id": 98, "failure_reason": "cloud_hydration_failed", "metadata_after": {"cloud_state": {"recall_on_data_access": True}}},
-                {"row_id": 881, "failure_reason": "cloud_hydration_failed", "metadata_after": {"cloud_state": {"recall_on_data_access": True}}},
-            ]
-        },
+        i5b_summary=_i5b_summary(),
         sleeper=lambda _seconds: None,
     )
 
@@ -262,7 +383,7 @@ def test_public_report_is_privacy_safe(monkeypatch, tmp_path: Path):
         rows,
         mapping={98: 1029, 881: 1041},
         policy=_policy(),
-        i5b_summary={},
+        i5b_summary=_i5b_summary(),
         sleeper=lambda _seconds: None,
     )
 
@@ -316,3 +437,142 @@ def test_cli_writes_local_manifest_only_after_validation_passes(monkeypatch, tmp
     assert written_by_id[98]["selection_reason"] == ""
     assert written_by_id[1029]["selection_reason"] == "new_candidate"
     assert report["safety"]["manifest_modified_in_repo"] is False
+
+
+def test_duplicate_replacement_cli_mapping_is_blocked_before_validation(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    manifest = tmp_path / "manifest.csv"
+    report_json = tmp_path / "report.json"
+    report_md = tmp_path / "report.md"
+    details = tmp_path / "details.json"
+    ledger = tmp_path / "ledger.json"
+    output_manifest = tmp_path / "backfilled.csv"
+    i5b_summary = tmp_path / "i5b.json"
+    _write_manifest(manifest, rows)
+    i5b_summary.write_text(json.dumps(_i5b_summary()), encoding="utf-8")
+    monkeypatch.setattr(i5c, "verify_target_row", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not validate")))
+
+    exit_code = i5c.main(
+        [
+            "--manifest",
+            str(manifest),
+            "--i5b-summary",
+            str(i5b_summary),
+            "--report-json",
+            str(report_json),
+            "--report-md",
+            str(report_md),
+            "--local-details-json",
+            str(details),
+            "--local-ledger-json",
+            str(ledger),
+            "--output-manifest",
+            str(output_manifest),
+            "--replacement",
+            "98:1029",
+            "--replacement",
+            "98:1041",
+            "--retry-wait",
+            "0",
+        ]
+    )
+
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert report["status"] == "blocked_replacement_mapping_invalid"
+    assert "duplicate_failed_row_mapping_98" in report["mapping_errors"]
+    assert report["preflight_mapping_errors"] == ["duplicate_failed_row_mapping_98"]
+    assert report["backfill_application"]["applied"] is False
+    assert report["safety"]["source_content_read_for_replacement_validation_only"] is False
+    assert report["replacement_validation"]["synthetic_result_count"] == 1
+    assert not output_manifest.exists()
+
+
+def test_distinct_replacement_cli_mappings_are_allowed(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    manifest = tmp_path / "manifest.csv"
+    report_json = tmp_path / "report.json"
+    report_md = tmp_path / "report.md"
+    details = tmp_path / "details.json"
+    ledger = tmp_path / "ledger.json"
+    output_manifest = tmp_path / "backfilled.csv"
+    i5b_summary = tmp_path / "i5b.json"
+    _write_manifest(manifest, rows)
+    i5b_summary.write_text(json.dumps(_i5b_summary()), encoding="utf-8")
+    monkeypatch.setattr(i5c, "verify_target_row", _fake_verify({1029: True, 1041: True}))
+
+    exit_code = i5c.main(
+        [
+            "--manifest",
+            str(manifest),
+            "--i5b-summary",
+            str(i5b_summary),
+            "--report-json",
+            str(report_json),
+            "--report-md",
+            str(report_md),
+            "--local-details-json",
+            str(details),
+            "--local-ledger-json",
+            str(ledger),
+            "--output-manifest",
+            str(output_manifest),
+            "--replacement",
+            "98:1029",
+            "--replacement",
+            "881:1041",
+            "--retry-wait",
+            "0",
+        ]
+    )
+
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert report["status"] == "backfill_applied"
+    assert report["preflight_mapping_errors"] == []
+    assert output_manifest.exists()
+
+
+def test_duplicate_replacement_target_cli_mapping_is_blocked(monkeypatch, tmp_path: Path):
+    rows = _manifest_rows(tmp_path)
+    manifest = tmp_path / "manifest.csv"
+    report_json = tmp_path / "report.json"
+    report_md = tmp_path / "report.md"
+    details = tmp_path / "details.json"
+    ledger = tmp_path / "ledger.json"
+    output_manifest = tmp_path / "backfilled.csv"
+    i5b_summary = tmp_path / "i5b.json"
+    _write_manifest(manifest, rows)
+    _write_i5b_summary(i5b_summary)
+    monkeypatch.setattr(i5c, "verify_target_row", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not validate")))
+
+    exit_code = i5c.main(
+        [
+            "--manifest",
+            str(manifest),
+            "--i5b-summary",
+            str(i5b_summary),
+            "--report-json",
+            str(report_json),
+            "--report-md",
+            str(report_md),
+            "--local-details-json",
+            str(details),
+            "--local-ledger-json",
+            str(ledger),
+            "--output-manifest",
+            str(output_manifest),
+            "--replacement",
+            "98:1029",
+            "--replacement",
+            "881:1029",
+            "--retry-wait",
+            "0",
+        ]
+    )
+
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert "duplicate_replacement_row_mapping_1029" in report["mapping_errors"]
+    assert report["backfill_application"]["applied"] is False
+    assert not output_manifest.exists()

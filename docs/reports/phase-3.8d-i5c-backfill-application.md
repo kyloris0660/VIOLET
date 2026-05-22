@@ -10,6 +10,12 @@
 - Bucket distribution before: `{"b01": 63, "b02": 63, "b03": 63, "b04": 63, "b05": 63, "b06": 63, "b07": 63, "b08": 63, "b09": 62, "b10": 62, "b11": 62, "b12": 62, "b13": 62, "b14": 62, "b15": 62, "b16": 62}`
 - Bucket distribution after: `{"b01": 63, "b02": 63, "b03": 63, "b04": 63, "b05": 63, "b06": 63, "b07": 63, "b08": 63, "b09": 62, "b10": 62, "b11": 62, "b12": 62, "b13": 62, "b14": 62, "b15": 62, "b16": 62}`
 
+## I5b Failed Row Validation
+
+- Status: `passed`
+- Errors: `[]`
+- Preflight mapping errors: `[]`
+
 ## Replacement Validation
 
 - Status: `passed`
@@ -19,6 +25,9 @@
 - Bytes read: `620591`
 - Duration seconds: `2.968`
 - Failures by reason: `{}`
+- Validation attempted count: `2`
+- Synthetic result count: `0`
+- Source read attempted: `True`
 
 ### Replacement Row 1029
 

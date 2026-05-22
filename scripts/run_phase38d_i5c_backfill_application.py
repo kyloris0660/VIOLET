@@ -73,6 +73,21 @@ DEFAULT_PREFIX_RETRIES = 1
 DEFAULT_FULL_TIMEOUT_SECONDS = 180
 DEFAULT_FULL_RETRIES = 1
 DEFAULT_RETRY_WAIT_SECONDS = 0
+UNRECOVERED_I5B_REASONS = {
+    "cloud_hydration_failed",
+    "cloud_network_unavailable",
+    "cloud_provider_timeout",
+    "cloud_provider_unavailable",
+    "cloud_offline",
+    "cloud_recall_on_open",
+    "cloud_recall_on_data_access",
+    "read_timeout",
+    "read_incomplete",
+    "source_missing",
+    "permission_denied",
+    "size_mismatch",
+    "generic_read_failed",
+}
 INGESTION_OBSERVABILITY_PRINCIPLE = {
     "name": "per_run_source_item_final_state",
     "scope": "future_production_ingestion_workflow",
@@ -235,7 +250,7 @@ def validate_mapping(rows: Sequence[dict[str, str]], mapping: Mapping[int, int])
         if (replacement.get("exclusion_reason") or "").strip() != "not_selected_temporal_stratified":
             errors.append(f"replacement_not_temporal_backfill_candidate_{replacement_id}")
         if int(replacement_id) in used_replacements:
-            errors.append(f"duplicate_replacement_row_{replacement_id}")
+            errors.append(f"duplicate_replacement_row_mapping_{replacement_id}")
         used_replacements.add(int(replacement_id))
         failed_bucket = failed.get("temporal_bucket") or "unknown"
         replacement_bucket = replacement.get("temporal_bucket") or "unknown"
@@ -371,11 +386,92 @@ def _i5b_result_by_row(summary: Mapping[str, Any]) -> dict[int, Mapping[str, Any
     }
 
 
+def _i5b_result_is_unrecovered(result: Mapping[str, Any]) -> tuple[bool, str | None]:
+    ok = result.get("ok")
+    staging_ready = result.get("staging_copy_ready")
+    reason = result.get("failure_reason")
+    if ok is not False:
+        return False, "failed_row_not_unrecovered"
+    if "staging_copy_ready" in result and staging_ready is not False:
+        return False, "failed_row_not_unrecovered"
+    if not reason:
+        return False, "failed_row_not_unrecovered"
+    if str(reason) not in UNRECOVERED_I5B_REASONS:
+        return False, "failed_row_unexpected_failure_reason"
+    return True, None
+
+
+def validate_i5b_unrecovered_rows(
+    mapping: Mapping[int, int],
+    i5b_summary: Mapping[str, Any] | None,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    results_by_row = _i5b_result_by_row(i5b_summary or {})
+    expected_unrecovered_ids = {
+        row_id
+        for row_id, result in results_by_row.items()
+        if _i5b_result_is_unrecovered(result)[0]
+    }
+    mapped_failed_ids = {int(row_id) for row_id in mapping}
+    errors: list[str] = []
+    public: list[dict[str, Any]] = []
+    for missing_id in sorted(expected_unrecovered_ids - mapped_failed_ids):
+        errors.append(f"missing_replacement_for_unrecovered_row_{missing_id}")
+        result = results_by_row[missing_id]
+        public.append(
+            {
+                "row_id": int(missing_id),
+                "present_in_i5b": True,
+                "mapping_present": False,
+                "ok": result.get("ok"),
+                "staging_copy_ready": result.get("staging_copy_ready"),
+                "failure_reason": result.get("failure_reason"),
+                "unrecovered": True,
+                "error": "missing_replacement_for_unrecovered_row",
+            }
+        )
+    for failed_id in mapping:
+        result = results_by_row.get(int(failed_id))
+        if result is None:
+            errors.append(f"failed_row_not_in_i5b_results_{failed_id}")
+            errors.append(f"unexpected_replacement_failed_row_{failed_id}")
+            public.append(
+                {
+                    "row_id": int(failed_id),
+                    "present_in_i5b": False,
+                    "mapping_present": True,
+                    "unrecovered": False,
+                    "error": "failed_row_not_in_i5b_results",
+                }
+            )
+            continue
+        ok = result.get("ok")
+        staging_ready = result.get("staging_copy_ready")
+        reason = result.get("failure_reason")
+        unrecovered, error = _i5b_result_is_unrecovered(result)
+        if not unrecovered:
+            errors.append(f"{error}_{failed_id}")
+            errors.append(f"unexpected_replacement_failed_row_{failed_id}")
+        public.append(
+            {
+                "row_id": int(failed_id),
+                "present_in_i5b": True,
+                "mapping_present": True,
+                "ok": bool(ok) if ok is not None else None,
+                "staging_copy_ready": bool(staging_ready) if staging_ready is not None else None,
+                "failure_reason": reason,
+                "unrecovered": unrecovered,
+                "error": None if unrecovered else error,
+            }
+        )
+    return errors, public
+
+
 def build_deferred_ledger(
     rows: Sequence[dict[str, str]],
     mapping: Mapping[int, int],
     *,
     i5b_summary: Mapping[str, Any],
+    backfill_applied: bool,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     by_id = index_rows(rows)
     i5b_by_row = _i5b_result_by_row(i5b_summary)
@@ -387,7 +483,7 @@ def build_deferred_ledger(
         after_state = (
             i5b.get("metadata_after", {}).get("cloud_state", {}) if isinstance(i5b.get("metadata_after"), Mapping) else {}
         )
-        reason = i5b.get("failure_reason") or "cloud_hydration_failed"
+        reason = i5b.get("failure_reason")
         public = {
             "row_id": int(failed_id),
             "source_safe_label": safe_row_label(row) if row else f"source_row_{int(failed_id):04d}",
@@ -401,18 +497,22 @@ def build_deferred_ledger(
             },
             "replacement_row_id": int(replacement_id),
             "replacement_safe_label": safe_row_label(by_id.get(int(replacement_id), {}), prefix="replacement"),
-            "action": "excluded_from_active_medium_pilot_manifest_via_same_bucket_backfill",
+            "action": (
+                "excluded_from_active_medium_pilot_manifest_via_same_bucket_backfill"
+                if backfill_applied
+                else "deferred_pending_backfill_mapping_or_replacement_validation"
+            ),
             "per_run_final_state": {
                 "succeeded": False,
-                "failed": True,
+                "failed": bool(reason),
                 "failure_reason": reason,
                 "retried": True,
                 "retry_scope": "I5_sample_gate_and_I5b_targeted_retry",
-                "backfilled": True,
+                "backfilled": backfill_applied,
                 "deferred_for_cloud_recovery": True,
                 "imported_into_db": False,
                 "excluded_as_ineligible": False,
-                "unresolved": False,
+                "unresolved": not backfill_applied,
                 "still_unresolved_for_cloud_recovery": True,
             },
             "future_recovery_options": [
@@ -426,6 +526,7 @@ def build_deferred_ledger(
         local_rows.append({**public, "source_path": row.get("source_path"), "i5b_result": i5b})
     public_ledger = {
         "status": "deferred_not_abandoned",
+        "backfill_applied": backfill_applied,
         "unrecovered_original_rows": [int(row_id) for row_id in mapping],
         "reason": "cloud_hydration_failed_after_I5_and_I5b_bounded_read_based_recovery_attempts",
         "rows": public_rows,
@@ -433,6 +534,7 @@ def build_deferred_ledger(
     local_ledger = {
         "created_at": utc_now(),
         "status": "deferred_not_abandoned",
+        "backfill_applied": backfill_applied,
         "rows": local_rows,
     }
     return public_ledger, local_ledger
@@ -444,29 +546,38 @@ def run_backfill_application(
     mapping: Mapping[int, int],
     policy: Mapping[str, int],
     i5b_summary: Mapping[str, Any] | None = None,
+    preflight_errors: Sequence[str] = (),
     sleeper: Callable[[float], None] = time.sleep,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     started = time.monotonic()
     selected_before = selected_rows(rows)
+    i5b_errors, i5b_public = validate_i5b_unrecovered_rows(mapping, i5b_summary)
     mapping_errors, mapping_public = validate_mapping(rows, mapping)
+    preflight_errors = list(preflight_errors)
+    mapping_errors = [*mapping_errors, *i5b_errors, *preflight_errors]
 
     validation_results_public: list[dict[str, Any]] = []
     validation_results_local: list[dict[str, Any]] = []
+    validation_attempted_count = 0
+    synthetic_result_count = 0
     if not mapping_errors:
         by_id = index_rows(rows)
         for replacement_id in mapping.values():
             replacement = by_id[int(replacement_id)]
             try:
+                validation_attempted_count += 1
                 verified = verify_target_row(_replacement_record(replacement), policy=policy, sleeper=sleeper)
                 validation_results_public.append(verified["public"])
                 validation_results_local.append(verified["local"])
             except Exception as exc:
+                synthetic_result_count += 1
                 fallback = _fallback_failure_result(replacement, f"replacement_validation_exception_{type(exc).__name__}")
                 validation_results_public.append(fallback)
                 validation_results_local.append({**fallback, "source_path": replacement.get("source_path")})
     else:
         for replacement_id in mapping.values():
             replacement = index_rows(rows).get(int(replacement_id), {"row_id": str(replacement_id), "extension": ""})
+            synthetic_result_count += 1
             fallback = _fallback_failure_result(replacement, "replacement_mapping_invalid")
             validation_results_public.append(fallback)
             validation_results_local.append({**fallback, "source_path": replacement.get("source_path")})
@@ -478,7 +589,7 @@ def run_backfill_application(
     manifest_details: dict[str, Any] = {}
     manifest_errors: list[str] = []
     if mapping_errors:
-        status = "blocked_replacement_mapping_invalid"
+        status = "blocked_i5b_failed_row_validation" if i5b_errors and not preflight_errors else "blocked_replacement_mapping_invalid"
     elif replacement_failures:
         status = "blocked_replacement_validation_failed"
     else:
@@ -487,7 +598,13 @@ def run_backfill_application(
             status = "blocked_manifest_backfill_invalid"
 
     selected_after_rows = selected_rows(backfilled_rows) if backfilled_rows is not None else selected_before
-    public_ledger, local_ledger = build_deferred_ledger(rows, mapping, i5b_summary=i5b_summary or {})
+    backfill_applied = status == "backfill_applied"
+    public_ledger, local_ledger = build_deferred_ledger(
+        rows,
+        mapping,
+        i5b_summary=i5b_summary or {},
+        backfill_applied=backfill_applied,
+    )
     by_id = index_rows(rows)
     alternate_candidates: dict[str, list[dict[str, Any]]] = {}
     if status != "backfill_applied":
@@ -520,15 +637,24 @@ def run_backfill_application(
         ),
         "failed_to_replacement_mapping": mapping_public,
         "mapping_errors": mapping_errors,
+        "preflight_mapping_errors": preflight_errors,
+        "i5b_failed_row_validation": {
+            "status": "passed" if not i5b_errors else "failed",
+            "errors": i5b_errors,
+            "rows": i5b_public,
+        },
         "replacement_validation": {
             "status": "passed" if not replacement_failures and not mapping_errors else "failed",
             "summary": validation_summary,
             "results": validation_results_public,
+            "validation_attempted_count": validation_attempted_count,
+            "synthetic_result_count": synthetic_result_count,
+            "source_read_attempted": validation_attempted_count > 0,
         },
         "backfill_application": {
-            "applied": status == "backfill_applied",
+            "applied": backfill_applied,
             "local_manifest_written": False,
-            "active_backfilled_replacements": [int(row_id) for row_id in mapping.values()] if status == "backfill_applied" else [],
+            "active_backfilled_replacements": [int(row_id) for row_id in mapping.values()] if backfill_applied else [],
             "unrecovered_original_rows": [int(row_id) for row_id in mapping],
             "manifest_details": manifest_details,
             "manifest_errors": manifest_errors,
@@ -549,8 +675,8 @@ def run_backfill_application(
             "backfill_applied_only_after_validation_passes": True,
         },
         "safety": {
-            "source_content_read_for_replacement_validation_only": bool(validation_results_public),
-            "provider_side_hydration_may_have_occurred": bool(validation_results_public),
+            "source_content_read_for_replacement_validation_only": validation_attempted_count > 0,
+            "provider_side_hydration_may_have_occurred": validation_attempted_count > 0,
             "source_file_content_write_mutation": False,
             "staging_copy": False,
             "staging_write": False,
@@ -562,7 +688,7 @@ def run_backfill_application(
             "similarity": False,
             "cleanup_delete": False,
             "manifest_modified_in_repo": False,
-            "backfill_applied_to_local_manifest_artifact_only": status == "backfill_applied",
+            "backfill_applied_to_local_manifest_artifact_only": backfill_applied,
             "app_managed_storage_mutation": False,
             "push_main": False,
             "merge": False,
@@ -635,6 +761,12 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Bucket distribution before: `{json.dumps(report['bucket_distribution_before'], sort_keys=True)}`",
         f"- Bucket distribution after: `{json.dumps(report['bucket_distribution_after'], sort_keys=True)}`",
         "",
+        "## I5b Failed Row Validation",
+        "",
+        f"- Status: `{report.get('i5b_failed_row_validation', {}).get('status')}`",
+        f"- Errors: `{json.dumps(report.get('i5b_failed_row_validation', {}).get('errors', []))}`",
+        f"- Preflight mapping errors: `{json.dumps(report.get('preflight_mapping_errors', []))}`",
+        "",
         "## Replacement Validation",
         "",
         f"- Status: `{validation['status']}`",
@@ -644,6 +776,9 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Bytes read: `{validation['summary']['bytes_read']}`",
         f"- Duration seconds: `{validation['summary']['duration_seconds']}`",
         f"- Failures by reason: `{json.dumps(validation['summary']['failures_by_reason'], sort_keys=True)}`",
+        f"- Validation attempted count: `{validation.get('validation_attempted_count')}`",
+        f"- Synthetic result count: `{validation.get('synthetic_result_count')}`",
+        f"- Source read attempted: `{validation.get('source_read_attempted')}`",
         "",
     ]
     for result in validation["results"]:
@@ -728,10 +863,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _parse_mapping(values: Sequence[str]) -> dict[int, int]:
+def parse_replacement_values(values: Sequence[str]) -> tuple[dict[int, int], list[str]]:
     if not values:
-        return dict(DEFAULT_FAILED_TO_REPLACEMENT)
+        return dict(DEFAULT_FAILED_TO_REPLACEMENT), []
     mapping: dict[int, int] = {}
+    errors: list[str] = []
+    used_replacements: set[int] = set()
     for value in values:
         if ":" not in value:
             raise argparse.ArgumentTypeError("replacement must be FAILED_ROW:REPLACEMENT_ROW")
@@ -740,8 +877,14 @@ def _parse_mapping(values: Sequence[str]) -> dict[int, int]:
         replacement = int(right)
         if failed <= 0 or replacement <= 0:
             raise argparse.ArgumentTypeError("row ids must be positive")
+        if failed in mapping:
+            errors.append(f"duplicate_failed_row_mapping_{failed}")
+            continue
+        if replacement in used_replacements:
+            errors.append(f"duplicate_replacement_row_mapping_{replacement}")
         mapping[failed] = replacement
-    return mapping
+        used_replacements.add(replacement)
+    return mapping, errors
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -750,7 +893,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.manifest.is_file():
         parser.error(f"manifest not found: {args.manifest}")
     try:
-        mapping = _parse_mapping(args.replacement)
+        mapping, cli_mapping_errors = parse_replacement_values(args.replacement)
     except (ValueError, argparse.ArgumentTypeError) as exc:
         parser.error(str(exc))
     policy = {
@@ -768,6 +911,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         mapping=mapping,
         policy=policy,
         i5b_summary=_load_i5b_summary(args.i5b_summary),
+        preflight_errors=cli_mapping_errors,
     )
     report["manifest_label"] = args.manifest.name
     report["local_artifacts"]["backfilled_selected_manifest"] = args.output_manifest.name

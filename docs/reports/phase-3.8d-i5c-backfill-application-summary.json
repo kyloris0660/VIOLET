@@ -370,7 +370,10 @@
         "audit_bytes_read": 216820,
         "duration_seconds": 0.625
       }
-    ]
+    ],
+    "validation_attempted_count": 2,
+    "synthetic_result_count": 0,
+    "source_read_attempted": true
   },
   "backfill_application": {
     "applied": true,
@@ -468,7 +471,8 @@
         }
       }
     ],
-    "reason": "cloud_hydration_failed_after_I5_and_I5b_bounded_read_based_recovery_attempts"
+    "reason": "cloud_hydration_failed_after_I5_and_I5b_bounded_read_based_recovery_attempts",
+    "backfill_applied": true
   },
   "policy": {
     "prefix_read_bytes": 1,
@@ -533,5 +537,32 @@
     "current_i5c_scope": "principle_and_local_deferred_ledger_only",
     "db_migration_in_this_pr": false,
     "full_production_ledger_in_this_pr": false
+  },
+  "preflight_mapping_errors": [],
+  "i5b_failed_row_validation": {
+    "status": "passed",
+    "errors": [],
+    "rows": [
+      {
+        "row_id": 98,
+        "present_in_i5b": true,
+        "mapping_present": true,
+        "ok": false,
+        "staging_copy_ready": false,
+        "failure_reason": "cloud_hydration_failed",
+        "unrecovered": true,
+        "error": null
+      },
+      {
+        "row_id": 881,
+        "present_in_i5b": true,
+        "mapping_present": true,
+        "ok": false,
+        "staging_copy_ready": false,
+        "failure_reason": "cloud_hydration_failed",
+        "unrecovered": true,
+        "error": null
+      }
+    ]
   }
 }
