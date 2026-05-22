@@ -2,6 +2,7 @@
   "phase": "3.8d-I5",
   "title": "Controlled read-probe / hydration audit",
   "status": "blocked_sample_gate_failed",
+  "success": false,
   "audit_completed": true,
   "phase_3_8d_execute_status": "blocked",
   "policy": {
@@ -48,9 +49,13 @@
       ".jpeg": 4,
       ".jpg": 514,
       ".png": 95
-    }
+    },
+    "target_failed_row_id": 98,
+    "target_failed_row_safe_label": "source_row_0098.jpg"
   },
-  "row_98": {
+  "target_failed_row_id": 98,
+  "target_failed_row_safe_label": "source_row_0098.jpg",
+  "target_failed_row_result": {
     "row_id": 98,
     "source_safe_label": "source_row_0098.jpg",
     "bucket": "b02",

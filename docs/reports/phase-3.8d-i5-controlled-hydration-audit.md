@@ -6,6 +6,7 @@
 - Purpose: run a bounded read-probe / full-read audit for the selected Phase 3.8c/3.8d manifest before any staging-copy retry.
 - Phase 3.8d execute status: `blocked`
 - Audit status: `blocked_sample_gate_failed`
+- Success: `false`
 - Metadata baseline selected total: `1000`
 - Baseline recall-risk count: `613`
 - Sample gate: `failed`
@@ -39,7 +40,7 @@ This phase does not prove the selected set is ready for staging copy. The sample
 - Risky by bucket: `{"b02":24,"b03":63,"b04":62,"b05":63,"b06":62,"b07":61,"b08":53,"b09":12,"b10":14,"b11":30,"b12":51,"b13":27,"b14":27,"b15":42,"b16":22}`
 - Risky by extension: `{".jpeg":4,".jpg":514,".png":95}`
 
-## Row 98 Result
+## Target Failed Row 98
 
 - Row: `98`
 - Safe label: `source_row_0098.jpg`
@@ -59,7 +60,7 @@ Row 98 is not abandoned. I5 did not prove row 98 can be hydrated or copied, and 
 
 ## Sample Gate
 
-- Sample policy: row 98 required, up to `3` risky rows per risky bucket, max `48`
+- Sample policy: target failed row `98` required when recall-risk, up to `3` risky rows per risky bucket, max `48`
 - Attempted: `46`
 - Success: `44`
 - Failed: `2`

@@ -137,7 +137,7 @@ def build_metadata_records(rows: Sequence[dict[str, str]]) -> tuple[list[dict[st
 
 def summarize_metadata(records: Sequence[Mapping[str, Any]], *, failed_row_id: int) -> dict[str, Any]:
     risky = [record for record in records if record.get("likely_cloud_placeholder")]
-    row98 = next((record for record in records if int(record.get("row_id", 0)) == failed_row_id), None)
+    target_failed_row = next((record for record in records if int(record.get("row_id", 0)) == failed_row_id), None)
     return {
         "selected_total": len(records),
         "exists": sum(1 for record in records if record.get("exists")),
@@ -156,7 +156,9 @@ def summarize_metadata(records: Sequence[Mapping[str, Any]], *, failed_row_id: i
         "risky_count_by_extension": dict(sorted(Counter(str(record["extension"]) for record in risky).items())),
         "selected_count_by_bucket": dict(sorted(Counter(str(record["bucket"]) for record in records).items())),
         "selected_count_by_extension": dict(sorted(Counter(str(record["extension"]) for record in records).items())),
-        "row_98": row98,
+        "target_failed_row_id": failed_row_id,
+        "target_failed_row_safe_label": target_failed_row.get("source_safe_label") if target_failed_row else None,
+        "target_failed_row": target_failed_row,
     }
 
 
@@ -338,6 +340,22 @@ def _proxy_observations() -> dict[str, Any]:
     }
 
 
+def derive_audit_status(sample_stage: Mapping[str, Any], full_stage: Mapping[str, Any]) -> str:
+    sample_status = str(sample_stage.get("status") or "")
+    full_status = str(full_stage.get("status") or "")
+    if sample_status == "blocked_empty_sample_selection" or full_status == "blocked_empty_sample_selection":
+        return "blocked_empty_sample_selection"
+    if sample_status == "failed" or full_status == "skipped_sample_gate_failed":
+        return "blocked_sample_gate_failed"
+    if full_status == "completed" and int(full_stage.get("summary", {}).get("failed_count", 0) or 0) > 0:
+        return "blocked_full_recall_verification_failed"
+    return "completed"
+
+
+def derive_audit_success(sample_stage: Mapping[str, Any], full_stage: Mapping[str, Any]) -> bool:
+    return not derive_audit_status(sample_stage, full_stage).startswith("blocked_")
+
+
 def run_hydration_audit(
     rows: Sequence[dict[str, str]],
     *,
@@ -384,11 +402,14 @@ def run_hydration_audit(
             sample_reason = "sample gate did not pass; full recall verification was not run"
         sample_stage = {
             "status": sample_status,
-            "row_98_included": any(int(item["row_id"]) == failed_row_id for item in sample_results_public),
+            "target_failed_row_included": any(
+                int(item["row_id"]) == failed_row_id for item in sample_results_public
+            ),
             "sample_policy": {
                 "sample_per_bucket": sample_per_bucket,
                 "max_sample": max_sample,
-                "row_98_required": True,
+                "target_failed_row_id": failed_row_id,
+                "target_failed_row_required_when_recall_risk": True,
             },
             "summary": sample_summary,
             "results": sample_results_public,
@@ -474,16 +495,26 @@ def run_hydration_audit(
         failed_ids = [int(item["row_id"]) for item in sample_stage["results"] if not item.get("ok")]
     backfill_plan = plan_same_bucket_backfill(rows, failed_ids) if failed_ids else None
 
-    row98_result = next(
+    target_failed_row_result = next(
         (item for item in [*sample_stage.get("results", []), *full_stage.get("results", [])] if int(item["row_id"]) == failed_row_id),
         None,
     )
+    target_failed_row_metadata = metadata_summary.get("target_failed_row")
+    target_failed_row_safe_label = None
+    if isinstance(target_failed_row_result, Mapping):
+        target_failed_row_safe_label = target_failed_row_result.get("source_safe_label")
+    elif isinstance(target_failed_row_metadata, Mapping):
+        target_failed_row_safe_label = target_failed_row_metadata.get("source_safe_label")
+    audit_status = derive_audit_status(sample_stage, full_stage)
     report = {
         "phase": "3.8d-I5",
         "mode": "controlled_read_probe_hydration_audit",
         "created_at": utc_now(),
-        "success": True,
+        "status": audit_status,
+        "success": derive_audit_success(sample_stage, full_stage),
         "duration_seconds": round(time.monotonic() - started, 3),
+        "target_failed_row_id": failed_row_id,
+        "target_failed_row_safe_label": target_failed_row_safe_label,
         "policy": {
             "metadata_only_baseline_no_content_read": True,
             "prefix_read_bytes": policy["prefix_bytes"],
@@ -496,7 +527,7 @@ def run_hydration_audit(
             "cfhydrateplaceholder_called": False,
         },
         "metadata_baseline": metadata_summary,
-        "row_98_result": row98_result,
+        "target_failed_row_result": target_failed_row_result,
         "sample_gate": sample_stage,
         "full_recall_verification": full_stage,
         "backfill_plan": backfill_plan,
@@ -532,6 +563,7 @@ def run_hydration_audit(
         "passed": not leaks,
     }
     if leaks:
+        public["status"] = "blocked_privacy_leak"
         public["success"] = False
     return public, local_details
 
@@ -540,12 +572,14 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     baseline = report["metadata_baseline"]
     sample = report["sample_gate"]
     full = report["full_recall_verification"]
-    row98 = report.get("row_98_result")
+    target_failed_row_id = int(report.get("target_failed_row_id") or baseline.get("target_failed_row_id") or 0)
+    target_failed_row = report.get("target_failed_row_result")
     lines = [
         "# Phase 3.8d-I5 Controlled Hydration Audit",
         "",
         "## Summary",
         "",
+        f"- Status: `{report.get('status', 'unknown')}`",
         f"- Success: `{report['success']}`",
         f"- Mode: `{report['mode']}`",
         f"- Duration seconds: `{report['duration_seconds']}`",
@@ -569,22 +603,22 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Risky by bucket: `{json.dumps(baseline['risky_count_by_bucket'], sort_keys=True)}`",
         f"- Risky by extension: `{json.dumps(baseline['risky_count_by_extension'], sort_keys=True)}`",
         "",
-        "## Row 98",
+        f"## Target Failed Row {target_failed_row_id}",
         "",
     ]
-    if row98:
+    if target_failed_row:
         lines.extend(
             [
                 f"- Included in sample/full results: `True`",
-                f"- Source label: `{row98['source_safe_label']}`",
-                f"- Prefix read ok: `{row98['prefix_read']['ok']}`",
-                f"- Full read ok: `{row98['full_read']['ok']}`",
-                f"- Bytes read: `{row98['audit_bytes_read']}`",
-                f"- Failure reason: `{row98['failure_reason']}`",
+                f"- Source label: `{target_failed_row['source_safe_label']}`",
+                f"- Prefix read ok: `{target_failed_row['prefix_read']['ok']}`",
+                f"- Full read ok: `{target_failed_row['full_read']['ok']}`",
+                f"- Bytes read: `{target_failed_row['audit_bytes_read']}`",
+                f"- Failure reason: `{target_failed_row['failure_reason']}`",
             ]
         )
     else:
-        lines.append("- Row 98 was not verified in this run.")
+        lines.append(f"- Target failed row {target_failed_row_id} was not verified in this run.")
     lines.extend(
         [
             "",

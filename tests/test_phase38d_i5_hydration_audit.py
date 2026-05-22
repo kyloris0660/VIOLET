@@ -1,4 +1,6 @@
+import csv
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -34,6 +36,14 @@ def _row(row_id: int, tmp_path: Path, *, bucket: str = "b01", selected: bool = T
         "timestamp_source": "filesystem_mtime",
         "modified_time_utc": "2026-01-01T00:00:00+00:00",
     }
+
+
+def _write_manifest(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _fake_gate(*, risky_ids: set[int] | None = None):
@@ -87,6 +97,10 @@ def test_metadata_only_does_not_read_file_content(monkeypatch, tmp_path: Path):
 
     assert report["metadata_baseline"]["selected_total"] == 2
     assert report["metadata_baseline"]["likely_cloud_placeholder_count"] == 2
+    assert report["metadata_baseline"]["target_failed_row_id"] == 98
+    assert report["metadata_baseline"]["target_failed_row"]["row_id"] == 98
+    assert report["target_failed_row_id"] == 98
+    assert "row_98_result" not in report
     assert report["sample_gate"]["status"] == "not_requested"
     assert report["safety"]["source_content_read_for_verification_only"] is False
 
@@ -213,6 +227,8 @@ def test_no_recall_risk_empty_sample_is_not_applicable(monkeypatch, tmp_path: Pa
     assert report["metadata_baseline"]["likely_cloud_placeholder_count"] == 0
     assert report["sample_gate"]["status"] == "not_applicable_no_risk"
     assert report["full_recall_verification"]["status"] == "not_applicable_no_risk"
+    assert report["status"] == "completed"
+    assert report["success"] is True
     assert report["safety"]["source_content_read_for_verification_only"] is False
     assert report["safety"]["provider_side_hydration_may_have_occurred"] is False
 
@@ -243,6 +259,8 @@ def test_risky_rows_with_empty_sample_selection_blocks(monkeypatch, tmp_path: Pa
     assert report["metadata_baseline"]["likely_cloud_placeholder_count"] == 2
     assert report["sample_gate"]["status"] == "blocked_empty_sample_selection"
     assert report["full_recall_verification"]["status"] == "blocked_empty_sample_selection"
+    assert report["status"] == "blocked_empty_sample_selection"
+    assert report["success"] is False
 
 
 def test_sample_gate_failure_stops_full_risk_set(monkeypatch, tmp_path: Path):
@@ -269,6 +287,8 @@ def test_sample_gate_failure_stops_full_risk_set(monkeypatch, tmp_path: Path):
 
     assert report["sample_gate"]["status"] == "failed"
     assert report["full_recall_verification"]["status"] == "skipped_sample_gate_failed"
+    assert report["status"] == "blocked_sample_gate_failed"
+    assert report["success"] is False
     assert report["backfill_plan"]["replacement_count"] == 0
     assert report["backfill_plan"]["unresolved_count"] == 2
 
@@ -333,10 +353,125 @@ def test_full_risk_set_report_schema_and_privacy(monkeypatch, tmp_path: Path):
 
     assert report["sample_gate"]["status"] == "passed"
     assert report["full_recall_verification"]["status"] == "completed"
+    assert report["status"] == "completed"
+    assert report["success"] is True
     assert "attempted_count" in report["full_recall_verification"]["summary"]
     assert report["privacy"]["passed"] is True
     assert str(tmp_path) not in str(report)
     assert "source_98.jpg" in str(local)
+
+
+def test_failed_row_id_schema_and_markdown_are_dynamic(monkeypatch, tmp_path: Path):
+    rows = [_row(98, tmp_path, bucket="b02"), _row(881, tmp_path, bucket="b14")]
+    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids={881}))
+    monkeypatch.setattr(i5, "read_probe_prefix", lambda *args, **kwargs: {"ok": True, "bytes_read": 1, "error_reason": None})
+    monkeypatch.setattr(
+        i5,
+        "read_verify_full_content",
+        lambda *args, expected_size=None, **kwargs: {
+            "ok": True,
+            "bytes_read": expected_size,
+            "bytes_read_total": expected_size,
+            "duration_seconds": 0.1,
+            "error_reason": None,
+        },
+    )
+
+    report, _local = i5.run_hydration_audit(
+        rows,
+        failed_row_id=881,
+        stop_after="sample",
+        sample_per_bucket=1,
+        max_sample=2,
+        policy={
+            "prefix_bytes": 1,
+            "prefix_timeout_seconds": 10,
+            "prefix_retries": 1,
+            "full_timeout_seconds": 60,
+            "full_retries": 1,
+            "full_chunk_size": 1024,
+        },
+    )
+
+    markdown = i5.render_markdown(report)
+
+    assert report["target_failed_row_id"] == 881
+    assert report["target_failed_row_result"]["row_id"] == 881
+    assert report["sample_gate"]["target_failed_row_included"] is True
+    assert report["sample_gate"]["sample_policy"]["target_failed_row_id"] == 881
+    assert report["metadata_baseline"]["target_failed_row_id"] == 881
+    assert "row_98_result" not in report
+    assert "## Target Failed Row 881" in markdown
+    assert "## Row 98" not in markdown
+
+
+def test_sample_gate_failure_cli_returns_nonzero(monkeypatch, tmp_path: Path):
+    rows = [_row(98, tmp_path, bucket="b02"), _row(99, tmp_path, bucket="b02")]
+    manifest = tmp_path / "manifest.csv"
+    report_json = tmp_path / "report.json"
+    report_md = tmp_path / "report.md"
+    details_json = tmp_path / "details.json"
+    _write_manifest(manifest, rows)
+
+    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids={98, 99}))
+    monkeypatch.setattr(
+        i5,
+        "read_probe_prefix",
+        lambda *args, **kwargs: {"ok": False, "bytes_read": 0, "error_reason": "cloud_network_unavailable"},
+    )
+    monkeypatch.setattr(
+        i5,
+        "read_verify_full_content",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("full read should be skipped")),
+    )
+
+    exit_code = i5.main(
+        [
+            "--manifest",
+            str(manifest),
+            "--report-json",
+            str(report_json),
+            "--report-md",
+            str(report_md),
+            "--local-details-json",
+            str(details_json),
+            "--failed-row-id",
+            "98",
+            "--stop-after",
+            "full",
+        ]
+    )
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_sample_gate_failed"
+    assert report["success"] is False
+
+
+def test_privacy_leak_forces_success_false(monkeypatch, tmp_path: Path):
+    rows = [_row(98, tmp_path, bucket="b02")]
+    monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids=set()))
+    monkeypatch.setattr(i5, "find_privacy_leaks", lambda payload: ["C:/secret/source.jpg"])
+
+    report, _local = i5.run_hydration_audit(
+        rows,
+        failed_row_id=98,
+        stop_after="metadata",
+        sample_per_bucket=1,
+        max_sample=1,
+        policy={
+            "prefix_bytes": 1,
+            "prefix_timeout_seconds": 10,
+            "prefix_retries": 1,
+            "full_timeout_seconds": 60,
+            "full_retries": 1,
+            "full_chunk_size": 1024,
+        },
+    )
+
+    assert report["status"] == "blocked_privacy_leak"
+    assert report["success"] is False
+    assert report["privacy"]["passed"] is False
 
 
 def test_cloud_files_full_read_timeout_result_can_be_mocked(monkeypatch, tmp_path: Path):
