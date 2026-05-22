@@ -187,7 +187,9 @@ For implementation PRs, reviewer feedback is a controlled handoff point, not an 
 9. Before triggering reviewer, CodeX must perform a local pre-review / same-class self-audit so reviewer is not used as a substitute for engineering judgment.
 10. Default flow is implement/test/push/review/report/stop. Do not start another fix round from reviewer feedback unless explicitly authorized for that PR.
 
-### Bugfix Root-Cause Closure Policy
+### Agent Engineering Judgment and Bugfix Root-Cause Closure Policy
+
+CodeX must provide `Engineering judgment / operator notes` in final delivery reports. For every substantial phase or non-trivial bugfix, CodeX should identify risks, distinguish blockers from deferable issues, and say whether the phase boundary appears too narrow or too broad.
 
 When reviewer feedback, tests, or runtime reports expose a bug, CodeX must not treat the issue only as a single-line patch unless it is clearly isolated.
 

@@ -1,0 +1,461 @@
+{
+  "phase": "3.8d-I7",
+  "source_label": "violet:phase3.8d:i7:staged-success",
+  "started_at": "2026-05-22T15:14:08.815523+00:00",
+  "status": "completed",
+  "success": true,
+  "mode": "execute",
+  "persistent_rule_verified": "Agent Engineering Judgment and Bugfix Root-Cause Closure Policy",
+  "safety": {
+    "staging_copy_reran": false,
+    "source_icloud_write_mutation": false,
+    "entity_resolver_ran": false,
+    "similarity_or_clustering_ran": false,
+    "raw_1000_manifest_used_for_import": false,
+    "failed_i6_rows_imported": false
+  },
+  "i6_item_ledger_validation": {
+    "status": "passed",
+    "ledger_basename": "phase-3.8d-i6-staging-copy-item-ledger.json",
+    "details_basename": "phase-3.8d-i6-staging-copy-retry-details.json",
+    "total_rows": 1000,
+    "staged_success": 994,
+    "failed_items": 6,
+    "failed_rows": [
+      799,
+      839,
+      922,
+      970,
+      971,
+      972
+    ],
+    "excluded_failed_rows": [
+      799,
+      839,
+      922,
+      970,
+      971,
+      972
+    ],
+    "deferred_original_rows_excluded": [
+      98,
+      881
+    ],
+    "replacement_rows_present": [
+      1029,
+      1041
+    ],
+    "target_paths_checked": 994,
+    "missing_staged_files": 0,
+    "size_mismatches": 0,
+    "duplicate_target_paths": 0,
+    "paths_redacted": true
+  },
+  "import_candidate_count": 994,
+  "excluded_failed_rows": [
+    799,
+    839,
+    922,
+    970,
+    971,
+    972
+  ],
+  "import_manifest": {
+    "basename": "phase-3.8d-i7-staged-success-import-manifest.csv",
+    "rows": 994,
+    "contains_staged_paths": true,
+    "contains_source_icloud_paths": false,
+    "committed": false
+  },
+  "db_identity": {
+    "violet_env": "development",
+    "db_name": "blombooru",
+    "db_host": "localhost",
+    "db_port": 5432,
+    "storage_root_label": "app_storage",
+    "repo_root_label": "repo_root",
+    "branch": "phase3.8d-i7-partial-import-classification-first",
+    "git_sha": "041a8333dc54df429742523ee6038ad5d0ecd584",
+    "active_jobs": {
+      "ai_jobs": 0,
+      "classification_jobs": 0,
+      "translation_jobs": 0
+    },
+    "paths_redacted": true
+  },
+  "db_counts_before": {
+    "media": 1989,
+    "media_source_label": 994,
+    "media_tags": 53354,
+    "ai_jobs": 46,
+    "classification_jobs": 25,
+    "translation_jobs": 15
+  },
+  "import_dry_run": {
+    "status": "passed",
+    "checked_count": 994,
+    "valid_count": 994,
+    "invalid_rows": 0,
+    "missing_staged_files": 0,
+    "duplicate_by_hash": 994,
+    "would_create": 0,
+    "manifest_internal_hash_duplicates": 0,
+    "total_staged_bytes_checked": 3063523992,
+    "failed_rows_included": false,
+    "failed_rows_included_ids": [],
+    "unstaged_rows_included": false,
+    "unstaged_rows_included_ids": [],
+    "source_label": "violet:phase3.8d:i7:staged-success",
+    "app_managed_storage_writes_estimated": 0,
+    "db_public_fields_full_path_free": true,
+    "paths_redacted": true
+  },
+  "db_backup": {
+    "basename": "phase-3.8d-i7-db-backup-20260522T151408Z.dump",
+    "bytes": 1468090,
+    "path_redacted": true
+  },
+  "import_execute": {
+    "status": "resumed_after_prior_successful_import",
+    "source_label": "violet:phase3.8d:i7:staged-success",
+    "input_would_create": 0,
+    "imported_count": 994,
+    "duplicate_by_hash": 994,
+    "failed_count": 0,
+    "invalid_count": 0,
+    "imported_media_ids_sample": [
+      1707,
+      1708,
+      1709,
+      1710,
+      1711,
+      1712,
+      1713,
+      1714,
+      1715,
+      1716,
+      1717,
+      1718,
+      1719,
+      1720,
+      1721,
+      1722,
+      1723,
+      1724,
+      1725,
+      1726
+    ],
+    "imported_media_ids_count": 994,
+    "app_managed_storage_writes": 0,
+    "previous_app_managed_storage_writes": 994,
+    "db_stores_app_relative_paths_only": true,
+    "resume_reason": "previous I7 attempt completed DB import before downstream blocker"
+  },
+  "classification": {
+    "status": "completed",
+    "jobs": [
+      {
+        "job_id": 16,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 94,
+        "classified_non_anime": 3,
+        "classified_unknown": 3,
+        "error_message": ""
+      },
+      {
+        "job_id": 17,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 96,
+        "classified_non_anime": 2,
+        "classified_unknown": 2,
+        "error_message": ""
+      },
+      {
+        "job_id": 18,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 99,
+        "classified_non_anime": 1,
+        "classified_unknown": 0,
+        "error_message": ""
+      },
+      {
+        "job_id": 19,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 96,
+        "classified_non_anime": 1,
+        "classified_unknown": 3,
+        "error_message": ""
+      },
+      {
+        "job_id": 20,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 94,
+        "classified_non_anime": 2,
+        "classified_unknown": 4,
+        "error_message": ""
+      },
+      {
+        "job_id": 21,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 93,
+        "classified_non_anime": 2,
+        "classified_unknown": 5,
+        "error_message": ""
+      },
+      {
+        "job_id": 22,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 93,
+        "classified_non_anime": 3,
+        "classified_unknown": 4,
+        "error_message": ""
+      },
+      {
+        "job_id": 23,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 94,
+        "classified_non_anime": 2,
+        "classified_unknown": 4,
+        "error_message": ""
+      },
+      {
+        "job_id": 24,
+        "status": "completed",
+        "processed": 100,
+        "failed": 0,
+        "classified_anime": 93,
+        "classified_non_anime": 4,
+        "classified_unknown": 3,
+        "error_message": ""
+      },
+      {
+        "job_id": 25,
+        "status": "completed",
+        "processed": 94,
+        "failed": 0,
+        "classified_anime": 82,
+        "classified_non_anime": 7,
+        "classified_unknown": 5,
+        "error_message": ""
+      }
+    ],
+    "processed": 994,
+    "failed": 0,
+    "distribution": {
+      "anime": 934,
+      "unknown": 33,
+      "non_anime": 27,
+      "illustration": 0,
+      "failed_or_unclassified": 0
+    },
+    "resume_status": "resumed_after_prior_successful_classification"
+  },
+  "ai_scope": {
+    "eligible_count": 967,
+    "skipped_ineligible": 27,
+    "source_label": "violet:phase3.8d:i7:staged-success"
+  },
+  "ai_tagging": {
+    "status": "completed",
+    "jobs": [
+      {
+        "job_id": 51,
+        "status": "completed",
+        "processed": 200,
+        "failed": 0,
+        "tags_added": 8570,
+        "suggestions_added": 2279,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 2160750,
+        "localization_status": "skipped_auto_localization_disabled",
+        "error_message": ""
+      },
+      {
+        "job_id": 52,
+        "status": "completed",
+        "processed": 200,
+        "failed": 0,
+        "tags_added": 8701,
+        "suggestions_added": 2487,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 2160417,
+        "localization_status": "skipped_auto_localization_disabled",
+        "error_message": ""
+      },
+      {
+        "job_id": 53,
+        "status": "completed",
+        "processed": 200,
+        "failed": 0,
+        "tags_added": 8025,
+        "suggestions_added": 2575,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 2161000,
+        "localization_status": "skipped_auto_localization_disabled",
+        "error_message": ""
+      },
+      {
+        "job_id": 54,
+        "status": "completed",
+        "processed": 200,
+        "failed": 0,
+        "tags_added": 8147,
+        "suggestions_added": 2547,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 2160909,
+        "localization_status": "skipped_auto_localization_disabled",
+        "error_message": ""
+      },
+      {
+        "job_id": 55,
+        "status": "completed",
+        "processed": 167,
+        "failed": 0,
+        "tags_added": 6844,
+        "suggestions_added": 2170,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 1804274,
+        "localization_status": "skipped_auto_localization_disabled",
+        "error_message": ""
+      }
+    ],
+    "eligible_count": 967,
+    "processed": 967,
+    "failed": 0,
+    "tags_added": 40287,
+    "suggestions_added": 12058,
+    "skipped_locked": 0,
+    "ignored_low_confidence": 10447350,
+    "skipped_ineligible": 27,
+    "source_label": "violet:phase3.8d:i7:staged-success"
+  },
+  "localization": {
+    "status": "completed",
+    "candidate_count": 200,
+    "translated_count": 200,
+    "failed_count": 0,
+    "skipped_proper_nouns": 101,
+    "localizable_categories": [
+      "general",
+      "meta"
+    ],
+    "proper_noun_categories_skipped": [
+      "character",
+      "copyright",
+      "artist"
+    ],
+    "effective_limit": 200,
+    "job_id": 16,
+    "provider_available": true,
+    "remaining_missing_translations": 370
+  },
+  "db_counts_after": {
+    "media": 1989,
+    "media_source_label": 994,
+    "media_tags": 105699,
+    "ai_jobs": 51,
+    "classification_jobs": 25,
+    "translation_jobs": 16
+  },
+  "db_storage_validation": {
+    "status": "passed",
+    "media_checked": 994,
+    "source_label_count": 994,
+    "source_label_mismatches": 0,
+    "original_files_exist": 994,
+    "thumbnails_exist": 994,
+    "path_privacy_leaks": 0,
+    "source_icloud_paths_stored": false,
+    "db_public_fields_full_path_free": true
+  },
+  "import_item_ledger": {
+    "basename": "phase-3.8d-i7-import-item-ledger.json",
+    "rows": 1000,
+    "imported": 994,
+    "duplicate_by_hash": 0,
+    "excluded_i6_failed": 6,
+    "committed": false
+  },
+  "finished_at": "2026-05-22T15:30:23.318875+00:00",
+  "privacy_scan": {
+    "public_report_leaks": []
+  },
+  "api_browser_smoke": {
+    "status": "passed",
+    "api_status": "passed",
+    "browser_status": "passed",
+    "base_url": "http://127.0.0.1:8012",
+    "server_pid": 46772,
+    "server_parent_pid": 12504,
+    "port": 8012,
+    "identity_check": "passed",
+    "api_endpoints_checked": [
+      "/api/media/?page=1&limit=5",
+      "/api/media/?page=1&limit=5&content_class=anime",
+      "/api/media/1707",
+      "/api/media/1707/thumbnail",
+      "/api/media/1707/file",
+      "/api/admin/login",
+      "/api/admin/content-classification/stats",
+      "/api/admin/ai-tags/review?limit=5",
+      "/api/admin/tag-localization/stats"
+    ],
+    "browser": "msedge/chromium",
+    "browser_flows": [
+      "gallery load",
+      "media detail page"
+    ],
+    "console_error_count": 0,
+    "page_error_count": 0,
+    "server_500_count": 0
+  },
+  "server_log_scan": {
+    "status": "passed",
+    "log_basenames": [
+      "phase-3.8d-i7-server-8012b.out.log",
+      "phase-3.8d-i7-server-8012b.err.log"
+    ],
+    "error_matches": 0,
+    "traceback_matches": 0,
+    "http_500_matches": 0,
+    "serialization_error_matches": 0
+  },
+  "real_browser_validation": {
+    "status": "passed",
+    "method": "Playwright chromium channel=msedge headless against controlled local server",
+    "base_url": "http://127.0.0.1:8012",
+    "flows": [
+      "gallery load",
+      "media detail page /media/1707"
+    ],
+    "result": "passed"
+  },
+  "tests": {
+    "git_diff_check": "passed (warnings only: CRLF normalization)",
+    "py_compile": "passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py",
+    "focused_pytest": "passed: 6 passed",
+    "full_non_e2e_pytest": "passed: 1166 passed, 12 skipped, 12 warnings",
+    "commands": [
+      "git diff --check",
+      "& \"$PY\" -m py_compile scripts/run_phase38d_i7_partial_import_classification_first.py tests/test_phase38d_i7_partial_import_classification_first.py",
+      "& \"$PY\" -m pytest tests/test_phase38d_i7_partial_import_classification_first.py -v",
+      "& \"$PY\" -m pytest tests/ -v --ignore=tests/e2e"
+    ]
+  }
+}
