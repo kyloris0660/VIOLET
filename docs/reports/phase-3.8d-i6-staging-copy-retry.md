@@ -79,6 +79,7 @@
 - Failure budget exceeded: `False`
 - Max consecutive failures observed: `3`
 - Failure reason distribution: `{"cloud_network_unavailable": 6}`
+- Failed item target artifact policy: failed item partial targets are removed when possible; artifact removal failure becomes blocking because the staging target is polluted. Current operational result is preserved and was not rerun.
 - Copied files: `994`
 - Copied bytes: `3063523992`
 - Failed rows: `[{"row_id": 799, "safe_label": "source_row_0799.jpg", "bucket": "b13", "extension": ".jpg", "reason": "cloud_network_unavailable", "status": "failed_cloud_hydration"}, {"row_id": 839, "safe_label": "source_row_0839.jpg", "bucket": "b14", "extension": ".jpg", "reason": "cloud_network_unavailable", "status": "failed_cloud_hydration"}, {"row_id": 922, "safe_label": "source_row_0922.jpg", "bucket": "b15", "extension": ".jpg", "reason": "cloud_network_unavailable", "status": "failed_cloud_hydration"}, {"row_id": 970, "safe_label": "source_row_0970.png", "bucket": "b16", "extension": ".png", "reason": "cloud_network_unavailable", "status": "failed_cloud_hydration"}, {"row_id": 971, "safe_label": "source_row_0971.png", "bucket": "b16", "extension": ".png", "reason": "cloud_network_unavailable", "status": "failed_cloud_hydration"}, {"row_id": 972, "safe_label": "source_row_0972.jpg", "bucket": "b16", "extension": ".jpg", "reason": "cloud_network_unavailable", "status": "failed_cloud_hydration"}]`

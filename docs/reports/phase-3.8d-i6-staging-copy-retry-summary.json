@@ -216,6 +216,12 @@
     "failed_reason_code": "cloud_network_unavailable",
     "failed_safe_label": "source_row_0799.jpg"
   },
+  "failed_item_target_artifact_policy": {
+    "partial_target_artifacts_removed_when_possible": true,
+    "size_mismatch_target_artifacts_removed_when_possible": true,
+    "artifact_removal_failure_blocks_run": true,
+    "current_operational_result_preserved_not_rerun": true
+  },
   "post_copy_audit": {
     "status": "completed_with_item_failures",
     "target_label": "phase_3_8d_i6_backfilled_staging_target",

@@ -623,6 +623,169 @@ def test_per_item_failure_within_budget_does_not_abort_whole_run(monkeypatch, tm
     assert report["db_import_eligibility"]["eligible_for_partial_import_planning"] is True
 
 
+def test_partial_target_artifact_removed_on_copy_exception(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_copy2 = shutil.copy2
+    failed_target = fixture["target_root"] / "source_row_0002.png"
+
+    def partial_then_fail(src: str, dst: str):
+        if src.endswith("source_row_0002.png"):
+            Path(dst).write_bytes(b"partial")
+            raise OSError("simulated partial copy failure")
+        return original_copy2(src, dst)
+
+    monkeypatch.setattr(i6.shutil, "copy2", partial_then_fail)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 0
+    assert report["status"] == "completed_with_item_failures"
+    assert failed["eligible_for_db_import"] is False
+    assert failed["target_artifact_cleanup_attempted"] is True
+    assert failed["target_artifact_removed"] is True
+    assert failed_target.exists() is False
+    assert report["actual_staging_copy"]["target_artifact_cleanup"] == {
+        "attempted_count": 1,
+        "removed_count": 1,
+        "failed_count": 0,
+    }
+    assert report["post_copy_audit"]["status"] == "completed_with_item_failures"
+    assert report["post_copy_audit"]["unexpected_file_count"] == 0
+
+
+def test_failed_artifact_removal_blocks_after_copy_exception(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    failed_target = fixture["target_root"] / "source_row_0002.png"
+    original_copy2 = shutil.copy2
+    original_unlink = Path.unlink
+
+    def partial_then_fail(src: str, dst: str):
+        if src.endswith("source_row_0002.png"):
+            Path(dst).write_bytes(b"partial")
+            raise OSError("simulated partial copy failure")
+        return original_copy2(src, dst)
+
+    def fail_unlink(self: Path, *args, **kwargs):
+        if self == failed_target:
+            raise OSError("simulated cleanup failure")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(i6.shutil, "copy2", partial_then_fail)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 1
+    assert report["status"] == "blocked_structural_copy_failure"
+    assert report["actual_staging_copy"]["status"] == "structural_failure"
+    assert report["actual_staging_copy"]["structural_reason"] == "target_artifact_removal_failed"
+    assert failed["target_artifact_cleanup_attempted"] is True
+    assert failed["target_artifact_removed"] is False
+    assert report["actual_staging_copy"]["target_artifact_cleanup"]["failed_count"] == 1
+    assert failed_target.exists() is True
+
+
+def test_size_mismatch_target_artifact_removed(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original_copy2 = shutil.copy2
+    mismatched_target = fixture["target_root"] / "source_row_0002.png"
+
+    def wrong_size_copy(src: str, dst: str):
+        if src.endswith("source_row_0002.png"):
+            Path(dst).write_bytes(b"short")
+            return dst
+        return original_copy2(src, dst)
+
+    monkeypatch.setattr(i6.shutil, "copy2", wrong_size_copy)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 0
+    assert report["status"] == "completed_with_item_failures"
+    assert failed["reason"] == "size_mismatch"
+    assert failed["eligible_for_db_import"] is False
+    assert failed["bytes_copied_observed"] == 5
+    assert failed["target_artifact_removed"] is True
+    assert mismatched_target.exists() is False
+    assert report["post_copy_audit"]["status"] == "completed_with_item_failures"
+    assert report["post_copy_audit"]["unexpected_file_count"] == 0
+
+
+def test_failed_artifact_removal_blocks_after_size_mismatch(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    mismatched_target = fixture["target_root"] / "source_row_0002.png"
+    original_copy2 = shutil.copy2
+    original_unlink = Path.unlink
+
+    def wrong_size_copy(src: str, dst: str):
+        if src.endswith("source_row_0002.png"):
+            Path(dst).write_bytes(b"short")
+            return dst
+        return original_copy2(src, dst)
+
+    def fail_unlink(self: Path, *args, **kwargs):
+        if self == mismatched_target:
+            raise OSError("simulated cleanup failure")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(i6.shutil, "copy2", wrong_size_copy)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    report, local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_consecutive_failures": 10,
+            "max_same_reason_failures": 20,
+        },
+    )
+
+    failed = [item for item in local["item_ledger"] if item["row_id"] == 2][0]
+    assert exit_code == 1
+    assert report["status"] == "blocked_structural_copy_failure"
+    assert report["actual_staging_copy"]["structural_reason"] == "target_artifact_removal_failed"
+    assert failed["reason"] == "size_mismatch"
+    assert failed["target_artifact_removed"] is False
+    assert report["actual_staging_copy"]["target_artifact_cleanup"]["failed_count"] == 1
+    assert mismatched_target.exists() is True
+
+
 def test_failure_budget_exceeded_aborts(monkeypatch, tmp_path: Path):
     fixture = _fixture(tmp_path)
 

@@ -780,9 +780,53 @@ def _blank_ledger_item(row: Mapping[str, str], target_root: Path) -> dict[str, A
         "status": "deferred",
         "reason": None,
         "bytes_copied": 0,
+        "bytes_copied_observed": 0,
         "staging_target_exists": False,
+        "target_artifact_cleanup_attempted": False,
+        "target_artifact_removed": None,
+        "target_artifact_cleanup_error": None,
         "eligible_for_db_import": False,
     }
+
+
+def cleanup_failed_target_artifact(target: Path) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "attempted": False,
+        "removed": False,
+        "error_reason": None,
+        "bytes_observed": 0,
+    }
+    try:
+        stat_result = target.lstat()
+    except FileNotFoundError:
+        return result
+    except OSError as exc:
+        result["attempted"] = True
+        result["error_reason"] = f"target_artifact_lstat_failed_{type(exc).__name__}"
+        return result
+    result["attempted"] = True
+    result["bytes_observed"] = int(getattr(stat_result, "st_size", 0) or 0)
+    if not stat.S_ISREG(stat_result.st_mode):
+        result["error_reason"] = "target_artifact_not_regular"
+        return result
+    try:
+        target.unlink()
+    except OSError as exc:
+        result["error_reason"] = f"target_artifact_remove_failed_{type(exc).__name__}"
+        return result
+    result["removed"] = True
+    return result
+
+
+def apply_target_artifact_cleanup(item: dict[str, Any], target: Path, cleanup: Mapping[str, Any]) -> None:
+    item["target_artifact_cleanup_attempted"] = bool(cleanup.get("attempted"))
+    item["target_artifact_removed"] = bool(cleanup.get("removed")) if cleanup.get("attempted") else None
+    item["target_artifact_cleanup_error"] = cleanup.get("error_reason")
+    item["bytes_copied_observed"] = _safe_int(cleanup.get("bytes_observed"))
+    try:
+        item["staging_target_exists"] = target.exists()
+    except OSError:
+        item["staging_target_exists"] = None
 
 
 def copy_with_item_failure_budget(
@@ -810,6 +854,11 @@ def copy_with_item_failure_budget(
                 "item_failure_count": 0,
                 "failure_rate": 0.0,
                 "copied_bytes": 0,
+                "target_artifact_cleanup": {
+                    "attempted_count": 0,
+                    "removed_count": 0,
+                    "failed_count": 0,
+                },
                 "budget_exceeded": False,
             },
             [],
@@ -847,6 +896,14 @@ def copy_with_item_failure_budget(
             reason_counts[reason] += 1
             consecutive_failures += 1
             max_consecutive_observed = max(max_consecutive_observed, consecutive_failures)
+
+        def cleanup_failed_artifact_or_block() -> None:
+            nonlocal structural_failure, structural_reason
+            cleanup = cleanup_failed_target_artifact(target)
+            apply_target_artifact_cleanup(item, target, cleanup)
+            if cleanup.get("error_reason"):
+                structural_failure = True
+                structural_reason = "target_artifact_removal_failed"
 
         if ext not in stage_pilot.SUPPORTED_EXTENSIONS:
             mark_failed("unsupported_extension")
@@ -889,6 +946,8 @@ def copy_with_item_failure_budget(
                 copied = int(target.stat().st_size)
                 if expected_size and copied != expected_size:
                     mark_failed("size_mismatch", bytes_copied=copied)
+                    item["bytes_copied_observed"] = copied
+                    cleanup_failed_artifact_or_block()
                 else:
                     item["status"] = "staged"
                     item["reason"] = None
@@ -901,7 +960,11 @@ def copy_with_item_failure_budget(
             except (OSError, shutil.SameFileError) as exc:
                 state = classify_cloud_file_state(source)
                 mark_failed(classify_file_access_error(exc, state))
+                cleanup_failed_artifact_or_block()
             ledger.append(item)
+
+            if structural_failure:
+                break
 
         if item["status"] != "staged" and not structural_failure:
             budget_exceeded = failure_budget_exceeded(
@@ -937,10 +1000,16 @@ def copy_with_item_failure_budget(
             "extension": item["extension"],
             "reason": item["reason"],
             "status": item["status"],
+            "target_artifact_removed": item.get("target_artifact_removed"),
         }
         for item in ledger
         if item["status"] != "staged" and item["reason"]
     ]
+    artifact_cleanup = {
+        "attempted_count": sum(1 for item in ledger if item.get("target_artifact_cleanup_attempted")),
+        "removed_count": sum(1 for item in ledger if item.get("target_artifact_removed") is True),
+        "failed_count": sum(1 for item in ledger if item.get("target_artifact_cleanup_error")),
+    }
     return (
         {
             "attempted": True,
@@ -956,6 +1025,7 @@ def copy_with_item_failure_budget(
             "budget_exceeded": budget_exceeded,
             "structural_failure": structural_failure,
             "structural_reason": structural_reason,
+            "target_artifact_cleanup": artifact_cleanup,
             "copied_files": staged_success_count,
             "copied_bytes": copied_bytes,
             "failed": item_failure_count,
@@ -1035,6 +1105,11 @@ def run_staging_copy_retry(
         "failure_reason_distribution": {},
         "failed_rows": [],
         "budget_exceeded": False,
+        "target_artifact_cleanup": {
+            "attempted_count": 0,
+            "removed_count": 0,
+            "failed_count": 0,
+        },
         "copied_files": 0,
         "copied_bytes": 0,
         "failed": 0,
@@ -1438,6 +1513,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Failure budget exceeded: `{copy.get('budget_exceeded')}`",
         f"- Max consecutive failures observed: `{copy.get('max_consecutive_failures_observed')}`",
         f"- Failure reason distribution: `{json.dumps(copy.get('failure_reason_distribution') or {}, sort_keys=True)}`",
+        f"- Target artifact cleanup: `{json.dumps(copy.get('target_artifact_cleanup') or {}, sort_keys=True)}`",
         f"- Copied files: `{copy.get('copied_files')}`",
         f"- Copied bytes: `{copy.get('copied_bytes')}`",
         f"- Failed rows: `{json.dumps(copy.get('failed_rows') or [], ensure_ascii=False)}`",
