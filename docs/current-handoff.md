@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I5c - Same-bucket backfill application (2026-05-22).
+> Last updated during Phase 3.8d-I6 - Staging copy retry with item-level failure budget (2026-05-22).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i5c-apply-backfill` (same-bucket backfill application report; Phase 3.8d execute remains blocked) |
+| **Branch** | `phase3.8d-i6-staging-copy-retry` (staging copy retry report; Phase 3.8d DB import remains blocked) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -44,7 +44,7 @@
 | **Phase 3.8d-I5 (PR #60)** | PR #60 merged - controlled read-probe / hydration audit; sample gate failed for rows `98` and `881`, so full recall verification and Phase 3.8d execute remain blocked |
 | **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
 | **Phase 3.8d-I5c (PR #62)** | PR #62 merged - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
-| **Phase 3.8d-I6 (branch)** | `phase3.8d-i6-staging-copy-retry` - backfilled manifest and empty staging target validated, but staging copy dry-run blocked on `566` remaining `cloud_recall_on_data_access` source rows; actual copy did not run |
+| **Phase 3.8d-I6 (branch)** | `phase3.8d-i6-staging-copy-retry` - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; DB import remains blocked for full `1000` |
 
 ## Mandatory Workflow Rules
 
@@ -829,22 +829,26 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - Reports: `docs/reports/phase-3.8d-i5c-backfill-application.md` and `docs/reports/phase-3.8d-i5c-backfill-application-summary.json`.
 
 **Phase 3.8d-I6 - Staging Copy Retry (branch `phase3.8d-i6-staging-copy-retry`):**
-- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, which validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and only executes copy when that gate passes.
+- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, which validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and executes copy only after explicit approval.
 - I6 manifest validation passed: active selected total `1000`, rows `98`/`881` absent, rows `1029`/`1041` present, bucket distribution unchanged, duplicate source/target counts `0`, expected bytes `3,109,318,484`.
 - Pre-copy target check passed: target exists, is a directory, is empty (`0` files / `0` bytes), protected roots are valid/disjoint, and no symlink/reparse/hard-link hazards were found.
-- Staging copy dry-run failed because `566` active source rows still reported `cloud_recall_on_data_access`. Actual staging copy did not run.
+- Staging copy dry-run reported `566` metadata-level `cloud_recall_on_data_access` rows; these are cloud-backed recall-risk rows, not proven failures. The explicit cloud-aware copy policy was enabled with confirmation, so item-level failures were recorded instead of blocking the whole run.
+- Actual staging copy completed with item-level failures within budget: attempted `1000`, staged `994`, failed `6`, copied `3,063,523,992` bytes, failure rate `0.006`, max consecutive failures `3`, budget exceeded `False`.
+- Failed item rows: `799` (`source_row_0799.jpg`, b13), `839` (`source_row_0839.jpg`, b14), `922` (`source_row_0922.jpg`, b15), `970` (`source_row_0970.png`, b16), `971` (`source_row_0971.png`, b16), `972` (`source_row_0972.jpg`, b16), all with `cloud_network_unavailable`.
+- Post-copy audit passed for the staged subset: `994` files / `3,063,523,992` bytes, no unexpected files, no missing staged files, no size mismatches, no hazards; rows `1029`/`1041` staged and rows `98`/`881` not staged.
+- Full `1000` DB import planning is not eligible because `staged_success_count < 1000`; only a later explicitly approved backfill or partial-import planning path may proceed. Failed rows must never be imported.
 - DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
 - No DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
 
-## Recommended Next Step: Resolve Phase 3.8d Cloud Recovery Before Any Execute
+## Recommended Next Step: Backfill or Partial-import Planning Decision
 
-Do not resume Phase 3.8d execute, start Phase 4, or run any larger import until the cloud ingestion reliability incident is reviewed and an explicit recovery path is approved:
+Do not resume full Phase 3.8d execute, start Phase 4, or run any larger import until the staged subset and failed-item ledger are reviewed and an explicit recovery/import path is approved:
 
-1. Review Phase 3.8d-I6 results: backfilled rows `1029` and `1041` are valid, but the selected set still has `566` `cloud_recall_on_data_access` rows at staging dry-run time.
-2. Decide whether to approve a broader full recall-risk verification / hydration plan, adjust the Source Ingestion Gate policy for an explicitly approved copy-with-read stage, or investigate iCloud/provider/network state.
-3. Do not run staging copy, DB import, classification, AI tagging, localization, Entity Resolver, similarity, or Phase 4 until the remaining cloud availability blocker is resolved by an approved plan.
-4. Only after a successful staging copy plus post-copy audit may Phase 3.8d DB import be reconsidered.
+1. Review Phase 3.8d-I6 results: `994` files staged successfully; rows `799`, `839`, `922`, `970`, `971`, and `972` failed item-level copy with `cloud_network_unavailable`.
+2. Decide whether to approve same-bucket backfill for the 6 failed rows, a targeted provider/network retry, or a separately scoped partial-import plan for the `994` staged rows.
+3. Do not run DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, or Phase 4 until that next decision is explicitly approved.
+4. DB import of the full `1000` remains blocked unless a complete staged set is produced by backfill/retry and a separate DB import plan is approved.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

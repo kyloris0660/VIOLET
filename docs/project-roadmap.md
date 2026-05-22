@@ -404,14 +404,19 @@ See [Content Classification](content-classification.md) for full documentation.
 
 **Goal:** Retry staging copy using the I5c backfilled local selected manifest, without DB import or downstream jobs.
 
-- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, a narrow operational runner that validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and only executes copy if that gate passes.
+- Added `scripts/run_phase38d_i6_staging_copy_retry.py`, a narrow operational runner that validates the I5c backfilled local manifest, verifies the staging target is empty and disjoint from protected roots, runs the existing `stage_pilot_files.py` dry-run gate, and executes copy only after explicit approval.
+- The runner now supports an explicit cloud-aware copy policy for production-like iCloud ingestion: recall-risk rows remain blocked by default, but `--allow-cloud-recall-copy` plus `--confirm-cloud-aware-copy COPY_PHASE38D_BACKFILLED_STAGING_WITH_CLOUD_RECALL` lets provider-side hydration/cache happen through source reads while item-level failures are classified and recorded.
+- Structural safety failures still block the whole run. Per-item source failures are recorded in an ignored item ledger and excluded from DB import eligibility. The I6 medium pilot failure budget is `max_item_failures=20`, `max_failure_rate=0.05`, `max_consecutive_failures=10`, and `max_same_reason_failures=20`.
 - I6 manifest validation passed: active selected total `1000`, rows `98`/`881` absent, replacement rows `1029`/`1041` present, bucket distribution unchanged, duplicate source/target counts `0`, expected bytes `3,109,318,484`.
 - Pre-copy staging target check passed: the target label is empty (`0` files / `0` bytes), protected roots are valid/disjoint, and no symlink/reparse/hard-link hazards were found.
-- Staging copy dry-run failed before any copy because `566` selected source rows still reported `cloud_recall_on_data_access` through the Source Ingestion Gate. Actual staging copy did not run.
+- Staging copy dry-run reported `566` metadata-level `cloud_recall_on_data_access` rows; these were treated as cloud-backed recall-risk rows, not proven failures, after explicit cloud-aware copy approval.
+- Actual staging copy completed with item-level failures within budget: attempted `1000`, staged `994`, failed `6`, copied `3,063,523,992` bytes, failure rate `0.006`, max consecutive failures `3`, budget exceeded `False`.
+- Failed item rows were `799`, `839`, `922`, `970`, `971`, and `972`, all with `cloud_network_unavailable`. They are not eligible for DB import and must be handled by later backfill, targeted retry, or an explicitly approved partial-import strategy.
+- Post-copy audit passed for the staged subset: `994` files / `3,063,523,992` bytes, no unexpected files, no missing staged files, no size mismatches, no hazards, rows `1029`/`1041` staged, rows `98`/`881` not staged.
 - DB counts stayed unchanged: `media=995`, `media_tags=53,354`, `ai_jobs=46`, `classification_jobs=14`, `translation_jobs=15`.
 - No DB import, DB mutation, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
-- Next decision: resolve the remaining cloud availability blocker before another staging copy attempt. Options include broader full recall-risk verification/hydration, explicit copy-with-read policy review, or provider/network investigation.
+- Next decision: approve same-bucket backfill for the 6 failed rows, perform a targeted provider/network retry, or explicitly approve partial-import planning for the `994` staged rows. Full `1000` DB import remains blocked until a complete staged set is produced and separately approved.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
@@ -497,7 +502,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1/I2/I3/I4/I5/I5b/I5c and staging-copy retry validation:** Do not start Phase 4 until cloud availability/hydration/backfill handling for ingestion/staging/copy is reviewed, merged, and validated. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Blocked by Phase 3.8d-I1/I2/I3/I4/I5/I5b/I5c/I6 and DB-import readiness:** Do not start Phase 4 until cloud availability/hydration/backfill handling for ingestion/staging/copy is reviewed, merged, and the Phase 3.8d import path is explicitly approved. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place
