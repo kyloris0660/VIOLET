@@ -280,6 +280,15 @@ def _read_full_worker(path: str, chunk_size: int, conn: Any) -> None:
         conn.close()
 
 
+def _close_ipc_handle(handle: Any) -> None:
+    if handle is None:
+        return
+    try:
+        handle.close()
+    except Exception:
+        pass
+
+
 def read_probe_prefix(
     path: str | Path,
     *,
@@ -384,13 +393,32 @@ def read_verify_full_content(
     final: dict[str, Any] | None = None
     for attempt in range(retries + 1):
         started = time.monotonic()
-        parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
-        proc = multiprocessing.Process(
-            target=_read_full_worker,
-            args=(str(Path(path)), chunk_size, child_conn),
-            daemon=True,
-        )
-        proc.start()
+        parent_conn: Any = None
+        child_conn: Any = None
+        try:
+            parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+            proc = multiprocessing.Process(
+                target=_read_full_worker,
+                args=(str(Path(path)), chunk_size, child_conn),
+                daemon=True,
+            )
+            proc.start()
+        except Exception as exc:
+            result = {
+                "attempt": attempt + 1,
+                "ok": False,
+                "bytes_read": 0,
+                "duration_seconds": time.monotonic() - started,
+                "error_reason": "read_worker_start_failed",
+                "error_message": f"read worker failed to start: {type(exc).__name__}",
+                "winerror": getattr(exc, "winerror", None),
+                "errno": getattr(exc, "errno", None),
+            }
+            _close_ipc_handle(child_conn)
+            _close_ipc_handle(parent_conn)
+            attempts.append(result)
+            final = result
+            break
         child_conn.close()
         proc.join(timeout_seconds)
         duration = time.monotonic() - started

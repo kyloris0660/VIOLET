@@ -191,6 +191,31 @@ def test_full_read_worker_eof_is_structured(monkeypatch, tmp_path: Path):
     assert "17" in result["error_message"]
 
 
+def test_full_read_worker_start_failure_is_structured(monkeypatch, tmp_path: Path):
+    source = tmp_path / "full.jpg"
+    source.write_bytes(b"abcdef")
+
+    class FakeProcess:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise AssertionError(f"cannot spawn worker for {source}")
+
+    monkeypatch.setattr(cloud_files.multiprocessing, "Process", FakeProcess)
+
+    result = read_verify_full_content(source, expected_size=6, timeout_seconds=10, retries=1, chunk_size=2)
+
+    assert result["ok"] is False
+    assert result["error_reason"] == "read_worker_start_failed"
+    assert result["bytes_read"] == 0
+    assert result["bytes_read_total"] == 0
+    assert len(result["attempts"]) == 1
+    assert result["attempts"][0]["error_reason"] == "read_worker_start_failed"
+    assert "AssertionError" in result["error_message"]
+    assert str(source) not in result["error_message"]
+
+
 def test_row98_is_always_in_sample(monkeypatch, tmp_path: Path):
     rows = [_row(98, tmp_path, bucket="b02"), _row(99, tmp_path, bucket="b02"), _row(200, tmp_path, bucket="b03")]
     monkeypatch.setattr(i5.SourceIngestionGate, "evaluate_path_source", _fake_gate(risky_ids={98, 99, 200}))
