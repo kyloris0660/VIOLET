@@ -76,6 +76,7 @@ DEFAULT_FAILURE_BUDGET = {
     "max_consecutive_failures": 10,
     "max_same_reason_failures": 20,
 }
+JSON_LOAD_ERROR_KEY = "__json_load_error__"
 APPROVED_SOURCE_ROOT_LABELS = {
     "source_root",
     "existing_root",
@@ -214,12 +215,22 @@ def _single_target_root(rows: Sequence[dict[str, str]]) -> tuple[Path | None, li
 def load_json(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {JSON_LOAD_ERROR_KEY: "malformed_json"}
     except OSError:
         return {}
 
 
+def json_load_error(data: Mapping[str, Any], label: str) -> str | None:
+    reason = data.get(JSON_LOAD_ERROR_KEY) if isinstance(data, Mapping) else None
+    if not reason:
+        return None
+    return f"blocked_{reason}_{label}"
+
+
 def load_i3_context(path: Path) -> dict[str, Any]:
     data = load_json(path)
+    load_error = json_load_error(data, "i3_local_context")
     cleanup = data.get("cleanup") if isinstance(data, dict) else {}
     if not isinstance(cleanup, dict):
         cleanup = {}
@@ -227,6 +238,7 @@ def load_i3_context(path: Path) -> dict[str, Any]:
     if not isinstance(protected, list):
         protected = []
     return {
+        "load_error": load_error,
         "expected_staging_root": cleanup.get("expected_staging_root"),
         "protected_roots": [
             {"label": item.get("label"), "path": item.get("path")}
@@ -1049,21 +1061,30 @@ def run_staging_copy_retry(
     post_copy_local: dict[str, Any] = {}
     rows: list[dict[str, str]] = []
     local_context = load_i3_context(i3_local_details_path)
+    setup_errors: list[str] = []
+    if local_context.get("load_error"):
+        setup_errors.append(str(local_context["load_error"]))
     if expected_staging_root is None and local_context.get("expected_staging_root"):
         expected_staging_root = Path(str(local_context["expected_staging_root"]))
     effective_protected = list(protected_roots) or list(local_context.get("protected_roots") or [])
     i5c_summary = load_json(i5c_summary_path)
     deferred_ledger = load_json(deferred_ledger_path)
-    setup_errors: list[str] = []
+    for data, label in (
+        (i5c_summary, "i5c_summary"),
+        (deferred_ledger, "deferred_ledger"),
+    ):
+        error = json_load_error(data, label)
+        if error:
+            setup_errors.append(error)
     if not manifest_path.is_file():
         setup_errors.append("blocked_missing_backfilled_manifest")
     if not deferred_ledger_path.is_file():
         setup_errors.append("blocked_missing_deferred_ledger")
     if not setup_errors:
         rows = read_manifest(manifest_path)
-    derived_target, target_errors = _single_target_root(rows) if rows else (None, [])
-    setup_errors.extend(target_errors)
     if target_root is None:
+        derived_target, target_errors = _single_target_root(rows) if rows else (None, [])
+        setup_errors.extend(target_errors)
         target_root = derived_target
     if target_root is None:
         setup_errors.append("target_root_not_available")

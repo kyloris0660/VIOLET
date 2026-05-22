@@ -159,6 +159,7 @@ def _run_fixture(
     fixture: dict,
     *,
     execute: bool = False,
+    target_root: Path | None = None,
     allow_cloud_recall_copy: bool = False,
     confirm_cloud_aware_copy: str | None = None,
     failure_budget: dict | None = None,
@@ -169,7 +170,7 @@ def _run_fixture(
         deferred_ledger_path=fixture["ledger"],
         i5c_summary_path=fixture["i5c_summary"],
         i3_local_details_path=fixture["i3_details"],
-        target_root=None,
+        target_root=target_root,
         expected_staging_root=None,
         protected_roots=[],
         expected_selected_total=4,
@@ -295,6 +296,139 @@ def test_symlink_target_root_blocks_preflight(tmp_path: Path):
 
     assert check["status"] == "failed"
     assert "target_root_symlink" in errors
+
+
+def test_symlink_target_root_blocks_full_runner_path(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    link_root = tmp_path / "target-link"
+    try:
+        link_root.symlink_to(fixture["target_root"], target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlink unavailable on this platform: {exc}")
+
+    report, _local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=True,
+        target_root=link_root,
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "target_root_symlink" in report["pre_copy_target_check"]["errors"]
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
+def test_reparse_like_target_root_blocks_full_runner_path(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    original = i6.root_escape_hazards
+
+    def fake_hazards(path: Path) -> list[str]:
+        if path == fixture["target_root"]:
+            return ["target_root_reparse_point"]
+        return original(path)
+
+    monkeypatch.setattr(i6, "root_escape_hazards", fake_hazards)
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=True)
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "target_root_reparse_point" in report["pre_copy_target_check"]["errors"]
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
+def test_normal_target_root_passes_preflight(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=False)
+
+    assert exit_code == 0
+    assert report["pre_copy_target_check"]["status"] == "passed"
+    assert report["pre_copy_target_check"]["target_root_hazard_count"] == 0
+
+
+def test_malformed_json_input_blocks_without_crashing(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    fixture["i5c_summary"].write_text("{not valid json", encoding="utf-8")
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=True)
+    markdown = i6.render_markdown(report)
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "blocked_malformed_json_i5c_summary" in report["setup"]["errors"]
+    assert "blocked_malformed_json_i5c_summary" in markdown
+    assert report["actual_staging_copy"]["attempted"] is False
+
+
+def test_valid_json_input_still_runs(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=False)
+
+    assert exit_code == 0
+    assert report["status"] == "dry_run_passed"
+    assert report["setup"]["errors"] == []
+
+
+def test_explicit_target_root_allows_nested_target_paths(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    nested_root = fixture["target_root"]
+    rows = fixture["rows"]
+    for row in rows:
+        if i6.is_selected_copy_row(row):
+            row["proposed_target_path"] = str(nested_root / f"bucket_{row['temporal_bucket']}" / Path(row["proposed_target_path"]).name)
+    _write_csv(fixture["manifest"], rows)
+
+    report, _local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=False,
+        target_root=nested_root,
+    )
+
+    assert exit_code == 0
+    assert report["status"] == "dry_run_passed"
+    assert "ambiguous_selected_target_roots" not in report["setup"]["errors"]
+    assert report["manifest_validation"]["status"] == "passed"
+
+
+def test_explicit_target_root_rejects_target_escape(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    rows = fixture["rows"]
+    for row in rows:
+        if row["row_id"] == "1":
+            row["proposed_target_path"] = str(tmp_path / "outside" / "source_row_0001.jpg")
+    _write_csv(fixture["manifest"], rows)
+
+    report, _local, exit_code = _run_fixture(
+        monkeypatch,
+        fixture,
+        execute=False,
+        target_root=fixture["target_root"],
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "row_1_target_escape" in report["manifest_validation"]["errors"]
+
+
+def test_without_explicit_target_root_nested_target_paths_fail_closed(monkeypatch, tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    rows = fixture["rows"]
+    for row in rows:
+        if i6.is_selected_copy_row(row):
+            row["proposed_target_path"] = str(
+                fixture["target_root"] / f"bucket_{row['temporal_bucket']}" / Path(row["proposed_target_path"]).name
+            )
+    _write_csv(fixture["manifest"], rows)
+
+    report, _local, exit_code = _run_fixture(monkeypatch, fixture, execute=False)
+
+    assert exit_code == 1
+    assert report["status"] == "blocked_preflight_failed"
+    assert "ambiguous_selected_target_roots" in report["setup"]["errors"]
 
 
 def test_blocked_report_shape_renders_without_key_error(monkeypatch, tmp_path: Path):
