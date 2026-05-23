@@ -1,0 +1,76 @@
+{
+  "phase": "3.8d-G2",
+  "title": "Startup / Import Path Consistency Hardening",
+  "root_cause": "run.py loads backend.app.main:app while source_ingestion_gate used a top-level app.* import that only worked when <repo>\\backend was added to PYTHONPATH.",
+  "fixed": [
+    {
+      "file": "backend/app/services/source_ingestion_gate.py",
+      "change": "Replaced top-level app.utils.cloud_files import with package-relative ..utils.cloud_files import."
+    }
+  ],
+  "tests_added": [
+    {
+      "file": "tests/test_server_startup_imports.py",
+      "purpose": "Subprocess startup import smoke without <repo>\\backend in PYTHONPATH."
+    }
+  ],
+  "docs_updated": [
+    "docs/manual-validation.md",
+    "docs/test-workflow.md",
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md"
+  ],
+  "import_pattern_classification": {
+    "startup_path_critical_fixed": [
+      "backend/app/services/source_ingestion_gate.py"
+    ],
+    "backend_app_top_level_app_imports_remaining": 0,
+    "script_only_app_import_files_deferred": 18,
+    "test_only_app_import_files_deferred": 25,
+    "backend_app_imports_left_intentional": [
+      "run.py",
+      "tests/test_llm_translation_provider.py"
+    ]
+  },
+  "validation": {
+    "python_env_preflight": "PASS",
+    "python_executable": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\venv\\Scripts\\python.exe",
+    "git_diff_check": "PASS",
+    "py_compile": "PASS",
+    "focused_test": "tests/test_server_startup_imports.py: 1 passed",
+    "full_non_e2e": "1195 passed, 12 skipped, 12 warnings"
+  },
+  "startup_validation": {
+    "result": "PASS",
+    "port": 8012,
+    "base_url": "http://127.0.0.1:8012",
+    "pythonpath_backend_required": false,
+    "media_probe": "GET /api/media/?page=1&limit=1 returned HTTP 200",
+    "identity_check": "PASS",
+    "background_translation_worker": "disabled",
+    "port_released_after_cleanup": true
+  },
+  "forbidden_work_confirmation": {
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "staging_copy": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "entity_resolver": false,
+    "similarity_or_clustering": false,
+    "phase_4_work": false
+  },
+  "deferred": [
+    "Script-only app.* imports remain deferred because they are outside run.py startup and rely on script path setup.",
+    "Test-only app.* imports remain deferred because they rely on pytest path setup and are outside run.py startup."
+  ],
+  "artifact_lifecycle": {
+    "runtime_code_import_fix": "production reusable / runtime safety",
+    "startup_import_test": "reusable validation/safety test",
+    "manual_validation_doc_update": "public runbook / handoff",
+    "g2_report": "public report / handoff"
+  }
+}

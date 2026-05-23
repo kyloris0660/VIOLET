@@ -98,6 +98,7 @@ Phase 3.8d-I2 unifies this behind a Source Ingestion Gate. Tests must prove that
 | `tests/test_content_classification.py` | CLIP + heuristic classifiers |
 | `tests/test_smoke_validation.py` | Full pipeline smoke validation (Phase 3.1.1c) |
 | `tests/test_server_identity.py` | Server identity endpoint fields, Python runtime identity, no secrets exposed |
+| `tests/test_server_startup_imports.py` | Startup/import path smoke: repo-root `backend.app.*` imports do not require `<repo>\backend` in `PYTHONPATH` |
 | `tests/test_unified_llm.py` | `complete_chat`/`complete_json` success, failure, fallback paths |
 | `tests/test_python_env_preflight.py` | Python/venv env preflight, stdlib-only, sys.executable match |
 | `tests/test_check_clip_model_ready.py` | CLIP model preflight check (cache-only, HF_HUB_OFFLINE, exit codes) |
@@ -152,7 +153,7 @@ $env:VIOLET_RUN_REAL_E2E = "1"
 
 Use [Manual Validation Workflow](manual-validation.md) for local `development` / `blombooru` validation after explicitly approved import or pipeline phases. Do not load `. "$env:USERPROFILE\.violet\test-env.ps1"` for development DB validation; that script is for isolated test DB/test storage validation.
 
-The current development manual validation startup flow requires `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while some modules still use `app.*` imports. This is an accepted manual validation requirement until import/startup path consistency is hardened in a future phase. If the startup flow changes, update `docs/manual-validation.md` and obtain user/ChatGPT approval.
+As of Phase 3.8d-G2, development manual validation startup from repo root no longer requires `PYTHONPATH=<repo>\backend`. `run.py` loads `backend.app.main:app`, and startup-critical backend runtime imports must remain package-relative or otherwise importable through `backend.app.*`. If the startup flow changes again, update `docs/manual-validation.md` and obtain user/ChatGPT approval.
 
 ### HuggingFace Hub Offline Mode
 
@@ -226,7 +227,7 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ### Unit Tests (Tier 1)
 
 ```powershell
-& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_cloud_files.py tests/test_source_ingestion_gate.py tests/test_scanner_icloud.py tests/test_audit_cloud_availability.py tests/test_stage_pilot_files.py tests/test_content_classification.py tests/test_server_identity.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py tests/test_ai_tagging_localization_gate.py tests/test_ai_tagging_content_class_filter.py tests/test_check_server_identity_script.py tests/test_media_processor_mime_magic_cache.py tests/test_config_precedence.py -v
+& "$PY" -m pytest tests/test_env_safety.py tests/test_destructive_gate.py tests/test_cloud_files.py tests/test_source_ingestion_gate.py tests/test_scanner_icloud.py tests/test_audit_cloud_availability.py tests/test_stage_pilot_files.py tests/test_content_classification.py tests/test_server_identity.py tests/test_server_startup_imports.py tests/test_unified_llm.py tests/test_check_clip_model_ready.py tests/test_classification_job_clip_precheck.py tests/test_ai_tagging_localization_gate.py tests/test_ai_tagging_content_class_filter.py tests/test_check_server_identity_script.py tests/test_media_processor_mime_magic_cache.py tests/test_config_precedence.py -v
 ```
 
 ### Smoke Validation (Tier 1)

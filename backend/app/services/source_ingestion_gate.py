@@ -11,7 +11,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from app.utils.cloud_files import CloudFileState, classify_cloud_file_state
+from ..utils.cloud_files import CloudFileState, classify_cloud_file_state
 
 
 class SourceKind(str, Enum):

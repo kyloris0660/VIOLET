@@ -444,8 +444,18 @@ See [Content Classification](content-classification.md) for full documentation.
 - Documents artifact and operational script lifecycle policy: production reusable code, reusable validation/safety tools, phase-scoped operational runners, one-off local artifacts, and public reports/handoff/roadmap must be distinguished explicitly.
 - Documents reviewer feedback lifecycle handling: fix current phase correctness/safety/truthfulness issues, defer future-reuse/generalization/polish for phase-scoped or one-off code when they do not affect current decisions.
 - Strengthens the required `Engineering judgment / operator notes` section so final reports must assess phase boundaries, risks, reviewer findings, artifact lifecycle, prompt quality, and next-step recommendations.
-- Adds durable development/blombooru manual validation workflow in `docs/manual-validation.md`. The current manual startup requires `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while some modules still use `app.*` imports.
+- Adds durable development/blombooru manual validation workflow in `docs/manual-validation.md`. At the time of G1, manual startup required `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while one backend runtime module still used an `app.*` import; this was superseded by Phase 3.8d-G2.
 - This is docs/governance only. It does not add runtime behavior, DB migration, DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity/clustering, or Phase 4 work.
+
+### Phase 3.8d-G2 - Startup / Import Path Consistency Hardening
+
+**Goal:** Make development manual validation startup work from repo root with the approved venv Python and `run.py --debug`, without requiring `PYTHONPATH=<repo>\backend`.
+
+- Fixed the startup-critical mixed import in `backend/app/services/source_ingestion_gate.py` by replacing a top-level `app.*` import with a package-relative import.
+- Added `tests/test_server_startup_imports.py`, a subprocess import smoke that removes `<repo>\backend` from `PYTHONPATH` and imports both `backend.app.services.source_ingestion_gate` and `backend.app.main`.
+- Updated `docs/manual-validation.md`, `docs/test-workflow.md`, and `docs/current-handoff.md` so manual validation no longer documents the backend `PYTHONPATH` workaround as required.
+- The broader script/test ecosystem still contains intentional `app.*` imports that rely on explicit script path setup or pytest configuration; those are deferred because they are not in the `run.py` server startup path.
+- This hardening does not add DB migration, DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity/clustering, or Phase 4 work.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
@@ -539,13 +549,14 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Buffering is not silent skipping: every failed, excluded, deferred, backfilled, unresolved, and imported item must remain scoped to the current run/manifest/job in the production ledger.
 - The buffer design belongs in a future ingestion planning phase before full-library import. It must not bypass staging audit, item-ledger, or DB import approval gates.
 
-### Future hardening - Import / Startup Path Consistency
+### Completed hardening - Import / Startup Path Consistency
 
-**Priority:** Medium before larger manual validation or full-library workflows.
+**Status:** Completed by Phase 3.8d-G2 before Phase 3.9 / Phase 4 work.
 
-- Current development manual validation uses `PYTHONPATH=<repo>\backend` because `run.py` starts `backend.app.main:app` while some modules still use `app.*` imports.
-- A later hardening phase should remove reliance on operator memory by making import paths and startup context consistent.
-- Until then, `docs/manual-validation.md` is the source of truth for development/blombooru manual validation startup.
+- Development manual validation no longer uses `PYTHONPATH=<repo>\backend`; run from repo root with the approved venv Python and `run.py --debug`.
+- Startup-critical backend runtime imports should stay package-relative or otherwise importable through `backend.app.*`.
+- Remaining script/test-only `app.*` imports are not part of the server startup path and should only be changed in a separate, reviewed import cleanup phase if future evidence shows value.
+- `docs/manual-validation.md` remains the source of truth for development/blombooru manual validation startup.
 
 ### Future hardening - Proper Noun / Entity / Character Localization Strategy
 
