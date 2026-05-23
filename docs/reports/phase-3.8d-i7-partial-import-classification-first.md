@@ -58,6 +58,8 @@
 - Classification resume no longer trusts processed count alone; it requires an identity proof for the same imported media ID set or DB-backed content_class state for that set.
 - Post-import DB/storage validation is now an authoritative success gate: missing managed originals/thumbnails, non-app-relative paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures set `blocked_db_storage_validation_failed`.
 - Localization continuation success is derived from the current continuation result and final remaining general/meta count, not stale previous summary success.
+- Localization continuation now uses the actual current DB source-label media set as its scope. It supports partial imported counts greater than zero and blocks only when the source label has no imported media.
+- Translation job persistence is fail-closed: exceptions during translation upsert, remaining-candidate accounting, or final DB commit mark the `TagTranslationJob` as failed with `finished_at` when possible, instead of leaving a stale `running` job.
 - Localization continuation was intentionally limited to the current I7 eligible-derived `general`/`meta` candidates. Character/copyright/artist proper-noun categories remained skipped.
 
 ## Validation
@@ -69,18 +71,19 @@
 - DB public path privacy leaks: `0`
 - API/browser/admin smoke: `passed`
 - Server log scan: `passed`
+- Closeout translation-job read-only check: active translation jobs `0`; I7 translation jobs `16` and `17` are `completed` with `finished_at`.
 
 ## Root-cause Audit
-- Root cause: I7 could previously record post-import validation facts without making overall success depend on those facts, and resume/continuation paths could inherit stale success state.
-- Related patterns inspected: DB/storage validation status construction, overall `summary.status` / `summary.success` assignment after localization, import resume identity, classification resume identity, and public report privacy writing.
-- Fixes applied: DB/storage validation now gates final pipeline success; app-relative path containment is enforced before file probes; missing managed files fail validation; localization continuation sets success from the current continuation outcome.
+- Root cause: I7 could previously record post-import validation facts without making overall success depend on those facts; resume/continuation paths could inherit stale success state; localization continuation still assumed the original `994` count; and translation job DB persistence errors could leave stale `running` jobs.
+- Related patterns inspected: DB/storage validation status construction, overall `summary.status` / `summary.success` assignment after localization, import resume identity, classification resume identity, public report privacy writing, localization continuation scope selection, and `TagTranslationJob` finalization after provider results.
+- Fixes applied: DB/storage validation now gates final pipeline success; app-relative path containment is enforced before file probes; missing managed files fail validation; localization continuation sets success from the current continuation outcome; partial source-label counts are supported; translation persistence exceptions mark jobs failed where possible.
 - Deferred: no broad DB ledger redesign, no Entity Resolver/similarity, and no full E2E rerun in this closeout because the change is runner validation/reporting plus focused read-only DB/storage verification.
 
 ## Tests
 - Diff check: `passed (warnings only: CRLF normalization)`
 - Py compile: `passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py`
-- Focused tests: `passed: 23 passed`
-- Full non-E2E suite: `passed: 1183 passed, 12 skipped, 12 warnings`
+- Focused tests: `passed: 30 passed`
+- Full non-E2E suite: `passed: 1190 passed, 12 skipped, 12 warnings`
 
 ## Safety Confirmation
 - Failed I6 rows were not imported.

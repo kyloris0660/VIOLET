@@ -414,3 +414,172 @@ def test_localization_continuation_failure_sets_success_false() -> None:
 
     assert summary["status"] == "localization_continuation_provider_unavailable"
     assert summary["success"] is False
+
+
+def test_localization_continuation_scope_allows_original_994_count() -> None:
+    scope = i7.build_localization_continuation_scope(994)
+
+    assert scope["status"] == "passed"
+    assert scope["db_source_label_count"] == 994
+    assert scope["expected_original_i7_candidate_count"] == 994
+    assert scope["partial_import_compatible"] is True
+
+
+def test_localization_continuation_scope_allows_partial_positive_count() -> None:
+    scope = i7.build_localization_continuation_scope(900)
+
+    assert scope["status"] == "passed"
+    assert scope["db_source_label_count"] == 900
+    assert scope["partial_import_compatible"] is True
+
+
+def test_localization_continuation_scope_blocks_zero_count() -> None:
+    scope = i7.build_localization_continuation_scope(0)
+
+    assert scope["status"] == "no_imported_media_for_source_label"
+    assert scope["db_source_label_count"] == 0
+    assert scope["partial_import_compatible"] is True
+
+
+class _FakeDb:
+    def __init__(self, *, fail_completion_commit_once: bool = False) -> None:
+        self.fail_completion_commit_once = fail_completion_commit_once
+        self.commits = 0
+        self.rollbacks = 0
+
+    def commit(self) -> None:
+        self.commits += 1
+        if self.fail_completion_commit_once and self.commits == 1:
+            raise RuntimeError("completion commit failed")
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+def _translation(name: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        canonical_name=name,
+        display_name_zh=f"{name}_zh",
+        aliases_zh=[],
+        confidence=0.9,
+        needs_review=False,
+    )
+
+
+def _localization_candidates() -> list[dict]:
+    return [{"canonical_name": "blue_sky", "category": "general"}]
+
+
+def test_translation_persistence_success_marks_job_completed() -> None:
+    db = _FakeDb()
+    job = SimpleNamespace()
+    result = {"status": "running", "translated_count": 0, "failed_count": 0}
+
+    output = i7.persist_localization_translations(
+        db,
+        job,
+        _localization_candidates(),
+        [_translation("blue_sky")],
+        lang="zh-CN",
+        skipped_proper_nouns=3,
+        provider_name="unit-test-provider",
+        result=result,
+        upsert_translation_fn=lambda *_args, **_kwargs: object(),
+        remaining_candidates_fn=lambda: [],
+        invalidate_cache_fn=lambda: None,
+        sanitize_error_fn=lambda value: value,
+    )
+
+    assert output["status"] == "completed"
+    assert output["translated_count"] == 1
+    assert output["failed_count"] == 0
+    assert output["remaining_missing_translations"] == 0
+    assert job.status == "completed"
+    assert job.finished_at is not None
+
+
+def test_translation_persistence_upsert_error_marks_job_failed() -> None:
+    db = _FakeDb()
+    job = SimpleNamespace()
+    result = {"status": "running", "translated_count": 0, "failed_count": 0}
+
+    def raise_upsert(*_args, **_kwargs):
+        raise RuntimeError("db write failed")
+
+    output = i7.persist_localization_translations(
+        db,
+        job,
+        _localization_candidates(),
+        [_translation("blue_sky")],
+        lang="zh-CN",
+        skipped_proper_nouns=3,
+        provider_name="unit-test-provider",
+        result=result,
+        upsert_translation_fn=raise_upsert,
+        remaining_candidates_fn=lambda: [],
+        invalidate_cache_fn=lambda: None,
+        sanitize_error_fn=lambda value: value,
+    )
+
+    assert output["status"] == "failed_translation_persistence"
+    assert output["job_failed_state_persisted"] is True
+    assert job.status == "failed"
+    assert job.finished_at is not None
+    assert db.rollbacks >= 1
+
+
+def test_translation_persistence_remaining_query_error_marks_job_failed() -> None:
+    db = _FakeDb()
+    job = SimpleNamespace()
+    result = {"status": "running", "translated_count": 0, "failed_count": 0}
+
+    def raise_remaining():
+        raise RuntimeError("remaining accounting failed")
+
+    output = i7.persist_localization_translations(
+        db,
+        job,
+        _localization_candidates(),
+        [_translation("blue_sky")],
+        lang="zh-CN",
+        skipped_proper_nouns=3,
+        provider_name="unit-test-provider",
+        result=result,
+        upsert_translation_fn=lambda *_args, **_kwargs: object(),
+        remaining_candidates_fn=raise_remaining,
+        invalidate_cache_fn=lambda: None,
+        sanitize_error_fn=lambda value: value,
+    )
+
+    assert output["status"] == "failed_translation_persistence"
+    assert output["translated_count"] == 1
+    assert output["job_failed_state_persisted"] is True
+    assert job.status == "failed"
+    assert job.finished_at is not None
+
+
+def test_translation_persistence_final_commit_error_marks_job_failed() -> None:
+    db = _FakeDb(fail_completion_commit_once=True)
+    job = SimpleNamespace()
+    result = {"status": "running", "translated_count": 0, "failed_count": 0}
+
+    output = i7.persist_localization_translations(
+        db,
+        job,
+        _localization_candidates(),
+        [_translation("blue_sky")],
+        lang="zh-CN",
+        skipped_proper_nouns=3,
+        provider_name="unit-test-provider",
+        result=result,
+        upsert_translation_fn=lambda *_args, **_kwargs: object(),
+        remaining_candidates_fn=lambda: [],
+        invalidate_cache_fn=lambda: None,
+        sanitize_error_fn=lambda value: value,
+    )
+
+    assert output["status"] == "failed_translation_persistence"
+    assert output["job_failed_state_persisted"] is True
+    assert job.status == "failed"
+    assert job.finished_at is not None
+    assert db.commits == 2

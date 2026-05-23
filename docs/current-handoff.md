@@ -852,6 +852,7 @@ Do not start Phase 4 or run Entity Resolver/similarity/clustering until Phase 3.
 3. Decide a separate recovery path for rows `799`, `839`, `922`, `970`, `971`, and `972`: targeted provider/network retry, same-bucket backfill, or deferred cloud recovery.
 4. Treat PR #64 closeout hardening as active safety policy for this runner: public report privacy leaks fail closed, import resume media IDs come from DB source-label rows, and classification resume requires media ID identity proof or DB-backed classification state.
 5. Treat post-import DB/storage validation as authoritative for I7 success: missing app-managed originals/thumbnails, non-app-relative DB paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures must block completion.
+6. Treat I7 localization continuation as partial-import compatible: use the actual current DB source-label media set, block only when that set is empty, continue to skip proper-noun categories, and fail-close `TagTranslationJob` on translation persistence/accounting exceptions.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

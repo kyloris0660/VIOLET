@@ -1056,6 +1056,125 @@ async def translate_with_provider(provider: Any, candidates: list[dict[str, Any]
     return await provider.translate_tags(tag_inputs)
 
 
+def mark_translation_job_failed(
+    db: Session,
+    job: Any,
+    result: dict[str, Any],
+    *,
+    status: str,
+    error_message: str,
+    processed: int,
+    translated: int,
+    failed: int,
+    skipped: int,
+) -> dict[str, Any]:
+    safe_error = sanitize_public_text(error_message)[:1000]
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    persisted = False
+    try:
+        job.status = "failed"
+        job.processed = processed
+        job.translated = translated
+        job.failed = failed
+        job.skipped = skipped
+        job.error_message = safe_error
+        job.last_error = safe_error
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        persisted = True
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        safe_error = sanitize_public_text(f"{safe_error}; failed_state_commit={exc.__class__.__name__}")[:1000]
+    result.update(
+        {
+            "status": status,
+            "processed": processed,
+            "translated_count": translated,
+            "failed_count": failed,
+            "error": safe_error,
+            "job_failed_state_persisted": persisted,
+        }
+    )
+    return result
+
+
+def persist_localization_translations(
+    db: Session,
+    job: Any,
+    candidates: list[dict[str, Any]],
+    translations: list[Any],
+    *,
+    lang: str,
+    skipped_proper_nouns: int,
+    provider_name: str,
+    result: dict[str, Any],
+    upsert_translation_fn: Any,
+    remaining_candidates_fn: Any,
+    invalidate_cache_fn: Any,
+    sanitize_error_fn: Any,
+) -> dict[str, Any]:
+    candidate_by_name = {item["canonical_name"]: item for item in candidates}
+    seen_outputs: set[str] = set()
+    saved_names: set[str] = set()
+    try:
+        for translation in translations:
+            canonical = getattr(translation, "canonical_name", "")
+            if canonical not in candidate_by_name or canonical in seen_outputs:
+                continue
+            seen_outputs.add(canonical)
+            item = candidate_by_name[canonical]
+            saved = upsert_translation_fn(
+                db,
+                canonical_name=canonical,
+                display_name=getattr(translation, "display_name_zh", ""),
+                lang=lang,
+                aliases=getattr(translation, "aliases_zh", []) or [],
+                category=item["category"],
+                source="llm",
+                status="translated",
+                confidence=getattr(translation, "confidence", None),
+                needs_review=bool(getattr(translation, "needs_review", False)),
+                provider=provider_name,
+            )
+            if saved is not None:
+                saved_names.add(canonical)
+
+        result["translated_count"] = len(saved_names)
+        result["failed_count"] = max(0, len(candidates) - len(saved_names))
+        job.status = "completed" if result["failed_count"] == 0 else "failed"
+        job.processed = len(candidates)
+        job.translated = result["translated_count"]
+        job.failed = result["failed_count"]
+        job.skipped = skipped_proper_nouns
+        remaining = len(remaining_candidates_fn())
+        job.remaining_after = remaining
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        invalidate_cache_fn()
+        result["remaining_missing_translations"] = remaining
+        result["status"] = "completed" if result["failed_count"] == 0 else "failed_partial"
+        return result
+    except Exception as exc:
+        safe_error = sanitize_public_text(sanitize_error_fn(str(exc)))[:1000]
+        return mark_translation_job_failed(
+            db,
+            job,
+            result,
+            status="failed_translation_persistence",
+            error_message=safe_error,
+            processed=len(candidates),
+            translated=len(saved_names),
+            failed=max(0, len(candidates) - len(saved_names)),
+            skipped=skipped_proper_nouns,
+        )
+
+
 def run_localization(limit: int | None = None, lang: str = "zh-CN") -> dict[str, Any]:
     from app.config import settings
     from app.models import TagTranslationJob
@@ -1133,63 +1252,38 @@ def run_localization(limit: int | None = None, lang: str = "zh-CN") -> dict[str,
             translations = asyncio.run(translate_with_provider(provider, candidates))
         except Exception as exc:
             safe_error = sanitize_public_text(_sanitize_error_message(str(exc)))[:1000]
-            job.status = "failed"
-            job.failed = len(candidates)
-            job.error_message = safe_error
-            job.last_error = safe_error
-            job.finished_at = datetime.now(timezone.utc)
-            db.commit()
-            result.update({"status": "failed_provider_error", "failed_count": len(candidates), "error": safe_error})
-            return result
-
-        candidate_by_name = {item["canonical_name"]: item for item in candidates}
-        seen_outputs: set[str] = set()
-        saved_names: set[str] = set()
-        for translation in translations:
-            canonical = getattr(translation, "canonical_name", "")
-            if canonical not in candidate_by_name or canonical in seen_outputs:
-                continue
-            seen_outputs.add(canonical)
-            item = candidate_by_name[canonical]
-            saved = upsert_translation(
+            return mark_translation_job_failed(
                 db,
-                canonical_name=canonical,
-                display_name=getattr(translation, "display_name_zh", ""),
-                lang=lang,
-                aliases=getattr(translation, "aliases_zh", []) or [],
-                category=item["category"],
-                source="llm",
-                status="translated",
-                confidence=getattr(translation, "confidence", None),
-                needs_review=bool(getattr(translation, "needs_review", False)),
-                provider=provider.get_provider_name(),
+                job,
+                result,
+                status="failed_provider_error",
+                error_message=safe_error,
+                processed=0,
+                translated=0,
+                failed=len(candidates),
+                skipped=skipped_proper_nouns,
             )
-            if saved is not None:
-                saved_names.add(canonical)
 
-        result["translated_count"] = len(saved_names)
-        result["failed_count"] = max(0, len(candidates) - len(saved_names))
-        job.status = "completed" if result["failed_count"] == 0 else "failed"
-        job.processed = len(candidates)
-        job.translated = result["translated_count"]
-        job.failed = result["failed_count"]
-        job.skipped = skipped_proper_nouns
-        remaining = len(
-            select_eligible_localization_candidates(
+        return persist_localization_translations(
+            db,
+            job,
+            candidates,
+            list(translations),
+            lang=lang,
+            skipped_proper_nouns=skipped_proper_nouns,
+            provider_name=provider.get_provider_name(),
+            result=result,
+            upsert_translation_fn=upsert_translation,
+            remaining_candidates_fn=lambda: select_eligible_localization_candidates(
                 db,
                 SOURCE_LABEL,
                 lang=lang,
                 categories=LOCALIZABLE_CATEGORIES,
                 limit=None,
-            )
+            ),
+            invalidate_cache_fn=invalidate_translation_cache,
+            sanitize_error_fn=_sanitize_error_message,
         )
-        job.remaining_after = remaining
-        job.finished_at = datetime.now(timezone.utc)
-        db.commit()
-        invalidate_translation_cache()
-        result["remaining_missing_translations"] = remaining
-        result["status"] = "completed" if result["failed_count"] == 0 else "failed_partial"
-        return result
     finally:
         db.close()
 
@@ -1227,6 +1321,22 @@ def localization_candidate_snapshot(lang: str = "zh-CN") -> dict[str, Any]:
     }
 
 
+def build_localization_continuation_scope(db_source_label_count: int) -> dict[str, Any]:
+    if db_source_label_count <= 0:
+        return {
+            "status": "no_imported_media_for_source_label",
+            "db_source_label_count": db_source_label_count,
+            "expected_original_i7_candidate_count": EXPECTED_STAGED_ROWS,
+            "partial_import_compatible": True,
+        }
+    return {
+        "status": "passed",
+        "db_source_label_count": db_source_label_count,
+        "expected_original_i7_candidate_count": EXPECTED_STAGED_ROWS,
+        "partial_import_compatible": True,
+    }
+
+
 def run_localization_continuation(args: argparse.Namespace) -> dict[str, Any]:
     try:
         summary = read_json(args.summary_json)
@@ -1242,13 +1352,15 @@ def run_localization_continuation(args: argparse.Namespace) -> dict[str, Any]:
     try:
         summary["db_identity_closeout"] = verify_db_identity(context, engine)
         imported_media_ids = media_ids_for_source(engine, SOURCE_LABEL)
-        if len(imported_media_ids) != EXPECTED_STAGED_ROWS:
-            summary["status"] = "blocked_resume_db_source_label_count_mismatch"
+        scope = build_localization_continuation_scope(len(imported_media_ids))
+        if scope["status"] != "passed":
+            summary["status"] = str(scope["status"])
             summary["success"] = False
             summary["localization_continuation"] = {
-                "status": "blocked_resume_db_source_label_count_mismatch",
-                "db_source_label_count": len(imported_media_ids),
-                "expected_count": EXPECTED_STAGED_ROWS,
+                **scope,
+                "db_import_reran": False,
+                "classification_reran": False,
+                "ai_tagging_reran": False,
             }
             summary["finished_at"] = utc_now()
             return summary
@@ -1281,6 +1393,7 @@ def run_localization_continuation(args: argparse.Namespace) -> dict[str, Any]:
         after = localization_candidate_snapshot(lang=args.lang)
         initial = summary.get("localization", {}) if isinstance(summary.get("localization"), dict) else {}
         summary["localization_continuation"] = {
+            **scope,
             "status": continuation.get("status"),
             "additional_candidate_count": candidate_count,
             "additional_translated_count": int(continuation.get("translated_count") or 0),

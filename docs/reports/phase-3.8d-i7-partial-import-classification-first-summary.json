@@ -456,8 +456,8 @@
   "tests": {
     "git_diff_check": "passed (warnings only: CRLF normalization)",
     "py_compile": "passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py",
-    "focused_pytest": "passed: 23 passed",
-    "full_non_e2e_pytest": "passed: 1183 passed, 12 skipped, 12 warnings",
+    "focused_pytest": "passed: 30 passed",
+    "full_non_e2e_pytest": "passed: 1190 passed, 12 skipped, 12 warnings",
     "commands": [
       "git diff --check",
       "& \"$PY\" -m py_compile scripts/run_phase38d_i7_partial_import_classification_first.py tests/test_phase38d_i7_partial_import_classification_first.py",
@@ -541,6 +541,10 @@
       "storage_probe_failure"
     ],
     "localization_continuation_success_source": "current_continuation_result_and_remaining_general_meta_count",
+    "localization_continuation_scope": "actual_current_db_source_label_media_set",
+    "partial_import_compatible_localization_continuation": true,
+    "localization_continuation_blocks_on_zero_source_label_count": true,
+    "translation_job_lifecycle": "failed_on_translation_persistence_or_accounting_exception",
     "db_import_reran": false,
     "classification_reran": false,
     "ai_tagging_reran": false,
@@ -554,5 +558,27 @@
     "source_icloud_write_mutation": false,
     "entity_resolver_ran": false,
     "similarity_or_clustering_ran": false
+  },
+  "closeout_read_only_verification": {
+    "source_label_count": 994,
+    "active_translation_jobs": 0,
+    "latest_i7_translation_jobs": [
+      {
+        "id": 17,
+        "status": "completed",
+        "processed": 370,
+        "translated": 370,
+        "failed": 0,
+        "has_finished_at": true
+      },
+      {
+        "id": 16,
+        "status": "completed",
+        "processed": 200,
+        "translated": 200,
+        "failed": 0,
+        "has_finished_at": true
+      }
+    ]
   }
 }
