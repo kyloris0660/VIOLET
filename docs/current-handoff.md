@@ -853,6 +853,7 @@ Do not start Phase 4 or run Entity Resolver/similarity/clustering until Phase 3.
 4. Treat PR #64 closeout hardening as active safety policy for this runner: public report privacy leaks fail closed, import resume media IDs come from DB source-label rows, and classification resume requires media ID identity proof or DB-backed classification state.
 5. Treat post-import DB/storage validation as authoritative for I7 success: missing app-managed originals/thumbnails, non-app-relative DB paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures must block completion.
 6. Treat I7 localization continuation as partial-import compatible: use the actual current DB source-label media set, block only when that set is empty, continue to skip proper-noun categories, and fail-close `TagTranslationJob` on translation persistence/accounting exceptions.
+7. Treat I7 downstream scope as DB SOURCE_LABEL authoritative after import/resume: classification, AI scope, localization scope, DB/storage validation, and item-ledger downstream state must use current `Media.source='violet:phase3.8d:i7:staged-success'` rows after validating count/hash coverage against staged-success import candidates. External `duplicate_by_hash` rows outside the source label must block coverage instead of silently shrinking downstream processing. In-process translation worker liveness inspection is deferred to a later worker-orchestration hardening stage.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

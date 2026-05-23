@@ -784,6 +784,108 @@ def resume_import_items_from_db_source(
     return result
 
 
+def validate_source_label_import_coverage(
+    engine: Engine,
+    import_items: Sequence[staged_import.ImportItem],
+    *,
+    expected_count: int,
+) -> tuple[dict[str, Any], list[int], list[staged_import.ImportItem]]:
+    rows = media_rows_for_source(engine, SOURCE_LABEL)
+    expected_by_hash: dict[str, staged_import.ImportItem] = {}
+    duplicate_candidate_hashes: set[str] = set()
+    missing_candidate_hash_rows: list[str] = []
+    for item in import_items:
+        row_id = str(item.candidate.row_id)
+        file_hash = str(item.candidate.file_hash or "")
+        if not file_hash:
+            missing_candidate_hash_rows.append(row_id)
+            continue
+        if file_hash in expected_by_hash:
+            duplicate_candidate_hashes.add(file_hash)
+        expected_by_hash[file_hash] = item
+
+    rows_by_hash: dict[str, dict[str, Any]] = {}
+    duplicate_source_label_hashes: set[str] = set()
+    missing_db_hash_count = 0
+    for row in rows:
+        file_hash = str(row.get("hash") or "")
+        if not file_hash:
+            missing_db_hash_count += 1
+            continue
+        if file_hash in rows_by_hash:
+            duplicate_source_label_hashes.add(file_hash)
+        rows_by_hash[file_hash] = row
+
+    expected_hashes = set(expected_by_hash)
+    source_hashes = set(rows_by_hash)
+    missing_source_label_hashes = sorted(expected_hashes - source_hashes)
+    unexpected_source_label_hashes = sorted(source_hashes - expected_hashes)
+
+    coverage = {
+        "status": "passed",
+        "source_label": SOURCE_LABEL,
+        "expected_import_candidate_count": expected_count,
+        "source_label_media_count": len(rows),
+        "candidate_hash_count": len(expected_hashes),
+        "source_label_hash_count": len(source_hashes),
+        "missing_candidate_hash_rows_count": len(missing_candidate_hash_rows),
+        "duplicate_candidate_hash_count": len(duplicate_candidate_hashes),
+        "missing_db_hash_count": missing_db_hash_count,
+        "duplicate_source_label_hash_count": len(duplicate_source_label_hashes),
+        "missing_source_label_hash_count": len(missing_source_label_hashes),
+        "unexpected_source_label_hash_count": len(unexpected_source_label_hashes),
+        "identity_match": False,
+        "identity_source": "db_source_label_hash_match",
+        "paths_redacted": True,
+    }
+
+    if len(rows) != expected_count:
+        coverage["status"] = (
+            "blocked_import_coverage_incomplete"
+            if len(rows) < expected_count
+            else "blocked_import_coverage_unexpected_extra"
+        )
+    elif len(expected_hashes) != expected_count or missing_candidate_hash_rows or duplicate_candidate_hashes:
+        coverage["status"] = "blocked_import_candidate_hash_identity_invalid"
+    elif (
+        missing_db_hash_count
+        or duplicate_source_label_hashes
+        or missing_source_label_hashes
+        or unexpected_source_label_hashes
+    ):
+        coverage["status"] = "blocked_import_coverage_hash_mismatch"
+    else:
+        coverage["identity_match"] = True
+
+    if coverage["status"] != "passed":
+        coverage["sample_missing_source_label_row_ids"] = [
+            int(expected_by_hash[file_hash].candidate.row_id) for file_hash in missing_source_label_hashes[:20]
+        ]
+        coverage["sample_unexpected_source_label_media_ids"] = [
+            int(rows_by_hash[file_hash]["id"]) for file_hash in unexpected_source_label_hashes[:20]
+        ]
+        return coverage, [], []
+
+    covered_items: list[staged_import.ImportItem] = []
+    for file_hash, item in expected_by_hash.items():
+        row = rows_by_hash[file_hash]
+        covered_items.append(
+            staged_import.ImportItem(
+                candidate=item.candidate,
+                status="imported",
+                media_id=int(row["id"]),
+                managed_path=str(row.get("path") or ""),
+                thumbnail_path=str(row.get("thumbnail_path") or ""),
+                message="covered by current DB SOURCE_LABEL media row",
+            )
+        )
+    covered_items.sort(key=lambda item: int(item.candidate.row_id))
+    media_ids = sorted(int(row["id"]) for row in rows)
+    coverage["downstream_media_ids_count"] = len(media_ids)
+    coverage["downstream_media_ids_sample"] = media_ids[:20]
+    return coverage, media_ids, covered_items
+
+
 def content_class_distribution(db: Session, media_ids: Sequence[int]) -> dict[str, int]:
     from app.models import Media
 
@@ -1608,6 +1710,7 @@ def apply_localization_continuation_status(
 def render_markdown_report(summary: MappingLike) -> str:
     ledger = summary.get("i6_item_ledger_validation", {})
     import_execute = summary.get("import_execute", {})
+    import_coverage = summary.get("import_coverage", {})
     classification = summary.get("classification", {})
     ai = summary.get("ai_tagging", {})
     localization = summary.get("localization", {})
@@ -1643,6 +1746,10 @@ def render_markdown_report(summary: MappingLike) -> str:
         f"- Resume note: `{import_execute.get('resume_reason', 'not_applicable')}`",
         f"- App-managed writes in final resume run: `{import_execute.get('app_managed_storage_writes')}`",
         f"- Prior successful import writes preserved: `{import_execute.get('previous_app_managed_storage_writes', 0)}`",
+        f"- SOURCE_LABEL coverage: `{import_coverage.get('status', 'not_checked')}`",
+        f"- SOURCE_LABEL media count: `{import_coverage.get('source_label_media_count')}`",
+        f"- Downstream media scope: `{import_coverage.get('downstream_media_ids_count')}`",
+        f"- Downstream identity source: `{import_coverage.get('identity_source', 'not_checked')}`",
         "",
         "## Classification-first Pipeline",
         f"- Classification status: `{classification.get('status')}`",
@@ -1777,19 +1884,18 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             and len(source_media_ids_before_execute) == len(candidates)
         ):
             executed_items = resume_import_items_from_db_source(engine, items, expected_count=len(candidates))
-            imported_media_ids = [int(item.media_id) for item in executed_items if item.media_id]
             import_result = {
                 "status": "resumed_after_prior_successful_import",
                 "source_label": SOURCE_LABEL,
                 "input_would_create": 0,
-                "imported_count": len(imported_media_ids),
+                "imported_count": len(executed_items),
                 "duplicate_by_hash": dry_run["duplicate_by_hash"],
                 "failed_count": 0,
                 "invalid_count": 0,
-                "imported_media_ids_sample": imported_media_ids[:20],
-                "imported_media_ids_count": len(imported_media_ids),
+                "imported_media_ids_sample": [int(item.media_id) for item in executed_items if item.media_id][:20],
+                "imported_media_ids_count": len([item for item in executed_items if item.media_id]),
                 "app_managed_storage_writes": 0,
-                "previous_app_managed_storage_writes": len(imported_media_ids),
+                "previous_app_managed_storage_writes": len(executed_items),
                 "db_stores_app_relative_paths_only": True,
                 "resume_reason": "current DB source-label rows prove previous I7 import completed",
                 "resume_identity_source": "db_source_label_hash_match",
@@ -1797,7 +1903,6 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             }
         else:
             executed_items, import_result = execute_import(items, context, engine)
-            imported_media_ids = [int(item.media_id) for item in executed_items if item.status == "imported" and item.media_id]
         summary["import_execute"] = import_result
         if import_result["status"] != "resumed_after_prior_successful_import":
             local_details["import_items"] = [
@@ -1814,6 +1919,20 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             ]
         if import_result["failed_count"]:
             summary["status"] = "blocked_import_failure"
+            summary["success"] = False
+            return summary
+
+        import_coverage, imported_media_ids, downstream_import_items = validate_source_label_import_coverage(
+            engine,
+            executed_items,
+            expected_count=len(candidates),
+        )
+        summary["import_coverage"] = import_coverage
+        summary["import_execute"]["source_label_media_count"] = import_coverage.get("source_label_media_count")
+        summary["import_execute"]["downstream_media_ids_count"] = import_coverage.get("downstream_media_ids_count", 0)
+        summary["import_execute"]["downstream_identity_source"] = import_coverage.get("identity_source")
+        if import_coverage["status"] != "passed":
+            summary["status"] = import_coverage["status"]
             summary["success"] = False
             return summary
 
@@ -1842,7 +1961,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             classification = run_classification(imported_media_ids, args.classification_chunk_size)
             if classification.get("status") == "completed":
                 proof = media_ids_identity_proof(imported_media_ids)
-                proof["identity_source"] = "current_run_imported_media_ids"
+                proof["identity_source"] = "db_source_label_import_coverage"
                 classification["identity_proof"] = proof
         summary["classification"] = classification
         if classification["status"] != "completed":
@@ -1876,9 +1995,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             return summary
         summary["import_item_ledger"] = write_import_item_ledger(
             args.ledger,
-            executed_items,
+            downstream_import_items,
             args.import_ledger,
             downstream={
+                "import_coverage": import_coverage,
                 "classification": classification,
                 "ai_scope": ai_scope,
                 "ai_tagging": ai_result,
@@ -1897,6 +2017,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 "i6_item_ledger_validation",
                 "import_dry_run",
                 "import_execute",
+                "import_coverage",
                 "classification",
                 "ai_tagging",
                 "localization",

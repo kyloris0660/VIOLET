@@ -27,6 +27,10 @@
 - Closeout resume identity: future resume paths rebuild media IDs from current DB source-label rows and file-hash matching, not local validation details.
 - App-managed writes in final resume run: `0`
 - Prior successful import writes preserved: `994`
+- SOURCE_LABEL coverage: `passed`
+- SOURCE_LABEL media count: `994`
+- Downstream scope source: `current DB SOURCE_LABEL media set`
+- Downstream identity source: `db_source_label_hash_match`
 
 ## Classification-first Pipeline
 - Classification status: `completed`
@@ -60,7 +64,10 @@
 - Localization continuation success is derived from the current continuation result and final remaining general/meta count, not stale previous summary success.
 - Localization continuation now uses the actual current DB source-label media set as its scope. It supports partial imported counts greater than zero and blocks only when the source label has no imported media.
 - Translation job persistence is fail-closed: exceptions during translation upsert, remaining-candidate accounting, or final DB commit mark the `TagTranslationJob` as failed with `finished_at` when possible, instead of leaving a stale `running` job.
+- Downstream media scope is now DB SOURCE_LABEL authoritative after import/resume. The runner validates that current `SOURCE_LABEL` media rows match the staged-success import candidates by hash before classification, AI tagging, localization, DB/storage validation, or item-ledger downstream status updates.
+- Incomplete or mismatched SOURCE_LABEL coverage now blocks as `blocked_import_coverage_incomplete` / coverage mismatch before downstream work, so external duplicate-by-hash rows cannot silently shrink the downstream media set.
 - Localization continuation was intentionally limited to the current I7 eligible-derived `general`/`meta` candidates. Character/copyright/artist proper-noun categories remained skipped.
+- Deferred: in-process translation worker thread alive/idle inspection remains a later worker-orchestration hardening item. The current DB job gate remains required, and PR #64 stays scoped to the controlled I7 CLI pipeline.
 
 ## Validation
 - DB/storage validation: `passed`
@@ -74,16 +81,16 @@
 - Closeout translation-job read-only check: active translation jobs `0`; I7 translation jobs `16` and `17` are `completed` with `finished_at`.
 
 ## Root-cause Audit
-- Root cause: I7 could previously record post-import validation facts without making overall success depend on those facts; resume/continuation paths could inherit stale success state; localization continuation still assumed the original `994` count; and translation job DB persistence errors could leave stale `running` jobs.
-- Related patterns inspected: DB/storage validation status construction, overall `summary.status` / `summary.success` assignment after localization, import resume identity, classification resume identity, public report privacy writing, localization continuation scope selection, and `TagTranslationJob` finalization after provider results.
-- Fixes applied: DB/storage validation now gates final pipeline success; app-relative path containment is enforced before file probes; missing managed files fail validation; localization continuation sets success from the current continuation outcome; partial source-label counts are supported; translation persistence exceptions mark jobs failed where possible.
-- Deferred: no broad DB ledger redesign, no Entity Resolver/similarity, and no full E2E rerun in this closeout because the change is runner validation/reporting plus focused read-only DB/storage verification.
+- Root cause: I7 could previously record post-import validation facts without making overall success depend on those facts; resume/continuation paths could inherit stale success state; localization continuation still assumed the original `994` count; translation job DB persistence errors could leave stale `running` jobs; and downstream media scope could be derived from the executed-items imported-only subset instead of the authoritative current DB SOURCE_LABEL set.
+- Related patterns inspected: DB/storage validation status construction, overall `summary.status` / `summary.success` assignment after localization, import resume identity, import coverage identity, classification resume identity, public report privacy writing, localization continuation scope selection, and `TagTranslationJob` finalization after provider results.
+- Fixes applied: DB/storage validation now gates final pipeline success; app-relative path containment is enforced before file probes; missing managed files fail validation; localization continuation sets success from the current continuation outcome; partial source-label counts are supported; translation persistence exceptions mark jobs failed where possible; downstream classification/AI/localization/storage validation/item-ledger scope is rebuilt from DB SOURCE_LABEL rows and validated against import-candidate hashes.
+- Deferred: no broad DB ledger redesign, no Entity Resolver/similarity, no worker-thread liveness inspection, and no full E2E rerun in this closeout because the change is runner validation/reporting plus focused unit coverage.
 
 ## Tests
 - Diff check: `passed (warnings only: CRLF normalization)`
 - Py compile: `passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py`
-- Focused tests: `passed: 30 passed`
-- Full non-E2E suite: `passed: 1190 passed, 12 skipped, 12 warnings`
+- Focused tests: `passed: 34 passed`
+- Full non-E2E suite: `passed: 1194 passed, 12 skipped, 12 warnings`
 
 ## Safety Confirmation
 - Failed I6 rows were not imported.
@@ -96,7 +103,7 @@
 
 ## Engineering Judgment / Operator Notes
 - The phase boundary is appropriate as a recovery path: importing the 994 staged-success rows is safer than retrying cloud failures before every downstream validation.
-- Remaining risk is operational: duplicate-by-hash or downstream job failures can reduce newly imported/downstream-eligible counts and must stay item-scoped.
+- Duplicate-by-hash or external-source coverage can no longer silently shrink downstream processing: SOURCE_LABEL count/hash coverage must pass before downstream. Remaining risk is operational job orchestration, especially background worker liveness, which is intentionally deferred.
 - Failed I6 rows remain deferred; future work should decide retry/backfill/partial-import policy separately.
 - This phase intentionally does not start Entity Resolver, similarity, clustering, or Phase 4.
 

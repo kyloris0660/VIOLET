@@ -220,6 +220,13 @@ def _dry_run_item(row_id: int, file_hash: str) -> object:
     return i7.staged_import.ImportItem(candidate=candidate, status="duplicate_by_hash")
 
 
+def _executed_item(row_id: int, file_hash: str, *, status: str, media_id: int | None = None) -> object:
+    item = _dry_run_item(row_id, file_hash)
+    item.status = status
+    item.media_id = media_id
+    return item
+
+
 def test_resume_import_items_uses_db_source_label_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     dry_run_items = [_dry_run_item(1, "hash-a"), _dry_run_item(2, "hash-b")]
 
@@ -250,6 +257,96 @@ def test_resume_import_items_blocks_db_source_label_count_mismatch(monkeypatch: 
 
     with pytest.raises(i7.PhaseI7Error, match="resume_db_source_label_count_mismatch"):
         i7.resume_import_items_from_db_source(object(), dry_run_items, expected_count=2)
+
+
+def test_source_label_coverage_uses_db_scope_for_mixed_import_and_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [
+        _executed_item(1, "hash-a", status="imported", media_id=101),
+        _executed_item(2, "hash-b", status="duplicate_by_hash", media_id=None),
+    ]
+    monkeypatch.setattr(
+        i7,
+        "media_rows_for_source",
+        lambda _engine, _source: [
+            {"id": 201, "hash": "hash-a", "path": "media/original/a.jpg", "thumbnail_path": "media/thumbnails/a.jpg"},
+            {"id": 202, "hash": "hash-b", "path": "media/original/b.jpg", "thumbnail_path": "media/thumbnails/b.jpg"},
+        ],
+    )
+
+    coverage, media_ids, covered_items = i7.validate_source_label_import_coverage(object(), items, expected_count=2)
+
+    assert coverage["status"] == "passed"
+    assert coverage["source_label_media_count"] == 2
+    assert coverage["downstream_media_ids_count"] == 2
+    assert media_ids == [201, 202]
+    assert [item.media_id for item in covered_items] == [201, 202]
+    assert all(item.status == "imported" for item in covered_items)
+
+
+def test_source_label_coverage_blocks_external_duplicate_without_source_label_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [
+        _executed_item(1, "hash-a", status="imported", media_id=101),
+        _executed_item(2, "hash-b", status="duplicate_by_hash", media_id=None),
+    ]
+    monkeypatch.setattr(
+        i7,
+        "media_rows_for_source",
+        lambda _engine, _source: [
+            {"id": 201, "hash": "hash-a", "path": "media/original/a.jpg", "thumbnail_path": "media/thumbnails/a.jpg"},
+        ],
+    )
+
+    coverage, media_ids, covered_items = i7.validate_source_label_import_coverage(object(), items, expected_count=2)
+
+    assert coverage["status"] == "blocked_import_coverage_incomplete"
+    assert coverage["source_label_media_count"] == 1
+    assert media_ids == []
+    assert covered_items == []
+
+
+def test_source_label_coverage_blocks_count_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    items = [_executed_item(1, "hash-a", status="imported", media_id=101)]
+    monkeypatch.setattr(
+        i7,
+        "media_rows_for_source",
+        lambda _engine, _source: [
+            {"id": 201, "hash": "hash-a", "path": "media/original/a.jpg", "thumbnail_path": "media/thumbnails/a.jpg"},
+            {"id": 202, "hash": "hash-b", "path": "media/original/b.jpg", "thumbnail_path": "media/thumbnails/b.jpg"},
+        ],
+    )
+
+    coverage, media_ids, covered_items = i7.validate_source_label_import_coverage(object(), items, expected_count=1)
+
+    assert coverage["status"] == "blocked_import_coverage_unexpected_extra"
+    assert media_ids == []
+    assert covered_items == []
+
+
+def test_source_label_coverage_blocks_hash_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    items = [
+        _executed_item(1, "hash-a", status="imported", media_id=101),
+        _executed_item(2, "hash-b", status="imported", media_id=102),
+    ]
+    monkeypatch.setattr(
+        i7,
+        "media_rows_for_source",
+        lambda _engine, _source: [
+            {"id": 201, "hash": "hash-a", "path": "media/original/a.jpg", "thumbnail_path": "media/thumbnails/a.jpg"},
+            {"id": 202, "hash": "hash-c", "path": "media/original/c.jpg", "thumbnail_path": "media/thumbnails/c.jpg"},
+        ],
+    )
+
+    coverage, media_ids, covered_items = i7.validate_source_label_import_coverage(object(), items, expected_count=2)
+
+    assert coverage["status"] == "blocked_import_coverage_hash_mismatch"
+    assert coverage["missing_source_label_hash_count"] == 1
+    assert coverage["unexpected_source_label_hash_count"] == 1
+    assert media_ids == []
+    assert covered_items == []
 
 
 def test_prior_classification_requires_media_id_identity_proof() -> None:

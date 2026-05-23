@@ -149,7 +149,21 @@
     "app_managed_storage_writes": 0,
     "previous_app_managed_storage_writes": 994,
     "db_stores_app_relative_paths_only": true,
-    "resume_reason": "previous I7 attempt completed DB import before downstream blocker"
+    "resume_reason": "previous I7 attempt completed DB import before downstream blocker",
+    "source_label_media_count": 994,
+    "downstream_media_ids_count": 994,
+    "downstream_identity_source": "db_source_label_hash_match"
+  },
+  "import_coverage": {
+    "status": "passed",
+    "source_label": "violet:phase3.8d:i7:staged-success",
+    "expected_import_candidate_count": 994,
+    "source_label_media_count": 994,
+    "downstream_media_ids_count": 994,
+    "identity_match": true,
+    "identity_source": "db_source_label_hash_match",
+    "paths_redacted": true,
+    "closeout_note": "Runner now blocks before downstream when SOURCE_LABEL coverage is incomplete or hash-mismatched."
   },
   "classification": {
     "status": "completed",
@@ -456,8 +470,8 @@
   "tests": {
     "git_diff_check": "passed (warnings only: CRLF normalization)",
     "py_compile": "passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py",
-    "focused_pytest": "passed: 30 passed",
-    "full_non_e2e_pytest": "passed: 1190 passed, 12 skipped, 12 warnings",
+    "focused_pytest": "passed: 34 passed",
+    "full_non_e2e_pytest": "passed: 1194 passed, 12 skipped, 12 warnings",
     "commands": [
       "git diff --check",
       "& \"$PY\" -m py_compile scripts/run_phase38d_i7_partial_import_classification_first.py tests/test_phase38d_i7_partial_import_classification_first.py",
@@ -545,6 +559,10 @@
     "partial_import_compatible_localization_continuation": true,
     "localization_continuation_blocks_on_zero_source_label_count": true,
     "translation_job_lifecycle": "failed_on_translation_persistence_or_accounting_exception",
+    "downstream_media_scope": "current_db_source_label_rows_after_import_or_resume",
+    "source_label_coverage_gate": "blocks_before_downstream_when_count_or_hash_identity_mismatches",
+    "external_duplicate_behavior": "duplicate_by_hash_outside_source_label_is_not_downstream_success_without_source_label_row",
+    "worker_thread_liveness_check": "deferred_to_worker_orchestration_hardening",
     "db_import_reran": false,
     "classification_reran": false,
     "ai_tagging_reran": false,
