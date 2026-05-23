@@ -1,0 +1,82 @@
+{
+  "phase": "3.8d-G1",
+  "title": "Governance and Manual Validation Workflow Hardening",
+  "status": "completed",
+  "success": true,
+  "pr64": {
+    "manual_validation_passed": true,
+    "medium_pilot_accepted_practical_level": true,
+    "imported_staged_success_rows": 994,
+    "excluded_i6_failed_rows": [799, 839, 922, 970, 971, 972],
+    "classification_first_pipeline_completed": true,
+    "ai_tagging_scope": "anime_unknown_only",
+    "eligible_general_meta_localization_completed": true,
+    "remaining_missing_general_meta": 0,
+    "odd_llm_translations_non_blocking": true
+  },
+  "governance_updates": {
+    "artifact_lifecycle_policy_added": true,
+    "reviewer_lifecycle_rule_added": true,
+    "engineering_judgment_requirement_strengthened": true,
+    "manual_validation_workflow_documented": true,
+    "roadmap_updated": true
+  },
+  "manual_validation": {
+    "document": "docs/manual-validation.md",
+    "development_db_flow": "development/blombooru",
+    "requires_pythonpath_backend": true,
+    "pythonpath_reason": "run.py loads backend.app.main:app while some modules still use app.* imports",
+    "test_env_ps1_for_development_validation": false,
+    "one_off_i7_validation_script_created": false
+  },
+  "artifact_lifecycle": {
+    "production_reusable_code_added": false,
+    "reusable_validation_tool_added": false,
+    "phase_scoped_runner_added": false,
+    "one_off_local_script_added": false,
+    "public_docs_added_or_updated": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "docs/test-workflow.md",
+      "docs/manual-validation.md",
+      "docs/current-handoff.md",
+      "docs/project-roadmap.md",
+      "docs/reports/phase-3.8d-governance-and-manual-validation-closeout.md",
+      "docs/reports/phase-3.8d-governance-and-manual-validation-closeout-summary.json"
+    ]
+  },
+  "roadmap_updates": {
+    "production_ingestion_run_ledger": "high_priority_before_full_library_import",
+    "over_selection_buffer": "high_priority_before_large_imports",
+    "import_startup_path_consistency": "medium_priority",
+    "proper_noun_entity_character_localization_strategy": "medium_priority",
+    "admin_stats_settings_information_architecture_cleanup": "lower_priority"
+  },
+  "safety": {
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "staging_copy": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "entity_resolver": false,
+    "similarity_clustering": false,
+    "phase4_started": false,
+    "runtime_server_startup": false,
+    "push_main": false,
+    "merge": false
+  },
+  "engineering_judgment": {
+    "phase_boundary": "appropriate_docs_governance_only",
+    "startup_import_path_issue": "documented_future_hardening_not_fixed_in_g1",
+    "phase38d_status": "medium_pilot_accepted_practical_level",
+    "recommended_next_options": [
+      "manual_qa_phase38d_closeout",
+      "import_startup_path_consistency_hardening",
+      "production_ingestion_ledger_design",
+      "proper_noun_entity_localization_strategy"
+    ]
+  }
+}

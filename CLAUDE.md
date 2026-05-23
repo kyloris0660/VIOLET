@@ -46,7 +46,7 @@ For implementation PRs, reviewer feedback is a controlled handoff point, not an 
 
 ### Agent Engineering Judgment and Bugfix Root-Cause Closure Policy
 
-CodeX must provide `Engineering judgment / operator notes` in final delivery reports. For every substantial phase or non-trivial bugfix, CodeX should identify risks, distinguish blockers from deferable issues, and say whether the phase boundary appears too narrow or too broad.
+CodeX must provide a meaningful `Engineering judgment / operator notes` section in final delivery reports. It must not be a perfunctory line. For every substantial phase or non-trivial bugfix, CodeX should identify risks, distinguish blockers from deferable issues, and say whether the phase boundary appears too narrow, too broad, or appropriate.
 
 When reviewer feedback, tests, or runtime reports expose a bug, CodeX must not treat the issue only as a single-line patch unless it is clearly isolated.
 
@@ -60,6 +60,40 @@ For every non-trivial bugfix, CodeX must perform a bounded root-cause and patter
 6. Stop and ask user/ChatGPT if the root-cause fix requires a DB migration, destructive operation, source/iCloud mutation, app-managed storage mutation, large refactor outside current PR scope, new phase, or project strategy change.
 7. This policy does not authorize automatic reviewer-fix loops. Default reviewer workflow remains: implement -> test -> push -> `@codex review` -> collect current-head feedback -> stop and report. CodeX must not automatically fix new reviewer feedback unless the user explicitly authorizes a bounded auto-fix loop for that specific PR.
 8. This policy does not authorize scope creep. It authorizes bounded same-root-cause cleanup inside the active PR scope. When in doubt, report the pattern and wait for user/ChatGPT decision.
+
+Final `Engineering judgment / operator notes` must include:
+
+1. Phase boundary assessment: was the requested scope too narrow, too broad, or appropriate; did the task reveal a better phase split or merge?
+2. Risk assessment: top remaining risks, classified as safety blockers, quality issues, usability issues, or future hardening.
+3. Reviewer feedback assessment: which findings were fixed, which were deferred, and why deferred findings do not affect current phase safety or objective.
+4. Artifact lifecycle assessment: whether new scripts/tools/reports are production reusable code, reusable validation/safety tools, phase-scoped operational runners, one-off local artifacts, public reports, handoff, or roadmap updates; whether any phase-scoped code should later be promoted.
+5. Prompt critique: whether the prompt missed an obvious issue, over-constrained implementation, or encouraged unnecessary over-engineering.
+6. Next-step recommendation: a concrete recommendation with alternatives when relevant. Do not silently continue to the next phase.
+
+This section is advisory only. It does not grant authority to expand scope, merge, auto-fix reviewer feedback, or start a new phase.
+
+### Artifact and Operational Script Lifecycle Policy
+
+Do not automate for automation's sake. New scripts, tools, reports, and artifacts must declare their lifecycle in the PR body or final report:
+
+1. **Production reusable code** - long-term maintained code with strict tests, clear interfaces, and stable semantics.
+2. **Reusable validation/safety tool** - cross-phase, parameterized tooling with a stable interface that reduces long-term operator error.
+3. **Phase-scoped operational runner** - committed only when it makes a phase reproducible. It must be labeled phase-scoped and must guarantee current phase safety, privacy, data integrity, and report truthfulness. It should not be endlessly generalized into a production orchestrator unless user/ChatGPT explicitly approves.
+4. **One-off local artifact / temporary validation output** - must remain ignored and untracked, should not be committed, and should not become code.
+5. **Public report / handoff / roadmap** - long-term documentation that records phase facts, decisions, risks, and next steps.
+
+Avoid scripts that hardcode one phase's source label, fixed count, or row IDs unless they are explicitly phase-scoped. Do not build a new script for every manual validation step. Prefer a manual checklist plus public report for one-time validation. Build reusable tools only when they apply across phases or materially reduce long-term operator error.
+
+### Reviewer Feedback and Artifact Lifecycle Rule
+
+Reviewer feedback must be evaluated according to the lifecycle of the affected code or artifact.
+
+1. Findings that affect current phase correctness, DB/storage/source mutation safety, import eligibility, item ledger truthfulness, privacy/public report safety, data integrity, failure/success classification, or the ability to safely continue the current workflow must be fixed even for phase-scoped runners.
+2. Findings that are only about future reuse, generic parameter combinations not used by the current phase, production-framework polish, cross-phase generalization, or UI/reporting precision that does not affect current safety or decision-making may be deferred for phase-scoped or one-off code.
+3. Phase-scoped operational runners should not be judged as production reusable frameworks unless user/ChatGPT decides to promote them.
+4. Production reusable code cannot use "phase-scoped" as an excuse to avoid safety, correctness, maintainability, or tests.
+5. Before continuing reviewer fixes, CodeX/ChatGPT should ask: what is this artifact's lifecycle; does this issue affect current phase safety or truthfulness; can it cause DB/source/app-storage mutation risk; can it mix failed items into successful items; can it leak private paths/secrets; is it only future reuse/generalization/polish; would fixing it turn a phase runner into a production orchestrator?
+6. This rule does not authorize ignoring safety bugs. It exists to prevent over-engineering one-off or phase-scoped code.
 
 ### Cloud-aware ingestion progress and safety policy
 
