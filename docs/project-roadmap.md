@@ -304,6 +304,8 @@ See [Content Classification](content-classification.md) for full documentation.
 - No-mutation proof passed for DB, app storage originals/thumbnails, source tree, and planned staging target. Public reports are privacy-safe; the full-path manifest remains local and gitignored at `.local_manifests/phase-3.8c-medium-candidate-manifest.csv`.
 - Real import/copy/classification/AI/localization execution, Entity Resolver, similarity/clustering, cleanup, delete, reset, drop, and truncate remain forbidden in Phase 3.8c.
 
+Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state snapshots, including temporary "execute blocked" wording from those stages. The current accepted state is superseded by I6, I7, G1, G2, and G3.
+
 ### Phase 3.8d-I1 - iCloud / Windows Cloud Files Ingestion Reliability Incident & Hardening
 
 **Goal:** Resolve a foundational ingestion reliability incident before Phase 3.8d execute can resume.
@@ -457,6 +459,16 @@ See [Content Classification](content-classification.md) for full documentation.
 - The broader script/test ecosystem still contains intentional `app.*` imports that rely on explicit script path setup or pytest configuration; those are deferred because they are not in the `run.py` server startup path.
 - This hardening does not add DB migration, DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity/clustering, or Phase 4 work.
 
+### Phase 3.8d-G3 - Final Handoff, Docs, and Repo Hygiene
+
+**Goal:** Close Phase 3.8d with a small docs/handoff hygiene pass before any Phase 4 planning or Phase 3.9 ingestion-ledger work.
+
+- Current handoff now records the accepted Phase 3.8d medium pilot state: `994` I7 imported/resumed media under `violet:phase3.8d:i7:staged-success`, six I6 failed rows deferred, classification-first pipeline completed, AI tagging limited to anime/unknown, and eligible general/meta localization completed.
+- Roadmap now reflects that G1 governance/manual validation workflow and G2 startup/import path consistency are complete.
+- README points future agents to `docs/current-handoff.md` as the starting point for current state instead of inferring from old reports.
+- Tracked Phase 3.8d scripts were audited as phase-scoped historical runners or safety/validation tools; they are not production orchestrators and must not be rerun for DB import/staging without explicit approval.
+- This is docs/handoff hygiene only. It does not add runtime behavior, DB migration, DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity/clustering, production ingestion ledger, admin UI rewrite, or Phase 4 work.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -515,7 +527,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Gallery sidebar content-class filter (5 modes)
 - Backend `content_class` param on `GET /api/media/`
 
-### Phase 3.1.2c — Server Identity + Unified LLM Fallback + Entity Resolver Hardening (in progress)
+### Phase 3.1.2c - Server Identity + Unified LLM Fallback + Entity Resolver Hardening (PR #33, merged)
 
 - `GET /api/system/server-identity` endpoint for dev server validation
 - `scripts/check_test_server_identity.py` verification script
@@ -528,6 +540,14 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
+Current near-term options after Phase 3.8d:
+
+1. Phase 4.0 plan-only: entity metadata architecture and external source strategy. This must be a planning/design phase before watcher, similarity, or Entity Resolver expansion.
+2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import.
+3. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+4. Proper noun / entity / character localization strategy.
+5. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
 **Goal:** Before any full-library import, implement a production-grade per-run ledger that records final state for every source item in each ingestion run, manifest, or job.
@@ -538,7 +558,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Failed cloud-backed items must remain visible and must not be mixed with successfully imported items or hidden behind aggregate counts.
 - DB import must consume staged-success / eligible items from the ledger, not a raw selected manifest.
 - Full-library import must not run until this production ledger exists and can prove which staged-success rows are eligible for DB import.
-- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c or I6.
+- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c, I6, I7, or G1-G3.
 
 ### Future prerequisite - Over-selection Buffer for Large Imports
 
@@ -568,18 +588,24 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ### Future UI/IA Debt
 
-**Priority:** Lower than ingestion ledger, over-selection buffer, startup path consistency, and proper-noun/entity localization strategy.
+**Priority:** Lower than ingestion ledger, over-selection buffer, entity metadata/source strategy, and proper-noun/entity localization strategy.
 
 - Admin stats page redesign.
 - Admin settings page redesign.
 - Admin information architecture cleanup.
 - Management panel UX rewrite.
 
+### Explicit Deferrals After Phase 3.8d
+
+- Similarity graph / clustering stays deferred until an entity metadata foundation exists and the library has a larger validated scale, likely around a 5k/10k import decision point.
+- Admin UI rewrite stays deferred because it does not block core ingestion safety, entity architecture planning, or production ledger work.
+- Rare LLM translation oddities from the medium pilot stay deferred to the proper noun / entity / character localization strategy.
+
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 
 **Goal:** Eliminate manual scan triggers.
 
-**Blocked by Phase 3.8d-I1/I2/I3/I4/I5/I5b/I5c/I6 and DB-import readiness:** Do not start Phase 4 until cloud availability/hydration/backfill handling for ingestion/staging/copy is reviewed, merged, and the Phase 3.8d import path is explicitly approved. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Status after Phase 3.8d:** Do not implement watcher behavior yet. The medium pilot is accepted, but Phase 4 should start only as a plan-only entity metadata / external source strategy phase or after a separate Phase 3.9 production ledger decision. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place
