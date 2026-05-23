@@ -31,6 +31,12 @@
 
 V.I.O.L.E.T. is built on top of [Blombooru](https://github.com/mrblomblo/blombooru), providing Danbooru-style tag-based retrieval for personal anime/illustration collections.
 
+## Current Project State
+
+Phase 3.8d medium pilot is accepted. Future agents should start from [Current Handoff](docs/current-handoff.md) for the latest state, then use [Manual Validation](docs/manual-validation.md) and [Project Roadmap](docs/project-roadmap.md) for runbook and next-phase guidance. Do not infer current status from older phase reports alone.
+
+Local development startup is repo-root `python run.py --debug` with the project venv; the old `PYTHONPATH=<repo>\backend` workaround is no longer required.
+
 Core capabilities:
 - Scan local image directories (e.g. iCloud Photos sync folder), reliably importing anime/illustration images
 - Generate high-quality tags via WDv3 AI model
@@ -62,6 +68,7 @@ Core capabilities:
 | Gallery content-class filter | Done | 5-mode filter: all/anime+unknown/anime-only/non-anime/unknown (Phase 3.1.2b) |
 | Server identity endpoint | Done | `GET /api/system/server-identity` for dev server validation (Phase 3.1.2c) |
 | Unified LLM fallback | Done | `complete_chat`/`complete_json` two-layer API with structured error hierarchy (Phase 3.1.2c) |
+| Phase 3.8d medium pilot | Accepted | 994 staged-success rows imported, failed rows deferred, classification-first pipeline completed |
 | iCloud large library safety | Done | Preflight scan, hydrated-only, per-file timeout, extended skip stats |
 | Content classification foundation | Done | Infrastructure + evaluation harness (heuristic baseline only) |
 | CLIP zero-shot content classifier | Done | Anime vs non-anime via CLIP ViT-B/32 ONNX (Phase 3.1) |
@@ -204,6 +211,7 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 | [Content Classification](docs/content-classification.md) | Content classifier design and evaluation harness |
 | [Test Workflow](docs/test-workflow.md) | Test tiers, environment setup, Playwright E2E |
 | [Project Roadmap](docs/project-roadmap.md) | Full phase plan |
+| [Manual Validation](docs/manual-validation.md) | Current development/blombooru manual validation runbook |
 | [Current Handoff](docs/current-handoff.md) | Latest state for resuming development |
 | [Development Log](docs/local-anime-library-devlog.md) | Per-phase technical notes |
 
@@ -222,8 +230,9 @@ See [AI Tagging Usage Guide](docs/ai-tagging-usage-guide.md) for details.
 - **Phase 3.1.1b** — Fixture-based test workflow foundation (done)
 - **Phase 3.1.2a** — Admin UI closeout (done)
 - **Phase 3.1.2b** — Gallery content-class filter (done)
-- **Phase 3.1.2c** — Server identity + unified LLM fallback + entity resolver hardening (in progress)
-- **Phase 4** — Filesystem watcher & scheduled scans
+- **Phase 3.1.2c** - Server identity + unified LLM fallback + entity resolver hardening (done)
+- **Phase 3.8d** - Medium pilot accepted; 994 staged-success rows imported, six failed rows deferred
+- **Next options** - Phase 4.0 plan-only entity/source strategy, Phase 3.9 production ingestion ledger, failed-row recovery, proper-noun localization strategy
 
 ## Tech Stack
 

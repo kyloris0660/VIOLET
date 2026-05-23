@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-G2 - Startup / import path consistency hardening (2026-05-23).
+> Last updated during Phase 3.8d-G3 - Final handoff and repo hygiene (2026-05-23).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `codex/phase-3.8d-g2-startup-import-path` (startup/import path consistency hardening stage) |
+| **Branch** | `main` after the G3 PR is merged; current work branch is `codex/phase-3.8d-g3-final-handoff-hygiene` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -28,7 +28,7 @@
 | **Phase 3.1.2c (PR #33)** | PR [#33](https://github.com/kyloris0660/AnimeLocalBooru/pull/33) merged — Server identity + unified LLM fallback + entity resolver hardening |
 | **Phase 3.2b status** | PR [#34](https://github.com/kyloris0660/AnimeLocalBooru/pull/34) merged — Pilot hardening, configuration audit, medium-scale readiness |
 | **Phase 3.2c status** | PR [#35](https://github.com/kyloris0660/AnimeLocalBooru/pull/35) merged — Medium-scale pilot preparation, env docs, LLM gate unification |
-| **Python env hardening** | PR pending — Python/venv identity preflight hard gate (`scripts/check_python_env.py`), server runtime Python identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
+| **Python env hardening** | Active hard gate — Python/venv identity preflight (`scripts/check_python_env.py`) plus server runtime identity (`/api/system/server-identity` + `check_test_server_identity.py --expected-python`) |
 | **Phase 3.3a.1 (PR #45)** | PR [#45](https://github.com/kyloris0660/AnimeLocalBooru/pull/45) merged — iCloud candidate manifest generation (5,326 rows: 522 existing + 478 new + 4,326 excluded) |
 | **Phase 3.3b (PR #46)** | PR [#46](https://github.com/kyloris0660/AnimeLocalBooru/pull/46) merged — Tier-1000 staging copy executor (1,000 files, 2.98 GB to privacy-safe `tier1000_staging` label) |
 | **Phase 3.4 (PR #48)** | PR [#48](https://github.com/kyloris0660/AnimeLocalBooru/pull/48) merged - Tier-1000 pre-import audit, 1,000/1,000 PASS |
@@ -48,7 +48,44 @@
 | **Phase 3.8d-I6 (PR #63)** | PR #63 merged - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; full `1000` DB import remains blocked |
 | **Phase 3.8d-I7 (PR #64)** | PR #64 merged - partial import from the I6 item ledger staged-success set completed for `994` rows; failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded; classification processed `994` with `0` failures; AI tagging processed `967` anime/unknown rows with `0` failures; initial controlled localization translated `200` general/meta tags, then closeout continuation translated the remaining `370` eligible general/meta tags with `0` failures and `0` remaining general/meta missing translations; manual validation accepted the medium pilot at a practical level |
 | **Phase 3.8d-G1 (PR #65)** | PR #65 merged - governance/manual validation workflow hardening; docs-only stage persisted artifact lifecycle, reviewer lifecycle, engineering judgment, manual validation workflow, and roadmap guidance |
-| **Phase 3.8d-G2** | In progress - startup/import path consistency hardening; removes the `PYTHONPATH=<repo>\backend` manual validation workaround without DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity, or Phase 4 work |
+| **Phase 3.8d-G2 (PR #66)** | PR #66 merged - startup/import path consistency hardening; repo-root `run.py --debug` no longer requires `PYTHONPATH=<repo>\backend` |
+| **Phase 3.8d-G3** | Final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
+
+## Current Accepted State
+
+Phase 3.8d medium pilot is accepted at a practical level. The current library includes the baseline Phase 3.5 source label plus the Phase 3.8d-I7 source label `violet:phase3.8d:i7:staged-success`.
+
+Key accepted facts:
+
+- I6 cloud-aware staging copy: `994` staged successes, `6` item-level failures.
+- I7 DB import/resume: `994` media under `violet:phase3.8d:i7:staged-success`.
+- I6 failed rows `799`, `839`, `922`, `970`, `971`, and `972` were excluded from DB import and remain deferred/recovery backlog.
+- Classification distribution for I7: `anime=934`, `unknown=33`, `non_anime=27`, `illustration=0`, `failed=0`.
+- AI tagging scope: `anime + unknown = 967` eligible media, `0` failures.
+- General/meta localization: remaining missing `0`; character/copyright/artist proper nouns intentionally skipped.
+- Manual validation passed with no major issue.
+- Startup/import path consistency passed after G2; manual validation no longer requires `PYTHONPATH=<repo>\backend`.
+
+Known non-blocking issues:
+
+- Rare odd LLM translations exist and should be handled by a later proper-noun/entity/character localization strategy.
+- Admin stats/settings UI and admin information architecture are still developer-oriented, not product-quality.
+- The six I6 failed rows remain deferred until an explicit recovery/backfill decision.
+
+Next-stage candidates:
+
+- Phase 4.0 plan-only: entity metadata architecture / external source strategy.
+- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation.
+- A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
+- Proper noun / character localization strategy.
+- Admin stats/settings UI rewrite later, lower priority than ingestion/entity foundations.
+
+Strong warnings:
+
+- Do not import from the raw `1000` manifest.
+- Do not let failed/deferred rows enter DB import.
+- Do not treat phase-scoped runners as production orchestrators.
+- Do not start Entity Resolver, similarity/clustering, Phase 4 implementation, or broader feature work without explicit user/ChatGPT approval.
 
 ## Mandatory Workflow Rules
 
@@ -849,17 +886,17 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - No DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
 
-## Recommended Next Step: I7 Review, Then Post-import Quality / Recovery Planning
+## Current Recommended Next Steps After Phase 3.8d
 
-Do not start Phase 4 or run Entity Resolver/similarity/clustering until Phase 3.8d-I7 is reviewed and merged:
+Phase 3.8d-I7, G1, and G2 are merged; G3 is the final docs-only closeout. Treat the medium pilot as accepted and choose the next stage explicitly; do not let a future agent infer a new execute path from old phase scripts.
 
-1. Review PR #64 current head and local item ledger: `994` staged-success rows imported/resumed under source label `violet:phase3.8d:i7:staged-success`; the 6 I6 failed rows were not imported.
-2. Perform a human quality pass on imported media, content classification distribution, AI tag suggestions, and the now-complete eligible general/meta localization set before broader feature work.
+1. Phase 4.0 plan-only: design entity metadata architecture and external source strategy before implementing watcher or similarity work.
+2. Phase 3.9: design/implement production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import.
 3. Decide a separate recovery path for rows `799`, `839`, `922`, `970`, `971`, and `972`: targeted provider/network retry, same-bucket backfill, or deferred cloud recovery.
-4. Treat PR #64 closeout hardening as active safety policy for this runner: public report privacy leaks fail closed, import resume media IDs come from DB source-label rows, and classification resume requires media ID identity proof or DB-backed classification state.
-5. Treat post-import DB/storage validation as authoritative for I7 success: missing app-managed originals/thumbnails, non-app-relative DB paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures must block completion.
-6. Treat I7 localization continuation as partial-import compatible: use the actual current DB source-label media set, block only when that set is empty, continue to skip proper-noun categories, and fail-close `TagTranslationJob` on translation persistence/accounting exceptions.
-7. Treat I7 downstream scope as DB SOURCE_LABEL authoritative after import/resume: classification, AI scope, localization scope, DB/storage validation, and item-ledger downstream state must use current `Media.source='violet:phase3.8d:i7:staged-success'` rows after validating count/hash coverage against staged-success import candidates. External `duplicate_by_hash` rows outside the source label must block coverage instead of silently shrinking downstream processing. In-process translation worker liveness inspection is deferred to a later worker-orchestration hardening stage.
+4. Plan proper noun / character localization strategy; rare odd LLM translations are non-blocking until that work.
+5. Defer admin stats/settings UI rewrite and broader admin IA cleanup until core ingestion/entity foundations are clearer.
+
+Active safety policy from PR #64 still applies: public report privacy leaks fail closed, import/resume media IDs come from DB source-label rows, post-import DB/storage validation is authoritative, and downstream scope is DB SOURCE_LABEL authoritative after count/hash coverage is proven.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 
@@ -1087,8 +1124,8 @@ Post-Phase 2.4 infrastructure fix for LLM connectivity issues behind GFW:
 
 ### Phase 3.2g.5 — Config Precedence Hardening
 
-**Status:** In progress
-**Branch:** `phase3.2g-config-precedence-hardening` (from `main` @ `ff7da9a`)
+**Status:** Historical completed hardening; current active rule is the Python/env hard gate summary above.
+**Branch:** Historical branch `phase3.2g-config-precedence-hardening` (from `main` @ `ff7da9a`)
 
 **Root cause:** `backend/app/config.py` called `load_dotenv(override=True)`, forcing `.env` values to overwrite explicit session/process environment variables. This caused repeated incidents during medium pilot phases where `POSTGRES_DB=blombooru` from `.env` overwrote `POSTGRES_DB=blombooru_test_medium` set in the shell, and `TAG_TRANSLATION_*=true` flags from `.env` overwrote `false` values set for AI-only isolation.
 

@@ -1,0 +1,99 @@
+{
+  "phase": "3.8d-G3",
+  "title": "Final Handoff, Docs, and Repo Hygiene",
+  "date": "2026-05-23",
+  "accepted_phase_3_8d_state": {
+    "medium_pilot_accepted": true,
+    "i7_source_label": "violet:phase3.8d:i7:staged-success",
+    "i7_imported_or_resumed_media_count": 994,
+    "i6_staged_successes": 994,
+    "i6_item_level_failures": 6,
+    "i6_failed_rows_deferred": [799, 839, 922, 970, 971, 972],
+    "classification_distribution": {
+      "anime": 934,
+      "unknown": 33,
+      "non_anime": 27,
+      "illustration": 0,
+      "failed": 0
+    },
+    "ai_tagging": {
+      "eligible_scope": "anime + unknown",
+      "eligible_media_count": 967,
+      "failures": 0
+    },
+    "general_meta_localization": {
+      "remaining_missing": 0,
+      "proper_nouns_skipped": true
+    },
+    "manual_validation_passed": true,
+    "pythonpath_backend_workaround_required": false
+  },
+  "docs_updated": [
+    "README.md",
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md"
+  ],
+  "reports_created": [
+    "docs/reports/phase-3.8d-final-handoff-and-repo-hygiene.md",
+    "docs/reports/phase-3.8d-final-handoff-and-repo-hygiene-summary.json"
+  ],
+  "governance_audit": {
+    "files_checked": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "docs/test-workflow.md",
+      "docs/manual-validation.md",
+      "docs/icloud-safe-ingestion.md"
+    ],
+    "contradictions_fixed": [],
+    "notes": [
+      "Reviewer automation wording already disables automatic reviewer-fix loops unless explicitly authorized.",
+      "Manual validation docs already state repo-root startup no longer requires PYTHONPATH=<repo>\\backend.",
+      "Remaining PYTHONPATH mentions are historical notes or failure-condition wording."
+    ]
+  },
+  "tracked_artifact_audit": {
+    "code_changed": false,
+    "scripts_removed": [],
+    "phase_scoped_or_historical_scripts": [
+      "scripts/plan_phase38c_medium_pilot_preflight.py",
+      "scripts/audit_cloud_availability.py",
+      "scripts/plan_phase38d_i3_recovery.py",
+      "scripts/run_phase38d_i5_hydration_audit.py",
+      "scripts/run_phase38d_i5b_targeted_hydration_retry.py",
+      "scripts/run_phase38d_i5c_backfill_application.py",
+      "scripts/run_phase38d_i6_staging_copy_retry.py",
+      "scripts/run_phase38d_i7_partial_import_classification_first.py",
+      "scripts/stage_pilot_files.py",
+      "scripts/import_staged_manifest.py"
+    ],
+    "deferred_cleanup_items": [
+      "Do not generalize phase-scoped runners until repeated cross-phase need is proven.",
+      "Do not use historical import/staging runners as production orchestrators.",
+      "Keep production ingestion ledger and over-selection buffer as separate future work."
+    ]
+  },
+  "recommended_next_phase": [
+    "Phase 4.0 plan-only entity metadata architecture and external source strategy",
+    "Phase 3.9 production Ingestion Run Ledger / Source Item State Ledger and over-selection buffer"
+  ],
+  "deferred_items": [
+    "six I6 failed rows recovery/backfill decision",
+    "proper noun / character / entity localization strategy",
+    "admin stats/settings UI rewrite",
+    "similarity graph / clustering until entity foundation and larger scale"
+  ],
+  "runtime_mutation_confirmation": {
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "staging_copy": false,
+    "source_or_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "entity_resolver": false,
+    "similarity_or_clustering": false,
+    "phase_4_implementation": false
+  }
+}
