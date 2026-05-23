@@ -50,6 +50,8 @@ This section is advisory only. It does not grant authority to expand scope, merg
 
 ## Artifact and Operational Script Lifecycle Policy
 
+V.I.O.L.E.T. allows one-off and phase-scoped validation automation. Automation is encouraged when it reduces human error, catches issues earlier, or makes a risky step more reproducible. The project does not require every validation helper to become reusable production tooling.
+
 Do not automate for automation's sake. New scripts, tools, reports, and artifacts must declare their lifecycle in the PR body or final report:
 
 1. **Production reusable code** - long-term maintained code with strict tests, clear interfaces, and stable semantics.
@@ -58,14 +60,16 @@ Do not automate for automation's sake. New scripts, tools, reports, and artifact
 4. **One-off local artifact / temporary validation output** - must remain ignored and untracked, should not be committed, and should not become code.
 5. **Public report / handoff / roadmap** - long-term documentation that records phase facts, decisions, risks, and next steps.
 
-Avoid scripts that hardcode one phase's source label, fixed count, or row IDs unless they are explicitly phase-scoped. Do not build a new script for every manual validation step. Prefer a manual checklist plus public report for one-time validation. Build reusable tools only when they apply across phases or materially reduce long-term operator error.
+If a validation helper is only for one local run and not needed for reproducibility, keep it ignored and untracked. If it makes a phase reproducible, it may be committed as a phase-scoped operational runner. A phase-scoped runner may hardcode phase-specific labels, counts, or row IDs when necessary to reproduce that phase, but it must not be treated as a long-term generic validator unless user/ChatGPT explicitly approves promotion to reusable tooling.
+
+Forbidden is not one-off automation. Forbidden is: automating for automation's sake; committing throwaway local output files; letting a phase-scoped tool accumulate unbounded production-framework complexity; repeatedly fixing reviewer suggestions that only matter if the phase runner were a future reusable orchestrator; and building generic tools before there is repeated cross-phase need.
 
 ## Reviewer Feedback and Artifact Lifecycle Rule
 
 Reviewer feedback must be evaluated according to the lifecycle of the affected code or artifact.
 
 1. Findings that affect current phase correctness, DB/storage/source mutation safety, import eligibility, item ledger truthfulness, privacy/public report safety, data integrity, failure/success classification, or the ability to safely continue the current workflow must be fixed even for phase-scoped runners.
-2. Findings that are only about future reuse, generic parameter combinations not used by the current phase, production-framework polish, cross-phase generalization, or UI/reporting precision that does not affect current safety or decision-making may be deferred for phase-scoped or one-off code.
+2. Findings that are only about future reuse, generalized parameters, generic parameter combinations not used by the current phase, production-framework polish, cross-phase extensibility, or UI/reporting precision that does not affect current safety or decision-making may be deferred for phase-scoped or one-off code.
 3. Phase-scoped operational runners should not be judged as production reusable frameworks unless user/ChatGPT decides to promote them.
 4. Production reusable code cannot use "phase-scoped" as an excuse to avoid safety, correctness, maintainability, or tests.
 5. Before continuing reviewer fixes, CodeX/ChatGPT should ask: what is this artifact's lifecycle; does this issue affect current phase safety or truthfulness; can it cause DB/source/app-storage mutation risk; can it mix failed items into successful items; can it leak private paths/secrets; is it only future reuse/generalization/polish; would fixing it turn a phase runner into a production orchestrator?

@@ -19,7 +19,9 @@
     "reviewer_lifecycle_rule_added": true,
     "engineering_judgment_requirement_strengthened": true,
     "manual_validation_workflow_documented": true,
-    "roadmap_updated": true
+    "roadmap_updated": true,
+    "over_strict_one_off_tool_wording_corrected": true,
+    "one_off_phase_scoped_validation_automation_allowed": true
   },
   "manual_validation": {
     "document": "docs/manual-validation.md",
@@ -27,13 +29,16 @@
     "requires_pythonpath_backend": true,
     "pythonpath_reason": "run.py loads backend.app.main:app while some modules still use app.* imports",
     "test_env_ps1_for_development_validation": false,
-    "one_off_i7_validation_script_created": false
+    "one_off_i7_validation_script_created": false,
+    "one_off_helpers_allowed_when_lifecycle_declared": true
   },
   "artifact_lifecycle": {
     "production_reusable_code_added": false,
     "reusable_validation_tool_added": false,
     "phase_scoped_runner_added": false,
     "one_off_local_script_added": false,
+    "one_off_or_phase_scoped_validation_tools_allowed": true,
+    "forbidden_pattern": "over_generalization_or_committing_throwaway_outputs_not_automation_itself",
     "public_docs_added_or_updated": [
       "AGENTS.md",
       "CLAUDE.md",

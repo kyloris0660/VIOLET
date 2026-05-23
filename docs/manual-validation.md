@@ -101,7 +101,7 @@ Invoke-RestMethod "$base/api/admin/tag-localization/stats" -Headers $headers
 
 ## Optional Source-label DB Checks
 
-Use this pattern when a phase report gives a source label, expected imported/staged-success count, excluded row IDs, and expected classification/localization facts. Keep phase-specific values in the shell, not in a new one-off script.
+Use this pattern when a phase report gives a source label, expected imported/staged-success count, excluded row IDs, and expected classification/localization facts. Keeping phase-specific values in the shell is often enough for one-time validation, but helper automation is allowed when it reduces operator error or improves reproducibility.
 
 ```powershell
 $sourceLabel = "<phase-source-label>"
@@ -181,4 +181,14 @@ Get-NetTCPConnection -LocalPort 8012 -State Listen -ErrorAction SilentlyContinue
 
 ## Tooling Lifecycle Note
 
-Do not create a one-off `manual_i7_validation_preflight.py`. If future validation tooling is added, it must be generic, parameterized, and reusable across phases rather than hardcoded to one source label, fixed count, or row IDs.
+Manual validation may be supported by one-off or phase-scoped helper scripts, especially when they reduce operator error, catch issues earlier, or make a risky validation step reproducible.
+
+Such helpers must clearly declare whether they are:
+
+- local-only ignored artifacts
+- committed phase-scoped operational runners
+- reusable validation/safety tools
+- production reusable code
+- public reports / handoff documentation
+
+If a helper is phase-scoped, reviewer feedback should be evaluated against that lifecycle. It must be safe, privacy-preserving, data-integrity-preserving, and truthful for the current phase, but it does not need to support every future phase or arbitrary parameter combination. Do not promote a phase-scoped helper into reusable tooling unless user/ChatGPT explicitly approves that lifecycle change.
