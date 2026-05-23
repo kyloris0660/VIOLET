@@ -10,17 +10,17 @@ Do not use `. "$env:USERPROFILE\.violet\test-env.ps1"` for this development vali
 
 This workflow is read-only unless a phase explicitly approves runtime mutation. Manual validation must not run DB import, staging copy, classification, AI tagging, localization, cleanup/delete/reset/drop/truncate, Entity Resolver, similarity/clustering, or source/iCloud mutation.
 
-## Current Startup Requirement
+## Startup Import Path Requirement
 
-Current development manual validation requires:
+Current development manual validation does **not** require:
 
 ```powershell
 $env:PYTHONPATH = "<repo>\backend"
 ```
 
-Reason: `run.py` loads `backend.app.main:app`, while some modules still use `app.*` imports. For example, `backend/app/services/source_ingestion_gate.py` imports `app.utils.cloud_files`. Adding `<repo>\backend` to `PYTHONPATH` makes that top-level `app` package importable.
+Do not set `<repo>\backend` in `PYTHONPATH` for this validation. Start from repo root with the approved venv Python and `run.py --debug`. If reusing a shell from an older validation run, remove any stale `<repo>\backend` entry before treating the startup as proof.
 
-This is an accepted current manual validation requirement. A later import/startup path consistency hardening phase should remove reliance on operator memory.
+Historical note: earlier Phase 3.8d manual validation required `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while one backend runtime module still used a top-level `app.*` import. Phase 3.8d-G2 removed this requirement by making the startup-critical backend import package-relative.
 
 ## Terminal A: Start The Development Server
 
@@ -34,13 +34,6 @@ $env:VIOLET_ENV = "development"
 $env:POSTGRES_DB = "blombooru"
 $env:APP_PORT = "8012"
 $env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
-
-$backendPath = Join-Path (Get-Location) "backend"
-if ($env:PYTHONPATH) {
-    $env:PYTHONPATH = "$backendPath;$env:PYTHONPATH"
-} else {
-    $env:PYTHONPATH = $backendPath
-}
 
 # Disable uncontrolled automatic translation/background behavior during manual validation.
 $env:AI_TAGGING_AUTO_LOCALIZATION = "false"
@@ -60,7 +53,6 @@ cd C:\Users\kyloris\Documents\AnimeLocalBooru
 
 $PY = "C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe"
 $env:VIOLET_BASE_URL = "http://127.0.0.1:8012"
-$env:PYTHONPATH = "C:\Users\kyloris\Documents\AnimeLocalBooru\backend"
 
 git status --short
 git log --oneline --decorate -3
@@ -163,7 +155,7 @@ Adjust counts and source labels to the phase report being validated.
 
 Stop validation and report if any of these occur:
 
-- Server fails even with `PYTHONPATH=<repo>\backend`.
+- Server fails from repo root without `PYTHONPATH=<repo>\backend`.
 - Server identity mismatch: wrong `VIOLET_ENV`, DB, branch, git SHA, code root, storage root, or Python executable.
 - Source-label count mismatch.
 - Failed/deferred rows appear imported or downstream eligible.
