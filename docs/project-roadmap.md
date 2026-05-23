@@ -435,6 +435,17 @@ See [Content Classification](content-classification.md) for full documentation.
 - Downstream scope is DB SOURCE_LABEL authoritative after import/resume: classification, AI scope, localization scope, DB/storage validation, and item-ledger downstream status must use current `Media.source='violet:phase3.8d:i7:staged-success'` rows after count/hash coverage is proven against staged-success import candidates. External `duplicate_by_hash` media outside the source label must block coverage rather than silently reducing downstream processing.
 - API/admin/browser smoke passed on a controlled local server: media list, content-class filter, media detail, original/thumbnail endpoints, content-class stats, AI tag review, localization stats, gallery load, and media detail page all validated with no 500/traceback/console errors.
 - Full `1000` DB import remains blocked. Future work must not import the 6 failed I6 rows unless a separate retry/backfill/deferred recovery decision produces a staged-success set for them.
+- Manual validation passed after PR #64 merge. The medium pilot pipeline is accepted at a practical level: `994` staged-success rows imported, `6` I6 failed rows excluded/deferred, classification-first pipeline completed, AI tagging limited to anime/unknown, and eligible general/meta localization completed. A few odd translations are non-blocking and belong to a later proper-noun/entity/character localization strategy.
+
+### Phase 3.8d-G1 - Governance and Manual Validation Workflow Hardening
+
+**Goal:** Persist governance and manual validation workflow so future agents do not depend on chat context.
+
+- Documents artifact and operational script lifecycle policy: production reusable code, reusable validation/safety tools, phase-scoped operational runners, one-off local artifacts, and public reports/handoff/roadmap must be distinguished explicitly.
+- Documents reviewer feedback lifecycle handling: fix current phase correctness/safety/truthfulness issues, defer future-reuse/generalization/polish for phase-scoped or one-off code when they do not affect current decisions.
+- Strengthens the required `Engineering judgment / operator notes` section so final reports must assess phase boundaries, risks, reviewer findings, artifact lifecycle, prompt quality, and next-step recommendations.
+- Adds durable development/blombooru manual validation workflow in `docs/manual-validation.md`. The current manual startup requires `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while some modules still use `app.*` imports.
+- This is docs/governance only. It does not add runtime behavior, DB migration, DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity/clustering, or Phase 4 work.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
@@ -515,6 +526,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Required per-item fields include: row id or safe label, source state, staging status, failure reason, bytes copied, `eligible_for_db_import`, deferred/backfilled/unresolved state, and imported media ID if later imported.
 - Reports must be scoped to the current run/manifest/job, not only global library totals.
 - Failed cloud-backed items must remain visible and must not be mixed with successfully imported items or hidden behind aggregate counts.
+- DB import must consume staged-success / eligible items from the ledger, not a raw selected manifest.
 - Full-library import must not run until this production ledger exists and can prove which staged-success rows are eligible for DB import.
 - This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c or I6.
 
@@ -526,6 +538,31 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - The buffer must account for cloud failures, duplicate targets/sources, unsupported files, non-anime or otherwise ineligible classification results, and user exclusions.
 - Buffering is not silent skipping: every failed, excluded, deferred, backfilled, unresolved, and imported item must remain scoped to the current run/manifest/job in the production ledger.
 - The buffer design belongs in a future ingestion planning phase before full-library import. It must not bypass staging audit, item-ledger, or DB import approval gates.
+
+### Future hardening - Import / Startup Path Consistency
+
+**Priority:** Medium before larger manual validation or full-library workflows.
+
+- Current development manual validation uses `PYTHONPATH=<repo>\backend` because `run.py` starts `backend.app.main:app` while some modules still use `app.*` imports.
+- A later hardening phase should remove reliance on operator memory by making import paths and startup context consistent.
+- Until then, `docs/manual-validation.md` is the source of truth for development/blombooru manual validation startup.
+
+### Future hardening - Proper Noun / Entity / Character Localization Strategy
+
+**Priority:** Medium after Phase 3.8d acceptance and before broad proper-noun localization.
+
+- A few odd LLM translations from the medium pilot are accepted as non-blocking for Phase 3.8d.
+- Character, copyright, artist, and other proper-noun handling should be designed through entity/proper-noun strategy rather than broad visual tag translation.
+- Character/entity metadata integration remains separate from Phase 3.8d governance and manual validation closeout.
+
+### Future UI/IA Debt
+
+**Priority:** Lower than ingestion ledger, over-selection buffer, startup path consistency, and proper-noun/entity localization strategy.
+
+- Admin stats page redesign.
+- Admin settings page redesign.
+- Admin information architecture cleanup.
+- Management panel UX rewrite.
 
 ### Phase 4 — iCloud Photos Watcher / Scheduled Scan
 

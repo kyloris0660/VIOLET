@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I7 - Partial import and classification-first pipeline closeout (2026-05-23).
+> Last updated during Phase 3.8d-G1 - Governance and manual validation workflow hardening (2026-05-23).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,13 +8,14 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i7-partial-import-classification-first` (PR #64 closeout; partial import/classification-first report) |
+| **Branch** | `codex/phase3.8d-g1-governance-manual-validation` (governance/manual validation documentation stage) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
 | **DB (dev)** | `blombooru` on `localhost:5432`, user `postgres` |
 | **DB (test)** | `blombooru_test` on `localhost:5432` — created via `scripts/setup_test_db.py` |
-| **Dev server** | `.\venv\Scripts\Activate.ps1` → `python run.py --debug` → `http://localhost:8000` |
+| **Dev server** | `.\venv\Scripts\Activate.ps1` -> `python run.py --debug` -> `http://localhost:8000` |
+| **Manual validation server** | See `docs/manual-validation.md`; development/blombooru manual validation currently requires `PYTHONPATH=<repo>\backend` before `& "$PY" run.py --debug` |
 | **Test server** | `. "$env:USERPROFILE\.violet\test-env.ps1"` → `& "$PY" run.py --debug` → `http://localhost:<APP_PORT>` |
 | **Admin credentials** | `admin` / `admin123` |
 | **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) merged |
@@ -45,7 +46,8 @@
 | **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
 | **Phase 3.8d-I5c (PR #62)** | PR #62 merged - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
 | **Phase 3.8d-I6 (PR #63)** | PR #63 merged - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; full `1000` DB import remains blocked |
-| **Phase 3.8d-I7 (PR #64)** | `phase3.8d-i7-partial-import-classification-first` - partial import from the I6 item ledger staged-success set completed for `994` rows; failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded; classification processed `994` with `0` failures; AI tagging processed `967` anime/unknown rows with `0` failures; initial controlled localization translated `200` general/meta tags, then closeout continuation translated the remaining `370` eligible general/meta tags with `0` failures and `0` remaining general/meta missing translations |
+| **Phase 3.8d-I7 (PR #64)** | PR #64 merged - partial import from the I6 item ledger staged-success set completed for `994` rows; failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded; classification processed `994` with `0` failures; AI tagging processed `967` anime/unknown rows with `0` failures; initial controlled localization translated `200` general/meta tags, then closeout continuation translated the remaining `370` eligible general/meta tags with `0` failures and `0` remaining general/meta missing translations; manual validation accepted the medium pilot at a practical level |
+| **Phase 3.8d-G1** | In progress - governance/manual validation workflow hardening; docs-only stage to persist artifact lifecycle, reviewer lifecycle, engineering judgment, manual validation workflow, and roadmap guidance |
 
 ## Mandatory Workflow Rules
 
@@ -67,6 +69,9 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes through the Source Ingestion Gate before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging. Upload-bytes and app-managed storage reads do not require the source cloud gate.
 14. **Ingestion observability / per-run source item state** - Future production ingestion must record a clear final state for every source item in each run, manifest, or job: succeeded, failed, failure reason, retried, backfilled, deferred for cloud recovery, imported into DB, excluded as ineligible, or unresolved. Do not mix failed cloud-backed items with successful imported items, hide failed rows behind aggregate counts, or report only global library totals. Reporting must be scoped to the current run/manifest/job. Phase 3.8d-I5c records this as a principle and local deferred ledger only; it does not add a DB migration or full production ledger.
 15. **Agent engineering judgment and bugfix root-cause closure** - CodeX final reports must include `Engineering judgment / operator notes`. For every non-trivial bugfix, CodeX must identify the root cause, decide whether it is part of a broader same-pattern class, search and fix adjacent occurrences within the active PR scope, add tests for the class of issue, and report what was searched plus what was intentionally deferred. This does not authorize automatic reviewer-fix loops or scope creep; default reviewer flow remains implement/test/push/`@codex review`/report/stop unless user/ChatGPT explicitly authorizes a bounded fix round.
+16. **Artifact and operational script lifecycle** - V.I.O.L.E.T. allows one-off and phase-scoped validation automation when it reduces human error, catches issues earlier, or makes risky steps reproducible. New scripts/tools/reports must declare whether they are production reusable code, reusable validation/safety tools, phase-scoped operational runners, one-off local artifacts, or public reports/handoff/roadmap. Do not automate for automation's sake, commit throwaway local outputs, or turn phase-scoped runners into production orchestrators unless user/ChatGPT explicitly approves.
+17. **Reviewer feedback and artifact lifecycle** - Reviewer findings that affect current phase correctness, mutation safety, item ledger truthfulness, privacy/public report safety, data integrity, failure/success classification, or safe continuation must be fixed even for phase-scoped runners. Findings that only concern future reuse, generalized parameters, generic unused parameter combinations, cross-phase extensibility, or non-decision-impacting polish may be deferred for phase-scoped or one-off code.
+18. **Manual validation workflow** - Development/blombooru manual validation uses `docs/manual-validation.md`, not `. "$env:USERPROFILE\.violet\test-env.ps1"`. The current startup flow requires `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while some modules still use `app.*` imports. Startup flow changes require docs updates and user/ChatGPT approval.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
