@@ -419,6 +419,23 @@ See [Content Classification](content-classification.md) for full documentation.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
 - Next decision: approve same-bucket backfill for the 6 failed rows, perform a targeted provider/network retry, or explicitly approve partial-import planning for the `994` staged rows from the item ledger. Full `1000` DB import remains blocked until a complete staged set is produced and separately approved.
 
+### Phase 3.8d-I7 - Partial Import and Classification-first Pipeline for 994 Staged Rows
+
+**Goal:** Import only the I6 staged-success rows, then run the classification-first downstream pipeline without importing failed or unstaged rows.
+
+- Added `scripts/run_phase38d_i7_partial_import_classification_first.py`, a ledger-scoped runner that validates the I6 item ledger, generates an ignored 994-row staged-success import manifest, gates DB identity/backup/dry-run, imports only staged-success rows, and records downstream state in a local ignored item ledger.
+- I6 item ledger validation passed: `1000` rows total, `994` staged-success import candidates, failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded, rows `98`/`881` not active candidates, replacement rows `1029`/`1041` present.
+- DB import executed under source label `violet:phase3.8d:i7:staged-success`: `994` media rows imported, `0` duplicate-by-hash, `0` import failures. A later resume run detected the already completed import and did not duplicate app-managed writes.
+- Classification-first policy completed: `994` processed, `0` failed; distribution `anime=934`, `unknown=33`, `non_anime=27`, `illustration=0`, `unclassified=0`.
+- AI tagging ran only for anime + unknown rows: `967` eligible processed, `0` failed, `40,287` confirmed tag associations and `12,058` suggestions added; `27` non-anime rows were excluded from AI tagging.
+- Controlled localization ran only for eligible-derived general/meta tags. The initial bounded batch translated `200` with `0` failures, then the PR #64 closeout continuation translated the remaining `370` eligible general/meta candidates with `0` failures; final remaining eligible general/meta missing translations are `0`, while `101` proper-noun candidates remain intentionally skipped.
+- PR #64 closeout hardening makes public report privacy leaks fail closed, rebuilds resume media IDs from current DB `Media.source='violet:phase3.8d:i7:staged-success'` rows instead of local validation details, and requires classification resume identity proof for the same imported media ID set.
+- Post-import DB/storage validation is now authoritative for I7 completion: missing app-managed originals/thumbnails, non-app-relative DB paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures block success.
+- Localization continuation is partial-import compatible: it scopes to the actual current DB source-label media set, blocks only when that set is empty, continues to skip proper-noun categories, and marks `TagTranslationJob` failed on translation persistence/accounting exceptions where possible.
+- Downstream scope is DB SOURCE_LABEL authoritative after import/resume: classification, AI scope, localization scope, DB/storage validation, and item-ledger downstream status must use current `Media.source='violet:phase3.8d:i7:staged-success'` rows after count/hash coverage is proven against staged-success import candidates. External `duplicate_by_hash` media outside the source label must block coverage rather than silently reducing downstream processing.
+- API/admin/browser smoke passed on a controlled local server: media list, content-class filter, media detail, original/thumbnail endpoints, content-class stats, AI tag review, localization stats, gallery load, and media detail page all validated with no 500/traceback/console errors.
+- Full `1000` DB import remains blocked. Future work must not import the 6 failed I6 rows unless a separate retry/backfill/deferred recovery decision produces a staged-success set for them.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.

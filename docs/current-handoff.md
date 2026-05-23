@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-I6 - Staging copy retry with item-level failure budget (2026-05-22).
+> Last updated during Phase 3.8d-I7 - Partial import and classification-first pipeline closeout (2026-05-23).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `phase3.8d-i6-staging-copy-retry` (staging copy retry report; Phase 3.8d DB import remains blocked) |
+| **Branch** | `phase3.8d-i7-partial-import-classification-first` (PR #64 closeout; partial import/classification-first report) |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -44,7 +44,8 @@
 | **Phase 3.8d-I5 (PR #60)** | PR #60 merged - controlled read-probe / hydration audit; sample gate failed for rows `98` and `881`, so full recall verification and Phase 3.8d execute remain blocked |
 | **Phase 3.8d-I5b (PR #61)** | PR #61 merged - targeted retry for rows `98` and `881`; both rows failed bounded prefix/full-read retry with `cloud_hydration_failed`, backfill remained dry-run only, and Phase 3.8d execute stayed blocked |
 | **Phase 3.8d-I5c (PR #62)** | PR #62 merged - replacement rows `1029` and `1041` validated by controlled full-read, local backfilled selected manifest generated with `selected_total=1000`, rows `98` and `881` recorded in deferred cloud recovery ledger with per-run final state; no staging copy or DB import |
-| **Phase 3.8d-I6 (branch)** | `phase3.8d-i6-staging-copy-retry` - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; DB import remains blocked for full `1000` |
+| **Phase 3.8d-I6 (PR #63)** | PR #63 merged - cloud-aware copy policy explicitly enabled; staging copy completed with item-level failures: `994` files / `3,063,523,992` bytes staged, `6` rows failed with `cloud_network_unavailable`, failure budget not exceeded; full `1000` DB import remains blocked |
+| **Phase 3.8d-I7 (PR #64)** | `phase3.8d-i7-partial-import-classification-first` - partial import from the I6 item ledger staged-success set completed for `994` rows; failed rows `799`, `839`, `922`, `970`, `971`, and `972` excluded; classification processed `994` with `0` failures; AI tagging processed `967` anime/unknown rows with `0` failures; initial controlled localization translated `200` general/meta tags, then closeout continuation translated the remaining `370` eligible general/meta tags with `0` failures and `0` remaining general/meta missing translations |
 
 ## Mandatory Workflow Rules
 
@@ -65,7 +66,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 
 13. **Cloud availability gate for ingestion/staging/copy** - Any workflow that can read or copy from iCloud / Windows Cloud Files source paths must inspect cloud attributes through the Source Ingestion Gate before content reads. `stat()`, `exists()`, size, and `is_file()` are insufficient. High cloud-risk selected sets must not proceed directly to copy; manual hydrate is an emergency workaround only, structured cloud failure reasons are required, and DB import must not run after failed/incomplete staging. Upload-bytes and app-managed storage reads do not require the source cloud gate.
 14. **Ingestion observability / per-run source item state** - Future production ingestion must record a clear final state for every source item in each run, manifest, or job: succeeded, failed, failure reason, retried, backfilled, deferred for cloud recovery, imported into DB, excluded as ineligible, or unresolved. Do not mix failed cloud-backed items with successful imported items, hide failed rows behind aggregate counts, or report only global library totals. Reporting must be scoped to the current run/manifest/job. Phase 3.8d-I5c records this as a principle and local deferred ledger only; it does not add a DB migration or full production ledger.
-15. **Bugfix root-cause closure** - For every non-trivial bugfix, CodeX must identify the root cause, decide whether it is part of a broader same-pattern class, search and fix adjacent occurrences within the active PR scope, add tests for the class of issue, and report what was searched plus what was intentionally deferred. This does not authorize automatic reviewer-fix loops or scope creep; default reviewer flow remains implement/test/push/`@codex review`/report/stop unless user/ChatGPT explicitly authorizes a bounded fix round.
+15. **Agent engineering judgment and bugfix root-cause closure** - CodeX final reports must include `Engineering judgment / operator notes`. For every non-trivial bugfix, CodeX must identify the root cause, decide whether it is part of a broader same-pattern class, search and fix adjacent occurrences within the active PR scope, add tests for the class of issue, and report what was searched plus what was intentionally deferred. This does not authorize automatic reviewer-fix loops or scope creep; default reviewer flow remains implement/test/push/`@codex review`/report/stop unless user/ChatGPT explicitly authorizes a bounded fix round.
 
 ## Incident Log — 2026-05-10: Worktree/DB Mismatch Data Loss
 
@@ -842,14 +843,17 @@ Formal project rebrand from AnimeLocalBooru to V.I.O.L.E.T. (Visual Image Organi
 - No DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, source/iCloud write mutation, app-managed storage mutation, push main, or merge occurred.
 - Reports: `docs/reports/phase-3.8d-i6-staging-copy-retry.md` and `docs/reports/phase-3.8d-i6-staging-copy-retry-summary.json`.
 
-## Recommended Next Step: Backfill or Partial-import Planning Decision
+## Recommended Next Step: I7 Review, Then Post-import Quality / Recovery Planning
 
-Do not resume full Phase 3.8d execute, start Phase 4, or run any larger import until the staged subset and failed-item ledger are reviewed and an explicit recovery/import path is approved:
+Do not start Phase 4 or run Entity Resolver/similarity/clustering until Phase 3.8d-I7 is reviewed and merged:
 
-1. Review Phase 3.8d-I6 results: `994` files staged successfully; rows `799`, `839`, `922`, `970`, `971`, and `972` failed item-level copy with `cloud_network_unavailable`.
-2. Decide whether to approve same-bucket backfill for the 6 failed rows, a targeted provider/network retry, or a separately scoped partial-import plan for the `994` staged rows using the I6 item ledger as the source of truth.
-3. Do not run DB import, classification, AI tagging, localization, Entity Resolver, similarity, cleanup/delete, or Phase 4 until that next decision is explicitly approved.
-4. DB import of the full `1000` remains blocked unless a complete staged set is produced by backfill/retry and a separate DB import plan is approved.
+1. Review PR #64 current head and local item ledger: `994` staged-success rows imported/resumed under source label `violet:phase3.8d:i7:staged-success`; the 6 I6 failed rows were not imported.
+2. Perform a human quality pass on imported media, content classification distribution, AI tag suggestions, and the now-complete eligible general/meta localization set before broader feature work.
+3. Decide a separate recovery path for rows `799`, `839`, `922`, `970`, `971`, and `972`: targeted provider/network retry, same-bucket backfill, or deferred cloud recovery.
+4. Treat PR #64 closeout hardening as active safety policy for this runner: public report privacy leaks fail closed, import resume media IDs come from DB source-label rows, and classification resume requires media ID identity proof or DB-backed classification state.
+5. Treat post-import DB/storage validation as authoritative for I7 success: missing app-managed originals/thumbnails, non-app-relative DB paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures must block completion.
+6. Treat I7 localization continuation as partial-import compatible: use the actual current DB source-label media set, block only when that set is empty, continue to skip proper-noun categories, and fail-close `TagTranslationJob` on translation persistence/accounting exceptions.
+7. Treat I7 downstream scope as DB SOURCE_LABEL authoritative after import/resume: classification, AI scope, localization scope, DB/storage validation, and item-ledger downstream state must use current `Media.source='violet:phase3.8d:i7:staged-success'` rows after validating count/hash coverage against staged-success import candidates. External `duplicate_by_hash` rows outside the source label must block coverage instead of silently shrinking downstream processing. In-process translation worker liveness inspection is deferred to a later worker-orchestration hardening stage.
 
 ## Previous Recommended Step: Manual Validation Before Scaling
 

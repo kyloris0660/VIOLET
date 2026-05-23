@@ -20,7 +20,9 @@ For implementation PRs, reviewer feedback is a controlled handoff point, not an 
 
 Plan-only tasks must not create branches, commits, pushes, or PRs unless explicitly approved as documentation PRs. Deliver plan-only output in chat or as a local untracked `.codex/plans/*.md` draft and wait for user/ChatGPT approval.
 
-## Bugfix Root-Cause Closure Policy
+## Agent Engineering Judgment and Bugfix Root-Cause Closure Policy
+
+CodeX must provide `Engineering judgment / operator notes` in final delivery reports. For every substantial phase or non-trivial bugfix, CodeX should identify risks, distinguish blockers from deferable issues, and say whether the phase boundary appears too narrow or too broad.
 
 When reviewer feedback, tests, or runtime reports expose a bug, CodeX must not treat the issue only as a single-line patch unless it is clearly isolated.
 
