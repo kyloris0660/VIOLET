@@ -3,6 +3,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -284,3 +285,132 @@ def test_classification_resume_accepts_exact_media_id_set() -> None:
         "failed_or_unclassified": 0,
     }
     assert classification["identity_proof"]["media_ids_count"] == 2
+
+
+def _storage_context(tmp_path: Path) -> SimpleNamespace:
+    storage_root = tmp_path / "storage"
+    (storage_root / "media" / "original").mkdir(parents=True)
+    (storage_root / "media" / "thumbnails").mkdir(parents=True)
+    return SimpleNamespace(storage_root=storage_root)
+
+
+def _media_row(media_id: int, path: str, thumbnail_path: str, *, source: str | None = None) -> dict:
+    return {
+        "id": media_id,
+        "path": path,
+        "thumbnail_path": thumbnail_path,
+        "source": source or i7.SOURCE_LABEL,
+    }
+
+
+def test_db_storage_validation_passes_when_managed_files_exist(tmp_path: Path) -> None:
+    context = _storage_context(tmp_path)
+    (context.storage_root / "media" / "original" / "a.jpg").write_bytes(b"abc")
+    (context.storage_root / "media" / "thumbnails" / "a.jpg").write_bytes(b"thumb")
+
+    result = i7.validate_imported_db_and_storage_rows(
+        context,
+        [1],
+        [_media_row(1, "media/original/a.jpg", "media/thumbnails/a.jpg")],
+    )
+
+    assert result["status"] == "passed"
+    assert result["original_files_exist"] == 1
+    assert result["thumbnails_exist"] == 1
+
+
+def test_db_storage_validation_fails_when_original_missing(tmp_path: Path) -> None:
+    context = _storage_context(tmp_path)
+    (context.storage_root / "media" / "thumbnails" / "a.jpg").write_bytes(b"thumb")
+
+    result = i7.validate_imported_db_and_storage_rows(
+        context,
+        [1],
+        [_media_row(1, "media/original/a.jpg", "media/thumbnails/a.jpg")],
+    )
+
+    assert result["status"] == "failed"
+    assert result["missing_original_count"] == 1
+
+
+def test_db_storage_validation_fails_when_thumbnail_missing(tmp_path: Path) -> None:
+    context = _storage_context(tmp_path)
+    (context.storage_root / "media" / "original" / "a.jpg").write_bytes(b"abc")
+
+    result = i7.validate_imported_db_and_storage_rows(
+        context,
+        [1],
+        [_media_row(1, "media/original/a.jpg", "media/thumbnails/a.jpg")],
+    )
+
+    assert result["status"] == "failed"
+    assert result["missing_thumbnail_count"] == 1
+
+
+def test_db_storage_validation_rejects_absolute_media_path(tmp_path: Path) -> None:
+    context = _storage_context(tmp_path)
+    (context.storage_root / "media" / "thumbnails" / "a.jpg").write_bytes(b"thumb")
+
+    result = i7.validate_imported_db_and_storage_rows(
+        context,
+        [1],
+        [_media_row(1, "C:\\Users\\kyloris\\Pictures\\a.jpg", "media/thumbnails/a.jpg")],
+    )
+
+    assert result["status"] == "failed"
+    assert result["path_containment_failures"] == 1
+    assert result["path_privacy_leaks"] == 1
+
+
+def test_db_storage_validation_rejects_path_traversal_outside_storage(tmp_path: Path) -> None:
+    context = _storage_context(tmp_path)
+    (context.storage_root / "media" / "thumbnails" / "a.jpg").write_bytes(b"thumb")
+
+    result = i7.validate_imported_db_and_storage_rows(
+        context,
+        [1],
+        [_media_row(1, "../outside.jpg", "media/thumbnails/a.jpg")],
+    )
+
+    assert result["status"] == "failed"
+    assert result["path_containment_failures"] == 1
+
+
+def test_db_storage_validation_gate_blocks_overall_success() -> None:
+    summary = {"status": "completed", "success": True}
+    validation = {"status": "failed", "missing_original_count": 1}
+
+    passed = i7.apply_db_storage_validation_gate(summary, validation)
+
+    assert not passed
+    assert summary["status"] == "blocked_db_storage_validation_failed"
+    assert summary["success"] is False
+
+
+def test_db_storage_validation_gate_preserves_completed_when_passed() -> None:
+    summary = {"status": "completed", "success": True}
+    validation = {"status": "passed", "missing_original_count": 0}
+
+    passed = i7.apply_db_storage_validation_gate(summary, validation)
+
+    assert passed
+    assert summary["status"] == "completed"
+    assert summary["success"] is True
+
+
+def test_localization_continuation_success_ignores_stale_prior_failure() -> None:
+    summary = {"status": "blocked_previous", "success": False}
+
+    i7.apply_localization_continuation_status(summary, {"status": "completed"}, remaining_missing=0)
+
+    assert summary["status"] == "completed"
+    assert summary["success"] is True
+
+
+def test_localization_continuation_failure_sets_success_false() -> None:
+    summary = {"status": "completed", "success": True}
+
+    i7.apply_localization_continuation_status(summary, {"status": "failed_provider_unavailable"}, remaining_missing=10)
+
+    assert summary["status"] == "localization_continuation_provider_unavailable"
+    assert summary["success"] is False

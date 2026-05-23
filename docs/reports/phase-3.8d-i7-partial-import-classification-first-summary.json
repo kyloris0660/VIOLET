@@ -376,10 +376,17 @@
   "db_storage_validation": {
     "status": "passed",
     "media_checked": 994,
+    "expected_media_ids": 994,
     "source_label_count": 994,
     "source_label_mismatches": 0,
+    "missing_db_rows": 0,
+    "unexpected_db_rows": 0,
     "original_files_exist": 994,
     "thumbnails_exist": 994,
+    "missing_original_count": 0,
+    "missing_thumbnail_count": 0,
+    "path_containment_failures": 0,
+    "storage_probe_failures": 0,
     "path_privacy_leaks": 0,
     "source_icloud_paths_stored": false,
     "db_public_fields_full_path_free": true
@@ -449,8 +456,8 @@
   "tests": {
     "git_diff_check": "passed (warnings only: CRLF normalization)",
     "py_compile": "passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py",
-    "focused_pytest": "passed: 14 passed",
-    "full_non_e2e_pytest": "passed: 1174 passed, 12 skipped, 12 warnings",
+    "focused_pytest": "passed: 23 passed",
+    "full_non_e2e_pytest": "passed: 1183 passed, 12 skipped, 12 warnings",
     "commands": [
       "git diff --check",
       "& \"$PY\" -m py_compile scripts/run_phase38d_i7_partial_import_classification_first.py tests/test_phase38d_i7_partial_import_classification_first.py",
@@ -522,6 +529,18 @@
     "public_report_privacy_gate": "fail_closed_before_persisting_leaking_public_outputs",
     "resume_media_ids_source": "current_db_source_label_rows_matched_by_file_hash",
     "classification_resume_gate": "media_id_identity_proof_or_db_source_label_content_class_state",
+    "db_storage_validation_gate": "authoritative_success_gate",
+    "db_storage_validation_blocks_on": [
+      "missing_managed_original",
+      "missing_managed_thumbnail",
+      "non_app_relative_path",
+      "storage_root_escape",
+      "source_label_mismatch",
+      "db_row_mismatch",
+      "privacy_leak",
+      "storage_probe_failure"
+    ],
+    "localization_continuation_success_source": "current_continuation_result_and_remaining_general_meta_count",
     "db_import_reran": false,
     "classification_reran": false,
     "ai_tagging_reran": false,

@@ -1305,15 +1305,7 @@ def run_localization_continuation(args: argparse.Namespace) -> dict[str, Any]:
             "remaining_missing_general_meta_after": int(after["candidate_count"]),
             "proper_noun_categories_skipped": after["proper_noun_categories_skipped"],
         }
-        if continuation.get("status") in {"completed", "noop_no_candidates"} and int(after["candidate_count"]) == 0:
-            summary["status"] = "completed"
-            summary["success"] = bool(summary.get("success", True))
-        elif continuation.get("status") == "failed_provider_unavailable":
-            summary["status"] = "localization_continuation_provider_unavailable"
-            summary["success"] = False
-        else:
-            summary["status"] = "completed_with_localization_continuation_failures"
-            summary["success"] = False
+        apply_localization_continuation_status(summary, continuation, remaining_missing=int(after["candidate_count"]))
         summary["closeout_safety"] = {
             "db_import_reran": False,
             "classification_reran": False,
@@ -1328,6 +1320,121 @@ def run_localization_continuation(args: argparse.Namespace) -> dict[str, Any]:
         return summary
     finally:
         engine.dispose()
+
+
+def resolve_app_storage_path(storage_root: Path, raw_path: str | None) -> tuple[Path | None, str | None]:
+    if raw_path is None or str(raw_path).strip() == "":
+        return None, "missing_path"
+    text_path = str(raw_path).strip()
+    if FILE_URI_RE.search(text_path):
+        return None, "file_uri_path"
+    if PureWindowsPath(text_path).is_absolute() or Path(text_path).is_absolute():
+        return None, "absolute_path"
+    storage_root_resolved = storage_root.resolve()
+    try:
+        resolved = (storage_root_resolved / Path(text_path)).resolve()
+        resolved.relative_to(storage_root_resolved)
+    except (OSError, RuntimeError, ValueError):
+        return None, "path_outside_storage_root"
+    return resolved, None
+
+
+def safe_existing_file(path: Path) -> tuple[bool, str | None]:
+    try:
+        return path.exists() and path.is_file(), None
+    except (OSError, RuntimeError) as exc:
+        return False, exc.__class__.__name__
+
+
+def validate_imported_db_and_storage_rows(
+    context: staged_import.RuntimeContext,
+    imported_media_ids: Sequence[int],
+    rows: Sequence[MappingLike],
+) -> dict[str, Any]:
+    expected_ids = {int(media_id) for media_id in imported_media_ids}
+    found_ids = {int(row.get("id")) for row in rows if row.get("id") is not None}
+    media_checked = len(rows)
+    source_label_mismatches = 0
+    privacy_leaks = 0
+    original_exists = 0
+    thumbnails_exist = 0
+    missing_original_count = 0
+    missing_thumbnail_count = 0
+    path_containment_failures = 0
+    storage_probe_failures = 0
+    missing_db_rows = len(expected_ids - found_ids)
+    unexpected_db_rows = len(found_ids - expected_ids)
+
+    for row in rows:
+        source = str(row.get("source") or "")
+        if source != SOURCE_LABEL:
+            source_label_mismatches += 1
+        path = str(row.get("path") or "")
+        thumb = str(row.get("thumbnail_path") or "")
+        if scan_privacy_leaks({"path": path, "thumbnail_path": thumb}):
+            privacy_leaks += 1
+
+        original_path, original_path_error = resolve_app_storage_path(context.storage_root, path)
+        if original_path_error:
+            path_containment_failures += 1
+            missing_original_count += 1
+        elif original_path is not None:
+            exists, probe_error = safe_existing_file(original_path)
+            if exists:
+                original_exists += 1
+            else:
+                missing_original_count += 1
+            if probe_error:
+                storage_probe_failures += 1
+
+        thumbnail_path, thumbnail_path_error = resolve_app_storage_path(context.storage_root, thumb)
+        if thumbnail_path_error:
+            path_containment_failures += 1
+            missing_thumbnail_count += 1
+        elif thumbnail_path is not None:
+            exists, probe_error = safe_existing_file(thumbnail_path)
+            if exists:
+                thumbnails_exist += 1
+            else:
+                missing_thumbnail_count += 1
+            if probe_error:
+                storage_probe_failures += 1
+
+    status = (
+        "passed"
+        if (
+            media_checked == len(imported_media_ids)
+            and missing_db_rows == 0
+            and unexpected_db_rows == 0
+            and source_label_mismatches == 0
+            and privacy_leaks == 0
+            and original_exists == media_checked
+            and thumbnails_exist == media_checked
+            and missing_original_count == 0
+            and missing_thumbnail_count == 0
+            and path_containment_failures == 0
+            and storage_probe_failures == 0
+        )
+        else "failed"
+    )
+    return {
+        "status": status,
+        "media_checked": media_checked,
+        "expected_media_ids": len(imported_media_ids),
+        "source_label_count": media_checked - source_label_mismatches,
+        "source_label_mismatches": source_label_mismatches,
+        "missing_db_rows": missing_db_rows,
+        "unexpected_db_rows": unexpected_db_rows,
+        "original_files_exist": original_exists,
+        "thumbnails_exist": thumbnails_exist,
+        "missing_original_count": missing_original_count,
+        "missing_thumbnail_count": missing_thumbnail_count,
+        "path_containment_failures": path_containment_failures,
+        "storage_probe_failures": storage_probe_failures,
+        "path_privacy_leaks": privacy_leaks,
+        "source_icloud_paths_stored": False,
+        "db_public_fields_full_path_free": privacy_leaks == 0 and path_containment_failures == 0,
+    }
 
 
 def validate_imported_db_and_storage(
@@ -1356,34 +1463,33 @@ def validate_imported_db_and_storage(
             .mappings()
             .all()
         )
-    original_exists = 0
-    thumbnails_exist = 0
-    source_label_mismatches = 0
-    privacy_leaks = 0
-    for row in rows:
-        source = str(row["source"])
-        if source != SOURCE_LABEL:
-            source_label_mismatches += 1
-        path = str(row["path"])
-        thumb = str(row["thumbnail_path"] or "")
-        if scan_privacy_leaks({"path": path, "thumbnail_path": thumb}):
-            privacy_leaks += 1
-        if (context.storage_root / path).exists():
-            original_exists += 1
-        if thumb and (context.storage_root / thumb).exists():
-            thumbnails_exist += 1
-    status = "passed" if len(rows) == len(imported_media_ids) and not source_label_mismatches and not privacy_leaks else "failed"
-    return {
-        "status": status,
-        "media_checked": len(rows),
-        "source_label_count": len(rows) - source_label_mismatches,
-        "source_label_mismatches": source_label_mismatches,
-        "original_files_exist": original_exists,
-        "thumbnails_exist": thumbnails_exist,
-        "path_privacy_leaks": privacy_leaks,
-        "source_icloud_paths_stored": False,
-        "db_public_fields_full_path_free": privacy_leaks == 0,
-    }
+    return validate_imported_db_and_storage_rows(context, imported_media_ids, [dict(row) for row in rows])
+
+
+def apply_db_storage_validation_gate(summary: dict[str, Any], validation: MappingLike) -> bool:
+    summary["db_storage_validation"] = dict(validation)
+    if validation.get("status") != "passed":
+        summary["status"] = "blocked_db_storage_validation_failed"
+        summary["success"] = False
+        return False
+    return True
+
+
+def apply_localization_continuation_status(
+    summary: dict[str, Any],
+    continuation: MappingLike,
+    *,
+    remaining_missing: int,
+) -> None:
+    if continuation.get("status") in {"completed", "noop_no_candidates"} and remaining_missing == 0:
+        summary["status"] = "completed"
+        summary["success"] = True
+    elif continuation.get("status") == "failed_provider_unavailable":
+        summary["status"] = "localization_continuation_provider_unavailable"
+        summary["success"] = False
+    else:
+        summary["status"] = "completed_with_localization_continuation_failures"
+        summary["success"] = False
 
 
 def render_markdown_report(summary: MappingLike) -> str:
@@ -1651,7 +1757,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             summary["success"] = True
 
         summary["db_counts_after"] = database_counts(engine, SOURCE_LABEL)
-        summary["db_storage_validation"] = validate_imported_db_and_storage(engine, context, imported_media_ids)
+        db_storage_validation = validate_imported_db_and_storage(engine, context, imported_media_ids)
+        if not apply_db_storage_validation_gate(summary, db_storage_validation):
+            summary["finished_at"] = utc_now()
+            return summary
         summary["import_item_ledger"] = write_import_item_ledger(
             args.ledger,
             executed_items,

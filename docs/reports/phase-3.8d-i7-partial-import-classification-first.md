@@ -56,18 +56,31 @@
 - Public report privacy gate now fails closed: if summary or rendered Markdown would leak a local absolute path, file URI, or secret-like unsafe field, only a minimal safe blocked report is written.
 - Import resume media IDs are rebuilt from current DB rows for `Media.source='violet:phase3.8d:i7:staged-success'` and matched by staged file hash.
 - Classification resume no longer trusts processed count alone; it requires an identity proof for the same imported media ID set or DB-backed content_class state for that set.
+- Post-import DB/storage validation is now an authoritative success gate: missing managed originals/thumbnails, non-app-relative paths, storage-root escapes, source-label mismatches, DB row mismatches, privacy leaks, or storage probe failures set `blocked_db_storage_validation_failed`.
+- Localization continuation success is derived from the current continuation result and final remaining general/meta count, not stale previous summary success.
 - Localization continuation was intentionally limited to the current I7 eligible-derived `general`/`meta` candidates. Character/copyright/artist proper-noun categories remained skipped.
 
 ## Validation
 - DB/storage validation: `passed`
+- DB/storage media checked: `994`
+- Managed originals present: `994` / missing `0`
+- Managed thumbnails present: `994` / missing `0`
+- App-relative path containment failures: `0`
+- DB public path privacy leaks: `0`
 - API/browser/admin smoke: `passed`
 - Server log scan: `passed`
+
+## Root-cause Audit
+- Root cause: I7 could previously record post-import validation facts without making overall success depend on those facts, and resume/continuation paths could inherit stale success state.
+- Related patterns inspected: DB/storage validation status construction, overall `summary.status` / `summary.success` assignment after localization, import resume identity, classification resume identity, and public report privacy writing.
+- Fixes applied: DB/storage validation now gates final pipeline success; app-relative path containment is enforced before file probes; missing managed files fail validation; localization continuation sets success from the current continuation outcome.
+- Deferred: no broad DB ledger redesign, no Entity Resolver/similarity, and no full E2E rerun in this closeout because the change is runner validation/reporting plus focused read-only DB/storage verification.
 
 ## Tests
 - Diff check: `passed (warnings only: CRLF normalization)`
 - Py compile: `passed: scripts/run_phase38d_i7_partial_import_classification_first.py and tests/test_phase38d_i7_partial_import_classification_first.py`
-- Focused tests: `passed: 14 passed`
-- Full non-E2E suite: `passed: 1174 passed, 12 skipped, 12 warnings`
+- Focused tests: `passed: 23 passed`
+- Full non-E2E suite: `passed: 1183 passed, 12 skipped, 12 warnings`
 
 ## Safety Confirmation
 - Failed I6 rows were not imported.
