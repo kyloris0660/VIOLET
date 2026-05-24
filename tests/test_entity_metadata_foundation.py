@@ -459,6 +459,9 @@ def test_public_safe_text_allows_http_urls_with_local_path_words(db):
         "https://example.com/home/page",
         "https://example.com/var/catalog",
         "https://example.com/key-characters-list",
+        "https://example.com/search?q=normal+tag",
+        "https://example.com/search?q=normal%20tag&label=key-characters-list",
+        "https://example.com/search#label=monkey-business-1234",
     ]
 
     for idx, url in enumerate(urls):
@@ -510,6 +513,49 @@ def test_public_safe_text_rejects_local_paths_inside_url_query(db):
             source_type="external",
             payload_ref="https://example.com/source?local=C:\\Users\\name\\file.png",
         )
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    [
+        "https://example.com/?local=C%3A%5C%5CUsers%5C%5Cname%5C%5Cfile.png",
+        "https://example.com/?local=C%253A%255C%255CUsers%255C%255Cname%255C%255Cfile.png",
+        "https://example.com/#file%3A%2F%2F%2FC%3A%2FUsers%2Fname%2Ffile.png",
+        "https://example.com/?path=%5C%5Cserver%5Cshare%5Cfile.png",
+        "https://example.com/#path=%5C%5Cserver%5Cshare%5Cfile.png",
+        "https://example.com/?path=%2FUsers%2Fname%2Ffile.png",
+        "https://example.com/#path=%2Fhome%2Fname%2Ffile.png",
+        "https://example.com/?token=Bearer%20abcdefghijklmnopqrstuvwxyz123456",
+        "https://example.com/#token=Bearer%20abcdefghijklmnopqrstuvwxyz123456",
+        "https://example.com/?token=sk%5Flive%5Fabcdefghijklmnopqrstuvwxyz123456",
+        "https://example.com/#token=key%5Flive%5Fabcdefghijklmnopqrstuvwxyz123456",
+    ],
+)
+def test_public_safe_text_rejects_encoded_url_query_fragment_payloads(db, unsafe_url):
+    with pytest.raises(EntityMetadataError, match="privacy-redacted"):
+        record_evidence(
+            db,
+            evidence_type="external_lookup",
+            source_type="external",
+            payload_ref=unsafe_url,
+        )
+
+
+def test_public_safe_text_rejects_encoded_url_query_in_identity_and_query_hash(db):
+    entity = create_entity(db, entity_type="source", canonical_name="Unsafe Encoded Source")
+    unsafe_url = "https://example.com/?local=C%3A%5C%5CUsers%5C%5Cname%5C%5Cfile.png"
+
+    with pytest.raises(EntityMetadataError, match="privacy-redacted"):
+        add_external_identity(
+            db,
+            entity_id=entity.id,
+            provider="unsafe_provider",
+            external_id="unsafe-1",
+            external_url=unsafe_url,
+        )
+
+    with pytest.raises(EntityMetadataError, match="privacy-redacted"):
+        hash_provider_query({"url": unsafe_url})
 
 
 def test_public_safe_text_allows_benign_key_text(db):

@@ -90,6 +90,7 @@ Additional current-head privacy detector closeout:
 - Local path detection now strips ordinary `http://` and `https://` URLs before applying POSIX local-path heuristics, so provider URLs such as `/users/`, `/home/`, or `/var/` paths are allowed when they are normal web URLs.
 - `file://`, Windows drive paths, UNC paths, and POSIX local paths such as `/Users/...` or `/home/...` remain rejected.
 - HTTP/HTTPS query strings and fragments are still inspected for embedded local paths, so URL wrappers cannot hide local path leakage.
+- HTTP/HTTPS query strings and fragments are inspected in raw form and after bounded percent-decoding with `MAX_URL_DECODE_DEPTH=3`, so single- and double-encoded local paths or secret-shaped tokens are rejected without applying POSIX local-path heuristics to the normal URL path.
 - Secret detection now accepts ordinary benign text such as `key-characters-list` and `monkey-business-1234`, while still rejecting Bearer tokens and high-entropy `sk-live` / `sk_live` / `sk-test` / `sk_test` / `key-live` / `key_live` / `key-test` / `key_test` style tokens.
 - `AGENTS.md`, `CLAUDE.md`, `docs/test-workflow.md`, and `docs/current-handoff.md` now explicitly state that final delivery report and stage summary section headings must also be Chinese.
 
@@ -128,10 +129,10 @@ Local validation performed during implementation:
 
 - `& "$PY" scripts/check_python_env.py --expected-python "$PY"`: PASS, using `C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`.
 - `& "$PY" -m py_compile backend/app/enums.py backend/app/models.py backend/app/database.py backend/app/services/entity_metadata_service.py tests/test_entity_metadata_foundation.py tests/test_audit_tier1000.py`: PASS.
-- `& "$PY" -m pytest tests/test_entity_metadata_foundation.py -v`: `26 passed`.
+- `& "$PY" -m pytest tests/test_entity_metadata_foundation.py -v`: `38 passed`.
 - `. "$env:USERPROFILE\.violet\test-env.ps1"; & "$PY" scripts/setup_test_db.py --migrate`: PASS on `blombooru_test`.
 - `& "$PY" -m pytest tests/test_audit_tier1000.py::TestCLIOutputWriterErrors tests/test_audit_tier1000.py::TestOutputWriteFailExitCode -v`: `6 passed`.
-- `. "$env:USERPROFILE\.violet\test-env.ps1"; & "$PY" -m pytest tests/ -v --ignore=tests/e2e`: `1229 passed, 4 skipped, 12 warnings`.
+- `. "$env:USERPROFILE\.violet\test-env.ps1"; & "$PY" -m pytest tests/ -v --ignore=tests/e2e`: `1241 passed, 4 skipped, 12 warnings`.
 
 During full-suite validation, four existing `tests/test_audit_tier1000.py` write-failure tests initially failed because they assumed `Z:\nonexistent_drive\...` was always unwritable on Windows. On this machine that path was writable, so the tests were hardened to use an existing directory as the output target, which reliably triggers a file-write failure without relying on drive layout.
 
@@ -139,7 +140,7 @@ Closeout tests added:
 
 - Assignment-creation failure during `accept_candidate` leaves candidate status unchanged.
 - Deleting an `Entity` through the ORM removes cascade-owned alias/external identity/translation/assignment rows and preserves candidate/evidence rows with `entity_id=NULL`.
-- Privacy detector tests allow normal HTTP/HTTPS URLs containing `/users/`, `/home/`, `/var/`, allow benign `key-*` text, reject `file://`, Windows drive paths, UNC paths, POSIX local paths, URL-embedded local paths, and secret-shaped Bearer / `sk-*` / `key_*` tokens.
+- Privacy detector tests allow normal HTTP/HTTPS URLs containing `/users/`, `/home/`, `/var/`, allow benign `key-*` text, reject `file://`, Windows drive paths, UNC paths, POSIX local paths, raw and percent-encoded URL query/fragment local paths, and raw/encoded secret-shaped Bearer / `sk-*` / `key_*` tokens.
 
 After user review, the project-level local test output policy was tightened: CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory unless explicitly authorized. Test artifacts must stay in repo-local gitignored directories or local machine temporary directories.
 

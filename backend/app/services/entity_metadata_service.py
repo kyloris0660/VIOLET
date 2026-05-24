@@ -13,7 +13,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import unquote_plus, urlsplit
 
 from sqlalchemy.orm import Session
 
@@ -56,6 +56,7 @@ BEARER_SECRET_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+\-/]{24,}={0,2}\b")
 PREFIXED_SECRET_RE = re.compile(
     r"(?i)\b(?:sk|key)[-_](?:live|test)[-_][A-Za-z0-9_-]{20,}\b"
 )
+MAX_URL_DECODE_DEPTH = 3
 SOURCE_PRIORITY = {
     EntityMetadataSourceEnum.manual.value: 0,
     EntityMetadataSourceEnum.trusted_external.value: 1,
@@ -89,25 +90,24 @@ def _coerce(enum_cls, value: Any, field_name: str):
         raise EntityMetadataError(f"Invalid {field_name}: {value!r}. Allowed: {allowed}") from exc
 
 
-def _contains_local_path(text: str) -> bool:
-    if FILE_URL_RE.search(text):
-        return True
+def _decode_url_text_variants(text: str) -> list[str]:
+    variants = [text]
+    current = text
+    for _ in range(MAX_URL_DECODE_DEPTH):
+        decoded = unquote_plus(current)
+        if decoded == current:
+            break
+        variants.append(decoded)
+        current = decoded
+    return variants
 
-    text_without_urls = text
-    for match in HTTP_URL_RE.finditer(text):
-        url = match.group(0)
-        split = urlsplit(url)
-        if split.scheme.lower() == "file":
-            return True
-        query_fragment = " ".join(part for part in (split.query, split.fragment) if part)
-        if query_fragment and _contains_local_path(query_fragment):
-            return True
-        text_without_urls = text_without_urls.replace(url, " ")
 
+def _contains_raw_local_path(text: str) -> bool:
     return bool(
-        WINDOWS_DRIVE_PATH_RE.search(text_without_urls)
-        or UNC_PATH_RE.search(text_without_urls)
-        or POSIX_LOCAL_PATH_RE.search(text_without_urls)
+        FILE_URL_RE.search(text)
+        or WINDOWS_DRIVE_PATH_RE.search(text)
+        or UNC_PATH_RE.search(text)
+        or POSIX_LOCAL_PATH_RE.search(text)
     )
 
 
@@ -115,11 +115,37 @@ def _contains_secret(text: str) -> bool:
     return bool(BEARER_SECRET_RE.search(text) or PREFIXED_SECRET_RE.search(text))
 
 
+def _contains_unsafe_url_query_fragment(text: str) -> bool:
+    for variant in _decode_url_text_variants(text):
+        if _contains_raw_local_path(variant) or _contains_secret(variant):
+            return True
+    return False
+
+
+def _contains_http_url_query_fragment_unsafe_payload(text: str) -> bool:
+    for match in HTTP_URL_RE.finditer(text):
+        split = urlsplit(match.group(0))
+        if any(_contains_unsafe_url_query_fragment(part) for part in (split.query, split.fragment) if part):
+            return True
+    return False
+
+
+def _contains_local_path(text: str) -> bool:
+    if FILE_URL_RE.search(text):
+        return True
+
+    text_without_urls = text
+    for match in HTTP_URL_RE.finditer(text):
+        text_without_urls = text_without_urls.replace(match.group(0), " ")
+
+    return _contains_raw_local_path(text_without_urls)
+
+
 def _assert_public_safe_text(value: str | None, *, field_name: str) -> None:
     if not value:
         return
     text = str(value)
-    if _contains_local_path(text) or _contains_secret(text):
+    if _contains_local_path(text) or _contains_secret(text) or _contains_http_url_query_fragment_unsafe_payload(text):
         raise EntityMetadataError(f"{field_name} must be privacy-redacted and must not contain local paths or secrets")
 
 
