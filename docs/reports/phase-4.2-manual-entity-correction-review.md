@@ -2,7 +2,7 @@
 
 Date: 2026-05-24
 
-PR: pending creation
+PR: [#69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69)
 
 ## Summary
 

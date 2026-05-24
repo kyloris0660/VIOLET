@@ -51,6 +51,7 @@
 | **Phase 3.8d-G2 (PR #66)** | [PR #66](https://github.com/kyloris0660/AnimeLocalBooru/pull/66) merged - startup/import path consistency hardening; repo-root `run.py --debug` no longer requires `PYTHONPATH=<repo>\backend` |
 | **Phase 3.8d-G3 (PR #67)** | [PR #67](https://github.com/kyloris0660/AnimeLocalBooru/pull/67) merged - final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
 | **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) merged - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
+| **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) open - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
 
 ## Current Accepted State
 
@@ -58,7 +59,7 @@ Phase 3.8d medium pilot is accepted at a practical level. The current library in
 
 Phase 4.1 is merged in [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68). Treat the entity metadata foundation as accepted baseline for Phase 4.2.
 
-Phase 4.2 is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
+Phase 4.2 is represented by [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69). It is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
 
 Key accepted facts:
 
