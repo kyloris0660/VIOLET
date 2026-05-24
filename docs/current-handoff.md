@@ -98,7 +98,7 @@ These rules are permanent and apply to all future phases. See `CLAUDE.md` and `A
 
 1. **GitHub PR / main protection** — Agents may NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user manually reviews and merges on GitHub.
 2. **Real browser validation** — Every feature phase or UI-affecting change requires real browser validation (Playwright with system Edge preferred). Delivery reports must include a **真实浏览器验收** section.
-3. **Chinese reporting** — Final delivery reports and stage summaries must be written in Chinese (zh-CN). Technical identifiers remain English.
+3. **Chinese reporting** — Final delivery reports and stage summaries must be written in Chinese (zh-CN). Section headings must also be Chinese. Technical identifiers remain English.
 4. **Test report accuracy** — Never claim "all tests passed" if any test failed. Report exact commands, exact results, and document any skipped/pre-existing failures.
 5. **Service / dev environment safety** — Never kill arbitrary processes. Only stop clearly identified V.I.O.L.E.T. dev server processes with PID/port reported first.
 6. **Branch protection recommendation** — Consider enabling GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.

@@ -305,6 +305,8 @@ Stop-Process -Id <recorded-PID>
 
 Every CodeX final report for implementation or review stages must be written in Chinese and include:
 
+Section headings in final delivery reports and stage summaries must also be Chinese. Technical identifiers may remain English.
+
 1. PR URL, branch, head SHA
 2. Whether the PR was created, pushed, and merged
 3. Docs/code read

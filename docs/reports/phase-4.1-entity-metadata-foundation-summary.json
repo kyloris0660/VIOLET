@@ -75,10 +75,10 @@
   "validation": {
     "python_identity_preflight": "pass",
     "py_compile_changed_python": "pass",
-    "focused_entity_tests": "13 passed",
+    "focused_entity_tests": "26 passed",
     "test_db_migration": "pass",
     "audit_tier1000_write_failure_regression": "6 passed",
-    "full_non_e2e_suite": "1216 passed, 4 skipped, 12 warnings"
+    "full_non_e2e_suite": "1229 passed, 4 skipped, 12 warnings"
   },
   "closeout_correctness_fixes": {
     "accept_candidate_atomicity": {
@@ -100,6 +100,38 @@
         "EntityEvidence"
       ],
       "regression_test": "ORM Entity delete honors cascade and set-null semantics"
+    },
+    "privacy_detector_false_positive_fix": {
+      "fixed": true,
+      "http_https_url_path_words_allowed": [
+        "/users/",
+        "/home/",
+        "/var/"
+      ],
+      "local_path_protections_retained": [
+        "file://",
+        "Windows drive paths",
+        "UNC paths",
+        "POSIX local paths"
+      ],
+      "url_query_fragment_local_path_scan": true,
+      "benign_key_text_allowed": true,
+      "secret_like_tokens_rejected": [
+        "Bearer tokens",
+        "sk-live/sk_live/sk-test/sk_test tokens",
+        "key-live/key_live/key-test/key_test tokens"
+      ]
+    },
+    "chinese_report_language_rule": {
+      "strengthened": true,
+      "section_headings_must_be_chinese": true,
+      "technical_identifiers_may_remain_english": true,
+      "docs_updated": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/test-workflow.md",
+        "docs/current-handoff.md"
+      ]
     }
   },
   "test_hardening": {

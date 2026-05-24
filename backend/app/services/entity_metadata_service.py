@@ -13,6 +13,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
@@ -46,10 +47,15 @@ class EntityMetadataError(ValueError):
     """Raised when a Phase 4.1 entity metadata rule is violated."""
 
 
-LOCAL_PATH_RE = re.compile(
-    r"(?i)(file://|(?<![A-Z0-9_])[A-Z]:[\\/]|\\\\|/(?:Users|home|root|mnt|Volumes|workspace|tmp|var)/)"
+HTTP_URL_RE = re.compile(r"(?i)\bhttps?://[^\s<>'\")]+")
+FILE_URL_RE = re.compile(r"(?i)\bfile://")
+WINDOWS_DRIVE_PATH_RE = re.compile(r"(?i)(^|[\s\"'({\[=:;,])([a-z]:[\\/])")
+UNC_PATH_RE = re.compile(r"(^|[\s\"'({\[=:;,])(\\\\)")
+POSIX_LOCAL_PATH_RE = re.compile(r"(?i)(^|[\s\"'({\[=:;,])/(Users|home|root|mnt|Volumes|workspace|tmp|var)(/|$)")
+BEARER_SECRET_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+\-/]{24,}={0,2}\b")
+PREFIXED_SECRET_RE = re.compile(
+    r"(?i)\b(?:sk|key)[-_](?:live|test)[-_][A-Za-z0-9_-]{20,}\b"
 )
-SECRET_RE = re.compile(r"(?i)(Bearer\s+[A-Za-z0-9._~+\-/]+=*|(?:sk|key)[-_][A-Za-z0-9_-]{8,})")
 SOURCE_PRIORITY = {
     EntityMetadataSourceEnum.manual.value: 0,
     EntityMetadataSourceEnum.trusted_external.value: 1,
@@ -83,11 +89,37 @@ def _coerce(enum_cls, value: Any, field_name: str):
         raise EntityMetadataError(f"Invalid {field_name}: {value!r}. Allowed: {allowed}") from exc
 
 
+def _contains_local_path(text: str) -> bool:
+    if FILE_URL_RE.search(text):
+        return True
+
+    text_without_urls = text
+    for match in HTTP_URL_RE.finditer(text):
+        url = match.group(0)
+        split = urlsplit(url)
+        if split.scheme.lower() == "file":
+            return True
+        query_fragment = " ".join(part for part in (split.query, split.fragment) if part)
+        if query_fragment and _contains_local_path(query_fragment):
+            return True
+        text_without_urls = text_without_urls.replace(url, " ")
+
+    return bool(
+        WINDOWS_DRIVE_PATH_RE.search(text_without_urls)
+        or UNC_PATH_RE.search(text_without_urls)
+        or POSIX_LOCAL_PATH_RE.search(text_without_urls)
+    )
+
+
+def _contains_secret(text: str) -> bool:
+    return bool(BEARER_SECRET_RE.search(text) or PREFIXED_SECRET_RE.search(text))
+
+
 def _assert_public_safe_text(value: str | None, *, field_name: str) -> None:
     if not value:
         return
     text = str(value)
-    if LOCAL_PATH_RE.search(text) or SECRET_RE.search(text):
+    if _contains_local_path(text) or _contains_secret(text):
         raise EntityMetadataError(f"{field_name} must be privacy-redacted and must not contain local paths or secrets")
 
 

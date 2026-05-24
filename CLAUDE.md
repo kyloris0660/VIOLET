@@ -201,7 +201,7 @@ Plan-only tasks must not create branches, commits, pushes, or PRs unless the use
 
 Final user-facing stage summaries and delivery reports must be written in Chinese. This includes: 阶段性总结, 交付报告, 测试结果总结, 风险说明, 本地验收步骤, 已知限制, 下一步建议.
 
-Keep technical identifiers in English: file paths, branch names, PR URLs, API routes, config keys, class/function names, commands, commit messages, PR titles. Code comments may remain English when appropriate.
+Section headings in final delivery reports and stage summaries must also be Chinese. Keep technical identifiers in English: file paths, branch names, PR URLs, API routes, config keys, class/function names, commands, commit messages, PR titles. Code comments may remain English when appropriate.
 
 ### Final Delivery Report Standard
 

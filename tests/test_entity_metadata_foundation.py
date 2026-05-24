@@ -51,6 +51,7 @@ from app.services.entity_metadata_service import (  # noqa: E402
     create_candidate,
     create_entity,
     create_or_update_assignment,
+    hash_provider_query,
     is_external_lookup_allowed,
     list_entity_aliases,
     list_media_entities,
@@ -449,3 +450,96 @@ def test_external_lookup_privacy_gate_defaults_closed(db):
     provider.enabled = True
     assert is_external_lookup_allowed(ContentClassEnum.anime, external_source=provider) is True
     assert is_external_lookup_allowed(ContentClassEnum.unknown, external_source=provider) is True
+
+
+def test_public_safe_text_allows_http_urls_with_local_path_words(db):
+    entity = create_entity(db, entity_type="source", canonical_name="Example Source")
+    urls = [
+        "https://example.com/users/123",
+        "https://example.com/home/page",
+        "https://example.com/var/catalog",
+        "https://example.com/key-characters-list",
+    ]
+
+    for idx, url in enumerate(urls):
+        add_external_identity(
+            db,
+            entity_id=entity.id,
+            provider=f"provider_{idx}",
+            external_id=f"external-{idx}",
+            external_url=url,
+        )
+        record_evidence(
+            db,
+            evidence_type="external_lookup",
+            source_type="external",
+            payload_ref=url,
+            summary=f"Provider page: {url}; category key-characters-list",
+        )
+        assert hash_provider_query({"url": url, "note": "monkey-business-1234"})
+
+    db.commit()
+    assert db.query(EntityExternalIdentity).count() == len(urls)
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    [
+        "file:///C:/Users/name/file.png",
+        r"C:\Users\name\file.png",
+        r"\\server\share\file.png",
+        "/Users/name/file.png",
+        "/home/name/file.png",
+    ],
+)
+def test_public_safe_text_rejects_local_paths(db, unsafe_text):
+    with pytest.raises(EntityMetadataError, match="privacy-redacted"):
+        record_evidence(
+            db,
+            evidence_type="manual",
+            source_type="manual",
+            summary=unsafe_text,
+        )
+
+
+def test_public_safe_text_rejects_local_paths_inside_url_query(db):
+    with pytest.raises(EntityMetadataError, match="privacy-redacted"):
+        record_evidence(
+            db,
+            evidence_type="external_lookup",
+            source_type="external",
+            payload_ref="https://example.com/source?local=C:\\Users\\name\\file.png",
+        )
+
+
+def test_public_safe_text_allows_benign_key_text(db):
+    evidence = record_evidence(
+        db,
+        evidence_type="manual",
+        source_type="manual",
+        payload_ref="https://example.com/key-characters-list",
+        summary="key-characters-list and monkey-business-1234 are benign metadata labels",
+    )
+    db.commit()
+
+    assert evidence.summary.startswith("key-characters-list")
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    [
+        "Bearer abcdefghijklmnopqrstuvwxyz123456",
+        "sk-live-abcdefghijklmnopqrstuvwxyz123456",
+        "sk_live_abcdefghijklmnopqrstuvwxyz123456",
+        "key_live_abcdefghijklmnopqrstuvwxyz123456",
+        "key_test_abcdefghijklmnopqrstuvwxyz123456",
+    ],
+)
+def test_public_safe_text_rejects_secret_shaped_tokens(db, unsafe_text):
+    with pytest.raises(EntityMetadataError, match="privacy-redacted"):
+        record_evidence(
+            db,
+            evidence_type="manual",
+            source_type="manual",
+            summary=unsafe_text,
+        )
