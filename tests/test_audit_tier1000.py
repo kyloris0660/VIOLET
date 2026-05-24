@@ -1227,17 +1227,22 @@ class TestZeroSize:
 # 33. TestCLIOutputWriterErrors (Round 4 Section 8)
 # ---------------------------------------------------------------------------
 class TestCLIOutputWriterErrors:
+    def _unwritable_output_path(self, tmp_path, name: str):
+        output_path = tmp_path / name
+        output_path.mkdir()
+        return output_path
+
     def test_csv_write_error_no_traceback(self, tmp_path):
         src, tgt, size = _setup_pair(tmp_path)
         manifest = tmp_path / "m.csv"
         _write_manifest(manifest, [
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
-        bad_csv = "Z:\\nonexistent_drive\\audit.csv"
+        bad_csv = self._unwritable_output_path(tmp_path, "audit.csv")
         p = _run([
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
-            "--audit-csv", bad_csv,
+            "--audit-csv", str(bad_csv),
             "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
@@ -1250,11 +1255,11 @@ class TestCLIOutputWriterErrors:
         _write_manifest(manifest, [
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
-        bad_json = "Z:\\nonexistent_drive\\audit.json"
+        bad_json = self._unwritable_output_path(tmp_path, "audit.json")
         p = _run([
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
-            "--json-output", bad_json,
+            "--json-output", str(bad_json),
             "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
@@ -1311,16 +1316,22 @@ class TestRedactPathGeneric:
 # 35. TestOutputWriteFailExitCode (Round 5 Section 2)
 # ---------------------------------------------------------------------------
 class TestOutputWriteFailExitCode:
+    def _unwritable_output_path(self, tmp_path, name: str):
+        output_path = tmp_path / name
+        output_path.mkdir()
+        return output_path
+
     def test_csv_write_fail_exits_1(self, tmp_path):
         src, tgt, size = _setup_pair(tmp_path)
         manifest = tmp_path / "m.csv"
         _write_manifest(manifest, [
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
+        bad_csv = self._unwritable_output_path(tmp_path, "audit.csv")
         p = _run([
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
-            "--audit-csv", "Z:\\nonexistent_drive\\audit.csv",
+            "--audit-csv", str(bad_csv),
             "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
@@ -1331,10 +1342,11 @@ class TestOutputWriteFailExitCode:
         _write_manifest(manifest, [
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
+        bad_json = self._unwritable_output_path(tmp_path, "audit.json")
         p = _run([
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
-            "--json-output", "Z:\\nonexistent_drive\\audit.json",
+            "--json-output", str(bad_json),
             "--expected-copy-count", "1",
         ])
         assert p.returncode == 1
@@ -1346,10 +1358,11 @@ class TestOutputWriteFailExitCode:
         _write_manifest(manifest, [
             _make_copy_row(1, src, tgt, ".jpg", size),
         ])
+        bad_csv = self._unwritable_output_path(tmp_path, "audit.csv")
         p = _run([
             "--manifest", str(manifest),
             "--target-root", str(tmp_path / "target"),
-            "--audit-csv", "Z:\\nonexistent_drive\\audit.csv",
+            "--audit-csv", str(bad_csv),
         ])
         assert p.returncode == 4
 

@@ -77,6 +77,17 @@ Reviewer feedback must be evaluated according to the lifecycle of the affected c
 
 ## Test Tiers
 
+### Local Test Output Path Safety
+
+Unless the user explicitly authorizes otherwise, CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory.
+
+Allowed local artifact locations:
+
+- repo-local gitignored directories;
+- local machine temporary directories from `tmp_path`, `tempfile`, or OS local temp.
+
+Do not use fake-looking drive letters or UNC paths to simulate write failures. A path like `Z:\nonexistent_drive\...` may resolve to a real NAS/share on the user's machine. To force write failures, use deterministic local constructs such as an existing directory at the intended output file path, a file where a directory is expected, or another contained local temp conflict.
+
 ### Tier 1 — Unit Tests (no external dependencies)
 
 Run with `pytest tests/` from the project root. These tests mock environment variables and never connect to a real database or server.
@@ -293,6 +304,8 @@ Stop-Process -Id <recorded-PID>
 ## Final Delivery Report Standard
 
 Every CodeX final report for implementation or review stages must be written in Chinese and include:
+
+Section headings in final delivery reports and stage summaries must also be Chinese. Technical identifiers may remain English.
 
 1. PR URL, branch, head SHA
 2. Whether the PR was created, pushed, and merged

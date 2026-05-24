@@ -469,6 +469,19 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 - Tracked Phase 3.8d scripts were audited as phase-scoped historical runners or safety/validation tools; they are not production orchestrators and must not be rerun for DB import/staging without explicit approval.
 - This is docs/handoff hygiene only. It does not add runtime behavior, DB migration, DB import, classification, AI tagging, localization, staging copy, Entity Resolver, similarity/clustering, production ingestion ledger, admin UI rewrite, or Phase 4 work.
 
+### Phase 4.1 - Entity Metadata Foundation
+
+**Goal:** Add the local DB/model/service foundation for entity metadata before manual review UI, internal candidate generation, external provider pilots, proper-noun localization automation, or similarity/clustering.
+
+- Adds additive entity metadata tables for canonical entities, aliases, external identities, evidence/provenance, media entity candidates, media entity assignments, entity translations, inactive external source policy, provider cache, and negative lookup cache.
+- Keeps entity metadata separate from `TagTranslation`; character/work/artist names remain proper nouns and do not enter the general/meta tag localization workflow.
+- Keeps entity assignments separate from `media_tags`; tags can become future signals, but confirmed entity assignments require review/provenance and are stored separately.
+- Adds a local-only entity metadata service skeleton for normalization, entity/alias/identity/evidence/candidate/assignment operations, listing helpers, and future external-eligibility policy checks.
+- Provider/cache tables are placeholders only. External providers default disabled, and Phase 4.1 performs no external network calls, reverse image search, crawler work, or provider API calls.
+- Privacy policy is fail-closed by default: `unknown`, `non_anime`, and `illustration` are blocked from future external lookup unless a later explicitly reviewed policy changes that. `anime` is eligible only when an enabled provider policy explicitly allows it.
+- No DB import, classification, AI tagging, localization, staging copy, source/iCloud mutation, app-managed storage mutation, Entity Resolver execution, similarity/clustering, or automatic confirmed entity assignment is performed in this phase.
+- Current handoff PR link traceability is restored for known recent PRs so future phase entries should use clickable GitHub PR links when PR numbers are known.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -540,13 +553,15 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 3.8d:
+Current near-term options after Phase 4.1:
 
-1. Phase 4.0 plan-only: entity metadata architecture and external source strategy. This must be a planning/design phase before watcher, similarity, or Entity Resolver expansion.
-2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import.
-3. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-4. Proper noun / entity / character localization strategy.
-5. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. Phase 4.2: manual entity review UI foundation on top of the Phase 4.1 schema, with no external provider calls and no automatic enrichment.
+2. Phase 4.3: internal-signal candidate generation from existing tags, AI tags, filenames, and available local metadata; suggestions only, no automatic confirmed writes.
+3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import or broad external enrichment.
+4. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+5. Phase 4.4+ external provider adapter pilot only after explicit provider policy, cache/audit/rate-limit design, privacy gates, and small opt-in batch approval.
+6. Proper noun / entity / character localization strategy after entity review and alias foundations are usable.
+7. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
@@ -605,7 +620,7 @@ Current near-term options after Phase 3.8d:
 
 **Goal:** Eliminate manual scan triggers.
 
-**Status after Phase 3.8d:** Do not implement watcher behavior yet. The medium pilot is accepted, but Phase 4 should start only as a plan-only entity metadata / external source strategy phase or after a separate Phase 3.9 production ledger decision. Watcher work must inherit the Source Ingestion Gate; manual mass hydration is not a formal workflow.
+**Status after Phase 4.1:** Do not implement watcher behavior yet. Phase 4.1 is an entity metadata foundation, not watcher work. Any future watcher/scheduled scan work must inherit the Source Ingestion Gate and should wait for a separate ingestion-ledger/source-item-state decision. Manual mass hydration is not a formal workflow.
 
 - Filesystem watcher or periodic cron-style scan
 - Requires Phase 1.5 safety controls to be in place

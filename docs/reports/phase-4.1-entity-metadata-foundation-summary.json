@@ -1,0 +1,155 @@
+{
+  "phase": "4.1",
+  "title": "Entity Metadata Foundation",
+  "date": "2026-05-24",
+  "status": "implemented_pending_pr_review",
+  "scope": {
+    "db_models": true,
+    "migration": true,
+    "service_skeleton": true,
+    "tests": true,
+    "docs": true,
+    "ui": false,
+    "api_routes": false,
+    "external_calls": false,
+    "automatic_enrichment": false
+  },
+  "tables_added": [
+    "blombooru_entities",
+    "blombooru_entity_aliases",
+    "blombooru_entity_external_identities",
+    "blombooru_entity_evidence",
+    "blombooru_media_entity_candidates",
+    "blombooru_media_entity_assignments",
+    "blombooru_entity_translations",
+    "blombooru_external_sources",
+    "blombooru_provider_cache",
+    "blombooru_negative_lookup_cache"
+  ],
+  "service_functions_added": [
+    "normalize_entity_key",
+    "hash_provider_query",
+    "create_entity",
+    "add_alias",
+    "add_external_identity",
+    "record_evidence",
+    "create_candidate",
+    "accept_candidate",
+    "reject_candidate",
+    "create_or_update_assignment",
+    "add_entity_translation",
+    "list_media_entities",
+    "list_entity_aliases",
+    "is_external_lookup_allowed"
+  ],
+  "privacy_policy": {
+    "unknown_external_lookup_default": false,
+    "non_anime_external_lookup_default": false,
+    "illustration_external_lookup_default": false,
+    "anime_external_lookup_requires_enabled_provider_policy": true,
+    "uploads_originals_or_thumbnails": false,
+    "public_local_path_or_secret_storage_allowed": false
+  },
+  "migration_safety": {
+    "additive_new_tables_only": true,
+    "existing_data_backfill": false,
+    "destructive_changes": false,
+    "development_db_migrated": false,
+    "test_db_migration_checked": true
+  },
+  "current_handoff_traceability_cleanup": {
+    "normalized_known_recent_pr_links": "#54-#68",
+    "guessed_links_added": false,
+    "future_rule_added": true,
+    "runtime_code_affected": false
+  },
+  "deferred": [
+    "manual_entity_review_ui",
+    "internal_candidate_generation",
+    "external_provider_adapter",
+    "proper_noun_localization",
+    "entity_backed_search_display",
+    "similarity_graph_clustering",
+    "production_ingestion_run_ledger"
+  ],
+  "validation": {
+    "python_identity_preflight": "pass",
+    "py_compile_changed_python": "pass",
+    "focused_entity_tests": "38 passed",
+    "test_db_migration": "pass",
+    "audit_tier1000_write_failure_regression": "6 passed",
+    "full_non_e2e_suite": "1241 passed, 4 skipped, 12 warnings"
+  },
+  "closeout_correctness_fixes": {
+    "accept_candidate_atomicity": {
+      "fixed": true,
+      "behavior": "Candidate status changes to accepted only after assignment creation succeeds.",
+      "regression_test": "accept_candidate assignment failure keeps candidate status unchanged"
+    },
+    "entity_relationship_delete_semantics": {
+      "fixed": true,
+      "behavior": "Entity relationships now align ORM behavior with DB cascade/set-null semantics.",
+      "cascade_deleted": [
+        "EntityAlias",
+        "EntityExternalIdentity",
+        "EntityTranslation",
+        "MediaEntityAssignment"
+      ],
+      "set_null_retained": [
+        "MediaEntityCandidate",
+        "EntityEvidence"
+      ],
+      "regression_test": "ORM Entity delete honors cascade and set-null semantics"
+    },
+    "privacy_detector_false_positive_fix": {
+      "fixed": true,
+      "http_https_url_path_words_allowed": [
+        "/users/",
+        "/home/",
+        "/var/"
+      ],
+      "local_path_protections_retained": [
+        "file://",
+        "Windows drive paths",
+        "UNC paths",
+        "POSIX local paths"
+      ],
+      "url_query_fragment_local_path_scan": true,
+      "url_query_fragment_percent_decode_scan": true,
+      "max_url_decode_depth": 3,
+      "encoded_local_paths_and_secrets_rejected": true,
+      "benign_key_text_allowed": true,
+      "secret_like_tokens_rejected": [
+        "Bearer tokens",
+        "sk-live/sk_live/sk-test/sk_test tokens",
+        "key-live/key_live/key-test/key_test tokens"
+      ]
+    },
+    "chinese_report_language_rule": {
+      "strengthened": true,
+      "section_headings_must_be_chinese": true,
+      "technical_identifiers_may_remain_english": true,
+      "docs_updated": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/test-workflow.md",
+        "docs/current-handoff.md"
+      ]
+    }
+  },
+  "test_hardening": {
+    "file": "tests/test_audit_tier1000.py",
+    "reason": "Existing write-failure tests used Z:\\nonexistent_drive, which was writable on this machine.",
+    "fix": "Use an existing directory as the output path to deterministically trigger write failure.",
+    "local_output_policy_added": true,
+    "forbidden_without_user_authorization": [
+      "Z:\\",
+      "\\\\192.168.71.230\\Storage",
+      "NAS/network-share paths"
+    ],
+    "allowed_test_artifact_locations": [
+      "repo-local gitignored directories",
+      "local machine temporary directories"
+    ]
+  }
+}
