@@ -58,7 +58,7 @@
     "test_db_migration_checked": true
   },
   "current_handoff_traceability_cleanup": {
-    "normalized_known_recent_pr_links": "#54-#67",
+    "normalized_known_recent_pr_links": "#54-#68",
     "guessed_links_added": false,
     "future_rule_added": true,
     "runtime_code_affected": false

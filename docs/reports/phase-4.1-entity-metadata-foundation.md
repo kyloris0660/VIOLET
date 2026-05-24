@@ -100,6 +100,7 @@ Additional guardrails:
 `docs/current-handoff.md` was updated as a documentation hygiene fix:
 
 - Recent Phase 3.8c / 3.8d PR references now use clickable GitHub PR links for known PRs `#54` through `#67`.
+- The current Phase 4.1 entry links to known [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68).
 - No guessed PR links were added.
 - A permanent workflow note was added: future `docs/current-handoff.md` phase entries should link known PR numbers to GitHub PR URLs because the handoff is the primary agent entry point.
 

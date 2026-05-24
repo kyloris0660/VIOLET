@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 3.8d-G3 - Final handoff and repo hygiene (2026-05-23).
+> Last updated during Phase 4.1 - Entity metadata foundation (2026-05-24).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` after the G3 PR is merged; current work branch is `codex/phase-3.8d-g3-final-handoff-hygiene` |
+| **Branch** | `main` after the Phase 4.1 PR is merged; current work branch is `codex/phase-4.1-entity-metadata-foundation` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -50,10 +50,13 @@
 | **Phase 3.8d-G1 (PR #65)** | [PR #65](https://github.com/kyloris0660/AnimeLocalBooru/pull/65) merged - governance/manual validation workflow hardening; docs-only stage persisted artifact lifecycle, reviewer lifecycle, engineering judgment, manual validation workflow, and roadmap guidance |
 | **Phase 3.8d-G2 (PR #66)** | [PR #66](https://github.com/kyloris0660/AnimeLocalBooru/pull/66) merged - startup/import path consistency hardening; repo-root `run.py --debug` no longer requires `PYTHONPATH=<repo>\backend` |
 | **Phase 3.8d-G3 (PR #67)** | [PR #67](https://github.com/kyloris0660/AnimeLocalBooru/pull/67) merged - final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
+| **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) open/in review - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
 
 ## Current Accepted State
 
 Phase 3.8d medium pilot is accepted at a practical level. The current library includes the baseline Phase 3.5 source label plus the Phase 3.8d-I7 source label `violet:phase3.8d:i7:staged-success`.
+
+Phase 4.1 is currently represented by [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68). Treat the entity metadata foundation as pending review until that PR is merged.
 
 Key accepted facts:
 
@@ -74,8 +77,9 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.0 plan-only: entity metadata architecture / external source strategy.
-- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation.
+- Phase 4.2 after Phase 4.1 merge: manual entity review UI foundation; no external provider calls.
+- Phase 4.3 after review UI or explicit approval: internal-signal candidate generation; suggestions only.
+- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before broad ingestion or external enrichment.
 - A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
 - Proper noun / character localization strategy.
 - Admin stats/settings UI rewrite later, lower priority than ingestion/entity foundations.
@@ -85,7 +89,8 @@ Strong warnings:
 - Do not import from the raw `1000` manifest.
 - Do not let failed/deferred rows enter DB import.
 - Do not treat phase-scoped runners as production orchestrators.
-- Do not start Entity Resolver, similarity/clustering, Phase 4 implementation, or broader feature work without explicit user/ChatGPT approval.
+- Do not run external provider calls, reverse image search, crawler work, Entity Resolver, similarity/clustering, or broader feature work without explicit user/ChatGPT approval.
+- Do not treat Phase 4.1 provider/cache tables as permission to enrich data; they are inactive policy/cache placeholders only.
 
 ## Mandatory Workflow Rules
 
