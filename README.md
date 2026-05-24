@@ -63,7 +63,7 @@ Core capabilities:
 | Background tag translation | Done | Continuous auto-translation of all missing tags via LLM |
 | Auto AI tagging after import | Done | Optional, disabled by default |
 | AI tagging background jobs | Done | Progress tracking, cancel, history |
-| Proper noun alias resolver | Done | Character/copyright/artist alias resolution with LLM + manual review |
+| Proper noun alias resolver | Done | Character/copyright/artist alias resolution with LLM + targeted manual correction/review |
 | Admin UI closeout | Done | Navigation, i18n, AI tagging consolidation, dark Violet theme (Phase 3.1.2a) |
 | Gallery content-class filter | Done | 5-mode filter: all/anime+unknown/anime-only/non-anime/unknown (Phase 3.1.2b) |
 | Server identity endpoint | Done | `GET /api/system/server-identity` for dev server validation (Phase 3.1.2c) |
@@ -81,7 +81,7 @@ Core capabilities:
 - No reverse image search
 - No source URL auto-detection
 - No character/copyright database
-- Chinese tag search covers all general/meta tags via LLM translation; character/copyright/artist aliases require manual review
+- Chinese tag search covers all general/meta tags via LLM translation; character/copyright/artist aliases require targeted manual correction/review, not exhaustive suggestion processing
 
 ## Quick Start (Windows Local Development)
 

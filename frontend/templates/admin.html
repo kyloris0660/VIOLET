@@ -880,6 +880,7 @@
                 <a href="#media-management" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.media_management.title">媒体管理</a>
                 <a href="#local-library-scan" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.local_library_scan.title">本地图库扫描</a>
                 <a href="#ai-tag-review-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tag_review.title">AI 标签审核</a>
+                <a href="#entity-metadata-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.entity_metadata.title">实体元数据</a>
                 <a href="#ai-tagging-jobs-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tagging_jobs.title">AI 打标任务</a>
                 <a href="#tag-localization-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.tag_localization.title">标签本地化</a>
                 <a href="#tags-management-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.tags_management.title">标签管理</a>
@@ -1243,6 +1244,158 @@
                         <button id="review-prev-btn" class="btn px-3 py-1 text-xs" disabled>{{ t('admin.ai_tag_review.previous') }}</button>
                         <span id="review-page-info" class="text-xs text-secondary"></span>
                         <button id="review-next-btn" class="btn px-3 py-1 text-xs" disabled>{{ t('admin.ai_tag_review.next') }}</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Entity Metadata Correction Section (Phase 4.2) -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="entity-metadata-section">
+                <h2 class="text-base font-bold mb-2 pb-3 border-b">{{ t('admin.entity_metadata.title') }}</h2>
+                <p class="text-xs text-secondary mb-4">{{ t('admin.entity_metadata.description') }}</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div class="bg p-4 border">
+                        <h3 class="text-sm font-bold mb-3">{{ t('admin.entity_metadata.entity_lookup') }}</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                            <input type="text" id="entity-search-input" class="bg px-3 py-2 border text-xs sm:col-span-2"
+                                placeholder="{{ t('admin.entity_metadata.search_placeholder') }}">
+                            <select id="entity-type-filter" class="bg px-3 py-2 border text-xs">
+                                <option value="">{{ t('admin.entity_metadata.all_types') }}</option>
+                                <option value="character">character</option>
+                                <option value="work">work</option>
+                                <option value="artist">artist</option>
+                                <option value="circle">circle</option>
+                                <option value="source">source</option>
+                                <option value="franchise">franchise</option>
+                                <option value="unknown">unknown</option>
+                            </select>
+                        </div>
+                        <button id="entity-search-btn" class="btn-primary px-4 py-2 text-xs mb-3">{{ t('admin.entity_metadata.search') }}</button>
+                        <div id="entity-search-status" class="text-xs text-secondary mb-2"></div>
+                        <div class="overflow-x-auto max-h-56 overflow-y-auto border">
+                            <table class="bg w-full text-left border-collapse text-[10px]">
+                                <thead class="border-b">
+                                    <tr class="text-secondary">
+                                        <th class="py-1 px-2">{{ t('admin.entity_metadata.id') }}</th>
+                                        <th class="py-1 px-2">{{ t('admin.entity_metadata.name') }}</th>
+                                        <th class="py-1 px-2">{{ t('admin.entity_metadata.type') }}</th>
+                                        <th class="py-1 px-2">{{ t('admin.entity_metadata.assignments') }}</th>
+                                        <th class="py-1 px-2">{{ t('admin.entity_metadata.actions') }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="entity-search-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div id="entity-detail-panel" class="text-xs mt-3 bg p-3 border hidden"></div>
+                    </div>
+
+                    <div class="bg p-4 border">
+                        <h3 class="text-sm font-bold mb-3">{{ t('admin.entity_metadata.create_entity') }}</h3>
+                        <div class="space-y-2">
+                            <input type="text" id="entity-create-name" class="bg px-3 py-2 border text-xs w-full"
+                                placeholder="{{ t('admin.entity_metadata.canonical_name') }}">
+                            <select id="entity-create-type" class="bg px-3 py-2 border text-xs w-full">
+                                <option value="character">character</option>
+                                <option value="work">work</option>
+                                <option value="artist">artist</option>
+                                <option value="circle">circle</option>
+                                <option value="source">source</option>
+                                <option value="franchise">franchise</option>
+                                <option value="unknown">unknown</option>
+                            </select>
+                            <textarea id="entity-create-description" class="bg px-3 py-2 border text-xs w-full" rows="2"
+                                placeholder="{{ t('admin.entity_metadata.description_placeholder') }}"></textarea>
+                            <button id="entity-create-btn" class="btn-primary px-4 py-2 text-xs w-full">{{ t('admin.entity_metadata.create_entity') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div class="bg p-4 border">
+                        <h3 class="text-sm font-bold mb-3">{{ t('admin.entity_metadata.add_alias') }}</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                            <input type="number" id="entity-alias-entity-id" min="1" class="bg px-3 py-2 border text-xs"
+                                placeholder="{{ t('admin.entity_metadata.entity_id') }}">
+                            <input type="text" id="entity-alias-value" class="bg px-3 py-2 border text-xs"
+                                placeholder="{{ t('admin.entity_metadata.alias') }}">
+                            <select id="entity-alias-type" class="bg px-3 py-2 border text-xs">
+                                <option value="search">search</option>
+                                <option value="common">common</option>
+                                <option value="original">original</option>
+                                <option value="romanized">romanized</option>
+                                <option value="translated">translated</option>
+                                <option value="external">external</option>
+                            </select>
+                            <input type="text" id="entity-alias-language" class="bg px-3 py-2 border text-xs"
+                                placeholder="{{ t('admin.entity_metadata.language_optional') }}">
+                        </div>
+                        <button id="entity-alias-add-btn" class="btn-primary px-4 py-2 text-xs">{{ t('admin.entity_metadata.add_alias') }}</button>
+                    </div>
+
+                    <div class="bg p-4 border">
+                        <h3 class="text-sm font-bold mb-3">{{ t('admin.entity_metadata.manual_assignment') }}</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                            <input type="number" id="entity-assignment-media-id" min="1" class="bg px-3 py-2 border text-xs"
+                                placeholder="{{ t('admin.entity_metadata.media_id') }}">
+                            <input type="number" id="entity-assignment-entity-id" min="1" class="bg px-3 py-2 border text-xs"
+                                placeholder="{{ t('admin.entity_metadata.entity_id') }}">
+                            <select id="entity-assignment-role" class="bg px-3 py-2 border text-xs">
+                                <option value="character">character</option>
+                                <option value="work">work</option>
+                                <option value="artist">artist</option>
+                                <option value="source">source</option>
+                                <option value="depicted">depicted</option>
+                                <option value="primary">primary</option>
+                                <option value="secondary">secondary</option>
+                            </select>
+                            <label class="flex items-center gap-2 text-xs">
+                                <input type="checkbox" id="entity-assignment-locked" class="w-4 h-4 accent-primary" checked>
+                                {{ t('admin.entity_metadata.lock_assignment') }}
+                            </label>
+                        </div>
+                        <div class="flex flex-wrap gap-2 mb-3">
+                            <button id="entity-assignment-add-btn" class="btn-primary px-4 py-2 text-xs">{{ t('admin.entity_metadata.assign') }}</button>
+                            <button id="entity-assignment-load-btn" class="btn px-4 py-2 text-xs">{{ t('admin.entity_metadata.load_assignments') }}</button>
+                        </div>
+                        <div id="entity-assignment-list" class="text-xs bg p-3 border hidden"></div>
+                    </div>
+                </div>
+
+                <div class="bg p-4 border">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                        <div>
+                            <h3 class="text-sm font-bold">{{ t('admin.entity_metadata.targeted_candidates') }}</h3>
+                            <p class="text-xs text-secondary">{{ t('admin.entity_metadata.targeted_candidates_hint') }}</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <select id="entity-candidate-status" class="bg px-3 py-2 border text-xs">
+                                <option value="suggested">suggested</option>
+                                <option value="accepted">accepted</option>
+                                <option value="rejected">rejected</option>
+                                <option value="superseded">superseded</option>
+                                <option value="expired">expired</option>
+                            </select>
+                            <input type="number" id="entity-candidate-media-id" min="1" class="bg px-3 py-2 border text-xs"
+                                placeholder="{{ t('admin.entity_metadata.media_id_optional') }}">
+                            <button id="entity-candidate-load-btn" class="btn-primary px-4 py-2 text-xs">{{ t('admin.entity_metadata.load_candidates') }}</button>
+                        </div>
+                    </div>
+                    <div id="entity-candidate-status-text" class="text-xs text-secondary mb-2"></div>
+                    <div class="overflow-x-auto max-h-72 overflow-y-auto border">
+                        <table class="bg w-full text-left border-collapse text-[10px]">
+                            <thead class="border-b">
+                                <tr class="text-secondary">
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.id') }}</th>
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.media') }}</th>
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.candidate') }}</th>
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.entity') }}</th>
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.score') }}</th>
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.status') }}</th>
+                                    <th class="py-1 px-2">{{ t('admin.entity_metadata.actions') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="entity-candidate-tbody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
