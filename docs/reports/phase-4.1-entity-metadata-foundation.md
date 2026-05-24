@@ -119,6 +119,8 @@ Local validation performed during implementation:
 
 During full-suite validation, four existing `tests/test_audit_tier1000.py` write-failure tests initially failed because they assumed `Z:\nonexistent_drive\...` was always unwritable on Windows. On this machine that path was writable, so the tests were hardened to use an existing directory as the output target, which reliably triggers a file-write failure without relying on drive layout.
 
+After user review, the project-level local test output policy was tightened: CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory unless explicitly authorized. Test artifacts must stay in repo-local gitignored directories or local machine temporary directories.
+
 ## Deferred Items
 
 - Manual entity review UI.

@@ -56,6 +56,8 @@ The project has a three-tier test infrastructure. See `docs/test-workflow.md` fo
 . "$env:USERPROFILE\.violet\test-env.ps1"
 ```
 
+**Local test output path safety** — unless the user explicitly authorizes otherwise, CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory. Test artifacts must be written only to repo-local gitignored directories or local machine temporary directories. Do not use fake-looking drive letters or UNC paths to simulate write failures; use `tmp_path`, `tempfile`, or an existing directory/file conflict inside local temp instead.
+
 **Tier 1 — Unit tests** (no external dependencies):
 
 ```powershell

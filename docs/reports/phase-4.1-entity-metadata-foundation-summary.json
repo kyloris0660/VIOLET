@@ -83,6 +83,16 @@
   "test_hardening": {
     "file": "tests/test_audit_tier1000.py",
     "reason": "Existing write-failure tests used Z:\\nonexistent_drive, which was writable on this machine.",
-    "fix": "Use an existing directory as the output path to deterministically trigger write failure."
+    "fix": "Use an existing directory as the output path to deterministically trigger write failure.",
+    "local_output_policy_added": true,
+    "forbidden_without_user_authorization": [
+      "Z:\\",
+      "\\\\192.168.71.230\\Storage",
+      "NAS/network-share paths"
+    ],
+    "allowed_test_artifact_locations": [
+      "repo-local gitignored directories",
+      "local machine temporary directories"
+    ]
   }
 }

@@ -359,6 +359,8 @@ $env:VIOLET_RUN_REAL_E2E = "1"
 
 Test server: `python run.py --debug` (with test env loaded, `APP_PORT` set to the chosen free port). The `run.py` script reads `APP_PORT` from the environment — it does not accept a `--port` CLI flag.
 
+**Local test output path safety:** Unless the user explicitly authorizes otherwise, CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory. Test artifacts must be written only to repo-local gitignored directories or local machine temporary directories. Do not use fake-looking drive letters or UNC paths to simulate write failures; use `tmp_path`, `tempfile`, or an existing directory/file conflict inside local temp instead.
+
 **Playwright base URL variable:** `VIOLET_BASE_URL` (read by `playwright.config.ts`). Do not use `PLAYWRIGHT_BASE_URL`.
 
 See `docs/test-workflow.md` for test tiers and commands.
