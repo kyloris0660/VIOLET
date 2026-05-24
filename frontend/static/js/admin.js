@@ -393,6 +393,54 @@ class AdminPanel {
             });
         }
 
+        // Entity Metadata targeted correction (Phase 4.2)
+        const entitySearchBtn = document.getElementById('entity-search-btn');
+        if (entitySearchBtn) {
+            entitySearchBtn.addEventListener('click', () => this.loadEntityList());
+        }
+        const entityCreateBtn = document.getElementById('entity-create-btn');
+        if (entityCreateBtn) {
+            entityCreateBtn.addEventListener('click', () => this.createEntityMetadataEntity());
+        }
+        const entityAliasAddBtn = document.getElementById('entity-alias-add-btn');
+        if (entityAliasAddBtn) {
+            entityAliasAddBtn.addEventListener('click', () => this.addEntityMetadataAlias());
+        }
+        const entityAssignmentAddBtn = document.getElementById('entity-assignment-add-btn');
+        if (entityAssignmentAddBtn) {
+            entityAssignmentAddBtn.addEventListener('click', () => this.assignEntityMetadataToMedia());
+        }
+        const entityAssignmentLoadBtn = document.getElementById('entity-assignment-load-btn');
+        if (entityAssignmentLoadBtn) {
+            entityAssignmentLoadBtn.addEventListener('click', () => this.loadEntityMetadataAssignments());
+        }
+        const entityCandidateLoadBtn = document.getElementById('entity-candidate-load-btn');
+        if (entityCandidateLoadBtn) {
+            entityCandidateLoadBtn.addEventListener('click', () => this.loadEntityMetadataCandidates());
+        }
+        const entitySearchTbody = document.getElementById('entity-search-tbody');
+        if (entitySearchTbody) {
+            entitySearchTbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.entity-action-btn');
+                if (!btn) return;
+                const entityId = parseInt(btn.dataset.entityId);
+                if (btn.dataset.action === 'details') {
+                    this.loadEntityMetadataDetail(entityId);
+                } else if (btn.dataset.action === 'use') {
+                    this.useEntityMetadataEntity(entityId);
+                }
+            });
+        }
+        const entityCandidateTbody = document.getElementById('entity-candidate-tbody');
+        if (entityCandidateTbody) {
+            entityCandidateTbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.entity-candidate-action-btn');
+                if (!btn) return;
+                const candidateId = parseInt(btn.dataset.candidateId);
+                this.entityMetadataCandidateAction(btn.dataset.action, candidateId);
+            });
+        }
+
         // AI Tagging Jobs (Phase 2.3)
         this._aiJobPollTimer = null;
         this._currentAiJobId = null;
@@ -2039,6 +2087,255 @@ class AdminPanel {
             this.loadReviewSuggestions();
         } catch (err) {
             app.showNotification(`Bulk action failed: ${err.message || err}`, 'error');
+        }
+    }
+
+    // ---- Entity Metadata targeted correction ----
+
+    _entityText(key, fallback, params = {}) {
+        const fullKey = `admin.entity_metadata.${key}`;
+        if (!window.i18n) return fallback;
+        const value = window.i18n.t(fullKey, params);
+        return value === fullKey ? fallback : value;
+    }
+
+    async loadEntityList() {
+        const tbody = document.getElementById('entity-search-tbody');
+        const statusEl = document.getElementById('entity-search-status');
+        if (!tbody) return;
+
+        const params = new URLSearchParams();
+        const search = document.getElementById('entity-search-input')?.value?.trim();
+        const entityType = document.getElementById('entity-type-filter')?.value;
+        params.set('limit', '50');
+        if (search) params.set('search', search);
+        if (entityType) params.set('entity_type', entityType);
+
+        try {
+            const data = await app.apiCall(`/api/admin/entities?${params}`, { method: 'GET' });
+            const items = data.items || [];
+            if (statusEl) {
+                statusEl.textContent = `${items.length} / ${data.total || 0}`;
+            }
+            if (!items.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-2 px-2 text-center text-secondary">${this._entityText('empty', 'No items found.')}</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = items.map(item => `
+                <tr class="border-b">
+                    <td class="py-1 px-2 font-mono">${item.id}</td>
+                    <td class="py-1 px-2 font-medium">${this.escapeHtml(item.canonical_name)}</td>
+                    <td class="py-1 px-2">${this.escapeHtml(item.type || '')}</td>
+                    <td class="py-1 px-2">${item.assignment_count || 0}</td>
+                    <td class="py-1 px-2">
+                        <button class="entity-action-btn btn px-2 py-0.5 text-[10px]" data-action="use" data-entity-id="${item.id}">${this._entityText('use', 'Use')}</button>
+                        <button class="entity-action-btn btn px-2 py-0.5 text-[10px]" data-action="details" data-entity-id="${item.id}">${this._entityText('details', 'Details')}</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (err) {
+            app.showNotification(`${this._entityText('load_failed', 'Load failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    async createEntityMetadataEntity() {
+        const canonicalName = document.getElementById('entity-create-name')?.value?.trim();
+        const entityType = document.getElementById('entity-create-type')?.value;
+        const description = document.getElementById('entity-create-description')?.value?.trim();
+        if (!canonicalName || !entityType) {
+            app.showNotification(this._entityText('canonical_name', 'Canonical Name'), 'error');
+            return;
+        }
+
+        try {
+            const data = await app.apiCall('/api/admin/entities', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity_type: entityType,
+                    canonical_name: canonicalName,
+                    description: description || null,
+                }),
+            });
+            const entity = data.entity;
+            app.showNotification(this._entityText('created', 'Entity created'), 'success');
+            this.useEntityMetadataEntity(entity.id);
+            await this.loadEntityList();
+            await this.loadEntityMetadataDetail(entity.id);
+        } catch (err) {
+            app.showNotification(`${this._entityText('save_failed', 'Save failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    useEntityMetadataEntity(entityId) {
+        const aliasInput = document.getElementById('entity-alias-entity-id');
+        const assignmentInput = document.getElementById('entity-assignment-entity-id');
+        if (aliasInput) aliasInput.value = entityId;
+        if (assignmentInput) assignmentInput.value = entityId;
+    }
+
+    async loadEntityMetadataDetail(entityId) {
+        const panel = document.getElementById('entity-detail-panel');
+        if (!panel) return;
+        try {
+            const data = await app.apiCall(`/api/admin/entities/${entityId}`, { method: 'GET' });
+            const entity = data.entity || {};
+            const aliases = (data.aliases || []).map(a => this.escapeHtml(a.alias)).join(', ') || '-';
+            const translations = (data.translations || []).map(t => this.escapeHtml(t.display_name)).join(', ') || '-';
+            const identities = (data.external_identities || []).map(i => `${this.escapeHtml(i.provider)}:${this.escapeHtml(i.external_id)}`).join(', ') || '-';
+            panel.classList.remove('hidden');
+            panel.innerHTML = `
+                <div class="font-bold mb-1">#${entity.id} ${this.escapeHtml(entity.canonical_name || '')}</div>
+                <div>${this._entityText('type', 'Type')}: ${this.escapeHtml(entity.type || '')}</div>
+                <div>${this._entityText('aliases', 'Aliases')}: ${aliases}</div>
+                <div>${this._entityText('translations', 'Translations')}: ${translations}</div>
+                <div>${this._entityText('external_identities', 'External identities')}: ${identities}</div>
+            `;
+        } catch (err) {
+            app.showNotification(`${this._entityText('load_failed', 'Load failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    async addEntityMetadataAlias() {
+        const entityId = document.getElementById('entity-alias-entity-id')?.value;
+        const alias = document.getElementById('entity-alias-value')?.value?.trim();
+        const aliasType = document.getElementById('entity-alias-type')?.value || 'search';
+        const language = document.getElementById('entity-alias-language')?.value?.trim();
+        if (!entityId || !alias) {
+            app.showNotification(this._entityText('add_alias', 'Add Alias'), 'error');
+            return;
+        }
+
+        try {
+            await app.apiCall(`/api/admin/entities/${entityId}/aliases`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    alias,
+                    alias_type: aliasType,
+                    language: language || null,
+                }),
+            });
+            app.showNotification(this._entityText('alias_added', 'Alias saved'), 'success');
+            await this.loadEntityMetadataDetail(parseInt(entityId));
+        } catch (err) {
+            app.showNotification(`${this._entityText('save_failed', 'Save failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    async assignEntityMetadataToMedia() {
+        const mediaId = document.getElementById('entity-assignment-media-id')?.value;
+        const entityId = document.getElementById('entity-assignment-entity-id')?.value;
+        const role = document.getElementById('entity-assignment-role')?.value || 'character';
+        const locked = !!document.getElementById('entity-assignment-locked')?.checked;
+        if (!mediaId || !entityId) {
+            app.showNotification(this._entityText('manual_assignment', 'Manual Media Assignment'), 'error');
+            return;
+        }
+
+        try {
+            await app.apiCall(`/api/admin/media/${mediaId}/entity-assignments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity_id: parseInt(entityId),
+                    role,
+                    locked,
+                }),
+            });
+            app.showNotification(this._entityText('assigned', 'Entity assigned'), 'success');
+            await this.loadEntityMetadataAssignments();
+        } catch (err) {
+            app.showNotification(`${this._entityText('save_failed', 'Save failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    async loadEntityMetadataAssignments() {
+        const mediaId = document.getElementById('entity-assignment-media-id')?.value;
+        const container = document.getElementById('entity-assignment-list');
+        if (!container || !mediaId) return;
+
+        try {
+            const data = await app.apiCall(`/api/admin/media/${mediaId}/entity-assignments`, { method: 'GET' });
+            const items = data.items || [];
+            container.classList.remove('hidden');
+            if (!items.length) {
+                container.textContent = this._entityText('empty', 'No items found.');
+                return;
+            }
+            container.innerHTML = items.map(item => {
+                const entityName = item.entity ? item.entity.canonical_name : `#${item.entity_id}`;
+                return `<div class="flex justify-between gap-2 border-b py-1">
+                    <span>#${item.id} ${this.escapeHtml(entityName)} (${this.escapeHtml(item.role || '')})</span>
+                    <span class="text-secondary">${this.escapeHtml(item.review_status || '')}</span>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            app.showNotification(`${this._entityText('load_failed', 'Load failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    async loadEntityMetadataCandidates() {
+        const tbody = document.getElementById('entity-candidate-tbody');
+        const statusText = document.getElementById('entity-candidate-status-text');
+        if (!tbody) return;
+
+        const params = new URLSearchParams();
+        const status = document.getElementById('entity-candidate-status')?.value;
+        const mediaId = document.getElementById('entity-candidate-media-id')?.value;
+        params.set('limit', '50');
+        if (status) params.set('status', status);
+        if (mediaId) params.set('media_id', mediaId);
+
+        try {
+            const data = await app.apiCall(`/api/admin/entity-candidates?${params}`, { method: 'GET' });
+            const items = data.items || [];
+            if (statusText) statusText.textContent = `${items.length} / ${data.total || 0}`;
+            if (!items.length) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-2 px-2 text-center text-secondary">${this._entityText('empty', 'No items found.')}</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = items.map(item => {
+                const score = item.score === null || item.score === undefined ? '-' : Number(item.score).toFixed(3);
+                const entityName = item.entity ? item.entity.canonical_name : '-';
+                const canAct = item.status === 'suggested';
+                return `<tr class="border-b">
+                    <td class="py-1 px-2 font-mono">${item.id}</td>
+                    <td class="py-1 px-2"><a href="/media/${item.media_id}" class="text-primary hover:underline">${item.media_id}</a></td>
+                    <td class="py-1 px-2">${this.escapeHtml(item.candidate_name || '')}</td>
+                    <td class="py-1 px-2">${this.escapeHtml(entityName)}</td>
+                    <td class="py-1 px-2 font-mono">${score}</td>
+                    <td class="py-1 px-2">${this.escapeHtml(item.status || '')}</td>
+                    <td class="py-1 px-2">
+                        ${canAct ? `<button class="entity-candidate-action-btn btn px-2 py-0.5 text-[10px]" data-action="accept" data-candidate-id="${item.id}">${this._entityText('accept', 'Accept')}</button>
+                        <button class="entity-candidate-action-btn btn px-2 py-0.5 text-[10px]" data-action="reject" data-candidate-id="${item.id}">${this._entityText('reject', 'Reject')}</button>` : '-'}
+                    </td>
+                </tr>`;
+            }).join('');
+        } catch (err) {
+            app.showNotification(`${this._entityText('load_failed', 'Load failed')}: ${err.message || err}`, 'error');
+        }
+    }
+
+    async entityMetadataCandidateAction(action, candidateId) {
+        try {
+            const body = action === 'reject'
+                ? { review_reason: 'Manual targeted correction' }
+                : {};
+            await app.apiCall(`/api/admin/entity-candidates/${candidateId}/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            app.showNotification(
+                action === 'accept'
+                    ? this._entityText('candidate_accepted', 'Candidate accepted')
+                    : this._entityText('candidate_rejected', 'Candidate rejected'),
+                'success'
+            );
+            await this.loadEntityMetadataCandidates();
+        } catch (err) {
+            app.showNotification(`${this._entityText('save_failed', 'Save failed')}: ${err.message || err}`, 'error');
         }
     }
 

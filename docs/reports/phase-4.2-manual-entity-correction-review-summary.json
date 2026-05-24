@@ -1,0 +1,130 @@
+{
+  "phase": "4.2",
+  "title": "Manual Entity Correction and Review Foundation",
+  "date": "2026-05-24",
+  "status": "implemented_pending_pr_review",
+  "pr": {
+    "url": "https://github.com/kyloris0660/AnimeLocalBooru/pull/69",
+    "number": 69,
+    "review_triggered": false,
+    "latest_head_reviewed": false
+  },
+  "scope": {
+    "admin_api_routes": true,
+    "admin_ui": true,
+    "tests": true,
+    "docs": true,
+    "db_migration": false,
+    "external_calls": false,
+    "automatic_candidate_generation": false,
+    "automatic_confirmed_assignment": false,
+    "broad_candidate_queue": false,
+    "bulk_auto_confirm": false
+  },
+  "manual_review_model": {
+    "correction_oriented": true,
+    "exhaustive_review_required": false,
+    "automation_default_path": true,
+    "durable_manual_signals": [
+      "confirmed_assignments",
+      "rejected_candidates_with_reasons",
+      "aliases",
+      "translations_when_explicitly_added",
+      "evidence_provenance"
+    ]
+  },
+  "api_routes_added": [
+    "GET /api/admin/entities",
+    "POST /api/admin/entities",
+    "GET /api/admin/entities/{entity_id}",
+    "POST /api/admin/entities/{entity_id}/aliases",
+    "POST /api/admin/entities/{entity_id}/translations",
+    "GET /api/admin/media/{media_id}/entity-assignments",
+    "POST /api/admin/media/{media_id}/entity-assignments",
+    "PATCH /api/admin/media/{media_id}/entity-assignments/{assignment_id}",
+    "POST /api/admin/media/{media_id}/entity-assignments/{assignment_id}/reject",
+    "GET /api/admin/entity-candidates",
+    "POST /api/admin/entity-candidates/{candidate_id}/accept",
+    "POST /api/admin/entity-candidates/{candidate_id}/reject"
+  ],
+  "service_functions_used": [
+    "normalize_entity_key",
+    "create_entity",
+    "add_alias",
+    "add_entity_translation",
+    "record_evidence",
+    "create_or_update_assignment",
+    "accept_candidate",
+    "reject_candidate"
+  ],
+  "data_integrity": {
+    "entity_metadata_separate_from_tag_translation": true,
+    "entity_assignments_separate_from_media_tags": true,
+    "manual_assignments_record_evidence": true,
+    "locked_assignment_overwrite_requires_explicit_flag": true,
+    "candidate_accept_uses_service_atomicity": true,
+    "candidate_reject_creates_assignment": false,
+    "provider_cache_payload_exposed": false
+  },
+  "validation": {
+    "python_identity_preflight": "pass",
+    "locale_json": "pass",
+    "py_compile_changed_python": "pass",
+    "focused_entity_tests": "49 passed",
+    "full_non_e2e_suite": "1252 passed, 4 skipped, 12 warnings",
+    "real_browser_validation": "pass"
+  },
+  "browser_validation": {
+    "browser": "msedge",
+    "base_url": "http://127.0.0.1:8012",
+    "violet_env": "test",
+    "db": "blombooru_test",
+    "storage_root": "C:\\Users\\kyloris\\VioletStorage\\test",
+    "identity_check": "pass",
+    "flows": [
+      "admin_login",
+      "entity_metadata_section_load",
+      "create_entity",
+      "search_entity",
+      "add_alias",
+      "alias_search",
+      "manual_media_assignment",
+      "candidate_list_load",
+      "accept_candidate",
+      "reject_candidate",
+      "persisted_state_api_check"
+    ],
+    "http_500": 0,
+    "console_errors_after_login": 0,
+    "local_artifacts_not_committed": [
+      ".codex/phase42/entity-metadata-1779634623502.png",
+      ".codex/phase42/server-8012.out.log",
+      ".codex/phase42/server-8012.err.log"
+    ]
+  },
+  "forbidden_actions_confirmed_absent": {
+    "external_network_calls": true,
+    "reverse_image_search": true,
+    "crawler": true,
+    "provider_api_calls": true,
+    "db_import": true,
+    "classification": true,
+    "ai_tagging": true,
+    "localization": true,
+    "staging_copy": true,
+    "source_icloud_mutation": true,
+    "app_managed_storage_mutation": true,
+    "entity_resolver": true,
+    "similarity_clustering": true,
+    "production_ingestion_ledger": true
+  },
+  "deferred": [
+    "internal_candidate_generation",
+    "external_provider_adapter",
+    "proper_noun_localization_strategy",
+    "entity_backed_search_display",
+    "similarity_graph",
+    "production_ingestion_run_ledger",
+    "merge_split_bulk_entity_operations"
+  ]
+}

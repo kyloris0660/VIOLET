@@ -23,6 +23,7 @@ from .ai_tagging_jobs import router as _ai_tagging_jobs_router
 from .tag_localization import router as _tag_localization_router
 from .content_classification import router as _content_classification_router
 from .dev_tools import router as _dev_tools_router
+from .entities import router as _entities_router
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -40,3 +41,4 @@ router.include_router(_ai_tagging_jobs_router)
 router.include_router(_tag_localization_router)
 router.include_router(_content_classification_router)
 router.include_router(_dev_tools_router)
+router.include_router(_entities_router)

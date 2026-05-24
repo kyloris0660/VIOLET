@@ -4,7 +4,7 @@ Date: 2026-05-24
 
 ## Summary
 
-Phase 4.1 adds the local entity metadata foundation needed before manual entity review, internal candidate generation, external provider pilots, proper-noun localization, or similarity/clustering work.
+Phase 4.1 adds the local entity metadata foundation needed before manual entity correction, internal candidate generation, external provider pilots, proper-noun localization, or similarity/clustering work.
 
 This phase is intentionally foundation-only:
 
@@ -146,7 +146,7 @@ After user review, the project-level local test output policy was tightened: Cod
 
 ## Deferred Items
 
-- Manual entity review UI.
+- Manual entity correction UI.
 - Internal candidate generation from tags, AI tags, filenames, or source metadata.
 - External provider adapter pilot.
 - Proper-noun localization automation and review workflow.
@@ -158,4 +158,4 @@ After user review, the project-level local test output policy was tightened: Cod
 
 The Phase 4.1 scope is appropriate as a foundation PR: it creates the schema and local service boundary needed by later phases without performing enrichment. The model set is intentionally broad enough to avoid baking external provider behavior into media/tag tables, but still inactive: provider/cache tables are policy placeholders, not a crawler or enrichment system.
 
-Phase 3.9 should precede any broad external enrichment, larger library run, or provider-backed batch workflow. Phase 4.2 can proceed before Phase 3.9 if it remains manual/local review UI only. Phase 4.3 can proceed as internal-signal candidate generation if it remains no-network and suggestion-only. Phase 4.4 or any larger external-source pilot should wait for explicit provider policy, per-run budget/audit, and likely Phase 3.9-style ledger discipline.
+Phase 3.9 should precede any broad external enrichment, larger library run, or provider-backed batch workflow. Phase 4.2 can proceed before Phase 3.9 if it remains manual/local correction UI only. Phase 4.3 can proceed as internal-signal candidate generation if it remains no-network and suggestion-only. Phase 4.4 or any larger external-source pilot should wait for explicit provider policy, per-run budget/audit, and likely Phase 3.9-style ledger discipline.

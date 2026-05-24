@@ -20,6 +20,10 @@ For implementation PRs, reviewer feedback is a controlled handoff point, not an 
 
 Plan-only tasks must not create branches, commits, pushes, or PRs unless explicitly approved as documentation PRs. Deliver plan-only output in chat or as a local untracked `.codex/plans/*.md` draft and wait for user/ChatGPT approval.
 
+## Manual Entity Correction Testing Principle
+
+Entity metadata UI/API validation must reflect the product model: targeted correction, not exhaustive review. Tests should prove that operators can find and correct entities, aliases, assignments, and targeted candidates, while preserving durable evidence/provenance and avoiding broad queue assumptions. Do not design tests that imply every AI/entity suggestion must be manually processed one by one.
+
 ## Agent Engineering Judgment and Bugfix Root-Cause Closure Policy
 
 CodeX must provide a meaningful `Engineering judgment / operator notes` section in final delivery reports. It must not be a perfunctory line. For every substantial phase or non-trivial bugfix, CodeX should identify risks, distinguish blockers from deferable issues, and say whether the phase boundary appears too narrow, too broad, or appropriate.

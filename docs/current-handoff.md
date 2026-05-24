@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.1 - Entity metadata foundation (2026-05-24).
+> Last updated during Phase 4.2 - Manual entity correction and review foundation (2026-05-24).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` after the Phase 4.1 PR is merged; current work branch is `codex/phase-4.1-entity-metadata-foundation` |
+| **Branch** | `main` after the Phase 4.1 PR is merged; current work branch is `codex/phase-4.2-manual-entity-correction` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -50,13 +50,16 @@
 | **Phase 3.8d-G1 (PR #65)** | [PR #65](https://github.com/kyloris0660/AnimeLocalBooru/pull/65) merged - governance/manual validation workflow hardening; docs-only stage persisted artifact lifecycle, reviewer lifecycle, engineering judgment, manual validation workflow, and roadmap guidance |
 | **Phase 3.8d-G2 (PR #66)** | [PR #66](https://github.com/kyloris0660/AnimeLocalBooru/pull/66) merged - startup/import path consistency hardening; repo-root `run.py --debug` no longer requires `PYTHONPATH=<repo>\backend` |
 | **Phase 3.8d-G3 (PR #67)** | [PR #67](https://github.com/kyloris0660/AnimeLocalBooru/pull/67) merged - final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
-| **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) open/in review - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
+| **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) merged - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
+| **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) open - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
 
 ## Current Accepted State
 
 Phase 3.8d medium pilot is accepted at a practical level. The current library includes the baseline Phase 3.5 source label plus the Phase 3.8d-I7 source label `violet:phase3.8d:i7:staged-success`.
 
-Phase 4.1 is currently represented by [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68). Treat the entity metadata foundation as pending review until that PR is merged.
+Phase 4.1 is merged in [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68). Treat the entity metadata foundation as accepted baseline for Phase 4.2.
+
+Phase 4.2 is represented by [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69). It is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
 
 Key accepted facts:
 
@@ -77,8 +80,8 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.2 after Phase 4.1 merge: manual entity review UI foundation; no external provider calls.
-- Phase 4.3 after review UI or explicit approval: internal-signal candidate generation; suggestions only.
+- Phase 4.2 after Phase 4.1 merge: manual entity correction and targeted review foundation; no external provider calls and no exhaustive candidate queue.
+- Phase 4.3 after correction UI or explicit approval: internal-signal candidate generation; suggestions only.
 - Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before broad ingestion or external enrichment.
 - A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
 - Proper noun / character localization strategy.
@@ -91,6 +94,7 @@ Strong warnings:
 - Do not treat phase-scoped runners as production orchestrators.
 - Do not run external provider calls, reverse image search, crawler work, Entity Resolver, similarity/clustering, or broader feature work without explicit user/ChatGPT approval.
 - Do not treat Phase 4.1 provider/cache tables as permission to enrich data; they are inactive policy/cache placeholders only.
+- Do not design entity review as a requirement to process every AI/entity suggestion manually. Manual interaction should remain sparse, targeted, and high-impact; automation is the long-term default.
 
 ## Mandatory Workflow Rules
 
@@ -298,7 +302,7 @@ Background AI tagging job system with optional auto-tag after import:
 - **Auto-tag after import**: When `AI_AUTO_TAG_AFTER_IMPORT=true`, scan job completion automatically creates an AI tagging job for newly imported media (disabled by default)
 - **Admin API**: `POST /api/admin/ai-tagging/jobs` (create), `GET /api/admin/ai-tagging/jobs` (list), `GET /api/admin/ai-tagging/jobs/{id}` (poll), `POST /api/admin/ai-tagging/jobs/{id}/cancel`, `GET /api/admin/ai-tagging/auto-config` (auto-tag config)
 - **Admin UI**: AI Tagging Jobs section — create job, progress polling, cancel, job history, auto-tag config display
-- **force_suggestions**: Option to write all AI tags as suggestions for manual review (regardless of confidence)
+- **force_suggestions**: Option to write all AI tags as suggestions for targeted correction/review workflows (regardless of confidence); this must not imply exhaustive manual processing of every suggestion.
 - **Tag localization integration**: AI tagging jobs schedule auto-translate for newly created tags
 - **E2E validation**: `scripts/e2e_validate_violet_workflow.py` script + `docs/e2e-violet-test-100.md` guide for VioletTest100 workflow testing
 - **Non-blocking**: Auto-tag job runs independently after scan; scan job is never delayed

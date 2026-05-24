@@ -64,7 +64,7 @@
     "runtime_code_affected": false
   },
   "deferred": [
-    "manual_entity_review_ui",
+    "manual_entity_correction_ui",
     "internal_candidate_generation",
     "external_provider_adapter",
     "proper_noun_localization",

@@ -150,7 +150,7 @@ See [Tag Localization LLM](tag-localization-llm.md) and [Tag Localization zh-CN]
 - New `blombooru_ai_tag_jobs` table for persistent job state
 - New `blombooru_scan_job_media` table records imported media IDs per scan job
 - Auto-tag after import: scan completion optionally triggers AI tagging job (default OFF)
-- `force_suggestions` mode: write all AI tags as suggestions for manual review
+- `force_suggestions` mode: write all AI tags as suggestions for targeted correction/review workflows; this must not imply exhaustive manual processing of every suggestion.
 - Admin API: create/list/poll/cancel AI tagging jobs, auto-config endpoint
 - Admin UI: AI Tagging Jobs section with config display, create job, progress, history
 - Tag localization integration: AI jobs schedule auto-translate for newly created tags
@@ -471,7 +471,7 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 
 ### Phase 4.1 - Entity Metadata Foundation
 
-**Goal:** Add the local DB/model/service foundation for entity metadata before manual review UI, internal candidate generation, external provider pilots, proper-noun localization automation, or similarity/clustering.
+**Goal:** Add the local DB/model/service foundation for entity metadata before manual correction UI, internal candidate generation, external provider pilots, proper-noun localization automation, or similarity/clustering.
 
 - Adds additive entity metadata tables for canonical entities, aliases, external identities, evidence/provenance, media entity candidates, media entity assignments, entity translations, inactive external source policy, provider cache, and negative lookup cache.
 - Keeps entity metadata separate from `TagTranslation`; character/work/artist names remain proper nouns and do not enter the general/meta tag localization workflow.
@@ -481,6 +481,16 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 - Privacy policy is fail-closed by default: `unknown`, `non_anime`, and `illustration` are blocked from future external lookup unless a later explicitly reviewed policy changes that. `anime` is eligible only when an enabled provider policy explicitly allows it.
 - No DB import, classification, AI tagging, localization, staging copy, source/iCloud mutation, app-managed storage mutation, Entity Resolver execution, similarity/clustering, or automatic confirmed entity assignment is performed in this phase.
 - Current handoff PR link traceability is restored for known recent PRs so future phase entries should use clickable GitHub PR links when PR numbers are known.
+
+### Phase 4.2 - Manual Entity Correction and Review Foundation
+
+**Goal:** Add the smallest useful admin-only foundation for sparse, targeted entity correction and confirmation on top of the Phase 4.1 schema.
+
+- Manual interaction is correction-oriented, not exhaustive review. V.I.O.L.E.T. must not rely on the operator processing thousands of AI/entity suggestions one by one.
+- The operator should be able to find/create/correct entities, add aliases, assign existing entities to a media item, correct wrong assignments, and accept/reject a small number of targeted candidates.
+- Manual changes become durable signals for future automation: confirmed assignments, rejected candidates with reasons, aliases, translations when explicitly added, and provenance/evidence records.
+- Candidate handling remains targeted. Do not build broad queues, bulk auto-confirm, automatic candidate generation, or automatic confirmed writes in this phase.
+- No external provider calls, reverse image search, crawlers, DB import, classification, AI tagging, localization, staging copy, source/iCloud mutation, app-managed storage mutation, Entity Resolver execution, or similarity/clustering are in scope.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
@@ -555,12 +565,12 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 Current near-term options after Phase 4.1:
 
-1. Phase 4.2: manual entity review UI foundation on top of the Phase 4.1 schema, with no external provider calls and no automatic enrichment.
+1. Phase 4.2: manual entity correction and targeted review foundation on top of the Phase 4.1 schema, with no external provider calls, no automatic enrichment, and no exhaustive candidate queue.
 2. Phase 4.3: internal-signal candidate generation from existing tags, AI tags, filenames, and available local metadata; suggestions only, no automatic confirmed writes.
 3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import or broad external enrichment.
 4. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
 5. Phase 4.4+ external provider adapter pilot only after explicit provider policy, cache/audit/rate-limit design, privacy gates, and small opt-in batch approval.
-6. Proper noun / entity / character localization strategy after entity review and alias foundations are usable.
+6. Proper noun / entity / character localization strategy after entity correction and alias foundations are usable.
 7. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger

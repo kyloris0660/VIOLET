@@ -244,6 +244,10 @@ Reviewer feedback must be evaluated according to the lifecycle of the affected c
 5. Before continuing reviewer fixes, CodeX/ChatGPT should ask: what is this artifact's lifecycle; does this issue affect current phase safety or truthfulness; can it cause DB/source/app-storage mutation risk; can it mix failed items into successful items; can it leak private paths/secrets; is it only future reuse/generalization/polish; would fixing it turn a phase runner into a production orchestrator?
 6. This rule does not authorize ignoring safety bugs. It exists to prevent over-engineering one-off or phase-scoped code.
 
+### Manual entity correction principle
+
+V.I.O.L.E.T. is a large-scale local library system and must not rely on exhaustive human review of AI/entity suggestions. Human interaction is for sparse, targeted, high-impact correction and confirmation: find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and leave durable evidence, aliases, overrides, assignments, or negative signals for future automation. Automation remains the default path. Manual review UI must be correction-oriented and must not assume the operator will process thousands of suggestions or candidates one by one.
+
 ### Cloud-aware ingestion progress and safety policy
 
 Safety gates should make workflows controlled, observable, and recoverable. They must not become infinite blockers for expected iCloud / Windows Cloud Files states. Cloud recall-risk is a risk signal, not a permanent exclusion.
