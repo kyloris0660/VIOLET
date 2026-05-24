@@ -208,6 +208,7 @@ def check_and_migrate_schema(engine):
         migrate_add_scan_job_icloud_stats,
         migrate_add_content_classification,
         migrate_add_classification_force_reclassify,
+        migrate_add_entity_metadata_tables,
     ]
     
     for migration in migrations:
@@ -746,3 +747,250 @@ def migrate_add_classification_force_reclassify(engine, inspector):
                 "ADD COLUMN force_reclassify BOOLEAN NOT NULL DEFAULT FALSE"
             ))
             conn.commit()
+
+
+def migrate_add_entity_metadata_tables(engine, inspector):
+    """Create Phase 4.1 entity metadata foundation tables.
+
+    This migration is additive only: it creates new tables for entity records,
+    aliases, identities, provenance/evidence, media candidates, confirmed
+    assignments, translations, and inactive provider/cache policy placeholders.
+    It does not backfill from tags or run enrichment.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'TEXT' if is_sqlite else 'JSONB'
+
+    with engine.connect() as conn:
+        if 'blombooru_entities' not in tables:
+            logger.info("Creating blombooru_entities table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_entities (
+                    id {pk_type},
+                    type VARCHAR(50) NOT NULL,
+                    canonical_name VARCHAR(500) NOT NULL,
+                    normalized_key VARCHAR(500) NOT NULL,
+                    slug VARCHAR(500),
+                    status VARCHAR(50) NOT NULL DEFAULT 'active',
+                    description TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_entity_type_normalized_key UNIQUE (type, normalized_key)
+                )
+            """))
+
+        if 'blombooru_entity_aliases' not in tables:
+            logger.info("Creating blombooru_entity_aliases table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_entity_aliases (
+                    id {pk_type},
+                    entity_id INTEGER NOT NULL REFERENCES blombooru_entities(id) ON DELETE CASCADE,
+                    alias VARCHAR(500) NOT NULL,
+                    normalized_alias VARCHAR(500) NOT NULL,
+                    language VARCHAR(20),
+                    alias_type VARCHAR(50) NOT NULL DEFAULT 'search',
+                    source VARCHAR(50) NOT NULL DEFAULT 'manual',
+                    confidence FLOAT,
+                    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+                    needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_entity_alias_entity_normalized UNIQUE (entity_id, normalized_alias)
+                )
+            """))
+
+        if 'blombooru_entity_external_identities' not in tables:
+            logger.info("Creating blombooru_entity_external_identities table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_entity_external_identities (
+                    id {pk_type},
+                    entity_id INTEGER NOT NULL REFERENCES blombooru_entities(id) ON DELETE CASCADE,
+                    provider VARCHAR(100) NOT NULL,
+                    external_id VARCHAR(255) NOT NULL,
+                    external_url VARCHAR(1000),
+                    identity_status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+                    confidence FLOAT,
+                    last_verified_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_entity_external_provider_id UNIQUE (provider, external_id)
+                )
+            """))
+
+        if 'blombooru_entity_evidence' not in tables:
+            logger.info("Creating blombooru_entity_evidence table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_entity_evidence (
+                    id {pk_type},
+                    provider VARCHAR(100),
+                    source_type VARCHAR(100) NOT NULL DEFAULT 'manual',
+                    evidence_type VARCHAR(50) NOT NULL DEFAULT 'manual',
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    tag_id INTEGER REFERENCES blombooru_tags(id) ON DELETE SET NULL,
+                    entity_id INTEGER REFERENCES blombooru_entities(id) ON DELETE SET NULL,
+                    query_hash VARCHAR(128),
+                    payload_ref VARCHAR(500),
+                    score FLOAT,
+                    summary TEXT,
+                    privacy_redacted BOOLEAN NOT NULL DEFAULT TRUE,
+                    observed_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr}
+                )
+            """))
+
+        if 'blombooru_media_entity_candidates' not in tables:
+            logger.info("Creating blombooru_media_entity_candidates table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_media_entity_candidates (
+                    id {pk_type},
+                    media_id INTEGER NOT NULL REFERENCES blombooru_media(id) ON DELETE CASCADE,
+                    entity_id INTEGER REFERENCES blombooru_entities(id) ON DELETE SET NULL,
+                    entity_type VARCHAR(50) NOT NULL,
+                    label VARCHAR(500),
+                    candidate_name VARCHAR(500) NOT NULL,
+                    score FLOAT,
+                    status VARCHAR(50) NOT NULL DEFAULT 'suggested',
+                    generator VARCHAR(50) NOT NULL DEFAULT 'manual',
+                    evidence_id INTEGER REFERENCES blombooru_entity_evidence(id) ON DELETE SET NULL,
+                    review_reason TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr}
+                )
+            """))
+
+        if 'blombooru_media_entity_assignments' not in tables:
+            logger.info("Creating blombooru_media_entity_assignments table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_media_entity_assignments (
+                    id {pk_type},
+                    media_id INTEGER NOT NULL REFERENCES blombooru_media(id) ON DELETE CASCADE,
+                    entity_id INTEGER NOT NULL REFERENCES blombooru_entities(id) ON DELETE CASCADE,
+                    role VARCHAR(50) NOT NULL,
+                    confidence FLOAT,
+                    review_status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    source VARCHAR(50) NOT NULL DEFAULT 'manual',
+                    locked BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_from_candidate_id INTEGER REFERENCES blombooru_media_entity_candidates(id) ON DELETE SET NULL,
+                    evidence_id INTEGER REFERENCES blombooru_entity_evidence(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_media_entity_assignment_role UNIQUE (media_id, entity_id, role)
+                )
+            """))
+
+        if 'blombooru_entity_translations' not in tables:
+            logger.info("Creating blombooru_entity_translations table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_entity_translations (
+                    id {pk_type},
+                    entity_id INTEGER NOT NULL REFERENCES blombooru_entities(id) ON DELETE CASCADE,
+                    language VARCHAR(20) NOT NULL DEFAULT 'zh-CN',
+                    display_name VARCHAR(500) NOT NULL,
+                    source VARCHAR(50) NOT NULL DEFAULT 'manual',
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_entity_translation_display UNIQUE (entity_id, language, display_name)
+                )
+            """))
+
+        if 'blombooru_external_sources' not in tables:
+            logger.info("Creating blombooru_external_sources table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_external_sources (
+                    id {pk_type},
+                    provider VARCHAR(100) NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    auth_mode VARCHAR(50) NOT NULL DEFAULT 'none',
+                    base_url VARCHAR(1000),
+                    rate_limit_policy {json_type},
+                    privacy_policy {json_type},
+                    terms_url VARCHAR(1000),
+                    notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_external_sources_provider UNIQUE (provider)
+                )
+            """))
+
+        if 'blombooru_provider_cache' not in tables:
+            logger.info("Creating blombooru_provider_cache table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_provider_cache (
+                    id {pk_type},
+                    provider VARCHAR(100) NOT NULL,
+                    query_hash VARCHAR(128) NOT NULL,
+                    query_type VARCHAR(100) NOT NULL,
+                    request_shape_redacted {json_type},
+                    response_status VARCHAR(100) NOT NULL,
+                    response_json_redacted {json_type},
+                    error_class VARCHAR(100),
+                    fetched_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT {now_expr},
+                    expires_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_provider_cache_query UNIQUE (provider, query_hash, query_type)
+                )
+            """))
+
+        if 'blombooru_negative_lookup_cache' not in tables:
+            logger.info("Creating blombooru_negative_lookup_cache table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_negative_lookup_cache (
+                    id {pk_type},
+                    provider VARCHAR(100) NOT NULL,
+                    query_hash VARCHAR(128) NOT NULL,
+                    query_type VARCHAR(100) NOT NULL,
+                    reason VARCHAR(255) NOT NULL,
+                    expires_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_negative_lookup_cache_query UNIQUE (provider, query_hash, query_type)
+                )
+            """))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entities_type_status ON blombooru_entities(type, status)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entities_normalized_key ON blombooru_entities(normalized_key)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entities_slug ON blombooru_entities(slug)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_aliases_entity_id ON blombooru_entity_aliases(entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_aliases_normalized_alias ON blombooru_entity_aliases(normalized_alias)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_aliases_language ON blombooru_entity_aliases(language)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_aliases_source ON blombooru_entity_aliases(source)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_aliases_needs_review ON blombooru_entity_aliases(needs_review)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_external_entity_provider ON blombooru_entity_external_identities(entity_id, provider)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_external_status ON blombooru_entity_external_identities(identity_status)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_external_provider ON blombooru_entity_external_identities(provider)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_evidence_source_evidence_type ON blombooru_entity_evidence(source_type, evidence_type)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_evidence_provider_query ON blombooru_entity_evidence(provider, query_hash)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_evidence_media_type ON blombooru_entity_evidence(media_id, evidence_type)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_evidence_tag_id ON blombooru_entity_evidence(tag_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_evidence_entity_id ON blombooru_entity_evidence(entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_evidence_query_hash ON blombooru_entity_evidence(query_hash)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_candidates_media_status ON blombooru_media_entity_candidates(media_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_candidates_entity_type_status ON blombooru_media_entity_candidates(entity_type, status)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_candidates_generator ON blombooru_media_entity_candidates(generator)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_candidates_entity_id ON blombooru_media_entity_candidates(entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_candidates_evidence_id ON blombooru_media_entity_candidates(evidence_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_assignments_media_review ON blombooru_media_entity_assignments(media_id, review_status)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_assignments_entity_role ON blombooru_media_entity_assignments(entity_id, role)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_assignments_source ON blombooru_media_entity_assignments(source)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_assignments_candidate ON blombooru_media_entity_assignments(created_from_candidate_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_media_entity_assignments_evidence ON blombooru_media_entity_assignments(evidence_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_translations_language_status ON blombooru_entity_translations(language, status)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_translations_source ON blombooru_entity_translations(source)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_entity_translations_entity_id ON blombooru_entity_translations(entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_external_sources_enabled ON blombooru_external_sources(enabled)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_external_sources_provider ON blombooru_external_sources(provider)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_provider_cache_provider_fetched ON blombooru_provider_cache(provider, fetched_at)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_provider_cache_expires_at ON blombooru_provider_cache(expires_at)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_provider_cache_error_class ON blombooru_provider_cache(error_class)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_negative_lookup_cache_expires_at ON blombooru_negative_lookup_cache(expires_at)",
+            "CREATE INDEX IF NOT EXISTS ix_blombooru_negative_lookup_cache_provider ON blombooru_negative_lookup_cache(provider)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()

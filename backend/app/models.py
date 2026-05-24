@@ -1,13 +1,30 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import (Boolean, Column, DateTime, Enum, Float, ForeignKey,
-                        Index, Integer, String, Table, Text, UniqueConstraint)
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Enum, Float,
+                        ForeignKey, Index, Integer, String, Table, Text,
+                        UniqueConstraint)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from .database import Base
-from .enums import ContentClassEnum, FileTypeEnum, RatingEnum, TagCategoryEnum
+from .enums import (
+    ContentClassEnum,
+    EntityAliasTypeEnum,
+    EntityCandidateGeneratorEnum,
+    EntityCandidateStatusEnum,
+    EntityEvidenceTypeEnum,
+    EntityExternalIdentityStatusEnum,
+    EntityMetadataSourceEnum,
+    EntityReviewStatusEnum,
+    EntityStatusEnum,
+    EntityTranslationStatusEnum,
+    EntityTypeEnum,
+    FileTypeEnum,
+    MediaEntityRoleEnum,
+    RatingEnum,
+    TagCategoryEnum,
+)
 
 blombooru_media_tags = Table(
     'blombooru_media_tags',
@@ -63,6 +80,16 @@ class Media(Base):
     
     tags = relationship('Tag', secondary=blombooru_media_tags, back_populates='media')
     parent = relationship('Media', remote_side=[id], backref='children')
+    entity_candidates = relationship(
+        'MediaEntityCandidate',
+        back_populates='media',
+        cascade='all, delete-orphan',
+    )
+    entity_assignments = relationship(
+        'MediaEntityAssignment',
+        back_populates='media',
+        cascade='all, delete-orphan',
+    )
 
     @property
     def has_children(self) -> bool:
@@ -237,6 +264,305 @@ class TagTranslation(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     tag = relationship('Tag', foreign_keys=[tag_id], backref='translations')
+
+
+class Entity(Base):
+    __tablename__ = 'blombooru_entities'
+    __table_args__ = (
+        UniqueConstraint('type', 'normalized_key', name='uq_entity_type_normalized_key'),
+        Index('ix_blombooru_entities_type_status', 'type', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(Enum(EntityTypeEnum, native_enum=False), nullable=False, index=True)
+    canonical_name = Column(String(500), nullable=False)
+    normalized_key = Column(String(500), nullable=False, index=True)
+    slug = Column(String(500), nullable=True, index=True)
+    status = Column(
+        Enum(EntityStatusEnum, native_enum=False),
+        nullable=False,
+        default=EntityStatusEnum.active,
+        server_default='active',
+        index=True,
+    )
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    aliases = relationship('EntityAlias', back_populates='entity', cascade='all, delete-orphan')
+    external_identities = relationship(
+        'EntityExternalIdentity',
+        back_populates='entity',
+        cascade='all, delete-orphan',
+    )
+    translations = relationship('EntityTranslation', back_populates='entity', cascade='all, delete-orphan')
+    candidates = relationship('MediaEntityCandidate', back_populates='entity')
+    assignments = relationship('MediaEntityAssignment', back_populates='entity')
+    evidence = relationship('EntityEvidence', back_populates='entity')
+
+
+class EntityAlias(Base):
+    __tablename__ = 'blombooru_entity_aliases'
+    __table_args__ = (
+        UniqueConstraint('entity_id', 'normalized_alias', name='uq_entity_alias_entity_normalized'),
+        Index('ix_blombooru_entity_aliases_normalized_alias', 'normalized_alias'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_id = Column(Integer, ForeignKey('blombooru_entities.id', ondelete='CASCADE'), nullable=False, index=True)
+    alias = Column(String(500), nullable=False)
+    normalized_alias = Column(String(500), nullable=False)
+    language = Column(String(20), nullable=True, index=True)
+    alias_type = Column(
+        Enum(EntityAliasTypeEnum, native_enum=False),
+        nullable=False,
+        default=EntityAliasTypeEnum.search,
+        server_default='search',
+    )
+    source = Column(
+        Enum(EntityMetadataSourceEnum, native_enum=False),
+        nullable=False,
+        default=EntityMetadataSourceEnum.manual,
+        server_default='manual',
+        index=True,
+    )
+    confidence = Column(Float, nullable=True)
+    is_primary = Column(Boolean, nullable=False, default=False, server_default='false')
+    needs_review = Column(Boolean, nullable=False, default=False, server_default='false', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    entity = relationship('Entity', back_populates='aliases')
+
+
+class EntityExternalIdentity(Base):
+    __tablename__ = 'blombooru_entity_external_identities'
+    __table_args__ = (
+        UniqueConstraint('provider', 'external_id', name='uq_entity_external_provider_id'),
+        Index('ix_blombooru_entity_external_entity_provider', 'entity_id', 'provider'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_id = Column(Integer, ForeignKey('blombooru_entities.id', ondelete='CASCADE'), nullable=False, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    external_id = Column(String(255), nullable=False)
+    external_url = Column(String(1000), nullable=True)
+    identity_status = Column(
+        Enum(EntityExternalIdentityStatusEnum, native_enum=False),
+        nullable=False,
+        default=EntityExternalIdentityStatusEnum.candidate,
+        server_default='candidate',
+        index=True,
+    )
+    confidence = Column(Float, nullable=True)
+    last_verified_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    entity = relationship('Entity', back_populates='external_identities')
+
+
+class EntityEvidence(Base):
+    __tablename__ = 'blombooru_entity_evidence'
+    __table_args__ = (
+        Index('ix_blombooru_entity_evidence_source_evidence_type', 'source_type', 'evidence_type'),
+        Index('ix_blombooru_entity_evidence_provider_query', 'provider', 'query_hash'),
+        Index('ix_blombooru_entity_evidence_media_type', 'media_id', 'evidence_type'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=True, index=True)
+    source_type = Column(String(100), nullable=False, default='manual', server_default='manual', index=True)
+    evidence_type = Column(
+        Enum(EntityEvidenceTypeEnum, native_enum=False),
+        nullable=False,
+        default=EntityEvidenceTypeEnum.manual,
+        server_default='manual',
+        index=True,
+    )
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    tag_id = Column(Integer, ForeignKey('blombooru_tags.id', ondelete='SET NULL'), nullable=True, index=True)
+    entity_id = Column(Integer, ForeignKey('blombooru_entities.id', ondelete='SET NULL'), nullable=True, index=True)
+    query_hash = Column(String(128), nullable=True, index=True)
+    payload_ref = Column(String(500), nullable=True)
+    score = Column(Float, nullable=True)
+    summary = Column(Text, nullable=True)
+    privacy_redacted = Column(Boolean, nullable=False, default=True, server_default='true')
+    observed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    media = relationship('Media')
+    tag = relationship('Tag')
+    entity = relationship('Entity', back_populates='evidence')
+
+
+class MediaEntityCandidate(Base):
+    __tablename__ = 'blombooru_media_entity_candidates'
+    __table_args__ = (
+        Index('ix_blombooru_media_entity_candidates_media_status', 'media_id', 'status'),
+        Index('ix_blombooru_media_entity_candidates_entity_type_status', 'entity_type', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), nullable=False, index=True)
+    entity_id = Column(Integer, ForeignKey('blombooru_entities.id', ondelete='SET NULL'), nullable=True, index=True)
+    entity_type = Column(Enum(EntityTypeEnum, native_enum=False), nullable=False, index=True)
+    label = Column(String(500), nullable=True)
+    candidate_name = Column(String(500), nullable=False)
+    score = Column(Float, nullable=True)
+    status = Column(
+        Enum(EntityCandidateStatusEnum, native_enum=False),
+        nullable=False,
+        default=EntityCandidateStatusEnum.suggested,
+        server_default='suggested',
+        index=True,
+    )
+    generator = Column(
+        Enum(EntityCandidateGeneratorEnum, native_enum=False),
+        nullable=False,
+        default=EntityCandidateGeneratorEnum.manual,
+        server_default='manual',
+        index=True,
+    )
+    evidence_id = Column(Integer, ForeignKey('blombooru_entity_evidence.id', ondelete='SET NULL'), nullable=True, index=True)
+    review_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    media = relationship('Media', back_populates='entity_candidates')
+    entity = relationship('Entity', back_populates='candidates')
+    evidence = relationship('EntityEvidence')
+
+
+class MediaEntityAssignment(Base):
+    __tablename__ = 'blombooru_media_entity_assignments'
+    __table_args__ = (
+        UniqueConstraint('media_id', 'entity_id', 'role', name='uq_media_entity_assignment_role'),
+        Index('ix_blombooru_media_entity_assignments_media_review', 'media_id', 'review_status'),
+        Index('ix_blombooru_media_entity_assignments_entity_role', 'entity_id', 'role'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), nullable=False, index=True)
+    entity_id = Column(Integer, ForeignKey('blombooru_entities.id', ondelete='CASCADE'), nullable=False, index=True)
+    role = Column(Enum(MediaEntityRoleEnum, native_enum=False), nullable=False, index=True)
+    confidence = Column(Float, nullable=True)
+    review_status = Column(
+        Enum(EntityReviewStatusEnum, native_enum=False),
+        nullable=False,
+        default=EntityReviewStatusEnum.needs_review,
+        server_default='needs_review',
+        index=True,
+    )
+    source = Column(
+        Enum(EntityMetadataSourceEnum, native_enum=False),
+        nullable=False,
+        default=EntityMetadataSourceEnum.manual,
+        server_default='manual',
+        index=True,
+    )
+    locked = Column(Boolean, nullable=False, default=False, server_default='false')
+    created_from_candidate_id = Column(
+        Integer,
+        ForeignKey('blombooru_media_entity_candidates.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    evidence_id = Column(Integer, ForeignKey('blombooru_entity_evidence.id', ondelete='SET NULL'), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    media = relationship('Media', back_populates='entity_assignments')
+    entity = relationship('Entity', back_populates='assignments')
+    created_from_candidate = relationship('MediaEntityCandidate')
+    evidence = relationship('EntityEvidence')
+
+
+class EntityTranslation(Base):
+    __tablename__ = 'blombooru_entity_translations'
+    __table_args__ = (
+        UniqueConstraint('entity_id', 'language', 'display_name', name='uq_entity_translation_display'),
+        Index('ix_blombooru_entity_translations_language_status', 'language', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_id = Column(Integer, ForeignKey('blombooru_entities.id', ondelete='CASCADE'), nullable=False, index=True)
+    language = Column(String(20), nullable=False, default='zh-CN', server_default='zh-CN', index=True)
+    display_name = Column(String(500), nullable=False)
+    source = Column(
+        Enum(EntityMetadataSourceEnum, native_enum=False),
+        nullable=False,
+        default=EntityMetadataSourceEnum.manual,
+        server_default='manual',
+        index=True,
+    )
+    status = Column(
+        Enum(EntityTranslationStatusEnum, native_enum=False),
+        nullable=False,
+        default=EntityTranslationStatusEnum.needs_review,
+        server_default='needs_review',
+        index=True,
+    )
+    is_primary = Column(Boolean, nullable=False, default=False, server_default='false')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    entity = relationship('Entity', back_populates='translations')
+
+
+class ExternalSource(Base):
+    __tablename__ = 'blombooru_external_sources'
+    __table_args__ = (
+        UniqueConstraint('provider', name='uq_external_sources_provider'),
+        Index('ix_blombooru_external_sources_enabled', 'enabled'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=False, server_default='false')
+    auth_mode = Column(String(50), nullable=False, default='none', server_default='none')
+    base_url = Column(String(1000), nullable=True)
+    rate_limit_policy = Column(JSON, nullable=True)
+    privacy_policy = Column(JSON, nullable=True)
+    terms_url = Column(String(1000), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ProviderCache(Base):
+    __tablename__ = 'blombooru_provider_cache'
+    __table_args__ = (
+        UniqueConstraint('provider', 'query_hash', 'query_type', name='uq_provider_cache_query'),
+        Index('ix_blombooru_provider_cache_provider_fetched', 'provider', 'fetched_at'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    query_hash = Column(String(128), nullable=False, index=True)
+    query_type = Column(String(100), nullable=False, index=True)
+    request_shape_redacted = Column(JSON, nullable=True)
+    response_status = Column(String(100), nullable=False)
+    response_json_redacted = Column(JSON, nullable=True)
+    error_class = Column(String(100), nullable=True, index=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class NegativeLookupCache(Base):
+    __tablename__ = 'blombooru_negative_lookup_cache'
+    __table_args__ = (
+        UniqueConstraint('provider', 'query_hash', 'query_type', name='uq_negative_lookup_cache_query'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    query_hash = Column(String(128), nullable=False, index=True)
+    query_type = Column(String(100), nullable=False, index=True)
+    reason = Column(String(255), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class ScanJobMedia(Base):
