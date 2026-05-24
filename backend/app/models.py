@@ -289,16 +289,32 @@ class Entity(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    aliases = relationship('EntityAlias', back_populates='entity', cascade='all, delete-orphan')
+    aliases = relationship(
+        'EntityAlias',
+        back_populates='entity',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
     external_identities = relationship(
         'EntityExternalIdentity',
         back_populates='entity',
         cascade='all, delete-orphan',
+        passive_deletes=True,
     )
-    translations = relationship('EntityTranslation', back_populates='entity', cascade='all, delete-orphan')
-    candidates = relationship('MediaEntityCandidate', back_populates='entity')
-    assignments = relationship('MediaEntityAssignment', back_populates='entity')
-    evidence = relationship('EntityEvidence', back_populates='entity')
+    translations = relationship(
+        'EntityTranslation',
+        back_populates='entity',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    candidates = relationship('MediaEntityCandidate', back_populates='entity', passive_deletes=True)
+    assignments = relationship(
+        'MediaEntityAssignment',
+        back_populates='entity',
+        cascade='all, delete',
+        passive_deletes=True,
+    )
+    evidence = relationship('EntityEvidence', back_populates='entity', passive_deletes=True)
 
 
 class EntityAlias(Base):

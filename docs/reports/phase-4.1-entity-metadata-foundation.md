@@ -72,10 +72,18 @@ Service rules:
 - Confirmed non-manual assignments require evidence.
 - Manual confirmation is explicit and local.
 - Candidates remain suggestions until explicitly accepted.
+- `accept_candidate` marks a candidate accepted only after assignment creation succeeds.
 - Rejected candidates do not create assignments.
 - Lower-trust alias suggestions do not silently downgrade manual/trusted aliases.
 - Evidence summaries and payload references must be privacy-redacted.
 - Service functions perform no network calls.
+
+## Closeout Correctness Fixes
+
+PR closeout fixed two current-head foundation correctness issues:
+
+- `accept_candidate` atomicity: candidate status is no longer changed before `create_or_update_assignment` succeeds. If assignment creation raises, callers that catch the exception and commit other work do not persist a false `accepted` candidate.
+- ORM/DB delete consistency: `Entity` relationships now align SQLAlchemy behavior with FK `ondelete` rules. Entity-owned aliases, external identities, and entity translations retain `delete-orphan` plus `passive_deletes=True`; assignments use delete cascade plus `passive_deletes=True`; candidates and evidence remain retained with nullable `SET NULL` semantics.
 
 ## Privacy / External Provider Policy
 
@@ -112,12 +120,17 @@ Local validation performed during implementation:
 
 - `& "$PY" scripts/check_python_env.py --expected-python "$PY"`: PASS, using `C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`.
 - `& "$PY" -m py_compile backend/app/enums.py backend/app/models.py backend/app/database.py backend/app/services/entity_metadata_service.py tests/test_entity_metadata_foundation.py tests/test_audit_tier1000.py`: PASS.
-- `& "$PY" -m pytest tests/test_entity_metadata_foundation.py -v`: `11 passed`.
+- `& "$PY" -m pytest tests/test_entity_metadata_foundation.py -v`: `13 passed`.
 - `. "$env:USERPROFILE\.violet\test-env.ps1"; & "$PY" scripts/setup_test_db.py --migrate`: PASS on `blombooru_test`.
 - `& "$PY" -m pytest tests/test_audit_tier1000.py::TestCLIOutputWriterErrors tests/test_audit_tier1000.py::TestOutputWriteFailExitCode -v`: `6 passed`.
-- `. "$env:USERPROFILE\.violet\test-env.ps1"; & "$PY" -m pytest tests/ -v --ignore=tests/e2e`: `1214 passed, 4 skipped, 12 warnings`.
+- `. "$env:USERPROFILE\.violet\test-env.ps1"; & "$PY" -m pytest tests/ -v --ignore=tests/e2e`: `1216 passed, 4 skipped, 12 warnings`.
 
 During full-suite validation, four existing `tests/test_audit_tier1000.py` write-failure tests initially failed because they assumed `Z:\nonexistent_drive\...` was always unwritable on Windows. On this machine that path was writable, so the tests were hardened to use an existing directory as the output target, which reliably triggers a file-write failure without relying on drive layout.
+
+Closeout tests added:
+
+- Assignment-creation failure during `accept_candidate` leaves candidate status unchanged.
+- Deleting an `Entity` through the ORM removes cascade-owned alias/external identity/translation/assignment rows and preserves candidate/evidence rows with `entity_id=NULL`.
 
 After user review, the project-level local test output policy was tightened: CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory unless explicitly authorized. Test artifacts must stay in repo-local gitignored directories or local machine temporary directories.
 

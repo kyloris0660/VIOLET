@@ -423,8 +423,6 @@ def accept_candidate(
     if candidate.entity_id is None:
         raise EntityMetadataError("Candidate must be linked to an entity before acceptance")
 
-    candidate.status = EntityCandidateStatusEnum.accepted
-    candidate.updated_at = datetime.now(timezone.utc)
     effective_evidence_id = evidence_id if evidence_id is not None else candidate.evidence_id
     default_role = _enum_value(candidate.entity_type)
     role_values = {item.value for item in MediaEntityRoleEnum}
@@ -440,6 +438,8 @@ def accept_candidate(
         created_from_candidate_id=candidate.id,
         evidence_id=effective_evidence_id,
     )
+    candidate.status = EntityCandidateStatusEnum.accepted
+    candidate.updated_at = datetime.now(timezone.utc)
     db.flush()
     return assignment
 

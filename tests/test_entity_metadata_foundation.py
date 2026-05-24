@@ -32,6 +32,9 @@ from app.enums import (  # noqa: E402
 from app.models import (  # noqa: E402
     Entity,
     EntityAlias,
+    EntityEvidence,
+    EntityExternalIdentity,
+    EntityTranslation,
     ExternalSource,
     Media,
     MediaEntityAssignment,
@@ -43,6 +46,8 @@ from app.services.entity_metadata_service import (  # noqa: E402
     EntityMetadataError,
     accept_candidate,
     add_alias,
+    add_entity_translation,
+    add_external_identity,
     create_candidate,
     create_entity,
     create_or_update_assignment,
@@ -276,6 +281,36 @@ def test_accept_candidate_creates_confirmed_assignment_with_provenance(db):
     assert assignment.evidence_id == evidence.id
 
 
+def test_accept_candidate_keeps_status_when_assignment_creation_fails(db):
+    media = _media(db)
+    entity = create_entity(db, entity_type="character", canonical_name="Akari")
+    candidate = create_candidate(
+        db,
+        media_id=media.id,
+        entity_id=entity.id,
+        entity_type="character",
+        candidate_name="akari",
+        generator="internal_tag",
+    )
+    db.commit()
+
+    with pytest.raises(EntityMetadataError, match="require evidence"):
+        accept_candidate(
+            db,
+            candidate_id=candidate.id,
+            source=EntityMetadataSourceEnum.trusted_external,
+        )
+
+    # A realistic caller may catch the service exception and commit other work.
+    # The candidate must not be marked accepted unless assignment creation wins.
+    db.commit()
+    db.expire_all()
+    reloaded = db.get(MediaEntityCandidate, candidate.id)
+
+    assert reloaded.status == EntityCandidateStatusEnum.suggested
+    assert db.query(MediaEntityAssignment).count() == 0
+
+
 def test_entity_tables_do_not_conflict_with_tag_translation(db):
     tag = _tag(db)
     db.add(
@@ -322,6 +357,83 @@ def test_media_delete_cascades_candidates_and_assignments(db):
 
     assert db.query(MediaEntityCandidate).count() == 0
     assert db.query(MediaEntityAssignment).count() == 0
+
+
+def test_entity_delete_honors_db_cascade_and_set_null_semantics(db):
+    media = _media(db)
+    tag = _tag(db)
+    entity = create_entity(db, entity_type="character", canonical_name="Akari")
+    add_alias(db, entity_id=entity.id, alias="akari", source="manual")
+    add_entity_translation(
+        db,
+        entity_id=entity.id,
+        language="zh-CN",
+        display_name="Akari",
+        source="manual",
+        status="confirmed",
+    )
+    external_identity = add_external_identity(
+        db,
+        entity_id=entity.id,
+        provider="local_provider",
+        external_id="akari-1",
+    )
+    evidence = record_evidence(
+        db,
+        evidence_type="tag_signal",
+        source_type="tag",
+        media_id=media.id,
+        tag_id=tag.id,
+        entity_id=entity.id,
+        score=0.9,
+        summary="tag-backed evidence",
+    )
+    candidate = create_candidate(
+        db,
+        media_id=media.id,
+        entity_id=entity.id,
+        entity_type="character",
+        candidate_name="akari",
+        evidence_id=evidence.id,
+    )
+    create_or_update_assignment(
+        db,
+        media_id=media.id,
+        entity_id=entity.id,
+        role="character",
+        review_status="confirmed",
+        source="manual",
+        created_from_candidate_id=candidate.id,
+        evidence_id=evidence.id,
+    )
+    db.add(
+        TagTranslation(
+            tag_id=tag.id,
+            canonical_name="unrelated_general_tag",
+            language="zh-CN",
+            display_name="unrelated",
+            source="manual",
+            status="reviewed",
+        )
+    )
+    db.commit()
+
+    entity_id = entity.id
+    candidate_id = candidate.id
+    evidence_id = evidence.id
+    external_identity_id = external_identity.id
+    db.delete(entity)
+    db.commit()
+    db.expire_all()
+
+    assert db.get(Entity, entity_id) is None
+    assert db.query(EntityAlias).count() == 0
+    assert db.query(EntityTranslation).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 1
+    assert db.get(MediaEntityCandidate, candidate_id).entity_id is None
+    assert db.get(EntityExternalIdentity, external_identity_id) is None
+    assert db.get(EntityEvidence, evidence_id).entity_id is None
 
 
 def test_external_lookup_privacy_gate_defaults_closed(db):
