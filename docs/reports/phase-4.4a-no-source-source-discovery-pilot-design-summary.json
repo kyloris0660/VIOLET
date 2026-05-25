@@ -4,9 +4,9 @@
   "date": "2026-05-25",
   "stage_type": "documentation_policy_pilot_design",
   "pr": {
-    "number": null,
-    "url": null,
-    "status": "pending_draft_pr"
+    "number": 72,
+    "url": "https://github.com/kyloris0660/AnimeLocalBooru/pull/72",
+    "status": "draft_pr_open"
   },
   "no_source_assumption": {
     "usable_source_url": false,

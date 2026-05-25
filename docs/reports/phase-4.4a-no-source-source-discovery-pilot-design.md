@@ -2,7 +2,7 @@
 
 Date: 2026-05-25
 
-PR: pending draft PR
+PR: [#72](https://github.com/kyloris0660/AnimeLocalBooru/pull/72)
 
 ## Summary
 
