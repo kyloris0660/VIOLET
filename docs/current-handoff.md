@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.3-A - Proper-noun signal provenance audit and trust policy (2026-05-25).
+> Last updated during Phase 4.3-B - Source-first entity enrichment policy and pilot design (2026-05-25).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` after the Phase 4.2 PR is merged; current work branch is `codex/phase-4.3a-proper-noun-signal-trust-audit` |
+| **Branch** | `main` after the Phase 4.3-A PR is merged; current work branch is `codex/phase-4.3b-source-first-entity-enrichment-policy` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -52,7 +52,8 @@
 | **Phase 3.8d-G3 (PR #67)** | [PR #67](https://github.com/kyloris0660/AnimeLocalBooru/pull/67) merged - final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
 | **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) merged - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
 | **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) merged - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
-| **Phase 4.3-A (PR #70)** | [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70) open - read-only proper-noun signal provenance audit and trust policy; no candidate generation, no external calls, and no DB writes |
+| **Phase 4.3-A (PR #70)** | [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70) merged - read-only proper-noun signal provenance audit and trust policy; no candidate generation, no external calls, and no DB writes |
+| **Phase 4.3-B (PR #71)** | [PR #71](https://github.com/kyloris0660/AnimeLocalBooru/pull/71) open - source-first entity enrichment policy and Phase 4.4 pilot design; docs-only, no provider calls, no runtime writes |
 
 ## Current Accepted State
 
@@ -62,7 +63,9 @@ Phase 4.1 is merged in [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/p
 
 Phase 4.2 is merged in [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69). It is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
 
-Phase 4.3-A is represented by [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70). It is the read-only proper-noun signal provenance audit and trust-policy stage. Its durable rule is that existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence by default: they may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments. General/meta tags remain visual descriptors, not identity signals.
+Phase 4.3-A is merged in [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70). It is the read-only proper-noun signal provenance audit and trust-policy stage. Its durable rule is that existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence by default: they may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments. General/meta tags remain visual descriptors, not identity signals.
+
+Phase 4.3-B is the source-first / provenance-first strategy correction and pilot design stage. It records that broad internal candidate generation from current AI proper-noun tags is not acceptable because the current local trusted-anchor tiers are empty and AI-only proper-noun rows dominate the identity-like signal set. Future entity enrichment should prioritize known source URLs, exact external post IDs, imported source metadata, and source-backed external evidence under explicit provider policy before creating candidates.
 
 Key accepted facts:
 
@@ -83,9 +86,11 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.3-B: guarded internal candidate generation from high-trust tiers only by default (`T0/T1/T2`), dry-run first, capped, suggestion-only, and no automatic confirmed writes.
-- AI proper-noun candidate generation from T3/T4 signals remains deferred unless the user/ChatGPT explicitly approves that source class with hard caps.
-- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before broad ingestion or external enrichment.
+- Phase 4.4-A: exact-source inventory dry-run. Count current media with provider-recognizable source URLs/post IDs and privacy eligibility before any provider call.
+- Phase 4.4-B: one-provider exact post/source lookup pilot with cache/evidence/candidate-only writes, no confirmed assignments, strict provider budget, rate limits, redacted reports, and explicit approval.
+- Reverse-search pilots remain deferred until explicit image/thumbnail/hash upload policy is approved.
+- AI proper-noun candidate generation from T3/T4 signals remains deferred unless the user/ChatGPT explicitly approves that source class with hard caps; even then it is weak query seed context, not truth.
+- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before broad ingestion or broad external enrichment.
 - A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
 - Proper noun / character localization strategy.
 - Admin stats/settings UI rewrite later, lower priority than ingestion/entity foundations.
@@ -99,6 +104,8 @@ Strong warnings:
 - Do not treat Phase 4.1 provider/cache tables as permission to enrich data; they are inactive policy/cache placeholders only.
 - Do not design entity review as a requirement to process every AI/entity suggestion manually. Manual interaction should remain sparse, targeted, and high-impact; automation is the long-term default.
 - Do not treat AI-generated proper-noun tags as reliable entity truth. They are weak evidence by default, even when they are non-suggestion AI tags.
+- Do not treat visual clustering, whole-image embeddings, or tag similarity as primary entity truth. They are supplementary recall tools only.
+- Do not send `unknown`, `non_anime`, unapproved `illustration`, local paths, iCloud paths, filenames, source labels, original image bytes, or privacy-sensitive content to external providers by default.
 
 ## Mandatory Workflow Rules
 
