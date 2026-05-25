@@ -52,6 +52,7 @@
 | **Phase 3.8d-G3 (PR #67)** | [PR #67](https://github.com/kyloris0660/AnimeLocalBooru/pull/67) merged - final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
 | **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) merged - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
 | **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) merged - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
+| **Phase 4.3-A (PR #70)** | [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70) open - read-only proper-noun signal provenance audit and trust policy; no candidate generation, no external calls, and no DB writes |
 
 ## Current Accepted State
 
@@ -61,7 +62,7 @@ Phase 4.1 is merged in [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/p
 
 Phase 4.2 is merged in [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69). It is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
 
-Phase 4.3-A is the read-only proper-noun signal provenance audit and trust-policy stage. Its durable rule is that existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence by default: they may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments. General/meta tags remain visual descriptors, not identity signals.
+Phase 4.3-A is represented by [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70). It is the read-only proper-noun signal provenance audit and trust-policy stage. Its durable rule is that existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence by default: they may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments. General/meta tags remain visual descriptors, not identity signals.
 
 Key accepted facts:
 
