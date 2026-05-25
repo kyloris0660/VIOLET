@@ -1,0 +1,400 @@
+{
+  "phase": "4.3-A",
+  "title": "Proper-noun signal provenance audit and trust policy",
+  "generated_at": "2026-05-25T12:17:42.738026+00:00",
+  "audit_scope": {
+    "source_label": null,
+    "content_class": "all",
+    "max_samples": 10,
+    "database_access": "read_only",
+    "external_calls": false,
+    "candidate_writes": false,
+    "assignment_writes": false,
+    "entity_writes": false
+  },
+  "entity_foundation_counts": {
+    "blombooru_entities": 0,
+    "blombooru_entity_aliases": 0,
+    "blombooru_entity_external_identities": 0,
+    "blombooru_entity_evidence": 0,
+    "blombooru_media_entity_candidates": 0,
+    "blombooru_media_entity_assignments": 0,
+    "blombooru_entity_translations": 0,
+    "blombooru_external_sources": 0,
+    "blombooru_provider_cache": 0,
+    "blombooru_negative_lookup_cache": 0,
+    "external_sources_enabled": 0,
+    "missing_entity_foundation_tables": 10
+  },
+  "trusted_anchor_counts": {
+    "confirmed_entity_assignments": 0,
+    "manual_confirmed_entity_assignments": 0,
+    "manual_entity_aliases": 0,
+    "manual_confirmed_entity_translations": 0,
+    "verified_external_identities": 0,
+    "imported_or_external_entity_evidence_rows": 0,
+    "manual_or_locked_proper_noun_media_tag_rows": 0,
+    "imported_proper_noun_media_tag_rows": 0
+  },
+  "media_tag_signal_counts": {
+    "filtered_media_count": 1989,
+    "media_tag_rows": 105699,
+    "proper_noun_or_entity_like_rows": 2131,
+    "visual_context_rows": 103568,
+    "distinct_proper_noun_or_entity_like_tags": 287,
+    "proper_noun_tags_sourced_only_from_ai": 287,
+    "proper_noun_ai_media_tag_rows": 2131,
+    "proper_noun_suggestion_rows": 325,
+    "proper_noun_non_anime_unknown_or_unclassified_rows": 66
+  },
+  "tag_category_distribution": {
+    "character": 1622,
+    "copyright": 0,
+    "artist": 0,
+    "general": 102097,
+    "meta": 1980
+  },
+  "signal_kind_distribution": {
+    "character": 1622,
+    "copyright": 0,
+    "artist": 0,
+    "uncategorized_proper_noun_like": 509,
+    "general_visual": 101588,
+    "meta_visual": 1980
+  },
+  "source_kind_distribution": {
+    "manual": 0,
+    "imported": 0,
+    "ai": 105699,
+    "system": 0,
+    "unknown": 0
+  },
+  "confidence_distribution": {
+    "null": 0,
+    "lt_0.35": 23954,
+    "0.35_to_lt_0.65": 31655,
+    "0.65_to_lt_0.90": 29556,
+    "gte_0.90": 20534
+  },
+  "trust_tier_distribution": {
+    "T0": 0,
+    "T1": 0,
+    "T2": 0,
+    "T3": 1806,
+    "T4": 325,
+    "T5": 103568
+  },
+  "proper_noun_content_class_distribution": {
+    "anime": 2065,
+    "unknown": 50,
+    "non_anime": 16,
+    "illustration": 0,
+    "null_unclassified": 0
+  },
+  "candidate_generation_simulation": {
+    "no_writes_performed": true,
+    "estimated_candidate_signal_rows_by_tier": {
+      "T0": 0,
+      "T1": 0,
+      "T2": 0,
+      "T3": 1806,
+      "T4": 325,
+      "T5": 0
+    },
+    "estimated_candidate_signal_rows_by_policy_group": {
+      "T0_T1_T2_default_candidate_sources": 0,
+      "T3_ai_confirmed_if_included": 1806,
+      "T4_ai_suggestions_if_included": 325,
+      "T5_visual_context_blocked": 103568
+    },
+    "per_media_candidate_signal_distribution": {
+      "T3": {
+        "media_count": 1262,
+        "max": 10,
+        "p50": 1,
+        "p90": 2,
+        "p95": 3
+      },
+      "T4": {
+        "media_count": 287,
+        "max": 4,
+        "p50": 1,
+        "p90": 2,
+        "p95": 2
+      },
+      "all_identity_like": {
+        "media_count": 1352,
+        "max": 10,
+        "p50": 1,
+        "p90": 3,
+        "p95": 3
+      }
+    },
+    "future_phase_4_3b_hard_caps": {
+      "max_candidates_per_media": 5,
+      "max_total_candidates_per_run": 500,
+      "default_source_tiers": [
+        "T0",
+        "T1",
+        "T2"
+      ],
+      "dry_run_first": true,
+      "execute_confirmation_required": true,
+      "block_t3_by_default_until_user_approval": true,
+      "block_t4_by_default": true,
+      "block_t5_as_identity_source": true
+    }
+  },
+  "trust_tier_policy": {
+    "T0": {
+      "name": "Manual confirmed entity assignment / manual alias / manual translation",
+      "candidate_source": true,
+      "evidence_only": false,
+      "statistics_only": false,
+      "confirmed_assignment": "Only by explicit manual action."
+    },
+    "T1": {
+      "name": "Trusted external exact metadata with provenance",
+      "candidate_source": true,
+      "evidence_only": false,
+      "statistics_only": false,
+      "confirmed_assignment": "Future policy only; not available in Phase 4.3-A."
+    },
+    "T2": {
+      "name": "Imported/manual locked proper-noun metadata with provenance",
+      "candidate_source": true,
+      "evidence_only": true,
+      "statistics_only": false,
+      "confirmed_assignment": "No automatic confirmed assignment by default."
+    },
+    "T3": {
+      "name": "AI confirmed proper-noun tag",
+      "candidate_source": false,
+      "evidence_only": true,
+      "statistics_only": true,
+      "confirmed_assignment": "Blocked by default."
+    },
+    "T4": {
+      "name": "AI suggestion proper-noun tag",
+      "candidate_source": false,
+      "evidence_only": false,
+      "statistics_only": true,
+      "confirmed_assignment": "Blocked."
+    },
+    "T5": {
+      "name": "General/meta visual co-occurrence",
+      "candidate_source": false,
+      "evidence_only": false,
+      "statistics_only": false,
+      "context_only": true,
+      "confirmed_assignment": "Blocked."
+    }
+  },
+  "risk_indicators": {
+    "proper_noun_tags_sourced_only_from_ai": 287,
+    "proper_noun_ai_media_tag_rows": 2131,
+    "proper_noun_suggestion_rows": 325,
+    "proper_noun_non_anime_unknown_or_unclassified_rows": 66,
+    "top_identity_tags": [
+      {
+        "tag": "vision_(genshin_impact)",
+        "category": "general",
+        "signal_kind": "uncategorized_proper_noun_like",
+        "media_tag_rows": 97,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 34,
+        "locked_rows": 0
+      },
+      {
+        "tag": "artist_name",
+        "category": "general",
+        "signal_kind": "uncategorized_proper_noun_like",
+        "media_tag_rows": 90,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 66,
+        "locked_rows": 0
+      },
+      {
+        "tag": "ganyu_(genshin_impact)",
+        "category": "character",
+        "signal_kind": "character",
+        "media_tag_rows": 87,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 0,
+        "locked_rows": 0
+      },
+      {
+        "tag": "star_(symbol)",
+        "category": "general",
+        "signal_kind": "uncategorized_proper_noun_like",
+        "media_tag_rows": 68,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 20,
+        "locked_rows": 0
+      },
+      {
+        "tag": "lumine_(genshin_impact)",
+        "category": "character",
+        "signal_kind": "character",
+        "media_tag_rows": 64,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 2,
+        "locked_rows": 0
+      },
+      {
+        "tag": "kisaki_(blue_archive)",
+        "category": "character",
+        "signal_kind": "character",
+        "media_tag_rows": 61,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 0,
+        "locked_rows": 0
+      },
+      {
+        "tag": "nilou_(genshin_impact)",
+        "category": "character",
+        "signal_kind": "character",
+        "media_tag_rows": 61,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 0,
+        "locked_rows": 0
+      },
+      {
+        "tag": "kamisato_ayaka",
+        "category": "character",
+        "signal_kind": "character",
+        "media_tag_rows": 57,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 0,
+        "locked_rows": 0
+      },
+      {
+        "tag": "barbara_(genshin_impact)",
+        "category": "character",
+        "signal_kind": "character",
+        "media_tag_rows": 51,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 1,
+        "locked_rows": 0
+      },
+      {
+        "tag": "shrug_(clothing)",
+        "category": "general",
+        "signal_kind": "uncategorized_proper_noun_like",
+        "media_tag_rows": 46,
+        "source_kinds": [
+          "ai"
+        ],
+        "ai_only": true,
+        "suggestion_rows": 17,
+        "locked_rows": 0
+      }
+    ],
+    "media_with_many_proper_noun_signals": [
+      {
+        "media_id": 1249,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 10
+      },
+      {
+        "media_id": 1241,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 8
+      },
+      {
+        "media_id": 1985,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 7
+      },
+      {
+        "media_id": 1392,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 6
+      },
+      {
+        "media_id": 1753,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 6
+      },
+      {
+        "media_id": 766,
+        "content_class": "unknown",
+        "proper_noun_signal_rows": 5
+      },
+      {
+        "media_id": 767,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 5
+      },
+      {
+        "media_id": 912,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 5
+      },
+      {
+        "media_id": 1108,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 5
+      },
+      {
+        "media_id": 1120,
+        "content_class": "anime",
+        "proper_noun_signal_rows": 5
+      }
+    ]
+  },
+  "recommendation": {
+    "phase_4_3b": "defer_guarded_candidate_generation_from_ai_t3_by_default",
+    "default_candidate_tiers": [
+      "T0",
+      "T1",
+      "T2"
+    ],
+    "t3_ai_confirmed": "weak_evidence_statistics_or_future_query_seed_only_by_default",
+    "t4_ai_suggestion": "statistics_only",
+    "t5_general_meta": "context_only_not_identity",
+    "proceed_condition": "Proceed with 4.3-B only for T0/T1/T2 dry-run candidate generation, or after explicit approval to include T3 with caps."
+  },
+  "explicit_safety_confirmation": {
+    "db_writes": false,
+    "external_network_calls": false,
+    "entity_candidate_creation": false,
+    "entity_assignment_creation": false,
+    "entity_creation": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver_execution": false,
+    "similarity_or_clustering": false
+  }
+}

@@ -563,10 +563,10 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.1:
+Current near-term options after Phase 4.2 and the Phase 4.3-A read-only signal audit:
 
-1. Phase 4.2: manual entity correction and targeted review foundation on top of the Phase 4.1 schema, with no external provider calls, no automatic enrichment, and no exhaustive candidate queue.
-2. Phase 4.3: internal-signal candidate generation from existing tags, AI tags, filenames, and available local metadata; suggestions only, no automatic confirmed writes.
+1. Phase 4.3-B: guarded internal candidate generation only from high-trust tiers by default (`T0/T1/T2`: manual confirmed entity anchors, future trusted external exact metadata, and clearly manual/imported proper-noun metadata with provenance). It must be dry-run first, capped, and suggestion-only; no automatic confirmed writes.
+2. Defer AI-derived candidate generation by default: existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence (`T3` when confirmed, `T4` when suggestions). They may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments without explicit user/ChatGPT approval.
 3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import or broad external enrichment.
 4. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
 5. Phase 4.4+ external provider adapter pilot only after explicit provider policy, cache/audit/rate-limit design, privacy gates, and small opt-in batch approval.

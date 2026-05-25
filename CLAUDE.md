@@ -103,6 +103,10 @@ Reviewer feedback must be evaluated according to the lifecycle of the affected c
 
 V.I.O.L.E.T. is a large-scale local library system and must not rely on exhaustive human review of AI/entity suggestions. Human interaction is for sparse, targeted, high-impact correction and confirmation: find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and leave durable evidence, aliases, overrides, assignments, or negative signals for future automation. Automation remains the default path. Manual review UI must be correction-oriented and must not assume the operator will process thousands of suggestions or candidates one by one.
 
+### AI proper-noun signal trust policy
+
+Existing AI-generated character/copyright/artist/proper-noun tags must not be treated as reliable entity truth. General/meta visual tags may remain trusted as visual descriptors, but they are not identity signals. AI proper-noun tags must not automatically create confirmed entity assignments or trusted entities; by default they are weak evidence, statistics, or future query seeds only. High-trust entity assignment requires manual confirmation, trusted external exact metadata with approved provenance, or clearly imported source metadata with provenance. Guarded candidate generation must default to manual/imported/trusted tiers and stay dry-run first unless the user/ChatGPT explicitly approves broader AI-derived candidate sources.
+
 ### Cloud-aware ingestion progress and safety policy
 
 Safety gates should make workflows controlled, observable, and recoverable. They must not become infinite blockers for expected iCloud / Windows Cloud Files states. Cloud recall-risk is a risk signal, not a permanent exclusion.
