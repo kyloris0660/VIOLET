@@ -2,6 +2,8 @@
 
 Date: 2026-05-25
 
+PR: [#71](https://github.com/kyloris0660/AnimeLocalBooru/pull/71)
+
 ## Summary
 
 Phase 4.3-B records the strategy correction after the Phase 4.3-A proper-noun signal audit and designs the next safe provider-backed pilot. This is a policy/design/documentation stage only.

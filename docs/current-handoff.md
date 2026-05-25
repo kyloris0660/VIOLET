@@ -53,7 +53,7 @@
 | **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) merged - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
 | **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) merged - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
 | **Phase 4.3-A (PR #70)** | [PR #70](https://github.com/kyloris0660/AnimeLocalBooru/pull/70) merged - read-only proper-noun signal provenance audit and trust policy; no candidate generation, no external calls, and no DB writes |
-| **Phase 4.3-B (PR pending)** | Source-first entity enrichment policy and Phase 4.4 pilot design; docs-only, no provider calls, no runtime writes |
+| **Phase 4.3-B (PR #71)** | [PR #71](https://github.com/kyloris0660/AnimeLocalBooru/pull/71) open - source-first entity enrichment policy and Phase 4.4 pilot design; docs-only, no provider calls, no runtime writes |
 
 ## Current Accepted State
 

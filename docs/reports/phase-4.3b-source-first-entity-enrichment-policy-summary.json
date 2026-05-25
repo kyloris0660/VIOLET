@@ -1,6 +1,8 @@
 {
   "phase": "4.3-B",
   "title": "Source-first entity enrichment policy and pilot design",
+  "pr": 71,
+  "pr_url": "https://github.com/kyloris0660/AnimeLocalBooru/pull/71",
   "date": "2026-05-25",
   "stage_type": "policy_design_documentation",
   "strategy_correction": {
