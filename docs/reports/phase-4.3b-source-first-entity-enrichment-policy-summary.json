@@ -1,0 +1,301 @@
+{
+  "phase": "4.3-B",
+  "title": "Source-first entity enrichment policy and pilot design",
+  "date": "2026-05-25",
+  "stage_type": "policy_design_documentation",
+  "strategy_correction": {
+    "principle": "source_first_provenance_first_entity_enrichment",
+    "supersedes": "broad_internal_candidate_generation_from_current_ai_proper_noun_tags",
+    "ai_proper_noun_tags": "weak_query_seed_statistics_only_by_default",
+    "general_meta_tags": "visual_descriptors_not_identity_signals",
+    "local_similarity": "supplementary_recall_not_authoritative_identity",
+    "manual_correction": "sparse_targeted_high_impact"
+  },
+  "accepted_phase_4_3a_facts": {
+    "media_inspected": 1989,
+    "media_tag_rows_inspected": 105699,
+    "proper_noun_or_entity_like_rows": 2131,
+    "distinct_proper_noun_or_entity_like_tags": 287,
+    "proper_noun_tags_sourced_only_from_ai": 287,
+    "ai_proper_noun_rows": 2131,
+    "proper_noun_suggestion_rows": 325,
+    "trusted_anchors": 0,
+    "default_t0_t1_t2_candidate_source_simulation": 0,
+    "t3_ai_confirmed_if_included": 1806,
+    "t4_ai_suggestions_if_included": 325
+  },
+  "provider_evaluation": {
+    "danbooru_style_exact_post_lookup": {
+      "suitability": "best_first_category_when_exact_source_or_post_id_exists",
+      "provides": ["post_id", "source", "rating", "file_metadata", "categorized_tags_when_available"],
+      "identity_use": "strong_for_exact_post_lookup",
+      "first_pilot_candidate": true,
+      "image_upload_required": false
+    },
+    "gelbooru_booru_style_dapi": {
+      "suitability": "good_second_exact_source_category",
+      "provides": ["post_id", "source", "rating", "tags", "dimensions", "file_url"],
+      "identity_use": "moderate_to_strong_for_exact_post_lookup",
+      "first_pilot_candidate": false,
+      "image_upload_required": false
+    },
+    "saucenao_reverse_search": {
+      "suitability": "defer_until_explicit_image_or_thumbnail_policy",
+      "provides": ["source_candidates", "similarity_scores", "indexed_metadata"],
+      "identity_use": "useful_for_source_discovery_not_authoritative_alone",
+      "first_pilot_candidate": false,
+      "image_upload_required": true
+    },
+    "trace_moe": {
+      "suitability": "supplementary_for_anime_screenshots_not_primary_illustration_identity",
+      "provides": ["anime_scene_lookup", "timestamp", "work_reference"],
+      "identity_use": "weak_for_illustration_or_post_identity",
+      "first_pilot_candidate": false,
+      "image_upload_required": true
+    },
+    "anilist": {
+      "suitability": "work_metadata_supplement_after_source_evidence",
+      "provides": ["work_ids", "titles", "relations", "metadata"],
+      "identity_use": "work_normalization_not_media_post_identity",
+      "first_pilot_candidate": false,
+      "image_upload_required": false
+    },
+    "pixiv_source_url": {
+      "suitability": "exact_url_parsing_possible_future_local_parser_network_calls_blocked_until_policy_review",
+      "provides": ["artwork_id_if_url_present", "artist_page_if_url_present"],
+      "identity_use": "strong_only_when_exact_source_already_known",
+      "first_pilot_candidate": false,
+      "image_upload_required": false
+    },
+    "iqdb_like_reverse_search": {
+      "suitability": "do_not_automate_without_official_api_and_policy_confirmation",
+      "provides": ["similar_image_results", "source_hints"],
+      "identity_use": "source_discovery_only",
+      "first_pilot_candidate": false,
+      "image_upload_required": true
+    },
+    "local_phash_embedding_retrieval": {
+      "suitability": "supplementary_local_recall_after_source_first_pilot",
+      "provides": ["near_duplicates", "visual_neighbors"],
+      "identity_use": "not_identity_truth",
+      "first_pilot_candidate": false,
+      "image_upload_required": false
+    }
+  },
+  "privacy_eligibility_policy": {
+    "anime": {
+      "default": "eligible_only_under_explicit_provider_policy_and_run_approval",
+      "preferred_query": "source_url_or_post_id_first",
+      "image_upload": "requires_explicit_provider_policy"
+    },
+    "unknown": {
+      "default": "blocked",
+      "override": "manual_classification_or_explicit_approval_only",
+      "rationale": "may_include_private_screenshots_or_personal_content"
+    },
+    "non_anime": {
+      "default": "blocked"
+    },
+    "illustration": {
+      "default": "blocked_until_project_defines_safe_anime_illustration_policy"
+    },
+    "local_paths_filenames_source_labels": "never_send_to_provider_or_public_report",
+    "original_image_bytes": "blocked_by_default",
+    "derived_thumbnail_hash_embedding": "explicit_provider_policy_only"
+  },
+  "external_call_reliability_policy": {
+    "provider_enablement": "opt_in_only_external_source_enabled_false_by_default",
+    "per_run_budget_fields": [
+      "max_items",
+      "max_requests",
+      "max_failures",
+      "max_consecutive_failures",
+      "max_same_reason_failures",
+      "max_runtime"
+    ],
+    "rate_limit_controls": [
+      "requests_per_minute",
+      "burst_control",
+      "respect_retry_after",
+      "provider_specific_backoff",
+      "no_parallelism_unless_policy_allows"
+    ],
+    "error_classes": [
+      "rate_limited",
+      "auth_failed",
+      "forbidden",
+      "timeout",
+      "network_error",
+      "provider_5xx",
+      "schema_changed",
+      "no_match",
+      "low_confidence",
+      "conflict",
+      "privacy_blocked"
+    ],
+    "cache_first": true,
+    "negative_cache": true,
+    "public_report": "aggregate_redacted_only"
+  },
+  "cache_and_provenance_design": {
+    "tables": [
+      "ExternalSource",
+      "ProviderCache",
+      "NegativeLookupCache",
+      "EntityEvidence",
+      "EntityExternalIdentity",
+      "MediaEntityCandidate"
+    ],
+    "query_hash": "stable_hash_of_redacted_request_shape",
+    "query_types": [
+      "exact_post_id",
+      "source_url_lookup",
+      "reverse_search_thumbnail",
+      "work_metadata_lookup",
+      "local_phash_cluster"
+    ],
+    "required_cache_fields": [
+      "provider",
+      "query_hash",
+      "query_type",
+      "request_shape_redacted",
+      "response_status",
+      "response_json_redacted",
+      "error_class",
+      "fetched_at",
+      "expires_at"
+    ],
+    "evidence_privacy_redacted_required": true
+  },
+  "match_confidence_policy": {
+    "automatic_confirmed_assignments_in_first_pilot": false,
+    "tiers": {
+      "exact_source_url_match": {
+        "candidate_allowed": true,
+        "assignment_allowed": false,
+        "manual_review_required": true,
+        "confidence_range": [0.9, 1.0]
+      },
+      "exact_post_id_match": {
+        "candidate_allowed": true,
+        "assignment_allowed": false,
+        "manual_review_required": true,
+        "confidence_range": [0.9, 1.0]
+      },
+      "source_metadata_character_match": {
+        "candidate_allowed": true,
+        "assignment_allowed": false,
+        "manual_review_required": true,
+        "confidence_range": [0.8, 0.95]
+      },
+      "multi_provider_agreement": {
+        "candidate_allowed": true,
+        "assignment_allowed": false,
+        "manual_review_required": true,
+        "confidence_range": [0.85, 0.98]
+      },
+      "high_score_reverse_search": {
+        "candidate_allowed": true,
+        "assignment_allowed": false,
+        "manual_review_required": true,
+        "confidence_range": [0.75, 0.95]
+      },
+      "low_score_reverse_search": {
+        "candidate_allowed": false,
+        "evidence_only": true,
+        "assignment_allowed": false,
+        "confidence_range": [0.3, 0.74]
+      },
+      "conflicting_metadata": {
+        "candidate_allowed": false,
+        "evidence_only": true,
+        "assignment_allowed": false
+      },
+      "no_match": {
+        "candidate_allowed": false,
+        "negative_cache": true
+      },
+      "privacy_blocked": {
+        "candidate_allowed": false,
+        "negative_cache_or_audit": true
+      }
+    }
+  },
+  "phase_4_4_pilot_design": {
+    "recommended_first_pilot": "one_provider_exact_source_or_post_lookup",
+    "fallback_if_no_source_coverage": "source_inventory_dry_run_no_provider_calls",
+    "sample_selection": {
+      "content_class": "anime_only",
+      "exclude": ["unknown", "non_anime", "illustration"],
+      "initial_max_items": 25,
+      "source_label_filter": "optional",
+      "ai_weak_signal_use": "prioritization_only_not_truth"
+    },
+    "privacy_mode": {
+      "source_url_or_post_id_first": true,
+      "original_upload": false,
+      "thumbnail_upload_default": false,
+      "local_paths_or_filenames_in_requests": false
+    },
+    "initial_budget": {
+      "max_items": 25,
+      "max_requests": 50,
+      "max_failures": 5,
+      "max_consecutive_failures": 3,
+      "max_same_reason_failures": 5,
+      "max_runtime_minutes": 10,
+      "default_requests_per_minute": 30,
+      "burst": 1
+    },
+    "expected_writes_if_later_approved": [
+      "ProviderCache",
+      "NegativeLookupCache",
+      "EntityEvidence",
+      "MediaEntityCandidate_if_policy_allows"
+    ],
+    "confirmed_assignments": "none_in_first_pilot"
+  },
+  "phase_3_9_precedes_scaling": [
+    "before_5k_or_10k_import",
+    "before_broad_provider_enrichment",
+    "before_full_library_request_scheduling",
+    "before_large_cache_population"
+  ],
+  "manual_seed_and_local_retrieval_role": {
+    "manual_seeds": "t0_anchors_validation_examples_not_primary_full_coverage",
+    "local_retrieval": "supplementary_recall_not_primary_truth",
+    "global_similarity_graph": "deferred"
+  },
+  "updated_short_term_roadmap": [
+    "merge_phase_4_3b_policy_design",
+    "phase_4_4a_exact_source_inventory_dry_run",
+    "phase_4_4b_one_provider_exact_lookup_pilot_cache_evidence_candidate_only",
+    "phase_3_9_before_broad_provider_enrichment_or_scale",
+    "reverse_search_pilot_only_after_explicit_upload_policy",
+    "local_retrieval_clustering_later_as_supplementary_recall"
+  ],
+  "explicit_safety_confirmation": {
+    "external_provider_api_calls": false,
+    "authenticated_provider_calls": false,
+    "scraping": false,
+    "reverse_image_search_execution": false,
+    "image_upload": false,
+    "crawler": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "staging_copy": false,
+    "entity_candidate_creation": false,
+    "entity_assignment_creation": false,
+    "entity_auto_creation": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver_execution": false,
+    "similarity_or_clustering": false,
+    "production_ingestion_ledger_implementation": false,
+    "admin_ui_rewrite": false,
+    "push_main": false,
+    "merge": false
+  }
+}

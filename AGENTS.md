@@ -252,6 +252,10 @@ V.I.O.L.E.T. is a large-scale local library system and must not rely on exhausti
 
 Existing AI-generated character/copyright/artist/proper-noun tags must not be treated as reliable entity truth. General/meta visual tags may remain trusted as visual descriptors, but they are not identity signals. AI proper-noun tags must not automatically create confirmed entity assignments or trusted entities; by default they are weak evidence, statistics, or future query seeds only. High-trust entity assignment requires manual confirmation, trusted external exact metadata with approved provenance, or clearly imported source metadata with provenance. Guarded candidate generation must default to manual/imported/trusted tiers and stay dry-run first unless the user/ChatGPT explicitly approves broader AI-derived candidate sources.
 
+### Source-first entity enrichment policy
+
+Entity enrichment must be source-first / provenance-first. Future reliable entity metadata should prioritize known source URLs, exact external post IDs, imported source metadata, and source-backed external evidence under explicit opt-in provider policy before creating candidates. AI proper-noun tags may help prioritize queries but are not truth. Visual similarity, embeddings, perceptual hashes, and tag co-occurrence are supplementary recall tools only and must not create automatic confirmed assignments. Unknown, non_anime, unapproved illustration, local paths, iCloud paths, filenames, source labels, original image bytes, and privacy-sensitive content must not be sent to external providers by default. External enrichment requires explicit provider policy, privacy eligibility, cache/audit/rate-limit/budget design, redacted reporting, and separate run approval.
+
 ### Cloud-aware ingestion progress and safety policy
 
 Safety gates should make workflows controlled, observable, and recoverable. They must not become infinite blockers for expected iCloud / Windows Cloud Files states. Cloud recall-risk is a risk signal, not a permanent exclusion.

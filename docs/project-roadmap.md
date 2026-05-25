@@ -13,7 +13,7 @@ The finished system should:
 - Cover character, copyright, artist, general, meta, and rating tag namespaces
 - Record each tag's origin (AI, manual, booru import), confidence, and lock status
 - Allow manual correction, deletion, and locking of tags — manual always wins over AI
-- Eventually support tag aliases, tag implications, character/copyright databases, reverse image search, source completion, similar-image detection, and character clustering
+- Eventually support tag aliases, tag implications, source-first character/copyright/artist enrichment, reverse image search under explicit privacy policy, source completion, similar-image recall, and character clustering
 
 ---
 
@@ -492,6 +492,31 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 - Candidate handling remains targeted. Do not build broad queues, bulk auto-confirm, automatic candidate generation, or automatic confirmed writes in this phase.
 - No external provider calls, reverse image search, crawlers, DB import, classification, AI tagging, localization, staging copy, source/iCloud mutation, app-managed storage mutation, Entity Resolver execution, or similarity/clustering are in scope.
 
+### Phase 4.3-A - Proper-noun Signal Provenance Audit and Trust Policy
+
+**Goal:** Audit current proper-noun/entity-like tag signals before any candidate generation.
+
+- Read-only audit inspected `1989` media, `105699` media-tag rows, `2131` proper-noun/entity-like rows, and `287` distinct proper-noun/entity-like tags.
+- All `287` distinct proper-noun/entity-like tags were sourced only from AI; trusted anchors were `0`.
+- Default `T0/T1/T2` candidate-source simulation produced `0` rows. Including `T3` AI confirmed proper-noun tags would expose `1806` rows, and including `T4` AI suggestions would expose `325` rows.
+- Durable policy: existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence only. They may be statistics or future query seeds, but they must not automatically create trusted entities or confirmed assignments.
+- General/meta visual tags can be useful visual descriptors, but they are not identity signals.
+- No candidate generation, external calls, DB writes, classification, AI tagging, localization, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation occurred.
+
+### Phase 4.3-B - Source-first Entity Enrichment Policy and Pilot Design
+
+**Goal:** Correct the entity enrichment strategy after Phase 4.3-A and design the first safe provider-backed pilot without implementing providers.
+
+- Source-first / provenance-first entity enrichment supersedes broad internal candidate generation from current AI proper-noun tags.
+- Future reliable evidence should prioritize known source URLs, exact external post IDs, imported source metadata, source-backed provider lookups, and only then source-backed candidates.
+- AI proper-noun tags remain weak query seeds/statistics. Image/tag similarity and local clustering remain supplementary recall tools, not authoritative identity.
+- External provider eligibility is fail-closed: `unknown`, `non_anime`, and unapproved `illustration` are blocked by default; `anime` requires explicit provider policy and run approval.
+- Local paths, iCloud paths, filenames, source labels, directory structure, original image bytes, and privacy-sensitive content must not be sent externally by default or appear in public reports.
+- Future provider calls require opt-in `ExternalSource` policy, per-run budget, rate limits, retry/backoff, circuit breakers, cache-first behavior, negative cache, redacted audit logs, and aggregate public reports.
+- Phase 4.4 should start with exact-source inventory/pilot, preferably one booru-style exact post/source lookup provider if source URLs or post IDs exist. First pilot writes should be cache/evidence/candidate-only; no automatic confirmed assignments.
+- Phase 3.9 must precede broad provider enrichment, 5k/10k scale, full-library request scheduling, or large cache population.
+- No provider API calls, reverse image search, scraping, DB import, classification, AI tagging, localization, staging copy, entity writes, Entity Resolver execution, similarity/clustering, source/iCloud mutation, app-managed storage mutation, production ingestion ledger implementation, or admin UI rewrite occurred.
+
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
 **Goal:** Harden environment, database, and storage separation to prevent worktree/DB mismatch incidents like the 2026-05-10 data loss.
@@ -563,15 +588,16 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.2 and the Phase 4.3-A read-only signal audit:
+Current near-term options after Phase 4.3-B:
 
-1. Phase 4.3-B: guarded internal candidate generation only from high-trust tiers by default (`T0/T1/T2`: manual confirmed entity anchors, future trusted external exact metadata, and clearly manual/imported proper-noun metadata with provenance). It must be dry-run first, capped, and suggestion-only; no automatic confirmed writes.
-2. Defer AI-derived candidate generation by default: existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence (`T3` when confirmed, `T4` when suggestions). They may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments without explicit user/ChatGPT approval.
-3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import or broad external enrichment.
-4. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-5. Phase 4.4+ external provider adapter pilot only after explicit provider policy, cache/audit/rate-limit design, privacy gates, and small opt-in batch approval.
-6. Proper noun / entity / character localization strategy after entity correction and alias foundations are usable.
-7. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. Phase 4.4-A: exact-source inventory dry-run. Count media with provider-recognizable source URLs/post IDs and privacy eligibility before any provider calls.
+2. Phase 4.4-B: one-provider exact post/source lookup pilot with opt-in provider policy, cache-first behavior, redacted audit logs, evidence/candidate-only writes, no confirmed assignments, and strict request budgets.
+3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import, broad external enrichment, 5k/10k scale, or full-library request scheduling.
+4. Reverse-search pilot only after explicit image/thumbnail/hash upload policy, provider TOS/rate-limit review, and privacy approval.
+5. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+6. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+7. Seed-based local retrieval or clustering only as supplementary recall after source-first evidence exists; no automatic confirmed assignments.
+8. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
@@ -583,7 +609,8 @@ Current near-term options after Phase 4.2 and the Phase 4.3-A read-only signal a
 - Failed cloud-backed items must remain visible and must not be mixed with successfully imported items or hidden behind aggregate counts.
 - DB import must consume staged-success / eligible items from the ledger, not a raw selected manifest.
 - Full-library import must not run until this production ledger exists and can prove which staged-success rows are eligible for DB import.
-- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c, I6, I7, or G1-G3.
+- Broad provider enrichment, 5k/10k scale, full-library request scheduling, and large cache population should also wait for this ledger discipline so provider outcomes have per-item final state, failure reason, retry/defer state, and public/private artifact separation.
+- This is a future design/implementation phase and is intentionally not implemented by Phase 3.8d-I5c, I6, I7, G1-G3, 4.3-A, or 4.3-B.
 
 ### Future prerequisite - Over-selection Buffer for Large Imports
 
@@ -638,10 +665,10 @@ Current near-term options after Phase 4.2 and the Phase 4.3-A read-only signal a
 
 ### Future Ideas (unscheduled)
 
-- Reverse image search (SauceNAO / IQDB integration)
-- Source completion (auto-fetch Pixiv/Twitter source URL)
-- Similar image / near-duplicate detection (perceptual hashing)
-- Character clustering (group images by character across different art styles)
+- Reverse image search (SauceNAO / IQDB integration) only after explicit provider policy, privacy approval, image/thumbnail/hash upload approval, cache/audit/rate-limit design, and small opt-in batch approval
+- Source completion (for example Pixiv/source URLs) from exact source metadata first; no login/cookie/private APIs or scraping without separate policy review
+- Similar image / near-duplicate detection (perceptual hashing) as supplementary recall, not identity truth
+- Character clustering (group images by character across different art styles) remains deferred; no automatic confirmed assignments from clustering
 - Batch tag editor in the UI
 - Tag statistics dashboard
 
