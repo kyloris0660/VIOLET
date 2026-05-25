@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.2 - Manual entity correction and review foundation (2026-05-24).
+> Last updated during Phase 4.3-A - Proper-noun signal provenance audit and trust policy (2026-05-25).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|-------|
 | **Repo** | `kyloris0660/AnimeLocalBooru` (project name: V.I.O.L.E.T.) |
-| **Branch** | `main` after the Phase 4.1 PR is merged; current work branch is `codex/phase-4.2-manual-entity-correction` |
+| **Branch** | `main` after the Phase 4.2 PR is merged; current work branch is `codex/phase-4.3a-proper-noun-signal-trust-audit` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -51,15 +51,17 @@
 | **Phase 3.8d-G2 (PR #66)** | [PR #66](https://github.com/kyloris0660/AnimeLocalBooru/pull/66) merged - startup/import path consistency hardening; repo-root `run.py --debug` no longer requires `PYTHONPATH=<repo>\backend` |
 | **Phase 3.8d-G3 (PR #67)** | [PR #67](https://github.com/kyloris0660/AnimeLocalBooru/pull/67) merged - final handoff/docs/repo hygiene stage; docs-only closeout before any Phase 4 planning |
 | **Phase 4.1 (PR #68)** | [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68) merged - entity metadata foundation with additive schema, local service skeleton, provenance/candidate/assignment separation, inactive provider/cache placeholders, and no enrichment/external calls |
-| **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) open - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
+| **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69) merged - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
 
 ## Current Accepted State
 
 Phase 3.8d medium pilot is accepted at a practical level. The current library includes the baseline Phase 3.5 source label plus the Phase 3.8d-I7 source label `violet:phase3.8d:i7:staged-success`.
 
-Phase 4.1 is merged in [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68). Treat the entity metadata foundation as accepted baseline for Phase 4.2.
+Phase 4.1 is merged in [PR #68](https://github.com/kyloris0660/AnimeLocalBooru/pull/68). Treat the entity metadata foundation as accepted baseline for later entity phases.
 
-Phase 4.2 is represented by [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69). It is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
+Phase 4.2 is merged in [PR #69](https://github.com/kyloris0660/AnimeLocalBooru/pull/69). It is the manual entity correction and review foundation. It is correction-oriented, not an exhaustive review queue: the operator should find a problem, correct entities/aliases/assignments/candidates, preserve provenance, and let future automation consume those durable signals.
+
+Phase 4.3-A is the read-only proper-noun signal provenance audit and trust-policy stage. Its durable rule is that existing AI-generated character/copyright/artist/proper-noun tags are weak identity evidence by default: they may be counted or used as future query seeds, but they must not automatically create trusted entities or confirmed assignments. General/meta tags remain visual descriptors, not identity signals.
 
 Key accepted facts:
 
@@ -80,8 +82,8 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.2 after Phase 4.1 merge: manual entity correction and targeted review foundation; no external provider calls and no exhaustive candidate queue.
-- Phase 4.3 after correction UI or explicit approval: internal-signal candidate generation; suggestions only.
+- Phase 4.3-B: guarded internal candidate generation from high-trust tiers only by default (`T0/T1/T2`), dry-run first, capped, suggestion-only, and no automatic confirmed writes.
+- AI proper-noun candidate generation from T3/T4 signals remains deferred unless the user/ChatGPT explicitly approves that source class with hard caps.
 - Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before broad ingestion or external enrichment.
 - A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
 - Proper noun / character localization strategy.
@@ -95,6 +97,7 @@ Strong warnings:
 - Do not run external provider calls, reverse image search, crawler work, Entity Resolver, similarity/clustering, or broader feature work without explicit user/ChatGPT approval.
 - Do not treat Phase 4.1 provider/cache tables as permission to enrich data; they are inactive policy/cache placeholders only.
 - Do not design entity review as a requirement to process every AI/entity suggestion manually. Manual interaction should remain sparse, targeted, and high-impact; automation is the long-term default.
+- Do not treat AI-generated proper-noun tags as reliable entity truth. They are weak evidence by default, even when they are non-suggestion AI tags.
 
 ## Mandatory Workflow Rules
 
