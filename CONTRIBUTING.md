@@ -9,7 +9,7 @@ V.I.O.L.E.T. (Visual Image Organizer for Local Evaluation & Tagging) extends [Bl
 1. **Clone the repository**
 
     ```powershell
-    git clone https://github.com/kyloris0660/AnimeLocalBooru.git
+    git clone https://github.com/kyloris0660/VIOLET.git
     cd AnimeLocalBooru
     ```
 
@@ -113,7 +113,7 @@ V.I.O.L.E.T. uses zh-CN as the primary UI language with English fallback. Locale
 
 ## Reporting Issues
 
-Please use the [GitHub issue tracker](https://github.com/kyloris0660/AnimeLocalBooru/issues).
+Please use the [GitHub issue tracker](https://github.com/kyloris0660/VIOLET/issues).
 
 ## License
 

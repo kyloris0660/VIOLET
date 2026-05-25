@@ -4,6 +4,8 @@
 
 Build a personal, local anime/illustration image library on top of [Blombooru](https://github.com/mrblomblo/blombooru). The core value is **Danbooru-style tag-based retrieval**, not generic file browsing.
 
+Canonical GitHub repository: [kyloris0660/VIOLET](https://github.com/kyloris0660/VIOLET). The historical repository name was `AnimeLocalBooru`; local worktrees may still use `C:\Users\kyloris\Documents\AnimeLocalBooru`, and old historical GitHub links may redirect.
+
 The finished system should:
 
 - Scan a continuously-updating local image directory (e.g. `C:\Users\kyloris\Pictures\iCloud Photos`)
@@ -516,6 +518,17 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 - Phase 4.4 should start with exact-source inventory/pilot, preferably one booru-style exact post/source lookup provider if source URLs or post IDs exist. First pilot writes should be cache/evidence/candidate-only; no automatic confirmed assignments.
 - Phase 3.9 must precede broad provider enrichment, 5k/10k scale, full-library request scheduling, or large cache population.
 - No provider API calls, reverse image search, scraping, DB import, classification, AI tagging, localization, staging copy, entity writes, Entity Resolver execution, similarity/clustering, source/iCloud mutation, app-managed storage mutation, production ingestion ledger implementation, or admin UI rewrite occurred.
+
+### Phase R1 - GitHub Repository Rename Sync
+
+**Goal:** Align active repository documentation and local git `origin` with the GitHub repository rename to canonical `kyloris0660/VIOLET`.
+
+- Canonical remote repository is now `https://github.com/kyloris0660/VIOLET`.
+- Historical old repository name was `AnimeLocalBooru`; do not recreate that old GitHub repo name because redirects can break.
+- Local working directory remains `C:\Users\kyloris\Documents\AnimeLocalBooru`; docs must not infer local folder names from the remote repository name.
+- Active clone, issue, and repository references should use the VIOLET URL.
+- Historical phase reports and old PR links may remain on `github.com/kyloris0660/AnimeLocalBooru` when rewriting them would be noisy; GitHub rename redirects are expected to handle those archival links.
+- No runtime behavior, DB, classification, AI tagging, localization, staging copy, source/iCloud files, app-managed storage, Entity Resolver, similarity/clustering, Phase 4.4 implementation, or provider calls are changed by this infrastructure/docs stage.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
