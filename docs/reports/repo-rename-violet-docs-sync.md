@@ -1,6 +1,7 @@
 # Phase R1 - GitHub Repository Rename Sync and Documentation Update
 
 Date: 2026-05-26
+Draft PR: https://github.com/kyloris0660/VIOLET/pull/73
 
 ## Summary
 

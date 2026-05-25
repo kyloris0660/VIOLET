@@ -24,6 +24,11 @@
     "fetch_verified": true,
     "main_head": "342d8d4a98c58f52bb9f9c66b248f0c401b23d28"
   },
+  "pull_request": {
+    "number": 73,
+    "url": "https://github.com/kyloris0660/VIOLET/pull/73",
+    "draft": true
+  },
   "files_changed": [
     "README.md",
     "CONTRIBUTING.md",
