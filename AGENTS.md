@@ -256,6 +256,10 @@ Existing AI-generated character/copyright/artist/proper-noun tags must not be tr
 
 Entity enrichment must be source-first / provenance-first. Future reliable entity metadata should prioritize known source URLs, exact external post IDs, imported source metadata, and source-backed external evidence under explicit opt-in provider policy before creating candidates. AI proper-noun tags may help prioritize queries but are not truth. Visual similarity, embeddings, perceptual hashes, and tag co-occurrence are supplementary recall tools only and must not create automatic confirmed assignments. Unknown, non_anime, unapproved illustration, local paths, iCloud paths, filenames, source labels, original image bytes, and privacy-sensitive content must not be sent to external providers by default. External enrichment requires explicit provider policy, privacy eligibility, cache/audit/rate-limit/budget design, redacted reporting, and separate run approval.
 
+### No-source source discovery policy
+
+For the current iCloud-derived library, treat source URLs, external post IDs, and imported exact-source metadata as unavailable unless a future phase proves otherwise as a minor sanity note. Do not make exact-source inventory the next default route. No-source source discovery must start as a tightly controlled anime-only reverse-search/source-discovery pilot design: one provider, cache-first, rate-limited, budgeted, no originals by default, derived thumbnail/resized stripped input only after explicit provider-specific approval, evidence/candidate-only, no confirmed assignments, no broad/full-library scheduling, and no `unknown`, `non_anime`, or unapproved `illustration` content.
+
 ### Cloud-aware ingestion progress and safety policy
 
 Safety gates should make workflows controlled, observable, and recoverable. They must not become infinite blockers for expected iCloud / Windows Cloud Files states. Cloud recall-risk is a risk signal, not a permanent exclusion.

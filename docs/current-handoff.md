@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase R1 - GitHub repository rename sync (2026-05-26).
+> Last updated during Phase 4.4-A sync after Phase R1 repo rename (2026-05-26).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | **Canonical GitHub URL** | `https://github.com/kyloris0660/VIOLET` |
 | **Historical repo name** | `AnimeLocalBooru`; old GitHub links may redirect and should not be recreated as a new repo name |
 | **Local worktree path** | `C:\Users\kyloris\Documents\AnimeLocalBooru` (unchanged; do not infer local folder name from remote repo name) |
-| **Branch** | `main` after Phase 4.3-B is merged; current work branch is `codex/repo-rename-violet-docs-sync` |
+| **Branch** | `main` after Phase 4.3-B is merged; current work branch is `codex/phase-4.4a-source-discovery-design` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -57,7 +57,8 @@
 | **Phase 4.2 (PR #69)** | [PR #69](https://github.com/kyloris0660/VIOLET/pull/69) merged - manual entity correction and targeted review foundation with admin API/UI, no external calls, no automatic candidate generation, and no exhaustive candidate queue |
 | **Phase 4.3-A (PR #70)** | [PR #70](https://github.com/kyloris0660/VIOLET/pull/70) merged - read-only proper-noun signal provenance audit and trust policy; no candidate generation, no external calls, and no DB writes |
 | **Phase 4.3-B (PR #71)** | [PR #71](https://github.com/kyloris0660/VIOLET/pull/71) merged - source-first entity enrichment policy and Phase 4.4 pilot design; docs-only, no provider calls, no runtime writes |
-| **Phase R1 ([PR #73](https://github.com/kyloris0660/VIOLET/pull/73))** | GitHub repository rename sync to canonical `kyloris0660/VIOLET`; local folder remains `C:\Users\kyloris\Documents\AnimeLocalBooru`; docs-only, no runtime behavior changes |
+| **Phase R1 ([PR #73](https://github.com/kyloris0660/VIOLET/pull/73))** | Merged - GitHub repository rename sync to canonical `kyloris0660/VIOLET`; local folder remains `C:\Users\kyloris\Documents\AnimeLocalBooru`; docs-only, no runtime behavior changes |
+| **Phase 4.4-A ([PR #72](https://github.com/kyloris0660/VIOLET/pull/72))** | No-source source discovery pilot design; docs-only, no provider calls, no image/thumbnail upload, no runtime writes |
 
 ## Current Accepted State
 
@@ -72,6 +73,8 @@ Phase 4.3-A is merged in [PR #70](https://github.com/kyloris0660/VIOLET/pull/70)
 Phase 4.3-B is the source-first / provenance-first strategy correction and pilot design stage. It records that broad internal candidate generation from current AI proper-noun tags is not acceptable because the current local trusted-anchor tiers are empty and AI-only proper-noun rows dominate the identity-like signal set. Future entity enrichment should prioritize known source URLs, exact external post IDs, imported source metadata, and source-backed external evidence under explicit provider policy before creating candidates.
 
 Phase R1 records the GitHub repository rename from historical `kyloris0660/AnimeLocalBooru` to canonical `kyloris0660/VIOLET`. Local working directories may remain named `AnimeLocalBooru`; do not rename local paths or infer runtime/package names from the remote repository name. Historical PR/report links that still contain `AnimeLocalBooru` are acceptable when they are archival and rely on GitHub redirects, but active clone/issue/repository references should use the canonical VIOLET URL.
+
+Phase 4.4-A is the no-source source discovery pilot design stage. It records the user/ChatGPT decision that the current iCloud-derived library should be treated as having no usable traceable source URLs, no reliable external post IDs, and no imported source metadata suitable for exact-source lookup. Exact-source inventory is not the primary next step. The next useful problem is a controlled anime-only reverse-search/source-discovery pilot design with no original upload by default, derived input only after explicit approval, one provider only, cache-first behavior, strict budgets, evidence/candidate-only future writes, and no confirmed assignments.
 
 Key accepted facts:
 
@@ -92,11 +95,11 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.4-A: exact-source inventory dry-run. Count current media with provider-recognizable source URLs/post IDs and privacy eligibility before any provider call.
-- Phase 4.4-B: one-provider exact post/source lookup pilot with cache/evidence/candidate-only writes, no confirmed assignments, strict provider budget, rate limits, redacted reports, and explicit approval.
-- Reverse-search pilots remain deferred until explicit image/thumbnail/hash upload policy is approved.
+- Phase 4.4-B: one-provider no-source reverse-search/source-discovery pilot implementation plan and dry-run scaffold. It may proceed before Phase 3.9 only as a small `max_items=25` anime-only pilot with explicit provider/input approval, cache-first behavior, redacted reporting, evidence/candidate-only writes, and no confirmed assignments.
+- Exact booru/source lookup remains useful only after reverse search yields a source/post candidate; it is not the primary next step for the current no-source library.
+- Reverse search live execution remains blocked until explicit provider policy, official API/TOS/rate-limit verification, and derived-input approval are complete.
 - AI proper-noun candidate generation from T3/T4 signals remains deferred unless the user/ChatGPT explicitly approves that source class with hard caps; even then it is weak query seed context, not truth.
-- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before broad ingestion or broad external enrichment.
+- Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source/provider run ledger discipline before broad ingestion, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
 - A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
 - Proper noun / character localization strategy.
 - Admin stats/settings UI rewrite later, lower priority than ingestion/entity foundations.
@@ -112,6 +115,8 @@ Strong warnings:
 - Do not treat AI-generated proper-noun tags as reliable entity truth. They are weak evidence by default, even when they are non-suggestion AI tags.
 - Do not treat visual clustering, whole-image embeddings, or tag similarity as primary entity truth. They are supplementary recall tools only.
 - Do not send `unknown`, `non_anime`, unapproved `illustration`, local paths, iCloud paths, filenames, source labels, original image bytes, or privacy-sensitive content to external providers by default.
+- Do not spend a future no-source phase validating whether source URLs already exist except as a minor sanity note. The accepted working assumption is no usable source URL, no reliable external post ID, and no imported exact-source metadata.
+- Do not upload originals by default. Derived thumbnails/resized stripped images require explicit provider-specific approval and a small anime-only pilot budget.
 
 ## Mandatory Workflow Rules
 
