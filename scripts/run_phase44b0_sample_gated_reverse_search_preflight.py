@@ -50,6 +50,7 @@ BLOCKED_WRITE_TABLES = (
     "MediaEntityCandidate",
     "MediaEntityAssignment",
 )
+ACCEPTABLE_SERVER_PREFLIGHT_BACKENDS = frozenset({"windows_netstat"})
 
 
 class Phase44B0Error(RuntimeError):
@@ -61,6 +62,10 @@ class SampleGateError(Phase44B0Error):
 
 
 class EnvBlockedError(Phase44B0Error):
+    pass
+
+
+class ServerPreflightBlockedError(Phase44B0Error):
     pass
 
 
@@ -164,9 +169,14 @@ def _is_test_storage_path(path: Path) -> bool:
 
 def load_project_config(project_root: Path = ROOT) -> ProjectConfig:
     dotenv_values = _read_dotenv(project_root / ".env")
-    violet_env = _env_value(dotenv_values, "VIOLET_ENV", "development").strip().lower() or "development"
-    if violet_env == "test":
-        raise EnvBlockedError("env_blocked: VIOLET_ENV=test is not allowed for Phase 4.4-B0")
+    violet_env_raw = _env_value(dotenv_values, "VIOLET_ENV", "").strip()
+    violet_env = violet_env_raw.lower()
+    if violet_env != "development":
+        reported_env = violet_env_raw or "unset"
+        raise EnvBlockedError(
+            "env_blocked: VIOLET_ENV must be 'development' for Phase 4.4-B0; "
+            f"got {reported_env!r}"
+        )
     if _env_value(dotenv_values, "TEST_DATABASE_URL", "").strip():
         raise EnvBlockedError("env_blocked: TEST_DATABASE_URL is set; refusing development sample preflight")
 
@@ -633,6 +643,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
     budget = summary["request_budget"]
     identity = summary["identity"]
     server = summary["no_active_server_preflight"]
+    strict = summary.get("strict_mode", {})
     return f"""# Phase 4.4-B0 - Sample-gated Reverse-search Preflight
 
 Date: {summary['generated_at']}
@@ -652,18 +663,27 @@ Phase 4.4-B0 is a user-approved, sample-gated reverse-search preflight. It gener
 
 ## No-active-server Preflight
 
+- Preflight proof required: `{server.get('proof_required', True)}`
+- Clean preflight required before DB access: `{server.get('clean_required_before_db_access', True)}`
 - Result: `{server.get('result', 'unknown')}`
 - Listener backend: `{server.get('listener_backend', 'unknown')}`
+- Acceptable listener backends: `{', '.join(server.get('acceptable_listener_backends', sorted(ACCEPTABLE_SERVER_PREFLIGHT_BACKENDS)))}`
 - Occupied ports: `{server.get('occupied_count', 'unknown')}`
 - Confirmed V.I.O.L.E.T. servers: `{server.get('confirmed_violet_count', 'unknown')}`
 - Suspected V.I.O.L.E.T. servers: `{server.get('suspected_violet_count', 'unknown')}`
+- Non-clean preflight blocks execution: `true`
 
 ## DB / Storage Identity Proof
 
 - `VIOLET_ENV`: `{identity.get('violet_env', 'unknown')}`
+- Development-only gate: `true`
+- Configured DB host: `{identity.get('configured_db_host', 'unknown')}`
+- Configured DB port: `{identity.get('configured_db_port', 'unknown')}`
+- Configured DB user: `{identity.get('configured_db_user', 'unknown')}`
 - Configured DB name: `{identity.get('configured_db_name', 'unknown')}`
 - Actual DB name: `{identity.get('actual_db_name', 'unknown')}`
 - DB identity result: `{identity.get('db_identity_result', 'unknown')}`
+- DB password included: `false`
 - Storage root mode: `{identity.get('storage_root_mode', 'unknown')}`
 - Storage root explicit: `{identity.get('storage_root_explicitly_set', 'unknown')}`
 - Storage root test-path check: `{identity.get('storage_root_test_path', 'unknown')}`
@@ -685,6 +705,13 @@ Phase 4.4-B0 is a user-approved, sample-gated reverse-search preflight. It gener
 - Derived image upload: `false`
 - Live request: `false`
 - Derived files generated: `0`
+
+## Strict Behavior
+
+- Strict mode enabled: `{strict.get('enabled', False)}`
+- Strict blocks on blocked samples: `{strict.get('blocks_on_blocked_samples', True)}`
+- Strict status: `{strict.get('status', 'not_recorded')}`
+- Strict blocked sample count: `{strict.get('blocked_count', counts['blocked_count'])}`
 
 ## Redacted Request Plan
 
@@ -750,10 +777,13 @@ Phase 4.4-B0 is a user-approved, sample-gated reverse-search preflight. It gener
 
 def install_read_only_guard(engine) -> None:
     blocked = ("INSERT", "UPDATE", "DELETE", "ALTER", "CREATE", "DROP", "TRUNCATE", "MERGE", "REPLACE", "COPY", "GRANT", "REVOKE", "COMMENT", "VACUUM")
+    data_modifying_cte = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE)\b", re.IGNORECASE)
 
     @event.listens_for(engine, "before_cursor_execute")
     def _block_writes(_conn, _cursor, statement, _parameters, _context, _executemany):
-        if str(statement).lstrip().upper().startswith(blocked):
+        sql = str(statement).lstrip()
+        sql_upper = sql.upper()
+        if sql_upper.startswith(blocked) or (sql_upper.startswith("WITH") and data_modifying_cte.search(sql)):
             raise ReadOnlyViolation("db_write_blocked: Phase 4.4-B0 runner is read-only")
 
 
@@ -763,9 +793,13 @@ def prove_db_identity(session: Session, config: ProjectConfig) -> dict[str, Any]
         raise IdentityBlockedError(f"identity_blocked: expected DB blombooru, got {config.db_name!r}/{actual_db!r}")
     return {
         "violet_env": config.violet_env,
+        "configured_db_host": config.db_host,
+        "configured_db_port": config.db_port,
+        "configured_db_user": config.db_user,
         "configured_db_name": config.db_name,
         "actual_db_name": str(actual_db),
         "db_identity_result": "development_blombooru_confirmed",
+        "db_password_included": False,
         "storage_root_mode": "explicit_storage_root" if config.storage_root_explicitly_set else "code_root_default",
         "storage_root_explicitly_set": config.storage_root_explicitly_set,
         "storage_root_test_path": _is_test_storage_path(config.storage_root),
@@ -781,7 +815,59 @@ def _server_preflight_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "occupied_count": args.no_active_server_occupied_count,
         "confirmed_violet_count": args.no_active_server_confirmed_violet_count,
         "suspected_violet_count": args.no_active_server_suspected_violet_count,
+        "proof_required": True,
+        "clean_required_before_db_access": True,
+        "acceptable_listener_backends": sorted(ACCEPTABLE_SERVER_PREFLIGHT_BACKENDS),
     }
+
+
+def validate_no_active_server_preflight(preflight: dict[str, Any]) -> None:
+    issues: list[str] = []
+    result = str(preflight.get("result", "")).strip().lower()
+    backend = str(preflight.get("listener_backend", "")).strip().lower()
+    if result != "clean":
+        issues.append(f"result={result or 'missing'}")
+    if backend not in ACCEPTABLE_SERVER_PREFLIGHT_BACKENDS:
+        issues.append(f"listener_backend={backend or 'missing'}")
+    for field in ("occupied_count", "confirmed_violet_count", "suspected_violet_count"):
+        try:
+            count = int(preflight.get(field))
+        except (TypeError, ValueError):
+            issues.append(f"{field}=missing_or_invalid")
+            continue
+        if count != 0:
+            issues.append(f"{field}={count}")
+    if issues:
+        raise ServerPreflightBlockedError(
+            "server_preflight_blocked: no-active-server preflight must be clean before Phase 4.4-B0 DB access; "
+            + "; ".join(issues)
+        )
+
+
+def apply_strict_policy(summary: dict[str, Any], *, enabled: bool) -> None:
+    blocked_count = int(summary.get("counts", {}).get("blocked_count", 0))
+    if enabled and blocked_count:
+        status = "blocked_after_report_generation"
+    elif enabled:
+        status = "passed"
+    else:
+        status = "not_enabled"
+    summary["strict_mode"] = {
+        "enabled": bool(enabled),
+        "blocks_on_blocked_samples": True,
+        "blocked_count": blocked_count,
+        "status": status,
+        "report_written_before_failure": True,
+    }
+
+
+def enforce_strict_policy(summary: dict[str, Any]) -> None:
+    strict = summary.get("strict_mode", {})
+    if strict.get("enabled") and int(strict.get("blocked_count", 0)) > 0:
+        raise Phase44B0Error(
+            "strict_blocked: --strict requires zero blocked samples; "
+            f"blocked_count={strict.get('blocked_count')}. Reports were generated before exit."
+        )
 
 
 def write_reports(summary: dict[str, Any], details: dict[str, Any], *, report_json: Path, report_md: Path, local_details_json: Path) -> None:
@@ -813,11 +899,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report-md", required=True)
     parser.add_argument("--local-details-json", required=True)
     parser.add_argument("--strict", action="store_true")
-    parser.add_argument("--no-active-server-preflight-result", default="clean")
-    parser.add_argument("--no-active-server-listener-backend", default="windows_netstat")
-    parser.add_argument("--no-active-server-occupied-count", type=int, default=0)
-    parser.add_argument("--no-active-server-confirmed-violet-count", type=int, default=0)
-    parser.add_argument("--no-active-server-suspected-violet-count", type=int, default=0)
+    parser.add_argument("--no-active-server-preflight-result", required=True)
+    parser.add_argument("--no-active-server-listener-backend", required=True)
+    parser.add_argument("--no-active-server-occupied-count", type=int, required=True)
+    parser.add_argument("--no-active-server-confirmed-violet-count", type=int, required=True)
+    parser.add_argument("--no-active-server-suspected-violet-count", type=int, required=True)
     return parser
 
 
@@ -826,6 +912,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     report_json = resolve_output_path(args.report_json, expected_parent=PUBLIC_REPORT_DIR)
     report_md = resolve_output_path(args.report_md, expected_parent=PUBLIC_REPORT_DIR)
     local_details_json = resolve_output_path(args.local_details_json, expected_parent=LOCAL_DETAILS_DIR)
+    no_active_server_preflight = _server_preflight_from_args(args)
+    validate_no_active_server_preflight(no_active_server_preflight)
     config = load_project_config(ROOT)
     engine = create_engine(config.database_url, pool_pre_ping=True)
     install_read_only_guard(engine)
@@ -840,10 +928,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             provider_key=args.provider,
             input_kind=args.input_kind,
             identity=identity,
-            no_active_server_preflight=_server_preflight_from_args(args),
+            no_active_server_preflight=no_active_server_preflight,
         )
+        apply_strict_policy(summary, enabled=args.strict)
         write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
         session.rollback()
+        enforce_strict_policy(summary)
         return summary
     finally:
         session.close()

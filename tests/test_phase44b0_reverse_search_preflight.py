@@ -22,12 +22,21 @@ from app.enums import ContentClassEnum, FileTypeEnum, RatingEnum  # noqa: E402
 from app.models import Media  # noqa: E402
 from scripts.run_phase44b0_sample_gated_reverse_search_preflight import (  # noqa: E402
     APPROVED_SAMPLE_IDS,
+    EnvBlockedError,
     Phase44B0Error,
+    ReadOnlyViolation,
     SampleGateError,
+    ServerPreflightBlockedError,
     assert_public_payload_safe,
+    build_arg_parser,
     build_markdown_report,
     build_preflight,
+    apply_strict_policy,
+    enforce_strict_policy,
+    install_read_only_guard,
+    load_project_config,
     parse_media_ids,
+    validate_no_active_server_preflight,
 )
 
 
@@ -108,6 +117,114 @@ def _server_preflight() -> dict:
         "confirmed_violet_count": 0,
         "suspected_violet_count": 0,
     }
+
+
+def _parser_base_args() -> list[str]:
+    return [
+        "--media-ids",
+        *(str(item) for item in APPROVED_SAMPLE_IDS),
+        "--report-json",
+        "docs/reports/phase-4.4b0-sample-gated-reverse-search-preflight-summary.json",
+        "--report-md",
+        "docs/reports/phase-4.4b0-sample-gated-reverse-search-preflight.md",
+        "--local-details-json",
+        ".local_manifests/phase-4.4b0-sample-gated-reverse-search-preflight-details.json",
+    ]
+
+
+def _parser_clean_preflight_args() -> list[str]:
+    return [
+        "--no-active-server-preflight-result",
+        "clean",
+        "--no-active-server-listener-backend",
+        "windows_netstat",
+        "--no-active-server-occupied-count",
+        "0",
+        "--no-active-server-confirmed-violet-count",
+        "0",
+        "--no-active-server-suspected-violet-count",
+        "0",
+    ]
+
+
+def test_project_config_blocks_test_env_before_db_access(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    with pytest.raises(EnvBlockedError, match="VIOLET_ENV must be 'development'"):
+        load_project_config(tmp_path)
+
+
+def test_project_config_blocks_production_env_before_db_access(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    with pytest.raises(EnvBlockedError, match="got 'production'"):
+        load_project_config(tmp_path)
+
+
+def test_project_config_allows_explicit_development_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "development")
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    monkeypatch.delenv("VIOLET_STORAGE_ROOT", raising=False)
+    monkeypatch.setenv("POSTGRES_DB", "blombooru")
+    config = load_project_config(tmp_path)
+    assert config.violet_env == "development"
+    assert config.db_name == "blombooru"
+
+
+def test_missing_no_active_server_preflight_args_fail_closed():
+    parser = build_arg_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(_parser_base_args())
+
+
+def test_explicit_clean_no_active_server_preflight_args_are_accepted():
+    parser = build_arg_parser()
+    args = parser.parse_args([*_parser_base_args(), *_parser_clean_preflight_args()])
+    validate_no_active_server_preflight(
+        {
+            "result": args.no_active_server_preflight_result,
+            "listener_backend": args.no_active_server_listener_backend,
+            "occupied_count": args.no_active_server_occupied_count,
+            "confirmed_violet_count": args.no_active_server_confirmed_violet_count,
+            "suspected_violet_count": args.no_active_server_suspected_violet_count,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"result": "blocked"},
+        {"occupied_count": 1},
+        {"confirmed_violet_count": 1},
+        {"suspected_violet_count": 1},
+        {"listener_backend": "not_a_real_audit_backend"},
+    ],
+)
+def test_non_clean_no_active_server_preflight_blocks_execution(patch):
+    preflight = _server_preflight()
+    preflight.update(patch)
+    with pytest.raises(ServerPreflightBlockedError, match="server_preflight_blocked"):
+        validate_no_active_server_preflight(preflight)
+
+
+def test_clean_no_active_server_preflight_allows_execution():
+    validate_no_active_server_preflight(_server_preflight())
+
+
+def test_strict_mode_blocks_after_report_metadata_when_samples_are_blocked():
+    summary = {"counts": {"blocked_count": 1}}
+    apply_strict_policy(summary, enabled=True)
+    assert summary["strict_mode"]["status"] == "blocked_after_report_generation"
+    with pytest.raises(Phase44B0Error, match="strict_blocked"):
+        enforce_strict_policy(summary)
+
+
+def test_strict_mode_allows_zero_blocked_samples():
+    summary = {"counts": {"blocked_count": 0}}
+    apply_strict_policy(summary, enabled=True)
+    enforce_strict_policy(summary)
+    assert summary["strict_mode"]["status"] == "passed"
 
 
 def test_no_media_ids_fail_closed():
@@ -254,6 +371,17 @@ def test_no_db_writes_are_attempted(db, tmp_path):
         no_active_server_preflight=_server_preflight(),
     )
     assert writes == []
+
+
+def test_read_only_guard_blocks_data_modifying_cte():
+    engine = create_engine("sqlite:///:memory:")
+    install_read_only_guard(engine)
+    try:
+        with engine.connect() as conn:
+            with pytest.raises(ReadOnlyViolation, match="db_write_blocked"):
+                conn.exec_driver_sql("WITH changed AS (UPDATE media SET filename='x' RETURNING id) SELECT id FROM changed")
+    finally:
+        engine.dispose()
 
 
 def test_no_external_call_path_is_exercised(db, tmp_path, monkeypatch):

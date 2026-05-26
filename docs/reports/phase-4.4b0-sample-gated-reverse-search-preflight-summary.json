@@ -51,11 +51,15 @@
       "ProviderCache": "redacted normalized provider response cache"
     }
   },
-  "generated_at": "2026-05-26T14:21:38+00:00",
+  "generated_at": "2026-05-26T15:03:27+00:00",
   "identity": {
     "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
     "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
     "db_identity_result": "development_blombooru_confirmed",
+    "db_password_included": false,
     "local_paths_redacted": true,
     "storage_root_equals_code_root": true,
     "storage_root_explicitly_set": false,
@@ -80,9 +84,14 @@
     "still_requires_explicit_user_approval": true
   },
   "no_active_server_preflight": {
+    "acceptable_listener_backends": [
+      "windows_netstat"
+    ],
+    "clean_required_before_db_access": true,
     "confirmed_violet_count": 0,
     "listener_backend": "windows_netstat",
     "occupied_count": 0,
+    "proof_required": true,
     "result": "clean",
     "suspected_violet_count": 0
   },
@@ -355,5 +364,12 @@
     "media_entity_candidate_writes_attempted": false,
     "provider_cache_writes_attempted": false,
     "source_icloud_mutation_attempted": false
+  },
+  "strict_mode": {
+    "blocked_count": 0,
+    "blocks_on_blocked_samples": true,
+    "enabled": true,
+    "report_written_before_failure": true,
+    "status": "passed"
   }
 }

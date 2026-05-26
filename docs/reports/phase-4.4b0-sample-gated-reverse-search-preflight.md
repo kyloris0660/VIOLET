@@ -1,6 +1,6 @@
 # Phase 4.4-B0 - Sample-gated Reverse-search Preflight
 
-Date: 2026-05-26T14:21:38+00:00
+Date: 2026-05-26T15:03:27+00:00
 
 ## Summary
 
@@ -17,18 +17,27 @@ Phase 4.4-B0 is a user-approved, sample-gated reverse-search preflight. It gener
 
 ## No-active-server Preflight
 
+- Preflight proof required: `True`
+- Clean preflight required before DB access: `True`
 - Result: `clean`
 - Listener backend: `windows_netstat`
+- Acceptable listener backends: `windows_netstat`
 - Occupied ports: `0`
 - Confirmed V.I.O.L.E.T. servers: `0`
 - Suspected V.I.O.L.E.T. servers: `0`
+- Non-clean preflight blocks execution: `true`
 
 ## DB / Storage Identity Proof
 
 - `VIOLET_ENV`: `development`
+- Development-only gate: `true`
+- Configured DB host: `localhost`
+- Configured DB port: `5432`
+- Configured DB user: `postgres`
 - Configured DB name: `blombooru`
 - Actual DB name: `blombooru`
 - DB identity result: `development_blombooru_confirmed`
+- DB password included: `false`
 - Storage root mode: `code_root_default`
 - Storage root explicit: `False`
 - Storage root test-path check: `False`
@@ -50,6 +59,13 @@ Phase 4.4-B0 is a user-approved, sample-gated reverse-search preflight. It gener
 - Derived image upload: `false`
 - Live request: `false`
 - Derived files generated: `0`
+
+## Strict Behavior
+
+- Strict mode enabled: `True`
+- Strict blocks on blocked samples: `True`
+- Strict status: `passed`
+- Strict blocked sample count: `0`
 
 ## Redacted Request Plan
 
