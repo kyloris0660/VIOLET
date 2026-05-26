@@ -16,6 +16,14 @@ def _args(*extra):
     return audit.make_arg_parser().parse_args(list(extra))
 
 
+def _listeners(mapping):
+    return audit.ListenerBackendResult(
+        listeners=mapping,
+        backend="windows_netstat",
+        status="ok",
+    )
+
+
 def _identity(**overrides):
     data = {
         "app_name": "V.I.O.L.E.T.",
@@ -55,7 +63,7 @@ def test_redacts_admin_password_from_command_line():
 
 
 def test_json_output_shape_for_no_active_servers(monkeypatch, capsys):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({}))
 
     code = audit.main(["--ports", "8012", "--json"])
 
@@ -63,14 +71,72 @@ def test_json_output_shape_for_no_active_servers(monkeypatch, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["tool"] == "audit_active_violet_servers"
     assert report["read_only"] is True
+    assert report["listener_backend"] == "windows_netstat"
+    assert report["listener_backend_status"] == "ok"
+    assert report["listener_detection_reliable"] is True
     assert report["occupied_count"] == 0
     assert report["violet_server_count"] == 0
     assert report["ports"][0]["port"] == 8012
     assert report["ports"][0]["listening"] is False
 
 
+def test_unsupported_listener_backend_reports_unknown_not_false_free(monkeypatch, capsys):
+    monkeypatch.setattr(audit.platform, "system", lambda: "Linux")
+
+    code = audit.main(["--ports", "8012", "--json"])
+
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    item = report["ports"][0]
+    assert report["listener_backend"] == "unsupported_non_windows"
+    assert report["listener_backend_status"] == "unsupported"
+    assert "listener_backend_unsupported" in report["listener_backend_error"]
+    assert report["listener_detection_reliable"] is False
+    assert report["occupied_count"] is None
+    assert report["violet_server_count"] is None
+    assert item["listening"] is None
+    assert item["server_classification"] == "listener_backend_unavailable"
+
+
+def test_missing_listener_backend_does_not_crash_or_report_free(monkeypatch, capsys):
+    def missing_netstat(*args, **kwargs):
+        raise FileNotFoundError("netstat missing")
+
+    monkeypatch.setattr(audit.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(audit, "run_command", missing_netstat)
+
+    code = audit.main(["--ports", "8012", "--json"])
+
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    item = report["ports"][0]
+    assert report["listener_backend"] == "windows_netstat"
+    assert report["listener_backend_status"] == "unavailable"
+    assert "FileNotFoundError" in report["listener_backend_error"]
+    assert report["listener_detection_reliable"] is False
+    assert item["listening"] is None
+    assert item["server_classification"] == "listener_backend_unavailable"
+
+
+def test_fail_gates_fail_closed_when_listener_backend_unavailable(monkeypatch, capsys):
+    monkeypatch.setattr(
+        audit,
+        "get_tcp_listeners",
+        lambda ports: audit.ListenerBackendResult(
+            listeners={},
+            backend="windows_netstat",
+            status="unavailable",
+            error="FileNotFoundError: netstat missing",
+        ),
+    )
+
+    assert audit.main(["--ports", "8012", "--fail-if-any", "--json"]) == 2
+    capsys.readouterr()
+    assert audit.main(["--ports", "8012", "--fail-if-stale", "--json"]) == 2
+
+
 def test_process_tree_and_stale_classification_for_orphan_reloader(monkeypatch):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 39504})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 39504}))
     monkeypatch.setattr(
         audit,
         "list_processes",
@@ -101,7 +167,7 @@ def test_process_tree_and_stale_classification_for_orphan_reloader(monkeypatch):
 
 
 def test_fail_if_any_returns_nonzero_for_identity_confirmed_violet(monkeypatch, capsys):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 10292})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
     monkeypatch.setattr(
         audit,
         "list_processes",
@@ -125,7 +191,7 @@ def test_fail_if_any_returns_nonzero_for_identity_confirmed_violet(monkeypatch, 
 
 
 def test_unauthorized_identity_with_repo_process_evidence_is_suspected_violet(monkeypatch, capsys):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 10292})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
     monkeypatch.setattr(
         audit,
         "list_processes",
@@ -168,7 +234,7 @@ def test_unauthorized_identity_with_repo_process_evidence_is_suspected_violet(mo
 
 
 def test_identity_unavailable_unrelated_service_is_unknown_not_violet(monkeypatch):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 10292})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
     monkeypatch.setattr(
         audit,
         "list_processes",
@@ -195,7 +261,7 @@ def test_identity_unavailable_unrelated_service_is_unknown_not_violet(monkeypatc
 
 
 def test_fail_if_stale_ignores_unrelated_identity_unavailable_listener(monkeypatch, capsys):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 9911})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 9911}))
     monkeypatch.setattr(
         audit,
         "list_processes",
@@ -223,7 +289,7 @@ def test_fail_if_stale_ignores_unrelated_identity_unavailable_listener(monkeypat
 
 
 def test_fail_if_stale_returns_nonzero_for_expected_identity_mismatch(monkeypatch, capsys):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 10292})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
     monkeypatch.setattr(
         audit,
         "list_processes",
@@ -255,8 +321,74 @@ def test_fail_if_stale_returns_nonzero_for_expected_identity_mismatch(monkeypatc
     assert "expected_env" in report["ports"][0]["stale_reasons"]
 
 
+def test_windows_path_normalization_accepts_equivalent_expected_paths(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=100,
+                command_line="python run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (_identity(pid=10292), None))
+
+    report = audit.build_report(
+        _args(
+            "--ports",
+            "8012",
+            "--expected-code-root",
+            "c:/users/kyloris/documents/animelocalbooru/",
+            "--expected-storage-root",
+            "c:/users/kyloris/violetstorage/test/",
+        )
+    )
+
+    assert report["stale_server_count"] == 0
+    assert "expected_code_root" not in report["ports"][0]["stale_reasons"]
+    assert "expected_storage_root" not in report["ports"][0]["stale_reasons"]
+
+
+def test_windows_path_normalization_rejects_different_paths(monkeypatch, capsys):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=100,
+                command_line="python run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (_identity(pid=10292), None))
+
+    code = audit.main(
+        [
+            "--ports",
+            "8012",
+            "--expected-code-root",
+            r"D:\Other\AnimeLocalBooru",
+            "--expected-storage-root",
+            r"D:\Other\VioletStorage\test",
+            "--fail-if-stale",
+            "--json",
+        ]
+    )
+
+    assert code == 1
+    report = json.loads(capsys.readouterr().out)
+    reasons = report["ports"][0]["stale_reasons"]
+    assert "expected_code_root" in reasons
+    assert "expected_storage_root" in reasons
+
+
 def test_confirmed_test_server_counts_as_stale_and_recommends_reviewable_stop(monkeypatch):
-    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 39504})
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 39504}))
     monkeypatch.setattr(
         audit,
         "list_processes",

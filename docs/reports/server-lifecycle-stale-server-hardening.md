@@ -54,6 +54,11 @@ Lifecycle: reusable validation/safety tool.
 The tool is read-only by default and has no process stop/kill functionality. It:
 
 - scans common local ports such as `8000,8012-8024`
+- supports the current active Windows validation environment through `netstat -ano -p tcp`
+- treats non-Windows listener auditing as unsupported unless a tested backend is added later
+- reports listener backend status (`listener_backend`, `listener_backend_status`, `listener_backend_error`)
+- fails closed for `--fail-if-any` / `--fail-if-stale` when the listener backend is unavailable or unsupported
+- reports unknown listener state instead of pretending ports are free when listener detection fails
 - reports TCP listener PID
 - reports whether process metadata exists
 - reports command line, parent PID, and matching child processes when visible
@@ -85,6 +90,14 @@ Both were fixed:
 - `--fail-if-stale` fails only for confirmed/suspected V.I.O.L.E.T. stale servers.
 - Unrelated occupied ports remain visible in the report but do not fail the V.I.O.L.E.T. stale gate.
 - No stop/kill functionality was added.
+
+Latest closeout scope correction:
+
+- Windows remains the supported active development/validation environment for this tool.
+- Non-Windows listener audit is explicitly unsupported/fail-closed rather than partially parsed.
+- Missing or failing listener backends cannot produce a false clean result.
+- `--fail-if-any` and `--fail-if-stale` return non-zero when listener detection is unavailable.
+- Windows path comparisons for `expected_code_root` and `expected_storage_root` now tolerate case differences, slash direction, and trailing separators while still rejecting different real paths.
 
 ## Governance Updates
 
@@ -125,6 +138,9 @@ The focused tests cover:
 - stale server classification
 - `--fail-if-any`
 - `--fail-if-stale`
+- listener backend unavailable / unsupported behavior
+- fail-closed gates when listener detection is unavailable
+- Windows path normalization for expected code root and storage root
 - identity unavailable behavior
 - unauthorized identity with process evidence -> `suspected_violet`
 - unrelated occupied service does not increment `stale_server_count`

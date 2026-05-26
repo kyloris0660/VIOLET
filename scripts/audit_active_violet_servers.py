@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ntpath
 import os
 import platform
 import re
@@ -39,6 +40,14 @@ class ProcessInfo:
     command_line: str = ""
     executable_path: str = ""
     creation_date: str | None = None
+
+
+@dataclass(frozen=True)
+class ListenerBackendResult:
+    listeners: dict[int, int]
+    backend: str
+    status: str
+    error: str | None = None
 
 
 def parse_ports(spec: str) -> list[int]:
@@ -109,14 +118,47 @@ def tcp_listeners_from_netstat(output: str, ports: list[int]) -> dict[int, int]:
     return listeners
 
 
-def get_tcp_listeners(ports: list[int]) -> dict[int, int]:
+def get_tcp_listeners(ports: list[int]) -> ListenerBackendResult:
     system = platform.system()
     if system == "Windows":
-        result = run_command(["netstat", "-ano", "-p", "tcp"])
-        return tcp_listeners_from_netstat(result.stdout, ports)
+        try:
+            result = run_command(["netstat", "-ano", "-p", "tcp"])
+        except FileNotFoundError as exc:
+            return ListenerBackendResult(
+                listeners={},
+                backend="windows_netstat",
+                status="unavailable",
+                error=f"FileNotFoundError: {exc}",
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ListenerBackendResult(
+                listeners={},
+                backend="windows_netstat",
+                status="error",
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
+        if result.returncode != 0:
+            return ListenerBackendResult(
+                listeners={},
+                backend="windows_netstat",
+                status="error",
+                error=(result.stderr or result.stdout or "netstat returned non-zero exit").strip(),
+            )
+        return ListenerBackendResult(
+            listeners=tcp_listeners_from_netstat(result.stdout, ports),
+            backend="windows_netstat",
+            status="ok",
+        )
 
-    result = run_command(["netstat", "-anp", "tcp"])
-    return tcp_listeners_from_netstat(result.stdout, ports)
+    return ListenerBackendResult(
+        listeners={},
+        backend="unsupported_non_windows",
+        status="unsupported",
+        error=(
+            f"listener_backend_unsupported: platform {system or 'unknown'} is not "
+            "supported by this Windows-focused local audit"
+        ),
+    )
 
 
 def process_infos_from_powershell_json(output: str) -> list[ProcessInfo]:
@@ -214,7 +256,23 @@ def likely_violet_identity(identity: dict[str, Any] | None) -> bool:
 def normalize_for_match(value: str | None) -> str:
     if not value:
         return ""
-    normalized = os.path.normpath(value)
+    normalized = str(value).strip().replace("\\", "/")
+    normalized = re.sub(r"/+", "/", normalized)
+    if platform.system() == "Windows" or re.search(r"\b[a-zA-Z]:/", normalized):
+        normalized = normalized.lower()
+    return normalized.rstrip("/")
+
+
+def normalize_path_for_compare(value: str | None) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    looks_windows = bool(re.match(r"^[a-zA-Z]:[\\/]", text)) or "\\" in text
+    if looks_windows:
+        return ntpath.normpath(text).replace("\\", "/").lower().rstrip("/")
+    normalized = os.path.normpath(text).replace("\\", "/").rstrip("/")
     if platform.system() == "Windows":
         normalized = normalized.lower()
     return normalized
@@ -373,11 +431,18 @@ def expected_mismatches(identity: dict[str, Any], args: argparse.Namespace) -> l
         ("expected_db", args.expected_db, identity.get("db_name")),
         ("expected_storage_root", args.expected_storage_root, identity.get("storage_root")),
     ]
-    return [
-        label
-        for label, expected, actual in checks
-        if expected is not None and expected != actual
-    ]
+    mismatches: list[str] = []
+    path_labels = {"expected_code_root", "expected_storage_root"}
+    for label, expected, actual in checks:
+        if expected is None:
+            continue
+        if label in path_labels:
+            if normalize_path_for_compare(expected) != normalize_path_for_compare(actual):
+                mismatches.append(label)
+            continue
+        if expected != actual:
+            mismatches.append(label)
+    return mismatches
 
 
 def classify_stale_reasons(
@@ -410,6 +475,32 @@ def process_to_dict(info: ProcessInfo | None) -> dict[str, Any] | None:
         "command_line": redact_command_line(info.command_line),
         "executable_path": redact_command_line(info.executable_path),
         "creation_date": info.creation_date,
+    }
+
+
+def unavailable_port_report(port: int, args: argparse.Namespace, backend_result: ListenerBackendResult) -> dict[str, Any]:
+    return {
+        "port": port,
+        "base_url": args.base_url_template.format(port=port),
+        "listening": None,
+        "tcp_listener_pid": None,
+        "process_exists": False,
+        "process": None,
+        "child_processes": [],
+        "identity": None,
+        "identity_status": "unavailable",
+        "identity_error": None,
+        "server_classification": "listener_backend_unavailable",
+        "detection_sources": ["none"],
+        "is_violet_server": None,
+        "is_confirmed_violet": False,
+        "is_suspected_violet": False,
+        "stale_reasons": [],
+        "safe_to_stop_recommendation": False,
+        "candidate_stop_pids": [],
+        "listener_backend": backend_result.backend,
+        "listener_backend_status": backend_result.status,
+        "listener_backend_error": backend_result.error,
     }
 
 
@@ -510,22 +601,52 @@ def audit_port(
         "stale_reasons": stale_reasons,
         "safe_to_stop_recommendation": safe_to_stop,
         "candidate_stop_pids": candidate_stop_pids,
+        "listener_backend": "ok",
+        "listener_backend_status": "ok",
+        "listener_backend_error": None,
     }
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     ports = parse_ports(args.ports)
-    listeners = get_tcp_listeners(ports)
+    listener_result = get_tcp_listeners(ports)
+    if listener_result.status != "ok":
+        ports_report = [
+            unavailable_port_report(port, args, listener_result)
+            for port in ports
+        ]
+        return {
+            "tool": "audit_active_violet_servers",
+            "read_only": True,
+            "listener_backend": listener_result.backend,
+            "listener_backend_status": listener_result.status,
+            "listener_backend_error": listener_result.error,
+            "listener_detection_reliable": False,
+            "ports": ports_report,
+            "occupied_count": None,
+            "violet_server_count": None,
+            "confirmed_violet_count": None,
+            "suspected_violet_count": None,
+            "unknown_listener_count": None,
+            "unrelated_listener_count": None,
+            "stale_server_count": None,
+        }
+
+    listeners = listener_result.listeners
     processes = list_processes() if listeners else {}
-    ports_report = [
-        audit_port(
+    ports_report = []
+    for port in ports:
+        item = audit_port(
             port,
             listener_pid=listeners.get(port),
             processes=processes,
             args=args,
         )
-        for port in ports
-    ]
+        item["listener_backend"] = listener_result.backend
+        item["listener_backend_status"] = listener_result.status
+        item["listener_backend_error"] = listener_result.error
+        ports_report.append(item)
+
     occupied = [p for p in ports_report if p["listening"]]
     violet = [p for p in occupied if p["is_violet_server"]]
     confirmed = [p for p in occupied if p["is_confirmed_violet"]]
@@ -536,6 +657,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "tool": "audit_active_violet_servers",
         "read_only": True,
+        "listener_backend": listener_result.backend,
+        "listener_backend_status": listener_result.status,
+        "listener_backend_error": listener_result.error,
+        "listener_detection_reliable": True,
         "ports": ports_report,
         "occupied_count": len(occupied),
         "violet_server_count": len(violet),
@@ -550,6 +675,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 def print_text_report(report: dict[str, Any]) -> None:
     print("V.I.O.L.E.T. active server audit")
     print(f"read_only: {report['read_only']}")
+    print(f"listener_backend: {report['listener_backend']}")
+    print(f"listener_backend_status: {report['listener_backend_status']}")
+    if report["listener_backend_error"]:
+        print(f"listener_backend_error: {report['listener_backend_error']}")
     print(f"occupied_count: {report['occupied_count']}")
     print(f"violet_server_count: {report['violet_server_count']}")
     print(f"confirmed_violet_count: {report['confirmed_violet_count']}")
@@ -558,6 +687,12 @@ def print_text_report(report: dict[str, Any]) -> None:
     print(f"unrelated_listener_count: {report['unrelated_listener_count']}")
     print(f"stale_server_count: {report['stale_server_count']}")
     for item in report["ports"]:
+        if item["listening"] is None:
+            print("")
+            print(f"port: {item['port']}")
+            print("  listening: unknown")
+            print(f"  server_classification: {item['server_classification']}")
+            continue
         if not item["listening"]:
             continue
         print("")
@@ -632,6 +767,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print_text_report(report)
 
+    if (args.fail_if_any or args.fail_if_stale) and report["listener_backend_status"] != "ok":
+        return 2
     if args.fail_if_any and report["violet_server_count"]:
         return 1
     if args.fail_if_stale and report["stale_server_count"]:

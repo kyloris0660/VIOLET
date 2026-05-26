@@ -31,12 +31,18 @@
     "supports_process_tree": true,
     "supports_optional_identity_auth": true,
     "redacts_admin_password": true,
+    "supported_active_validation_platform": "Windows",
+    "listener_backend": "windows_netstat",
+    "non_windows_strategy": "unsupported_fail_closed",
+    "backend_unavailable_false_clean_prevented": true,
+    "path_normalization_fixed": true,
     "server_classifications": [
       "confirmed_violet",
       "suspected_violet",
       "unknown_listener",
       "non_violet",
-      "not_listening"
+      "not_listening",
+      "listener_backend_unavailable"
     ],
     "stale_count_scope": "confirmed_or_suspected_violet_only"
   },
@@ -52,8 +58,19 @@
       "is_confirmed_violet",
       "is_suspected_violet",
       "unknown_listener_count",
-      "unrelated_listener_count"
-    ]
+      "unrelated_listener_count",
+      "listener_backend",
+      "listener_backend_status",
+      "listener_backend_error",
+      "listener_detection_reliable"
+    ],
+    "latest_scope_correction": {
+      "non_windows_listener_audit": "unsupported_fail_closed",
+      "fail_gates_fail_closed_when_listener_backend_unavailable": true,
+      "unsupported_backend_does_not_report_ports_free": true,
+      "windows_path_normalization_for_expected_code_root": true,
+      "windows_path_normalization_for_expected_storage_root": true
+    }
   },
   "policy_updates": [
     "no-active-server preflight before server startup",
