@@ -24,13 +24,10 @@ import requests
 
 DEFAULT_PORTS = "8000,8012-8024"
 PROCESS_MATCH_RE = re.compile(
-    r"(run\.py|uvicorn|violet|animelocalbooru|multiprocessing\.spawn|python)",
+    r"(run\.py|uvicorn|v\.i\.o\.l\.e\.t|animelocalbooru|multiprocessing\.spawn|python)",
     re.IGNORECASE,
 )
-SENSITIVE_ARG_RE = re.compile(
-    r"(--admin-password(?:=|\s+))([^\s\"']+|\"[^\"]*\"|'[^']*')",
-    re.IGNORECASE,
-)
+SENSITIVE_ARG_RE = re.compile(r"--admin-password(?=$|[=\s])", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -45,6 +42,14 @@ class ProcessInfo:
 @dataclass(frozen=True)
 class ListenerBackendResult:
     listeners: dict[int, int]
+    backend: str
+    status: str
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class ProcessBackendResult:
+    processes: dict[int, ProcessInfo]
     backend: str
     status: str
     error: str | None = None
@@ -83,7 +88,55 @@ def parse_ports(spec: str) -> list[int]:
 def redact_command_line(command_line: str | None) -> str:
     if not command_line:
         return ""
-    return SENSITIVE_ARG_RE.sub(r"\1<redacted>", command_line)
+    result: list[str] = []
+    pos = 0
+    while True:
+        match = SENSITIVE_ARG_RE.search(command_line, pos)
+        if not match:
+            result.append(command_line[pos:])
+            break
+
+        result.append(command_line[pos:match.start()])
+        result.append(match.group(0))
+        cursor = match.end()
+        if cursor < len(command_line) and command_line[cursor] == "=":
+            result.append("=<redacted>")
+            cursor = _skip_shell_value(command_line, cursor + 1)
+        else:
+            whitespace_start = cursor
+            while cursor < len(command_line) and command_line[cursor].isspace():
+                cursor += 1
+            if cursor > whitespace_start:
+                result.append(command_line[whitespace_start:cursor])
+                result.append("<redacted>")
+                cursor = _skip_shell_value(command_line, cursor)
+        pos = cursor
+    return "".join(result)
+
+
+def _skip_shell_value(text: str, pos: int) -> int:
+    if pos >= len(text):
+        return pos
+    quote = text[pos] if text[pos] in {"'", '"'} else ""
+    if quote:
+        escaped = False
+        index = pos + 1
+        while index < len(text):
+            char = text[index]
+            if char == "\\" and not escaped:
+                escaped = True
+                index += 1
+                continue
+            if char == quote and not escaped:
+                return index + 1
+            escaped = False
+            index += 1
+        return len(text)
+
+    index = pos
+    while index < len(text) and not text[index].isspace():
+        index += 1
+    return index
 
 
 def run_command(args: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess[str]:
@@ -191,22 +244,73 @@ def process_infos_from_powershell_json(output: str) -> list[ProcessInfo]:
     return infos
 
 
-def list_processes() -> dict[int, ProcessInfo]:
+def list_processes() -> ProcessBackendResult:
     if platform.system() == "Windows":
         command = (
             "Get-CimInstance Win32_Process | "
             "Select-Object ProcessId,ParentProcessId,CommandLine,ExecutablePath,CreationDate | "
             "ConvertTo-Json -Depth 3"
         )
-        result = run_command(
-            ["powershell", "-NoProfile", "-Command", command],
-            timeout=10,
-        )
+        try:
+            result = run_command(
+                ["powershell", "-NoProfile", "-Command", command],
+                timeout=10,
+            )
+        except FileNotFoundError as exc:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="unavailable",
+                error=f"FileNotFoundError: {exc}",
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="error",
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
         if result.returncode != 0:
-            return {}
-        return {p.pid: p for p in process_infos_from_powershell_json(result.stdout)}
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="error",
+                error=(result.stderr or result.stdout or "PowerShell returned non-zero exit").strip(),
+            )
+        try:
+            processes = {p.pid: p for p in process_infos_from_powershell_json(result.stdout)}
+        except (json.JSONDecodeError, TypeError) as exc:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="error",
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
+        return ProcessBackendResult(processes=processes, backend="windows_cim", status="ok")
 
-    result = run_command(["ps", "-eo", "pid=,ppid=,command="], timeout=10)
+    try:
+        result = run_command(["ps", "-eo", "pid=,ppid=,command="], timeout=10)
+    except FileNotFoundError as exc:
+        return ProcessBackendResult(
+            processes={},
+            backend="posix_ps",
+            status="unavailable",
+            error=f"FileNotFoundError: {exc}",
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return ProcessBackendResult(
+            processes={},
+            backend="posix_ps",
+            status="error",
+            error=f"{exc.__class__.__name__}: {exc}",
+        )
+    if result.returncode != 0:
+        return ProcessBackendResult(
+            processes={},
+            backend="posix_ps",
+            status="error",
+            error=(result.stderr or result.stdout or "ps returned non-zero exit").strip(),
+        )
     infos: dict[int, ProcessInfo] = {}
     for line in result.stdout.splitlines():
         parts = line.strip().split(None, 2)
@@ -223,7 +327,7 @@ def list_processes() -> dict[int, ProcessInfo]:
             command_line=redact_command_line(parts[2] if len(parts) > 2 else ""),
             executable_path="",
         )
-    return infos
+    return ProcessBackendResult(processes=infos, backend="posix_ps", status="ok")
 
 
 def collect_descendants(
@@ -261,6 +365,36 @@ def normalize_for_match(value: str | None) -> str:
     if platform.system() == "Windows" or re.search(r"\b[a-zA-Z]:/", normalized):
         normalized = normalized.lower()
     return normalized.rstrip("/")
+
+
+def path_contains_root(text: str, expected_root: str) -> bool:
+    root = normalize_for_match(expected_root)
+    haystack = normalize_for_match(text)
+    if not root or not haystack:
+        return False
+
+    start = 0
+    while True:
+        index = haystack.find(root, start)
+        if index == -1:
+            return False
+        before_ok = index == 0 or not _is_path_character(haystack[index - 1])
+        after_index = index + len(root)
+        after_ok = after_index == len(haystack) or haystack[after_index] in {"/", " ", '"', "'", ";", ")", "]", "}"}
+        if before_ok and after_ok:
+            return True
+        start = index + 1
+
+
+def _is_path_character(char: str) -> bool:
+    return char.isalnum() or char in {":", "/", "\\", ".", "_", "-"}
+
+
+def contains_project_name_evidence(blob: str) -> bool:
+    return bool(
+        "v.i.o.l.e.t" in blob
+        or re.search(r"(?<![a-z0-9_-])animelocalbooru(?![a-z0-9_-])", blob)
+    )
 
 
 def normalize_path_for_compare(value: str | None) -> str:
@@ -306,35 +440,30 @@ def detect_process_sources(
 
     expected_root = normalize_for_match(args.expected_code_root)
     if expected_root:
-        normalized_blob = "\n".join(normalize_for_match(t) for t in texts)
-        if expected_root in normalized_blob:
+        if any(path_contains_root(text, expected_root) for text in texts):
             sources.add("expected_code_root")
         venv_markers = [
-            os.path.join(expected_root, "venv").lower(),
-            os.path.join(expected_root, ".venv").lower(),
+            f"{expected_root}/venv",
+            f"{expected_root}/.venv",
         ]
-        if any(marker in normalized_blob for marker in venv_markers):
+        if any(path_contains_root(text, marker) for text in texts for marker in venv_markers):
             sources.add("repo_venv")
 
-    repo_name_evidence = any(
-        token in blob
-        for token in ("v.i.o.l.e.t", "animelocalbooru", "violet")
-    )
+    repo_name_evidence = contains_project_name_evidence(blob)
     if repo_name_evidence:
         sources.add("process_command_line")
 
-    auth_endpoint_seen = identity_error in {"unauthorized", "forbidden"}
     run_py_seen = "run.py" in blob
     backend_seen = "backend.app.main" in blob
     uvicorn_seen = "uvicorn" in blob
+    repo_path_evidence = bool(repo_name_evidence or "expected_code_root" in sources or "repo_venv" in sources)
     if run_py_seen and (
         repo_name_evidence
         or "expected_code_root" in sources
         or "repo_venv" in sources
-        or auth_endpoint_seen
     ):
         sources.add("process_command_line")
-    if backend_seen and (uvicorn_seen or repo_name_evidence or "expected_code_root" in sources):
+    if backend_seen and (uvicorn_seen or repo_name_evidence) and repo_path_evidence:
         sources.add("process_command_line")
 
     multiprocessing_child = any(
@@ -345,7 +474,6 @@ def detect_process_sources(
         "process_command_line" in sources
         or "expected_code_root" in sources
         or "repo_venv" in sources
-        or auth_endpoint_seen
     ):
         sources.add("process_tree")
 
@@ -501,21 +629,32 @@ def unavailable_port_report(port: int, args: argparse.Namespace, backend_result:
         "listener_backend": backend_result.backend,
         "listener_backend_status": backend_result.status,
         "listener_backend_error": backend_result.error,
+        "process_backend": "not_run",
+        "process_backend_status": "not_run",
+        "process_backend_error": None,
     }
+
+
+def coerce_process_backend_result(raw: ProcessBackendResult | dict[int, ProcessInfo]) -> ProcessBackendResult:
+    if isinstance(raw, ProcessBackendResult):
+        return raw
+    return ProcessBackendResult(processes=raw, backend="mock", status="ok")
 
 
 def audit_port(
     port: int,
     *,
     listener_pid: int | None,
-    processes: dict[int, ProcessInfo],
+    process_result: ProcessBackendResult,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     base_url = args.base_url_template.format(port=port)
+    processes = process_result.processes
     listener_process = processes.get(listener_pid) if listener_pid else None
+    process_backend_ok = process_result.status == "ok"
     child_processes = (
         collect_descendants(processes, listener_pid, matching_only=True)
-        if listener_pid and args.include_process_tree
+        if listener_pid and args.include_process_tree and process_backend_ok
         else []
     )
     identity, identity_error = (None, None)
@@ -581,13 +720,18 @@ def audit_port(
             candidate_stop_pids.append(identity_pid)
         candidate_stop_pids.extend(child.pid for child in child_processes)
     candidate_stop_pids = sorted(set(candidate_stop_pids))
+    process_exists = (
+        False
+        if listener_pid is None
+        else (listener_process is not None if process_backend_ok else None)
+    )
 
     return {
         "port": port,
         "base_url": base_url,
         "listening": listener_pid is not None,
         "tcp_listener_pid": listener_pid,
-        "process_exists": listener_process is not None,
+        "process_exists": process_exists,
         "process": process_to_dict(listener_process),
         "child_processes": [process_to_dict(p) for p in child_processes],
         "identity": identity,
@@ -604,6 +748,9 @@ def audit_port(
         "listener_backend": "ok",
         "listener_backend_status": "ok",
         "listener_backend_error": None,
+        "process_backend": process_result.backend,
+        "process_backend_status": process_result.status,
+        "process_backend_error": process_result.error,
     }
 
 
@@ -622,6 +769,11 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "listener_backend_status": listener_result.status,
             "listener_backend_error": listener_result.error,
             "listener_detection_reliable": False,
+            "process_backend": "not_run",
+            "process_backend_status": "not_run",
+            "process_backend_error": None,
+            "process_detection_reliable": False,
+            "backend_failure_blocks_clean_preflight": True,
             "ports": ports_report,
             "occupied_count": None,
             "violet_server_count": None,
@@ -633,13 +785,18 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         }
 
     listeners = listener_result.listeners
-    processes = list_processes() if listeners else {}
+    raw_process_result = list_processes() if listeners else ProcessBackendResult(
+        processes={},
+        backend="not_run",
+        status="not_run",
+    )
+    process_result = coerce_process_backend_result(raw_process_result)
     ports_report = []
     for port in ports:
         item = audit_port(
             port,
             listener_pid=listeners.get(port),
-            processes=processes,
+            process_result=process_result,
             args=args,
         )
         item["listener_backend"] = listener_result.backend
@@ -661,6 +818,13 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "listener_backend_status": listener_result.status,
         "listener_backend_error": listener_result.error,
         "listener_detection_reliable": True,
+        "process_backend": process_result.backend,
+        "process_backend_status": process_result.status,
+        "process_backend_error": process_result.error,
+        "process_detection_reliable": process_result.status in {"ok", "not_run"},
+        "backend_failure_blocks_clean_preflight": bool(
+            listeners and process_result.status != "ok"
+        ),
         "ports": ports_report,
         "occupied_count": len(occupied),
         "violet_server_count": len(violet),
@@ -679,6 +843,10 @@ def print_text_report(report: dict[str, Any]) -> None:
     print(f"listener_backend_status: {report['listener_backend_status']}")
     if report["listener_backend_error"]:
         print(f"listener_backend_error: {report['listener_backend_error']}")
+    print(f"process_backend: {report['process_backend']}")
+    print(f"process_backend_status: {report['process_backend_status']}")
+    if report["process_backend_error"]:
+        print(f"process_backend_error: {report['process_backend_error']}")
     print(f"occupied_count: {report['occupied_count']}")
     print(f"violet_server_count: {report['violet_server_count']}")
     print(f"confirmed_violet_count: {report['confirmed_violet_count']}")
@@ -700,6 +868,10 @@ def print_text_report(report: dict[str, Any]) -> None:
         print(f"  tcp_listener_pid: {item['tcp_listener_pid']}")
         print(f"  server_classification: {item['server_classification']}")
         print(f"  detection_sources: {', '.join(item['detection_sources'])}")
+        if item["process_backend_status"] != "ok":
+            print(f"  process_backend_status: {item['process_backend_status']}")
+            if item["process_backend_error"]:
+                print(f"  process_backend_error: {item['process_backend_error']}")
         print(f"  process_exists: {item['process_exists']}")
         if item["process"]:
             print(f"  process_command_line: {item['process']['command_line']}")
@@ -767,7 +939,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print_text_report(report)
 
-    if (args.fail_if_any or args.fail_if_stale) and report["listener_backend_status"] != "ok":
+    if report.get("backend_failure_blocks_clean_preflight"):
+        return 2
+    if report["listener_backend_status"] != "ok":
+        return 2
+    if report.get("process_backend_status") not in {"ok", "not_run"}:
         return 2
     if args.fail_if_any and report["violet_server_count"]:
         return 1

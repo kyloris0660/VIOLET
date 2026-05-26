@@ -24,6 +24,14 @@ def _listeners(mapping):
     )
 
 
+def _processes(mapping):
+    return audit.ProcessBackendResult(
+        processes=mapping,
+        backend="windows_cim",
+        status="ok",
+    )
+
+
 def _identity(**overrides):
     data = {
         "app_name": "V.I.O.L.E.T.",
@@ -55,11 +63,35 @@ def test_parse_ports_rejects_descending_range():
 
 
 def test_redacts_admin_password_from_command_line():
-    command = 'python scripts/audit_active_violet_servers.py --admin-password "secret value" --json'
-    redacted = audit.redact_command_line(command)
-    assert "secret value" not in redacted
-    assert "--admin-password" in redacted
-    assert "<redacted>" in redacted
+    cases = [
+        (
+            "python script.py --admin-password secret --json --other visible",
+            ["secret"],
+        ),
+        (
+            "python script.py --admin-password=secret --json --other visible",
+            ["secret"],
+        ),
+        (
+            'python script.py --admin-password "secret with spaces" --json --other visible',
+            ["secret with spaces"],
+        ),
+        (
+            r'python script.py --admin-password "ab\" cd" --json --other visible',
+            ['ab\\" cd', "ab", " cd"],
+        ),
+        (
+            "python script.py --admin-password 'secret with spaces' --json --other visible",
+            ["secret with spaces"],
+        ),
+    ]
+    for command, leaked_values in cases:
+        redacted = audit.redact_command_line(command)
+        assert "--admin-password" in redacted
+        assert "<redacted>" in redacted
+        assert "--other visible" in redacted
+        for leaked_value in leaked_values:
+            assert leaked_value not in redacted
 
 
 def test_json_output_shape_for_no_active_servers(monkeypatch, capsys):
@@ -85,7 +117,7 @@ def test_unsupported_listener_backend_reports_unknown_not_false_free(monkeypatch
 
     code = audit.main(["--ports", "8012", "--json"])
 
-    assert code == 0
+    assert code == 2
     report = json.loads(capsys.readouterr().out)
     item = report["ports"][0]
     assert report["listener_backend"] == "unsupported_non_windows"
@@ -107,7 +139,7 @@ def test_missing_listener_backend_does_not_crash_or_report_free(monkeypatch, cap
 
     code = audit.main(["--ports", "8012", "--json"])
 
-    assert code == 0
+    assert code == 2
     report = json.loads(capsys.readouterr().out)
     item = report["ports"][0]
     assert report["listener_backend"] == "windows_netstat"
@@ -129,6 +161,53 @@ def test_fail_gates_fail_closed_when_listener_backend_unavailable(monkeypatch, c
             error="FileNotFoundError: netstat missing",
         ),
     )
+
+    assert audit.main(["--ports", "8012", "--fail-if-any", "--json"]) == 2
+    capsys.readouterr()
+    assert audit.main(["--ports", "8012", "--fail-if-stale", "--json"]) == 2
+
+
+def test_process_backend_failure_reports_structured_unavailable(monkeypatch, capsys):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: audit.ProcessBackendResult(
+            processes={},
+            backend="windows_cim",
+            status="unavailable",
+            error="PowerShell unavailable",
+        ),
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "connection_failed"))
+
+    code = audit.main(["--ports", "8012", "--json"])
+
+    assert code == 2
+    report = json.loads(capsys.readouterr().out)
+    item = report["ports"][0]
+    assert report["process_backend"] == "windows_cim"
+    assert report["process_backend_status"] == "unavailable"
+    assert report["process_backend_error"] == "PowerShell unavailable"
+    assert report["backend_failure_blocks_clean_preflight"] is True
+    assert item["listening"] is True
+    assert item["process_exists"] is None
+    assert item["process_backend_status"] == "unavailable"
+
+
+def test_fail_gates_fail_closed_when_process_backend_unavailable(monkeypatch, capsys):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: audit.ProcessBackendResult(
+            processes={},
+            backend="windows_cim",
+            status="error",
+            error="Get-CimInstance failed",
+        ),
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "connection_failed"))
 
     assert audit.main(["--ports", "8012", "--fail-if-any", "--json"]) == 2
     capsys.readouterr()
@@ -231,6 +310,105 @@ def test_unauthorized_identity_with_repo_process_evidence_is_suspected_violet(mo
     assert "suspected" in item["server_classification"]
     assert "expected_code_root" in item["detection_sources"]
     assert "process_command_line" in item["detection_sources"]
+
+
+def test_animelocalbooru_path_without_expected_root_is_suspected_violet(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=39504,
+                command_line=r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    report = audit.build_report(_args("--ports", "8012"))
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "suspected_violet"
+    assert item["is_suspected_violet"] is True
+    assert "process_command_line" in item["detection_sources"]
+
+
+def test_bare_violet_unrelated_process_is_not_suspected(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 9911}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            9911: audit.ProcessInfo(
+                pid=9911,
+                parent_pid=1,
+                command_line=r"C:\Tools\other-violet-service\run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    report = audit.build_report(_args("--ports", "8012"))
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "unknown_listener"
+    assert item["is_violet_server"] is False
+    assert item["detection_sources"] == ["none"]
+
+
+def test_animelocalbooru_sibling_prefix_is_not_project_evidence(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 9911}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            9911: audit.ProcessInfo(
+                pid=9911,
+                parent_pid=1,
+                command_line=r"C:\Users\kyloris\Documents\AnimeLocalBooru_backup\run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    report = audit.build_report(
+        _args(
+            "--ports",
+            "8012",
+            "--expected-code-root",
+            r"C:\Users\kyloris\Documents\AnimeLocalBooru",
+        )
+    )
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "unknown_listener"
+    assert item["is_violet_server"] is False
+    assert item["detection_sources"] == ["none"]
+
+
+def test_unrelated_run_py_with_unauthorized_identity_is_unknown(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 9911}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            9911: audit.ProcessInfo(
+                pid=9911,
+                parent_pid=1,
+                command_line=r"C:\Apps\OtherProject\run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    report = audit.build_report(_args("--ports", "8012"))
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "unknown_listener"
+    assert item["is_violet_server"] is False
+    assert item["detection_sources"] == ["none"]
 
 
 def test_identity_unavailable_unrelated_service_is_unknown_not_violet(monkeypatch):
@@ -352,6 +530,20 @@ def test_windows_path_normalization_accepts_equivalent_expected_paths(monkeypatc
     assert "expected_storage_root" not in report["ports"][0]["stale_reasons"]
 
 
+def test_expected_code_root_evidence_uses_path_boundaries():
+    root = r"C:\Users\kyloris\Documents\AnimeLocalBooru"
+
+    assert audit.path_contains_root(root, root)
+    assert audit.path_contains_root(
+        r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe",
+        root,
+    )
+    assert not audit.path_contains_root(
+        r"C:\Users\kyloris\Documents\AnimeLocalBooru_backup\venv\Scripts\python.exe",
+        root,
+    )
+
+
 def test_windows_path_normalization_rejects_different_paths(monkeypatch, capsys):
     monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
     monkeypatch.setattr(
@@ -417,6 +609,36 @@ def test_confirmed_test_server_counts_as_stale_and_recommends_reviewable_stop(mo
     assert "identity_pid_differs_from_listener_pid" in item["stale_reasons"]
     assert item["safe_to_stop_recommendation"] is True
     assert item["candidate_stop_pids"] == [10292, 39504]
+
+
+def test_redacted_password_does_not_leak_in_json_output(monkeypatch, capsys):
+    secret_command = r'python run.py --admin-password "ab\" cd" --json --other visible'
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 9911}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            9911: audit.ProcessInfo(
+                pid=9911,
+                parent_pid=1,
+                command_line=secret_command,
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "connection_failed"))
+
+    code = audit.main(["--ports", "8012", "--json"])
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "--other visible" in output
+    report = json.loads(output)
+    command_line = report["ports"][0]["process"]["command_line"]
+    assert 'ab\\" cd' not in command_line
+    assert "ab" not in command_line
+    assert " cd" not in command_line
+    assert "<redacted>" in command_line
+    assert "--other visible" in command_line
 
 
 def test_source_has_no_stop_or_kill_path():

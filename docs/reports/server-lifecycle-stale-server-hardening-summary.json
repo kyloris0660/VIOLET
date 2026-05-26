@@ -35,7 +35,14 @@
     "listener_backend": "windows_netstat",
     "non_windows_strategy": "unsupported_fail_closed",
     "backend_unavailable_false_clean_prevented": true,
+    "process_backend_unavailable_false_clean_prevented": true,
+    "default_fail_closed_on_listener_backend_unavailable": true,
+    "default_fail_closed_on_process_backend_unavailable_with_listener": true,
     "path_normalization_fixed": true,
+    "path_boundary_expected_code_root_evidence": true,
+    "bare_violet_heuristic_removed": true,
+    "run_py_plus_unauthorized_requires_repo_evidence": true,
+    "admin_password_redaction_hardened": true,
     "server_classifications": [
       "confirmed_violet",
       "suspected_violet",
@@ -69,7 +76,14 @@
       "fail_gates_fail_closed_when_listener_backend_unavailable": true,
       "unsupported_backend_does_not_report_ports_free": true,
       "windows_path_normalization_for_expected_code_root": true,
-      "windows_path_normalization_for_expected_storage_root": true
+      "windows_path_normalization_for_expected_storage_root": true,
+      "process_backend_unavailable_reports_structured_status": true,
+      "listener_backend_unavailable_exits_nonzero_by_default": true,
+      "process_backend_unavailable_with_listener_exits_nonzero_by_default": true,
+      "expected_code_root_evidence_uses_path_boundaries": true,
+      "bare_violet_process_names_do_not_classify_as_violet": true,
+      "run_py_plus_401_requires_repo_evidence": true,
+      "admin_password_escaped_quote_redaction": true
     }
   },
   "policy_updates": [

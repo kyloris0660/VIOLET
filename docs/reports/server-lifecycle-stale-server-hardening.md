@@ -59,6 +59,8 @@ The tool is read-only by default and has no process stop/kill functionality. It:
 - reports listener backend status (`listener_backend`, `listener_backend_status`, `listener_backend_error`)
 - fails closed for `--fail-if-any` / `--fail-if-stale` when the listener backend is unavailable or unsupported
 - reports unknown listener state instead of pretending ports are free when listener detection fails
+- reports process backend status (`process_backend`, `process_backend_status`, `process_backend_error`)
+- fails closed when a listener exists but process enumeration is unavailable
 - reports TCP listener PID
 - reports whether process metadata exists
 - reports command line, parent PID, and matching child processes when visible
@@ -96,8 +98,13 @@ Latest closeout scope correction:
 - Windows remains the supported active development/validation environment for this tool.
 - Non-Windows listener audit is explicitly unsupported/fail-closed rather than partially parsed.
 - Missing or failing listener backends cannot produce a false clean result.
-- `--fail-if-any` and `--fail-if-stale` return non-zero when listener detection is unavailable.
+- Listener backend unsupported/unavailable returns non-zero by default, even without fail-gate flags.
+- Process enumeration unavailable returns structured `process_backend_unavailable` state and returns non-zero when a listener exists.
 - Windows path comparisons for `expected_code_root` and `expected_storage_root` now tolerate case differences, slash direction, and trailing separators while still rejecting different real paths.
+- `expected_code_root` process evidence is path-boundary-aware, so sibling paths such as `AnimeLocalBooru_backup` no longer match.
+- Bare `violet` in unrelated process names is no longer sufficient V.I.O.L.E.T. evidence.
+- `run.py` plus identity `401/403` is no longer sufficient without repo evidence.
+- `--admin-password` redaction now handles space-containing and escaped-quote values without leaking suffixes.
 
 ## Governance Updates
 
@@ -140,7 +147,11 @@ The focused tests cover:
 - `--fail-if-stale`
 - listener backend unavailable / unsupported behavior
 - fail-closed gates when listener detection is unavailable
+- process backend unavailable / fail-closed behavior
 - Windows path normalization for expected code root and storage root
+- path-boundary expected code root evidence
+- unrelated `violet` and unrelated `run.py` false-positive prevention
+- escaped-quote admin password redaction
 - identity unavailable behavior
 - unauthorized identity with process evidence -> `suspected_violet`
 - unrelated occupied service does not increment `stale_server_count`
