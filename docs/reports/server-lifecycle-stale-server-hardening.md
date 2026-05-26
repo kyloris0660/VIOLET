@@ -58,12 +58,33 @@ The tool is read-only by default and has no process stop/kill functionality. It:
 - reports whether process metadata exists
 - reports command line, parent PID, and matching child processes when visible
 - optionally reads `/api/system/server-identity` with admin credentials
-- reports `identity_unavailable` instead of pretending success when identity cannot be read
+- reports explicit identity statuses such as `unauthorized`, `forbidden`, `connection_failed`, or `unavailable` instead of pretending success when identity cannot be read
+- distinguishes `confirmed_violet`, `suspected_violet`, `unknown_listener`, and `non_violet`
+- treats identity `401/403` as `unauthorized` / `forbidden`, not as proof that the server is unrelated
+- uses process command line, process tree, expected code root, and repo venv evidence to classify suspected V.I.O.L.E.T. servers when identity is unavailable
 - classifies stale signals such as `orphan_or_reloader_mismatch`, `unknown_listener`, identity mismatches, and `identity_pid_differs_from_listener_pid`
 - emits JSON or text output
 - supports `--fail-if-any` and `--fail-if-stale` for preflight gates
 - redacts `--admin-password` from reported command lines
 - recommends candidate PIDs that may be safe to stop, but does not stop them
+
+## Reviewer Closeout
+
+PR #74 reviewer feedback identified two correctness issues in the first audit implementation:
+
+- P1 false negative: a V.I.O.L.E.T. server whose identity endpoint returns `401/403` could be counted as non-V.I.O.L.E.T. because `is_violet_server` depended only on identity JSON.
+- P2 false positive: `stale_server_count` included every occupied port with diagnostic stale reasons, so unrelated services could make `--fail-if-stale` fail.
+
+Both were fixed:
+
+- `is_violet_server` is now true for both `confirmed_violet` and `suspected_violet`.
+- `suspected_violet` uses process evidence when identity is unavailable, including repo path, `run.py`, V.I.O.L.E.T./AnimeLocalBooru strings, process tree evidence, expected code root, or repo venv evidence.
+- JSON/text output now exposes `server_classification`, `detection_sources`, `is_confirmed_violet`, `is_suspected_violet`, `unknown_listener_count`, and `unrelated_listener_count`.
+- `stale_server_count` now counts only confirmed/suspected V.I.O.L.E.T. ports with stale reasons.
+- `--fail-if-any` fails only for confirmed/suspected V.I.O.L.E.T. servers, not arbitrary listeners.
+- `--fail-if-stale` fails only for confirmed/suspected V.I.O.L.E.T. stale servers.
+- Unrelated occupied ports remain visible in the report but do not fail the V.I.O.L.E.T. stale gate.
+- No stop/kill functionality was added.
 
 ## Governance Updates
 
@@ -105,6 +126,10 @@ The focused tests cover:
 - `--fail-if-any`
 - `--fail-if-stale`
 - identity unavailable behavior
+- unauthorized identity with process evidence -> `suspected_violet`
+- unrelated occupied service does not increment `stale_server_count`
+- unrelated occupied service does not trip `--fail-if-stale`
+- confirmed V.I.O.L.E.T. test server remains counted as stale when stale signals exist
 - absence of stop/kill code paths
 
 ## Deferred Items

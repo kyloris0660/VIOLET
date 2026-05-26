@@ -91,6 +91,9 @@ def test_process_tree_and_stale_classification_for_orphan_reloader(monkeypatch):
     assert item["tcp_listener_pid"] == 39504
     assert item["process_exists"] is False
     assert item["child_processes"][0]["pid"] == 10292
+    assert item["server_classification"] == "confirmed_violet"
+    assert item["is_confirmed_violet"] is True
+    assert item["is_suspected_violet"] is False
     assert "orphan_or_reloader_mismatch" in item["stale_reasons"]
     assert "identity_pid_differs_from_listener_pid" in item["stale_reasons"]
     assert item["safe_to_stop_recommendation"] is True
@@ -117,9 +120,11 @@ def test_fail_if_any_returns_nonzero_for_identity_confirmed_violet(monkeypatch, 
     assert code == 1
     report = json.loads(capsys.readouterr().out)
     assert report["violet_server_count"] == 1
+    assert report["confirmed_violet_count"] == 1
+    assert report["suspected_violet_count"] == 0
 
 
-def test_identity_unavailable_is_reported_without_success(monkeypatch):
+def test_unauthorized_identity_with_repo_process_evidence_is_suspected_violet(monkeypatch, capsys):
     monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 10292})
     monkeypatch.setattr(
         audit,
@@ -128,19 +133,93 @@ def test_identity_unavailable_is_reported_without_success(monkeypatch):
             10292: audit.ProcessInfo(
                 pid=10292,
                 parent_pid=39504,
-                command_line="python run.py --debug",
+                command_line=r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug",
+                executable_path=r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe",
             )
         },
     )
-    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "auth_required"))
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    code = audit.main(
+        [
+            "--ports",
+            "8012",
+            "--expected-code-root",
+            r"C:\Users\kyloris\Documents\AnimeLocalBooru",
+            "--fail-if-any",
+            "--json",
+        ]
+    )
+
+    assert code == 1
+    report = json.loads(capsys.readouterr().out)
+    item = report["ports"][0]
+    assert report["violet_server_count"] == 1
+    assert report["confirmed_violet_count"] == 0
+    assert report["suspected_violet_count"] == 1
+    assert item["server_classification"] == "suspected_violet"
+    assert item["is_violet_server"] is True
+    assert item["is_confirmed_violet"] is False
+    assert item["is_suspected_violet"] is True
+    assert item["identity_status"] == "unauthorized"
+    assert "suspected" in item["server_classification"]
+    assert "expected_code_root" in item["detection_sources"]
+    assert "process_command_line" in item["detection_sources"]
+
+
+def test_identity_unavailable_unrelated_service_is_unknown_not_violet(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 10292})
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=100,
+                command_line="node unrelated-service.js",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "connection_failed"))
 
     report = audit.build_report(_args("--ports", "8012"))
     item = report["ports"][0]
 
-    assert item["identity_status"] == "identity_unavailable"
-    assert item["identity_error"] == "auth_required"
+    assert item["identity_status"] == "connection_failed"
+    assert item["identity_error"] == "connection_failed"
+    assert item["server_classification"] == "unknown_listener"
     assert item["is_violet_server"] is False
     assert item["safe_to_stop_recommendation"] is False
+    assert report["violet_server_count"] == 0
+    assert report["unknown_listener_count"] == 1
+
+
+def test_fail_if_stale_ignores_unrelated_identity_unavailable_listener(monkeypatch, capsys):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 9911})
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            9911: audit.ProcessInfo(
+                pid=9911,
+                parent_pid=1,
+                command_line="node unrelated-service.js",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "connection_failed"))
+
+    code = audit.main(["--ports", "8012", "--fail-if-stale", "--json"])
+
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    item = report["ports"][0]
+    assert report["occupied_count"] == 1
+    assert report["violet_server_count"] == 0
+    assert report["stale_server_count"] == 0
+    assert report["unknown_listener_count"] == 1
+    assert item["server_classification"] == "unknown_listener"
+    assert item["is_violet_server"] is False
 
 
 def test_fail_if_stale_returns_nonzero_for_expected_identity_mismatch(monkeypatch, capsys):
@@ -172,7 +251,40 @@ def test_fail_if_stale_returns_nonzero_for_expected_identity_mismatch(monkeypatc
     assert code == 1
     report = json.loads(capsys.readouterr().out)
     assert report["stale_server_count"] == 1
+    assert report["confirmed_violet_count"] == 1
     assert "expected_env" in report["ports"][0]["stale_reasons"]
+
+
+def test_confirmed_test_server_counts_as_stale_and_recommends_reviewable_stop(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: {8012: 39504})
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            39504: audit.ProcessInfo(
+                pid=39504,
+                parent_pid=100,
+                command_line=r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug",
+            ),
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=39504,
+                command_line='python.exe -c "from multiprocessing.spawn import spawn_main"',
+            ),
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (_identity(), None))
+
+    report = audit.build_report(_args("--ports", "8012", "--include-process-tree"))
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "confirmed_violet"
+    assert item["identity_status"] == "ok"
+    assert item["is_confirmed_violet"] is True
+    assert report["stale_server_count"] == 1
+    assert "identity_pid_differs_from_listener_pid" in item["stale_reasons"]
+    assert item["safe_to_stop_recommendation"] is True
+    assert item["candidate_stop_pids"] == [10292, 39504]
 
 
 def test_source_has_no_stop_or_kill_path():

@@ -30,7 +30,30 @@
     "supports_fail_if_stale": true,
     "supports_process_tree": true,
     "supports_optional_identity_auth": true,
-    "redacts_admin_password": true
+    "redacts_admin_password": true,
+    "server_classifications": [
+      "confirmed_violet",
+      "suspected_violet",
+      "unknown_listener",
+      "non_violet",
+      "not_listening"
+    ],
+    "stale_count_scope": "confirmed_or_suspected_violet_only"
+  },
+  "reviewer_closeout": {
+    "p1_fixed": true,
+    "p1_summary": "identity unavailable or unauthorized can still classify a listener as suspected_violet when process evidence matches V.I.O.L.E.T.",
+    "p2_fixed": true,
+    "p2_summary": "stale_server_count and --fail-if-stale are limited to confirmed_violet or suspected_violet listeners with stale reasons",
+    "unrelated_listeners_reported_without_stale_gate_failure": true,
+    "new_output_fields": [
+      "server_classification",
+      "detection_sources",
+      "is_confirmed_violet",
+      "is_suspected_violet",
+      "unknown_listener_count",
+      "unrelated_listener_count"
+    ]
   },
   "policy_updates": [
     "no-active-server preflight before server startup",
