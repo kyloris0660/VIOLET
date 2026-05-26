@@ -96,7 +96,7 @@ Core capabilities:
 ### Install
 
 ```powershell
-git clone https://github.com/kyloris0660/VIOLET.git
+git clone https://github.com/kyloris0660/VIOLET.git AnimeLocalBooru
 cd AnimeLocalBooru   # repo directory name; project display name is V.I.O.L.E.T.
 python -m venv venv
 .\venv\Scripts\Activate.ps1

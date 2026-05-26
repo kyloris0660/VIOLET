@@ -9,7 +9,7 @@ V.I.O.L.E.T. (Visual Image Organizer for Local Evaluation & Tagging) extends [Bl
 1. **Clone the repository**
 
     ```powershell
-    git clone https://github.com/kyloris0660/VIOLET.git
+    git clone https://github.com/kyloris0660/VIOLET.git AnimeLocalBooru
     cd AnimeLocalBooru
     ```
 
