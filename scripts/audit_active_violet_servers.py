@@ -97,7 +97,7 @@ def run_command(args: list[str], timeout: float = 5.0) -> subprocess.CompletedPr
     )
 
 
-def tcp_listeners_from_netstat(output: str, ports: list[int]) -> dict[int, int]:
+def tcp_listeners_from_windows_netstat(output: str, ports: list[int]) -> dict[int, int]:
     wanted = set(ports)
     listeners: dict[int, int] = {}
     for line in output.splitlines():
@@ -145,7 +145,7 @@ def get_tcp_listeners(ports: list[int]) -> ListenerBackendResult:
                 error=(result.stderr or result.stdout or "netstat returned non-zero exit").strip(),
             )
         return ListenerBackendResult(
-            listeners=tcp_listeners_from_netstat(result.stdout, ports),
+            listeners=tcp_listeners_from_windows_netstat(result.stdout, ports),
             backend="windows_netstat",
             status="ok",
         )
