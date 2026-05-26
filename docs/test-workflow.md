@@ -272,26 +272,33 @@ Agent-started server workflow (PowerShell):
 # 1. Load test environment
 . "$env:USERPROFILE\.violet\test-env.ps1"
 
-# 2. Choose a free port dynamically (probe 8012-8024)
+# 2. No-active-server preflight on common local ports
+& "$PY" scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree
+# If an unexpected V.I.O.L.E.T. server is active, STOP. Diagnose and report.
+
+# 3. Choose a free port dynamically (probe 8012-8024)
 $env:APP_PORT = "<chosen-free-port>"
 $env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 
-# 3. Start server in background from the PR branch/worktree
+# 4. Start server in background from the PR branch/worktree
 #    If worktree has no venv, use the main repo Python:
 #    C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug
 cd <worktree-or-branch-path>
 Start-Process -NoNewWindow python -ArgumentList "run.py","--debug"
-# Record the PID
+# Record the command, APP_PORT, VIOLET_BASE_URL, parent/reloader PID,
+# worker/identity PID, process tree, code root, git SHA, env, DB,
+# storage root, and Python executable.
 
-# 4. MANDATORY: Verify server identity before running any E2E tests
+# 5. MANDATORY: Verify server identity before running any E2E tests
 & "$PY" scripts/check_test_server_identity.py --base-url "http://127.0.0.1:$($env:APP_PORT)" --expected-env test --expected-db blombooru_test --expected-python "$PY" --expected-storage-root "$env:VIOLET_STORAGE_ROOT"
 # If identity check fails → STOP. Do not run E2E. Diagnose and restart.
 
-# 5. Run E2E
+# 6. Run E2E
 npx playwright test tests/e2e/<spec>.spec.ts --project=edge
 
-# 6. Stop only the PID you started
-Stop-Process -Id <recorded-PID>
+# 7. Stop only the exact process tree you started, then verify port release
+Stop-Process -Id <recorded-reloader-PID>,<recorded-worker-PID>
+& "$PY" scripts/audit_active_violet_servers.py --ports $env:APP_PORT --fail-if-any
 ```
 
 **Required conditions for agent-started servers:**
@@ -300,12 +307,14 @@ Stop-Process -Id <recorded-PID>
 2. `POSTGRES_DB=blombooru_test`
 3. Dedicated test storage (not dev storage)
 4. Dynamically chosen free port (no fixed default — probe 8012–8024). Use `APP_PORT` env var, not `--port` CLI flag.
-5. Record and only stop the exact PID started
+5. Record the full server process tree and only stop the exact identified process tree started by this task
 6. **Mandatory identity preflight** — `scripts/check_test_server_identity.py` (with `--expected-python "$PY"`) must pass before E2E. This is a hard gate, not optional.
 7. No import / AI tagging / LLM translation / cleanup / reset / delete operations
 8. No iCloud paths, no VioletTestFixture mutation
 9. **Singleton policy** — only one agent-started server per session. Diagnose port conflicts, do not silently skip.
-10. Final report must include: working directory, branch, server command, PID, port, VIOLET_BASE_URL, identity check result, E2E command, stop/cleanup result
+10. Final report must include: working directory, branch, server command, parent/reloader PID, worker/identity PID, process tree, port, VIOLET_BASE_URL, identity check result, E2E command, stop/cleanup result, and port-free verification
+
+**Additional S1 server lifecycle guard:** Before any agent-started server, run `scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree` and stop if an unexpected V.I.O.L.E.T. server is active. Do not silently choose another port around a stale server. Record command, `APP_PORT`, `VIOLET_BASE_URL`, parent/reloader PID, worker/identity PID, process tree, code root, git SHA, `VIOLET_ENV`, DB, storage root, and Python executable. `run.py --debug` uses uvicorn reload and may leave a worker child if only a wrapper/reloader PID is stopped; cleanup must stop only the exact identified process tree started by the task. After cleanup, verify the port is no longer `LISTENING`, and include port-free verification in the final report.
 
 ## Final Delivery Report Standard
 

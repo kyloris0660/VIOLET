@@ -1,0 +1,67 @@
+{
+  "phase": "S1",
+  "title": "Server Lifecycle Guard and Stale Server Prevention",
+  "stage_type": "safety_hardening",
+  "incident": {
+    "port": 8012,
+    "listening_when_unexpected": true,
+    "confirmed_app": "V.I.O.L.E.T.",
+    "violet_env": "test",
+    "db_name": "blombooru_test",
+    "storage_root": "C:\\Users\\kyloris\\VioletStorage\\test",
+    "code_root": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
+    "git_branch": "main",
+    "git_sha": "63934cb",
+    "identity_pid": 10292,
+    "tcp_listener_pid": 39504,
+    "tcp_listener_process_visible": false,
+    "worker_command_line_pattern": "multiprocessing.spawn",
+    "root_cause_status": "inferred"
+  },
+  "tool_added": {
+    "path": "scripts/audit_active_violet_servers.py",
+    "lifecycle": "reusable_validation_safety_tool",
+    "read_only": true,
+    "has_stop_or_kill_functionality": false,
+    "default_ports": "8000,8012-8024",
+    "supports_json": true,
+    "supports_fail_if_any": true,
+    "supports_fail_if_stale": true,
+    "supports_process_tree": true,
+    "supports_optional_identity_auth": true,
+    "redacts_admin_password": true
+  },
+  "policy_updates": [
+    "no-active-server preflight before server startup",
+    "do not silently switch ports around stale servers",
+    "record parent/reloader and worker/identity process tree",
+    "identity hard gate before API/browser/E2E validation",
+    "run.py --debug uvicorn reload child-process caution",
+    "cleanup must verify port-free state",
+    "stale server cleanup outside current task requires user approval"
+  ],
+  "current_8012_status": "free_at_implementation_check",
+  "process_stopped_by_codex": false,
+  "server_started_by_codex": false,
+  "phase_4_4_b0_started": false,
+  "runtime_mutation": false,
+  "forbidden_actions": {
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "staging_copy": false,
+    "provider_calls": false,
+    "reverse_search": false,
+    "image_upload": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver": false,
+    "similarity_clustering": false
+  },
+  "b0_entry_conditions": [
+    "no-active-server preflight is clean",
+    "stale server cleanup is resolved if any server is detected",
+    "user provides approved sample media IDs"
+  ]
+}

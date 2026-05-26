@@ -22,6 +22,19 @@ Do not set `<repo>\backend` in `PYTHONPATH` for this validation. Start from repo
 
 Historical note: earlier Phase 3.8d manual validation required `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while one backend runtime module still used a top-level `app.*` import. Phase 3.8d-G2 removed this requirement by making the startup-critical backend import package-relative.
 
+## No-active-server Preflight
+
+Before starting a manual validation server, confirm no unexpected V.I.O.L.E.T. server is already active on common local ports:
+
+```powershell
+cd C:\Users\kyloris\Documents\AnimeLocalBooru
+
+$PY = "C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe"
+& "$PY" scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree
+```
+
+If any unexpected V.I.O.L.E.T. server is active, stop validation and report the PID, command line, process tree, and identity. Do not silently switch ports around a stale server. If the stale server was not started in the current task, agents must only report exact PIDs and wait for user approval before stopping it.
+
 ## Terminal A: Start The Development Server
 
 ```powershell
@@ -165,10 +178,11 @@ Stop validation and report if any of these occur:
 
 ## Stop Server And Confirm Port Release
 
-Stop Terminal A with `Ctrl+C`, then confirm the port is no longer listening:
+Stop Terminal A with `Ctrl+C`, then confirm the port is no longer listening. `run.py --debug` uses uvicorn reload, so record the parent/reloader PID and worker/identity PID during validation and make sure both are gone before treating cleanup as complete:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 8012 -State Listen -ErrorAction SilentlyContinue
+& "$PY" scripts/audit_active_violet_servers.py --ports 8012 --fail-if-any --include-process-tree
 ```
 
 ## Tooling Lifecycle Note
