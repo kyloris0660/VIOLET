@@ -60,7 +60,7 @@
 | **Phase 4.3-B (PR #71)** | [PR #71](https://github.com/kyloris0660/VIOLET/pull/71) merged - source-first entity enrichment policy and Phase 4.4 pilot design; docs-only, no provider calls, no runtime writes |
 | **Phase R1 ([PR #73](https://github.com/kyloris0660/VIOLET/pull/73))** | Merged - GitHub repository rename sync to canonical `kyloris0660/VIOLET`; local folder remains `C:\Users\kyloris\Documents\AnimeLocalBooru`; docs-only, no runtime behavior changes |
 | **Phase 4.4-A ([PR #72](https://github.com/kyloris0660/VIOLET/pull/72))** | Merged - no-source source discovery pilot design; docs-only, no provider calls, no image/thumbnail upload, no runtime writes |
-| **Phase S1 (PR TBD)** | Active - server lifecycle stale-server guard after the 8012 stale test server incident; adds read-only diagnostics and policy hardening before Phase 4.4-B0 |
+| **Phase S1 ([PR #74](https://github.com/kyloris0660/VIOLET/pull/74))** | Active - server lifecycle stale-server guard after the 8012 stale test server incident; adds read-only diagnostics and policy hardening before Phase 4.4-B0 |
 
 ## Current Accepted State
 

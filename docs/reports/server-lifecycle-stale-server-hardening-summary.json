@@ -1,6 +1,7 @@
 {
   "phase": "S1",
   "title": "Server Lifecycle Guard and Stale Server Prevention",
+  "pr_url": "https://github.com/kyloris0660/VIOLET/pull/74",
   "stage_type": "safety_hardening",
   "incident": {
     "port": 8012,
