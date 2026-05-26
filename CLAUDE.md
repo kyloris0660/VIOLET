@@ -269,6 +269,7 @@ A short summary alone is not acceptable. If any item is not applicable, say "N/A
 - Never kill arbitrary Python or Node processes.
 - Only stop clearly identified V.I.O.L.E.T. / AnimeLocalBooru dev server processes.
 - Report PID, command line, and port before stopping.
+- Use `scripts/audit_active_violet_servers.py` for read-only no-active-server preflight and stale-server diagnosis on common local ports (`8000`, `8012-8024`) in the current Windows local validation environment. On non-Windows, use a platform-specific equivalent or future tested implementation; an unsupported listener backend must not be treated as a clean preflight.
 - Prefer diagnostics-first UI.
 - If adding stop/restart UI, restrict it to local debug mode only.
 - Do not expose dangerous controls in production mode.
@@ -283,22 +284,25 @@ All of the following conditions must be met:
 2. Use `POSTGRES_DB=blombooru_test`.
 3. Use dedicated test storage (`VIOLET_STORAGE_ROOT`), never development storage.
 4. Load the user's test env script first: `. "$env:USERPROFILE\.violet\test-env.ps1"`
-5. Choose a free port dynamically — do NOT default to any fixed port (e.g. 8011). Probe candidate ports (8012–8024) for availability before starting.
-6. Record the server PID.
-7. Start the server from the PR branch/worktree being tested. Use `APP_PORT` env var to set the port (`run.py` does not accept a `--port` CLI flag).
-8. Only stop the exact PID the agent started — never kill unknown processes.
-9. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
-10. Do not touch iCloud paths or modify VioletTestFixture.
-11. If server startup fails, diagnose and report the exact error — do not skip E2E.
-12. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, and `storage_root` match the current worktree/branch. Use `--expected-storage-root` to verify storage root. **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, the server is stale or misconfigured — stop it, diagnose, and restart. Never skip E2E due to identity check failure.
+5. Before starting, run a no-active-server preflight with `scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree`. Do not silently choose another port to bypass a stale server; diagnose and report first.
+6. Choose a free port dynamically — do NOT default to any fixed port (e.g. 8011). Probe candidate ports (8012–8024) for availability before starting.
+7. Record the full server lifecycle details: command, `APP_PORT`, `VIOLET_BASE_URL`, parent/reloader PID, worker/identity PID, process tree, code root, git SHA, `VIOLET_ENV`, DB, storage root, and Python executable.
+8. Start the server from the PR branch/worktree being tested. Use `APP_PORT` env var to set the port (`run.py` does not accept a `--port` CLI flag).
+9. Only stop the exact identified process tree the agent started — never kill unknown processes. "Exact PID" includes the reloader parent and worker/identity child when `run.py --debug` spawns both.
+10. Do not run import, AI tagging, LLM translation, cleanup, reset, delete, truncate, drop, or bulk-update operations.
+11. Do not touch iCloud paths or modify VioletTestFixture.
+12. If server startup fails, diagnose and report the exact error — do not skip E2E.
+13. **Mandatory identity preflight (hard gate):** After the server starts, run `scripts/check_test_server_identity.py` to verify `VIOLET_ENV`, `POSTGRES_DB`, `code_root`, `git_sha`, `git_branch`, `storage_root`, and `python_executable` match the current worktree/branch. Use `--expected-storage-root` and `--expected-python "$PY"` to verify storage root and venv Python. **E2E tests MUST NOT run until identity verification passes.** If the identity check fails, the server is stale or misconfigured — stop it, diagnose, and restart. Never skip E2E due to identity check failure.
 
-**Singleton server policy:** Only one agent-started test server may be running at a time per development session. Before starting a new server, verify no previous agent-started server is still running on any port. If a port conflict is detected, diagnose the conflict (PID, command line) — do not silently pick another port without investigating.
+**Singleton server policy:** Only one agent-started test server may be running at a time per development session. Before starting a new server, verify no previous V.I.O.L.E.T. server is still running on common local ports. If a port conflict or stale server is detected, diagnose the conflict (PID, command line, process tree, identity) — do not silently pick another port without investigating.
+
+**`run.py --debug` reloader caution:** Debug mode uses uvicorn reload and may spawn parent/reloader and worker child processes. Stopping only a wrapper or parent PID can leave a worker listening. Cleanup must stop only the complete identified server process tree from the current task, then verify the port is no longer `LISTENING`.
 
 **Stale server prevention:** A "stale server" is one serving code from a different commit, branch, or worktree than the current E2E target. Stale servers produce false test results. On Windows, killed processes may leave TCP sockets in LISTENING state for up to 60 seconds. After stopping a server, wait or verify the port is truly free before restarting. Never mark stale-server-induced E2E failures as "pre-existing" or "non-blocking."
 
-The final report must include: working directory, branch, server command, PID, port, `VIOLET_BASE_URL`, environment confirmation (VIOLET_ENV, DB, storage root), identity check result, E2E command, stop/cleanup result.
+The final report must include: working directory, branch, server command, parent/reloader PID, worker/identity PID, process tree, port, `VIOLET_BASE_URL`, environment confirmation (VIOLET_ENV, DB, storage root), identity check result, E2E command, stop/cleanup result, and port-free verification.
 
-Clarification: "Do not kill arbitrary processes" means only stop the exact server PID you started. It does **not** mean agents cannot start a test server.
+Clarification: "Do not kill arbitrary processes" means only stop the exact identified process tree you started. It does **not** mean agents cannot start a test server.
 
 ### Destructive DB operation safety (post-incident, 2026-05-10)
 

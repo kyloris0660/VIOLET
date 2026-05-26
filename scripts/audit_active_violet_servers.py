@@ -1,0 +1,1062 @@
+"""Audit active local V.I.O.L.E.T. servers without stopping anything.
+
+The tool is intended as a preflight and cleanup verifier for local validation
+workflows. It inspects candidate ports, visible process metadata, and the
+server identity endpoint when available. It never starts, stops, or mutates a
+server.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import ntpath
+import os
+import platform
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from typing import Any
+
+import requests
+
+
+DEFAULT_PORTS = "8000,8012-8024"
+PROCESS_MATCH_RE = re.compile(
+    r"(run\.py|uvicorn|v\.i\.o\.l\.e\.t|animelocalbooru|multiprocessing\.spawn|python)",
+    re.IGNORECASE,
+)
+SENSITIVE_ARG_RE = re.compile(r"--admin-password(?=$|[=\s])", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class ProcessInfo:
+    pid: int
+    parent_pid: int | None = None
+    command_line: str = ""
+    executable_path: str = ""
+    creation_date: str | None = None
+
+
+@dataclass(frozen=True)
+class ListenerBackendResult:
+    listeners: dict[int, int]
+    backend: str
+    status: str
+    error: str | None = None
+    warnings: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class ProcessBackendResult:
+    processes: dict[int, ProcessInfo]
+    backend: str
+    status: str
+    error: str | None = None
+
+
+def parse_ports(spec: str) -> list[int]:
+    ports: list[int] = []
+    seen: set[int] = set()
+    for raw_part in spec.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_s, end_s = [p.strip() for p in part.split("-", 1)]
+            if not start_s or not end_s:
+                raise ValueError(f"Invalid port range: {part!r}")
+            start = int(start_s)
+            end = int(end_s)
+            if end < start:
+                raise ValueError(f"Invalid descending port range: {part!r}")
+            candidates = range(start, end + 1)
+        else:
+            candidates = [int(part)]
+
+        for port in candidates:
+            if port < 1 or port > 65535:
+                raise ValueError(f"Port out of range: {port}")
+            if port not in seen:
+                ports.append(port)
+                seen.add(port)
+    if not ports:
+        raise ValueError("No ports specified")
+    return ports
+
+
+def redact_command_line(command_line: str | None) -> str:
+    if not command_line:
+        return ""
+    result: list[str] = []
+    pos = 0
+    while True:
+        match = SENSITIVE_ARG_RE.search(command_line, pos)
+        if not match:
+            result.append(command_line[pos:])
+            break
+
+        result.append(command_line[pos:match.start()])
+        result.append(match.group(0))
+        cursor = match.end()
+        if cursor < len(command_line) and command_line[cursor] == "=":
+            result.append("=<redacted>")
+            cursor = _skip_shell_value(command_line, cursor + 1)
+        else:
+            whitespace_start = cursor
+            while cursor < len(command_line) and command_line[cursor].isspace():
+                cursor += 1
+            if cursor > whitespace_start:
+                result.append(command_line[whitespace_start:cursor])
+                result.append("<redacted>")
+                cursor = _skip_shell_value(command_line, cursor)
+        pos = cursor
+    return "".join(result)
+
+
+def _skip_shell_value(text: str, pos: int) -> int:
+    if pos >= len(text):
+        return pos
+    quote = text[pos] if text[pos] in {"'", '"'} else ""
+    if quote:
+        escaped = False
+        index = pos + 1
+        while index < len(text):
+            char = text[index]
+            if char == "\\" and not escaped:
+                escaped = True
+                index += 1
+                continue
+            if char == quote and not escaped:
+                return index + 1
+            escaped = False
+            index += 1
+        return len(text)
+
+    index = pos
+    while index < len(text) and not text[index].isspace():
+        index += 1
+    return index
+
+
+def run_command(args: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def tcp_listeners_from_windows_netstat(output: str, ports: list[int]) -> dict[int, int]:
+    wanted = set(ports)
+    listeners: dict[int, int] = {}
+    for line in output.splitlines():
+        if "LISTEN" not in line.upper():
+            continue
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        local = parts[1]
+        pid_s = parts[-1]
+        try:
+            port = int(local.rsplit(":", 1)[1])
+            pid = int(pid_s)
+        except (IndexError, ValueError):
+            continue
+        if port in wanted and port not in listeners:
+            listeners[port] = pid
+    return listeners
+
+
+def run_windows_netstat(protocol: str, ports: list[int]) -> tuple[dict[int, int], str | None]:
+    try:
+        result = run_command(["netstat", "-ano", "-p", protocol])
+    except FileNotFoundError as exc:
+        return {}, f"{protocol}: FileNotFoundError: {exc}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {}, f"{protocol}: {exc.__class__.__name__}: {exc}"
+    if result.returncode != 0:
+        error = (result.stderr or result.stdout or "netstat returned non-zero exit").strip()
+        return {}, f"{protocol}: {error}"
+    return tcp_listeners_from_windows_netstat(result.stdout, ports), None
+
+
+def get_tcp_listeners(ports: list[int]) -> ListenerBackendResult:
+    system = platform.system()
+    if system == "Windows":
+        tcp_listeners, tcp_error = run_windows_netstat("tcp", ports)
+        tcpv6_listeners, tcpv6_error = run_windows_netstat("tcpv6", ports)
+        errors = [error for error in (tcp_error, tcpv6_error) if error]
+        merged = dict(tcp_listeners)
+        for port, pid in tcpv6_listeners.items():
+            merged.setdefault(port, pid)
+        if len(errors) == 2:
+            status = "unavailable" if all("FileNotFoundError" in error for error in errors) else "error"
+            return ListenerBackendResult(
+                listeners={},
+                backend="windows_netstat",
+                status=status,
+                error="; ".join(errors),
+                warnings=errors,
+            )
+        if errors:
+            return ListenerBackendResult(
+                listeners=merged,
+                backend="windows_netstat",
+                status="partial",
+                error="; ".join(errors),
+                warnings=errors,
+            )
+        return ListenerBackendResult(
+            listeners=merged,
+            backend="windows_netstat",
+            status="ok",
+            warnings=[],
+        )
+
+    return ListenerBackendResult(
+        listeners={},
+        backend="unsupported_non_windows",
+        status="unsupported",
+        error=(
+            f"listener_backend_unsupported: platform {system or 'unknown'} is not "
+            "supported by this Windows-focused local audit"
+        ),
+        warnings=[],
+    )
+
+
+def process_infos_from_powershell_json(output: str) -> list[ProcessInfo]:
+    text = output.strip()
+    if not text:
+        return []
+    data = json.loads(text)
+    rows = [data] if isinstance(data, dict) else data
+
+    infos: list[ProcessInfo] = []
+    for row in rows:
+        try:
+            pid = int(row.get("ProcessId"))
+        except (TypeError, ValueError):
+            continue
+        parent_raw = row.get("ParentProcessId")
+        try:
+            parent_pid = int(parent_raw) if parent_raw is not None else None
+        except (TypeError, ValueError):
+            parent_pid = None
+        infos.append(
+            ProcessInfo(
+                pid=pid,
+                parent_pid=parent_pid,
+                command_line=redact_command_line(row.get("CommandLine") or ""),
+                executable_path=redact_command_line(row.get("ExecutablePath") or ""),
+                creation_date=row.get("CreationDate"),
+            )
+        )
+    return infos
+
+
+def list_processes() -> ProcessBackendResult:
+    if platform.system() == "Windows":
+        command = (
+            "Get-CimInstance Win32_Process | "
+            "Select-Object ProcessId,ParentProcessId,CommandLine,ExecutablePath,CreationDate | "
+            "ConvertTo-Json -Depth 3"
+        )
+        try:
+            result = run_command(
+                ["powershell", "-NoProfile", "-Command", command],
+                timeout=10,
+            )
+        except FileNotFoundError as exc:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="unavailable",
+                error=f"FileNotFoundError: {exc}",
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="error",
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
+        if result.returncode != 0:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="error",
+                error=(result.stderr or result.stdout or "PowerShell returned non-zero exit").strip(),
+            )
+        try:
+            processes = {p.pid: p for p in process_infos_from_powershell_json(result.stdout)}
+        except (json.JSONDecodeError, TypeError) as exc:
+            return ProcessBackendResult(
+                processes={},
+                backend="windows_cim",
+                status="error",
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
+        return ProcessBackendResult(processes=processes, backend="windows_cim", status="ok")
+
+    try:
+        result = run_command(["ps", "-eo", "pid=,ppid=,command="], timeout=10)
+    except FileNotFoundError as exc:
+        return ProcessBackendResult(
+            processes={},
+            backend="posix_ps",
+            status="unavailable",
+            error=f"FileNotFoundError: {exc}",
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return ProcessBackendResult(
+            processes={},
+            backend="posix_ps",
+            status="error",
+            error=f"{exc.__class__.__name__}: {exc}",
+        )
+    if result.returncode != 0:
+        return ProcessBackendResult(
+            processes={},
+            backend="posix_ps",
+            status="error",
+            error=(result.stderr or result.stdout or "ps returned non-zero exit").strip(),
+        )
+    infos: dict[int, ProcessInfo] = {}
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) < 2:
+            continue
+        try:
+            pid = int(parts[0])
+            parent_pid = int(parts[1])
+        except ValueError:
+            continue
+        infos[pid] = ProcessInfo(
+            pid=pid,
+            parent_pid=parent_pid,
+            command_line=redact_command_line(parts[2] if len(parts) > 2 else ""),
+            executable_path="",
+        )
+    return ProcessBackendResult(processes=infos, backend="posix_ps", status="ok")
+
+
+def collect_descendants(
+    processes: dict[int, ProcessInfo], root_pid: int, *, matching_only: bool
+) -> list[ProcessInfo]:
+    descendants: list[ProcessInfo] = []
+    queue = [root_pid]
+    visited: set[int] = set()
+    while queue:
+        parent = queue.pop(0)
+        if parent in visited:
+            continue
+        visited.add(parent)
+        children = [p for p in processes.values() if p.parent_pid == parent]
+        for child in children:
+            queue.append(child.pid)
+            if (not matching_only) or PROCESS_MATCH_RE.search(child.command_line):
+                descendants.append(child)
+    return descendants
+
+
+def likely_violet_identity(identity: dict[str, Any] | None) -> bool:
+    if not identity:
+        return False
+    app_name = str(identity.get("app_name") or "")
+    code_root = str(identity.get("code_root") or "")
+    return "V.I.O.L.E.T." in app_name or "AnimeLocalBooru" in code_root
+
+
+def normalize_for_match(value: str | None) -> str:
+    if not value:
+        return ""
+    normalized = str(value).strip().replace("\\", "/")
+    normalized = re.sub(r"/+", "/", normalized)
+    if platform.system() == "Windows" or re.search(r"\b[a-zA-Z]:/", normalized):
+        normalized = normalized.lower()
+    return normalized.rstrip("/")
+
+
+def path_contains_root(text: str, expected_root: str) -> bool:
+    root = normalize_for_match(expected_root)
+    haystack = normalize_for_match(text)
+    if not root or not haystack:
+        return False
+
+    start = 0
+    while True:
+        index = haystack.find(root, start)
+        if index == -1:
+            return False
+        before_ok = index == 0 or not _is_path_character(haystack[index - 1])
+        after_index = index + len(root)
+        after_ok = after_index == len(haystack) or haystack[after_index] in {"/", " ", '"', "'", ";", ")", "]", "}"}
+        if before_ok and after_ok:
+            return True
+        start = index + 1
+
+
+def _is_path_character(char: str) -> bool:
+    return char.isalnum() or char in {":", "/", "\\", ".", "_", "-"}
+
+
+def contains_project_name_evidence(blob: str) -> bool:
+    return bool(
+        "v.i.o.l.e.t" in blob
+        or re.search(r"(?<![a-z0-9_-])animelocalbooru(?![a-z0-9_-])", blob)
+    )
+
+
+def normalize_path_for_compare(value: str | None) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    looks_windows = bool(re.match(r"^[a-zA-Z]:[\\/]", text)) or "\\" in text
+    if looks_windows:
+        return ntpath.normpath(text).replace("\\", "/").lower().rstrip("/")
+    normalized = os.path.normpath(text).replace("\\", "/").rstrip("/")
+    if platform.system() == "Windows":
+        normalized = normalized.lower()
+    return normalized
+
+
+def process_texts(*process_groups: ProcessInfo | list[ProcessInfo] | None) -> list[str]:
+    texts: list[str] = []
+    for group in process_groups:
+        if group is None:
+            continue
+        processes = group if isinstance(group, list) else [group]
+        for proc in processes:
+            if proc.command_line:
+                texts.append(proc.command_line)
+            if proc.executable_path:
+                texts.append(proc.executable_path)
+    return texts
+
+
+def detect_process_sources(
+    *,
+    listener_process: ProcessInfo | None,
+    child_processes: list[ProcessInfo],
+    args: argparse.Namespace,
+    identity_error: str | None,
+) -> list[str]:
+    texts = process_texts(listener_process, child_processes)
+    lower_texts = [t.lower() for t in texts]
+    blob = "\n".join(lower_texts)
+    sources: set[str] = set()
+
+    expected_root = normalize_for_match(args.expected_code_root)
+    if expected_root:
+        if any(path_contains_root(text, expected_root) for text in texts):
+            sources.add("expected_code_root")
+        venv_markers = [
+            f"{expected_root}/venv",
+            f"{expected_root}/.venv",
+        ]
+        if any(path_contains_root(text, marker) for text in texts for marker in venv_markers):
+            sources.add("repo_venv")
+
+    repo_name_evidence = contains_project_name_evidence(blob)
+    if repo_name_evidence:
+        sources.add("process_command_line")
+
+    run_py_seen = "run.py" in blob
+    backend_seen = "backend.app.main" in blob
+    uvicorn_seen = "uvicorn" in blob
+    repo_path_evidence = bool(repo_name_evidence or "expected_code_root" in sources or "repo_venv" in sources)
+    if run_py_seen and (
+        repo_name_evidence
+        or "expected_code_root" in sources
+        or "repo_venv" in sources
+    ):
+        sources.add("process_command_line")
+    if backend_seen and (uvicorn_seen or repo_name_evidence) and repo_path_evidence:
+        sources.add("process_command_line")
+
+    multiprocessing_child = any(
+        "multiprocessing.spawn" in (child.command_line or "").lower()
+        for child in child_processes
+    )
+    if multiprocessing_child and (
+        "process_command_line" in sources
+        or "expected_code_root" in sources
+        or "repo_venv" in sources
+    ):
+        sources.add("process_tree")
+
+    return sorted(sources) or ["none"]
+
+
+def identity_status(identity: dict[str, Any] | None, identity_error: str | None) -> str:
+    if identity:
+        return "ok" if likely_violet_identity(identity) else "not_violet"
+    if identity_error in {"unauthorized", "forbidden", "connection_failed"}:
+        return identity_error
+    if identity_error:
+        return "unavailable"
+    return "unavailable"
+
+
+def classify_server(
+    *,
+    listener_pid: int | None,
+    identity: dict[str, Any] | None,
+    detection_sources: list[str],
+) -> str:
+    if listener_pid is None:
+        return "not_listening"
+    if likely_violet_identity(identity):
+        return "confirmed_violet"
+    if identity is not None:
+        return "non_violet"
+    if any(source != "none" for source in detection_sources):
+        return "suspected_violet"
+    return "unknown_listener"
+
+
+def fetch_identity(
+    base_url: str,
+    *,
+    timeout: float,
+) -> tuple[dict[str, Any] | None, str | None]:
+    session = requests.Session()
+    session.trust_env = False
+    root = base_url.rstrip("/")
+
+    try:
+        response = session.get(f"{root}/api/system/server-identity", timeout=timeout)
+    except requests.ConnectionError:
+        return None, "connection_failed"
+    except requests.Timeout:
+        return None, "timeout"
+    except requests.RequestException as exc:
+        return None, f"request_error:{exc.__class__.__name__}"
+
+    if response.status_code == 401:
+        return None, "unauthorized"
+    if response.status_code == 403:
+        return None, "forbidden"
+    if response.status_code != 200:
+        return None, f"http_{response.status_code}"
+    try:
+        return response.json(), None
+    except ValueError:
+        return None, "invalid_json"
+
+
+def fetch_identity_with_auth(
+    base_url: str,
+    *,
+    timeout: float,
+    admin_username: str | None = None,
+    admin_password: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not admin_password:
+        return None, "auth_probe_missing_password"
+    session = requests.Session()
+    session.trust_env = False
+    root = base_url.rstrip("/")
+    try:
+        login = session.post(
+            f"{root}/api/admin/login",
+            json={"username": admin_username or "admin", "password": admin_password},
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        return None, f"admin_login_error:{exc.__class__.__name__}"
+    if login.status_code != 200:
+        return None, f"admin_login_http_{login.status_code}"
+
+    try:
+        response = session.get(f"{root}/api/system/server-identity", timeout=timeout)
+    except requests.ConnectionError:
+        return None, "connection_failed"
+    except requests.Timeout:
+        return None, "timeout"
+    except requests.RequestException as exc:
+        return None, f"request_error:{exc.__class__.__name__}"
+
+    if response.status_code == 401:
+        return None, "unauthorized"
+    if response.status_code == 403:
+        return None, "forbidden"
+    if response.status_code != 200:
+        return None, f"http_{response.status_code}"
+    try:
+        return response.json(), None
+    except ValueError:
+        return None, "invalid_json"
+
+
+def expected_mismatches(identity: dict[str, Any], args: argparse.Namespace) -> list[str]:
+    checks = [
+        ("expected_code_root", args.expected_code_root, identity.get("code_root")),
+        ("expected_branch", args.expected_branch, identity.get("git_branch")),
+        ("expected_env", args.expected_env, identity.get("violet_env")),
+        ("expected_db", args.expected_db, identity.get("db_name")),
+        ("expected_storage_root", args.expected_storage_root, identity.get("storage_root")),
+    ]
+    mismatches: list[str] = []
+    path_labels = {"expected_code_root", "expected_storage_root"}
+    for label, expected, actual in checks:
+        if expected is None:
+            continue
+        if label in path_labels:
+            if normalize_path_for_compare(expected) != normalize_path_for_compare(actual):
+                mismatches.append(label)
+            continue
+        if expected != actual:
+            mismatches.append(label)
+    return mismatches
+
+
+def classify_stale_reasons(
+    *,
+    listener_pid: int,
+    process_exists: bool,
+    child_processes: list[ProcessInfo],
+    identity: dict[str, Any] | None,
+    identity_error: str | None,
+    mismatches: list[str],
+) -> list[str]:
+    reasons: list[str] = []
+    if listener_pid and not process_exists and child_processes:
+        reasons.append("orphan_or_reloader_mismatch")
+    if listener_pid and not process_exists and not child_processes and not identity:
+        reasons.append("unknown_listener")
+    if mismatches:
+        reasons.extend(mismatches)
+    if identity and listener_pid and identity.get("pid") not in {None, listener_pid}:
+        reasons.append("identity_pid_differs_from_listener_pid")
+    return reasons
+
+
+def process_to_dict(info: ProcessInfo | None) -> dict[str, Any] | None:
+    if info is None:
+        return None
+    return {
+        "pid": info.pid,
+        "parent_pid": info.parent_pid,
+        "command_line": redact_command_line(info.command_line),
+        "executable_path": redact_command_line(info.executable_path),
+        "creation_date": info.creation_date,
+    }
+
+
+def unavailable_port_report(port: int, args: argparse.Namespace, backend_result: ListenerBackendResult) -> dict[str, Any]:
+    return {
+        "port": port,
+        "base_url": args.base_url_template.format(port=port),
+        "listening": None,
+        "tcp_listener_pid": None,
+        "process_exists": False,
+        "process": None,
+        "child_processes": [],
+        "identity": None,
+        "identity_status": "unavailable",
+        "identity_error": None,
+        "server_classification": "listener_backend_unavailable",
+        "detection_sources": ["none"],
+        "is_violet_server": None,
+        "is_confirmed_violet": False,
+        "is_suspected_violet": False,
+        "stale_reasons": [],
+        "safe_to_stop_recommendation": False,
+        "candidate_stop_pids": [],
+        "listener_backend": backend_result.backend,
+        "listener_backend_status": backend_result.status,
+        "listener_backend_error": backend_result.error,
+        "listener_backend_warnings": backend_result.warnings or [],
+        "process_backend": "not_run",
+        "process_backend_status": "not_run",
+        "process_backend_error": None,
+        "auth_probe_attempted": False,
+        "auth_probe_error": None,
+        "auth_probe_skipped_reason": None,
+    }
+
+
+def coerce_process_backend_result(raw: ProcessBackendResult | dict[int, ProcessInfo]) -> ProcessBackendResult:
+    if isinstance(raw, ProcessBackendResult):
+        return raw
+    return ProcessBackendResult(processes=raw, backend="mock", status="ok")
+
+
+def audit_port(
+    port: int,
+    *,
+    listener_pid: int | None,
+    process_result: ProcessBackendResult,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    base_url = args.base_url_template.format(port=port)
+    processes = process_result.processes
+    listener_process = processes.get(listener_pid) if listener_pid else None
+    process_backend_ok = process_result.status == "ok"
+    child_processes = (
+        collect_descendants(processes, listener_pid, matching_only=True)
+        if listener_pid and args.include_process_tree and process_backend_ok
+        else []
+    )
+    identity, identity_error = (None, None)
+    auth_probe_attempted = False
+    auth_probe_error = None
+    auth_probe_skipped_reason = None
+    if listener_pid:
+        identity, identity_error = fetch_identity(
+            base_url,
+            timeout=args.timeout,
+        )
+
+    detection_sources = detect_process_sources(
+        listener_process=listener_process,
+        child_processes=child_processes,
+        args=args,
+        identity_error=identity_error,
+    )
+    server_classification = classify_server(
+        listener_pid=listener_pid,
+        identity=identity,
+        detection_sources=detection_sources,
+    )
+    is_confirmed_violet = server_classification == "confirmed_violet"
+    is_suspected_violet = server_classification == "suspected_violet"
+    is_violet = is_confirmed_violet or is_suspected_violet
+
+    if (
+        listener_pid
+        and identity_error in {"unauthorized", "forbidden"}
+        and args.admin_password
+    ):
+        if not args.allow_auth_probe:
+            auth_probe_skipped_reason = "allow_auth_probe_not_set"
+        elif not is_suspected_violet:
+            auth_probe_skipped_reason = "listener_not_confirmed_or_suspected_violet"
+        else:
+            auth_probe_attempted = True
+            auth_identity, auth_error = fetch_identity_with_auth(
+                base_url,
+                timeout=args.timeout,
+                admin_username=args.admin_username,
+                admin_password=args.admin_password,
+            )
+            auth_probe_error = auth_error
+            if auth_identity and likely_violet_identity(auth_identity):
+                identity = auth_identity
+                identity_error = None
+                detection_sources = detect_process_sources(
+                    listener_process=listener_process,
+                    child_processes=child_processes,
+                    args=args,
+                    identity_error=identity_error,
+                )
+                server_classification = classify_server(
+                    listener_pid=listener_pid,
+                    identity=identity,
+                    detection_sources=detection_sources,
+                )
+                is_confirmed_violet = server_classification == "confirmed_violet"
+                is_suspected_violet = server_classification == "suspected_violet"
+                is_violet = is_confirmed_violet or is_suspected_violet
+
+    mismatches = expected_mismatches(identity, args) if identity else []
+    candidate_stale_reasons = classify_stale_reasons(
+        listener_pid=listener_pid or 0,
+        process_exists=listener_process is not None,
+        child_processes=child_processes,
+        identity=identity,
+        identity_error=identity_error,
+        mismatches=mismatches,
+    )
+    stale_reasons = candidate_stale_reasons if is_violet else []
+    suspected_strong_enough_to_stop = bool(
+        is_suspected_violet
+        and stale_reasons
+        and (
+            "expected_code_root" in detection_sources
+            or "repo_venv" in detection_sources
+            or {"process_command_line", "process_tree"}.issubset(set(detection_sources))
+        )
+    )
+    safe_to_stop = bool(
+        (
+            is_confirmed_violet
+            and identity
+            and (
+            str(identity.get("violet_env") or "").lower() == "test"
+            or bool(stale_reasons)
+            )
+        )
+        or suspected_strong_enough_to_stop
+    )
+    candidate_stop_pids: list[int] = []
+    if safe_to_stop:
+        if listener_process is not None and listener_pid:
+            candidate_stop_pids.append(listener_pid)
+        identity_pid = identity.get("pid") if identity else None
+        if isinstance(identity_pid, int):
+            candidate_stop_pids.append(identity_pid)
+        candidate_stop_pids.extend(child.pid for child in child_processes)
+    candidate_stop_pids = sorted(set(candidate_stop_pids))
+    process_exists = (
+        False
+        if listener_pid is None
+        else (listener_process is not None if process_backend_ok else None)
+    )
+
+    return {
+        "port": port,
+        "base_url": base_url,
+        "listening": listener_pid is not None,
+        "tcp_listener_pid": listener_pid,
+        "process_exists": process_exists,
+        "process": process_to_dict(listener_process),
+        "child_processes": [process_to_dict(p) for p in child_processes],
+        "identity": identity,
+        "identity_status": identity_status(identity, identity_error),
+        "identity_error": identity_error,
+        "server_classification": server_classification,
+        "detection_sources": detection_sources,
+        "is_violet_server": is_violet,
+        "is_confirmed_violet": is_confirmed_violet,
+        "is_suspected_violet": is_suspected_violet,
+        "stale_reasons": stale_reasons,
+        "safe_to_stop_recommendation": safe_to_stop,
+        "candidate_stop_pids": candidate_stop_pids,
+        "listener_backend": "ok",
+        "listener_backend_status": "ok",
+        "listener_backend_error": None,
+        "listener_backend_warnings": [],
+        "process_backend": process_result.backend,
+        "process_backend_status": process_result.status,
+        "process_backend_error": process_result.error,
+        "auth_probe_attempted": auth_probe_attempted,
+        "auth_probe_error": auth_probe_error,
+        "auth_probe_skipped_reason": auth_probe_skipped_reason,
+    }
+
+
+def build_report(args: argparse.Namespace) -> dict[str, Any]:
+    ports = parse_ports(args.ports)
+    listener_result = get_tcp_listeners(ports)
+    if listener_result.status != "ok":
+        ports_report = [
+            unavailable_port_report(port, args, listener_result)
+            for port in ports
+        ]
+        return {
+            "tool": "audit_active_violet_servers",
+            "read_only": True,
+            "listener_backend": listener_result.backend,
+            "listener_backend_status": listener_result.status,
+            "listener_backend_error": listener_result.error,
+            "listener_backend_warnings": listener_result.warnings or [],
+            "listener_detection_reliable": False,
+            "process_backend": "not_run",
+            "process_backend_status": "not_run",
+            "process_backend_error": None,
+            "process_detection_reliable": False,
+            "backend_failure_blocks_clean_preflight": True,
+            "ports": ports_report,
+            "occupied_count": None,
+            "violet_server_count": None,
+            "confirmed_violet_count": None,
+            "suspected_violet_count": None,
+            "unknown_listener_count": None,
+            "unrelated_listener_count": None,
+            "stale_server_count": None,
+        }
+
+    listeners = listener_result.listeners
+    raw_process_result = list_processes() if listeners else ProcessBackendResult(
+        processes={},
+        backend="not_run",
+        status="not_run",
+    )
+    process_result = coerce_process_backend_result(raw_process_result)
+    ports_report = []
+    for port in ports:
+        item = audit_port(
+            port,
+            listener_pid=listeners.get(port),
+            process_result=process_result,
+            args=args,
+        )
+        item["listener_backend"] = listener_result.backend
+        item["listener_backend_status"] = listener_result.status
+        item["listener_backend_error"] = listener_result.error
+        item["listener_backend_warnings"] = listener_result.warnings or []
+        ports_report.append(item)
+
+    occupied = [p for p in ports_report if p["listening"]]
+    violet = [p for p in occupied if p["is_violet_server"]]
+    confirmed = [p for p in occupied if p["is_confirmed_violet"]]
+    suspected = [p for p in occupied if p["is_suspected_violet"]]
+    stale = [p for p in violet if p["stale_reasons"]]
+    unknown = [p for p in occupied if p["server_classification"] == "unknown_listener"]
+    unrelated = [p for p in occupied if p["server_classification"] == "non_violet"]
+    return {
+        "tool": "audit_active_violet_servers",
+        "read_only": True,
+        "listener_backend": listener_result.backend,
+        "listener_backend_status": listener_result.status,
+        "listener_backend_error": listener_result.error,
+        "listener_backend_warnings": listener_result.warnings or [],
+        "listener_detection_reliable": True,
+        "process_backend": process_result.backend,
+        "process_backend_status": process_result.status,
+        "process_backend_error": process_result.error,
+        "process_detection_reliable": process_result.status in {"ok", "not_run"},
+        "backend_failure_blocks_clean_preflight": bool(
+            listeners and process_result.status != "ok"
+        ),
+        "ports": ports_report,
+        "occupied_count": len(occupied),
+        "violet_server_count": len(violet),
+        "confirmed_violet_count": len(confirmed),
+        "suspected_violet_count": len(suspected),
+        "unknown_listener_count": len(unknown),
+        "unrelated_listener_count": len(unrelated),
+        "stale_server_count": len(stale),
+    }
+
+
+def print_text_report(report: dict[str, Any]) -> None:
+    print("V.I.O.L.E.T. active server audit")
+    print(f"read_only: {report['read_only']}")
+    print(f"listener_backend: {report['listener_backend']}")
+    print(f"listener_backend_status: {report['listener_backend_status']}")
+    if report["listener_backend_error"]:
+        print(f"listener_backend_error: {report['listener_backend_error']}")
+    if report["listener_backend_warnings"]:
+        print(f"listener_backend_warnings: {'; '.join(report['listener_backend_warnings'])}")
+    print(f"process_backend: {report['process_backend']}")
+    print(f"process_backend_status: {report['process_backend_status']}")
+    if report["process_backend_error"]:
+        print(f"process_backend_error: {report['process_backend_error']}")
+    print(f"occupied_count: {report['occupied_count']}")
+    print(f"violet_server_count: {report['violet_server_count']}")
+    print(f"confirmed_violet_count: {report['confirmed_violet_count']}")
+    print(f"suspected_violet_count: {report['suspected_violet_count']}")
+    print(f"unknown_listener_count: {report['unknown_listener_count']}")
+    print(f"unrelated_listener_count: {report['unrelated_listener_count']}")
+    print(f"stale_server_count: {report['stale_server_count']}")
+    for item in report["ports"]:
+        if item["listening"] is None:
+            print("")
+            print(f"port: {item['port']}")
+            print("  listening: unknown")
+            print(f"  server_classification: {item['server_classification']}")
+            continue
+        if not item["listening"]:
+            continue
+        print("")
+        print(f"port: {item['port']}")
+        print(f"  tcp_listener_pid: {item['tcp_listener_pid']}")
+        print(f"  server_classification: {item['server_classification']}")
+        print(f"  detection_sources: {', '.join(item['detection_sources'])}")
+        if item["process_backend_status"] != "ok":
+            print(f"  process_backend_status: {item['process_backend_status']}")
+            if item["process_backend_error"]:
+                print(f"  process_backend_error: {item['process_backend_error']}")
+        print(f"  process_exists: {item['process_exists']}")
+        if item["process"]:
+            print(f"  process_command_line: {item['process']['command_line']}")
+            if item["process"]["executable_path"]:
+                print(f"  process_executable_path: {item['process']['executable_path']}")
+        print(f"  identity_status: {item['identity_status']}")
+        if item["identity_error"]:
+            print(f"  identity_error: {item['identity_error']}")
+        print(f"  auth_probe_attempted: {item['auth_probe_attempted']}")
+        if item["auth_probe_skipped_reason"]:
+            print(f"  auth_probe_skipped_reason: {item['auth_probe_skipped_reason']}")
+        if item["auth_probe_error"]:
+            print(f"  auth_probe_error: {item['auth_probe_error']}")
+        identity = item["identity"] or {}
+        if identity:
+            print(f"  app_name: {identity.get('app_name')}")
+            print(f"  violet_env: {identity.get('violet_env')}")
+            print(f"  db_name: {identity.get('db_name')}")
+            print(f"  storage_root: {identity.get('storage_root')}")
+            print(f"  code_root: {identity.get('code_root')}")
+            print(f"  git_sha: {identity.get('git_sha')}")
+            print(f"  git_branch: {identity.get('git_branch')}")
+            print(f"  identity_pid: {identity.get('pid')}")
+            print(f"  python_executable: {identity.get('python_executable')}")
+            print(f"  is_venv: {identity.get('is_venv')}")
+        if item["child_processes"]:
+            print("  child_processes:")
+            for child in item["child_processes"]:
+                print(f"    - pid={child['pid']} parent={child['parent_pid']}")
+                print(f"      command_line={child['command_line']}")
+        if item["stale_reasons"]:
+            print(f"  stale_reasons: {', '.join(item['stale_reasons'])}")
+        print(f"  safe_to_stop_recommendation: {item['safe_to_stop_recommendation']}")
+        if item["candidate_stop_pids"]:
+            print(f"  candidate_stop_pids: {', '.join(map(str, item['candidate_stop_pids']))}")
+
+
+def make_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Read-only audit of active local V.I.O.L.E.T. servers."
+    )
+    parser.add_argument("--ports", default=DEFAULT_PORTS)
+    parser.add_argument("--base-url-template", default="http://127.0.0.1:{port}")
+    parser.add_argument("--json", action="store_true", help="Print JSON report")
+    parser.add_argument("--fail-if-any", action="store_true")
+    parser.add_argument("--fail-if-stale", action="store_true")
+    parser.add_argument("--timeout", type=float, default=2.0)
+    parser.add_argument("--include-process-tree", action="store_true")
+    parser.add_argument("--expected-code-root", default=None)
+    parser.add_argument("--expected-branch", default=None)
+    parser.add_argument("--expected-env", default=None)
+    parser.add_argument("--expected-db", default=None)
+    parser.add_argument("--expected-storage-root", default=None)
+    parser.add_argument("--admin-username", default="admin")
+    parser.add_argument("--admin-password", default=None)
+    parser.add_argument(
+        "--allow-auth-probe",
+        action="store_true",
+        help="Allow credentialed identity retry only after process evidence suggests V.I.O.L.E.T.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = make_arg_parser()
+    args = parser.parse_args(argv)
+    try:
+        report = build_report(args)
+    except Exception as exc:
+        print(f"FAIL: audit failed: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print_text_report(report)
+
+    if report.get("backend_failure_blocks_clean_preflight"):
+        return 2
+    if report["listener_backend_status"] != "ok":
+        return 2
+    if report.get("process_backend_status") not in {"ok", "not_run"}:
+        return 2
+    if args.fail_if_any and report["violet_server_count"]:
+        return 1
+    if args.fail_if_stale and report["stale_server_count"]:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

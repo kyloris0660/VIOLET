@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-A sync after Phase R1 repo rename (2026-05-26).
+> Last updated during Phase S1 server lifecycle hardening (2026-05-26).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | **Canonical GitHub URL** | `https://github.com/kyloris0660/VIOLET` |
 | **Historical repo name** | `AnimeLocalBooru`; old GitHub links may redirect and should not be recreated as a new repo name |
 | **Local worktree path** | `C:\Users\kyloris\Documents\AnimeLocalBooru` (unchanged; do not infer local folder name from remote repo name) |
-| **Branch** | `main` after Phase 4.3-B is merged; current work branch is `codex/phase-4.4a-source-discovery-design` |
+| **Branch** | `main` includes PR #72/#73; current work branch is `codex/server-lifecycle-stale-guard` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -21,6 +21,7 @@
 | **Manual validation server** | See `docs/manual-validation.md`; development/blombooru manual validation starts from repo root with `& "$PY" run.py --debug` and no `PYTHONPATH=<repo>\backend` workaround |
 | **Test server** | `. "$env:USERPROFILE\.violet\test-env.ps1"` → `& "$PY" run.py --debug` → `http://localhost:<APP_PORT>` |
 | **Admin credentials** | `admin` / `admin123` |
+| **Server lifecycle guard** | Active hard gate - run `scripts/audit_active_violet_servers.py` before agent-started/manual validation servers; record reloader/worker process tree and verify port-free cleanup |
 | **Phase 3.1 status** | PR [#25](https://github.com/kyloris0660/AnimeLocalBooru/pull/25) merged |
 | **Phase 3.1.1a status** | PR [#26](https://github.com/kyloris0660/AnimeLocalBooru/pull/26) merged |
 | **Phase 3.1.1b status** | PR [#28](https://github.com/kyloris0660/AnimeLocalBooru/pull/28) merged |
@@ -58,7 +59,8 @@
 | **Phase 4.3-A (PR #70)** | [PR #70](https://github.com/kyloris0660/VIOLET/pull/70) merged - read-only proper-noun signal provenance audit and trust policy; no candidate generation, no external calls, and no DB writes |
 | **Phase 4.3-B (PR #71)** | [PR #71](https://github.com/kyloris0660/VIOLET/pull/71) merged - source-first entity enrichment policy and Phase 4.4 pilot design; docs-only, no provider calls, no runtime writes |
 | **Phase R1 ([PR #73](https://github.com/kyloris0660/VIOLET/pull/73))** | Merged - GitHub repository rename sync to canonical `kyloris0660/VIOLET`; local folder remains `C:\Users\kyloris\Documents\AnimeLocalBooru`; docs-only, no runtime behavior changes |
-| **Phase 4.4-A ([PR #72](https://github.com/kyloris0660/VIOLET/pull/72))** | Draft - no-source source discovery pilot design; docs-only, no provider calls, no image/thumbnail upload, no runtime writes |
+| **Phase 4.4-A ([PR #72](https://github.com/kyloris0660/VIOLET/pull/72))** | Merged - no-source source discovery pilot design; docs-only, no provider calls, no image/thumbnail upload, no runtime writes |
+| **Phase S1 ([PR #74](https://github.com/kyloris0660/VIOLET/pull/74))** | Active - server lifecycle stale-server guard after the 8012 stale test server incident; adds read-only diagnostics and policy hardening before Phase 4.4-B0 |
 
 ## Current Accepted State
 
@@ -75,6 +77,8 @@ Phase 4.3-B is the source-first / provenance-first strategy correction and pilot
 Phase R1 records the GitHub repository rename from historical `kyloris0660/AnimeLocalBooru` to canonical `kyloris0660/VIOLET`. Local working directories may remain named `AnimeLocalBooru`; do not rename local paths or infer runtime/package names from the remote repository name. Historical PR/report links that still contain `AnimeLocalBooru` are acceptable when they are archival and rely on GitHub redirects, but active clone/issue/repository references should use the canonical VIOLET URL.
 
 Phase 4.4-A is the no-source source discovery pilot design stage. It records the user/ChatGPT decision that the current iCloud-derived library should be treated as having no usable traceable source URLs, no reliable external post IDs, and no imported source metadata suitable for exact-source lookup. Exact-source inventory is not the primary next step. The next useful problem is a controlled anime-only reverse-search/source-discovery pilot design with no original upload by default, derived input only after explicit approval, one provider only, cache-first behavior, strict budgets, evidence/candidate-only future writes, and no confirmed assignments.
+
+Phase S1 is the server lifecycle stale-server hardening stage. It records the 8012 stale test server incident (`VIOLET_ENV=test`, `DB=blombooru_test`, `storage_root=C:\Users\kyloris\VioletStorage\test`, identity PID `10292`, listener/reloader PID `39504` invisible in the process table) and adds `scripts/audit_active_violet_servers.py` as a reusable read-only safety tool. Phase 4.4-B0 remains blocked until no-active-server preflight is clean and the user provides approved sample media IDs.
 
 Key accepted facts:
 

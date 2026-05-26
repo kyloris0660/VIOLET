@@ -616,11 +616,22 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Entity resolver concurrency protection (asyncio.Lock, HTTP 409)
 - Frontend entity resolve UX lifecycle (loading → success/error)
 
+### Phase S1 - Server Lifecycle Guard and Stale Server Prevention
+
+**Goal:** Harden local validation server lifecycle after the 8012 stale test server incident, before returning to Phase 4.4-B0.
+
+- Incident facts: port `8012` stayed `LISTENING` after validation work; identity confirmed a V.I.O.L.E.T. test server (`VIOLET_ENV=test`, `DB=blombooru_test`, `storage_root=C:\Users\kyloris\VioletStorage\test`, identity PID `10292`, listener/reloader PID `39504` invisible in the process table).
+- Adds `scripts/audit_active_violet_servers.py` as a reusable read-only safety tool for no-active-server preflight, process-tree inspection, identity reporting, stale classification, and non-zero gates.
+- The tool does not stop/kill processes, start servers, write DB data, or call mutation APIs. Stale cleanup remains user-approved manual action.
+- Governance now requires recording parent/reloader PID, worker/identity PID, process tree, env, DB, storage root, code root, git SHA, branch, and venv Python for agent-started servers.
+- Cleanup must verify the port is no longer `LISTENING`; `run.py --debug` / uvicorn reload requires explicit reloader/worker child handling.
+- Phase 4.4-B0 remains blocked until stale server cleanup/no-active-server preflight is clean and the user provides approved sample media IDs.
+
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-A:
+Current near-term options after Phase S1:
 
-1. Phase 4.4-B: one-provider no-source reverse-search/source-discovery pilot implementation plan and dry-run scaffold. Live execution remains blocked until provider policy, official API/TOS/rate-limit verification, and derived-input approval are explicit.
+1. Phase 4.4-B0: sample-gated dry-run/preflight scaffold only after no-active-server preflight is clean and the user provides approved sample media IDs. No live provider call unless separately approved.
 2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
 3. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
 4. Reverse-search live pilot only after explicit image/thumbnail/hash upload policy, provider TOS/rate-limit review, and privacy approval.
@@ -741,7 +752,7 @@ Do not claim "all tests passed" if any test failed. Report exact commands and re
 
 ### Service / Dev Environment Safety
 
-Never kill arbitrary processes. Only stop identified V.I.O.L.E.T. dev server processes (report PID/port first). Restrict stop/restart UI to local debug mode only.
+Never kill arbitrary processes. Only stop identified V.I.O.L.E.T. dev server process trees started by the current task (report PID/port first). Use `scripts/audit_active_violet_servers.py` for no-active-server preflight on `8000,8012-8024`, stale-server diagnosis, and port-free verification. Do not silently choose another port around a stale server. Restrict stop/restart UI to local debug mode only.
 
 ### Phase Plan Approval
 
