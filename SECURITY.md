@@ -47,4 +47,4 @@ Never commit `.env`, API keys, database credentials, LLM API keys, or model file
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability, please open a GitHub issue at https://github.com/kyloris0660/AnimeLocalBooru/issues or contact the maintainer directly.
+If you discover a security vulnerability, please open a GitHub issue at https://github.com/kyloris0660/VIOLET/issues or contact the maintainer directly.

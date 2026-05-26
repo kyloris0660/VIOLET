@@ -1,0 +1,89 @@
+{
+  "phase": "R1",
+  "title": "GitHub repository rename sync and documentation update",
+  "date": "2026-05-26",
+  "stage_type": "infrastructure_docs",
+  "old_repository": {
+    "name_with_owner": "kyloris0660/AnimeLocalBooru",
+    "url": "https://github.com/kyloris0660/AnimeLocalBooru"
+  },
+  "new_repository": {
+    "name_with_owner": "kyloris0660/VIOLET",
+    "url": "https://github.com/kyloris0660/VIOLET",
+    "git_remote": "https://github.com/kyloris0660/VIOLET.git",
+    "verified_exists": true
+  },
+  "local_path": {
+    "path": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
+    "renamed": false,
+    "policy": "Do not infer local folder name from the remote repository name."
+  },
+  "remote_update": {
+    "origin_before": "https://github.com/kyloris0660/AnimeLocalBooru.git",
+    "origin_after": "https://github.com/kyloris0660/VIOLET.git",
+    "fetch_verified": true,
+    "main_head": "342d8d4a98c58f52bb9f9c66b248f0c401b23d28"
+  },
+  "pull_request": {
+    "number": 73,
+    "url": "https://github.com/kyloris0660/VIOLET/pull/73",
+    "draft": true
+  },
+  "files_changed": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md",
+    "docs/reports/repo-rename-violet-docs-sync.md",
+    "docs/reports/repo-rename-violet-docs-sync-summary.json"
+  ],
+  "reference_audit": {
+    "searched_terms": [
+      "AnimeLocalBooru",
+      "github.com/kyloris0660/AnimeLocalBooru",
+      "kyloris0660/AnimeLocalBooru",
+      "github.com/kyloris0660/VIOLET",
+      "kyloris0660/VIOLET",
+      "V.I.O.L.E.T.",
+      "VIOLET"
+    ],
+    "updated_references": [
+      "active clone URLs",
+      "active issue URLs",
+      "current handoff canonical repo identity",
+      "roadmap canonical repo guidance",
+      "phase R1 report references"
+    ],
+    "intentionally_retained_references": [
+      "local filesystem paths",
+      "local folder examples",
+      "service/process identification text",
+      "historical phase report links",
+      "old PR links retained for archival traceability through GitHub redirects",
+      "source labels and historical report text"
+    ]
+  },
+  "checks": {
+    "git_diff_check": "pass",
+    "python_env_check": "pass",
+    "json_tool": "pass",
+    "pytest": "not_required_docs_only"
+  },
+  "safety_confirmation": {
+    "runtime_behavior_changed": false,
+    "db_import": false,
+    "classification": false,
+    "ai_tagging": false,
+    "localization": false,
+    "staging_copy": false,
+    "source_or_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver": false,
+    "similarity_or_clustering": false,
+    "phase_4_4_implementation": false,
+    "provider_calls": false,
+    "push_main": false,
+    "merge": false
+  }
+}

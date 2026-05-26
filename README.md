@@ -31,6 +31,8 @@
 
 V.I.O.L.E.T. is built on top of [Blombooru](https://github.com/mrblomblo/blombooru), providing Danbooru-style tag-based retrieval for personal anime/illustration collections.
 
+Canonical GitHub repository: [kyloris0660/VIOLET](https://github.com/kyloris0660/VIOLET). The historical repository name was `AnimeLocalBooru`, and local working directories may still use that folder name.
+
 ## Current Project State
 
 Phase 3.8d medium pilot is accepted. Future agents should start from [Current Handoff](docs/current-handoff.md) for the latest state, then use [Manual Validation](docs/manual-validation.md) and [Project Roadmap](docs/project-roadmap.md) for runbook and next-phase guidance. Do not infer current status from older phase reports alone.
@@ -94,7 +96,7 @@ Core capabilities:
 ### Install
 
 ```powershell
-git clone https://github.com/kyloris0660/AnimeLocalBooru.git
+git clone https://github.com/kyloris0660/VIOLET.git AnimeLocalBooru
 cd AnimeLocalBooru   # repo directory name; project display name is V.I.O.L.E.T.
 python -m venv venv
 .\venv\Scripts\Activate.ps1
