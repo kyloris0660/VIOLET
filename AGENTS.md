@@ -173,6 +173,7 @@ Additional PR rules:
 2. Before starting a new phase, verify: current branch, `git status`, `origin/main` latest commit, previous phase is actually merged into `origin/main`.
 3. Do not mix multiple phases in one branch or one PR.
 4. The final delivery report must include the real GitHub PR URL.
+5. Default PR lifecycle is a normal open PR. Create a draft PR only when the user/ChatGPT explicitly requests draft, or when the stage is clearly a design draft / not ready for review. Docs-only does not imply draft, and a reviewable plan/design PR may be opened normally. Draft PRs must not become the default way to avoid reviewer or human judgment. Final reports must state whether the PR is draft and why.
 
 ### Reviewer feedback handling policy
 
@@ -255,6 +256,10 @@ Existing AI-generated character/copyright/artist/proper-noun tags must not be tr
 ### Source-first entity enrichment policy
 
 Entity enrichment must be source-first / provenance-first. Future reliable entity metadata should prioritize known source URLs, exact external post IDs, imported source metadata, and source-backed external evidence under explicit opt-in provider policy before creating candidates. AI proper-noun tags may help prioritize queries but are not truth. Visual similarity, embeddings, perceptual hashes, and tag co-occurrence are supplementary recall tools only and must not create automatic confirmed assignments. Unknown, non_anime, unapproved illustration, local paths, iCloud paths, filenames, source labels, original image bytes, and privacy-sensitive content must not be sent to external providers by default. External enrichment requires explicit provider policy, privacy eligibility, cache/audit/rate-limit/budget design, redacted reporting, and separate run approval.
+
+### No-source source discovery policy
+
+For the current iCloud-derived library, treat source URLs, external post IDs, and imported exact-source metadata as unavailable unless a future phase proves otherwise as a minor sanity note. Do not make exact-source inventory the next default route. No-source source discovery must start as a tightly controlled anime-only reverse-search/source-discovery pilot design: one provider, cache-first, rate-limited, budgeted, no originals by default, derived thumbnail/resized stripped input only after explicit provider-specific approval, evidence/candidate-only, no confirmed assignments, no broad/full-library scheduling, and no `unknown`, `non_anime`, or unapproved `illustration` content.
 
 ### Cloud-aware ingestion progress and safety policy
 

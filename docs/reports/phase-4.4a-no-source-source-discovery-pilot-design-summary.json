@@ -1,0 +1,193 @@
+{
+  "phase": "4.4-A",
+  "title": "No-source source discovery pilot design",
+  "date": "2026-05-25",
+  "stage_type": "documentation_policy_pilot_design",
+  "pr": {
+    "number": 72,
+    "url": "https://github.com/kyloris0660/VIOLET/pull/72",
+    "status": "open_pr_synced_after_phase_r1"
+  },
+  "repository_sync": {
+    "canonical_repository_url": "https://github.com/kyloris0660/VIOLET",
+    "historical_repository_name": "AnimeLocalBooru",
+    "local_worktree_path": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
+    "repo_rename_pr": 73,
+    "repo_rename_merge_commit": "bfc5ffb9699db8e9537f0b938ef0ef14295e5faf"
+  },
+  "no_source_assumption": {
+    "usable_source_url": false,
+    "reliable_external_post_id": false,
+    "imported_source_metadata_for_exact_lookup": false,
+    "exact_source_inventory_skipped_as_primary_stage": true,
+    "rationale": "The user/ChatGPT decision treats the current iCloud-derived library as no-source. The next useful stage is reverse-search/source-discovery pilot design, not exact-source inventory."
+  },
+  "hard_forbidden_actions_confirmed": [
+    "no_provider_api_calls",
+    "no_authenticated_provider_calls",
+    "no_scraping",
+    "no_reverse_image_search_execution",
+    "no_image_upload",
+    "no_thumbnail_upload",
+    "no_crawler",
+    "no_db_import",
+    "no_classification",
+    "no_ai_tagging",
+    "no_localization",
+    "no_staging_copy",
+    "no_entity_candidate_creation",
+    "no_entity_assignment_creation",
+    "no_entity_auto_creation",
+    "no_provider_cache_writes",
+    "no_entity_evidence_writes",
+    "no_entity_resolver_execution",
+    "no_similarity_or_clustering",
+    "no_source_or_icloud_mutation",
+    "no_app_managed_storage_mutation",
+    "no_production_ingestion_ledger_implementation",
+    "no_admin_ui_rewrite",
+    "no_push_main",
+    "no_merge"
+  ],
+  "provider_research": [
+    {
+      "category": "SauceNAO-style reverse image search",
+      "source_entity_usefulness": "High for anime illustration source rediscovery when source/post ID is absent.",
+      "auth_api_key": "Must be re-verified against current official docs before implementation.",
+      "rate_limit": "Provider-specific; first pilot should be sequential and conservative.",
+      "privacy_risk": "High because useful local no-source queries require visual-content upload; derived image only with explicit approval.",
+      "first_provider_suitability": "recommended_category_with_policy_verification"
+    },
+    {
+      "category": "IQDB-like reverse image search",
+      "source_entity_usefulness": "Potentially useful but not authoritative.",
+      "auth_api_key": "No stable official automation API identified for this workflow.",
+      "rate_limit": "Undefined without official API.",
+      "privacy_risk": "High if image upload is required.",
+      "first_provider_suitability": "rejected_for_first_automated_provider"
+    },
+    {
+      "category": "trace.moe",
+      "source_entity_usefulness": "Useful for anime screenshot/scene lookup, not primary illustration source discovery.",
+      "auth_api_key": "Public API docs exist; current policy/rate limits must be re-verified.",
+      "rate_limit": "Provider-specific.",
+      "privacy_risk": "Requires image URL or bytes for local no-source media.",
+      "first_provider_suitability": "later_special_case_only"
+    },
+    {
+      "category": "Danbooru/Gelbooru/booru-style APIs",
+      "source_entity_usefulness": "Strong after source/post ID is known; not enough for first no-source step.",
+      "auth_api_key": "Varies by provider.",
+      "rate_limit": "Provider-specific.",
+      "privacy_risk": "Low for public post ID lookup, but current library lacks post IDs.",
+      "first_provider_suitability": "second_step_after_reverse_search"
+    },
+    {
+      "category": "Pixiv",
+      "source_entity_usefulness": "High when a source URL/artwork ID is known.",
+      "auth_api_key": "No login/cookie/private API workflow allowed.",
+      "rate_limit": "Not designed until policy review.",
+      "privacy_risk": "High if credentials, scraping, private API, or image upload are involved.",
+      "first_provider_suitability": "not_first_stage"
+    },
+    {
+      "category": "AniList",
+      "source_entity_usefulness": "Work metadata enrichment after source/work is known; not reverse image search.",
+      "auth_api_key": "Public GraphQL API for basic public queries.",
+      "rate_limit": "Official rate limiting and 429 handling must be respected.",
+      "privacy_risk": "Low for public work IDs/names; do not send local metadata.",
+      "first_provider_suitability": "later_enrichment_only"
+    },
+    {
+      "category": "Local pHash/image embedding",
+      "source_entity_usefulness": "Supplementary local recall, not source truth.",
+      "auth_api_key": "None.",
+      "rate_limit": "Local compute only.",
+      "privacy_risk": "Low if local-only.",
+      "first_provider_suitability": "supplementary_not_source_discovery"
+    }
+  ],
+  "privacy_eligibility_policy": {
+    "anime": "Eligible only under explicit approved provider pilot; small sample; original upload blocked by default; derived input requires explicit approval.",
+    "unknown": "Blocked by default until manual classification and explicit approval.",
+    "non_anime": "Blocked.",
+    "illustration": "Blocked by default unless explicitly included under reviewed anime/illustration policy.",
+    "local_paths_filenames_source_labels_icloud_metadata": "Never sent and never included in public reports.",
+    "public_reports": "Aggregate and redacted only."
+  },
+  "input_policy": {
+    "original_image": "blocked_by_default",
+    "app_managed_thumbnail": "possible_only_with_explicit_provider_specific_approval",
+    "resized_stripped_derivative": "conservative_candidate_input_only_after_approval",
+    "perceptual_hash": "local_only_unless_provider_support_and_policy_approval",
+    "embedding": "local_only_supplement",
+    "no_image_upload": "privacy_safest_but_not_sufficient_for_no_source_discovery"
+  },
+  "recommended_phase_4_4_b_provider_category": "one SauceNAO-style reverse image search provider for anime illustration source discovery, contingent on official policy verification and explicit derived-image input approval",
+  "phase_4_4_b_budget": {
+    "max_items": 25,
+    "content_class": "anime_only",
+    "max_requests": "25_or_50_if_one_follow_up_is_approved",
+    "requests_per_minute": "10_to_30_or_provider_specific_lower",
+    "max_failures": 5,
+    "max_consecutive_failures": 3,
+    "max_same_reason_failures": 5,
+    "max_runtime_minutes": 10,
+    "concurrency": 1
+  },
+  "future_write_mapping_if_approved": {
+    "allowed": [
+      "ExternalSource policy row disabled by default",
+      "ProviderCache redacted successful/error cache",
+      "NegativeLookupCache no_match/privacy_blocked/low_confidence/unsupported_query cache",
+      "EntityEvidence redacted reverse_search/external evidence",
+      "MediaEntityCandidate suggested external candidates only if confidence policy allows"
+    ],
+    "forbidden": [
+      "confirmed MediaEntityAssignment",
+      "automatic trusted Entity truth without review",
+      "media_tags",
+      "TagTranslation",
+      "source files",
+      "icloud files",
+      "app-managed storage files"
+    ]
+  },
+  "success_metrics": [
+    "attempted",
+    "eligible",
+    "privacy_blocked_count",
+    "requests_sent",
+    "cache_hits",
+    "cache_misses",
+    "no_match",
+    "high_confidence_match",
+    "low_confidence_match",
+    "conflict_count",
+    "provider_error_count",
+    "rate_limit_count",
+    "timeout_count",
+    "average_requests_per_item",
+    "estimated_time_for_1k",
+    "estimated_time_for_10k",
+    "manual_review_burden_estimate",
+    "evidence_rows_created",
+    "candidates_created"
+  ],
+  "phase_3_9_dependency_boundary": {
+    "small_pilot_before_phase_3_9_allowed": true,
+    "small_pilot_limit": "25 anime-only items, one provider, explicit input approval, cache-first, evidence/candidate-only, no assignments",
+    "phase_3_9_required_before": [
+      "larger_provider_pilot",
+      "broad_enrichment",
+      "repeated_source_discovery_runs",
+      "full_library_request_scheduling",
+      "5k_or_10k_scale",
+      "large_cache_population"
+    ]
+  },
+  "manual_seed_and_local_retrieval_role": {
+    "manual_seeds": "useful for validation and conflict examples, not primary full coverage",
+    "local_retrieval_or_clustering": "supplementary recall only; no automatic confirmed assignment; global similarity graph deferred"
+  }
+}

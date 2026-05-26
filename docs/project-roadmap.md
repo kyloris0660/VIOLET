@@ -515,7 +515,8 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 - External provider eligibility is fail-closed: `unknown`, `non_anime`, and unapproved `illustration` are blocked by default; `anime` requires explicit provider policy and run approval.
 - Local paths, iCloud paths, filenames, source labels, directory structure, original image bytes, and privacy-sensitive content must not be sent externally by default or appear in public reports.
 - Future provider calls require opt-in `ExternalSource` policy, per-run budget, rate limits, retry/backoff, circuit breakers, cache-first behavior, negative cache, redacted audit logs, and aggregate public reports.
-- Phase 4.4 should start with exact-source inventory/pilot, preferably one booru-style exact post/source lookup provider if source URLs or post IDs exist. First pilot writes should be cache/evidence/candidate-only; no automatic confirmed assignments.
+- Phase 4.4-A supersedes the exact-source inventory next step for the current library because the accepted working assumption is no usable source URL, no reliable external post ID, and no imported source metadata suitable for exact-source lookup.
+- Exact booru/source lookup remains a second-step verifier after no-source source discovery yields a source/post candidate. First pilot writes should remain cache/evidence/candidate-only; no automatic confirmed assignments.
 - Phase 3.9 must precede broad provider enrichment, 5k/10k scale, full-library request scheduling, or large cache population.
 - No provider API calls, reverse image search, scraping, DB import, classification, AI tagging, localization, staging copy, entity writes, Entity Resolver execution, similarity/clustering, source/iCloud mutation, app-managed storage mutation, production ingestion ledger implementation, or admin UI rewrite occurred.
 
@@ -529,6 +530,22 @@ Note: Phase 3.8d-I1 through I5c entries below preserve historical stage-state sn
 - Active clone, issue, and repository references should use the VIOLET URL.
 - Historical phase reports and old PR links may remain on `github.com/kyloris0660/AnimeLocalBooru` when rewriting them would be noisy; GitHub rename redirects are expected to handle those archival links.
 - No runtime behavior, DB, classification, AI tagging, localization, staging copy, source/iCloud files, app-managed storage, Entity Resolver, similarity/clustering, Phase 4.4 implementation, or provider calls are changed by this infrastructure/docs stage.
+
+### Phase 4.4-A - No-source Source Discovery Pilot Design
+
+**Goal:** Design a safe first source-discovery pilot for the current no-source anime library without executing providers or uploading images.
+
+- The current library is treated as no-source: no usable traceable source URLs, no reliable external post IDs, and no imported source metadata suitable for exact-source lookup.
+- Exact-source inventory is skipped as the primary next step. A future implementation may include only a minor sanity count so it does not miss trivial source-shaped fields.
+- Recommended first provider category for Phase 4.4-B is one SauceNAO-style reverse image search provider for anime illustration source discovery, contingent on current official API/TOS/rate-limit verification and explicit derived-image input approval.
+- `anime` is eligible only under explicit approved provider policy and a small sample. `unknown`, `non_anime`, and unapproved `illustration` are blocked by default.
+- Original image upload is blocked by default. A resized/stripped derivative or app thumbnail may be sent only after explicit provider-specific approval.
+- Local paths, filenames, source labels, iCloud metadata, directory names, secrets, and raw provider payloads must not be sent or appear in public reports.
+- Phase 4.4-B should start with a dry-run planner, cache lookup, privacy eligibility report, deterministic derived-input policy, one provider only, `max_items=25`, `max_requests=25` or `50`, conservative sequential rate limiting, failure budgets, and circuit breakers.
+- Future approved writes may include `ExternalSource`, `ProviderCache`, `NegativeLookupCache`, `EntityEvidence`, and optionally `MediaEntityCandidate`. They must not include confirmed `MediaEntityAssignment`, automatic trusted entities, `media_tags`, `TagTranslation`, source/iCloud files, or app storage writes.
+- Phase 3.9 is not required before a tightly bounded 25-item pilot, but it is required before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, large cache population, or full-library scheduling.
+- Manual seeds and local retrieval remain supplementary validation/recall tools. Whole-image embedding/clustering risks multi-character/style/pose/clothing false positives and must not create automatic confirmed assignments.
+- No provider API calls, authenticated calls, scraping, reverse search execution, image/thumbnail upload, DB import, classification, AI tagging, localization, staging copy, entity writes, Entity Resolver execution, similarity/clustering, source/iCloud mutation, app-managed storage mutation, production ingestion ledger implementation, or admin UI rewrite occurred.
 
 ### Phase 3.1.1a — Environment / DB / Storage Safety Foundation
 
@@ -601,15 +618,15 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.3-B:
+Current near-term options after Phase 4.4-A:
 
-1. Phase 4.4-A: exact-source inventory dry-run. Count media with provider-recognizable source URLs/post IDs and privacy eligibility before any provider calls.
-2. Phase 4.4-B: one-provider exact post/source lookup pilot with opt-in provider policy, cache-first behavior, redacted audit logs, evidence/candidate-only writes, no confirmed assignments, and strict request budgets.
-3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source availability validation before any full-library import, broad external enrichment, 5k/10k scale, or full-library request scheduling.
-4. Reverse-search pilot only after explicit image/thumbnail/hash upload policy, provider TOS/rate-limit review, and privacy approval.
+1. Phase 4.4-B: one-provider no-source reverse-search/source-discovery pilot implementation plan and dry-run scaffold. Live execution remains blocked until provider policy, official API/TOS/rate-limit verification, and derived-input approval are explicit.
+2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
+3. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
+4. Reverse-search live pilot only after explicit image/thumbnail/hash upload policy, provider TOS/rate-limit review, and privacy approval.
 5. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
 6. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-7. Seed-based local retrieval or clustering only as supplementary recall after source-first evidence exists; no automatic confirmed assignments.
+7. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
 8. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
@@ -705,6 +722,8 @@ Every phase follows this workflow:
 ### GitHub PR / Main Protection
 
 Agents may create branches, commit, push, create PRs, and run tests. Agents must NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user reviews and merges on GitHub.
+
+Default PR lifecycle is a normal open PR. Create a draft PR only when the user/ChatGPT explicitly requests draft, or when the stage is clearly a design draft / not ready for review. Docs-only does not imply draft, and a reviewable plan/design PR may be opened normally. Draft PRs must not become the default way to avoid reviewer or human judgment. Final reports must state whether the PR is draft and why.
 
 **Recommended**: Enable GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 
