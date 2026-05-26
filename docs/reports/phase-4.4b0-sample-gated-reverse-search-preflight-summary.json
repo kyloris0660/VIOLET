@@ -1,0 +1,375 @@
+{
+  "approved_sample_media_ids": [
+    2690,
+    2687,
+    2670,
+    2654,
+    2647
+  ],
+  "counts": {
+    "approved_sample_count": 5,
+    "blocked_count": 0,
+    "blocked_count_by_reason": {},
+    "content_class_distribution": {
+      "anime": 5
+    },
+    "eligible_count": 5,
+    "found_media_count": 5,
+    "requested_count": 5
+  },
+  "derived_input_preflight": {
+    "derived_files_generated": 0,
+    "status_counts": {
+      "ready_plan_from_app_thumbnail": 5
+    },
+    "upload_attempted": false
+  },
+  "external_call_policy": {
+    "authenticated_provider_calls_attempted": false,
+    "external_provider_calls_attempted": false,
+    "reverse_search_execution_attempted": false,
+    "scraping_attempted": false,
+    "upload_attempted": false
+  },
+  "future_write_mapping": {
+    "b0_blocked_tables": [
+      "ProviderCache",
+      "NegativeLookupCache",
+      "EntityEvidence",
+      "MediaEntityCandidate",
+      "MediaEntityAssignment"
+    ],
+    "b0_runtime_writes_allowed": false,
+    "explicitly_not_mapped_in_first_live_pilot": {
+      "Entity": "no automatic trusted entity creation",
+      "MediaEntityAssignment": "no confirmed assignments in the first live pilot"
+    },
+    "future_live_pilot_only_after_explicit_approval": {
+      "EntityEvidence": "redacted reverse_search evidence",
+      "MediaEntityCandidate": "optional suggested candidate after confidence policy approval",
+      "NegativeLookupCache": "privacy/no-match/low-confidence negative cache",
+      "ProviderCache": "redacted normalized provider response cache"
+    }
+  },
+  "generated_at": "2026-05-26T15:03:27+00:00",
+  "identity": {
+    "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "db_identity_result": "development_blombooru_confirmed",
+    "db_password_included": false,
+    "local_paths_redacted": true,
+    "storage_root_equals_code_root": true,
+    "storage_root_explicitly_set": false,
+    "storage_root_mode": "code_root_default",
+    "storage_root_test_path": false,
+    "violet_env": "development"
+  },
+  "input_policy": {
+    "derived_files_generated": 0,
+    "derived_upload": false,
+    "input_kind": "derived_resized_image_plan",
+    "live_request": false,
+    "local_preflight_source": "app_managed_thumbnail_when_present",
+    "original_upload": false,
+    "thumbnail_upload": false,
+    "upload_allowed": false
+  },
+  "lifecycle": "phase-scoped operational runner",
+  "live_pilot_readiness": {
+    "blocked_until_provider_policy_and_derived_input_approval": true,
+    "ready_to_consider": true,
+    "still_requires_explicit_user_approval": true
+  },
+  "no_active_server_preflight": {
+    "acceptable_listener_backends": [
+      "windows_netstat"
+    ],
+    "clean_required_before_db_access": true,
+    "confirmed_violet_count": 0,
+    "listener_backend": "windows_netstat",
+    "occupied_count": 0,
+    "proof_required": true,
+    "result": "clean",
+    "suspected_violet_count": 0
+  },
+  "phase": "4.4-B0",
+  "privacy_scan": {
+    "checked_public_artifacts": [
+      "docs/reports/phase-4.4b0-sample-gated-reverse-search-preflight-summary.json",
+      "docs/reports/phase-4.4b0-sample-gated-reverse-search-preflight.md"
+    ],
+    "passed": true
+  },
+  "provider_policy_stub": {
+    "auth_mode": "none_in_B0",
+    "enabled": false,
+    "live_requests_allowed": false,
+    "official_api_terms_verified_for_live_run": false,
+    "provider_category": "saucenao_style_reverse_search",
+    "provider_key": "saucenao"
+  },
+  "redaction_proof": {
+    "filenames_included": false,
+    "local_paths_included": false,
+    "raw_image_bytes_included": false,
+    "request_payloads_are_redacted_plans": true,
+    "secrets_included": false,
+    "source_labels_included": false
+  },
+  "request_budget": {
+    "concurrency": 1,
+    "live_requests_allowed": false,
+    "max_consecutive_failures": 2,
+    "max_failures": 2,
+    "max_items": 5,
+    "max_requests": 5,
+    "max_runtime": "10 minutes",
+    "max_same_reason_failures": 2,
+    "provider_category": "saucenao_style_reverse_search",
+    "requests_per_minute": 10,
+    "stop_conditions": [
+      "auth_failed",
+      "forbidden",
+      "schema_changed",
+      "privacy_leak",
+      "rate_limit_exceeded",
+      "unexpected_mutation",
+      "redaction_failure",
+      "user_abort"
+    ],
+    "timeout": "provider_policy_placeholder"
+  },
+  "request_plan": [
+    {
+      "blocked_reason": null,
+      "cache_key_plan": "saucenao:reverse_search_derived_image:e3afbb2187e3d93aa9829e9f6df977098a8943fa4036d3992c9f3efd32c9b985",
+      "content_class": "anime",
+      "eligibility_status": "eligible",
+      "filename_included": false,
+      "future_write_plan": {
+        "EntityEvidence": "future_only_after_live_pilot_approval",
+        "MediaEntityAssignment": "not_mapped_for_first_live_pilot",
+        "MediaEntityCandidate": "future_only_after_live_pilot_approval",
+        "NegativeLookupCache": "future_only_after_live_pilot_approval",
+        "ProviderCache": "future_only_after_live_pilot_approval",
+        "b0_write_allowed": false
+      },
+      "input_kind": "derived_resized_image_plan",
+      "input_privacy_mode": "local_preflight_only_no_upload",
+      "live_request_allowed": false,
+      "local_path_included": false,
+      "media_id": 2690,
+      "provider_category": "saucenao_style_reverse_search",
+      "provider_key": "saucenao",
+      "query_hash_plan": "e3afbb2187e3d93aa9829e9f6df977098a8943fa4036d3992c9f3efd32c9b985",
+      "query_type": "reverse_search_derived_image",
+      "request_shape_redacted": {
+        "content_class": "anime",
+        "input_kind": "derived_resized_image_plan",
+        "input_privacy_mode": "local_preflight_only_no_upload",
+        "live_request_allowed": false,
+        "media_ref": "approved_media_id:2690",
+        "phase": "4.4-B0",
+        "provider_category": "saucenao_style_reverse_search",
+        "provider_key": "saucenao",
+        "query_type": "reverse_search_derived_image",
+        "transform_policy_version": "phase44b0-derived-resized-stripped-plan-v1",
+        "upload_allowed": false
+      },
+      "source_label_included": false,
+      "would_send_derived_image": false,
+      "would_send_original": false,
+      "would_send_thumbnail": false
+    },
+    {
+      "blocked_reason": null,
+      "cache_key_plan": "saucenao:reverse_search_derived_image:a083104a75b5c41bd32895176a57c17eccab4eb1edafe517935baf0a355a9077",
+      "content_class": "anime",
+      "eligibility_status": "eligible",
+      "filename_included": false,
+      "future_write_plan": {
+        "EntityEvidence": "future_only_after_live_pilot_approval",
+        "MediaEntityAssignment": "not_mapped_for_first_live_pilot",
+        "MediaEntityCandidate": "future_only_after_live_pilot_approval",
+        "NegativeLookupCache": "future_only_after_live_pilot_approval",
+        "ProviderCache": "future_only_after_live_pilot_approval",
+        "b0_write_allowed": false
+      },
+      "input_kind": "derived_resized_image_plan",
+      "input_privacy_mode": "local_preflight_only_no_upload",
+      "live_request_allowed": false,
+      "local_path_included": false,
+      "media_id": 2687,
+      "provider_category": "saucenao_style_reverse_search",
+      "provider_key": "saucenao",
+      "query_hash_plan": "a083104a75b5c41bd32895176a57c17eccab4eb1edafe517935baf0a355a9077",
+      "query_type": "reverse_search_derived_image",
+      "request_shape_redacted": {
+        "content_class": "anime",
+        "input_kind": "derived_resized_image_plan",
+        "input_privacy_mode": "local_preflight_only_no_upload",
+        "live_request_allowed": false,
+        "media_ref": "approved_media_id:2687",
+        "phase": "4.4-B0",
+        "provider_category": "saucenao_style_reverse_search",
+        "provider_key": "saucenao",
+        "query_type": "reverse_search_derived_image",
+        "transform_policy_version": "phase44b0-derived-resized-stripped-plan-v1",
+        "upload_allowed": false
+      },
+      "source_label_included": false,
+      "would_send_derived_image": false,
+      "would_send_original": false,
+      "would_send_thumbnail": false
+    },
+    {
+      "blocked_reason": null,
+      "cache_key_plan": "saucenao:reverse_search_derived_image:6dda0acab58ce989b65758937b52c6473413dfb7f56d96309c801b3f0788d424",
+      "content_class": "anime",
+      "eligibility_status": "eligible",
+      "filename_included": false,
+      "future_write_plan": {
+        "EntityEvidence": "future_only_after_live_pilot_approval",
+        "MediaEntityAssignment": "not_mapped_for_first_live_pilot",
+        "MediaEntityCandidate": "future_only_after_live_pilot_approval",
+        "NegativeLookupCache": "future_only_after_live_pilot_approval",
+        "ProviderCache": "future_only_after_live_pilot_approval",
+        "b0_write_allowed": false
+      },
+      "input_kind": "derived_resized_image_plan",
+      "input_privacy_mode": "local_preflight_only_no_upload",
+      "live_request_allowed": false,
+      "local_path_included": false,
+      "media_id": 2670,
+      "provider_category": "saucenao_style_reverse_search",
+      "provider_key": "saucenao",
+      "query_hash_plan": "6dda0acab58ce989b65758937b52c6473413dfb7f56d96309c801b3f0788d424",
+      "query_type": "reverse_search_derived_image",
+      "request_shape_redacted": {
+        "content_class": "anime",
+        "input_kind": "derived_resized_image_plan",
+        "input_privacy_mode": "local_preflight_only_no_upload",
+        "live_request_allowed": false,
+        "media_ref": "approved_media_id:2670",
+        "phase": "4.4-B0",
+        "provider_category": "saucenao_style_reverse_search",
+        "provider_key": "saucenao",
+        "query_type": "reverse_search_derived_image",
+        "transform_policy_version": "phase44b0-derived-resized-stripped-plan-v1",
+        "upload_allowed": false
+      },
+      "source_label_included": false,
+      "would_send_derived_image": false,
+      "would_send_original": false,
+      "would_send_thumbnail": false
+    },
+    {
+      "blocked_reason": null,
+      "cache_key_plan": "saucenao:reverse_search_derived_image:f4879679d79791d5bb976ee7642ce49fcc6423f34d46e3cc666579e24de07f88",
+      "content_class": "anime",
+      "eligibility_status": "eligible",
+      "filename_included": false,
+      "future_write_plan": {
+        "EntityEvidence": "future_only_after_live_pilot_approval",
+        "MediaEntityAssignment": "not_mapped_for_first_live_pilot",
+        "MediaEntityCandidate": "future_only_after_live_pilot_approval",
+        "NegativeLookupCache": "future_only_after_live_pilot_approval",
+        "ProviderCache": "future_only_after_live_pilot_approval",
+        "b0_write_allowed": false
+      },
+      "input_kind": "derived_resized_image_plan",
+      "input_privacy_mode": "local_preflight_only_no_upload",
+      "live_request_allowed": false,
+      "local_path_included": false,
+      "media_id": 2654,
+      "provider_category": "saucenao_style_reverse_search",
+      "provider_key": "saucenao",
+      "query_hash_plan": "f4879679d79791d5bb976ee7642ce49fcc6423f34d46e3cc666579e24de07f88",
+      "query_type": "reverse_search_derived_image",
+      "request_shape_redacted": {
+        "content_class": "anime",
+        "input_kind": "derived_resized_image_plan",
+        "input_privacy_mode": "local_preflight_only_no_upload",
+        "live_request_allowed": false,
+        "media_ref": "approved_media_id:2654",
+        "phase": "4.4-B0",
+        "provider_category": "saucenao_style_reverse_search",
+        "provider_key": "saucenao",
+        "query_type": "reverse_search_derived_image",
+        "transform_policy_version": "phase44b0-derived-resized-stripped-plan-v1",
+        "upload_allowed": false
+      },
+      "source_label_included": false,
+      "would_send_derived_image": false,
+      "would_send_original": false,
+      "would_send_thumbnail": false
+    },
+    {
+      "blocked_reason": null,
+      "cache_key_plan": "saucenao:reverse_search_derived_image:182a99bfc5424b5db36d1da3648fe19f54e675ca445eb214e216d8955496664c",
+      "content_class": "anime",
+      "eligibility_status": "eligible",
+      "filename_included": false,
+      "future_write_plan": {
+        "EntityEvidence": "future_only_after_live_pilot_approval",
+        "MediaEntityAssignment": "not_mapped_for_first_live_pilot",
+        "MediaEntityCandidate": "future_only_after_live_pilot_approval",
+        "NegativeLookupCache": "future_only_after_live_pilot_approval",
+        "ProviderCache": "future_only_after_live_pilot_approval",
+        "b0_write_allowed": false
+      },
+      "input_kind": "derived_resized_image_plan",
+      "input_privacy_mode": "local_preflight_only_no_upload",
+      "live_request_allowed": false,
+      "local_path_included": false,
+      "media_id": 2647,
+      "provider_category": "saucenao_style_reverse_search",
+      "provider_key": "saucenao",
+      "query_hash_plan": "182a99bfc5424b5db36d1da3648fe19f54e675ca445eb214e216d8955496664c",
+      "query_type": "reverse_search_derived_image",
+      "request_shape_redacted": {
+        "content_class": "anime",
+        "input_kind": "derived_resized_image_plan",
+        "input_privacy_mode": "local_preflight_only_no_upload",
+        "live_request_allowed": false,
+        "media_ref": "approved_media_id:2647",
+        "phase": "4.4-B0",
+        "provider_category": "saucenao_style_reverse_search",
+        "provider_key": "saucenao",
+        "query_type": "reverse_search_derived_image",
+        "transform_policy_version": "phase44b0-derived-resized-stripped-plan-v1",
+        "upload_allowed": false
+      },
+      "source_label_included": false,
+      "would_send_derived_image": false,
+      "would_send_original": false,
+      "would_send_thumbnail": false
+    }
+  ],
+  "requested_media_ids": [
+    2690,
+    2687,
+    2670,
+    2654,
+    2647
+  ],
+  "runtime_mutation_policy": {
+    "app_managed_storage_mutation_attempted": false,
+    "db_writes_attempted": false,
+    "entity_evidence_writes_attempted": false,
+    "media_entity_assignment_writes_attempted": false,
+    "media_entity_candidate_writes_attempted": false,
+    "provider_cache_writes_attempted": false,
+    "source_icloud_mutation_attempted": false
+  },
+  "strict_mode": {
+    "blocked_count": 0,
+    "blocks_on_blocked_samples": true,
+    "enabled": true,
+    "report_written_before_failure": true,
+    "status": "passed"
+  }
+}

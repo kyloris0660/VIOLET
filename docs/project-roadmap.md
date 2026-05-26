@@ -625,16 +625,30 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - The tool does not stop/kill processes, start servers, write DB data, or call mutation APIs. Stale cleanup remains user-approved manual action.
 - Governance now requires recording parent/reloader PID, worker/identity PID, process tree, env, DB, storage root, code root, git SHA, branch, and venv Python for agent-started servers.
 - Cleanup must verify the port is no longer `LISTENING`; `run.py --debug` / uvicorn reload requires explicit reloader/worker child handling.
-- Phase 4.4-B0 remains blocked until stale server cleanup/no-active-server preflight is clean and the user provides approved sample media IDs.
+- Phase 4.4-B0 may proceed only after stale server cleanup/no-active-server preflight is clean and the user provides approved sample media IDs.
+
+### Phase 4.4-B0 - Sample-gated Reverse-search Preflight
+
+**Goal:** Implement a user-approved sample-gated reverse-search preflight scaffold without executing providers or uploading images.
+
+- Approved sample media IDs are fixed to `2690`, `2687`, `2670`, `2654`, and `2647`; the runner fails closed if no IDs are provided or any ID outside this set is requested.
+- The preflight reads only development/blombooru rows for those IDs, verifies `content_class=anime`, and blocks missing, unknown, non_anime, unapproved illustration, unsafe, or unavailable app-managed media.
+- The runner generates a redacted request plan for `provider=saucenao`, `provider_category=saucenao_style_reverse_search`, and `input_kind=derived_resized_image_plan`.
+- B0 does not generate derived image files by default; it records local derived-input readiness from app-managed thumbnail availability and keeps original/thumbnail/derived upload flags false.
+- Public reports record approved sample IDs, no-active-server preflight, DB/storage identity proof, sample counts, content-class distribution, input policy, redaction proof, request budget, provider policy stub, future write mapping, and explicit no-call/no-upload/no-write safety facts.
+- Future live-pilot write mapping is plan-only: `ProviderCache`, `NegativeLookupCache`, `EntityEvidence`, and optional `MediaEntityCandidate`; confirmed `MediaEntityAssignment` remains blocked for the first live pilot.
+- B0 proves a live pilot can be considered for this sample only; it does not approve provider execution. Live reverse search remains blocked until provider policy, official API/TOS/rate-limit review, derived-input generation/upload approval, and run approval are explicit.
+- Phase 3.9 remains required before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, large cache population, or full-library scheduling.
+- No provider API calls, authenticated calls, scraping, reverse search execution, image/thumbnail/derived upload, DB import, classification, AI tagging, localization, staging copy, entity writes, Entity Resolver execution, similarity/clustering, source/iCloud mutation, app-managed storage mutation, production ingestion ledger implementation, or admin UI rewrite occurred.
 
 ## Upcoming Phases
 
-Current near-term options after Phase S1:
+Current near-term options after Phase 4.4-B0:
 
-1. Phase 4.4-B0: sample-gated dry-run/preflight scaffold only after no-active-server preflight is clean and the user provides approved sample media IDs. No live provider call unless separately approved.
+1. Phase 4.4-B: one-provider live reverse-search pilot only after explicit provider policy, official API/TOS/rate-limit verification, derived-image input approval, and small-run approval. B0 did not approve uploads or requests.
 2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
 3. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
-4. Reverse-search live pilot only after explicit image/thumbnail/hash upload policy, provider TOS/rate-limit review, and privacy approval.
+4. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
 5. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
 6. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
 7. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
