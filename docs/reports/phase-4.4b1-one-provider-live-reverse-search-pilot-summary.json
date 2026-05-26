@@ -1,0 +1,399 @@
+{
+  "credential_status": {
+    "credential_name": "SAUCENAO_API_KEY",
+    "included_in_local_details": false,
+    "included_in_public_report": false,
+    "present": false,
+    "provider_requires_api_key": true,
+    "value_printed": false
+  },
+  "db_writes": {
+    "attempted": false,
+    "backup_required": false,
+    "by_table": {
+      "EntityEvidence": 0,
+      "MediaEntityCandidate": 0,
+      "NegativeLookupCache": 0,
+      "ProviderCache": 0
+    },
+    "forbidden_tables_written": {
+      "Entity": 0,
+      "MediaEntityAssignment": 0,
+      "TagTranslation": 0,
+      "media_tags": 0
+    },
+    "restore_recovery_note": "No DB writes were attempted."
+  },
+  "derived_inputs": {
+    "generated_count": 0,
+    "local_paths_included": false,
+    "public_hashes_included": false,
+    "safe_artifact_ids": [],
+    "source_kind_counts": {},
+    "uploaded_count": 0
+  },
+  "evidence_candidate_behavior": {
+    "automatic_trusted_entity_creation": false,
+    "candidate_policy": "evidence_only_until high-confidence result mapping is manually reviewed",
+    "confirmed_assignments_created": 0,
+    "entity_evidence_created": 0,
+    "media_entity_candidates_created": 0
+  },
+  "execution_flags": {
+    "execute_live_requested": true,
+    "provider_docs_verified_by_operator": false,
+    "write_db_records_requested": false
+  },
+  "generated_at": "2026-05-26T16:05:23+00:00",
+  "identity": {
+    "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "db_identity_result": "development_blombooru_confirmed",
+    "db_password_included": false,
+    "local_paths_redacted": true,
+    "storage_root_equals_code_root": true,
+    "storage_root_explicitly_set": false,
+    "storage_root_mode": "code_root_default",
+    "storage_root_test_path": false,
+    "violet_env": "development"
+  },
+  "input_policy": {
+    "derived_upload": false,
+    "filenames_in_request": false,
+    "input_kind": "derived_resized_stripped_image",
+    "local_paths_in_request": false,
+    "max_derived_dimension": 768,
+    "original_upload": false,
+    "source_labels_in_request": false,
+    "source_preference": "app_managed_thumbnail_only_for_this_pilot",
+    "thumbnail_upload": false,
+    "transform_policy_version": "phase44b1-derived-resized-stripped-v1"
+  },
+  "larger_pilot_suitability": {
+    "phase39_required_before_scaling": true,
+    "reason": "not_evaluated_without_live_results",
+    "suitable_for_larger_pilot": false
+  },
+  "lifecycle": "phase-scoped operational runner",
+  "live_requests": {
+    "attempted": 0,
+    "concurrency": 1,
+    "provider": "saucenao",
+    "skipped": 5
+  },
+  "local_artifacts": {
+    "absolute_paths_in_public_report": false,
+    "derived_inputs": "none_generated_until_live_gates_pass",
+    "details_json": "phase-4.4b1 local details under .local_manifests",
+    "ignored_by_gitignore": true
+  },
+  "manual_review_burden_estimate": {
+    "conflicts": 0,
+    "estimated_targeted_review_items": 0,
+    "high_confidence_matches": 0
+  },
+  "no_active_server_preflight": {
+    "acceptable_listener_backends": [
+      "windows_netstat"
+    ],
+    "clean_required_before_db_access": true,
+    "confirmed_violet_count": 0,
+    "listener_backend": "windows_netstat",
+    "occupied_count": 0,
+    "proof_required": true,
+    "result": "clean",
+    "suspected_violet_count": 0
+  },
+  "phase": "4.4-B1",
+  "privacy_scan": {
+    "checked_public_artifacts": [
+      "docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json",
+      "docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md"
+    ],
+    "passed": true
+  },
+  "provider_results_by_class": {},
+  "provider_selection": {
+    "api_reference_status": "official_search_api_entrypoint_known_but_automated_fetch_returned_403",
+    "official_research_urls": [
+      "https://saucenao.com/about.html",
+      "https://saucenao.com/legal.html",
+      "https://saucenao.com/",
+      "https://saucenao.com/options.php",
+      "https://saucenao.com/tools/examples/api/index_details.txt",
+      "https://saucenao.com/user.php?page=search-api",
+      "https://iqdb.org/",
+      "https://soruly.github.io/trace.moe-api/",
+      "https://gelbooru.com/index.php?page=help&topic=dapi",
+      "https://anilist.gitbook.io/anilist-apiv2-docs/docs/guide/rate-limiting"
+    ],
+    "provider_category": "saucenao_style_reverse_search",
+    "rate_limit_status": "account_based_limits_noted_from_official_terms; live execution requires local credential and provider-docs-verified flag",
+    "selected_provider": "saucenao",
+    "terms_status": "official_legal_page_reviewed",
+    "why_selected": [
+      "official site identifies SauceNAO as a reverse image search engine",
+      "official index list includes anime illustration sources such as pixiv, danbooru, gelbooru, yande.re, anime-pictures, twitter, and skeb",
+      "the current library is treated as no-source, so exact-source booru APIs are second-step verifiers rather than first provider",
+      "trace.moe is better suited to anime scene screenshots than general illustration source discovery",
+      "IQDB exposes a web upload form but no stable official automation API was verified for this pilot"
+    ]
+  },
+  "request_budget": {
+    "concurrency": 1,
+    "max_consecutive_failures": 2,
+    "max_failures": 2,
+    "max_items": 5,
+    "max_requests": 5,
+    "max_same_reason_failures": 2,
+    "requests_per_minute": 10,
+    "retries": 0,
+    "stop_conditions": [
+      "credential_required",
+      "provider_policy_blocked",
+      "sample_gate_blocked",
+      "auth_failed",
+      "forbidden",
+      "rate_limited",
+      "schema_changed",
+      "privacy_leak",
+      "unexpected_mutation",
+      "failure_budget_exceeded",
+      "user_abort"
+    ]
+  },
+  "safety_confirmation": {
+    "ai_tagging": false,
+    "api_key_exposed": false,
+    "app_managed_storage_mutation": false,
+    "browser_automation_against_provider": false,
+    "classification": false,
+    "confirmed_assignments": false,
+    "db_import": false,
+    "entity_resolver": false,
+    "full_library_scan": false,
+    "localization": false,
+    "media_tags_mutation": false,
+    "original_upload": false,
+    "scraping": false,
+    "similarity_clustering": false,
+    "source_icloud_mutation": false,
+    "tag_translation_mutation": false,
+    "unknown_non_anime_unapproved_illustration_upload": false
+  },
+  "sample_gate": {
+    "approved_sample_count": 5,
+    "approved_sample_media_ids": [
+      2690,
+      2687,
+      2670,
+      2654,
+      2647
+    ],
+    "blocked_count": 0,
+    "blocked_count_by_reason": {},
+    "content_class_distribution": {
+      "anime": 5
+    },
+    "eligible_count": 5,
+    "found_media_count": 5,
+    "request_plan": [
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2690,
+        "query_hash": "54c179e0398931efea40b87dfe94227b14bec37140b5c277cfce48048c4551dc",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "media_ref": "approved_media_id:2690",
+          "phase": "4.4-B1",
+          "provider_category": "saucenao_style_reverse_search",
+          "provider_key": "saucenao",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44b1-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2687,
+        "query_hash": "6b095a49f00ee6a0a1a6c94b1e250cc12f21d13c088f7976a4d42331ac0f5b47",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "media_ref": "approved_media_id:2687",
+          "phase": "4.4-B1",
+          "provider_category": "saucenao_style_reverse_search",
+          "provider_key": "saucenao",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44b1-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2670,
+        "query_hash": "e66135b01ff6054b848379a54498da8b7fc082bc03dbdc7662ccd1fd3aa25e5b",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "media_ref": "approved_media_id:2670",
+          "phase": "4.4-B1",
+          "provider_category": "saucenao_style_reverse_search",
+          "provider_key": "saucenao",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44b1-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2654,
+        "query_hash": "8f7102173dcd7fac14fb216b0eb5892b2203e937d7fc5aca1bb644f6070728b0",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "media_ref": "approved_media_id:2654",
+          "phase": "4.4-B1",
+          "provider_category": "saucenao_style_reverse_search",
+          "provider_key": "saucenao",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44b1-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2647,
+        "query_hash": "00db1b27890e9ba33f8d598c36606e1b4cdbce75ae9d295d8c20063838e4a50d",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "media_ref": "approved_media_id:2647",
+          "phase": "4.4-B1",
+          "provider_category": "saucenao_style_reverse_search",
+          "provider_key": "saucenao",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44b1-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      }
+    ],
+    "requested_count": 5,
+    "requested_media_ids": [
+      2690,
+      2687,
+      2670,
+      2654,
+      2647
+    ]
+  },
+  "setup_instructions": {
+    "configure_local_env_file": "Add SAUCENAO_API_KEY=<your SauceNAO API key> to .env (do not commit .env).",
+    "configure_process_env": "$env:SAUCENAO_API_KEY = \"<your SauceNAO API key>\"",
+    "required_credential_name": "SAUCENAO_API_KEY",
+    "rerun_command": "& \"$PY\" scripts/run_phase44b1_one_provider_live_reverse_search_pilot.py --media-ids 2690 2687 2670 2654 2647 --execute-live --upload-derived-approved --provider-docs-verified --report-json docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json --report-md docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md --local-details-json .local_manifests/phase-4.4b1-live-details.json",
+    "verify_without_printing_secret": "$envHas = [bool]$env:SAUCENAO_API_KEY; $dotenvHas = [bool](Select-String -Path .env -SimpleMatch \"SAUCENAO_API_KEY=\" -Quiet); [pscustomobject]@{SAUCENAO_API_KEY_present=($envHas -or $dotenvHas)}"
+  },
+  "status": "credential_required",
+  "stop_condition": "credential_required",
+  "upload_approval_scope": {
+    "approved_media_ids": [
+      2690,
+      2687,
+      2670,
+      2654,
+      2647
+    ],
+    "full_library_expansion_allowed": false,
+    "non_anime_upload_allowed": false,
+    "original_upload_allowed": false,
+    "thumbnail_upload_allowed": false,
+    "unapproved_illustration_upload_allowed": false,
+    "unknown_upload_allowed": false,
+    "user_approved_derived_resized_stripped_upload_for_approved_ids_only": true
+  }
+}

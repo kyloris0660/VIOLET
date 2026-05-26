@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-B0 sample-gated reverse-search preflight (2026-05-26).
+> Last updated during Phase 4.4-B1 one-provider live reverse-search pilot implementation (2026-05-26).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | **Canonical GitHub URL** | `https://github.com/kyloris0660/VIOLET` |
 | **Historical repo name** | `AnimeLocalBooru`; old GitHub links may redirect and should not be recreated as a new repo name |
 | **Local worktree path** | `C:\Users\kyloris\Documents\AnimeLocalBooru` (unchanged; do not infer local folder name from remote repo name) |
-| **Branch** | `main` includes PR #72/#73/#74; current work branch is `codex/phase-4.4-b0-sample-preflight` |
+| **Branch** | `main` includes PR #72/#73/#74/#75; current work branch is `codex/phase-4.4-b1-live-reverse-search` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -61,7 +61,8 @@
 | **Phase R1 ([PR #73](https://github.com/kyloris0660/VIOLET/pull/73))** | Merged - GitHub repository rename sync to canonical `kyloris0660/VIOLET`; local folder remains `C:\Users\kyloris\Documents\AnimeLocalBooru`; docs-only, no runtime behavior changes |
 | **Phase 4.4-A ([PR #72](https://github.com/kyloris0660/VIOLET/pull/72))** | Merged - no-source source discovery pilot design; docs-only, no provider calls, no image/thumbnail upload, no runtime writes |
 | **Phase S1 ([PR #74](https://github.com/kyloris0660/VIOLET/pull/74))** | Merged - server lifecycle stale-server guard after the 8012 stale test server incident; adds read-only diagnostics and policy hardening before Phase 4.4-B0 |
-| **Phase 4.4-B0 (current PR)** | Active - sample-gated reverse-search preflight scaffold for approved media IDs `2690`, `2687`, `2670`, `2654`, and `2647`; dry-run/report only, no provider calls or uploads |
+| **Phase 4.4-B0 ([PR #75](https://github.com/kyloris0660/VIOLET/pull/75))** | Merged - sample-gated reverse-search preflight scaffold for approved media IDs `2690`, `2687`, `2670`, `2654`, and `2647`; dry-run/report only, no provider calls or uploads |
+| **Phase 4.4-B1 (current PR)** | Active - one-provider SauceNAO-style live reverse-search pilot runner and reports for the same five approved anime IDs; execution stopped at `credential_required` because `SAUCENAO_API_KEY` is not configured |
 
 ## Current Accepted State
 
@@ -83,6 +84,8 @@ Phase S1 is the server lifecycle stale-server hardening stage. It records the 80
 
 Phase 4.4-B0 is the sample-gated reverse-search preflight scaffold. The only approved media IDs are `2690`, `2687`, `2670`, `2654`, and `2647`. The B0 runner reads only those development/blombooru rows, verifies `content_class=anime`, checks app-managed original/thumbnail availability, generates a redacted local request plan, and writes aggregate public reports. It performs no external provider calls, no upload, no DB writes, no provider/cache/evidence/candidate/assignment writes, no classification, no AI tagging, no localization, no staging copy, no Entity Resolver, and no similarity/clustering. Any live provider execution, derived-image generation/upload, provider policy enablement, or future cache/evidence/candidate writes still requires explicit user/ChatGPT approval.
 
+Phase 4.4-B1 implements the first one-provider live reverse-search pilot runner, selecting SauceNAO because it is the only evaluated provider category that fits no-source anime illustration source discovery without scraping or browser-session use. The current run remained safe and credential-blocked: approved media IDs `2690`, `2687`, `2670`, `2654`, and `2647` were rechecked in development/blombooru, found `5`, eligible `5`, blocked `0`, content class distribution `anime=5`, no-active-server preflight clean, DB identity `development/blombooru` confirmed, but `SAUCENAO_API_KEY` was absent. Therefore B1 made `0` live requests, generated `0` derived files, uploaded `0` images, and wrote `0` DB/provider/evidence/candidate rows. The public report is `docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md`; the summary JSON is `docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json`; local ignored details are under `.local_manifests/phase-4.4b1-live-details.json`. A future rerun requires `SAUCENAO_API_KEY`, explicit operator verification of the provider API docs/account limits, and the existing exact five-ID sample gate.
+
 Key accepted facts:
 
 - I6 cloud-aware staging copy: `994` staged successes, `6` item-level failures.
@@ -94,6 +97,7 @@ Key accepted facts:
 - Manual validation passed with no major issue.
 - Startup/import path consistency passed after G2; manual validation no longer requires `PYTHONPATH=<repo>\backend`.
 - Phase 4.4-B0 sample preflight: approved media IDs `2690`, `2687`, `2670`, `2654`, `2647`; no-active-server preflight clean; DB identity `development/blombooru` confirmed; found `5`; eligible `5`; blocked `0`; content class distribution `anime=5`; derived files generated `0`; external calls/uploads/DB writes `0`.
+- Phase 4.4-B1 credential-blocked live pilot: provider `saucenao`; approved media IDs unchanged; no-active-server preflight clean; DB identity `development/blombooru` confirmed; found `5`; eligible `5`; blocked `0`; content class distribution `anime=5`; `SAUCENAO_API_KEY` missing; live requests `0`; derived files generated `0`; uploads `0`; DB writes `0`; confirmed assignments `0`.
 
 Known non-blocking issues:
 
@@ -103,9 +107,9 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.4-B: one-provider no-source reverse-search/source-discovery live pilot may be considered after B0, but only with explicit provider policy, official API/TOS/rate-limit verification, derived-input approval, cache-first behavior, redacted reporting, evidence/candidate-only writes, and no confirmed assignments.
+- Phase 4.4-B1 can be rerun only after `SAUCENAO_API_KEY` is configured and the operator explicitly verifies current SauceNAO API/account limits. Keep the exact five approved IDs; do not add replacements or broaden the sample.
 - Exact booru/source lookup remains useful only after reverse search yields a source/post candidate; it is not the primary next step for the current no-source library.
-- Reverse search live execution remains blocked until explicit provider policy, official API/TOS/rate-limit verification, and derived-input approval are complete.
+- Reverse search live execution remains blocked until credential setup and current provider API/account-limit verification are complete, even though the derived-input approval for these five IDs has been granted.
 - AI proper-noun candidate generation from T3/T4 signals remains deferred unless the user/ChatGPT explicitly approves that source class with hard caps; even then it is weak query seed context, not truth.
 - Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and larger-scale source/provider run ledger discipline before broad ingestion, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
 - A focused recovery/backfill decision for rows `799`, `839`, `922`, `970`, `971`, and `972`.
