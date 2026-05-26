@@ -45,6 +45,7 @@ class ListenerBackendResult:
     backend: str
     status: str
     error: str | None = None
+    warnings: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -171,36 +172,50 @@ def tcp_listeners_from_windows_netstat(output: str, ports: list[int]) -> dict[in
     return listeners
 
 
+def run_windows_netstat(protocol: str, ports: list[int]) -> tuple[dict[int, int], str | None]:
+    try:
+        result = run_command(["netstat", "-ano", "-p", protocol])
+    except FileNotFoundError as exc:
+        return {}, f"{protocol}: FileNotFoundError: {exc}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {}, f"{protocol}: {exc.__class__.__name__}: {exc}"
+    if result.returncode != 0:
+        error = (result.stderr or result.stdout or "netstat returned non-zero exit").strip()
+        return {}, f"{protocol}: {error}"
+    return tcp_listeners_from_windows_netstat(result.stdout, ports), None
+
+
 def get_tcp_listeners(ports: list[int]) -> ListenerBackendResult:
     system = platform.system()
     if system == "Windows":
-        try:
-            result = run_command(["netstat", "-ano", "-p", "tcp"])
-        except FileNotFoundError as exc:
+        tcp_listeners, tcp_error = run_windows_netstat("tcp", ports)
+        tcpv6_listeners, tcpv6_error = run_windows_netstat("tcpv6", ports)
+        errors = [error for error in (tcp_error, tcpv6_error) if error]
+        merged = dict(tcp_listeners)
+        for port, pid in tcpv6_listeners.items():
+            merged.setdefault(port, pid)
+        if len(errors) == 2:
+            status = "unavailable" if all("FileNotFoundError" in error for error in errors) else "error"
             return ListenerBackendResult(
                 listeners={},
                 backend="windows_netstat",
-                status="unavailable",
-                error=f"FileNotFoundError: {exc}",
+                status=status,
+                error="; ".join(errors),
+                warnings=errors,
             )
-        except (OSError, subprocess.SubprocessError) as exc:
+        if errors:
             return ListenerBackendResult(
-                listeners={},
+                listeners=merged,
                 backend="windows_netstat",
-                status="error",
-                error=f"{exc.__class__.__name__}: {exc}",
-            )
-        if result.returncode != 0:
-            return ListenerBackendResult(
-                listeners={},
-                backend="windows_netstat",
-                status="error",
-                error=(result.stderr or result.stdout or "netstat returned non-zero exit").strip(),
+                status="partial",
+                error="; ".join(errors),
+                warnings=errors,
             )
         return ListenerBackendResult(
-            listeners=tcp_listeners_from_windows_netstat(result.stdout, ports),
+            listeners=merged,
             backend="windows_netstat",
             status="ok",
+            warnings=[],
         )
 
     return ListenerBackendResult(
@@ -211,6 +226,7 @@ def get_tcp_listeners(ports: list[int]) -> ListenerBackendResult:
             f"listener_backend_unsupported: platform {system or 'unknown'} is not "
             "supported by this Windows-focused local audit"
         ),
+        warnings=[],
     )
 
 
@@ -511,24 +527,54 @@ def fetch_identity(
     base_url: str,
     *,
     timeout: float,
-    admin_username: str | None = None,
-    admin_password: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     session = requests.Session()
     session.trust_env = False
     root = base_url.rstrip("/")
 
-    if admin_password:
-        try:
-            login = session.post(
-                f"{root}/api/admin/login",
-                json={"username": admin_username or "admin", "password": admin_password},
-                timeout=timeout,
-            )
-        except requests.RequestException as exc:
-            return None, f"admin_login_error:{exc.__class__.__name__}"
-        if login.status_code != 200:
-            return None, f"admin_login_http_{login.status_code}"
+    try:
+        response = session.get(f"{root}/api/system/server-identity", timeout=timeout)
+    except requests.ConnectionError:
+        return None, "connection_failed"
+    except requests.Timeout:
+        return None, "timeout"
+    except requests.RequestException as exc:
+        return None, f"request_error:{exc.__class__.__name__}"
+
+    if response.status_code == 401:
+        return None, "unauthorized"
+    if response.status_code == 403:
+        return None, "forbidden"
+    if response.status_code != 200:
+        return None, f"http_{response.status_code}"
+    try:
+        return response.json(), None
+    except ValueError:
+        return None, "invalid_json"
+
+
+def fetch_identity_with_auth(
+    base_url: str,
+    *,
+    timeout: float,
+    admin_username: str | None = None,
+    admin_password: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not admin_password:
+        return None, "auth_probe_missing_password"
+    session = requests.Session()
+    session.trust_env = False
+    root = base_url.rstrip("/")
+    try:
+        login = session.post(
+            f"{root}/api/admin/login",
+            json={"username": admin_username or "admin", "password": admin_password},
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        return None, f"admin_login_error:{exc.__class__.__name__}"
+    if login.status_code != 200:
+        return None, f"admin_login_http_{login.status_code}"
 
     try:
         response = session.get(f"{root}/api/system/server-identity", timeout=timeout)
@@ -629,9 +675,13 @@ def unavailable_port_report(port: int, args: argparse.Namespace, backend_result:
         "listener_backend": backend_result.backend,
         "listener_backend_status": backend_result.status,
         "listener_backend_error": backend_result.error,
+        "listener_backend_warnings": backend_result.warnings or [],
         "process_backend": "not_run",
         "process_backend_status": "not_run",
         "process_backend_error": None,
+        "auth_probe_attempted": False,
+        "auth_probe_error": None,
+        "auth_probe_skipped_reason": None,
     }
 
 
@@ -658,12 +708,13 @@ def audit_port(
         else []
     )
     identity, identity_error = (None, None)
+    auth_probe_attempted = False
+    auth_probe_error = None
+    auth_probe_skipped_reason = None
     if listener_pid:
         identity, identity_error = fetch_identity(
             base_url,
             timeout=args.timeout,
-            admin_username=args.admin_username,
-            admin_password=args.admin_password,
         )
 
     detection_sources = detect_process_sources(
@@ -680,6 +731,42 @@ def audit_port(
     is_confirmed_violet = server_classification == "confirmed_violet"
     is_suspected_violet = server_classification == "suspected_violet"
     is_violet = is_confirmed_violet or is_suspected_violet
+
+    if (
+        listener_pid
+        and identity_error in {"unauthorized", "forbidden"}
+        and args.admin_password
+    ):
+        if not args.allow_auth_probe:
+            auth_probe_skipped_reason = "allow_auth_probe_not_set"
+        elif not is_suspected_violet:
+            auth_probe_skipped_reason = "listener_not_confirmed_or_suspected_violet"
+        else:
+            auth_probe_attempted = True
+            auth_identity, auth_error = fetch_identity_with_auth(
+                base_url,
+                timeout=args.timeout,
+                admin_username=args.admin_username,
+                admin_password=args.admin_password,
+            )
+            auth_probe_error = auth_error
+            if auth_identity and likely_violet_identity(auth_identity):
+                identity = auth_identity
+                identity_error = None
+                detection_sources = detect_process_sources(
+                    listener_process=listener_process,
+                    child_processes=child_processes,
+                    args=args,
+                    identity_error=identity_error,
+                )
+                server_classification = classify_server(
+                    listener_pid=listener_pid,
+                    identity=identity,
+                    detection_sources=detection_sources,
+                )
+                is_confirmed_violet = server_classification == "confirmed_violet"
+                is_suspected_violet = server_classification == "suspected_violet"
+                is_violet = is_confirmed_violet or is_suspected_violet
 
     mismatches = expected_mismatches(identity, args) if identity else []
     candidate_stale_reasons = classify_stale_reasons(
@@ -748,9 +835,13 @@ def audit_port(
         "listener_backend": "ok",
         "listener_backend_status": "ok",
         "listener_backend_error": None,
+        "listener_backend_warnings": [],
         "process_backend": process_result.backend,
         "process_backend_status": process_result.status,
         "process_backend_error": process_result.error,
+        "auth_probe_attempted": auth_probe_attempted,
+        "auth_probe_error": auth_probe_error,
+        "auth_probe_skipped_reason": auth_probe_skipped_reason,
     }
 
 
@@ -768,6 +859,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "listener_backend": listener_result.backend,
             "listener_backend_status": listener_result.status,
             "listener_backend_error": listener_result.error,
+            "listener_backend_warnings": listener_result.warnings or [],
             "listener_detection_reliable": False,
             "process_backend": "not_run",
             "process_backend_status": "not_run",
@@ -802,6 +894,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         item["listener_backend"] = listener_result.backend
         item["listener_backend_status"] = listener_result.status
         item["listener_backend_error"] = listener_result.error
+        item["listener_backend_warnings"] = listener_result.warnings or []
         ports_report.append(item)
 
     occupied = [p for p in ports_report if p["listening"]]
@@ -817,6 +910,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "listener_backend": listener_result.backend,
         "listener_backend_status": listener_result.status,
         "listener_backend_error": listener_result.error,
+        "listener_backend_warnings": listener_result.warnings or [],
         "listener_detection_reliable": True,
         "process_backend": process_result.backend,
         "process_backend_status": process_result.status,
@@ -843,6 +937,8 @@ def print_text_report(report: dict[str, Any]) -> None:
     print(f"listener_backend_status: {report['listener_backend_status']}")
     if report["listener_backend_error"]:
         print(f"listener_backend_error: {report['listener_backend_error']}")
+    if report["listener_backend_warnings"]:
+        print(f"listener_backend_warnings: {'; '.join(report['listener_backend_warnings'])}")
     print(f"process_backend: {report['process_backend']}")
     print(f"process_backend_status: {report['process_backend_status']}")
     if report["process_backend_error"]:
@@ -880,6 +976,11 @@ def print_text_report(report: dict[str, Any]) -> None:
         print(f"  identity_status: {item['identity_status']}")
         if item["identity_error"]:
             print(f"  identity_error: {item['identity_error']}")
+        print(f"  auth_probe_attempted: {item['auth_probe_attempted']}")
+        if item["auth_probe_skipped_reason"]:
+            print(f"  auth_probe_skipped_reason: {item['auth_probe_skipped_reason']}")
+        if item["auth_probe_error"]:
+            print(f"  auth_probe_error: {item['auth_probe_error']}")
         identity = item["identity"] or {}
         if identity:
             print(f"  app_name: {identity.get('app_name')}")
@@ -922,6 +1023,11 @@ def make_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-storage-root", default=None)
     parser.add_argument("--admin-username", default="admin")
     parser.add_argument("--admin-password", default=None)
+    parser.add_argument(
+        "--allow-auth-probe",
+        action="store_true",
+        help="Allow credentialed identity retry only after process evidence suggests V.I.O.L.E.T.",
+    )
     return parser
 
 

@@ -316,6 +316,8 @@ Stop-Process -Id <recorded-reloader-PID>,<recorded-worker-PID>
 
 **Additional S1 server lifecycle guard:** Before any agent-started server, run `scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree` and stop if an unexpected V.I.O.L.E.T. server is active. Do not silently choose another port around a stale server. Record command, `APP_PORT`, `VIOLET_BASE_URL`, parent/reloader PID, worker/identity PID, process tree, code root, git SHA, `VIOLET_ENV`, DB, storage root, and Python executable. `run.py --debug` uses uvicorn reload and may leave a worker child if only a wrapper/reloader PID is stopped; cleanup must stop only the exact identified process tree started by the task. After cleanup, verify the port is no longer `LISTENING`, and include port-free verification in the final report.
 
+The active S1 audit tool is scoped to the current Windows local validation environment. On non-Windows hosts, use a platform-specific equivalent or future tested implementation; an unsupported listener backend must fail closed and must not be treated as a clean no-active-server preflight.
+
 ## Final Delivery Report Standard
 
 Every CodeX final report for implementation or review stages must be written in Chinese and include:

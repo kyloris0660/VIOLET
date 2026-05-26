@@ -54,7 +54,7 @@ Lifecycle: reusable validation/safety tool.
 The tool is read-only by default and has no process stop/kill functionality. It:
 
 - scans common local ports such as `8000,8012-8024`
-- supports the current active Windows validation environment through `netstat -ano -p tcp`
+- supports the current active Windows validation environment through `netstat -ano -p tcp` and `netstat -ano -p tcpv6`
 - treats non-Windows listener auditing as unsupported unless a tested backend is added later
 - reports listener backend status (`listener_backend`, `listener_backend_status`, `listener_backend_error`)
 - fails closed for `--fail-if-any` / `--fail-if-stale` when the listener backend is unavailable or unsupported
@@ -64,7 +64,8 @@ The tool is read-only by default and has no process stop/kill functionality. It:
 - reports TCP listener PID
 - reports whether process metadata exists
 - reports command line, parent PID, and matching child processes when visible
-- optionally reads `/api/system/server-identity` with admin credentials
+- first reads `/api/system/server-identity` without credentials
+- may retry identity with admin credentials only when `--allow-auth-probe` is set and process evidence already suggests V.I.O.L.E.T.
 - reports explicit identity statuses such as `unauthorized`, `forbidden`, `connection_failed`, or `unavailable` instead of pretending success when identity cannot be read
 - distinguishes `confirmed_violet`, `suspected_violet`, `unknown_listener`, and `non_violet`
 - treats identity `401/403` as `unauthorized` / `forbidden`, not as proof that the server is unrelated
@@ -106,6 +107,14 @@ Latest closeout scope correction:
 - `run.py` plus identity `401/403` is no longer sufficient without repo evidence.
 - `--admin-password` redaction now handles space-containing and escaped-quote values without leaking suffixes.
 
+Final closeout safety fixes:
+
+- Credential probes are safe by default: the tool never posts admin credentials to an unknown listener.
+- A credentialed identity retry requires both `--allow-auth-probe` and process evidence that classifies the listener as suspected V.I.O.L.E.T.
+- Windows listener detection now scans both TCP and TCPv6 listeners and merges duplicate ports without double counting.
+- Partial Windows listener backend coverage, such as TCP succeeding while TCPv6 fails, is reported as `partial` and fails closed rather than claiming a clean preflight.
+- Current support scope is Windows local validation. Non-Windows remains unsupported/fail-closed unless a future tested backend is implemented.
+
 ## Governance Updates
 
 Updated lifecycle rules in `AGENTS.md`, `CLAUDE.md`, `docs/test-workflow.md`, and `docs/manual-validation.md`:
@@ -134,7 +143,7 @@ Focused checks for this PR:
 
 - `python -m py_compile scripts/audit_active_violet_servers.py tests/test_audit_active_violet_servers.py`
 - `python -m pytest tests/test_audit_active_violet_servers.py -v`
-- `python scripts/audit_active_violet_servers.py --ports 8012 --json --include-process-tree --admin-password <redacted>`
+- `python scripts/audit_active_violet_servers.py --ports 8012 --json --include-process-tree`
 
 The focused tests cover:
 
@@ -146,12 +155,15 @@ The focused tests cover:
 - `--fail-if-any`
 - `--fail-if-stale`
 - listener backend unavailable / unsupported behavior
+- Windows TCP and TCPv6 listener parsing and duplicate merge behavior
+- partial listener backend warning / fail-closed behavior
 - fail-closed gates when listener detection is unavailable
 - process backend unavailable / fail-closed behavior
 - Windows path normalization for expected code root and storage root
 - path-boundary expected code root evidence
 - unrelated `violet` and unrelated `run.py` false-positive prevention
 - escaped-quote admin password redaction
+- safe credential probe behavior; unknown listeners never receive admin login POSTs
 - identity unavailable behavior
 - unauthorized identity with process evidence -> `suspected_violet`
 - unrelated occupied service does not increment `stale_server_count`

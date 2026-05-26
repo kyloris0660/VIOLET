@@ -30,9 +30,13 @@
     "supports_fail_if_stale": true,
     "supports_process_tree": true,
     "supports_optional_identity_auth": true,
+    "credential_probe_requires_allow_auth_probe": true,
+    "credential_probe_never_posts_to_unknown_listener": true,
     "redacts_admin_password": true,
     "supported_active_validation_platform": "Windows",
     "listener_backend": "windows_netstat",
+    "scans_windows_tcpv6": true,
+    "partial_listener_backend_fails_closed": true,
     "non_windows_strategy": "unsupported_fail_closed",
     "backend_unavailable_false_clean_prevented": true,
     "process_backend_unavailable_false_clean_prevented": true,
@@ -83,7 +87,13 @@
       "expected_code_root_evidence_uses_path_boundaries": true,
       "bare_violet_process_names_do_not_classify_as_violet": true,
       "run_py_plus_401_requires_repo_evidence": true,
-      "admin_password_escaped_quote_redaction": true
+      "admin_password_escaped_quote_redaction": true,
+      "credential_probe_safe_by_default": true,
+      "unknown_listener_never_receives_admin_login": true,
+      "suspected_violet_auth_probe_requires_explicit_flag": true,
+      "windows_tcpv6_listener_scan": true,
+      "windows_tcp_tcpv6_duplicate_merge": true,
+      "partial_windows_listener_backend_reports_warning": true
     }
   },
   "policy_updates": [

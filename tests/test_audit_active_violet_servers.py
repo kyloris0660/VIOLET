@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -49,6 +50,10 @@ def _identity(**overrides):
     return data
 
 
+def _completed(stdout="", stderr="", returncode=0):
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
 def test_parse_ports_accepts_ranges_and_deduplicates():
     assert audit.parse_ports("8000,8012-8014,8013") == [8000, 8012, 8013, 8014]
 
@@ -92,6 +97,70 @@ def test_redacts_admin_password_from_command_line():
         assert "--other visible" in redacted
         for leaked_value in leaked_values:
             assert leaked_value not in redacted
+
+
+def test_windows_tcp_listener_is_parsed(monkeypatch):
+    def fake_run(args, timeout=5.0):
+        if args[-1] == "tcp":
+            return _completed(stdout="  TCP    0.0.0.0:8012    0.0.0.0:0    LISTENING    1234\n")
+        return _completed(stdout="")
+
+    monkeypatch.setattr(audit.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(audit, "run_command", fake_run)
+
+    result = audit.get_tcp_listeners([8012])
+
+    assert result.status == "ok"
+    assert result.listeners == {8012: 1234}
+
+
+def test_windows_tcpv6_listener_is_parsed(monkeypatch):
+    def fake_run(args, timeout=5.0):
+        if args[-1] == "tcpv6":
+            return _completed(stdout="  TCP    [::]:8013    [::]:0    LISTENING    5678\n")
+        return _completed(stdout="")
+
+    monkeypatch.setattr(audit.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(audit, "run_command", fake_run)
+
+    result = audit.get_tcp_listeners([8013])
+
+    assert result.status == "ok"
+    assert result.listeners == {8013: 5678}
+
+
+def test_windows_tcp_and_tcpv6_duplicate_port_prefers_tcp(monkeypatch):
+    def fake_run(args, timeout=5.0):
+        if args[-1] == "tcp":
+            return _completed(stdout="  TCP    127.0.0.1:8012    0.0.0.0:0    LISTENING    1111\n")
+        return _completed(stdout="  TCP    [::1]:8012    [::]:0    LISTENING    2222\n")
+
+    monkeypatch.setattr(audit.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(audit, "run_command", fake_run)
+
+    result = audit.get_tcp_listeners([8012])
+
+    assert result.status == "ok"
+    assert result.listeners == {8012: 1111}
+
+
+def test_windows_partial_listener_backend_reports_warning(monkeypatch, capsys):
+    def fake_run(args, timeout=5.0):
+        if args[-1] == "tcp":
+            return _completed(stdout="  TCP    127.0.0.1:8012    0.0.0.0:0    LISTENING    1111\n")
+        return _completed(stderr="tcpv6 unavailable", returncode=1)
+
+    monkeypatch.setattr(audit.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(audit, "run_command", fake_run)
+
+    code = audit.main(["--ports", "8012", "--json"])
+
+    assert code == 2
+    report = json.loads(capsys.readouterr().out)
+    assert report["listener_backend_status"] == "partial"
+    assert report["listener_backend_warnings"]
+    assert "tcpv6" in report["listener_backend_error"]
+    assert report["listener_detection_reliable"] is False
 
 
 def test_json_output_shape_for_no_active_servers(monkeypatch, capsys):
@@ -212,6 +281,155 @@ def test_fail_gates_fail_closed_when_process_backend_unavailable(monkeypatch, ca
     assert audit.main(["--ports", "8012", "--fail-if-any", "--json"]) == 2
     capsys.readouterr()
     assert audit.main(["--ports", "8012", "--fail-if-stale", "--json"]) == 2
+
+
+def test_unrelated_listener_with_admin_password_does_not_login(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 9911}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            9911: audit.ProcessInfo(
+                pid=9911,
+                parent_pid=1,
+                command_line=r"C:\Apps\OtherProject\run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    def forbidden_auth(*args, **kwargs):
+        raise AssertionError("must not POST credentials to unknown listeners")
+
+    monkeypatch.setattr(audit, "fetch_identity_with_auth", forbidden_auth)
+
+    report = audit.build_report(
+        _args(
+            "--ports",
+            "8012",
+            "--admin-password",
+            "secret",
+            "--allow-auth-probe",
+        )
+    )
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "unknown_listener"
+    assert item["auth_probe_attempted"] is False
+    assert item["auth_probe_skipped_reason"] == "listener_not_confirmed_or_suspected_violet"
+
+
+def test_suspected_violet_with_allow_auth_probe_attempts_login(monkeypatch):
+    attempts = []
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=39504,
+                command_line=r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    def fake_auth(*args, **kwargs):
+        attempts.append(kwargs.get("admin_password"))
+        return _identity(pid=10292), None
+
+    monkeypatch.setattr(audit, "fetch_identity_with_auth", fake_auth)
+
+    report = audit.build_report(
+        _args(
+            "--ports",
+            "8012",
+            "--admin-password",
+            "secret",
+            "--allow-auth-probe",
+        )
+    )
+    item = report["ports"][0]
+
+    assert attempts == ["secret"]
+    assert item["auth_probe_attempted"] is True
+    assert item["server_classification"] == "confirmed_violet"
+    assert item["identity_status"] == "ok"
+
+
+def test_suspected_violet_without_allow_auth_probe_does_not_login_but_fails_preflight(monkeypatch, capsys):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=39504,
+                command_line=r"C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (None, "unauthorized"))
+
+    def forbidden_auth(*args, **kwargs):
+        raise AssertionError("must not POST credentials without --allow-auth-probe")
+
+    monkeypatch.setattr(audit, "fetch_identity_with_auth", forbidden_auth)
+
+    code = audit.main(
+        [
+            "--ports",
+            "8012",
+            "--admin-password",
+            "secret",
+            "--fail-if-any",
+            "--json",
+        ]
+    )
+
+    assert code == 1
+    report = json.loads(capsys.readouterr().out)
+    item = report["ports"][0]
+    assert item["server_classification"] == "suspected_violet"
+    assert item["auth_probe_attempted"] is False
+    assert item["auth_probe_skipped_reason"] == "allow_auth_probe_not_set"
+
+
+def test_confirmed_violet_identity_does_not_need_login(monkeypatch):
+    monkeypatch.setattr(audit, "get_tcp_listeners", lambda ports: _listeners({8012: 10292}))
+    monkeypatch.setattr(
+        audit,
+        "list_processes",
+        lambda: {
+            10292: audit.ProcessInfo(
+                pid=10292,
+                parent_pid=39504,
+                command_line="python run.py --debug",
+            )
+        },
+    )
+    monkeypatch.setattr(audit, "fetch_identity", lambda *a, **k: (_identity(pid=10292), None))
+
+    def forbidden_auth(*args, **kwargs):
+        raise AssertionError("confirmed identity should not need credentialed retry")
+
+    monkeypatch.setattr(audit, "fetch_identity_with_auth", forbidden_auth)
+
+    report = audit.build_report(
+        _args(
+            "--ports",
+            "8012",
+            "--admin-password",
+            "secret",
+            "--allow-auth-probe",
+        )
+    )
+    item = report["ports"][0]
+
+    assert item["server_classification"] == "confirmed_violet"
+    assert item["auth_probe_attempted"] is False
 
 
 def test_process_tree_and_stale_classification_for_orphan_reloader(monkeypatch):

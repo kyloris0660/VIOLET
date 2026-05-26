@@ -269,7 +269,7 @@ A short summary alone is not acceptable. If any item is not applicable, say "N/A
 - Never kill arbitrary Python or Node processes.
 - Only stop clearly identified V.I.O.L.E.T. / AnimeLocalBooru dev server processes.
 - Report PID, command line, and port before stopping.
-- Use `scripts/audit_active_violet_servers.py` for read-only no-active-server preflight and stale-server diagnosis on common local ports (`8000`, `8012-8024`).
+- Use `scripts/audit_active_violet_servers.py` for read-only no-active-server preflight and stale-server diagnosis on common local ports (`8000`, `8012-8024`) in the current Windows local validation environment. On non-Windows, use a platform-specific equivalent or future tested implementation; an unsupported listener backend must not be treated as a clean preflight.
 - Prefer diagnostics-first UI.
 - If adding stop/restart UI, restrict it to local debug mode only.
 - Do not expose dangerous controls in production mode.
