@@ -29,6 +29,8 @@ Agents must NOT:
 
 The user manually reviews and merges PRs on GitHub.
 
+Default PR lifecycle is a normal open PR. Create a draft PR only when the user/ChatGPT explicitly requests draft, or when the stage is clearly a design draft / not ready for review. Docs-only does not imply draft, and a reviewable plan/design PR may be opened normally. Draft PRs must not become the default way to avoid reviewer or human judgment. Final reports must state whether the PR is draft and why.
+
 ### Reviewer feedback handling policy
 
 For implementation PRs, reviewer feedback is a controlled handoff point, not an automatic code-change trigger.

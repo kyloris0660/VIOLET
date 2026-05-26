@@ -2,7 +2,9 @@
 
 Date: 2026-05-25
 
-PR: [#72](https://github.com/kyloris0660/AnimeLocalBooru/pull/72)
+PR: [#72](https://github.com/kyloris0660/VIOLET/pull/72)
+
+Sync note: PR #72 was rebased after Phase R1 / PR #73 so the canonical repository remains `https://github.com/kyloris0660/VIOLET` and the local worktree path may still remain `C:\Users\kyloris\Documents\AnimeLocalBooru`.
 
 ## Summary
 

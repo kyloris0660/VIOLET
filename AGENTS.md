@@ -173,6 +173,7 @@ Additional PR rules:
 2. Before starting a new phase, verify: current branch, `git status`, `origin/main` latest commit, previous phase is actually merged into `origin/main`.
 3. Do not mix multiple phases in one branch or one PR.
 4. The final delivery report must include the real GitHub PR URL.
+5. Default PR lifecycle is a normal open PR. Create a draft PR only when the user/ChatGPT explicitly requests draft, or when the stage is clearly a design draft / not ready for review. Docs-only does not imply draft, and a reviewable plan/design PR may be opened normally. Draft PRs must not become the default way to avoid reviewer or human judgment. Final reports must state whether the PR is draft and why.
 
 ### Reviewer feedback handling policy
 

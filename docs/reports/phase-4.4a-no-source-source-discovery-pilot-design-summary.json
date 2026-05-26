@@ -5,8 +5,15 @@
   "stage_type": "documentation_policy_pilot_design",
   "pr": {
     "number": 72,
-    "url": "https://github.com/kyloris0660/AnimeLocalBooru/pull/72",
-    "status": "draft_pr_open"
+    "url": "https://github.com/kyloris0660/VIOLET/pull/72",
+    "status": "open_pr_synced_after_phase_r1"
+  },
+  "repository_sync": {
+    "canonical_repository_url": "https://github.com/kyloris0660/VIOLET",
+    "historical_repository_name": "AnimeLocalBooru",
+    "local_worktree_path": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
+    "repo_rename_pr": 73,
+    "repo_rename_merge_commit": "bfc5ffb9699db8e9537f0b938ef0ef14295e5faf"
   },
   "no_source_assumption": {
     "usable_source_url": false,

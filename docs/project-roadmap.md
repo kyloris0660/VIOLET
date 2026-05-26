@@ -723,6 +723,8 @@ Every phase follows this workflow:
 
 Agents may create branches, commit, push, create PRs, and run tests. Agents must NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user reviews and merges on GitHub.
 
+Default PR lifecycle is a normal open PR. Create a draft PR only when the user/ChatGPT explicitly requests draft, or when the stage is clearly a design draft / not ready for review. Docs-only does not imply draft, and a reviewable plan/design PR may be opened normally. Draft PRs must not become the default way to avoid reviewer or human judgment. Final reports must state whether the PR is draft and why.
+
 **Recommended**: Enable GitHub Branch Protection / Rulesets on `main` to enforce PR-based merges.
 
 ### Real Browser Validation (Mandatory)
