@@ -1,6 +1,6 @@
 # Phase 4.4-B1 - One-provider Live Reverse-search Pilot
 
-Date: 2026-05-26T16:05:23+00:00
+Date: 2026-05-27T04:49:21+00:00
 
 ## Summary
 
@@ -13,6 +13,14 @@ Date: 2026-05-26T16:05:23+00:00
 - Derived inputs generated: `0`
 - DB writes attempted: `False`
 - Confirmed assignments created: `0`
+
+## Closeout Hardening
+
+- Credential-required remains current stop condition: `True`
+- Rerun command includes no-active-server preflight args: `True`
+- Partial live-run accounting preserves attempted items: `True`
+- Mid-run provider stop status: `partial_run_stopped`
+- DB writes deferred until first live behavior validation: `True`
 
 ## Provider Selection
 
@@ -69,12 +77,19 @@ Blocked reasons:
 
 - Requests attempted: `0`
 - Requests skipped: `5`
+- Partial run stopped: `False`
+- Stop reason: `credential_required`
+
+- none
+
+Per-item final states:
 
 - none
 
 ## DB Writes
 
 - Attempted: `False`
+- Deferred until provider pilot validated: `True`
 - Restore/recovery note: `No DB writes were attempted.`
 
 - `EntityEvidence`: `0`
@@ -101,7 +116,7 @@ Blocked reasons:
 - Process env: `$env:SAUCENAO_API_KEY = "<your SauceNAO API key>"`
 - Local `.env`: `Add SAUCENAO_API_KEY=<your SauceNAO API key> to .env (do not commit .env).`
 - Verify without printing secret: `$envHas = [bool]$env:SAUCENAO_API_KEY; $dotenvHas = [bool](Select-String -Path .env -SimpleMatch "SAUCENAO_API_KEY=" -Quiet); [pscustomobject]@{SAUCENAO_API_KEY_present=($envHas -or $dotenvHas)}`
-- Next rerun command: `& "$PY" scripts/run_phase44b1_one_provider_live_reverse_search_pilot.py --media-ids 2690 2687 2670 2654 2647 --execute-live --upload-derived-approved --provider-docs-verified --report-json docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json --report-md docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md --local-details-json .local_manifests/phase-4.4b1-live-details.json`
+- Next rerun command: `& "$PY" scripts/run_phase44b1_one_provider_live_reverse_search_pilot.py --media-ids 2690 2687 2670 2654 2647 --execute-live --upload-derived-approved --provider-docs-verified --report-json docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json --report-md docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md --local-details-json .local_manifests/phase-4.4b1-live-details.json --derived-dir .local_manifests/phase-4.4b1-derived --no-active-server-preflight-result clean --no-active-server-listener-backend windows_netstat --no-active-server-occupied-count 0 --no-active-server-confirmed-violet-count 0 --no-active-server-suspected-violet-count 0`
 
 ## Safety Confirmation
 

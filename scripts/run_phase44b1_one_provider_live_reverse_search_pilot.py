@@ -117,6 +117,24 @@ class ProviderPolicyBlocked(Phase44B1Error):
     pass
 
 
+class ProviderStop(ProviderPolicyBlocked):
+    def __init__(
+        self,
+        stop_condition: str,
+        *,
+        public_results: list[dict[str, Any]],
+        details_results: list[dict[str, Any]],
+        result_counts: dict[str, int],
+        db_counts: dict[str, int],
+    ) -> None:
+        super().__init__(f"provider_stop: {stop_condition}")
+        self.stop_condition = stop_condition
+        self.public_results = public_results
+        self.details_results = details_results
+        self.result_counts = result_counts
+        self.db_counts = db_counts
+
+
 class PrivacyBlocked(Phase44B1Error):
     pass
 
@@ -909,7 +927,13 @@ def _setup_instructions() -> dict[str, Any]:
             "--execute-live --upload-derived-approved --provider-docs-verified "
             "--report-json docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json "
             "--report-md docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md "
-            "--local-details-json .local_manifests/phase-4.4b1-live-details.json"
+            "--local-details-json .local_manifests/phase-4.4b1-live-details.json "
+            "--derived-dir .local_manifests/phase-4.4b1-derived "
+            "--no-active-server-preflight-result clean "
+            "--no-active-server-listener-backend windows_netstat "
+            "--no-active-server-occupied-count 0 "
+            "--no-active-server-confirmed-violet-count 0 "
+            "--no-active-server-suspected-violet-count 0"
         ),
     }
 
@@ -949,6 +973,13 @@ def build_base_summary(
             "execute_live_requested": execute_live,
             "provider_docs_verified_by_operator": provider_docs_verified,
             "write_db_records_requested": write_db_records,
+        },
+        "closeout_hardening": {
+            "credential_required_remains_current_stop_condition": not credential_status["present"],
+            "rerun_command_includes_no_active_server_preflight_args": True,
+            "partial_live_run_accounting_preserves_attempted_items": True,
+            "partial_live_run_status": "partial_run_stopped",
+            "db_writes_deferred_until_first_live_behavior_validation": True,
         },
         "no_active_server_preflight": no_active_server_preflight,
         "identity": identity,
@@ -1003,11 +1034,15 @@ def build_base_summary(
             "skipped": len(APPROVED_SAMPLE_IDS),
             "provider": PROVIDER_KEY,
             "concurrency": 1,
+            "partial_run_stopped": False,
+            "stop_reason": None,
         },
         "provider_results_by_class": {},
+        "live_request_items": [],
         "db_writes": {
             "attempted": False,
             "backup_required": False,
+            "deferred_until_provider_pilot_validated": True,
             "restore_recovery_note": "No DB writes were attempted.",
             "by_table": {table: 0 for table in sorted(ALLOWED_WRITE_TABLES)},
             "forbidden_tables_written": {table: 0 for table in FORBIDDEN_WRITE_TABLES},
@@ -1091,12 +1126,104 @@ def _details_derived_row(derived: DerivedInput) -> dict[str, Any]:
 def _update_summary_for_stop(summary: dict[str, Any], *, status: str, stop_condition: str) -> None:
     summary["status"] = status
     summary["stop_condition"] = stop_condition
+    summary["live_requests"]["stop_reason"] = stop_condition
     if stop_condition == "credential_required":
         summary["live_requests"]["attempted"] = 0
         summary["live_requests"]["skipped"] = summary["sample_gate"]["requested_count"]
     if stop_condition == "sample_gate_blocked":
         summary["live_requests"]["attempted"] = 0
         summary["live_requests"]["skipped"] = summary["sample_gate"]["requested_count"]
+
+
+def _live_request_items(
+    sample_gate: dict[str, Any],
+    public_results: list[dict[str, Any]],
+    *,
+    partial_stop_condition: str | None,
+) -> list[dict[str, Any]]:
+    results_by_id = {int(row["media_id"]): row for row in public_results}
+    items: list[dict[str, Any]] = []
+    for row in sample_gate["request_plan"]:
+        media_id = int(row["media_id"])
+        if row["eligibility_status"] != "eligible":
+            items.append(
+                {
+                    "media_id": media_id,
+                    "final_state": "skipped_ineligible",
+                    "blocked_reason": row["blocked_reason"],
+                    "request_attempted": False,
+                    "derived_input_generated": False,
+                }
+            )
+            continue
+        result = results_by_id.get(media_id)
+        if result is not None:
+            items.append(
+                {
+                    "media_id": media_id,
+                    "final_state": result["result_class"],
+                    "request_attempted": True,
+                    "derived_input_generated": True,
+                    "upload_attempted": True,
+                    "score": result.get("score"),
+                    "error_class": result.get("error_class"),
+                }
+            )
+            continue
+        items.append(
+            {
+                "media_id": media_id,
+                "final_state": "skipped_due_to_stop" if partial_stop_condition else "skipped",
+                "stop_reason": partial_stop_condition,
+                "request_attempted": False,
+                "derived_input_generated": False,
+                "upload_attempted": False,
+            }
+        )
+    return items
+
+
+def _apply_live_execution_state(
+    summary: dict[str, Any],
+    details: dict[str, Any],
+    *,
+    sample_gate: dict[str, Any],
+    public_results: list[dict[str, Any]],
+    detail_results: list[dict[str, Any]],
+    result_counts: dict[str, int],
+    db_counts: dict[str, int],
+    status: str,
+    stop_condition: str | None,
+) -> None:
+    attempted_count = len(public_results)
+    summary["status"] = status
+    summary["stop_condition"] = stop_condition
+    summary["live_requests"]["attempted"] = attempted_count
+    summary["live_requests"]["skipped"] = max(0, sample_gate["eligible_count"] - attempted_count)
+    summary["live_requests"]["partial_run_stopped"] = status == "partial_run_stopped"
+    summary["live_requests"]["stop_reason"] = stop_condition
+    summary["provider_results_by_class"] = result_counts
+    summary["provider_result_items"] = public_results
+    summary["live_request_items"] = _live_request_items(
+        sample_gate,
+        public_results,
+        partial_stop_condition=stop_condition if status == "partial_run_stopped" else None,
+    )
+    summary["derived_inputs"]["generated_count"] = len(detail_results)
+    summary["derived_inputs"]["uploaded_count"] = attempted_count
+    summary["derived_inputs"]["source_kind_counts"] = dict(Counter(row["derived"]["source_kind"] for row in detail_results))
+    summary["derived_inputs"]["safe_artifact_ids"] = [row["derived"]["artifact_id"] for row in detail_results]
+    summary["db_writes"]["attempted"] = False
+    summary["db_writes"]["backup_required"] = False
+    summary["db_writes"]["restore_recovery_note"] = (
+        "DB writes are deferred until the first live provider behavior validation is reviewed."
+    )
+    summary["db_writes"]["by_table"] = db_counts
+    summary["evidence_candidate_behavior"]["entity_evidence_created"] = db_counts.get("EntityEvidence", 0)
+    summary["evidence_candidate_behavior"]["media_entity_candidates_created"] = db_counts.get("MediaEntityCandidate", 0)
+    summary["evidence_candidate_behavior"]["confirmed_assignments_created"] = 0
+    details["provider_results"] = detail_results
+    details["derived_inputs"] = [row["derived"] for row in detail_results]
 
 
 def write_db_records_for_result(
@@ -1206,6 +1333,8 @@ def execute_live_requests(
     write_db_records: bool,
     http_post: Callable[..., httpx.Response] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int], dict[str, int]]:
+    if write_db_records:
+        raise ProviderPolicyBlocked("db_writes_deferred_until_provider_pilot_validated")
     details_results: list[dict[str, Any]] = []
     public_results: list[dict[str, Any]] = []
     result_classes: Counter[str] = Counter()
@@ -1265,7 +1394,13 @@ def execute_live_requests(
         )
 
         if result.result_class in {"auth_failed", "forbidden", "rate_limited", "schema_changed"}:
-            raise ProviderPolicyBlocked(f"provider_stop: {result.result_class}")
+            raise ProviderStop(
+                result.result_class,
+                public_results=public_results,
+                details_results=details_results,
+                result_counts=dict(result_classes),
+                db_counts=db_counts,
+            )
         if result.result_class in {"provider_error", "privacy_blocked"}:
             failures += 1
             consecutive_failures += 1
@@ -1273,9 +1408,21 @@ def execute_live_requests(
         else:
             consecutive_failures = 0
         if failures > MAX_FAILURES or consecutive_failures > MAX_CONSECUTIVE_FAILURES:
-            raise ProviderPolicyBlocked("provider_stop: failure_budget_exceeded")
+            raise ProviderStop(
+                "failure_budget_exceeded",
+                public_results=public_results,
+                details_results=details_results,
+                result_counts=dict(result_classes),
+                db_counts=db_counts,
+            )
         if any(count > MAX_SAME_REASON_FAILURES for count in same_reason_failures.values()):
-            raise ProviderPolicyBlocked("provider_stop: same_reason_failure_budget_exceeded")
+            raise ProviderStop(
+                "same_reason_failure_budget_exceeded",
+                public_results=public_results,
+                details_results=details_results,
+                result_counts=dict(result_classes),
+                db_counts=db_counts,
+            )
 
         if write_db_records:
             with db.begin_nested():
@@ -1329,6 +1476,10 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
     result_lines = "\n".join(f"- `{key}`: `{value}`" for key, value in sorted(summary["provider_results_by_class"].items())) or "- none"
     db_lines = "\n".join(f"- `{key}`: `{value}`" for key, value in sorted(summary["db_writes"]["by_table"].items()))
     blocked_lines = "\n".join(f"- `{key}`: `{value}`" for key, value in sample["blocked_count_by_reason"].items()) or "- none"
+    live_item_lines = "\n".join(
+        f"- media `{row['media_id']}`: `{row['final_state']}`"
+        for row in summary.get("live_request_items", [])
+    ) or "- none"
     setup = summary.get("setup_instructions") or {}
     setup_lines = ""
     if setup:
@@ -1356,6 +1507,14 @@ Date: {summary['generated_at']}
 - Derived inputs generated: `{summary['derived_inputs']['generated_count']}`
 - DB writes attempted: `{summary['db_writes']['attempted']}`
 - Confirmed assignments created: `{summary['evidence_candidate_behavior']['confirmed_assignments_created']}`
+
+## Closeout Hardening
+
+- Credential-required remains current stop condition: `{summary['closeout_hardening']['credential_required_remains_current_stop_condition']}`
+- Rerun command includes no-active-server preflight args: `{summary['closeout_hardening']['rerun_command_includes_no_active_server_preflight_args']}`
+- Partial live-run accounting preserves attempted items: `{summary['closeout_hardening']['partial_live_run_accounting_preserves_attempted_items']}`
+- Mid-run provider stop status: `{summary['closeout_hardening']['partial_live_run_status']}`
+- DB writes deferred until first live behavior validation: `{summary['closeout_hardening']['db_writes_deferred_until_first_live_behavior_validation']}`
 
 ## Provider Selection
 
@@ -1412,12 +1571,19 @@ Blocked reasons:
 
 - Requests attempted: `{summary['live_requests']['attempted']}`
 - Requests skipped: `{summary['live_requests']['skipped']}`
+- Partial run stopped: `{summary['live_requests'].get('partial_run_stopped', False)}`
+- Stop reason: `{summary['live_requests'].get('stop_reason') or 'N/A'}`
 
 {result_lines}
+
+Per-item final states:
+
+{live_item_lines}
 
 ## DB Writes
 
 - Attempted: `{summary['db_writes']['attempted']}`
+- Deferred until provider pilot validated: `{summary['db_writes'].get('deferred_until_provider_pilot_validated', False)}`
 - Restore/recovery note: `{summary['db_writes']['restore_recovery_note']}`
 
 {db_lines}
@@ -1556,6 +1722,20 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
             session.rollback()
             return summary
+        if args.write_db_records:
+            _update_summary_for_stop(
+                summary,
+                status="provider_policy_blocked",
+                stop_condition="db_writes_deferred_until_provider_pilot_validated",
+            )
+            summary["db_writes"]["attempted"] = False
+            summary["db_writes"]["backup_required"] = False
+            summary["db_writes"]["restore_recovery_note"] = (
+                "DB writes are deferred until the first live provider behavior validation is reviewed."
+            )
+            write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
+            session.rollback()
+            return summary
         if not args.execute_live:
             _update_summary_for_stop(summary, status="live_not_requested", stop_condition="live_not_requested")
             write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
@@ -1587,29 +1767,17 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             write_db_records=bool(args.write_db_records),
             http_post=http_post,
         )
-        details["provider_results"] = detail_results
-        details["derived_inputs"] = [row["derived"] for row in detail_results]
-        summary["status"] = "completed"
-        summary["stop_condition"] = None
-        summary["live_requests"]["attempted"] = len(public_results)
-        summary["live_requests"]["skipped"] = sample_gate["requested_count"] - len(public_results)
-        summary["provider_results_by_class"] = result_counts
-        summary["derived_inputs"]["generated_count"] = len(detail_results)
-        summary["derived_inputs"]["uploaded_count"] = len(detail_results)
-        summary["derived_inputs"]["source_kind_counts"] = dict(Counter(row["derived"]["source_kind"] for row in detail_results))
-        summary["derived_inputs"]["safe_artifact_ids"] = [row["derived"]["artifact_id"] for row in detail_results]
-        summary["provider_result_items"] = public_results
-        summary["db_writes"]["attempted"] = bool(args.write_db_records)
-        summary["db_writes"]["backup_required"] = bool(args.write_db_records)
-        summary["db_writes"]["restore_recovery_note"] = (
-            "Allowed writes are additive cache/evidence rows only. Restore from the latest pre-run PostgreSQL backup or delete rows by provider/query_hash from this report if manual rollback is needed."
-            if args.write_db_records
-            else "No DB writes were requested."
+        _apply_live_execution_state(
+            summary,
+            details,
+            sample_gate=sample_gate,
+            public_results=public_results,
+            detail_results=detail_results,
+            result_counts=result_counts,
+            db_counts=db_counts,
+            status="completed",
+            stop_condition=None,
         )
-        summary["db_writes"]["by_table"] = db_counts
-        summary["evidence_candidate_behavior"]["entity_evidence_created"] = db_counts.get("EntityEvidence", 0)
-        summary["evidence_candidate_behavior"]["media_entity_candidates_created"] = db_counts.get("MediaEntityCandidate", 0)
-        summary["evidence_candidate_behavior"]["confirmed_assignments_created"] = 0
         high_count = int(result_counts.get("high_confidence_match", 0))
         conflict_count = int(result_counts.get("conflict", 0))
         summary["manual_review_burden_estimate"] = {
@@ -1622,10 +1790,24 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             "reason": "based_on_tiny_live_pilot_profile",
             "phase39_required_before_scaling": True,
         }
-        if args.write_db_records:
-            session.commit()
-        else:
-            session.rollback()
+        session.rollback()
+        write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
+        return summary
+    except ProviderStop as exc:
+        if summary is None:
+            raise
+        session.rollback()
+        _apply_live_execution_state(
+            summary,
+            details,
+            sample_gate=sample_gate,
+            public_results=exc.public_results,
+            detail_results=exc.details_results,
+            result_counts=exc.result_counts,
+            db_counts=exc.db_counts,
+            status="partial_run_stopped",
+            stop_condition=exc.stop_condition,
+        )
         write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
         return summary
     except ProviderPolicyBlocked as exc:

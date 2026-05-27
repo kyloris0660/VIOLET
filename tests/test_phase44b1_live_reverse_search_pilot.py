@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 from PIL import Image
 from sqlalchemy import create_engine
@@ -14,6 +15,8 @@ from sqlalchemy.pool import StaticPool
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = ROOT / "backend"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -137,6 +140,38 @@ def _base_summary(sample_gate: dict, credential_present: bool = False) -> dict:
         upload_derived_approved=True,
         provider_docs_verified=True,
         write_db_records=False,
+    )
+
+
+def _runner_args(tmp_path: Path, *extra_args: str):
+    parser = b1.build_arg_parser()
+    return parser.parse_args(
+        [
+            "--media-ids",
+            *(str(item) for item in b1.APPROVED_SAMPLE_IDS),
+            "--execute-live",
+            "--upload-derived-approved",
+            "--provider-docs-verified",
+            "--report-json",
+            str(tmp_path / "report.json"),
+            "--report-md",
+            str(tmp_path / "report.md"),
+            "--local-details-json",
+            str(tmp_path / "details.json"),
+            "--derived-dir",
+            str(tmp_path / "derived"),
+            "--no-active-server-preflight-result",
+            "clean",
+            "--no-active-server-listener-backend",
+            "windows_netstat",
+            "--no-active-server-occupied-count",
+            "0",
+            "--no-active-server-confirmed-violet-count",
+            "0",
+            "--no-active-server-suspected-violet-count",
+            "0",
+            *extra_args,
+        ]
     )
 
 
@@ -336,6 +371,123 @@ def test_credential_redaction_and_public_report_privacy_scan(db, tmp_path):
         b1.assert_public_payload_safe({"report": "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"})
 
 
+def test_partial_live_run_preserves_counts_when_provider_stops(monkeypatch, tmp_path):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        for media_id in b1.APPROVED_SAMPLE_IDS:
+            _media(session, media_id)
+            _make_storage_for_media(tmp_path, media_id)
+    finally:
+        session.close()
+
+    monkeypatch.setattr(b1, "create_engine", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(
+        b1,
+        "load_project_config",
+        lambda _root=b1.ROOT: b1.ProjectConfig(
+            project_root=tmp_path,
+            violet_env="development",
+            storage_root=tmp_path,
+            storage_root_explicitly_set=False,
+            db_user="postgres",
+            db_password="",
+            db_host="localhost",
+            db_port=5432,
+            db_name="blombooru",
+        ),
+    )
+    monkeypatch.setattr(b1, "prove_db_identity", lambda _session, _config: _identity())
+    monkeypatch.setattr(b1, "get_saucenao_api_key", lambda _root=b1.ROOT: "test-api-key")
+    monkeypatch.setattr(b1, "resolve_output_path", lambda raw, expected_parent: Path(raw))
+    called = {"http": 0}
+
+    def _http_post(*_args, **_kwargs):
+        called["http"] += 1
+        return httpx.Response(429, headers={"Retry-After": "10"}, json={"header": {"status": 0}})
+
+    summary = b1.run(_runner_args(tmp_path), http_post=_http_post)
+    try:
+        assert summary["status"] == "partial_run_stopped"
+        assert summary["stop_condition"] == "rate_limited"
+        assert summary["live_requests"]["attempted"] == 1
+        assert summary["live_requests"]["skipped"] == 4
+        assert summary["live_requests"]["partial_run_stopped"] is True
+        assert summary["live_requests"]["stop_reason"] == "rate_limited"
+        assert summary["derived_inputs"]["generated_count"] == 1
+        assert summary["derived_inputs"]["uploaded_count"] == 1
+        assert summary["provider_results_by_class"] == {"rate_limited": 1}
+        assert called["http"] == 1
+        assert summary["live_request_items"][0]["final_state"] == "rate_limited"
+        assert all(row["final_state"] == "skipped_due_to_stop" for row in summary["live_request_items"][1:])
+        assert summary["db_writes"]["attempted"] is False
+        assert all(value == 0 for value in summary["db_writes"]["by_table"].values())
+        written = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+        assert written["live_requests"]["attempted"] == 1
+        assert written["derived_inputs"]["generated_count"] == 1
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_write_db_records_flag_is_deferred_before_provider_call(monkeypatch, tmp_path):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        for media_id in b1.APPROVED_SAMPLE_IDS:
+            _media(session, media_id)
+            _make_storage_for_media(tmp_path, media_id)
+    finally:
+        session.close()
+
+    monkeypatch.setattr(b1, "create_engine", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(
+        b1,
+        "load_project_config",
+        lambda _root=b1.ROOT: b1.ProjectConfig(
+            project_root=tmp_path,
+            violet_env="development",
+            storage_root=tmp_path,
+            storage_root_explicitly_set=False,
+            db_user="postgres",
+            db_password="",
+            db_host="localhost",
+            db_port=5432,
+            db_name="blombooru",
+        ),
+    )
+    monkeypatch.setattr(b1, "prove_db_identity", lambda _session, _config: _identity())
+    monkeypatch.setattr(b1, "get_saucenao_api_key", lambda _root=b1.ROOT: "test-api-key")
+    monkeypatch.setattr(b1, "resolve_output_path", lambda raw, expected_parent: Path(raw))
+
+    def _http_post(*_args, **_kwargs):
+        raise AssertionError("DB write deferral must stop before provider calls")
+
+    summary = b1.run(_runner_args(tmp_path, "--write-db-records"), http_post=_http_post)
+    try:
+        assert summary["status"] == "provider_policy_blocked"
+        assert summary["stop_condition"] == "db_writes_deferred_until_provider_pilot_validated"
+        assert summary["db_writes"]["attempted"] is False
+        assert summary["db_writes"]["deferred_until_provider_pilot_validated"] is True
+        assert summary["live_requests"]["attempted"] == 0
+        assert summary["derived_inputs"]["generated_count"] == 0
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
 def test_no_external_call_when_credential_missing_gate(monkeypatch, tmp_path):
     engine = create_engine(
         "sqlite://",
@@ -377,35 +529,7 @@ def test_no_external_call_when_credential_missing_gate(monkeypatch, tmp_path):
         called["http"] = True
         raise AssertionError("external call should not be attempted")
 
-    parser = b1.build_arg_parser()
-    args = parser.parse_args(
-        [
-            "--media-ids",
-            *(str(item) for item in b1.APPROVED_SAMPLE_IDS),
-            "--execute-live",
-            "--upload-derived-approved",
-            "--provider-docs-verified",
-            "--report-json",
-            str(tmp_path / "report.json"),
-            "--report-md",
-            str(tmp_path / "report.md"),
-            "--local-details-json",
-            str(tmp_path / "details.json"),
-            "--derived-dir",
-            str(tmp_path / "derived"),
-            "--no-active-server-preflight-result",
-            "clean",
-            "--no-active-server-listener-backend",
-            "windows_netstat",
-            "--no-active-server-occupied-count",
-            "0",
-            "--no-active-server-confirmed-violet-count",
-            "0",
-            "--no-active-server-suspected-violet-count",
-            "0",
-        ]
-    )
-    summary = b1.run(args, http_post=_http_post)
+    summary = b1.run(_runner_args(tmp_path), http_post=_http_post)
     try:
         assert summary["status"] == "credential_required"
         assert summary["stop_condition"] == "credential_required"
