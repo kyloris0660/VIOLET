@@ -1,0 +1,390 @@
+{
+  "phase": "4.4-B1V",
+  "generated_at": "2026-05-27T13:34:28+00:00",
+  "status": "completed",
+  "base_live_rerun_pr": 77,
+  "provider": "saucenao",
+  "approved_sample_media_ids": [
+    2690,
+    2687,
+    2670,
+    2654,
+    2647
+  ],
+  "manual_validation": {
+    "items": [
+      {
+        "media_id": 2690,
+        "provider_class": "low_confidence_match",
+        "score": 34.63,
+        "minimum_similarity": 35.63,
+        "judgment": "invalid_completely_unrelated",
+        "metadata_useful": false,
+        "recommended_action": "discard",
+        "notes": "Low-confidence match, unrelated."
+      },
+      {
+        "media_id": 2687,
+        "provider_class": "high_confidence_match",
+        "score": 96.2,
+        "minimum_similarity": 52.0,
+        "judgment": "correct",
+        "metadata_useful": true,
+        "recommended_action": "keep_as_strong_evidence",
+        "notes": "Source is correct; author and series/work are useful. Character metadata needed an extraction audit."
+      },
+      {
+        "media_id": 2670,
+        "provider_class": "high_confidence_match",
+        "score": 91.96,
+        "minimum_similarity": 37.66,
+        "judgment": "correct",
+        "metadata_useful": true,
+        "recommended_action": "keep_as_strong_evidence",
+        "notes": "Source is correct; author and series/work are useful. Character metadata needed an extraction audit."
+      },
+      {
+        "media_id": 2654,
+        "provider_class": "low_confidence_match",
+        "score": 52.3,
+        "minimum_similarity": 52.0,
+        "judgment": "wrong_unrelated",
+        "metadata_useful": false,
+        "recommended_action": "discard",
+        "notes": "Low-confidence match, unrelated."
+      },
+      {
+        "media_id": 2647,
+        "provider_class": "low_confidence_match",
+        "score": 50.7,
+        "minimum_similarity": 51.7,
+        "judgment": "wrong_unrelated",
+        "metadata_useful": false,
+        "recommended_action": "discard",
+        "notes": "Low-confidence match, unrelated."
+      }
+    ],
+    "counts": {
+      "high_confidence_validated_correct": 2,
+      "high_confidence_total": 2,
+      "low_confidence_useful": 0,
+      "low_confidence_total": 3
+    },
+    "policy_implications": [
+      "high_confidence_saucenao_results_are_promising_source_evidence_in_this_tiny_pilot",
+      "low_confidence_saucenao_results_were_zero_of_three_useful_and_should_be_discarded_by_default",
+      "minimum_similarity_alone_is_not_sufficient_as_an_acceptance_threshold",
+      "no_automatic_confirmed_assignment_or_character_assignment"
+    ]
+  },
+  "metadata_extraction_audit": {
+    "local_details_artifact_present": true,
+    "local_details_raw_payload_included": false,
+    "public_markdown_character_omission_does_not_prove_api_absence": true,
+    "metadata_preservation_requery_performed": true,
+    "requery_media_ids": [
+      2687,
+      2670
+    ],
+    "discarded_low_confidence_requeried": false,
+    "items": [
+      {
+        "media_id": 2690,
+        "result_class": "low_confidence_match",
+        "score": 34.63,
+        "minimum_similarity": 35.63,
+        "source_post_available": true,
+        "source_url_host": "deviantart.com",
+        "result_id": null,
+        "artist_present": true,
+        "work_present": true,
+        "character_present": null,
+        "general_tags_present": null,
+        "metadata_source_present": true,
+        "metadata_artist_present": true,
+        "metadata_work_present": true,
+        "metadata_character_present": "unknown",
+        "metadata_general_tags_present": "unknown",
+        "metadata_extraction_status": "parser_missing_discarded_low_confidence_not_requeried",
+        "available_local_fields": [
+          "creator",
+          "index_id",
+          "index_name",
+          "result_id",
+          "similarity",
+          "source_url_host",
+          "source_url_present",
+          "title"
+        ],
+        "top_summary": "index=deviantArt2; source_host=deviantart.com; artist_present=true; work_or_title_present=true; characters=unknown",
+        "provider_index_label": "deviantArt2",
+        "provider_returned_filename_redacted": true
+      },
+      {
+        "media_id": 2687,
+        "result_class": "high_confidence_match",
+        "score": 96.2,
+        "minimum_similarity": 52,
+        "source_post_available": true,
+        "source_url_host": "danbooru.donmai.us",
+        "result_id": 7695035,
+        "artist_present": true,
+        "work_present": true,
+        "character_present": true,
+        "general_tags_present": false,
+        "metadata_source_present": true,
+        "metadata_artist_present": true,
+        "metadata_work_present": true,
+        "metadata_character_present": true,
+        "metadata_general_tags_present": false,
+        "metadata_extraction_status": "requery_performed",
+        "available_local_fields": [
+          "creator",
+          "index_id",
+          "index_name",
+          "result_id",
+          "similarity",
+          "source_url_host",
+          "source_url_present",
+          "title"
+        ],
+        "top_summary": "index=Danbooru; source_host=danbooru.donmai.us; result_id=7695035; artist=yunkaiming; work=honkai: star rail,honkai (series); characters=acheron (honkai: star rail)",
+        "source_url_hosts": [
+          "danbooru.donmai.us",
+          "gelbooru.com"
+        ],
+        "artist": "yunkaiming",
+        "work_or_copyright": [
+          "honkai: star rail",
+          "honkai (series)"
+        ],
+        "characters": [
+          "acheron (honkai: star rail)"
+        ],
+        "general_tags": [],
+        "data_keys": [
+          "characters",
+          "creator",
+          "danbooru_id",
+          "ext_urls",
+          "gelbooru_id",
+          "material",
+          "source"
+        ],
+        "header_status": 0,
+        "short_remaining": 3,
+        "long_remaining": 89,
+        "provider_index_label": "Danbooru",
+        "provider_returned_filename_redacted": true
+      },
+      {
+        "media_id": 2670,
+        "result_class": "high_confidence_match",
+        "score": 91.96,
+        "minimum_similarity": 37.66,
+        "source_post_available": true,
+        "source_url_host": "danbooru.donmai.us",
+        "result_id": 9366672,
+        "artist_present": true,
+        "work_present": true,
+        "character_present": true,
+        "general_tags_present": false,
+        "metadata_source_present": true,
+        "metadata_artist_present": true,
+        "metadata_work_present": true,
+        "metadata_character_present": true,
+        "metadata_general_tags_present": false,
+        "metadata_extraction_status": "requery_performed",
+        "available_local_fields": [
+          "creator",
+          "index_id",
+          "index_name",
+          "result_id",
+          "similarity",
+          "source_url_host",
+          "source_url_present",
+          "title"
+        ],
+        "top_summary": "index=Danbooru; source_host=danbooru.donmai.us; result_id=9366672; artist=songchuan li; work=blue archive; characters=kisaki (blue archive)",
+        "source_url_hosts": [
+          "danbooru.donmai.us",
+          "gelbooru.com"
+        ],
+        "artist": "songchuan li",
+        "work_or_copyright": [
+          "blue archive"
+        ],
+        "characters": [
+          "kisaki (blue archive)"
+        ],
+        "general_tags": [],
+        "data_keys": [
+          "characters",
+          "creator",
+          "danbooru_id",
+          "ext_urls",
+          "gelbooru_id",
+          "material",
+          "source"
+        ],
+        "header_status": 0,
+        "short_remaining": 2,
+        "long_remaining": 88,
+        "provider_index_label": "Danbooru",
+        "provider_returned_filename_redacted": true
+      },
+      {
+        "media_id": 2654,
+        "result_class": "low_confidence_match",
+        "score": 52.3,
+        "minimum_similarity": 52.0,
+        "source_post_available": true,
+        "source_url_host": "www.pixiv.net",
+        "result_id": 18559999,
+        "artist_present": true,
+        "work_present": true,
+        "character_present": null,
+        "general_tags_present": null,
+        "metadata_source_present": true,
+        "metadata_artist_present": true,
+        "metadata_work_present": true,
+        "metadata_character_present": "unknown",
+        "metadata_general_tags_present": "unknown",
+        "metadata_extraction_status": "parser_missing_discarded_low_confidence_not_requeried",
+        "available_local_fields": [
+          "creator",
+          "index_id",
+          "index_name",
+          "result_id",
+          "similarity",
+          "source_url_host",
+          "source_url_present",
+          "title"
+        ],
+        "top_summary": "index=Pixiv Images; source_host=www.pixiv.net; result_id=18559999; artist_present=true; work_or_title_present=true; characters=unknown",
+        "provider_index_label": "Pixiv Images",
+        "provider_returned_filename_redacted": true
+      },
+      {
+        "media_id": 2647,
+        "result_class": "low_confidence_match",
+        "score": 50.7,
+        "minimum_similarity": 51.7,
+        "source_post_available": false,
+        "source_url_host": null,
+        "result_id": null,
+        "artist_present": false,
+        "work_present": true,
+        "character_present": null,
+        "general_tags_present": null,
+        "metadata_source_present": false,
+        "metadata_artist_present": false,
+        "metadata_work_present": true,
+        "metadata_character_present": "unknown",
+        "metadata_general_tags_present": "unknown",
+        "metadata_extraction_status": "parser_missing_discarded_low_confidence_not_requeried",
+        "available_local_fields": [
+          "creator",
+          "index_id",
+          "index_name",
+          "result_id",
+          "similarity",
+          "source_url_host",
+          "source_url_present",
+          "title"
+        ],
+        "top_summary": "index=H-Misc (nhentai); work_or_title_present=true; characters=unknown",
+        "provider_index_label": "H-Misc (nhentai)",
+        "provider_returned_filename_redacted": true
+      }
+    ],
+    "character_metadata_status": "found_for_requeried_high_confidence_items",
+    "parser_gap": "B1 normalized payload/report omitted SauceNAO data.characters and data.material fields."
+  },
+  "acceptance_policy": {
+    "strong_evidence_candidate": "manual_validated_high_confidence_exact_or_near_exact_source_match_with_source_or_post_id",
+    "default_discard": "low_confidence_matches_without_manual_source_confirmation",
+    "not_sufficient": [
+      "minimum_similarity_alone",
+      "low_confidence_character_or_work_similarity"
+    ],
+    "blocked": [
+      "automatic_confirmed_assignment",
+      "automatic_character_assignment",
+      "automatic_trusted_entity_creation"
+    ]
+  },
+  "localization_integration_policy": {
+    "preserve_provider_metadata_raw_canonical_first": true,
+    "translate_in_saucenao_runner": false,
+    "new_localization_module": false,
+    "use_existing_localization_tag_translation_entity_translation_pipeline_later": true,
+    "proper_nouns_need_alias_original_name_support": true,
+    "translations_overrideable": true,
+    "provenance_required": true,
+    "deferred_until_after_evidence_persistence_design": true
+  },
+  "b2_expansion_plan": {
+    "execute_now": false,
+    "proposed_sample_size": "20-30 anime-only approved samples, smaller if quota or validation burden suggests",
+    "requires_user_approved_ids": true,
+    "no_full_library_auto_selection": true,
+    "quota_aware_scheduler_required": true,
+    "persistence_candidates": "high_confidence_only_after_manual_or_policy_review",
+    "low_confidence_policy": "discard_or_negative_evidence",
+    "subscription_judgment": "defer; may help quota/throughput later, not assumed to improve quality",
+    "phase39_required_before_100_plus_or_repeated_broad_provider_runs": true
+  },
+  "safety_confirmation": {
+    "db_writes": false,
+    "provider_call": "two_item_metadata_preservation_requery_only_for_2687_2670",
+    "broad_sample_expansion": false,
+    "original_upload": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver": false,
+    "similarity_clustering": false,
+    "confirmed_assignments": false
+  },
+  "local_artifacts": {
+    "metadata_audit_details": ".local_manifests/phase-4.4b1-metadata-extraction-audit-details.json",
+    "metadata_audit_sheet": ".local_manifests/phase-4.4b1-metadata-extraction-audit-sheet.md",
+    "ignored_by_gitignore": true
+  },
+  "pr_merge_confirmation": {
+    "pr77_state": "merged",
+    "pr77_merge_commit": "f29ec052afcd0a75062dba6e88a3f5e5de218557",
+    "base_branch_head_at_start": "f29ec052afcd0a75062dba6e88a3f5e5de218557"
+  },
+  "artifact_availability": {
+    "public_live_rerun_report_present": true,
+    "public_live_rerun_summary_present": true,
+    "local_live_rerun_details_present": true,
+    "local_manual_validation_sheet_present": true,
+    "local_derived_inputs_present_count": 5,
+    "local_artifacts_gitignored": true
+  },
+  "metadata_requery_gates": {
+    "reason": "local_details_preserved_only_redacted_normalized_top_result_and_could_not_audit_character_metadata",
+    "scope": "2687_and_2670_only",
+    "env_file_gitignored": true,
+    "api_key_present_without_printing": true,
+    "fresh_no_active_server_preflight": {
+      "result": "clean",
+      "listener_backend": "windows_netstat",
+      "occupied_count": 0,
+      "confirmed_violet_count": 0,
+      "suspected_violet_count": 0
+    },
+    "derived_inputs_reused_from_ignored_b1_artifacts": true,
+    "neutral_multipart_filename_used": true,
+    "requests_attempted": 2,
+    "discarded_low_confidence_samples_requeried": false,
+    "db_writes": false
+  },
+  "public_redaction": {
+    "provider_returned_image_filenames_in_public_artifacts": false,
+    "provider_returned_filename_like_tokens_redacted": true,
+    "top_summary_policy": "source/index labels, source hosts, result IDs, and safe metadata values only; provider-returned image filenames stripped"
+  }
+}
