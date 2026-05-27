@@ -258,6 +258,9 @@ def test_saucenao_request_uses_only_safe_derived_file(db, tmp_path):
     assert content_type == "image/jpeg"
     redacted = request["redacted_request_shape"]
     assert redacted["api_key" if "api_key" in redacted else "params"]["api_key"] == "<redacted>"
+    assert redacted["params"]["db"] == "999"
+    assert redacted["params"]["numres"] == "16"
+    assert redacted["params"]["dedupe"] == "2"
     assert redacted["local_path_included"] is False
     assert redacted["original_filename_included"] is False
     assert redacted["source_label_included"] is False
@@ -296,6 +299,48 @@ def test_provider_response_classification_high_low_no_match_and_conflict():
     assert b1.classify_saucenao_response(media_id=1, status_code=200, headers={}, payload={"header": {"status": 0}, "results": []}).result_class == "no_match"
     assert b1.classify_saucenao_response(media_id=1, status_code=200, headers={}, payload=conflict_payload).result_class == "conflict"
     assert b1.classify_saucenao_response(media_id=1, status_code=429, headers={"Retry-After": "10"}, payload={}).result_class == "rate_limited"
+
+
+def test_saucenao_response_preserves_quota_header_and_error_classes():
+    success_payload = {
+        "header": {
+            "status": 0,
+            "short_remaining": 3,
+            "long_remaining": 99,
+            "minimum_similarity": 60,
+        },
+        "results": [
+            {
+                "header": {"similarity": "92.5", "index_name": "Pixiv", "result_id": "1"},
+                "data": {"title": "Work", "member_name": "Artist", "ext_urls": ["https://www.pixiv.net/artworks/1"]},
+            }
+        ],
+    }
+    result = b1.classify_saucenao_response(media_id=1, status_code=200, headers={}, payload=success_payload)
+    assert result.result_class == "high_confidence_match"
+    assert result.normalized_payload["saucenao_header"]["status"] == 0
+    assert result.normalized_payload["saucenao_header"]["short_remaining"] == 3
+    assert result.normalized_payload["saucenao_header"]["long_remaining"] == 99
+    short_payload = {
+        "header": {
+            "status": -1,
+            "message": "out of searches",
+            "short_remaining": 0,
+            "long_remaining": 98,
+        }
+    }
+    daily_payload = {
+        "header": {
+            "status": -1,
+            "message": "out of searches",
+            "short_remaining": 0,
+            "long_remaining": 0,
+        }
+    }
+    bad_image_payload = {"header": {"status": -1, "message": "bad image"}}
+    assert b1.classify_saucenao_response(media_id=1, status_code=200, headers={}, payload=short_payload).result_class == "quota_short_exhausted"
+    assert b1.classify_saucenao_response(media_id=1, status_code=200, headers={}, payload=daily_payload).result_class == "quota_daily_exhausted"
+    assert b1.classify_saucenao_response(media_id=1, status_code=200, headers={}, payload=bad_image_payload).result_class == "bad_image"
 
 
 def test_db_write_mapping_is_limited_to_allowed_tables_and_no_assignment(db):

@@ -654,18 +654,34 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Public reports: `docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md` and `docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json`. Local details remain ignored under `.local_manifests/phase-4.4b1-live-details.json`.
 - A later rerun requires local `SAUCENAO_API_KEY`, explicit operator verification of current SauceNAO API/account limits, the existing five-ID sample gate, and the same derived-only upload approval. The first credentialed behavior-validation rerun should still avoid DB writes. Broad provider scaling still requires Phase 3.9 ledger discipline.
 
+### Phase 4.4-B1 Live Rerun - SauceNAO Results
+
+**Goal:** Execute the approved five-sample SauceNAO live rerun using only derived/resized/stripped inputs and no DB writes.
+
+- PR #76 was merged before execution. `.env` is gitignored and contained `SAUCENAO_API_KEY`; the key was not committed or included in public/local artifacts.
+- Fresh no-active-server audit was clean before provider work: `occupied_count=0`, `confirmed_violet_count=0`, `suspected_violet_count=0`.
+- Approved media IDs remained fixed to `2690`, `2687`, `2670`, `2654`, and `2647`; all five were found, eligible, and `content_class=anime`.
+- The rerun generated five safe derived images from app-managed originals, resized/metadata-stripped them under ignored `.local_manifests/phase-4.4b1-live-rerun-derived`, and uploaded only those derived files.
+- SauceNAO accepted all five requests: `requests_attempted=5`, `requests_skipped=0`, `header.status=[0,0,0,0,0]`.
+- Quota observations: `short_remaining=[3,2,1,1,1]`, `long_remaining=[99,98,97,96,95]`, `minimum_similarity=[35.63,52.0,37.66,52.0,51.7]`; no short-window quota exhaustion, no daily quota exhaustion, no out-of-searches condition, and provider availability was `available`.
+- Result classes: `2690=low_confidence_match`, `2687=high_confidence_match`, `2670=high_confidence_match`, `2654=low_confidence_match`, `2647=low_confidence_match`; aggregate `high_confidence_match=2`, `low_confidence_match=3`.
+- No DB writes occurred: no ProviderCache, NegativeLookupCache, EntityEvidence, MediaEntityCandidate, MediaEntityAssignment, Entity, media_tags, TagTranslation, DB import, classification, AI tagging, localization, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation.
+- Public reports: `docs/reports/phase-4.4b1-live-rerun-saucenao-results.md` and `docs/reports/phase-4.4b1-live-rerun-saucenao-results-summary.json`. Local details remain ignored under `.local_manifests/phase-4.4b1-live-rerun-details.json`.
+- Subscription is not recommended for the completed five-sample run because quota did not block execution. If scaling is later approved, subscription would likely help quota/throughput rather than improve match quality.
+
 ## Upcoming Phases
 
 Current near-term options after Phase 4.4-B1:
 
-1. Phase 4.4-B1 rerun with `SAUCENAO_API_KEY` only after current provider API/account-limit verification; keep the same five approved IDs, leave DB writes disabled for first live behavior validation, and stop on any auth/rate/schema/privacy failure.
-2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
-3. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
-4. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-5. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-6. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-7. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-8. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. Manual review the two high-confidence SauceNAO matches and the three low-confidence cases before deciding whether DB persistence is warranted.
+2. If persistence is approved, design a narrow DB persistence follow-up for evidence/cache only; still no confirmed assignments or trusted Entity creation.
+3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
+4. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
+5. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+6. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+7. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+8. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+9. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 

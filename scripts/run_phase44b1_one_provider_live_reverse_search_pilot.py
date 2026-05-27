@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -48,6 +49,9 @@ from app.models import (  # noqa: E402
 from app.services.entity_metadata_service import hash_provider_query, record_evidence  # noqa: E402
 
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 APPROVED_SAMPLE_IDS = (2690, 2687, 2670, 2654, 2647)
 APPROVED_SAMPLE_SET = frozenset(APPROVED_SAMPLE_IDS)
 PHASE = "4.4-B1"
@@ -62,7 +66,9 @@ DERIVED_MIME_TYPE = "image/jpeg"
 HIGH_CONFIDENCE_THRESHOLD = 85.0
 LOW_CONFIDENCE_THRESHOLD = 60.0
 CONFLICT_DELTA_THRESHOLD = 2.0
-REQUESTS_PER_MINUTE = 10
+REQUESTS_PER_MINUTE = 6
+SHORT_QUOTA_WAIT_SECONDS = 45
+MAX_TOTAL_QUOTA_WAIT_SECONDS = 90
 MAX_FAILURES = 2
 MAX_CONSECUTIVE_FAILURES = 2
 MAX_SAME_REASON_FAILURES = 2
@@ -126,6 +132,7 @@ class ProviderStop(ProviderPolicyBlocked):
         details_results: list[dict[str, Any]],
         result_counts: dict[str, int],
         db_counts: dict[str, int],
+        total_wait_seconds: int = 0,
     ) -> None:
         super().__init__(f"provider_stop: {stop_condition}")
         self.stop_condition = stop_condition
@@ -133,6 +140,7 @@ class ProviderStop(ProviderPolicyBlocked):
         self.details_results = details_results
         self.result_counts = result_counts
         self.db_counts = db_counts
+        self.total_wait_seconds = total_wait_seconds
 
 
 class PrivacyBlocked(Phase44B1Error):
@@ -443,11 +451,15 @@ def _sha256_file(path: Path) -> str:
 
 
 def generate_derived_input(media: Media, *, storage_root: Path, output_dir: Path) -> DerivedInput:
-    thumb_path = _resolve_storage_path(storage_root, media.thumbnail_path)
-    if thumb_path is None:
-        raise PrivacyBlocked("derived_input_blocked: thumbnail path is unsafe")
-    if not thumb_path.exists() or not thumb_path.is_file():
-        raise PrivacyBlocked("derived_input_blocked: thumbnail is missing")
+    source_path = _resolve_storage_path(storage_root, media.path)
+    source_kind = "app_managed_original"
+    if source_path is None or not source_path.exists() or not source_path.is_file():
+        source_path = _resolve_storage_path(storage_root, media.thumbnail_path)
+        source_kind = "app_managed_thumbnail"
+    if source_path is None:
+        raise PrivacyBlocked("derived_input_blocked: source path is unsafe")
+    if not source_path.exists() or not source_path.is_file():
+        raise PrivacyBlocked("derived_input_blocked: app-managed source is missing")
 
     safe_filename = _safe_filename(int(media.id))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -455,7 +467,7 @@ def generate_derived_input(media: Media, *, storage_root: Path, output_dir: Path
     if not _path_relative_to(output_path, output_dir.resolve()):
         raise PrivacyBlocked("derived_input_blocked: safe output path escaped derived directory")
 
-    with Image.open(thumb_path) as image:
+    with Image.open(source_path) as image:
         normalized = ImageOps.exif_transpose(image)
         normalized.thumbnail((MAX_DERIVED_DIMENSION, MAX_DERIVED_DIMENSION), Image.Resampling.LANCZOS)
         if normalized.mode not in {"RGB", "L"}:
@@ -473,7 +485,7 @@ def generate_derived_input(media: Media, *, storage_root: Path, output_dir: Path
         media_id=int(media.id),
         artifact_id=f"approved_media_id:{int(media.id)}:derived:{TRANSFORM_POLICY_VERSION}",
         safe_filename=safe_filename,
-        source_kind="app_managed_thumbnail",
+        source_kind=source_kind,
         width=width,
         height=height,
         size_bytes=int(output_path.stat().st_size),
@@ -519,7 +531,9 @@ def build_saucenao_request(api_key: str, derived: DerivedInput) -> dict[str, Any
         "params": {
             "output_type": "2",
             "api_key": api_key,
-            "numres": "5",
+            "db": "999",
+            "numres": "16",
+            "dedupe": "2",
         },
         "files": {
             "file": (derived.safe_filename, content, DERIVED_MIME_TYPE),
@@ -530,7 +544,9 @@ def build_saucenao_request(api_key: str, derived: DerivedInput) -> dict[str, Any
             "params": {
                 "output_type": "2",
                 "api_key": "<redacted>",
-                "numres": "5",
+                "db": "999",
+                "numres": "16",
+                "dedupe": "2",
             },
             "multipart_file_field": "file",
             "multipart_filename": derived.safe_filename,
@@ -549,6 +565,27 @@ def _parse_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_int(value: Any) -> int | None:
+    parsed = _parse_float(value)
+    if parsed is None:
+        return None
+    return int(parsed)
+
+
+def _saucenao_header_summary(header: dict[str, Any]) -> dict[str, Any]:
+    summary = {
+        "status": _parse_int(header.get("status")),
+        "short_remaining": _parse_int(header.get("short_remaining")),
+        "long_remaining": _parse_int(header.get("long_remaining")),
+        "minimum_similarity": _parse_float(header.get("minimum_similarity")),
+    }
+    for key in ("message", "long_message", "status_message", "error"):
+        value = header.get(key)
+        if isinstance(value, str) and value.strip():
+            summary[key] = value.strip()[:300]
+    return summary
 
 
 def _first_public_url(data: dict[str, Any]) -> str | None:
@@ -631,20 +668,73 @@ def classify_saucenao_response(*, media_id: int, status_code: int, headers: dict
     header = payload.get("header")
     if not isinstance(header, dict):
         return ProviderResult(media_id, "schema_changed", "error", "schema_changed", None, {}, retry_after_seconds)
-    status_value = _parse_float(header.get("status"))
-    if status_value is not None and status_value < 0:
-        message = str(header.get("message") or header.get("long_message") or "").lower()
-        if "limit" in message or "quota" in message:
-            return ProviderResult(media_id, "rate_limited", "error", "rate_limited", None, {}, retry_after_seconds)
-        if "api" in message and ("key" in message or "auth" in message):
-            return ProviderResult(media_id, "auth_failed", "error", "auth_failed", None, {}, retry_after_seconds)
-        return ProviderResult(media_id, "provider_error", "error", "provider_error", None, {}, retry_after_seconds)
+    header_summary = _saucenao_header_summary(header)
+    status_value = header_summary.get("status")
+    message = str(header.get("message") or header.get("long_message") or header.get("status_message") or header.get("error") or "").lower()
+    if status_value is not None and int(status_value) > 0:
+        result_class = "provider_error"
+        error_class = "provider_error"
+        if "unavailable" in message or "maintenance" in message or "service" in message:
+            result_class = "provider_unavailable"
+            error_class = "provider_unavailable"
+        return ProviderResult(
+            media_id,
+            result_class,
+            "error",
+            error_class,
+            None,
+            {"saucenao_header": header_summary},
+            retry_after_seconds,
+        )
+    if status_value is not None and int(status_value) < 0:
+        result_class = "provider_error"
+        error_class = "client_error"
+        short_remaining = header_summary.get("short_remaining")
+        long_remaining = header_summary.get("long_remaining")
+        if long_remaining == 0:
+            result_class = "quota_daily_exhausted"
+            error_class = "quota_daily_exhausted"
+        elif short_remaining == 0:
+            result_class = "quota_short_exhausted"
+            error_class = "quota_short_exhausted"
+        elif "search" in message and ("out" in message or "limit" in message or "quota" in message):
+            result_class = "out_of_searches"
+            error_class = "out_of_searches"
+        elif "limit" in message or "quota" in message:
+            result_class = "rate_limited"
+            error_class = "rate_limited"
+        elif "api" in message and ("key" in message or "auth" in message):
+            result_class = "auth_failed"
+            error_class = "auth_failed"
+        elif "forbidden" in message or "denied" in message:
+            result_class = "forbidden"
+            error_class = "forbidden"
+        elif "bad" in message and "image" in message:
+            result_class = "bad_image"
+            error_class = "bad_image"
+        return ProviderResult(
+            media_id,
+            result_class,
+            "error",
+            error_class,
+            None,
+            {"saucenao_header": header_summary},
+            retry_after_seconds,
+        )
 
     results = payload.get("results")
     if not isinstance(results, list):
         return ProviderResult(media_id, "schema_changed", "error", "schema_changed", None, {}, retry_after_seconds)
     if not results:
-        return ProviderResult(media_id, "no_match", "no_match", None, None, {"result_count": 0}, retry_after_seconds)
+        return ProviderResult(
+            media_id,
+            "no_match",
+            "no_match",
+            None,
+            None,
+            {"result_count": 0, "saucenao_header": header_summary},
+            retry_after_seconds,
+        )
 
     normalized_entries = [
         _normalize_result_entry(item) for item in results if isinstance(item, dict)
@@ -655,10 +745,13 @@ def classify_saucenao_response(*, media_id: int, status_code: int, headers: dict
     normalized_entries.sort(key=lambda item: float(item["similarity"]), reverse=True)
     top = normalized_entries[0]
     score = float(top["similarity"])
+    minimum_similarity = header_summary.get("minimum_similarity")
     top_has_source = bool(top.get("source_url_present") or top.get("result_id"))
     result_class = "low_confidence_match"
     if score >= HIGH_CONFIDENCE_THRESHOLD and top_has_source:
         result_class = "high_confidence_match"
+    if minimum_similarity is not None and score < float(minimum_similarity):
+        result_class = "low_confidence_match"
     if len(normalized_entries) > 1:
         second = normalized_entries[1]
         second_score = float(second["similarity"])
@@ -686,6 +779,7 @@ def classify_saucenao_response(*, media_id: int, status_code: int, headers: dict
         score=score,
         normalized_payload={
             "result_count": len(results),
+            "saucenao_header": header_summary,
             "top_result": top,
             "top_results": normalized_entries[:3],
             "privacy_redacted": True,
@@ -990,7 +1084,7 @@ def build_base_summary(
             "input_kind": INPUT_KIND,
             "transform_policy_version": TRANSFORM_POLICY_VERSION,
             "max_derived_dimension": MAX_DERIVED_DIMENSION,
-            "source_preference": "app_managed_thumbnail_only_for_this_pilot",
+            "source_preference": "app_managed_original_derived_when_available_else_thumbnail",
             "original_upload": False,
             "thumbnail_upload": False,
             "derived_upload": bool(execute_live and upload_derived_approved and credential_status["present"]),
@@ -1039,6 +1133,17 @@ def build_base_summary(
         },
         "provider_results_by_class": {},
         "live_request_items": [],
+        "quota_observations": {
+            "header_status_values": [],
+            "short_remaining_values": [],
+            "long_remaining_values": [],
+            "minimum_similarity_values": [],
+            "short_quota_exhausted": False,
+            "daily_quota_exhausted": False,
+            "out_of_searches": False,
+            "provider_availability": "not_evaluated_without_live_results",
+            "total_wait_seconds": 0,
+        },
         "db_writes": {
             "attempted": False,
             "backup_required": False,
@@ -1092,6 +1197,12 @@ def build_base_summary(
             "suitable_for_larger_pilot": False,
             "reason": "not_evaluated_without_live_results",
             "phase39_required_before_scaling": True,
+        },
+        "subscription_analysis": {
+            "recommended_now": False,
+            "reason": "not_evaluated_without_live_results",
+            "likely_solves": "quota_or_throughput_only_not_match_quality",
+            "purchase_or_subscription_performed": False,
         },
     }
 
@@ -1183,6 +1294,47 @@ def _live_request_items(
     return items
 
 
+def _quota_observations(
+    public_results: list[dict[str, Any]],
+    *,
+    total_wait_seconds: int,
+) -> dict[str, Any]:
+    headers = [
+        row.get("saucenao_header")
+        for row in public_results
+        if isinstance(row.get("saucenao_header"), dict)
+    ]
+    result_classes = {str(row.get("result_class")) for row in public_results}
+    provider_availability = "not_evaluated_without_live_results"
+    if public_results:
+        provider_availability = "available"
+    if result_classes & {"provider_unavailable", "provider_error"}:
+        provider_availability = "provider_error_or_unavailable"
+    if result_classes & {"auth_failed", "forbidden"}:
+        provider_availability = "credential_or_permission_blocked"
+    if result_classes & {"quota_short_exhausted", "quota_daily_exhausted", "out_of_searches", "rate_limited"}:
+        provider_availability = "quota_or_rate_limited"
+    return {
+        "header_status_values": [header.get("status") for header in headers],
+        "short_remaining_values": [header.get("short_remaining") for header in headers],
+        "long_remaining_values": [header.get("long_remaining") for header in headers],
+        "minimum_similarity_values": [header.get("minimum_similarity") for header in headers],
+        "short_quota_exhausted": any(
+            row.get("result_class") == "quota_short_exhausted"
+            or (isinstance(row.get("saucenao_header"), dict) and row["saucenao_header"].get("short_remaining") == 0)
+            for row in public_results
+        ),
+        "daily_quota_exhausted": any(
+            row.get("result_class") == "quota_daily_exhausted"
+            or (isinstance(row.get("saucenao_header"), dict) and row["saucenao_header"].get("long_remaining") == 0)
+            for row in public_results
+        ),
+        "out_of_searches": "out_of_searches" in result_classes,
+        "provider_availability": provider_availability,
+        "total_wait_seconds": total_wait_seconds,
+    }
+
+
 def _apply_live_execution_state(
     summary: dict[str, Any],
     details: dict[str, Any],
@@ -1194,6 +1346,7 @@ def _apply_live_execution_state(
     db_counts: dict[str, int],
     status: str,
     stop_condition: str | None,
+    total_wait_seconds: int = 0,
 ) -> None:
     attempted_count = len(public_results)
     summary["status"] = status
@@ -1204,6 +1357,7 @@ def _apply_live_execution_state(
     summary["live_requests"]["stop_reason"] = stop_condition
     summary["provider_results_by_class"] = result_counts
     summary["provider_result_items"] = public_results
+    summary["quota_observations"] = _quota_observations(public_results, total_wait_seconds=total_wait_seconds)
     summary["live_request_items"] = _live_request_items(
         sample_gate,
         public_results,
@@ -1213,6 +1367,9 @@ def _apply_live_execution_state(
     summary["derived_inputs"]["uploaded_count"] = attempted_count
     summary["derived_inputs"]["source_kind_counts"] = dict(Counter(row["derived"]["source_kind"] for row in detail_results))
     summary["derived_inputs"]["safe_artifact_ids"] = [row["derived"]["artifact_id"] for row in detail_results]
+    summary["local_artifacts"]["derived_inputs"] = (
+        "generated_safe_derived_files_under_.local_manifests" if detail_results else "none_generated"
+    )
     summary["db_writes"]["attempted"] = False
     summary["db_writes"]["backup_required"] = False
     summary["db_writes"]["restore_recovery_note"] = (
@@ -1343,6 +1500,7 @@ def execute_live_requests(
     consecutive_failures = 0
     same_reason_failures: Counter[str] = Counter()
     delay_seconds = max(0.0, 60.0 / REQUESTS_PER_MINUTE)
+    total_wait_seconds = 0
 
     eligible_ids = [
         int(row["media_id"])
@@ -1365,12 +1523,16 @@ def execute_live_requests(
         )
         result = run_saucenao_request(api_key=api_key, derived=derived, http_post=http_post)
         result_classes[result.result_class] += 1
+        saucenao_header = result.normalized_payload.get("saucenao_header") if isinstance(result.normalized_payload, dict) else None
+        if not isinstance(saucenao_header, dict):
+            saucenao_header = {}
         public_results.append(
             {
                 "media_id": media_id,
                 "result_class": result.result_class,
                 "score": result.score,
                 "error_class": result.error_class,
+                "saucenao_header": saucenao_header,
                 "source_url_present": bool(result.normalized_payload.get("top_result", {}).get("source_url_present")),
                 "source_url_host": result.normalized_payload.get("top_result", {}).get("source_url_host"),
                 "raw_payload_included": False,
@@ -1393,15 +1555,26 @@ def execute_live_requests(
             }
         )
 
-        if result.result_class in {"auth_failed", "forbidden", "rate_limited", "schema_changed"}:
+        stop_classes = {
+            "auth_failed",
+            "forbidden",
+            "rate_limited",
+            "schema_changed",
+            "quota_short_exhausted",
+            "quota_daily_exhausted",
+            "out_of_searches",
+            "provider_unavailable",
+        }
+        if result.result_class in stop_classes:
             raise ProviderStop(
                 result.result_class,
                 public_results=public_results,
                 details_results=details_results,
                 result_counts=dict(result_classes),
                 db_counts=db_counts,
+                total_wait_seconds=total_wait_seconds,
             )
-        if result.result_class in {"provider_error", "privacy_blocked"}:
+        if result.result_class in {"provider_error", "privacy_blocked", "bad_image"}:
             failures += 1
             consecutive_failures += 1
             same_reason_failures[result.error_class or result.result_class] += 1
@@ -1414,6 +1587,7 @@ def execute_live_requests(
                 details_results=details_results,
                 result_counts=dict(result_classes),
                 db_counts=db_counts,
+                total_wait_seconds=total_wait_seconds,
             )
         if any(count > MAX_SAME_REASON_FAILURES for count in same_reason_failures.values()):
             raise ProviderStop(
@@ -1422,6 +1596,7 @@ def execute_live_requests(
                 details_results=details_results,
                 result_counts=dict(result_classes),
                 db_counts=db_counts,
+                total_wait_seconds=total_wait_seconds,
             )
 
         if write_db_records:
@@ -1438,8 +1613,35 @@ def execute_live_requests(
                 )
 
         if index < len(eligible_ids) - 1:
-            time.sleep(delay_seconds)
+            short_remaining = saucenao_header.get("short_remaining")
+            long_remaining = saucenao_header.get("long_remaining")
+            if long_remaining == 0:
+                raise ProviderStop(
+                    "quota_daily_exhausted",
+                    public_results=public_results,
+                    details_results=details_results,
+                    result_counts=dict(result_classes),
+                    db_counts=db_counts,
+                    total_wait_seconds=total_wait_seconds,
+                )
+            if short_remaining == 0:
+                wait_seconds = SHORT_QUOTA_WAIT_SECONDS
+                if total_wait_seconds + wait_seconds > MAX_TOTAL_QUOTA_WAIT_SECONDS:
+                    raise ProviderStop(
+                        "quota_short_exhausted",
+                        public_results=public_results,
+                        details_results=details_results,
+                        result_counts=dict(result_classes),
+                        db_counts=db_counts,
+                        total_wait_seconds=total_wait_seconds,
+                    )
+                time.sleep(wait_seconds)
+                total_wait_seconds += wait_seconds
+            else:
+                time.sleep(delay_seconds)
+                total_wait_seconds += int(delay_seconds)
 
+    db_counts["__total_wait_seconds"] = total_wait_seconds
     return public_results, details_results, dict(result_classes), db_counts
 
 
@@ -1481,6 +1683,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         for row in summary.get("live_request_items", [])
     ) or "- none"
     setup = summary.get("setup_instructions") or {}
+    quota = summary.get("quota_observations", {})
     setup_lines = ""
     if setup:
         setup_lines = f"""
@@ -1492,7 +1695,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
 - Verify without printing secret: `{setup['verify_without_printing_secret']}`
 - Next rerun command: `{setup['rerun_command']}`
 """
-    return f"""# Phase 4.4-B1 - One-provider Live Reverse-search Pilot
+    return f"""# Phase 4.4-B1 - SauceNAO Live Rerun Results
 
 Date: {summary['generated_at']}
 
@@ -1573,6 +1776,15 @@ Blocked reasons:
 - Requests skipped: `{summary['live_requests']['skipped']}`
 - Partial run stopped: `{summary['live_requests'].get('partial_run_stopped', False)}`
 - Stop reason: `{summary['live_requests'].get('stop_reason') or 'N/A'}`
+- SauceNAO header.status values: `{quota.get('header_status_values', [])}`
+- SauceNAO short_remaining values: `{quota.get('short_remaining_values', [])}`
+- SauceNAO long_remaining values: `{quota.get('long_remaining_values', [])}`
+- SauceNAO minimum_similarity values: `{quota.get('minimum_similarity_values', [])}`
+- Short quota exhausted: `{quota.get('short_quota_exhausted', False)}`
+- Daily quota exhausted: `{quota.get('daily_quota_exhausted', False)}`
+- Out of searches: `{quota.get('out_of_searches', False)}`
+- Provider availability: `{quota.get('provider_availability', 'unknown')}`
+- Total wait seconds: `{quota.get('total_wait_seconds', 0)}`
 
 {result_lines}
 
@@ -1623,6 +1835,10 @@ Per-item final states:
 - Provider suitable for larger pilot: `{summary['larger_pilot_suitability']['suitable_for_larger_pilot']}`
 - Reason: `{summary['larger_pilot_suitability']['reason']}`
 - Phase 3.9 required before scaling: `true`
+- Subscription recommended now: `{summary.get('subscription_analysis', {}).get('recommended_now', False)}`
+- Subscription reason: `{summary.get('subscription_analysis', {}).get('reason', 'N/A')}`
+- Subscription likely solves: `{summary.get('subscription_analysis', {}).get('likely_solves', 'N/A')}`
+- Purchase/subscription performed: `{summary.get('subscription_analysis', {}).get('purchase_or_subscription_performed', False)}`
 """
 
 
@@ -1767,6 +1983,7 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             write_db_records=bool(args.write_db_records),
             http_post=http_post,
         )
+        total_wait_seconds = int(db_counts.pop("__total_wait_seconds", 0))
         _apply_live_execution_state(
             summary,
             details,
@@ -1777,6 +1994,7 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             db_counts=db_counts,
             status="completed",
             stop_condition=None,
+            total_wait_seconds=total_wait_seconds,
         )
         high_count = int(result_counts.get("high_confidence_match", 0))
         conflict_count = int(result_counts.get("conflict", 0))
@@ -1789,6 +2007,22 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             "suitable_for_larger_pilot": high_count > 0 and int(result_counts.get("provider_error", 0)) == 0 and conflict_count == 0,
             "reason": "based_on_tiny_live_pilot_profile",
             "phase39_required_before_scaling": True,
+        }
+        quota = summary["quota_observations"]
+        quota_blocked = bool(
+            quota.get("short_quota_exhausted")
+            or quota.get("daily_quota_exhausted")
+            or quota.get("out_of_searches")
+        )
+        summary["subscription_analysis"] = {
+            "recommended_now": bool(high_count > 0 and quota_blocked),
+            "reason": (
+                "consider_subscription_for_quota_only_after_manual_review_confirms_match_quality"
+                if high_count > 0 and quota_blocked
+                else "not_needed_for_this_5_sample_run; reassess_after_manual_review_and_before_scale"
+            ),
+            "likely_solves": "quota_or_throughput_only_not_match_quality",
+            "purchase_or_subscription_performed": False,
         }
         session.rollback()
         write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
@@ -1807,6 +2041,7 @@ def run(args: argparse.Namespace, *, http_post: Callable[..., httpx.Response] | 
             db_counts=exc.db_counts,
             status="partial_run_stopped",
             stop_condition=exc.stop_condition,
+            total_wait_seconds=exc.total_wait_seconds,
         )
         write_reports(summary, details, report_json=report_json, report_md=report_md, local_details_json=local_details_json)
         return summary
