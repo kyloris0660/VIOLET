@@ -116,7 +116,9 @@
           "source_url_present",
           "title"
         ],
-        "top_summary": "Index #34: deviantArt2 - 971490763.jpg; Woman Is A Devil; ItsPolanco; deviantart.com"
+        "top_summary": "index=deviantArt2; source_host=deviantart.com; artist_present=true; work_or_title_present=true; characters=unknown",
+        "provider_index_label": "deviantArt2",
+        "provider_returned_filename_redacted": true
       },
       {
         "media_id": 2687,
@@ -146,7 +148,7 @@
           "source_url_present",
           "title"
         ],
-        "top_summary": "Index #9: Danbooru - 3d92325033e850eee875ccc01abab784_0.jpg; honkai: star rail, honkai (series); yunkaiming; danbooru.donmai.us; 7695035",
+        "top_summary": "index=Danbooru; source_host=danbooru.donmai.us; result_id=7695035; artist=yunkaiming; work=honkai: star rail,honkai (series); characters=acheron (honkai: star rail)",
         "source_url_hosts": [
           "danbooru.donmai.us",
           "gelbooru.com"
@@ -171,7 +173,9 @@
         ],
         "header_status": 0,
         "short_remaining": 3,
-        "long_remaining": 89
+        "long_remaining": 89,
+        "provider_index_label": "Danbooru",
+        "provider_returned_filename_redacted": true
       },
       {
         "media_id": 2670,
@@ -201,7 +205,7 @@
           "source_url_present",
           "title"
         ],
-        "top_summary": "Index #9: Danbooru - 5a6b991df34f0566bd704e8df899cbbc_0.jpg; blue archive; songchuan li; danbooru.donmai.us; 9366672",
+        "top_summary": "index=Danbooru; source_host=danbooru.donmai.us; result_id=9366672; artist=songchuan li; work=blue archive; characters=kisaki (blue archive)",
         "source_url_hosts": [
           "danbooru.donmai.us",
           "gelbooru.com"
@@ -225,7 +229,9 @@
         ],
         "header_status": 0,
         "short_remaining": 2,
-        "long_remaining": 88
+        "long_remaining": 88,
+        "provider_index_label": "Danbooru",
+        "provider_returned_filename_redacted": true
       },
       {
         "media_id": 2654,
@@ -255,7 +261,9 @@
           "source_url_present",
           "title"
         ],
-        "top_summary": "Index #5: Pixiv Images - 18559999_p42.jpg; 温泉へ行こう！【腐】; 紫月; www.pixiv.net; 18559999"
+        "top_summary": "index=Pixiv Images; source_host=www.pixiv.net; result_id=18559999; artist_present=true; work_or_title_present=true; characters=unknown",
+        "provider_index_label": "Pixiv Images",
+        "provider_returned_filename_redacted": true
       },
       {
         "media_id": 2647,
@@ -285,7 +293,9 @@
           "source_url_present",
           "title"
         ],
-        "top_summary": "Index #18: H-Misc (nhentai) - 88.jpg; [Mihara Jun] yume kamo shirenai"
+        "top_summary": "index=H-Misc (nhentai); work_or_title_present=true; characters=unknown",
+        "provider_index_label": "H-Misc (nhentai)",
+        "provider_returned_filename_redacted": true
       }
     ],
     "character_metadata_status": "found_for_requeried_high_confidence_items",
@@ -371,5 +381,10 @@
     "requests_attempted": 2,
     "discarded_low_confidence_samples_requeried": false,
     "db_writes": false
+  },
+  "public_redaction": {
+    "provider_returned_image_filenames_in_public_artifacts": false,
+    "provider_returned_filename_like_tokens_redacted": true,
+    "top_summary_policy": "source/index labels, source hosts, result IDs, and safe metadata values only; provider-returned image filenames stripped"
   }
 }

@@ -26,6 +26,7 @@ Date: 2026-05-27T13:34:28+00:00
 - Local manual validation sheet was present under ignored `.local_manifests`.
 - Five B1 derived-image artifacts were present under ignored `.local_manifests`.
 - Local artifacts are not committed by this stage.
+- Public summaries redact provider-returned image filenames; richer provider-returned details remain local-only under `.local_manifests`.
 
 ## User Manual Validation
 
