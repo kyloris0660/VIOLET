@@ -1,0 +1,220 @@
+{
+  "phase": "4.4-C0",
+  "generated_at": "2026-05-27",
+  "status": "completed",
+  "scope": "provider-neutral evidence contract and non-mutating SauceNAO mapper foundation",
+  "base_context": {
+    "pr77": {
+      "state": "merged",
+      "summary": "SauceNAO live rerun completed for five approved IDs with derived/resized/stripped uploads only and zero DB writes."
+    },
+    "pr78": {
+      "state": "merged",
+      "summary": "Manual validation and metadata extraction audit confirmed high-confidence SauceNAO metadata can include artist/work/character fields."
+    },
+    "approved_sample_media_ids": [
+      2690,
+      2687,
+      2670,
+      2654,
+      2647
+    ],
+    "high_confidence_validated_correct": [
+      2687,
+      2670
+    ],
+    "low_confidence_discarded": [
+      2690,
+      2654,
+      2647
+    ]
+  },
+  "contract_objects": [
+    "ProviderQuery",
+    "ProviderRunOutcome",
+    "SourceMatch",
+    "ExtractedProviderMetadata",
+    "EvidencePersistencePlan",
+    "PlannedEntityCandidate"
+  ],
+  "modules_added": [
+    "backend/app/services/provider_evidence_contract.py",
+    "backend/app/services/saucenao_evidence_mapper.py",
+    "backend/app/services/provider_evidence_schema_fit.py",
+    "scripts/audit_phase44c0_provider_evidence_contract_fit.py",
+    "tests/test_phase44c0_provider_evidence_contract.py"
+  ],
+  "saucenao_mapping": {
+    "acceptance_policy_version": "phase44c0-manual-validated-source-evidence-v1",
+    "provider_policy_version": "phase44b1-derived-saucenao-policy-v1",
+    "items": [
+      {
+        "media_id": 2687,
+        "match_class": "exact_or_near_exact",
+        "evidence_strength": "strong",
+        "manual_validation_status": "validated_correct",
+        "score_value": 96.2,
+        "score_kind": "saucenao_similarity_percent",
+        "provider_minimum_similarity": 52.0,
+        "provider_result_id": "7695035",
+        "source_host": "danbooru.donmai.us",
+        "artist_raw": [
+          "yunkaiming"
+        ],
+        "work_raw": [
+          "honkai: star rail",
+          "honkai (series)"
+        ],
+        "character_raw": [
+          "acheron (honkai: star rail)"
+        ],
+        "localization_status": "pending",
+        "confirmed_assignment_allowed": false,
+        "entity_auto_create_allowed": false,
+        "db_write_allowed": false
+      },
+      {
+        "media_id": 2670,
+        "match_class": "exact_or_near_exact",
+        "evidence_strength": "strong",
+        "manual_validation_status": "validated_correct",
+        "score_value": 91.96,
+        "score_kind": "saucenao_similarity_percent",
+        "provider_minimum_similarity": 37.66,
+        "provider_result_id": "9366672",
+        "source_host": "danbooru.donmai.us",
+        "artist_raw": [
+          "songchuan li"
+        ],
+        "work_raw": [
+          "blue archive"
+        ],
+        "character_raw": [
+          "kisaki (blue archive)"
+        ],
+        "localization_status": "pending",
+        "confirmed_assignment_allowed": false,
+        "entity_auto_create_allowed": false,
+        "db_write_allowed": false
+      },
+      {
+        "media_id": 2690,
+        "match_class": "discarded",
+        "evidence_strength": "discard",
+        "manual_validation_status": "validated_wrong",
+        "positive_entity_candidate": false,
+        "negative_lookup_cache_planned": true,
+        "db_write_allowed": false
+      },
+      {
+        "media_id": 2654,
+        "match_class": "discarded",
+        "evidence_strength": "discard",
+        "manual_validation_status": "validated_wrong",
+        "positive_entity_candidate": false,
+        "negative_lookup_cache_planned": true,
+        "db_write_allowed": false
+      },
+      {
+        "media_id": 2647,
+        "match_class": "discarded",
+        "evidence_strength": "discard",
+        "manual_validation_status": "validated_wrong",
+        "positive_entity_candidate": false,
+        "negative_lookup_cache_planned": true,
+        "db_write_allowed": false
+      }
+    ],
+    "policy_notes": [
+      "minimum_similarity_alone_does_not_accept",
+      "high_score_alone_does_not_accept",
+      "manual_validation_plus_source_consistency_required_for_strong_evidence_in_this_pilot",
+      "low_confidence_saucenao_results_discarded_by_default"
+    ]
+  },
+  "schema_fit_audit": {
+    "schema_fit_status": "sufficient_with_json_payload",
+    "non_mutating": true,
+    "db_write_allowed": false,
+    "provider_cache": "redacted provider-neutral payloads can be stored in JSON",
+    "entity_evidence": "reverse_search evidence can point to ProviderCache by payload_ref",
+    "media_entity_candidate": "suggestion-only candidates can use entity_id NULL",
+    "negative_lookup_cache": "discarded low-confidence outcomes can be represented as negative lookup reasons",
+    "gaps_follow_up": [
+      "first-class match_class",
+      "first-class manual_validation_status",
+      "first-class localization_status",
+      "multi-provider conflict merge design"
+    ]
+  },
+  "localization_policy": {
+    "store_raw_provider_metadata_first": true,
+    "translate_inside_mapper": false,
+    "new_localization_system": false,
+    "use_existing_localization_and_entity_translation_pipeline_later": true,
+    "proper_nouns_need_alias_original_name_support": true,
+    "translations_overrideable": true,
+    "provenance_required": true,
+    "high_confidence_metadata_localization_status": "pending"
+  },
+  "multi_provider_requirements": {
+    "same_contract_required": true,
+    "objects": [
+      "ProviderQuery",
+      "ProviderRunOutcome",
+      "SourceMatch",
+      "ExtractedProviderMetadata",
+      "EvidencePersistencePlan"
+    ],
+    "second_provider_db_write_path_allowed": false,
+    "provider_scores_directly_comparable": false,
+    "agreement_strengthens_evidence": true,
+    "disagreement_becomes_conflict_or_needs_review": true
+  },
+  "proposed_next_phases": [
+    {
+      "phase": "4.4-C1",
+      "scope": "validated high-confidence evidence persistence for 2687 and 2670"
+    },
+    {
+      "phase": "4.4-D0",
+      "scope": "second-provider scouting against the same contract"
+    },
+    {
+      "phase": "4.4-B2_or_4.4-D1",
+      "scope": "approved sample expansion after C0/C1 decision"
+    },
+    {
+      "phase": "3.9",
+      "scope": "provider/source run ledger before repeated or broad provider runs"
+    }
+  ],
+  "validation": {
+    "py_compile": "passed",
+    "focused_tests": {
+      "command": "python -m pytest tests/test_phase44c0_provider_evidence_contract.py -v",
+      "result": "14 passed"
+    },
+    "schema_fit_audit_script": "printed JSON without DB access"
+  },
+  "safety_confirmation": {
+    "provider_call": false,
+    "upload": false,
+    "db_write": false,
+    "db_migration": false,
+    "provider_cache_write": false,
+    "negative_lookup_cache_write": false,
+    "entity_evidence_write": false,
+    "media_entity_candidate_write": false,
+    "media_entity_assignment_write": false,
+    "automatic_entity_creation": false,
+    "confirmed_assignment": false,
+    "media_tags_mutation": false,
+    "tag_translation_mutation": false,
+    "localization_execution": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver": false,
+    "similarity_clustering": false
+  }
+}

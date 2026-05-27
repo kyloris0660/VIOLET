@@ -683,19 +683,33 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Subscription is not recommended solely for quality; it may be reconsidered for quota/throughput only if B2 confirms high-confidence usefulness and quota becomes the bottleneck.
 - Public reports: `docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit.md` and `docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit-summary.json`. Local metadata audit artifacts remain ignored under `.local_manifests/phase-4.4b1-metadata-extraction-audit-*`.
 
+### Phase 4.4-C0 - Provider-neutral Evidence Contract
+
+**Goal:** Define a provider-neutral reverse-search evidence/candidate contract and map existing SauceNAO B1/B1V facts into it without mutation.
+
+- Adds internal contract DTOs: `ProviderQuery`, `ProviderRunOutcome`, `SourceMatch`, `ExtractedProviderMetadata`, `EvidencePersistencePlan`, and `PlannedEntityCandidate`.
+- Adds a SauceNAO-to-contract mapper that maps validated high-confidence samples `2687` and `2670` to `match_class=exact_or_near_exact`, `evidence_strength=strong`, raw provider artist/work/character metadata, `localization_status=pending`, and C1 evidence/candidate plans.
+- Maps manually invalid low-confidence samples `2690`, `2654`, and `2647` to `match_class=discarded`, `evidence_strength=discard`, no positive evidence/candidate plan, and optional future negative-cache persistence.
+- Adds a non-mutating schema-fit audit: Phase 4.1 tables are `sufficient_with_json_payload` for narrow C1 persistence using `ProviderCache`, `EntityEvidence`, nullable-entity `MediaEntityCandidate`, and optionally `NegativeLookupCache`; first-class match/manual-validation/localization columns remain follow-up design.
+- Establishes multi-provider rule: every future provider must map to the same contract and must not introduce a provider-specific DB write path. Provider scores are not directly comparable; normalized `match_class` and `evidence_strength` drive downstream logic.
+- Localization remains pending: raw provider metadata should later feed existing localization/tag translation/entity translation paths with provenance and overrides; no translation is performed inside the mapper.
+- No provider API call, upload, DB write, DB migration, ProviderCache/NegativeLookupCache/EntityEvidence/MediaEntityCandidate/MediaEntityAssignment write, automatic Entity creation, confirmed assignment, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation occurs in C0.
+- Public reports: `docs/reports/phase-4.4c0-provider-neutral-evidence-contract.md` and `docs/reports/phase-4.4c0-provider-neutral-evidence-contract-summary.json`.
+
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-B1V:
+Current near-term options after Phase 4.4-C0:
 
-1. Phase 4.4-C: design narrow evidence/cache/candidate persistence for manually validated high-confidence SauceNAO metadata; still no confirmed assignments, automatic character assignments, trusted Entity creation, media_tags mutation, or TagTranslation mutation.
-2. Phase 4.4-B2: run a larger `20-30` item approved-sample SauceNAO pilot before persistence if more quality evidence is desired.
-3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-4. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
-5. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-6. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-7. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-8. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-9. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. Phase 4.4-C1: persist only validated high-confidence evidence for `2687` and `2670` through the provider-neutral contract; still no confirmed assignments, automatic character assignments, trusted Entity creation, media_tags mutation, TagTranslation mutation, localization execution, provider rerun, or upload.
+2. Phase 4.4-D0: scout a second provider against the same contract, without a separate DB write path or live broad pilot.
+3. Phase 4.4-B2 or Phase 4.4-D1: run a larger approved-sample pilot only after C0/C1 decisions, with explicit sample IDs and one/provider-specific approval as applicable.
+4. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+5. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
+6. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+7. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+8. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+9. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+10. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 

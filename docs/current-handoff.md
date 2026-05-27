@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-B1V SauceNAO manual validation and metadata audit (2026-05-27).
+> Last updated during Phase 4.4-C0 provider-neutral evidence contract foundation (2026-05-27).
 > Read this file at the start of any new conversation to resume development.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | **Canonical GitHub URL** | `https://github.com/kyloris0660/VIOLET` |
 | **Historical repo name** | `AnimeLocalBooru`; old GitHub links may redirect and should not be recreated as a new repo name |
 | **Local worktree path** | `C:\Users\kyloris\Documents\AnimeLocalBooru` (unchanged; do not infer local folder name from remote repo name) |
-| **Branch** | `main` includes PR #72/#73/#74/#75/#76/#77; current work branch is `codex/phase-4.4-b1v-saucenao-manual-validation` |
+| **Branch** | `main` includes PR #72/#73/#74/#75/#76/#77/#78; current work branch is `codex/phase-4.4-c0-provider-evidence-contract` |
 | **Upstream** | Based on [Blombooru](https://github.com/mrblomblo/blombooru) |
 | **Stack** | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + Vanilla JS |
 | **Python** | 3.12 (venv at `./venv`) |
@@ -63,7 +63,8 @@
 | **Phase S1 ([PR #74](https://github.com/kyloris0660/VIOLET/pull/74))** | Merged - server lifecycle stale-server guard after the 8012 stale test server incident; adds read-only diagnostics and policy hardening before Phase 4.4-B0 |
 | **Phase 4.4-B0 ([PR #75](https://github.com/kyloris0660/VIOLET/pull/75))** | Merged - sample-gated reverse-search preflight scaffold for approved media IDs `2690`, `2687`, `2670`, `2654`, and `2647`; dry-run/report only, no provider calls or uploads |
 | **Phase 4.4-B1 live rerun ([PR #77](https://github.com/kyloris0660/VIOLET/pull/77))** | Merged - SauceNAO live rerun for the same five approved anime IDs completed with derived/resized/stripped uploads only; 5 requests attempted, 5 completed, 2 high-confidence matches, 3 low-confidence matches, no DB writes |
-| **Phase 4.4-B1V (current PR)** | Active - manual validation and SauceNAO metadata extraction audit; high-confidence matches validated correct, low-confidence matches discarded, character metadata confirmed present in high-confidence API data after a two-item metadata-preservation re-query |
+| **Phase 4.4-B1V ([PR #78](https://github.com/kyloris0660/VIOLET/pull/78))** | Merged - manual validation and SauceNAO metadata extraction audit; high-confidence matches validated correct, low-confidence matches discarded, character metadata confirmed present in high-confidence API data after a two-item metadata-preservation re-query |
+| **Phase 4.4-C0 (current PR)** | Active - provider-neutral reverse-search evidence contract, SauceNAO mapper foundation, non-mutating schema-fit audit, and focused tests; no provider calls, uploads, DB writes, migrations, confirmed assignments, Entity creation, localization, Entity Resolver, or similarity/clustering |
 
 ## Current Accepted State
 
@@ -91,6 +92,8 @@ Phase 4.4-B1 live rerun used the locally configured gitignored `.env` `SAUCENAO_
 
 Phase 4.4-B1V records the user's manual validation of PR #77 and audits SauceNAO metadata extraction. Manual validation accepted the two high-confidence matches as correct (`2687`, `2670`) and discarded all three low-confidence matches as unrelated (`2690`, `2654`, `2647`), so low-confidence SauceNAO results should be discarded by default in this workflow. The original PR #77 public report and local normalized details did not preserve character fields, but this does not mean the API lacks them. A bounded metadata-preservation re-query was performed only for the two validated high-confidence IDs, using the same derived-image privacy policy and no DB writes; both returned Danbooru `data.characters`, `data.material`, `creator`, source/post IDs, and source URL fields. Character metadata remains source-backed candidate metadata, not final truth: no automatic confirmed assignments, character assignments, or trusted Entity creation are approved. External provider metadata should be preserved in canonical provider form first and later feed the existing localization/tag translation/entity translation pipeline; do not create a separate SauceNAO translation path. Public report: `docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit.md`; summary JSON: `docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit-summary.json`; local ignored audit artifacts are under `.local_manifests/phase-4.4b1-metadata-extraction-audit-*`.
 
+Phase 4.4-C0 defines the provider-neutral evidence contract for reverse-search provider outputs and maps the existing SauceNAO B1/B1V facts into it without mutation. The contract includes `ProviderQuery`, `ProviderRunOutcome`, `SourceMatch`, `ExtractedProviderMetadata`, `EvidencePersistencePlan`, and planned nullable-entity candidates. The SauceNAO mapper treats `2687` and `2670` as manually validated strong exact/near-exact source evidence with raw provider artist/work/character metadata preserved and `localization_status=pending`; it treats `2690`, `2654`, and `2647` as discarded low-confidence results with no positive evidence/candidate plan. The schema-fit audit concludes Phase 4.1 tables are `sufficient_with_json_payload` for a narrow C1 persistence pass, but first-class match/manual-validation/localization columns remain follow-up design. C0 performs no provider call, upload, DB write, DB migration, ProviderCache/NegativeLookupCache/EntityEvidence/MediaEntityCandidate/MediaEntityAssignment write, automatic Entity creation, confirmed assignment, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation. Public report: `docs/reports/phase-4.4c0-provider-neutral-evidence-contract.md`; summary JSON: `docs/reports/phase-4.4c0-provider-neutral-evidence-contract-summary.json`.
+
 Key accepted facts:
 
 - I6 cloud-aware staging copy: `994` staged successes, `6` item-level failures.
@@ -105,6 +108,7 @@ Key accepted facts:
 - Phase 4.4-B1 credential-blocked live pilot: provider `saucenao`; approved media IDs unchanged; no-active-server preflight clean; DB identity `development/blombooru` confirmed; found `5`; eligible `5`; blocked `0`; content class distribution `anime=5`; `SAUCENAO_API_KEY` missing; live requests `0`; derived files generated `0`; uploads `0`; DB writes `0`; confirmed assignments `0`; closeout hardening preserves partial-run accounting and defers DB writes for first live behavior validation.
 - Phase 4.4-B1 SauceNAO live rerun: approved media IDs unchanged; fresh no-active-server preflight clean; DB identity `development/blombooru` confirmed; found `5`; eligible `5`; blocked `0`; derived files generated/uploaded `5`; live requests `5`; skipped `0`; high-confidence matches `2`; low-confidence matches `3`; SauceNAO short quota not exhausted; daily quota not exhausted; DB writes `0`; confirmed assignments `0`.
 - Phase 4.4-B1V manual validation: high-confidence SauceNAO matches were correct `2/2` (`2687`, `2670`); low-confidence matches useful `0/3` (`2690`, `2654`, `2647` discarded); metadata-preservation re-query for only `2687` and `2670` found character tags (`acheron (honkai: star rail)`, `kisaki (blue archive)`), work/material, creator, and source/post fields; DB writes `0`; confirmed assignments `0`.
+- Phase 4.4-C0 provider-neutral contract: `2687` and `2670` map to `match_class=exact_or_near_exact`, `evidence_strength=strong`, raw artist/work/character metadata preserved, `localization_status=pending`, and C1 candidate/evidence plans with no DB write in C0. `2690`, `2654`, and `2647` map to `match_class=discarded`, `evidence_strength=discard`, no positive candidates, and optional future negative-cache persistence. Schema fit is `sufficient_with_json_payload`.
 
 Known non-blocking issues:
 
@@ -114,7 +118,8 @@ Known non-blocking issues:
 
 Next-stage candidates:
 
-- Phase 4.4-B1V confirms SauceNAO is viable for targeted exact/near-exact source-discovery evidence when high-confidence results are manually/policy validated. Low-confidence results should be discarded by default. Next decision should be either Phase 4.4-C evidence/cache/candidate persistence design for validated high-confidence source-backed metadata, or Phase 4.4-B2 larger approved-sample pilot before persistence.
+- Phase 4.4-C0 confirms the next safe implementation path is Phase 4.4-C1 validated high-confidence evidence persistence for `2687` and `2670`, using the provider-neutral contract. C1 should still avoid confirmed assignments, automatic Entity creation, localization execution, provider reruns, uploads, and broad sample expansion.
+- Later second-provider scouting should be Phase 4.4-D0 and must map into the same contract instead of introducing a separate DB write path.
 - Exact booru/source lookup remains useful only after reverse search yields a source/post candidate; it is not the primary next step for the current no-source library.
 - B2 expansion remains unexecuted and requires explicit user-approved anime sample IDs, quota-aware scheduling, one provider only, no originals, no DB writes unless separately approved, and no full-library selection.
 - AI proper-noun candidate generation from T3/T4 signals remains deferred unless the user/ChatGPT explicitly approves that source class with hard caps; even then it is weak query seed context, not truth.
