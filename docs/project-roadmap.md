@@ -669,13 +669,27 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Public reports: `docs/reports/phase-4.4b1-live-rerun-saucenao-results.md` and `docs/reports/phase-4.4b1-live-rerun-saucenao-results-summary.json`. Local details remain ignored under `.local_manifests/phase-4.4b1-live-rerun-details.json`.
 - Subscription is not recommended for the completed five-sample run because quota did not block execution. If scaling is later approved, subscription would likely help quota/throughput rather than improve match quality.
 
+### Phase 4.4-B1V - Manual Validation and SauceNAO Metadata Extraction Audit
+
+**Goal:** Persist user manual validation of the B1 live rerun, audit SauceNAO metadata preservation, and plan a bounded B2 expansion without executing a broad provider run.
+
+- User manual validation accepted both high-confidence SauceNAO results as correct source matches: `2687` and `2670`.
+- User manual validation discarded all three low-confidence results as unrelated: `2690`, `2654`, and `2647`; low-confidence SauceNAO matches should be discarded by default in this workflow.
+- The PR #77 public report and local normalized details did not show character names, but that was a parser/report preservation gap, not proof that SauceNAO API lacks character metadata.
+- A bounded metadata-preservation re-query was performed only for the two manually validated high-confidence IDs (`2687`, `2670`) using the same derived-image privacy rules and no DB writes. Both returned Danbooru `data.characters`, `data.material`, `creator`, source/post IDs, and source URL fields.
+- SauceNAO high-confidence exact/near-exact results are promising source-backed evidence candidates, but still cannot create automatic confirmed `MediaEntityAssignment`, automatic character assignment, or trusted `Entity` rows.
+- External provider metadata should be preserved in canonical provider form first. It should later flow through the existing localization, tag translation, and entity translation pipelines; do not add a separate SauceNAO translation path.
+- B2 planning target is `20-30` anime-only user-approved samples, one provider only, quota-aware sequential scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+- Subscription is not recommended solely for quality; it may be reconsidered for quota/throughput only if B2 confirms high-confidence usefulness and quota becomes the bottleneck.
+- Public reports: `docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit.md` and `docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit-summary.json`. Local metadata audit artifacts remain ignored under `.local_manifests/phase-4.4b1-metadata-extraction-audit-*`.
+
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-B1:
+Current near-term options after Phase 4.4-B1V:
 
-1. Manual review the two high-confidence SauceNAO matches and the three low-confidence cases before deciding whether DB persistence is warranted.
-2. If persistence is approved, design a narrow DB persistence follow-up for evidence/cache only; still no confirmed assignments or trusted Entity creation.
-3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
+1. Phase 4.4-C: design narrow evidence/cache/candidate persistence for manually validated high-confidence SauceNAO metadata; still no confirmed assignments, automatic character assignments, trusted Entity creation, media_tags mutation, or TagTranslation mutation.
+2. Phase 4.4-B2: run a larger `20-30` item approved-sample SauceNAO pilot before persistence if more quality evidence is desired.
+3. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
 4. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
 5. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
 6. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
