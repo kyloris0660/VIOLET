@@ -641,11 +641,24 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Phase 3.9 remains required before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, large cache population, or full-library scheduling.
 - No provider API calls, authenticated calls, scraping, reverse search execution, image/thumbnail/derived upload, DB import, classification, AI tagging, localization, staging copy, entity writes, Entity Resolver execution, similarity/clustering, source/iCloud mutation, app-managed storage mutation, production ingestion ledger implementation, or admin UI rewrite occurred.
 
+### Phase 4.4-B1 - One-provider Live Reverse-search Pilot
+
+**Goal:** Implement and run a tiny one-provider reverse-search pilot for the five user-approved anime samples, using derived/resized/stripped image inputs only when all live gates pass.
+
+- Provider selected: `saucenao`, because it best matches no-source anime illustration reverse-search needs among evaluated official/public provider categories. Exact booru APIs remain second-step verifiers after a source/post candidate exists; trace.moe remains screenshot-oriented; IQDB automation was not selected because no stable official API was verified for this workflow.
+- Approved media IDs remain fixed to `2690`, `2687`, `2670`, `2654`, and `2647`; the runner fails closed if the explicit requested set differs or includes anything outside this set.
+- The runner reuses the B0 sample and privacy gates, requires clean no-active-server preflight, verifies development/blombooru identity, blocks `unknown`, `non_anime`, unapproved `illustration`, missing app-managed media, local paths, filenames, source labels, originals, thumbnail uploads, scraping, browser-session use, and multi-provider expansion.
+- Derived input generation is deterministic and metadata-stripped, uses safe generated filenames under `.local_manifests/phase-4.4b1-derived`, and happens only after live gates pass. The first actual B1 run stopped before derived generation because no credential was configured.
+- Current result: `credential_required`. `SAUCENAO_API_KEY` was absent locally, so B1 made `0` live requests, generated `0` derived files, uploaded `0` images, wrote `0` DB rows, created `0` evidence/candidate rows, and created `0` confirmed assignments.
+- Closeout hardening preserves partial live-run attempted/request/derived counts when a credentialed rerun later stops mid-run, fixes the credential-required rerun command to include no-active-server proof arguments, and defers `--write-db-records` until first live provider behavior is reviewed.
+- Public reports: `docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot.md` and `docs/reports/phase-4.4b1-one-provider-live-reverse-search-pilot-summary.json`. Local details remain ignored under `.local_manifests/phase-4.4b1-live-details.json`.
+- A later rerun requires local `SAUCENAO_API_KEY`, explicit operator verification of current SauceNAO API/account limits, the existing five-ID sample gate, and the same derived-only upload approval. The first credentialed behavior-validation rerun should still avoid DB writes. Broad provider scaling still requires Phase 3.9 ledger discipline.
+
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-B0:
+Current near-term options after Phase 4.4-B1:
 
-1. Phase 4.4-B: one-provider live reverse-search pilot only after explicit provider policy, official API/TOS/rate-limit verification, derived-image input approval, and small-run approval. B0 did not approve uploads or requests.
+1. Phase 4.4-B1 rerun with `SAUCENAO_API_KEY` only after current provider API/account-limit verification; keep the same five approved IDs, leave DB writes disabled for first live behavior validation, and stop on any auth/rate/schema/privacy failure.
 2. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before larger provider pilots, broad enrichment, repeated source-discovery runs, 5k/10k scale, or full-library request scheduling.
 3. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
 4. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
