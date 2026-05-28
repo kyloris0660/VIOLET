@@ -1,6 +1,6 @@
 # Phase 4.4-C1 - Validated Evidence Persistence
 
-Date: 2026-05-28T13:50:43.862774+00:00
+Date: 2026-05-28T14:58:59.897892+00:00
 
 ## Summary
 
@@ -16,6 +16,7 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 - Manual validation is bound to exact SauceNAO/Danbooru result IDs before any write plan is treated as validated.
 - Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.
 - Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.
+- Nested plan identity validation requires plan/provider_query/source_match media and provider identity to agree before DB writes.
 - Duplicate requested media IDs are rejected before plan build, backup, or apply.
 - Apply mode verifies post-write gates and idempotency inside the transaction before commit.
 - Low-confidence and approved-evidence verification is scoped to C1 row identity or before/after deltas.
@@ -39,7 +40,7 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Backup
 
 - Backup created: yes
-- Backup basename: `phase-4.4c1-db-backup-20260528T135043Z.dump`
+- Backup basename: `phase-4.4c1-db-backup-20260528T145859Z.dump`
 - Backup bytes: `2655621`
 - Backup format: `pg_dump -Fc`
 - TOC verified: `True`
@@ -98,6 +99,13 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Low-confidence Exclusion
 
 `2690`, `2654`, and `2647` were excluded from positive persistence. No positive EntityEvidence or MediaEntityCandidate rows are written for them in C1.
+
+## Deferred Hardening
+
+- Pre-existing candidate conflict dry-run detection.
+- Rejected candidate decision preservation on rerun.
+- Dry-run post-write count semantics.
+- ProviderCache query-scoped payload redesign for duplicate images.
 
 ## Rollback
 

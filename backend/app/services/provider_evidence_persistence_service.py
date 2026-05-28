@@ -149,10 +149,47 @@ def _require_url_host_consistency(plan: EvidencePersistencePlan) -> None:
             )
 
 
+def _require_nested_identity_consistency(plan: EvidencePersistencePlan) -> None:
+    mismatches: list[str] = []
+    query = plan.provider_query
+    source = plan.source_match
+
+    if plan.media_id != query.media_id:
+        mismatches.append(f"provider_query.media_id={query.media_id} != plan.media_id={plan.media_id}")
+    if plan.media_id != source.media_id:
+        mismatches.append(f"source_match.media_id={source.media_id} != plan.media_id={plan.media_id}")
+    if query.provider_key != source.provider_key:
+        mismatches.append(
+            f"source_match.provider_key={source.provider_key!r} != provider_query.provider_key={query.provider_key!r}"
+        )
+
+    for index, candidate in enumerate(plan.planned_entity_candidates):
+        candidate_payload = candidate.to_public_dict()
+        candidate_media_id = candidate_payload.get("media_id")
+        candidate_provider_key = candidate_payload.get("provider_key")
+        if candidate_media_id is not None and str(candidate_media_id) != str(plan.media_id):
+            mismatches.append(
+                f"planned_entity_candidates[{index}].media_id={candidate_media_id!r} != plan.media_id={plan.media_id}"
+            )
+        if candidate_provider_key is not None and str(candidate_provider_key) != query.provider_key:
+            mismatches.append(
+                "planned_entity_candidates"
+                f"[{index}].provider_key={candidate_provider_key!r} != provider_query.provider_key={query.provider_key!r}"
+            )
+
+    if mismatches:
+        raise EvidencePersistenceError(
+            "nested_plan_identity_mismatch",
+            media_id=plan.media_id,
+            detail="; ".join(mismatches),
+        )
+
+
 def validate_persistence_ready_plan(plan: EvidencePersistencePlan) -> None:
     """Fail closed unless a contract plan is safe for C1 positive writes."""
     assert_public_payload_safe(plan.to_public_dict())
     assert_public_payload_safe(plan.provider_query.request_shape_redacted)
+    _require_nested_identity_consistency(plan)
     assert_public_payload_safe(provider_cache_response_payload(plan))
     _require_url_host_consistency(plan)
 

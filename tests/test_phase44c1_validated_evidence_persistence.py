@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -478,6 +480,51 @@ def test_runner_plan_rejects_duplicate_media_ids_before_plan_build():
             ),
             media_ids=[2687, 2687, 2670],
         )
+
+
+@pytest.mark.parametrize("nested_field", ["provider_query", "source_match"])
+def test_nested_plan_media_id_mismatch_blocks_write(db, nested_field):
+    plan = _plan_2687()
+    mismatched_nested = replace(getattr(plan, nested_field), media_id=2670)
+    mismatched_plan = replace(plan, **{nested_field: mismatched_nested})
+
+    with pytest.raises(EvidencePersistenceError, match="nested_plan_identity_mismatch"):
+        persist_provider_evidence_plans(db, [mismatched_plan], apply=True)
+
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(Entity).count() == 0
+
+
+def test_nested_plan_provider_key_mismatch_blocks_write(db):
+    plan = _plan_2687()
+    mismatched_source = replace(plan.source_match, provider_key="other_provider")
+    mismatched_plan = replace(plan, source_match=mismatched_source)
+
+    with pytest.raises(EvidencePersistenceError, match="nested_plan_identity_mismatch"):
+        persist_provider_evidence_plans(db, [mismatched_plan], apply=True)
+
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(Entity).count() == 0
+
+
+def test_matching_nested_plan_identity_still_persists_without_entity_side_effects(db):
+    result = persist_provider_evidence_plans(db, [_plan_2687()], apply=True)
+
+    assert result["success"] is True
+    assert result["counts"]["ProviderCache"]["inserted"] == 1
+    assert result["counts"]["EntityEvidence"]["inserted"] == 1
+    assert result["counts"]["MediaEntityCandidate"]["inserted"] == 4
+    assert db.query(ProviderCache).count() == 1
+    assert db.query(EntityEvidence).count() == 1
+    assert db.query(MediaEntityCandidate).count() == 4
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(Entity).count() == 0
 
 
 def test_dry_run_generates_write_plan_for_2687_and_2670_only(db):

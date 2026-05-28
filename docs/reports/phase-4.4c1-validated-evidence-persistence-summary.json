@@ -3,7 +3,7 @@
   "status": "applied",
   "success": true,
   "blocked_reasons": [],
-  "generated_at": "2026-05-28T13:50:43.862774+00:00",
+  "generated_at": "2026-05-28T14:58:59.897892+00:00",
   "approved_media_ids": [
     2687,
     2670
@@ -51,7 +51,7 @@
     "test_database_url_set": false
   },
   "backup": {
-    "basename": "phase-4.4c1-db-backup-20260528T135043Z.dump",
+    "basename": "phase-4.4c1-db-backup-20260528T145859Z.dump",
     "bytes": 2655621,
     "format": "pg_dump -Fc",
     "toc_verified": true,
@@ -245,6 +245,7 @@
       "2670": "9366672"
     },
     "live_metadata_identity_match_verified_before_plan": true,
+    "nested_plan_identity_validation_before_write": true,
     "duplicate_media_ids_rejected_before_plan_backup_apply": true,
     "apply_mode_strict_regardless_of_strict_flag": true,
     "abort_before_apply_if_dry_run_summary_unsuccessful": true,
@@ -272,7 +273,13 @@
       "low_confidence_provider_cache": 0,
       "low_confidence_positive_evidence": 0,
       "low_confidence_candidates": 0
-    }
+    },
+    "deferred_hardening_items": [
+      "pre_existing_candidate_conflict_dry_run_detection",
+      "rejected_candidate_rerun_preservation",
+      "dry_run_post_write_count_semantics",
+      "provider_cache_query_scoped_payload_redesign_for_duplicate_images"
+    ]
   },
   "rollback": {
     "backup_restore_note": "Use the local ignored pg_dump custom archive basename listed here; full path is kept only in local details.",

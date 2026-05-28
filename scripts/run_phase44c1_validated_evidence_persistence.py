@@ -875,6 +875,7 @@ def build_public_summary(
                 str(media_id): identity["result_id"] for media_id, identity in APPROVED_RESULT_IDENTITIES.items()
             },
             "live_metadata_identity_match_verified_before_plan": True,
+            "nested_plan_identity_validation_before_write": True,
             "duplicate_media_ids_rejected_before_plan_backup_apply": True,
             "apply_mode_strict_regardless_of_strict_flag": True,
             "abort_before_apply_if_dry_run_summary_unsuccessful": True,
@@ -891,6 +892,12 @@ def build_public_summary(
                 for table in ("ProviderCache", "EntityEvidence", "MediaEntityCandidate")
             ),
             "current_db_state_after_fix": dict(db_after),
+            "deferred_hardening_items": [
+                "pre_existing_candidate_conflict_dry_run_detection",
+                "rejected_candidate_rerun_preservation",
+                "dry_run_post_write_count_semantics",
+                "provider_cache_query_scoped_payload_redesign_for_duplicate_images",
+            ],
         },
         "rollback": {
             "backup_restore_note": "Use the local ignored pg_dump custom archive basename listed here; full path is kept only in local details.",
@@ -940,6 +947,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         "- Manual validation is bound to exact SauceNAO/Danbooru result IDs before any write plan is treated as validated.",
         "- Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.",
         "- Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.",
+        "- Nested plan identity validation requires plan/provider_query/source_match media and provider identity to agree before DB writes.",
         "- Duplicate requested media IDs are rejected before plan build, backup, or apply.",
         "- Apply mode verifies post-write gates and idempotency inside the transaction before commit.",
         "- Low-confidence and approved-evidence verification is scoped to C1 row identity or before/after deltas.",
@@ -1054,6 +1062,13 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "## Low-confidence Exclusion",
             "",
             "`2690`, `2654`, and `2647` were excluded from positive persistence. No positive EntityEvidence or MediaEntityCandidate rows are written for them in C1.",
+            "",
+            "## Deferred Hardening",
+            "",
+            "- Pre-existing candidate conflict dry-run detection.",
+            "- Rejected candidate decision preservation on rerun.",
+            "- Dry-run post-write count semantics.",
+            "- ProviderCache query-scoped payload redesign for duplicate images.",
             "",
             "## Rollback",
             "",
