@@ -712,6 +712,15 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Creates a local ignored `pg_dump -Fc` backup before DB writes and records rollback SQL plus local ignored details.
 - Public reports: `docs/reports/phase-4.4c1-validated-evidence-persistence.md` and `docs/reports/phase-4.4c1-validated-evidence-persistence-summary.json`.
 
+### Phase 4.4-C1-HF1 - DB Write Gate Hotfix
+
+**Goal:** Enforce the provider-neutral plan-level DB write gate after PR #81 was merged.
+
+- Enforces `EvidencePersistencePlan.db_write_allowed` in durable provider evidence persistence before any `ProviderCache`, `EntityEvidence`, or `MediaEntityCandidate` write.
+- Keeps C0 mapper output non-mutating by default and makes the C1 runner explicitly promote only approved validated `2687` / `2670` plans to `db_write_allowed=True` after all C1 identity, provenance, privacy, no-assignment, and no-Entity gates pass.
+- Does not delete or rewrite existing accepted C1 rows by default; expected hotfix DB impact is zero new rows.
+- Public reports: `docs/reports/phase-4.4c1-db-write-gate-hotfix.md` and `docs/reports/phase-4.4c1-db-write-gate-hotfix-summary.json`.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -725,7 +734,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-C1:
+Current near-term options after Phase 4.4-C1-HF1:
 
 1. Phase 4.4-D0: scout a second provider against the same contract, without a separate DB write path or live broad pilot.
 2. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
