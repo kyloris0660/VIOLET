@@ -19,6 +19,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+from urllib.parse import urlsplit
 
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -50,6 +51,22 @@ PHASE = "4.4-C1"
 PROVIDER = "saucenao"
 QUERY_TYPE = "reverse_search_derived_image"
 APPROVED_MEDIA_IDS = (2687, 2670)
+APPROVED_RESULT_IDENTITIES = {
+    2687: {
+        "provider_key": PROVIDER,
+        "result_id": "7695035",
+        "source_host": "danbooru.donmai.us",
+        "provider_index_label": "Danbooru",
+        "post_url_path": "/posts/7695035",
+    },
+    2670: {
+        "provider_key": PROVIDER,
+        "result_id": "9366672",
+        "source_host": "danbooru.donmai.us",
+        "provider_index_label": "Danbooru",
+        "post_url_path": "/posts/9366672",
+    },
+}
 LOW_CONFIDENCE_EXCLUDED_IDS = (2690, 2654, 2647)
 DEFAULT_LIVE_DETAILS = Path(".local_manifests/phase-4.4b1-live-rerun-details.json")
 DEFAULT_METADATA_DETAILS = Path(".local_manifests/phase-4.4b1-metadata-extraction-audit-details.json")
@@ -122,6 +139,29 @@ def _provider_index_label(index_name: str | None) -> str | None:
     return index_name.split(" - ", 1)[0].strip()
 
 
+def _as_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _safe_url_host_path(value: Any) -> tuple[str | None, str | None]:
+    url = _as_text(value)
+    if not url:
+        return None, None
+    parsed = urlsplit(url)
+    if not parsed.scheme or not parsed.netloc:
+        return None, None
+    return parsed.netloc.lower(), parsed.path or None
+
+
+def _post_url_path_for_source(source_host: str | None, result_id: str | None) -> str | None:
+    if source_host == "danbooru.donmai.us" and result_id:
+        return f"/posts/{result_id}"
+    return None
+
+
 def _first_source_host(hosts: Any) -> str | None:
     if isinstance(hosts, list):
         if "danbooru.donmai.us" in hosts:
@@ -134,8 +174,142 @@ def _first_source_host(hosts: Any) -> str | None:
     return None
 
 
-def _manual_item(media_id: int) -> dict[str, Any]:
+def _top_result_from_live_item(live_item: Mapping[str, Any]) -> Mapping[str, Any]:
+    provider_result = live_item.get("provider_result")
+    provider_result = provider_result if isinstance(provider_result, Mapping) else {}
+    normalized_payload = provider_result.get("normalized_payload")
+    normalized_payload = normalized_payload if isinstance(normalized_payload, Mapping) else {}
+    top_result = normalized_payload.get("top_result") or live_item.get("top_result")
+    return top_result if isinstance(top_result, Mapping) else {}
+
+
+def _identity_from_live_item(live_item: Mapping[str, Any]) -> dict[str, str | None]:
+    top_result = _top_result_from_live_item(live_item)
+    request_shape = live_item.get("request_shape_redacted")
+    request_shape = request_shape if isinstance(request_shape, Mapping) else {}
+    source_url = _as_text(top_result.get("source_url") or live_item.get("source_url"))
+    post_url = _as_text(top_result.get("post_url") or live_item.get("post_url"))
+    source_url_host, source_url_path = _safe_url_host_path(source_url)
+    post_url_host, post_url_path = _safe_url_host_path(post_url)
+    result_id = _as_text(
+        top_result.get("result_id")
+        or top_result.get("post_id")
+        or top_result.get("provider_external_id")
+        or live_item.get("result_id")
+        or live_item.get("post_id")
+        or live_item.get("provider_external_id")
+    )
+    source_host = _as_text(top_result.get("source_url_host") or live_item.get("source_url_host")) or source_url_host or post_url_host
+    return {
+        "provider_key": _as_text(request_shape.get("provider_key") or live_item.get("provider_key")),
+        "result_id": result_id,
+        "source_host": source_host,
+        "provider_index_label": _provider_index_label(_as_text(top_result.get("index_name") or live_item.get("index_name"))),
+        "source_url_host": source_url_host,
+        "source_url_path": source_url_path,
+        "post_url_host": post_url_host,
+        "post_url_path": post_url_path or _post_url_path_for_source(source_host, result_id),
+    }
+
+
+def _identity_from_metadata_row(metadata_row: Mapping[str, Any]) -> dict[str, str | None]:
+    top_result = metadata_row.get("top_result")
+    top_result = top_result if isinstance(top_result, Mapping) else {}
+    source_url = _as_text(top_result.get("source_url") or metadata_row.get("source_url"))
+    post_url = _as_text(top_result.get("post_url") or metadata_row.get("post_url"))
+    source_url_host, source_url_path = _safe_url_host_path(source_url)
+    post_url_host, post_url_path = _safe_url_host_path(post_url)
+    result_id = _as_text(
+        top_result.get("result_id")
+        or top_result.get("post_id")
+        or top_result.get("provider_external_id")
+        or metadata_row.get("result_id")
+        or metadata_row.get("post_id")
+        or metadata_row.get("provider_external_id")
+    )
+    source_host = _first_source_host(top_result.get("source_url_hosts"))
+    source_host = _as_text(source_host or top_result.get("source_url_host") or metadata_row.get("source_url_host"))
+    source_host = source_host or source_url_host or post_url_host
+    return {
+        "provider_key": _as_text(top_result.get("provider_key") or metadata_row.get("provider_key") or PROVIDER),
+        "result_id": result_id,
+        "source_host": source_host,
+        "provider_index_label": _provider_index_label(_as_text(top_result.get("index_name") or metadata_row.get("index_name"))),
+        "source_url_host": source_url_host,
+        "source_url_path": source_url_path,
+        "post_url_host": post_url_host,
+        "post_url_path": post_url_path or _post_url_path_for_source(source_host, result_id),
+    }
+
+
+def _require_unique_requested_media_ids(requested: tuple[int, ...]) -> None:
+    duplicates = sorted({media_id for media_id in requested if requested.count(media_id) > 1})
+    if duplicates:
+        raise PhaseC1Error("duplicate_media_id", json.dumps(duplicates))
+
+
+def _identity_value_mismatch(left: str | None, right: str | None) -> bool:
+    return bool(left and right and left != right)
+
+
+def _require_live_metadata_identity_match(
+    *,
+    media_id: int,
+    live_identity: Mapping[str, str | None],
+    metadata_identity: Mapping[str, str | None],
+) -> None:
+    if not live_identity.get("result_id") or not live_identity.get("source_host"):
+        raise PhaseC1Error("live_identity_missing", f"media_id={media_id}")
+    if not metadata_identity.get("result_id") or not metadata_identity.get("source_host"):
+        raise PhaseC1Error("metadata_identity_missing", f"media_id={media_id}")
+    for key in ("provider_key", "result_id", "source_host", "provider_index_label"):
+        if _identity_value_mismatch(live_identity.get(key), metadata_identity.get(key)):
+            raise PhaseC1Error("live_metadata_identity_mismatch", f"media_id={media_id}:{key}")
+    for host_key, path_key in (("source_url_host", "source_url_path"), ("post_url_host", "post_url_path")):
+        if _identity_value_mismatch(live_identity.get(host_key), metadata_identity.get(host_key)):
+            raise PhaseC1Error("live_metadata_identity_mismatch", f"media_id={media_id}:{host_key}")
+        if _identity_value_mismatch(live_identity.get(path_key), metadata_identity.get(path_key)):
+            raise PhaseC1Error("live_metadata_identity_mismatch", f"media_id={media_id}:{path_key}")
+
+
+def _require_approved_result_identity(
+    *,
+    media_id: int,
+    live_identity: Mapping[str, str | None],
+    metadata_identity: Mapping[str, str | None],
+) -> None:
+    expected = APPROVED_RESULT_IDENTITIES.get(media_id)
+    if not expected:
+        raise PhaseC1Error("blocked_unapproved_media_ids", str(media_id))
+    if not live_identity.get("result_id") and not metadata_identity.get("result_id"):
+        raise PhaseC1Error("approved_result_id_missing", f"media_id={media_id}")
+    for identity in (live_identity, metadata_identity):
+        if identity.get("result_id") and identity.get("result_id") != expected["result_id"]:
+            raise PhaseC1Error("approval_result_identity_mismatch", f"media_id={media_id}:result_id")
+        if identity.get("provider_key") and identity.get("provider_key") != expected["provider_key"]:
+            raise PhaseC1Error("source_identity_mismatch", f"media_id={media_id}:provider_key")
+        if identity.get("source_host") and identity.get("source_host") != expected["source_host"]:
+            raise PhaseC1Error("source_identity_mismatch", f"media_id={media_id}:source_host")
+        if identity.get("provider_index_label") and identity.get("provider_index_label") != expected["provider_index_label"]:
+            raise PhaseC1Error("source_identity_mismatch", f"media_id={media_id}:provider_index_label")
+        for path_key in ("source_url_path", "post_url_path"):
+            path = identity.get(path_key)
+            if path and path != expected["post_url_path"]:
+                raise PhaseC1Error("source_identity_mismatch", f"media_id={media_id}:{path_key}")
+
+
+def _manual_item(
+    media_id: int,
+    *,
+    live_identity: Mapping[str, str | None],
+    metadata_identity: Mapping[str, str | None],
+) -> dict[str, Any]:
     if media_id in APPROVED_MEDIA_IDS:
+        _require_approved_result_identity(
+            media_id=media_id,
+            live_identity=live_identity,
+            metadata_identity=metadata_identity,
+        )
         return {
             "media_id": media_id,
             "judgment": "correct",
@@ -157,6 +331,7 @@ def build_phase44c1_plans(
     media_ids: Iterable[int],
 ) -> list[Any]:
     requested = tuple(int(media_id) for media_id in media_ids)
+    _require_unique_requested_media_ids(requested)
     if set(requested) != set(APPROVED_MEDIA_IDS):
         raise PhaseC1Error("blocked_unapproved_media_ids", json.dumps(sorted(requested)))
 
@@ -168,6 +343,15 @@ def build_phase44c1_plans(
         metadata_row = metadata_by_id.get(media_id)
         if not live_item or not metadata_row:
             raise PhaseC1Error("blocked_missing_local_details", f"media_id={media_id}")
+        live_identity = _identity_from_live_item(live_item)
+        metadata_identity = _identity_from_metadata_row(metadata_row)
+        if not live_identity.get("result_id") and not metadata_identity.get("result_id"):
+            raise PhaseC1Error("approved_result_id_missing", f"media_id={media_id}")
+        _require_live_metadata_identity_match(
+            media_id=media_id,
+            live_identity=live_identity,
+            metadata_identity=metadata_identity,
+        )
         top_result = metadata_row.get("top_result") or {}
         source_host = _first_source_host(top_result.get("source_url_hosts"))
         metadata_item = {
@@ -184,7 +368,11 @@ def build_phase44c1_plans(
         assert_public_payload_safe(metadata_item)
         plan = map_saucenao_result_to_plan(
             live_item=deepcopy(live_item),
-            manual_item=_manual_item(media_id),
+            manual_item=_manual_item(
+                media_id,
+                live_identity=live_identity,
+                metadata_identity=metadata_identity,
+            ),
             metadata_item=metadata_item,
         )
         plans.append(plan)
@@ -546,6 +734,9 @@ def build_public_summary(
         "blocked_reasons": blocked_reasons,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "approved_media_ids": list(APPROVED_MEDIA_IDS),
+        "approved_result_identities": {
+            str(media_id): dict(identity) for media_id, identity in APPROVED_RESULT_IDENTITIES.items()
+        },
         "low_confidence_excluded_media_ids": list(LOW_CONFIDENCE_EXCLUDED_IDS),
         "source_of_truth": "local_ignored_B1_B1V_details_artifacts_plus_C1_approved_manual_validation_scope",
         "artifact_lifecycle": {
@@ -574,6 +765,23 @@ def build_public_summary(
         "db_state_after": dict(db_after),
         "post_write_verification": post_write_verification,
         "idempotency_verification": idempotency_verification,
+        "closeout": {
+            "manual_approval_bound_to_provider_result_ids": {
+                str(media_id): identity["result_id"] for media_id, identity in APPROVED_RESULT_IDENTITIES.items()
+            },
+            "live_metadata_identity_match_verified_before_plan": True,
+            "duplicate_media_ids_rejected_before_plan_backup_apply": True,
+            "apply_mode_strict_regardless_of_strict_flag": True,
+            "abort_before_apply_if_dry_run_summary_unsuccessful": True,
+            "final_success_depends_on_post_write_verification": True,
+            "final_success_depends_on_idempotency_verification": mode == "apply",
+            "runner_performs_post_apply_idempotency_check": mode == "apply" and idempotency_summary is not None,
+            "new_db_writes_during_closeout": any(
+                persistence["counts"][table]["inserted"] > 0
+                for table in ("ProviderCache", "EntityEvidence", "MediaEntityCandidate")
+            ),
+            "current_db_state_after_fix": dict(db_after),
+        },
         "rollback": {
             "backup_restore_note": "Use the local ignored pg_dump custom archive basename listed here; full path is kept only in local details.",
             "delete_sql_for_c1_rows": build_rollback_sql(query_hashes),
@@ -614,6 +822,15 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         f"- Low-confidence excluded IDs: `{', '.join(str(item) for item in summary['low_confidence_excluded_media_ids'])}`",
         f"- Mode/status: `{summary['status']}`",
         f"- Source of truth: `{summary['source_of_truth']}`",
+        "",
+        "## Closeout Safety Gates",
+        "",
+        "- Manual validation is bound to exact SauceNAO/Danbooru result IDs before any write plan is treated as validated.",
+        "- Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.",
+        "- Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.",
+        "- Duplicate requested media IDs are rejected before plan build, backup, or apply.",
+        "- Apply mode is fail-closed when dry-run validation or post-write/idempotency verification fails.",
+        f"- New DB rows inserted during this closeout run: `{summary['closeout']['new_db_writes_during_closeout']}`",
         "",
         "## Lifecycle Classification",
         "",
@@ -691,6 +908,9 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- media_tags for approved unchanged: `{verification['media_tags_for_approved_unchanged']}`",
             f"- Low-confidence positive evidence count is zero: `{verification['low_confidence_positive_evidence_zero']}`",
             f"- Low-confidence candidates count is zero: `{verification['low_confidence_candidates_zero']}`",
+            f"- Entity count before/after: `{summary['db_state_before']['entity_count']}` / `{summary['db_state_after']['entity_count']}`",
+            f"- TagTranslation count before/after: `{summary['db_state_before']['tag_translation_count']}` / `{summary['db_state_after']['tag_translation_count']}`",
+            f"- media_tags for approved before/after: `{summary['db_state_before']['media_tags_for_approved']}` / `{summary['db_state_after']['media_tags_for_approved']}`",
             "",
             "## Idempotency Verification",
             "",

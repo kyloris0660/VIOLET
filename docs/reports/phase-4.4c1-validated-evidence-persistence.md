@@ -1,6 +1,6 @@
 # Phase 4.4-C1 - Validated Evidence Persistence
 
-Date: 2026-05-28T09:12:35.142958+00:00
+Date: 2026-05-28T12:11:17.613623+00:00
 
 ## Summary
 
@@ -10,6 +10,15 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 - Low-confidence excluded IDs: `2690, 2654, 2647`
 - Mode/status: `applied`
 - Source of truth: `local_ignored_B1_B1V_details_artifacts_plus_C1_approved_manual_validation_scope`
+
+## Closeout Safety Gates
+
+- Manual validation is bound to exact SauceNAO/Danbooru result IDs before any write plan is treated as validated.
+- Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.
+- Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.
+- Duplicate requested media IDs are rejected before plan build, backup, or apply.
+- Apply mode is fail-closed when dry-run validation or post-write/idempotency verification fails.
+- New DB rows inserted during this closeout run: `False`
 
 ## Lifecycle Classification
 
@@ -29,8 +38,8 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Backup
 
 - Backup created: yes
-- Backup basename: `phase-4.4c1-db-backup-20260528T091234Z.dump`
-- Backup bytes: `2653422`
+- Backup basename: `phase-4.4c1-db-backup-20260528T121117Z.dump`
+- Backup bytes: `2655621`
 - Backup format: `pg_dump -Fc`
 - TOC verified: `True`
 
@@ -38,24 +47,14 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 
 | Table | Planned | Inserted | Existing | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| ProviderCache | 2 | 2 | 0 | 0 |
-| EntityEvidence | 2 | 2 | 0 | 0 |
-| MediaEntityCandidate | 7 | 7 | 0 | 0 |
-
-- ProviderCache written: `True`
-- EntityEvidence written: `True`
-- MediaEntityCandidate written: `True`
-- MediaEntityCandidate deferred: `False`
-
-## Idempotency Verification
-
-A post-apply dry-run against the same approved scope reported existing rows only:
-
-| Table | Planned | Inserted | Existing | Skipped |
-| --- | ---: | ---: | ---: | ---: |
 | ProviderCache | 2 | 0 | 2 | 0 |
 | EntityEvidence | 2 | 0 | 2 | 0 |
 | MediaEntityCandidate | 7 | 0 | 7 | 0 |
+
+- ProviderCache written: `False`
+- EntityEvidence written: `False`
+- MediaEntityCandidate written: `False`
+- MediaEntityCandidate deferred: `False`
 
 ## Per-media Outcome
 
@@ -77,28 +76,19 @@ A post-apply dry-run against the same approved scope reported existing rows only
 - media_tags for approved unchanged: `True`
 - Low-confidence positive evidence count is zero: `True`
 - Low-confidence candidates count is zero: `True`
+- Entity count before/after: `0` / `0`
+- TagTranslation count before/after: `3732` / `3732`
+- media_tags for approved before/after: `92` / `92`
 
-## Validation
+## Idempotency Verification
 
-- Python identity: `PASS` with project venv Python 3.12.0.
-- `py_compile`: changed Python files passed.
-- `tests/test_phase44c1_validated_evidence_persistence.py -v`: `22 passed`.
-- `tests/test_phase44c0_provider_evidence_contract.py -v`: `40 passed`.
-- `tests/test_entity_metadata_foundation.py -v`: `38 passed`.
-- Summary JSON validation: `python -m json.tool` passed.
-- `git diff --check`: passed; PowerShell reported LF-to-CRLF working-copy warnings for existing markdown files only.
-- Public report privacy scan: passed; no forbidden private material patterns were found in this report or summary JSON.
-- Real browser validation: not applicable; C1 changed backend service/script/tests/docs only, with no UI or API route changes and no server startup required.
-
-## Closeout Safety Fixes
-
-- Apply mode is now fail-closed on invalid plans even when `--strict` is not passed.
-- The runner aborts before write if the dry-run validation summary is not successful.
-- Final report success now depends on post-write verification success.
-- Final report success now depends on post-apply idempotency verification success.
-- The runner now performs the post-apply idempotency dry-run before reporting apply success.
-- Closeout rerun used dry-run only; no new DB writes occurred during closeout.
-- Current closeout DB state: `ProviderCache=2`, `EntityEvidence=2`, `MediaEntityCandidate=7`, confirmed assignments `0`, Entity count `0`, `media_tags=92`, `TagTranslation=3732`, low-confidence positive evidence/candidates `0`.
+- Status: `dry_run`
+- Success: `True`
+- Failure codes: `none`
+- ProviderCache existing count: `2`
+- EntityEvidence existing count: `2`
+- MediaEntityCandidate existing count: `7`
+- Would insert counts: ProviderCache `0`, EntityEvidence `0`, MediaEntityCandidate `0`
 
 ## Low-confidence Exclusion
 

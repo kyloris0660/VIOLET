@@ -107,6 +107,52 @@ def _metadata_item(media_id: int, *, artist: str, works: list[str], characters: 
     }
 
 
+def _runner_metadata_row(
+    media_id: int,
+    *,
+    result_id: int | None,
+    host: str | None = "danbooru.donmai.us",
+    index_name: str = "Index #9: Danbooru - provider-returned-file.jpg",
+    source_url: str | None = None,
+    provider_key: str | None = "saucenao",
+) -> dict:
+    metadata = {
+        2687: {
+            "artist": "yunkaiming",
+            "works": ["honkai: star rail", "honkai (series)"],
+            "characters": ["acheron (honkai: star rail)"],
+        },
+        2670: {
+            "artist": "songchuan li",
+            "works": ["blue archive"],
+            "characters": ["kisaki (blue archive)"],
+        },
+    }[media_id]
+    top_result = {
+        "index_name": index_name,
+        "result_id": result_id,
+        "source_url_hosts": [host] if host else [],
+        "source_url_present": bool(host or source_url),
+        "creator": metadata["artist"],
+        "material": metadata["works"],
+        "characters": metadata["characters"],
+        "general_tags": [],
+    }
+    if source_url is not None:
+        top_result["source_url"] = source_url
+    if provider_key is not None:
+        top_result["provider_key"] = provider_key
+    return {"media_id": media_id, "top_result": top_result}
+
+
+def _runner_live_details(*items: dict) -> dict:
+    return {"provider_results": list(items)}
+
+
+def _runner_metadata_details(*rows: dict) -> dict:
+    return {"provider_results": list(rows)}
+
+
 def _manual(media_id: int, *, action: str = "keep_as_strong_evidence", judgment: str = "correct") -> dict:
     return {
         "media_id": media_id,
@@ -292,6 +338,135 @@ def db():
         session.close()
         Base.metadata.drop_all(engine)
         engine.dispose()
+
+
+def test_runner_plan_allows_approved_result_identities():
+    plans = runner.build_phase44c1_plans(
+        live_details=_runner_live_details(
+            _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035),
+            _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+        ),
+        metadata_details=_runner_metadata_details(
+            _runner_metadata_row(2687, result_id=7695035),
+            _runner_metadata_row(2670, result_id=9366672),
+        ),
+        media_ids=[2687, 2670],
+    )
+
+    assert [plan.media_id for plan in plans] == [2687, 2670]
+    assert [plan.source_match.provider_result_id for plan in plans] == ["7695035", "9366672"]
+
+
+def test_runner_plan_blocks_approval_result_identity_mismatch():
+    with pytest.raises(runner.PhaseC1Error, match="approval_result_identity_mismatch"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=123),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=123),
+                _runner_metadata_row(2670, result_id=9366672),
+            ),
+            media_ids=[2687, 2670],
+        )
+
+
+def test_runner_plan_blocks_missing_approved_result_id():
+    with pytest.raises(runner.PhaseC1Error, match="approved_result_id_missing"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=None),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=7695035),
+                _runner_metadata_row(2670, result_id=None),
+            ),
+            media_ids=[2687, 2670],
+        )
+
+
+def test_runner_plan_blocks_source_identity_mismatch():
+    with pytest.raises(runner.PhaseC1Error, match="source_identity_mismatch"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(
+                    2687,
+                    result_class="high_confidence_match",
+                    score=96.2,
+                    minimum_similarity=52.0,
+                    result_id=7695035,
+                    host="gelbooru.com",
+                ),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=7695035, host="gelbooru.com"),
+                _runner_metadata_row(2670, result_id=9366672),
+            ),
+            media_ids=[2687, 2670],
+        )
+
+
+def test_runner_plan_blocks_live_metadata_result_identity_mismatch():
+    with pytest.raises(runner.PhaseC1Error, match="live_metadata_identity_mismatch"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=9366672),
+                _runner_metadata_row(2670, result_id=9366672),
+            ),
+            media_ids=[2687, 2670],
+        )
+
+
+def test_runner_plan_blocks_live_metadata_source_host_mismatch():
+    with pytest.raises(runner.PhaseC1Error, match="live_metadata_identity_mismatch"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=7695035, host="gelbooru.com"),
+                _runner_metadata_row(2670, result_id=9366672),
+            ),
+            media_ids=[2687, 2670],
+        )
+
+
+def test_runner_plan_blocks_metadata_identity_missing():
+    with pytest.raises(runner.PhaseC1Error, match="metadata_identity_missing"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=None),
+                _runner_metadata_row(2670, result_id=9366672),
+            ),
+            media_ids=[2687, 2670],
+        )
+
+
+def test_runner_plan_rejects_duplicate_media_ids_before_plan_build():
+    with pytest.raises(runner.PhaseC1Error, match="duplicate_media_id"):
+        runner.build_phase44c1_plans(
+            live_details=_runner_live_details(
+                _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035),
+                _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672),
+            ),
+            metadata_details=_runner_metadata_details(
+                _runner_metadata_row(2687, result_id=7695035),
+                _runner_metadata_row(2670, result_id=9366672),
+            ),
+            media_ids=[2687, 2687, 2670],
+        )
 
 
 def test_dry_run_generates_write_plan_for_2687_and_2670_only(db):
