@@ -699,6 +699,19 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No provider API call, upload, DB write, DB migration, ProviderCache/NegativeLookupCache/EntityEvidence/MediaEntityCandidate/MediaEntityAssignment write, automatic Entity creation, confirmed assignment, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation occurs in C0.
 - Public reports: `docs/reports/phase-4.4c0-provider-neutral-evidence-contract.md` and `docs/reports/phase-4.4c0-provider-neutral-evidence-contract-summary.json`.
 
+### Phase 4.4-C1 - Validated High-confidence Evidence Persistence
+
+**Goal:** Persist the first narrow provider-neutral evidence path for the two manually validated high-confidence SauceNAO results only.
+
+- Uses local ignored B1/B1V detail artifacts as the persistence source of truth, not reduced public summaries.
+- Writes `ProviderCache` rows for `2687` and `2670` with public-safe redacted provider-neutral payloads, valid query hashes, request shapes, source identifiers, scores, source hosts/post URLs, manual validation status, evidence strength, and raw provider metadata.
+- Writes `EntityEvidence` reverse-search rows for `2687` and `2670`, with deterministic `payload_ref` values pointing to the provider cache natural key.
+- Writes suggestion-only `MediaEntityCandidate` rows with `entity_id=NULL`, `generator=external`, and `status=suggested` for raw artist/work/character metadata: `7` candidate rows total.
+- Creates no trusted `Entity`, no confirmed `MediaEntityAssignment`, no `media_tags`, no `TagTranslation`, no localization execution, no Entity Resolver run, and no similarity/clustering.
+- Excludes low-confidence discarded samples `2690`, `2654`, and `2647` from positive persistence; C1 does not write negative cache rows.
+- Creates a local ignored `pg_dump -Fc` backup before DB writes and records rollback SQL plus local ignored details.
+- Public reports: `docs/reports/phase-4.4c1-validated-evidence-persistence.md` and `docs/reports/phase-4.4c1-validated-evidence-persistence-summary.json`.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -712,11 +725,11 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-C0:
+Current near-term options after Phase 4.4-C1:
 
-1. Phase 4.4-C1: persist only validated high-confidence evidence for `2687` and `2670` through the provider-neutral contract; still no confirmed assignments, automatic character assignments, trusted Entity creation, media_tags mutation, TagTranslation mutation, localization execution, provider rerun, or upload.
-2. Phase 4.4-D0: scout a second provider against the same contract, without a separate DB write path or live broad pilot.
-3. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+1. Phase 4.4-D0: scout a second provider against the same contract, without a separate DB write path or live broad pilot.
+2. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+3. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
 4. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
 5. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
 6. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.

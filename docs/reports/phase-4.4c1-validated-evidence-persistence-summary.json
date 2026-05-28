@@ -1,0 +1,306 @@
+{
+  "phase": "4.4-C1",
+  "status": "applied",
+  "success": true,
+  "blocked_reasons": [],
+  "generated_at": "2026-05-28T15:21:34.376733+00:00",
+  "approved_media_ids": [
+    2687,
+    2670
+  ],
+  "approved_result_identities": {
+    "2687": {
+      "provider_key": "saucenao",
+      "result_id": "7695035",
+      "source_host": "danbooru.donmai.us",
+      "provider_index_label": "Danbooru",
+      "post_url_path": "/posts/7695035"
+    },
+    "2670": {
+      "provider_key": "saucenao",
+      "result_id": "9366672",
+      "source_host": "danbooru.donmai.us",
+      "provider_index_label": "Danbooru",
+      "post_url_path": "/posts/9366672"
+    }
+  },
+  "low_confidence_excluded_media_ids": [
+    2690,
+    2654,
+    2647
+  ],
+  "source_of_truth": "local_ignored_B1_B1V_details_artifacts_plus_C1_approved_manual_validation_scope",
+  "artifact_lifecycle": {
+    "persistence_service_code": "durable_provider_evidence_infrastructure",
+    "c1_runner": "phase_scoped_operational_runner",
+    "reports": "public_report_handoff_roadmap_update",
+    "backup_and_local_details": "one_off_local_ignored_artifact"
+  },
+  "db_identity": {
+    "violet_env": "development",
+    "configured_db": "blombooru",
+    "current_database": "blombooru",
+    "db_host": "localhost",
+    "db_port": 5432,
+    "db_user": "postgres",
+    "db_auth_hidden": true,
+    "server_addr": "127.0.0.1/32",
+    "server_port": 5432,
+    "storage_root_basename": "AnimeLocalBooru",
+    "storage_root_is_test_storage": false,
+    "test_database_url_set": false
+  },
+  "backup": {
+    "basename": "phase-4.4c1-db-backup-20260528T152133Z.dump",
+    "bytes": 2655621,
+    "format": "pg_dump -Fc",
+    "toc_verified": true,
+    "path_redacted": true
+  },
+  "provider_cache_written": false,
+  "entity_evidence_written": false,
+  "media_entity_candidate_written": false,
+  "media_entity_candidate_deferred": false,
+  "counts": {
+    "ProviderCache": {
+      "planned": 2,
+      "inserted": 0,
+      "existing": 2,
+      "skipped": 0
+    },
+    "EntityEvidence": {
+      "planned": 2,
+      "inserted": 0,
+      "existing": 2,
+      "skipped": 0
+    },
+    "MediaEntityCandidate": {
+      "planned": 7,
+      "inserted": 0,
+      "existing": 7,
+      "skipped": 0
+    },
+    "MediaEntityAssignment": {
+      "inserted": 0
+    },
+    "Entity": {
+      "inserted": 0
+    }
+  },
+  "per_media": {
+    "2687": {
+      "provider": "saucenao",
+      "query_hash_present": true,
+      "source_host": "danbooru.donmai.us",
+      "post_url": "https://danbooru.donmai.us/posts/7695035",
+      "result_id": "7695035",
+      "score": 96.2,
+      "minimum_similarity": 52.0,
+      "manual_validation_status": "validated_correct",
+      "evidence_strength": "strong",
+      "localization_status": "pending",
+      "artist": [
+        "yunkaiming"
+      ],
+      "work": [
+        "honkai: star rail",
+        "honkai (series)"
+      ],
+      "character": [
+        "acheron (honkai: star rail)"
+      ]
+    },
+    "2670": {
+      "provider": "saucenao",
+      "query_hash_present": true,
+      "source_host": "danbooru.donmai.us",
+      "post_url": "https://danbooru.donmai.us/posts/9366672",
+      "result_id": "9366672",
+      "score": 91.96,
+      "minimum_similarity": 37.66,
+      "manual_validation_status": "validated_correct",
+      "evidence_strength": "strong",
+      "localization_status": "pending",
+      "artist": [
+        "songchuan li"
+      ],
+      "work": [
+        "blue archive"
+      ],
+      "character": [
+        "kisaki (blue archive)"
+      ]
+    }
+  },
+  "db_state_before": {
+    "approved_media_present": 2,
+    "provider_cache_approved": 2,
+    "provider_cache_unrelated_existing_ignored": 0,
+    "entity_evidence_approved": 2,
+    "entity_evidence_unrelated_existing_ignored": 0,
+    "media_entity_candidates_c1": 7,
+    "media_entity_candidates_unrelated_existing_ignored": 0,
+    "media_entity_assignments_for_approved": 0,
+    "entity_count": 0,
+    "tag_translation_count": 3732,
+    "media_tags_for_approved": 92,
+    "low_confidence_provider_cache": 0,
+    "low_confidence_positive_evidence": 0,
+    "low_confidence_candidates": 0
+  },
+  "db_state_after": {
+    "approved_media_present": 2,
+    "provider_cache_approved": 2,
+    "provider_cache_unrelated_existing_ignored": 0,
+    "entity_evidence_approved": 2,
+    "entity_evidence_unrelated_existing_ignored": 0,
+    "media_entity_candidates_c1": 7,
+    "media_entity_candidates_unrelated_existing_ignored": 0,
+    "media_entity_assignments_for_approved": 0,
+    "entity_count": 0,
+    "tag_translation_count": 3732,
+    "media_tags_for_approved": 92,
+    "low_confidence_provider_cache": 0,
+    "low_confidence_positive_evidence": 0,
+    "low_confidence_candidates": 0
+  },
+  "post_write_verification": {
+    "success": true,
+    "failure_codes": [],
+    "expected_counts": {
+      "ProviderCache": 2,
+      "EntityEvidence": 2,
+      "MediaEntityCandidate": 7
+    },
+    "provider_cache_approved_count": 2,
+    "entity_evidence_approved_count": 2,
+    "media_entity_candidate_c1_count": 7,
+    "provider_cache_unrelated_existing_ignored": 0,
+    "entity_evidence_unrelated_existing_ignored": 0,
+    "media_entity_candidates_unrelated_existing_ignored": 0,
+    "confirmed_assignment_count_for_approved": 0,
+    "low_confidence_positive_evidence_total_before": 0,
+    "low_confidence_positive_evidence_total_after": 0,
+    "low_confidence_positive_evidence_inserted_by_c1": 0,
+    "low_confidence_candidates_total_before": 0,
+    "low_confidence_candidates_total_after": 0,
+    "low_confidence_candidates_inserted_by_c1": 0,
+    "provider_cache_count_matches_expected": true,
+    "entity_evidence_count_matches_expected": true,
+    "media_entity_candidate_count_matches_expected": true,
+    "confirmed_assignment_count_is_zero": true,
+    "entity_count_unchanged": true,
+    "tag_translation_count_unchanged": true,
+    "media_tags_for_approved_unchanged": true,
+    "low_confidence_positive_evidence_inserted_by_c1_zero": true,
+    "low_confidence_candidates_inserted_by_c1_zero": true
+  },
+  "idempotency_verification": {
+    "status": "dry_run",
+    "idempotency_check_ran": true,
+    "idempotency_success": true,
+    "success": true,
+    "failure_codes": [],
+    "expected_counts": {
+      "ProviderCache": 2,
+      "EntityEvidence": 2,
+      "MediaEntityCandidate": 7
+    },
+    "counts": {
+      "ProviderCache": {
+        "planned": 2,
+        "inserted": 0,
+        "existing": 2,
+        "skipped": 0
+      },
+      "EntityEvidence": {
+        "planned": 2,
+        "inserted": 0,
+        "existing": 2,
+        "skipped": 0
+      },
+      "MediaEntityCandidate": {
+        "planned": 7,
+        "inserted": 0,
+        "existing": 7,
+        "skipped": 0
+      },
+      "MediaEntityAssignment": {
+        "inserted": 0
+      },
+      "Entity": {
+        "inserted": 0
+      }
+    },
+    "would_insert_provider_cache": 0,
+    "would_insert_entity_evidence": 0,
+    "would_insert_media_entity_candidate": 0,
+    "existing_provider_cache": 2,
+    "existing_entity_evidence": 2,
+    "existing_media_entity_candidate": 7
+  },
+  "closeout": {
+    "manual_approval_bound_to_provider_result_ids": {
+      "2687": "7695035",
+      "2670": "9366672"
+    },
+    "live_metadata_identity_match_verified_before_plan": true,
+    "nested_plan_identity_validation_before_write": true,
+    "duplicate_media_ids_rejected_before_plan_backup_apply": true,
+    "apply_mode_strict_regardless_of_strict_flag": true,
+    "abort_before_apply_if_dry_run_summary_unsuccessful": true,
+    "post_write_gates_run_before_commit": true,
+    "commit_only_after_post_write_and_idempotency_success": true,
+    "audit_artifacts_written_before_commit": true,
+    "low_confidence_check_scope": "before_after_delta_for_excluded_media_ids",
+    "approved_verification_scope": "exact_c1_payload_ref_and_phase_summary",
+    "final_success_depends_on_post_write_verification": true,
+    "final_success_depends_on_idempotency_verification": true,
+    "runner_performs_post_apply_idempotency_check": true,
+    "idempotency_check_phase": "pre_commit_after_apply_transactional_dry_run",
+    "new_db_writes_during_closeout": false,
+    "current_db_state_after_fix": {
+      "approved_media_present": 2,
+      "provider_cache_approved": 2,
+      "provider_cache_unrelated_existing_ignored": 0,
+      "entity_evidence_approved": 2,
+      "entity_evidence_unrelated_existing_ignored": 0,
+      "media_entity_candidates_c1": 7,
+      "media_entity_candidates_unrelated_existing_ignored": 0,
+      "media_entity_assignments_for_approved": 0,
+      "entity_count": 0,
+      "tag_translation_count": 3732,
+      "media_tags_for_approved": 92,
+      "low_confidence_provider_cache": 0,
+      "low_confidence_positive_evidence": 0,
+      "low_confidence_candidates": 0
+    },
+    "deferred_hardening_items": [
+      "pre_existing_candidate_conflict_dry_run_detection",
+      "non_suggested_candidate_decision_preservation_on_rerun",
+      "dry_run_post_write_count_semantics",
+      "provider_cache_query_scoped_payload_redesign_for_duplicate_images",
+      "broader_candidate_lifecycle_hardening",
+      "caller_owned_transaction_rollback_policy_for_future_service_callers"
+    ]
+  },
+  "rollback": {
+    "backup_restore_note": "Use the local ignored pg_dump custom archive basename listed here; full path is kept only in local details.",
+    "delete_sql_for_c1_rows": "BEGIN;\nDELETE FROM blombooru_media_entity_candidates\nWHERE evidence_id IN (\n  SELECT id FROM blombooru_entity_evidence\n  WHERE provider = 'saucenao' AND query_hash IN ('07406f04b2b244e5c91846919ca5bd76b62eee27e8be8d31ddbf590f60f5f1aa', 'ae6d19f6e8125433a441b8cdbadac1d08197836938fd6fadc7a0d711a4dca9a7')\n    AND payload_ref LIKE 'provider_cache:saucenao:reverse_search_derived_image:%'\n    AND summary LIKE 'Phase 4.4-C1 validated provider evidence%'\n);\nDELETE FROM blombooru_entity_evidence\nWHERE provider = 'saucenao' AND query_hash IN ('07406f04b2b244e5c91846919ca5bd76b62eee27e8be8d31ddbf590f60f5f1aa', 'ae6d19f6e8125433a441b8cdbadac1d08197836938fd6fadc7a0d711a4dca9a7')\n  AND payload_ref LIKE 'provider_cache:saucenao:reverse_search_derived_image:%'\n  AND summary LIKE 'Phase 4.4-C1 validated provider evidence%';\nDELETE FROM blombooru_provider_cache\nWHERE provider = 'saucenao' AND query_type = 'reverse_search_derived_image'\n  AND query_hash IN ('07406f04b2b244e5c91846919ca5bd76b62eee27e8be8d31ddbf590f60f5f1aa', 'ae6d19f6e8125433a441b8cdbadac1d08197836938fd6fadc7a0d711a4dca9a7')\n  AND response_json_redacted->>'phase' = '4.4-C1';\nCOMMIT;"
+  },
+  "safety_confirmation": {
+    "provider_call": false,
+    "upload": false,
+    "db_migration": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "localization_execution": false,
+    "entity_resolver": false,
+    "similarity_clustering": false,
+    "confirmed_assignment_created": false,
+    "automatic_entity_created": false,
+    "media_tags_mutated": false,
+    "tag_translation_mutated": false,
+    "low_confidence_positive_writes": false
+  }
+}
