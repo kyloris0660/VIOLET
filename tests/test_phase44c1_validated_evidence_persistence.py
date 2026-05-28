@@ -2,8 +2,15 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
+import scripts.run_phase44c1_validated_evidence_persistence as runner
 from app.database import Base
-from app.enums import FileTypeEnum
+from app.enums import (
+    EntityMetadataSourceEnum,
+    EntityReviewStatusEnum,
+    EntityTypeEnum,
+    FileTypeEnum,
+    MediaEntityRoleEnum,
+)
 from app.models import (
     Entity,
     EntityEvidence,
@@ -19,6 +26,10 @@ from app.services.provider_evidence_persistence_service import (
     persist_provider_evidence_plans,
 )
 from app.services.saucenao_evidence_mapper import map_saucenao_result_to_plan
+from scripts.run_phase44c1_validated_evidence_persistence import (
+    build_idempotency_verification,
+    build_public_summary,
+)
 
 
 def _valid_query_hash(media_id: int) -> str:
@@ -133,6 +144,126 @@ def _plan_2670():
     )
 
 
+def _invalid_approved_plan_missing_query_hash():
+    live_item = _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672)
+    live_item.pop("query_hash")
+    return map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(2670),
+        metadata_item=_metadata_item(
+            2670,
+            artist="songchuan li",
+            works=["blue archive"],
+            characters=["kisaki (blue archive)"],
+            result_id=9366672,
+        ),
+    )
+
+
+def _identity():
+    return {
+        "violet_env": "development",
+        "configured_db": "blombooru",
+        "current_database": "blombooru",
+        "db_host": "localhost",
+        "db_port": 5432,
+        "db_user": "postgres",
+        "db_auth_hidden": True,
+        "storage_root_basename": "AnimeLocalBooru",
+        "storage_root_is_test_storage": False,
+        "test_database_url_set": False,
+    }
+
+
+def _state(
+    *,
+    provider_cache: int = 2,
+    evidence: int = 2,
+    candidates: int = 7,
+    assignments: int = 0,
+    entity_count: int = 0,
+    tag_translation_count: int = 0,
+    media_tags: int = 0,
+    low_evidence: int = 0,
+    low_candidates: int = 0,
+) -> dict:
+    return {
+        "approved_media_present": 2,
+        "provider_cache_approved": provider_cache,
+        "entity_evidence_approved": evidence,
+        "media_entity_candidates_c1": candidates,
+        "media_entity_assignments_for_approved": assignments,
+        "entity_count": entity_count,
+        "tag_translation_count": tag_translation_count,
+        "media_tags_for_approved": media_tags,
+        "low_confidence_provider_cache": 0,
+        "low_confidence_positive_evidence": low_evidence,
+        "low_confidence_candidates": low_candidates,
+    }
+
+
+def _successful_persistence() -> dict:
+    return {
+        "success": True,
+        "counts": {
+            "ProviderCache": {"planned": 2, "inserted": 2, "existing": 0, "skipped": 0},
+            "EntityEvidence": {"planned": 2, "inserted": 2, "existing": 0, "skipped": 0},
+            "MediaEntityCandidate": {"planned": 7, "inserted": 7, "existing": 0, "skipped": 0},
+            "MediaEntityAssignment": {"inserted": 0},
+            "Entity": {"inserted": 0},
+        },
+        "items": [],
+        "candidate_deferred_schema_constraint": False,
+    }
+
+
+def _successful_idempotency() -> dict:
+    return {
+        "success": True,
+        "counts": {
+            "ProviderCache": {"planned": 2, "inserted": 0, "existing": 2, "skipped": 0},
+            "EntityEvidence": {"planned": 2, "inserted": 0, "existing": 2, "skipped": 0},
+            "MediaEntityCandidate": {"planned": 7, "inserted": 0, "existing": 7, "skipped": 0},
+            "MediaEntityAssignment": {"inserted": 0},
+            "Entity": {"inserted": 0},
+        },
+    }
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.disposed = False
+
+    def dispose(self):
+        self.disposed = True
+
+
+class _FakeSession:
+    def __init__(self):
+        self.committed = 0
+        self.rolled_back = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def commit(self):
+        self.committed += 1
+
+    def rollback(self):
+        self.rolled_back += 1
+
+
+class _FakeSessionLocal:
+    def __init__(self):
+        self.session = _FakeSession()
+
+    def __call__(self):
+        return self.session
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite:///:memory:")
@@ -200,25 +331,43 @@ def test_low_confidence_discarded_samples_do_not_generate_positive_writes(db, me
 
 
 def test_missing_query_hash_blocks_write(db):
-    live_item = _live_item(2687, result_class="high_confidence_match", score=96.2, minimum_similarity=52.0, result_id=7695035)
-    live_item.pop("query_hash")
-    plan = map_saucenao_result_to_plan(
-        live_item=live_item,
-        manual_item=_manual(2687),
-        metadata_item=_metadata_item(
-            2687,
-            artist="yunkaiming",
-            works=["honkai: star rail", "honkai (series)"],
-            characters=["acheron (honkai: star rail)"],
-            result_id=7695035,
-        ),
-    )
+    plan = _invalid_approved_plan_missing_query_hash()
 
     with pytest.raises(EvidencePersistenceError, match="persistence_plan_validation_failed"):
         persist_provider_evidence_plans(db, [plan], apply=True)
 
     assert db.query(ProviderCache).count() == 0
     assert db.query(EntityEvidence).count() == 0
+
+
+def test_dry_run_with_invalid_approved_plan_reports_blocked_without_writes(db):
+    result = persist_provider_evidence_plans(
+        db,
+        [_plan_2687(), _invalid_approved_plan_missing_query_hash()],
+        apply=False,
+        options=EvidencePersistenceOptions(strict=False),
+    )
+
+    assert result["success"] is False
+    assert any(item["media_id"] == 2670 and item["status"] == "blocked" for item in result["items"])
+    assert any(item["media_id"] == 2687 and item["status"] == "planned" for item in result["items"])
+    assert result["counts"]["ProviderCache"]["inserted"] == 0
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+
+
+def test_apply_with_one_invalid_approved_plan_fails_closed_even_without_strict(db):
+    with pytest.raises(EvidencePersistenceError, match="persistence_plan_validation_failed"):
+        persist_provider_evidence_plans(
+            db,
+            [_plan_2687(), _invalid_approved_plan_missing_query_hash()],
+            apply=True,
+            options=EvidencePersistenceOptions(strict=False),
+        )
+
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
 
 
 def test_unsafe_source_url_blocks_write(db):
@@ -267,6 +416,30 @@ def test_unsafe_metadata_blocks_write(db):
 
     assert db.query(ProviderCache).count() == 0
     assert db.query(EntityEvidence).count() == 0
+
+
+def test_confirmed_assignment_detected_fails_closed_and_rolls_back_c1_writes(db):
+    entity = Entity(type=EntityTypeEnum.character, canonical_name="existing", normalized_key="existing")
+    db.add(entity)
+    db.flush()
+    db.add(
+        MediaEntityAssignment(
+            media_id=2687,
+            entity_id=entity.id,
+            role=MediaEntityRoleEnum.character,
+            review_status=EntityReviewStatusEnum.confirmed,
+            source=EntityMetadataSourceEnum.manual,
+        )
+    )
+    db.commit()
+
+    with pytest.raises(EvidencePersistenceError, match="confirmed_assignment_detected"):
+        persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
+
+    assert db.query(MediaEntityAssignment).count() == 1
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
 
 
 def test_apply_creates_no_confirmed_assignment_entity_or_translation(db):
@@ -346,3 +519,165 @@ def test_runner_style_pre_read_then_commit_persists_writes(db):
     assert db.query(ProviderCache).count() == 2
     assert db.query(EntityEvidence).count() == 2
     assert db.query(MediaEntityCandidate).count() == 7
+
+
+def test_public_summary_success_requires_post_write_verification_success():
+    summary = build_public_summary(
+        mode="apply",
+        identity=_identity(),
+        plans=[_plan_2687(), _plan_2670()],
+        persistence=_successful_persistence(),
+        db_before=_state(tag_translation_count=0),
+        db_after=_state(tag_translation_count=1),
+        backup=None,
+        idempotency_summary=_successful_idempotency(),
+    )
+
+    assert summary["success"] is False
+    assert summary["status"] == "blocked"
+    assert "tag_translation_count_unchanged" in summary["blocked_reasons"]
+    assert summary["safety_confirmation"]["tag_translation_mutated"] is True
+
+
+def test_public_summary_blocks_confirmed_assignment_and_media_tag_deltas():
+    summary = build_public_summary(
+        mode="apply",
+        identity=_identity(),
+        plans=[_plan_2687(), _plan_2670()],
+        persistence=_successful_persistence(),
+        db_before=_state(media_tags=92),
+        db_after=_state(assignments=1, media_tags=93),
+        backup=None,
+        idempotency_summary=_successful_idempotency(),
+    )
+
+    assert summary["success"] is False
+    assert "confirmed_assignment_count_is_zero" in summary["blocked_reasons"]
+    assert "media_tags_for_approved_unchanged" in summary["blocked_reasons"]
+    assert summary["safety_confirmation"]["confirmed_assignment_created"] is True
+    assert summary["safety_confirmation"]["media_tags_mutated"] is True
+
+
+def test_public_summary_success_requires_idempotency_verification_success():
+    bad_idempotency = _successful_idempotency()
+    bad_idempotency["counts"]["ProviderCache"]["inserted"] = 1
+    bad_idempotency["counts"]["ProviderCache"]["existing"] = 1
+
+    summary = build_public_summary(
+        mode="apply",
+        identity=_identity(),
+        plans=[_plan_2687(), _plan_2670()],
+        persistence=_successful_persistence(),
+        db_before=_state(),
+        db_after=_state(),
+        backup=None,
+        idempotency_summary=bad_idempotency,
+    )
+
+    assert summary["success"] is False
+    assert "ProviderCache_would_insert" in summary["blocked_reasons"]
+    assert "ProviderCache_existing_count_mismatch" in summary["blocked_reasons"]
+
+
+def test_idempotency_verification_accepts_zero_insert_existing_rows():
+    result = build_idempotency_verification(_successful_idempotency(), [_plan_2687(), _plan_2670()])
+
+    assert result["success"] is True
+    assert result["failure_codes"] == []
+    assert result["counts"]["ProviderCache"]["inserted"] == 0
+    assert result["counts"]["ProviderCache"]["existing"] == 2
+
+
+def test_public_summary_success_when_all_safety_checks_pass():
+    summary = build_public_summary(
+        mode="apply",
+        identity=_identity(),
+        plans=[_plan_2687(), _plan_2670()],
+        persistence=_successful_persistence(),
+        db_before=_state(),
+        db_after=_state(),
+        backup=None,
+        idempotency_summary=_successful_idempotency(),
+    )
+
+    assert summary["success"] is True
+    assert summary["post_write_verification"]["success"] is True
+    assert summary["idempotency_verification"]["success"] is True
+
+
+def test_runner_apply_aborts_before_backup_when_dry_run_blocks(monkeypatch):
+    fake_engine = _FakeEngine()
+    fake_session_local = _FakeSessionLocal()
+    calls = []
+
+    def fake_persist(_db, _plans, *, apply, options):
+        calls.append({"apply": apply, "strict": options.strict})
+        assert apply is False
+        return {
+            **_successful_persistence(),
+            "success": False,
+            "items": [{"media_id": 2670, "status": "blocked", "blocked_reason": "missing_query_hash"}],
+            "counts": {
+                "ProviderCache": {"planned": 1, "inserted": 0, "existing": 0, "skipped": 0},
+                "EntityEvidence": {"planned": 1, "inserted": 0, "existing": 0, "skipped": 0},
+                "MediaEntityCandidate": {"planned": 4, "inserted": 0, "existing": 0, "skipped": 0},
+                "MediaEntityAssignment": {"inserted": 0},
+                "Entity": {"inserted": 0},
+            },
+        }
+
+    monkeypatch.setattr(runner, "load_json", lambda _path: {})
+    monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _invalid_approved_plan_missing_query_hash()])
+    monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
+    monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
+    monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
+    monkeypatch.setattr(runner, "collect_db_state", lambda *_args, **_kwargs: _state(provider_cache=0, evidence=0, candidates=0))
+    monkeypatch.setattr(runner, "ensure_media_rows_present", lambda *_args: None)
+    monkeypatch.setattr(runner, "persist_provider_evidence_plans", fake_persist)
+    monkeypatch.setattr(runner, "create_pg_dump_backup", lambda *_args: pytest.fail("backup must not run before valid dry-run"))
+    monkeypatch.setattr(runner, "write_json", lambda *_args: None)
+    monkeypatch.setattr(runner, "write_text", lambda *_args: None)
+
+    exit_code = runner.main(["--apply"])
+
+    assert exit_code == 2
+    assert calls == [{"apply": False, "strict": False}]
+    assert fake_session_local.session.committed == 0
+
+
+def test_runner_apply_runs_post_apply_idempotency_check(monkeypatch):
+    fake_engine = _FakeEngine()
+    fake_session_local = _FakeSessionLocal()
+    calls = []
+
+    def fake_persist(_db, _plans, *, apply, options):
+        calls.append({"apply": apply, "strict": options.strict})
+        if apply:
+            return _successful_persistence()
+        if len(calls) == 1:
+            return _successful_persistence()
+        return _successful_idempotency()
+
+    monkeypatch.setattr(runner, "load_json", lambda _path: {})
+    monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _plan_2670()])
+    monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
+    monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
+    monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
+    monkeypatch.setattr(runner, "collect_db_state", lambda *_args, **_kwargs: _state())
+    monkeypatch.setattr(runner, "ensure_media_rows_present", lambda *_args: None)
+    monkeypatch.setattr(runner, "persist_provider_evidence_plans", fake_persist)
+    monkeypatch.setattr(runner, "create_pg_dump_backup", lambda *_args: {"basename": "backup.dump", "bytes": 1, "format": "pg_dump -Fc", "toc_verified": True})
+    monkeypatch.setattr(runner, "write_json", lambda *_args: None)
+    monkeypatch.setattr(runner, "write_text", lambda *_args: None)
+
+    exit_code = runner.main(["--apply"])
+
+    assert exit_code == 0
+    assert calls == [
+        {"apply": False, "strict": False},
+        {"apply": True, "strict": True},
+        {"apply": False, "strict": True},
+    ]
+    assert fake_session_local.session.committed == 1

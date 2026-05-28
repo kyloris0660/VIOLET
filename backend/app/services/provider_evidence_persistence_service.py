@@ -365,7 +365,8 @@ def persist_provider_evidence_plans(
         except EvidencePersistenceError as exc:
             validation_errors.append({"media_id": plan.media_id, "code": exc.code, "detail": exc.detail})
             summary["items"].append({"media_id": plan.media_id, "status": "blocked", "blocked_reason": exc.code})
-    if validation_errors and options.strict:
+    strict_validation = options.strict or apply
+    if validation_errors and strict_validation:
         summary["success"] = False
         raise EvidencePersistenceError(
             "persistence_plan_validation_failed",
@@ -487,7 +488,9 @@ def persist_provider_evidence_plans(
                 .count()
             )
             if assignment_count:
-                summary["confirmed_assignment_created"] = False
+                summary["success"] = False
+                summary["confirmed_assignment_created"] = True
+                raise EvidencePersistenceError("confirmed_assignment_detected", detail=str(assignment_count))
             if manage_transaction:
                 db.commit()
     except Exception:

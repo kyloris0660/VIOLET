@@ -401,6 +401,88 @@ def build_rollback_sql(query_hashes: list[str]) -> str:
     )
 
 
+def expected_persistence_counts(plans: Iterable[Any]) -> dict[str, int]:
+    plan_list = list(plans)
+    return {
+        "ProviderCache": len(plan_list),
+        "EntityEvidence": len(plan_list),
+        "MediaEntityCandidate": sum(len(plan.planned_entity_candidates) for plan in plan_list),
+    }
+
+
+def build_post_write_verification(
+    db_before: Mapping[str, Any],
+    db_after: Mapping[str, Any],
+    plans: Iterable[Any],
+) -> dict[str, Any]:
+    expected = expected_persistence_counts(plans)
+    checks = {
+        "provider_cache_count_matches_expected": db_after["provider_cache_approved"] == expected["ProviderCache"],
+        "entity_evidence_count_matches_expected": db_after["entity_evidence_approved"] == expected["EntityEvidence"],
+        "media_entity_candidate_count_matches_expected": db_after["media_entity_candidates_c1"]
+        == expected["MediaEntityCandidate"],
+        "confirmed_assignment_count_is_zero": db_after["media_entity_assignments_for_approved"] == 0,
+        "entity_count_unchanged": db_before["entity_count"] == db_after["entity_count"],
+        "tag_translation_count_unchanged": db_before["tag_translation_count"] == db_after["tag_translation_count"],
+        "media_tags_for_approved_unchanged": db_before["media_tags_for_approved"] == db_after["media_tags_for_approved"],
+        "low_confidence_positive_evidence_zero": db_after["low_confidence_positive_evidence"] == 0,
+        "low_confidence_candidates_zero": db_after["low_confidence_candidates"] == 0,
+    }
+    failure_codes = [name for name, passed in checks.items() if not passed]
+    return {
+        "success": not failure_codes,
+        "failure_codes": failure_codes,
+        "expected_counts": expected,
+        "provider_cache_approved_count": db_after["provider_cache_approved"],
+        "entity_evidence_approved_count": db_after["entity_evidence_approved"],
+        "media_entity_candidate_c1_count": db_after["media_entity_candidates_c1"],
+        "confirmed_assignment_count_for_approved": db_after["media_entity_assignments_for_approved"],
+        **checks,
+    }
+
+
+def build_idempotency_verification(
+    idempotency_summary: Mapping[str, Any] | None,
+    plans: Iterable[Any],
+) -> dict[str, Any]:
+    expected = expected_persistence_counts(plans)
+    if idempotency_summary is None:
+        return {
+            "status": "not_run",
+            "success": False,
+            "failure_codes": ["idempotency_verification_not_run"],
+            "expected_counts": expected,
+        }
+
+    counts = idempotency_summary.get("counts", {})
+    failure_codes = []
+    if idempotency_summary.get("success") is not True:
+        failure_codes.append("idempotency_dry_run_failed")
+    for table, expected_count in expected.items():
+        table_counts = counts.get(table, {})
+        if table_counts.get("inserted", 0) != 0:
+            failure_codes.append(f"{table}_would_insert")
+        if table_counts.get("existing", 0) != expected_count:
+            failure_codes.append(f"{table}_existing_count_mismatch")
+        if table_counts.get("planned", 0) != expected_count:
+            failure_codes.append(f"{table}_planned_count_mismatch")
+    return {
+        "status": "dry_run",
+        "success": not failure_codes,
+        "failure_codes": failure_codes,
+        "expected_counts": expected,
+        "counts": counts,
+    }
+
+
+def _blocked_items_by_media(persistence: Mapping[str, Any]) -> dict[int, Mapping[str, Any]]:
+    blocked: dict[int, Mapping[str, Any]] = {}
+    for item in persistence.get("items", []):
+        if item.get("status") == "blocked" and item.get("media_id") is not None:
+            blocked[int(item["media_id"])] = item
+    return blocked
+
+
 def build_public_summary(
     *,
     mode: str,
@@ -410,29 +492,58 @@ def build_public_summary(
     db_before: Mapping[str, Any],
     db_after: Mapping[str, Any],
     backup: Mapping[str, Any] | None,
+    idempotency_summary: Mapping[str, Any] | None = None,
+    blocked_status: str | None = None,
 ) -> dict[str, Any]:
     query_hashes = _plan_query_hashes(plans)
     per_media = {}
+    blocked_items = _blocked_items_by_media(persistence)
     for plan in plans:
-        per_media[str(plan.media_id)] = {
-            "provider": plan.provider_query.provider_key,
-            "query_hash_present": bool(plan.provider_query.query_hash),
-            "source_host": plan.source_match.source_host,
-            "post_url": plan.source_match.post_url,
-            "result_id": plan.source_match.provider_result_id,
-            "score": plan.source_match.score_value,
-            "minimum_similarity": plan.source_match.provider_minimum_similarity,
-            "manual_validation_status": plan.source_match.manual_validation_status.value,
-            "evidence_strength": plan.source_match.evidence_strength.value,
-            "localization_status": plan.extracted_metadata.localization_status.value,
-            "artist": list(plan.extracted_metadata.artist_raw),
-            "work": list(plan.extracted_metadata.work_raw),
-            "character": list(plan.extracted_metadata.character_raw),
-        }
+        blocked_item = blocked_items.get(plan.media_id)
+        if blocked_item:
+            per_media[str(plan.media_id)] = {
+                "provider": plan.provider_query.provider_key,
+                "query_hash_present": bool(plan.provider_query.query_hash),
+                "status": "blocked",
+                "blocked_reason": blocked_item.get("blocked_reason"),
+            }
+        else:
+            per_media[str(plan.media_id)] = {
+                "provider": plan.provider_query.provider_key,
+                "query_hash_present": bool(plan.provider_query.query_hash),
+                "source_host": plan.source_match.source_host,
+                "post_url": plan.source_match.post_url,
+                "result_id": plan.source_match.provider_result_id,
+                "score": plan.source_match.score_value,
+                "minimum_similarity": plan.source_match.provider_minimum_similarity,
+                "manual_validation_status": plan.source_match.manual_validation_status.value,
+                "evidence_strength": plan.source_match.evidence_strength.value,
+                "localization_status": plan.extracted_metadata.localization_status.value,
+                "artist": list(plan.extracted_metadata.artist_raw),
+                "work": list(plan.extracted_metadata.work_raw),
+                "character": list(plan.extracted_metadata.character_raw),
+            }
+    post_write_verification = build_post_write_verification(db_before, db_after, plans)
+    idempotency_verification = build_idempotency_verification(idempotency_summary, plans) if mode == "apply" else None
+    final_success = (
+        persistence.get("success") is True
+        and post_write_verification["success"] is True
+        and (mode != "apply" or idempotency_verification["success"] is True)
+    )
+    blocked_reasons = []
+    if persistence.get("success") is not True:
+        blocked_reasons.append("persistence_plan_or_write_failed")
+    blocked_reasons.extend(post_write_verification["failure_codes"])
+    if idempotency_verification:
+        blocked_reasons.extend(idempotency_verification["failure_codes"])
+    status = blocked_status or ("applied" if mode == "apply" else "dry_run")
+    if not final_success:
+        status = blocked_status or "blocked"
     summary = {
         "phase": PHASE,
-        "status": "applied" if mode == "apply" else "dry_run",
-        "success": persistence.get("success") is True,
+        "status": status,
+        "success": final_success,
+        "blocked_reasons": blocked_reasons,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "approved_media_ids": list(APPROVED_MEDIA_IDS),
         "low_confidence_excluded_media_ids": list(LOW_CONFIDENCE_EXCLUDED_IDS),
@@ -461,19 +572,8 @@ def build_public_summary(
         "per_media": per_media,
         "db_state_before": dict(db_before),
         "db_state_after": dict(db_after),
-        "post_write_verification": {
-            "provider_cache_approved_count": db_after["provider_cache_approved"],
-            "entity_evidence_approved_count": db_after["entity_evidence_approved"],
-            "media_entity_candidate_c1_count": db_after["media_entity_candidates_c1"],
-            "confirmed_assignment_count_for_approved": db_after["media_entity_assignments_for_approved"],
-            "entity_count_unchanged": db_before["entity_count"] == db_after["entity_count"],
-            "tag_translation_count_unchanged": db_before["tag_translation_count"] == db_after["tag_translation_count"],
-            "media_tags_for_approved_unchanged": db_before["media_tags_for_approved"] == db_after["media_tags_for_approved"],
-            "low_confidence_positive_evidence_unchanged": db_before["low_confidence_positive_evidence"]
-            == db_after["low_confidence_positive_evidence"],
-            "low_confidence_candidates_unchanged": db_before["low_confidence_candidates"]
-            == db_after["low_confidence_candidates"],
-        },
+        "post_write_verification": post_write_verification,
+        "idempotency_verification": idempotency_verification,
         "rollback": {
             "backup_restore_note": "Use the local ignored pg_dump custom archive basename listed here; full path is kept only in local details.",
             "delete_sql_for_c1_rows": build_rollback_sql(query_hashes),
@@ -487,11 +587,11 @@ def build_public_summary(
             "localization_execution": False,
             "entity_resolver": False,
             "similarity_clustering": False,
-            "confirmed_assignment_created": False,
-            "automatic_entity_created": False,
-            "media_tags_mutated": False,
-            "tag_translation_mutated": False,
-            "low_confidence_positive_writes": False,
+            "confirmed_assignment_created": not post_write_verification["confirmed_assignment_count_is_zero"],
+            "automatic_entity_created": not post_write_verification["entity_count_unchanged"],
+            "media_tags_mutated": not post_write_verification["media_tags_for_approved_unchanged"],
+            "tag_translation_mutated": not post_write_verification["tag_translation_count_unchanged"],
+            "low_confidence_positive_writes": not post_write_verification["low_confidence_positive_evidence_zero"],
         },
     }
     assert_public_payload_safe(summary)
@@ -566,11 +666,14 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         ]
     )
     for media_id, item in summary["per_media"].items():
-        lines.append(
-            f"| {media_id} | {item['result_id']} | {item['score']} | {item['source_host']} | "
-            f"{', '.join(item['artist'])} | {', '.join(item['work'])} | {', '.join(item['character'])} | "
-            f"{item['localization_status']} |"
-        )
+        if item.get("status") == "blocked":
+            lines.append(f"| {media_id} | blocked |  |  |  | {item.get('blocked_reason')} |  |  |")
+        else:
+            lines.append(
+                f"| {media_id} | {item['result_id']} | {item['score']} | {item['source_host']} | "
+                f"{', '.join(item['artist'])} | {', '.join(item['work'])} | {', '.join(item['character'])} | "
+                f"{item['localization_status']} |"
+            )
     verification = summary["post_write_verification"]
     lines.extend(
         [
@@ -581,11 +684,35 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- EntityEvidence approved count: `{verification['entity_evidence_approved_count']}`",
             f"- MediaEntityCandidate C1 count: `{verification['media_entity_candidate_c1_count']}`",
             f"- Confirmed assignment count for approved media: `{verification['confirmed_assignment_count_for_approved']}`",
+            f"- Verification success: `{verification['success']}`",
+            f"- Failure codes: `{', '.join(verification['failure_codes']) if verification['failure_codes'] else 'none'}`",
             f"- Entity count unchanged: `{verification['entity_count_unchanged']}`",
             f"- TagTranslation count unchanged: `{verification['tag_translation_count_unchanged']}`",
             f"- media_tags for approved unchanged: `{verification['media_tags_for_approved_unchanged']}`",
-            f"- Low-confidence positive evidence unchanged: `{verification['low_confidence_positive_evidence_unchanged']}`",
-            f"- Low-confidence candidates unchanged: `{verification['low_confidence_candidates_unchanged']}`",
+            f"- Low-confidence positive evidence count is zero: `{verification['low_confidence_positive_evidence_zero']}`",
+            f"- Low-confidence candidates count is zero: `{verification['low_confidence_candidates_zero']}`",
+            "",
+            "## Idempotency Verification",
+            "",
+        ]
+    )
+    idempotency = summary.get("idempotency_verification")
+    if idempotency:
+        lines.extend(
+            [
+                f"- Status: `{idempotency['status']}`",
+                f"- Success: `{idempotency['success']}`",
+                f"- Failure codes: `{', '.join(idempotency['failure_codes']) if idempotency['failure_codes'] else 'none'}`",
+                f"- ProviderCache existing count: `{idempotency['counts']['ProviderCache']['existing']}`",
+                f"- EntityEvidence existing count: `{idempotency['counts']['EntityEvidence']['existing']}`",
+                f"- MediaEntityCandidate existing count: `{idempotency['counts']['MediaEntityCandidate']['existing']}`",
+                f"- Would insert counts: ProviderCache `{idempotency['counts']['ProviderCache']['inserted']}`, EntityEvidence `{idempotency['counts']['EntityEvidence']['inserted']}`, MediaEntityCandidate `{idempotency['counts']['MediaEntityCandidate']['inserted']}`",
+            ]
+        )
+    else:
+        lines.append("- Not applicable for dry-run mode.")
+    lines.extend(
+        [
             "",
             "## Low-confidence Exclusion",
             "",
@@ -659,22 +786,44 @@ def main(argv: list[str] | None = None) -> int:
                 db,
                 plans,
                 apply=False,
-                options=EvidencePersistenceOptions(write_candidates=True, strict=args.strict),
+                options=EvidencePersistenceOptions(write_candidates=True, strict=False if args.apply else args.strict),
             )
 
+            blocked_status = None
+            idempotency_summary = None
             if args.apply:
-                backup_path = args.db_backup_file or (
-                    Path(".local_manifests")
-                    / f"phase-4.4c1-db-backup-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.dump"
-                )
-                backup = create_pg_dump_backup(settings, backup_path)
-                persistence = persist_provider_evidence_plans(
-                    db,
-                    plans,
-                    apply=True,
-                    options=EvidencePersistenceOptions(write_candidates=True, strict=args.strict),
-                )
-                db.commit()
+                if dry_summary.get("success") is not True:
+                    persistence = dry_summary
+                    blocked_status = "blocked_before_apply"
+                else:
+                    backup_path = args.db_backup_file or (
+                        Path(".local_manifests")
+                        / f"phase-4.4c1-db-backup-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.dump"
+                    )
+                    backup = create_pg_dump_backup(settings, backup_path)
+                    try:
+                        persistence = persist_provider_evidence_plans(
+                            db,
+                            plans,
+                            apply=True,
+                            options=EvidencePersistenceOptions(write_candidates=True, strict=True),
+                        )
+                        db.commit()
+                        idempotency_summary = persist_provider_evidence_plans(
+                            db,
+                            plans,
+                            apply=False,
+                            options=EvidencePersistenceOptions(write_candidates=True, strict=True),
+                        )
+                    except Exception as exc:
+                        db.rollback()
+                        persistence = deepcopy(dry_summary)
+                        persistence["success"] = False
+                        persistence["apply_error"] = {
+                            "code": getattr(exc, "code", exc.__class__.__name__),
+                            "message": str(exc),
+                        }
+                        blocked_status = "blocked_apply_failed"
             else:
                 persistence = dry_summary
 
@@ -688,6 +837,8 @@ def main(argv: list[str] | None = None) -> int:
             db_before=before,
             db_after=after,
             backup=backup,
+            idempotency_summary=idempotency_summary,
+            blocked_status=blocked_status,
         )
         local_details = {
             "phase": PHASE,
@@ -698,6 +849,7 @@ def main(argv: list[str] | None = None) -> int:
             "backup": backup,
             "dry_run": dry_summary,
             "persistence": persistence,
+            "idempotency_verification": idempotency_summary,
             "db_state_before": before,
             "db_state_after": after,
             "rollback_sql": build_rollback_sql(_plan_query_hashes(plans)),
@@ -711,7 +863,7 @@ def main(argv: list[str] | None = None) -> int:
         write_json(args.details_json, local_details)
         print(json.dumps({"status": public_summary["status"], "success": public_summary["success"]}, sort_keys=True))
         engine.dispose()
-        return 0
+        return 0 if public_summary["success"] else 2
     except Exception as exc:
         code = exc.code if isinstance(exc, PhaseC1Error) else exc.__class__.__name__
         print(json.dumps({"status": "blocked", "success": False, "code": code, "error": str(exc)}, sort_keys=True))

@@ -2,6 +2,7 @@
   "phase": "4.4-C1",
   "status": "applied",
   "success": true,
+  "blocked_reasons": [],
   "generated_at": "2026-05-28T09:12:35.142958+00:00",
   "approved_media_ids": [
     2687,
@@ -73,6 +74,12 @@
   "idempotency_verification": {
     "status": "dry_run",
     "success": true,
+    "failure_codes": [],
+    "expected_counts": {
+      "ProviderCache": 2,
+      "EntityEvidence": 2,
+      "MediaEntityCandidate": 7
+    },
     "counts": {
       "ProviderCache": {
         "planned": 2,
@@ -166,27 +173,81 @@
     "low_confidence_candidates": 0
   },
   "post_write_verification": {
+    "success": true,
+    "failure_codes": [],
+    "expected_counts": {
+      "ProviderCache": 2,
+      "EntityEvidence": 2,
+      "MediaEntityCandidate": 7
+    },
     "provider_cache_approved_count": 2,
     "entity_evidence_approved_count": 2,
     "media_entity_candidate_c1_count": 7,
     "confirmed_assignment_count_for_approved": 0,
+    "provider_cache_count_matches_expected": true,
+    "entity_evidence_count_matches_expected": true,
+    "media_entity_candidate_count_matches_expected": true,
+    "confirmed_assignment_count_is_zero": true,
     "entity_count_unchanged": true,
     "tag_translation_count_unchanged": true,
     "media_tags_for_approved_unchanged": true,
-    "low_confidence_positive_evidence_unchanged": true,
-    "low_confidence_candidates_unchanged": true
+    "low_confidence_positive_evidence_zero": true,
+    "low_confidence_candidates_zero": true
   },
   "validation": {
     "python_identity": "PASS",
     "python_version": "3.12.0",
     "py_compile_changed_python_files": "PASS",
-    "phase44c1_tests": "12 passed",
+    "phase44c1_tests": "22 passed",
     "phase44c0_contract_tests": "40 passed",
     "entity_metadata_foundation_tests": "38 passed",
     "summary_json_tool": "PASS",
     "git_diff_check": "PASS with LF-to-CRLF working-copy warnings for existing markdown files",
     "public_report_privacy_scan": "PASS",
     "real_browser_validation": "N/A - no UI or API route changes"
+  },
+  "closeout": {
+    "apply_mode_strict_regardless_of_strict_flag": true,
+    "abort_before_apply_if_dry_run_summary_unsuccessful": true,
+    "final_success_depends_on_post_write_verification": true,
+    "final_success_depends_on_idempotency_verification": true,
+    "runner_performs_post_apply_idempotency_check": true,
+    "new_db_writes_during_closeout": false,
+    "closeout_dry_run": {
+      "status": "dry_run",
+      "success": true,
+      "counts": {
+        "ProviderCache": {
+          "planned": 2,
+          "inserted": 0,
+          "existing": 2,
+          "skipped": 0
+        },
+        "EntityEvidence": {
+          "planned": 2,
+          "inserted": 0,
+          "existing": 2,
+          "skipped": 0
+        },
+        "MediaEntityCandidate": {
+          "planned": 7,
+          "inserted": 0,
+          "existing": 7,
+          "skipped": 0
+        }
+      }
+    },
+    "current_db_state_after_fix": {
+      "provider_cache_approved": 2,
+      "entity_evidence_approved": 2,
+      "media_entity_candidates_c1": 7,
+      "media_entity_assignments_for_approved": 0,
+      "entity_count": 0,
+      "tag_translation_count": 3732,
+      "media_tags_for_approved": 92,
+      "low_confidence_positive_evidence": 0,
+      "low_confidence_candidates": 0
+    }
   },
   "rollback": {
     "backup_restore_note": "Use the local ignored pg_dump custom archive basename listed here; full path is kept only in local details.",

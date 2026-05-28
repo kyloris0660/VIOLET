@@ -70,23 +70,35 @@ A post-apply dry-run against the same approved scope reported existing rows only
 - EntityEvidence approved count: `2`
 - MediaEntityCandidate C1 count: `7`
 - Confirmed assignment count for approved media: `0`
+- Verification success: `True`
+- Failure codes: `none`
 - Entity count unchanged: `True`
 - TagTranslation count unchanged: `True`
 - media_tags for approved unchanged: `True`
-- Low-confidence positive evidence unchanged: `True`
-- Low-confidence candidates unchanged: `True`
+- Low-confidence positive evidence count is zero: `True`
+- Low-confidence candidates count is zero: `True`
 
 ## Validation
 
 - Python identity: `PASS` with project venv Python 3.12.0.
 - `py_compile`: changed Python files passed.
-- `tests/test_phase44c1_validated_evidence_persistence.py -v`: `12 passed`.
+- `tests/test_phase44c1_validated_evidence_persistence.py -v`: `22 passed`.
 - `tests/test_phase44c0_provider_evidence_contract.py -v`: `40 passed`.
 - `tests/test_entity_metadata_foundation.py -v`: `38 passed`.
 - Summary JSON validation: `python -m json.tool` passed.
 - `git diff --check`: passed; PowerShell reported LF-to-CRLF working-copy warnings for existing markdown files only.
 - Public report privacy scan: passed; no forbidden private material patterns were found in this report or summary JSON.
 - Real browser validation: not applicable; C1 changed backend service/script/tests/docs only, with no UI or API route changes and no server startup required.
+
+## Closeout Safety Fixes
+
+- Apply mode is now fail-closed on invalid plans even when `--strict` is not passed.
+- The runner aborts before write if the dry-run validation summary is not successful.
+- Final report success now depends on post-write verification success.
+- Final report success now depends on post-apply idempotency verification success.
+- The runner now performs the post-apply idempotency dry-run before reporting apply success.
+- Closeout rerun used dry-run only; no new DB writes occurred during closeout.
+- Current closeout DB state: `ProviderCache=2`, `EntityEvidence=2`, `MediaEntityCandidate=7`, confirmed assignments `0`, Entity count `0`, `media_tags=92`, `TagTranslation=3732`, low-confidence positive evidence/candidates `0`.
 
 ## Low-confidence Exclusion
 
