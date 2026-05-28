@@ -197,6 +197,14 @@ def _plan_2670():
     )
 
 
+def _writable_plan_2687():
+    return runner.promote_c1_plan_for_db_write(_plan_2687())
+
+
+def _writable_plan_2670():
+    return runner.promote_c1_plan_for_db_write(_plan_2670())
+
+
 def _invalid_approved_plan_missing_query_hash():
     live_item = _live_item(2670, result_class="high_confidence_match", score=91.96, minimum_similarity=37.66, result_id=9366672)
     live_item.pop("query_hash")
@@ -368,6 +376,7 @@ def test_runner_plan_allows_approved_result_identities():
 
     assert [plan.media_id for plan in plans] == [2687, 2670]
     assert [plan.source_match.provider_result_id for plan in plans] == ["7695035", "9366672"]
+    assert all(plan.db_write_allowed is True for plan in plans)
 
 
 def test_runner_plan_blocks_approval_result_identity_mismatch():
@@ -484,7 +493,7 @@ def test_runner_plan_rejects_duplicate_media_ids_before_plan_build():
 
 @pytest.mark.parametrize("nested_field", ["provider_query", "source_match"])
 def test_nested_plan_media_id_mismatch_blocks_write(db, nested_field):
-    plan = _plan_2687()
+    plan = _writable_plan_2687()
     mismatched_nested = replace(getattr(plan, nested_field), media_id=2670)
     mismatched_plan = replace(plan, **{nested_field: mismatched_nested})
 
@@ -499,7 +508,7 @@ def test_nested_plan_media_id_mismatch_blocks_write(db, nested_field):
 
 
 def test_nested_plan_provider_key_mismatch_blocks_write(db):
-    plan = _plan_2687()
+    plan = _writable_plan_2687()
     mismatched_source = replace(plan.source_match, provider_key="other_provider")
     mismatched_plan = replace(plan, source_match=mismatched_source)
 
@@ -514,7 +523,7 @@ def test_nested_plan_provider_key_mismatch_blocks_write(db):
 
 
 def test_matching_nested_plan_identity_still_persists_without_entity_side_effects(db):
-    result = persist_provider_evidence_plans(db, [_plan_2687()], apply=True)
+    result = persist_provider_evidence_plans(db, [_writable_plan_2687()], apply=True)
 
     assert result["success"] is True
     assert result["counts"]["ProviderCache"]["inserted"] == 1
@@ -528,13 +537,66 @@ def test_matching_nested_plan_identity_still_persists_without_entity_side_effect
 
 
 def test_dry_run_generates_write_plan_for_2687_and_2670_only(db):
-    result = persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=False)
+    result = persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=False)
 
     assert result["success"] is True
     assert result["counts"]["ProviderCache"]["planned"] == 2
     assert result["counts"]["EntityEvidence"]["planned"] == 2
     assert result["counts"]["MediaEntityCandidate"]["planned"] == 7
     assert result["counts"]["ProviderCache"]["inserted"] == 0
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+
+
+def test_db_write_allowed_false_blocks_service_before_any_db_write(db):
+    plan = _plan_2687()
+    assert plan.db_write_allowed is False
+
+    with pytest.raises(EvidencePersistenceError, match="db_write_not_allowed_by_plan"):
+        persist_provider_evidence_plans(db, [plan], apply=True)
+
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(Entity).count() == 0
+
+
+def test_c1_approved_plan_is_promoted_to_writable_and_can_persist(db):
+    plan = _plan_2687()
+    promoted = runner.promote_c1_plan_for_db_write(plan)
+
+    assert plan.db_write_allowed is False
+    assert promoted.db_write_allowed is True
+
+    result = persist_provider_evidence_plans(db, [promoted], apply=True)
+
+    assert result["success"] is True
+    assert result["counts"]["ProviderCache"]["inserted"] == 1
+    assert result["counts"]["EntityEvidence"]["inserted"] == 1
+    assert result["counts"]["MediaEntityCandidate"]["inserted"] == 4
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(Entity).count() == 0
+
+
+def test_reduced_public_summary_without_provenance_remains_not_writable(db):
+    plan = replace(
+        _plan_2687(),
+        provider_provenance_status="blocked",
+        provider_cache_persistence_allowed=False,
+        provider_cache_planned=False,
+        entity_evidence_planned=False,
+        media_entity_candidate_planned=False,
+        planned_entity_candidates=(),
+        persistence_blocked_reason="reduced_public_summary_without_provenance",
+    )
+
+    assert plan.db_write_allowed is False
+
+    with pytest.raises(EvidencePersistenceError, match="db_write_not_allowed_by_plan"):
+        persist_provider_evidence_plans(db, [plan], apply=True)
+
     assert db.query(ProviderCache).count() == 0
     assert db.query(EntityEvidence).count() == 0
     assert db.query(MediaEntityCandidate).count() == 0
@@ -547,6 +609,7 @@ def test_low_confidence_discarded_samples_do_not_generate_positive_writes(db, me
         manual_item=_manual(media_id, action="discard", judgment="wrong_unrelated"),
         metadata_item={"media_id": media_id, "metadata_extraction_status": "parser_missing_discarded_low_confidence_not_requeried"},
     )
+    assert plan.db_write_allowed is False
 
     result = persist_provider_evidence_plans(
         db,
@@ -557,10 +620,16 @@ def test_low_confidence_discarded_samples_do_not_generate_positive_writes(db, me
 
     assert result["success"] is False
     assert result["items"][0]["status"] == "blocked"
+    assert result["items"][0]["blocked_reason"] == "db_write_not_allowed_by_plan"
     assert result["counts"]["EntityEvidence"]["planned"] == 0
     assert result["counts"]["MediaEntityCandidate"]["planned"] == 0
     assert db.query(EntityEvidence).count() == 0
     assert db.query(MediaEntityCandidate).count() == 0
+
+    with pytest.raises(EvidencePersistenceError, match="db_write_not_allowed_by_plan"):
+        persist_provider_evidence_plans(db, [plan], apply=True)
+
+    assert db.query(ProviderCache).count() == 0
 
 
 def test_missing_query_hash_blocks_write(db):
@@ -576,7 +645,7 @@ def test_missing_query_hash_blocks_write(db):
 def test_dry_run_with_invalid_approved_plan_reports_blocked_without_writes(db):
     result = persist_provider_evidence_plans(
         db,
-        [_plan_2687(), _invalid_approved_plan_missing_query_hash()],
+        [_writable_plan_2687(), _invalid_approved_plan_missing_query_hash()],
         apply=False,
         options=EvidencePersistenceOptions(strict=False),
     )
@@ -593,7 +662,7 @@ def test_apply_with_one_invalid_approved_plan_fails_closed_even_without_strict(d
     with pytest.raises(EvidencePersistenceError, match="persistence_plan_validation_failed"):
         persist_provider_evidence_plans(
             db,
-            [_plan_2687(), _invalid_approved_plan_missing_query_hash()],
+            [_writable_plan_2687(), _invalid_approved_plan_missing_query_hash()],
             apply=True,
             options=EvidencePersistenceOptions(strict=False),
         )
@@ -667,7 +736,7 @@ def test_confirmed_assignment_detected_fails_closed_and_rolls_back_c1_writes(db)
     db.commit()
 
     with pytest.raises(EvidencePersistenceError, match="confirmed_assignment_detected"):
-        persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
+        persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=True)
 
     assert db.query(MediaEntityAssignment).count() == 1
     assert db.query(ProviderCache).count() == 0
@@ -676,7 +745,7 @@ def test_confirmed_assignment_detected_fails_closed_and_rolls_back_c1_writes(db)
 
 
 def test_apply_creates_no_confirmed_assignment_entity_or_translation(db):
-    result = persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
+    result = persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=True)
 
     assert result["counts"]["ProviderCache"]["inserted"] == 2
     assert result["counts"]["EntityEvidence"]["inserted"] == 2
@@ -695,8 +764,8 @@ def test_apply_creates_no_confirmed_assignment_entity_or_translation(db):
 
 
 def test_idempotent_rerun_does_not_duplicate_rows(db):
-    first = persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
-    second = persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
+    first = persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=True)
+    second = persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=True)
 
     assert first["counts"]["ProviderCache"]["inserted"] == 2
     assert second["counts"]["ProviderCache"]["inserted"] == 0
@@ -711,7 +780,7 @@ def test_idempotent_rerun_does_not_duplicate_rows(db):
 def test_candidate_write_can_be_deferred_without_creating_candidates(db):
     result = persist_provider_evidence_plans(
         db,
-        [_plan_2687(), _plan_2670()],
+        [_writable_plan_2687(), _writable_plan_2670()],
         apply=True,
         options=EvidencePersistenceOptions(write_candidates=False),
     )
@@ -736,7 +805,7 @@ def test_transaction_rolls_back_when_later_plan_conflicts(db):
     db.commit()
 
     with pytest.raises(EvidencePersistenceError, match="conflict_existing_provider_cache"):
-        persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
+        persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=True)
 
     assert db.query(ProviderCache).filter(ProviderCache.query_hash == _valid_query_hash(2687)).count() == 0
     assert db.query(EntityEvidence).count() == 0
@@ -746,7 +815,7 @@ def test_transaction_rolls_back_when_later_plan_conflicts(db):
 def test_runner_style_pre_read_then_commit_persists_writes(db):
     assert db.query(Media).count() == 5
 
-    persist_provider_evidence_plans(db, [_plan_2687(), _plan_2670()], apply=True)
+    persist_provider_evidence_plans(db, [_writable_plan_2687(), _writable_plan_2670()], apply=True)
     db.commit()
 
     assert db.query(ProviderCache).count() == 2
@@ -755,7 +824,7 @@ def test_runner_style_pre_read_then_commit_persists_writes(db):
 
 
 def test_collect_db_state_counts_only_exact_c1_evidence_rows(db):
-    plan = _plan_2687()
+    plan = _writable_plan_2687()
     unrelated = EntityEvidence(
         provider="saucenao",
         source_type="external",
@@ -802,7 +871,7 @@ def test_collect_db_state_counts_only_exact_c1_evidence_rows(db):
 
 
 def test_duplicate_c1_evidence_rows_are_detected_by_approved_verification(db):
-    plans = [_plan_2687(), _plan_2670()]
+    plans = [_writable_plan_2687(), _writable_plan_2670()]
     persist_provider_evidence_plans(db, plans, apply=True)
     duplicate = EntityEvidence(
         provider="saucenao",
@@ -833,7 +902,7 @@ def test_low_confidence_preexisting_rows_do_not_count_as_c1_writes():
     before = _state(low_evidence=2, low_candidates=3)
     after = _state(low_evidence=2, low_candidates=3)
 
-    verification = runner.build_post_write_verification(before, after, [_plan_2687(), _plan_2670()])
+    verification = runner.build_post_write_verification(before, after, [_writable_plan_2687(), _writable_plan_2670()])
 
     assert verification["success"] is True
     assert verification["low_confidence_positive_evidence_inserted_by_c1"] == 0
@@ -844,7 +913,7 @@ def test_low_confidence_positive_delta_blocks_c1_verification():
     before = _state(low_evidence=2, low_candidates=3)
     after = _state(low_evidence=3, low_candidates=4)
 
-    verification = runner.build_post_write_verification(before, after, [_plan_2687(), _plan_2670()])
+    verification = runner.build_post_write_verification(before, after, [_writable_plan_2687(), _writable_plan_2670()])
 
     assert verification["success"] is False
     assert "low_confidence_positive_evidence_inserted_by_c1_zero" in verification["failure_codes"]
@@ -852,7 +921,7 @@ def test_low_confidence_positive_delta_blocks_c1_verification():
 
 
 def test_apply_pre_commit_verification_failure_rolls_back_new_rows(db, monkeypatch):
-    plans = [_plan_2687(), _plan_2670()]
+    plans = [_writable_plan_2687(), _writable_plan_2670()]
     before = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
 
     def fail_verification(*_args, **_kwargs):
@@ -875,7 +944,7 @@ def test_apply_pre_commit_verification_failure_rolls_back_new_rows(db, monkeypat
 
 
 def test_apply_pre_commit_verification_success_can_commit(db):
-    plans = [_plan_2687(), _plan_2670()]
+    plans = [_writable_plan_2687(), _writable_plan_2670()]
     before = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
 
     result = runner.apply_plans_with_pre_commit_gates(
@@ -894,7 +963,7 @@ def test_apply_pre_commit_verification_success_can_commit(db):
 
 
 def test_apply_pre_commit_idempotency_failure_rolls_back_new_rows(db, monkeypatch):
-    plans = [_plan_2687(), _plan_2670()]
+    plans = [_writable_plan_2687(), _writable_plan_2670()]
     before = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
 
     def fail_idempotency(*_args, **_kwargs):
@@ -920,7 +989,7 @@ def test_public_summary_success_requires_post_write_verification_success():
     summary = build_public_summary(
         mode="apply",
         identity=_identity(),
-        plans=[_plan_2687(), _plan_2670()],
+        plans=[_writable_plan_2687(), _writable_plan_2670()],
         persistence=_successful_persistence(),
         db_before=_state(tag_translation_count=0),
         db_after=_state(tag_translation_count=1),
@@ -938,7 +1007,7 @@ def test_public_summary_blocks_confirmed_assignment_and_media_tag_deltas():
     summary = build_public_summary(
         mode="apply",
         identity=_identity(),
-        plans=[_plan_2687(), _plan_2670()],
+        plans=[_writable_plan_2687(), _writable_plan_2670()],
         persistence=_successful_persistence(),
         db_before=_state(media_tags=92),
         db_after=_state(assignments=1, media_tags=93),
@@ -961,7 +1030,7 @@ def test_public_summary_success_requires_idempotency_verification_success():
     summary = build_public_summary(
         mode="apply",
         identity=_identity(),
-        plans=[_plan_2687(), _plan_2670()],
+        plans=[_writable_plan_2687(), _writable_plan_2670()],
         persistence=_successful_persistence(),
         db_before=_state(),
         db_after=_state(),
@@ -975,7 +1044,7 @@ def test_public_summary_success_requires_idempotency_verification_success():
 
 
 def test_idempotency_verification_accepts_zero_insert_existing_rows():
-    result = build_idempotency_verification(_successful_idempotency(), [_plan_2687(), _plan_2670()])
+    result = build_idempotency_verification(_successful_idempotency(), [_writable_plan_2687(), _writable_plan_2670()])
 
     assert result["success"] is True
     assert result["idempotency_check_ran"] is True
@@ -993,7 +1062,7 @@ def test_public_summary_success_when_all_safety_checks_pass():
     summary = build_public_summary(
         mode="apply",
         identity=_identity(),
-        plans=[_plan_2687(), _plan_2670()],
+        plans=[_writable_plan_2687(), _writable_plan_2670()],
         persistence=_successful_persistence(),
         db_before=_state(),
         db_after=_state(),
@@ -1029,7 +1098,11 @@ def test_runner_apply_aborts_before_backup_when_dry_run_blocks(monkeypatch):
 
     monkeypatch.setattr(runner, "load_json", lambda _path: {})
     monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
-    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _invalid_approved_plan_missing_query_hash()])
+    monkeypatch.setattr(
+        runner,
+        "build_phase44c1_plans",
+        lambda **_kwargs: [_writable_plan_2687(), _invalid_approved_plan_missing_query_hash()],
+    )
     monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
     monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
     monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
@@ -1062,7 +1135,7 @@ def test_runner_apply_runs_post_apply_idempotency_check(monkeypatch):
 
     monkeypatch.setattr(runner, "load_json", lambda _path: {})
     monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
-    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _plan_2670()])
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_writable_plan_2687(), _writable_plan_2670()])
     monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
     monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
     monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
@@ -1115,7 +1188,7 @@ def test_runner_apply_writes_audit_artifacts_before_commit(monkeypatch):
     fake_session_local.session.commit = record_commit
     monkeypatch.setattr(runner, "load_json", lambda _path: {})
     monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
-    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _plan_2670()])
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_writable_plan_2687(), _writable_plan_2670()])
     monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
     monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
     monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
@@ -1151,7 +1224,7 @@ def test_runner_apply_audit_write_failure_rolls_back_before_commit(monkeypatch):
 
     monkeypatch.setattr(runner, "load_json", lambda _path: {})
     monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
-    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _plan_2670()])
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_writable_plan_2687(), _writable_plan_2670()])
     monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
     monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
     monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])

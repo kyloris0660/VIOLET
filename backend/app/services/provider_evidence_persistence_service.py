@@ -190,6 +190,11 @@ def validate_persistence_ready_plan(plan: EvidencePersistencePlan) -> None:
     assert_public_payload_safe(plan.to_public_dict())
     assert_public_payload_safe(plan.provider_query.request_shape_redacted)
     _require_nested_identity_consistency(plan)
+    if plan.db_write_allowed is not True:
+        raise EvidencePersistenceError(
+            "db_write_not_allowed_by_plan",
+            media_id=plan.media_id,
+        )
     assert_public_payload_safe(provider_cache_response_payload(plan))
     _require_url_host_consistency(plan)
 

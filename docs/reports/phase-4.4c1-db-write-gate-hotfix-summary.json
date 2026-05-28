@@ -1,0 +1,93 @@
+{
+  "phase": "4.4-C1-HF1",
+  "title": "Enforce DB Write Gate for Provider Evidence Plans",
+  "date": "2026-05-28",
+  "pr81": {
+    "url": "https://github.com/kyloris0660/VIOLET/pull/81",
+    "state": "MERGED",
+    "merged_head": "6ccbc9ffa9d47e90a848a231b5067769a3a1dab9",
+    "merge_commit": "a52588f7175c297c6508f6e1dedc5768c7f58ad6"
+  },
+  "new_hotfix_pr_required": true,
+  "authoritative_write_gate": "EvidencePersistencePlan.db_write_allowed must be true before persistence",
+  "bug": {
+    "service_enforced_db_write_allowed_before_hotfix": false,
+    "c1_runner_explicitly_promoted_approved_plans_before_hotfix": false,
+    "impact": "A non-writable C0 plan could be persisted if other C1 fields were valid."
+  },
+  "fix": {
+    "service_level_gate": {
+      "file": "backend/app/services/provider_evidence_persistence_service.py",
+      "function": "validate_persistence_ready_plan",
+      "blocked_reason": "db_write_not_allowed_by_plan",
+      "blocks_before_tables": [
+        "ProviderCache",
+        "EntityEvidence",
+        "MediaEntityCandidate"
+      ]
+    },
+    "c1_promotion": {
+      "file": "scripts/run_phase44c1_validated_evidence_persistence.py",
+      "function": "promote_c1_plan_for_db_write",
+      "c0_mapper_default_non_mutating": true,
+      "approved_media_ids": [
+        2687,
+        2670
+      ],
+      "approved_result_ids": {
+        "2687": "7695035",
+        "2670": "9366672"
+      },
+      "promotion_conditions": [
+        "approved media_id only",
+        "exact approved SauceNAO/Danbooru result identity",
+        "live/metadata identity match",
+        "nested plan identity consistency",
+        "query_hash/provenance ready",
+        "redacted request shape present and public-safe",
+        "source identifier ready and public-safe",
+        "metadata public-safe",
+        "manual_validation_status validated_correct",
+        "evidence_strength strong",
+        "confirmed_assignment_allowed false",
+        "entity_auto_create_allowed false",
+        "no low-confidence positive write"
+      ]
+    }
+  },
+  "db_impact": {
+    "development_db_apply_run": false,
+    "new_rows_inserted_by_hotfix": 0,
+    "existing_c1_rows_deleted": false,
+    "existing_c1_rows_status": "accepted; no rollback or deletion performed by this hotfix"
+  },
+  "tests": {
+    "focused_pytest": {
+      "command": "python -m pytest tests/test_phase44c1_validated_evidence_persistence.py -v",
+      "result": "46 passed"
+    }
+  },
+  "deferred_items": [
+    "pre-existing candidate conflict dry-run detection",
+    "non-suggested candidate decision preservation on rerun",
+    "dry-run post-write count semantics",
+    "ProviderCache query-scoped payload redesign for duplicate images",
+    "broader candidate lifecycle hardening",
+    "future service caller transaction/savepoint policy"
+  ],
+  "safety_confirmation": {
+    "provider_call": false,
+    "saucenao_requery": false,
+    "image_upload": false,
+    "db_migration": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "localization_execution": false,
+    "entity_resolver": false,
+    "similarity_clustering": false,
+    "d0_implementation": false,
+    "broad_sample_expansion": false,
+    "push_main": false,
+    "merge": false
+  }
+}

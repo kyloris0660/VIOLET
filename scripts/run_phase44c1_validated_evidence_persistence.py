@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -39,7 +40,14 @@ from app.models import (  # noqa: E402
     TagTranslation,
     blombooru_media_tags,
 )
-from app.services.provider_evidence_contract import assert_public_payload_safe  # noqa: E402
+from app.services.provider_evidence_contract import (  # noqa: E402
+    EvidencePersistencePlan,
+    EvidenceStrength,
+    LocalizationStatus,
+    ManualValidationStatus,
+    SourceMatchClass,
+    assert_public_payload_safe,
+)
 from app.services.provider_evidence_persistence_service import (  # noqa: E402
     EvidencePersistenceOptions,
     persist_provider_evidence_plans,
@@ -325,6 +333,79 @@ def _manual_item(
     }
 
 
+def _require_c1_write_promotion_ready(plan: EvidencePersistencePlan) -> None:
+    expected = APPROVED_RESULT_IDENTITIES.get(plan.media_id)
+    if not expected:
+        raise PhaseC1Error("blocked_unapproved_media_ids", str(plan.media_id))
+    if plan.media_id in LOW_CONFIDENCE_EXCLUDED_IDS:
+        raise PhaseC1Error("blocked_low_confidence_positive_write", f"media_id={plan.media_id}")
+
+    query = plan.provider_query
+    source = plan.source_match
+    metadata = plan.extracted_metadata
+    mismatches = []
+    if query.media_id != plan.media_id:
+        mismatches.append("provider_query.media_id")
+    if source.media_id != plan.media_id:
+        mismatches.append("source_match.media_id")
+    if query.provider_key != source.provider_key or query.provider_key != expected["provider_key"]:
+        mismatches.append("provider_key")
+    if mismatches:
+        raise PhaseC1Error("nested_plan_identity_mismatch", f"media_id={plan.media_id}:{','.join(mismatches)}")
+
+    if source.provider_result_id != expected["result_id"]:
+        raise PhaseC1Error("approval_result_identity_mismatch", f"media_id={plan.media_id}:result_id")
+    if source.source_host != expected["source_host"]:
+        raise PhaseC1Error("source_identity_mismatch", f"media_id={plan.media_id}:source_host")
+    if source.provider_index != expected["provider_index_label"]:
+        raise PhaseC1Error("source_identity_mismatch", f"media_id={plan.media_id}:provider_index")
+    for url_name, url_value in (("source_url", source.source_url), ("post_url", source.post_url)):
+        host, path = _safe_url_host_path(url_value)
+        if host and host != expected["source_host"]:
+            raise PhaseC1Error("source_identity_mismatch", f"media_id={plan.media_id}:{url_name}_host")
+        if path and path != expected["post_url_path"]:
+            raise PhaseC1Error("source_identity_mismatch", f"media_id={plan.media_id}:{url_name}_path")
+
+    if query.query_hash_status != "present_valid" or not query.query_hash:
+        raise PhaseC1Error("missing_or_invalid_query_hash", f"media_id={plan.media_id}")
+    if query.request_shape_status != "present" or not query.request_shape_redacted:
+        raise PhaseC1Error("missing_or_invalid_request_shape", f"media_id={plan.media_id}")
+    if plan.provider_provenance_status != "ready" or not plan.provider_cache_persistence_allowed:
+        raise PhaseC1Error("provider_provenance_not_ready", f"media_id={plan.media_id}")
+    if source.source_identifier_status != "present":
+        raise PhaseC1Error("missing_source_identifier", f"media_id={plan.media_id}")
+    if source.match_class != SourceMatchClass.exact_or_near_exact:
+        raise PhaseC1Error("unsupported_match_class", f"media_id={plan.media_id}")
+    if source.evidence_strength != EvidenceStrength.strong:
+        raise PhaseC1Error("unsupported_evidence_strength", f"media_id={plan.media_id}")
+    if source.manual_validation_status != ManualValidationStatus.validated_correct:
+        raise PhaseC1Error("manual_validation_not_validated_correct", f"media_id={plan.media_id}")
+    if metadata.localization_status != LocalizationStatus.pending or not plan.localization_pending:
+        raise PhaseC1Error("localization_not_pending", f"media_id={plan.media_id}")
+    if plan.confirmed_assignment_allowed:
+        raise PhaseC1Error("confirmed_assignment_allowed", f"media_id={plan.media_id}")
+    if plan.entity_auto_create_allowed:
+        raise PhaseC1Error("entity_auto_create_allowed", f"media_id={plan.media_id}")
+    if not plan.provider_cache_planned or not plan.entity_evidence_planned:
+        raise PhaseC1Error("positive_persistence_not_planned", f"media_id={plan.media_id}")
+
+    assert_public_payload_safe(query.request_shape_redacted)
+    assert_public_payload_safe(source.to_public_dict())
+    assert_public_payload_safe(metadata.to_public_dict())
+
+
+def promote_c1_plan_for_db_write(plan: EvidencePersistencePlan) -> EvidencePersistencePlan:
+    # C0 mapper output is non-mutating by default; C1 promotes only approved
+    # manually validated plans after every phase gate has passed.
+    _require_c1_write_promotion_ready(plan)
+    return replace(
+        plan,
+        db_write_allowed=True,
+        notes=tuple(plan.notes)
+        + ("C1 approved validated evidence persistence; DB write allowed after phase gates.",),
+    )
+
+
 def build_phase44c1_plans(
     *,
     live_details: Mapping[str, Any],
@@ -376,7 +457,7 @@ def build_phase44c1_plans(
             ),
             metadata_item=metadata_item,
         )
-        plans.append(plan)
+        plans.append(promote_c1_plan_for_db_write(plan))
     return plans
 
 
@@ -874,6 +955,8 @@ def build_public_summary(
             "manual_approval_bound_to_provider_result_ids": {
                 str(media_id): identity["result_id"] for media_id, identity in APPROVED_RESULT_IDENTITIES.items()
             },
+            "db_write_allowed_enforced_by_persistence_service": True,
+            "approved_c1_plans_promoted_to_db_write_allowed": all(plan.db_write_allowed is True for plan in plans),
             "live_metadata_identity_match_verified_before_plan": True,
             "nested_plan_identity_validation_before_write": True,
             "duplicate_media_ids_rejected_before_plan_backup_apply": True,
@@ -951,6 +1034,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "- Manual validation is bound to exact SauceNAO/Danbooru result IDs before any write plan is treated as validated.",
         "- Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.",
+        "- `db_write_allowed` is enforced by the persistence service; C1 promotes only approved validated plans to writable after phase gates pass.",
         "- Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.",
         "- Nested plan identity validation requires plan/provider_query/source_match media and provider identity to agree before DB writes.",
         "- Duplicate requested media IDs are rejected before plan build, backup, or apply.",

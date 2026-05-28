@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-C1 validated evidence persistence (2026-05-28), after PR #80 was merged.
+> Last updated during Phase 4.4-C1-HF1 DB write gate hotfix (2026-05-28), after PR #81 was merged.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -29,7 +29,8 @@
 - Server lifecycle guard is merged: run `scripts/audit_active_violet_servers.py` before agent-started or manual-validation servers; do not kill unknown processes. Traceability: PR [#74](https://github.com/kyloris0660/VIOLET/pull/74).
 - Phase 4.4-B0/B1/B1V established a tiny SauceNAO route. High-confidence matches for `2687` and `2670` were manually accepted; low-confidence matches for `2690`, `2654`, and `2647` were discarded by default for this workflow. SauceNAO high-confidence results can provide source-backed evidence candidates, but cannot create automatic confirmed assignments or trusted Entity rows. Traceability: PR [#75](https://github.com/kyloris0660/VIOLET/pull/75), [#76](https://github.com/kyloris0660/VIOLET/pull/76), [#77](https://github.com/kyloris0660/VIOLET/pull/77), [#78](https://github.com/kyloris0660/VIOLET/pull/78).
 - Phase 4.4-C0 provider-neutral evidence contract is merged. It defines provider-neutral reverse-search DTOs and SauceNAO mapping, preserves raw provider artist/work/character metadata, maps validated high-confidence samples to strong exact/near-exact evidence, maps invalid low-confidence samples to discarded evidence, and performs no provider calls, uploads, DB writes, migrations, confirmed assignments, localization, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation. Traceability: PR [#79](https://github.com/kyloris0660/VIOLET/pull/79).
-- Phase 4.4-C1 validated evidence persistence is implemented in the current feature branch. It writes only the two manually validated high-confidence SauceNAO results (`2687`, `2670`) into `ProviderCache`, `EntityEvidence`, and suggestion-only `MediaEntityCandidate` rows with `entity_id=NULL`; it creates no `Entity`, no confirmed `MediaEntityAssignment`, no `media_tags`, no `TagTranslation`, no localization execution, and no positive writes for low-confidence `2690`, `2654`, or `2647`. Public report: `docs/reports/phase-4.4c1-validated-evidence-persistence.md`.
+- Phase 4.4-C1 validated evidence persistence is merged. It writes only the two manually validated high-confidence SauceNAO results (`2687`, `2670`) into `ProviderCache`, `EntityEvidence`, and suggestion-only `MediaEntityCandidate` rows with `entity_id=NULL`; it creates no `Entity`, no confirmed `MediaEntityAssignment`, no `media_tags`, no `TagTranslation`, no localization execution, and no positive writes for low-confidence `2690`, `2654`, or `2647`. Public report: `docs/reports/phase-4.4c1-validated-evidence-persistence.md`. Traceability: PR [#81](https://github.com/kyloris0660/VIOLET/pull/81).
+- Phase 4.4-C1-HF1 hotfix is the current branch work: enforce `EvidencePersistencePlan.db_write_allowed` in the durable persistence service and make the C1 runner explicitly promote only approved validated plans to writable after all C1 gates pass. Expected DB impact is zero new rows; existing accepted C1 rows remain accepted unless later validation proves a data correction is needed. Public report: `docs/reports/phase-4.4c1-db-write-gate-hotfix.md`.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -59,7 +60,7 @@ Workflow weight must decrease:
 
 ## Current Recommended Route
 
-Near-term route after Phase 4.4-C1:
+Near-term route after Phase 4.4-C1-HF1:
 
 1. Phase 4.4-D0: scout a second provider against the same provider-neutral contract, without a separate DB write path or live broad pilot.
 2. Phase 4.4-B2 only if more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
