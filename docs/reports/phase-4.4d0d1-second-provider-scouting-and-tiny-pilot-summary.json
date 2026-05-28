@@ -1,0 +1,208 @@
+{
+  "phase": "4.4-D0/D1",
+  "title": "Second Provider Scouting and Conditional Tiny Pilot",
+  "date": "2026-05-28",
+  "status": "completed_scouting_only_no_pilot",
+  "correction_applied": {
+    "trace_moe_not_selected_for_current_task": true,
+    "reason": "trace.moe is a specialized anime screenshot/scene provider, not a booru-style illustration source-discovery provider",
+    "search_upload_requests_attempted": 0,
+    "derived_image_uploads": 0
+  },
+  "prerequisites": {
+    "pr79": "merged",
+    "pr80": "merged",
+    "pr81": "merged",
+    "pr82": "merged",
+    "head_synced_to_origin_main_before_branch": true,
+    "pr82_merge_commit": "2f257b2d52006216e0f87eb6eba80e8dda8b66e1"
+  },
+  "approved_media_ids": [
+    2690,
+    2687,
+    2670,
+    2654,
+    2647
+  ],
+  "selection_priority": [
+    "functional_task_fit",
+    "source_backed_metadata_quality",
+    "provider_neutral_contract_fit",
+    "privacy_tos_upload_safety",
+    "api_stability_automation_policy",
+    "credential_availability_implementation_cost"
+  ],
+  "providers_evaluated": [
+    {
+      "provider_name": "TinEye API",
+      "task_fit_score": 4,
+      "metadata_richness_score": 2,
+      "source_backed_metadata_score": 3,
+      "contract_fit_score": 4,
+      "privacy_tos_score": 4,
+      "access_readiness": "api_credential_and_paid_search_bundle_required",
+      "required_user_provided_credentials_setup": "Sign up for TinEye API, purchase or provision search credits, obtain an API key, provide it through approved local secret handling, and approve a five-sample derived-image pilot.",
+      "live_pilot_readiness": 0,
+      "recommendation": "best_official_api_source_discovery_candidate_but_credential_required"
+    },
+    {
+      "provider_name": "IQDB-style reverse image search",
+      "task_fit_score": 5,
+      "metadata_richness_score": 3,
+      "source_backed_metadata_score": 4,
+      "contract_fit_score": 3,
+      "privacy_tos_score": 1,
+      "access_readiness": "unclear_blocked",
+      "required_user_provided_credentials_setup": "A clear official/public API and automation policy would be required; none was confirmed in this stage.",
+      "live_pilot_readiness": 0,
+      "recommendation": "high_conceptual_fit_reject_for_now_due_to_api_tos_ambiguity"
+    },
+    {
+      "provider_name": "Danbooru API",
+      "task_fit_score": 2,
+      "metadata_richness_score": 5,
+      "source_backed_metadata_score": 5,
+      "contract_fit_score": 4,
+      "privacy_tos_score": 5,
+      "access_readiness": "public_lookup_but_requires_known_post_source_or_hash",
+      "required_user_provided_credentials_setup": "Known post IDs/source URLs/MD5s; optional account/API auth if rate limits require it.",
+      "live_pilot_readiness": 0,
+      "recommendation": "metadata_only_not_source_discovery_possible_later"
+    },
+    {
+      "provider_name": "Gelbooru API / DAPI",
+      "task_fit_score": 2,
+      "metadata_richness_score": 4,
+      "source_backed_metadata_score": 4,
+      "contract_fit_score": 3,
+      "privacy_tos_score": 5,
+      "access_readiness": "public_lookup_but_requires_known_post_source_or_hash",
+      "required_user_provided_credentials_setup": "Known post IDs/source URLs/MD5s; policy and rate limits should be rechecked before use.",
+      "live_pilot_readiness": 0,
+      "recommendation": "metadata_only_not_source_discovery_possible_later"
+    },
+    {
+      "provider_name": "AniList API",
+      "task_fit_score": 1,
+      "metadata_richness_score": 3,
+      "source_backed_metadata_score": 1,
+      "contract_fit_score": 2,
+      "privacy_tos_score": 5,
+      "access_readiness": "public_graphql_but_requires_known_anime_identity",
+      "required_user_provided_credentials_setup": "Known AniList ID/title from another provider.",
+      "live_pilot_readiness": 0,
+      "recommendation": "metadata_only_not_source_discovery"
+    },
+    {
+      "provider_name": "trace.moe",
+      "task_fit_score": 1,
+      "metadata_richness_score": 2,
+      "source_backed_metadata_score": 1,
+      "contract_fit_score": 2,
+      "privacy_tos_score": 4,
+      "access_readiness": "public_api_but_task_mismatched_and_current_guest_quota_unavailable",
+      "required_user_provided_credentials_setup": "Only relevant if user explicitly approves anime screenshot scene identification and provides usable quota/API access.",
+      "live_pilot_readiness": 0,
+      "recommendation": "not_selected_for_current_illustration_source_discovery"
+    },
+    {
+      "provider_name": "ASCII2D",
+      "task_fit_score": 3,
+      "metadata_richness_score": 1,
+      "source_backed_metadata_score": 1,
+      "contract_fit_score": 2,
+      "privacy_tos_score": 1,
+      "access_readiness": "unclear_blocked",
+      "required_user_provided_credentials_setup": "A clear official/public API and automation policy would be required; none was confirmed in this stage.",
+      "live_pilot_readiness": 0,
+      "recommendation": "reject_for_now"
+    },
+    {
+      "provider_name": "Pixiv-related options",
+      "task_fit_score": 2,
+      "metadata_richness_score": 5,
+      "source_backed_metadata_score": 4,
+      "contract_fit_score": 2,
+      "privacy_tos_score": 1,
+      "access_readiness": "login_oauth_or_unofficial_path_likely_required",
+      "required_user_provided_credentials_setup": "Only acceptable if a future official API route is proven and separately approved.",
+      "live_pilot_readiness": 0,
+      "recommendation": "blocked_by_policy_or_tos"
+    }
+  ],
+  "required_decision_answers": {
+    "best_fit_regardless_current_credentials": {
+      "best_official_api_candidate": "TinEye API",
+      "best_pure_functional_concept": "IQDB-style reverse image search",
+      "note": "IQDB-style services are not selectable without clear official API and automation policy."
+    },
+    "best_fit_among_currently_pilotable": null,
+    "why_different": "The best task-fit options either require credentials/paid setup or lack confirmed official API/automation policy. The easiest public API, trace.moe, is task-mismatched.",
+    "credentials_or_setup_needed": {
+      "tineye_api": [
+        "TinEye API account",
+        "search bundle or paid plan",
+        "API key supplied via approved local secret handling",
+        "explicit approval for five derived-image uploads"
+      ],
+      "iqdb_style": [
+        "clear official/public API documentation",
+        "automation policy allowing scripted derived-image pilot"
+      ]
+    },
+    "stop_instead_of_low_fit_pilot": true
+  },
+  "selected_provider": null,
+  "tiny_pilot": {
+    "ran": false,
+    "blocked_reason": "no_suitable_pilotable_provider",
+    "samples_prepared_pre_correction": 5,
+    "search_upload_requests_attempted": 0,
+    "original_uploads": 0,
+    "derived_uploads": 0,
+    "metadata_returned": false
+  },
+  "route_decision": {
+    "continue_trace_moe_now": false,
+    "recommended_next": "Ask user for TinEye API setup/credential decision, or choose a no-upload Danbooru/Gelbooru metadata lookup stage for already-known source IDs."
+  },
+  "local_artifacts": [
+    ".local_manifests/phase-4.4d0d1-second-provider-details.json",
+    ".local_manifests/phase-4.4d0d1-second-provider-derived/",
+    ".local_manifests/phase-4.4d0d1-second-provider-manual-validation-sheet.md",
+    ".local_manifests/phase-4.4d0d1-second-provider-manual-validation-sheet.csv"
+  ],
+  "artifact_lifecycle": {
+    "reports": "public_report_handoff_roadmap_update",
+    "derived_images_and_details": "one_off_local_ignored_artifact",
+    "runner": "not_committed_after_correction"
+  },
+  "safety_confirmation": {
+    "db_write": false,
+    "db_migration": false,
+    "provider_cache_write": false,
+    "entity_evidence_write": false,
+    "media_entity_candidate_write": false,
+    "media_entity_assignment_write": false,
+    "confirmed_assignment": false,
+    "automatic_entity_creation": false,
+    "media_tags_mutation": false,
+    "tag_translation_mutation": false,
+    "localization_execution": false,
+    "entity_resolver": false,
+    "similarity_clustering": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "original_image_upload": false,
+    "derived_image_upload": false,
+    "saucenao_api_call": false,
+    "saucenao_credential_use": false,
+    "trace_moe_search_upload_request": false,
+    "scraping": false,
+    "browser_automation_against_provider": false,
+    "cookies_or_login_session": false,
+    "public_image_hosting": false,
+    "push_main": false,
+    "merge": false
+  }
+}
