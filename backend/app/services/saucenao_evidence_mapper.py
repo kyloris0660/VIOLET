@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from .provider_evidence_contract import (
     EvidencePersistencePlan,
@@ -56,6 +57,17 @@ def _as_str(value: Any) -> str | None:
     return text or None
 
 
+def _request_shape_status(request_shape: Mapping[str, Any]) -> str:
+    return "present" if bool(request_shape) else "missing"
+
+
+def _host_from_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    parsed = urlparse(url)
+    return parsed.netloc.lower() or None
+
+
 def _manual_status(manual_item: Mapping[str, Any]) -> ManualValidationStatus:
     judgment = str(manual_item.get("judgment") or "").lower()
     action = str(manual_item.get("recommended_action") or "").lower()
@@ -92,14 +104,31 @@ def _post_url(source_host: str | None, result_id: str | None) -> str | None:
     return None
 
 
+def _source_identifier_status(
+    *,
+    result_id: str | None,
+    source_url: str | None,
+    post_url: str | None,
+    provider_external_id: str | None,
+) -> str:
+    if result_id or source_url or post_url or provider_external_id:
+        return "present"
+    return "missing"
+
+
 def _source_match_class(
     *,
     result_class: str,
     manual_status: ManualValidationStatus,
+    source_identifier_status: str,
 ) -> tuple[SourceMatchClass, EvidenceStrength]:
     if manual_status == ManualValidationStatus.validated_wrong:
         return SourceMatchClass.discarded, EvidenceStrength.discard
-    if result_class == "high_confidence_match" and manual_status == ManualValidationStatus.validated_correct:
+    if (
+        result_class == "high_confidence_match"
+        and manual_status == ManualValidationStatus.validated_correct
+        and source_identifier_status == "present"
+    ):
         return SourceMatchClass.exact_or_near_exact, EvidenceStrength.strong
     if result_class == "high_confidence_match":
         return SourceMatchClass.low_confidence, EvidenceStrength.weak
@@ -190,21 +219,58 @@ def map_saucenao_result_to_plan(
         or live_item.get("source_url_host")
         or metadata_item.get("source_url_host")
     )
+    source_url = _as_str(top_result.get("source_url") or live_item.get("source_url") or metadata_item.get("source_url"))
+    post_url = _as_str(live_item.get("post_url") or metadata_item.get("post_url"))
     result_id = _as_str(top_result.get("result_id") or live_item.get("result_id") or metadata_item.get("result_id"))
+    provider_external_id = _as_str(
+        top_result.get("provider_external_id")
+        or live_item.get("provider_external_id")
+        or metadata_item.get("provider_external_id")
+        or metadata_item.get("external_id")
+        or top_result.get("post_id")
+        or live_item.get("post_id")
+        or metadata_item.get("post_id")
+    )
+    provider_result_id = result_id or provider_external_id
+    if source_host is None:
+        source_host = _host_from_url(source_url) or _host_from_url(post_url)
+    if post_url is None:
+        post_url = _post_url(source_host, result_id)
+    source_identifier_status = _source_identifier_status(
+        result_id=provider_result_id,
+        source_url=source_url,
+        post_url=post_url,
+        provider_external_id=provider_external_id,
+    )
     manual_status = _manual_status(manual_item)
     match_class, evidence_strength = _source_match_class(
         result_class=result_class,
         manual_status=manual_status,
+        source_identifier_status=source_identifier_status,
     )
     strong = evidence_strength == EvidenceStrength.strong
+    query_hash = _as_str(live_item.get("query_hash") or metadata_item.get("query_hash"))
+    query_hash_status = "present" if query_hash else "missing"
+    request_shape = dict(_as_mapping(live_item.get("request_shape_redacted") or metadata_item.get("request_shape_redacted")))
+    request_shape_status = _request_shape_status(request_shape)
+    provider_cache_allowed = query_hash_status == "present" and request_shape_status == "present"
+    persistence_blocked_reasons = []
+    if query_hash_status == "missing":
+        persistence_blocked_reasons.append("missing_query_hash")
+    if request_shape_status == "missing":
+        persistence_blocked_reasons.append("missing_request_shape")
+    if source_identifier_status == "missing" and result_class == "high_confidence_match":
+        persistence_blocked_reasons.append("missing_source_identifier")
 
     provider_query = ProviderQuery(
         provider_key=PROVIDER_KEY,
         provider_category=PROVIDER_CATEGORY,
         media_id=media_id,
         input_kind=INPUT_KIND,
-        query_hash=str(live_item.get("query_hash") or metadata_item.get("query_hash") or f"missing-query-hash-{media_id}"),
-        request_shape_redacted=dict(_as_mapping(live_item.get("request_shape_redacted"))),
+        query_hash=query_hash,
+        query_hash_status=query_hash_status,
+        request_shape_redacted=request_shape,
+        request_shape_status=request_shape_status,
         live_request=True,
         uploaded_input_kind=UPLOADED_INPUT_KIND,
         provider_policy_version=PROVIDER_POLICY_VERSION,
@@ -213,11 +279,12 @@ def map_saucenao_result_to_plan(
     source_match = SourceMatch(
         media_id=media_id,
         provider_key=PROVIDER_KEY,
-        provider_result_id=result_id,
+        provider_result_id=provider_result_id,
         provider_index=_provider_index_label(top_result=top_result, metadata_item=metadata_item),
         source_host=source_host,
-        source_url=None,
-        post_url=_post_url(source_host, result_id) if strong else None,
+        source_url=source_url,
+        post_url=post_url,
+        source_identifier_status=source_identifier_status,
         rank=1 if top_result else None,
         score_value=score,
         score_kind=SCORE_KIND,
@@ -231,15 +298,19 @@ def map_saucenao_result_to_plan(
     planned_candidates = _planned_candidates(metadata, evidence_strength)
     positive_plan = strong and bool(planned_candidates)
     discard_plan = evidence_strength == EvidenceStrength.discard or match_class == SourceMatchClass.discarded
+    entity_evidence_planned = strong and source_identifier_status == "present"
     return EvidencePersistencePlan(
         media_id=media_id,
         provider_query=provider_query,
         source_match=source_match,
         extracted_metadata=metadata,
-        provider_cache_planned=True,
-        entity_evidence_planned=strong,
+        provider_cache_persistence_allowed=provider_cache_allowed,
+        provider_cache_planned=provider_cache_allowed,
+        entity_evidence_planned=entity_evidence_planned,
         media_entity_candidate_planned=positive_plan,
-        negative_lookup_cache_planned=discard_plan,
+        negative_lookup_cache_planned=discard_plan and provider_cache_allowed,
+        persistence_blocked_reason=persistence_blocked_reasons[0] if persistence_blocked_reasons else None,
+        persistence_blocked_reasons=tuple(persistence_blocked_reasons),
         planned_entity_candidates=planned_candidates,
         localization_pending=metadata.localization_status == LocalizationStatus.pending,
         db_write_allowed=False,

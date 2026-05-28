@@ -20,13 +20,13 @@ C0 exists because SauceNAO is only the first provider. Future source discovery, 
 
 The internal contract module is `backend/app/services/provider_evidence_contract.py`.
 
-- `ProviderQuery`: provider key/category, media ID, input kind, query hash, redacted request shape, live-request flag, uploaded input kind, provider policy version, query type.
+- `ProviderQuery`: provider key/category, media ID, input kind, query hash, query hash status, redacted request shape, request shape status, live-request flag, uploaded input kind, provider policy version, query type.
 - `ProviderRunOutcome`: provider key, status, attempted/succeeded/failed request counts, quota observations, stop reason, run timestamp.
-- `SourceMatch`: provider result ID, provider index label, source host, source/post URL, rank, provider-native score, score kind, provider minimum similarity, normalized match class, normalized evidence strength, manual validation status, acceptance policy version.
+- `SourceMatch`: provider result ID, provider index label, source host, source/post URL, source identifier status, rank, provider-native score, score kind, provider minimum similarity, normalized match class, normalized evidence strength, manual validation status, acceptance policy version.
 - `ExtractedProviderMetadata`: raw provider artist/work/copyright/character/general tags, source title, provider metadata language/tag style, localization status, raw metadata availability, parser status.
-- `EvidencePersistencePlan`: query + source match + metadata plus planned ProviderCache, EntityEvidence, MediaEntityCandidate, NegativeLookupCache behavior, with `confirmed_assignment_allowed=false`, `entity_auto_create_allowed=false`, `localization_pending=true`, and `db_write_allowed=false` in C0.
+- `EvidencePersistencePlan`: query + source match + metadata plus ProviderCache persistence gating, planned EntityEvidence, MediaEntityCandidate, NegativeLookupCache behavior, blocked reasons, with `confirmed_assignment_allowed=false`, `entity_auto_create_allowed=false`, `localization_pending=true`, and `db_write_allowed=false` in C0.
 
-Public serialization rejects API-key-like fields, local paths, original filenames, raw image bytes, and provider-returned filename fields.
+Public serialization rejects secret-like key names by normalized pattern, including `saucenao_api_key`, `apiKey`, `api-key`, `password`, `token`, `access_token`, `secret`, `authorization`, `bearer`, and `credential`. It also rejects local paths, original filenames, raw image bytes, and provider-returned filename fields.
 
 ## SauceNAO Mapper Behavior
 
@@ -44,9 +44,11 @@ Acceptance policy:
 
 - `minimum_similarity` alone does not create acceptance.
 - High provider score alone does not create acceptance.
-- In this pilot, strong evidence requires a high-confidence result plus manual validation and source/post consistency.
+- In this pilot, strong evidence requires a high-confidence result plus manual validation and a concrete source identifier such as result/post ID, source/post URL, or provider external ID.
 - Low-confidence SauceNAO results are discarded by default unless a future explicit policy approves manual salvage.
 - No confirmed `MediaEntityAssignment` and no automatic trusted `Entity` creation are allowed.
+- Missing `query_hash` or missing `request_shape_redacted` blocks ProviderCache persistence planning; the mapper reports `query_hash_status=missing`, `request_shape_status=missing`, `provider_cache_persistence_allowed=false`, and a `persistence_blocked_reason`.
+- Missing source identifiers block strong evidence and positive entity evidence planning even when the row is high-confidence and manually marked correct.
 
 ## High-confidence Mapping Plan
 
@@ -58,7 +60,7 @@ Acceptance policy:
   - artist: `yunkaiming`
   - work/copyright: `honkai: star rail`, `honkai (series)`
   - character: `acheron (honkai: star rail)`
-- C1 plan: redacted `ProviderCache`, `EntityEvidence` reverse-search row, nullable-entity `MediaEntityCandidate` suggestions for artist/work/character.
+- C1 plan: redacted `ProviderCache`, `EntityEvidence` reverse-search row, nullable-entity `MediaEntityCandidate` suggestions for artist/work/character, only when local details/raw provider artifacts provide real `query_hash`, `request_shape_redacted`, and source identifiers.
 - Still blocked: confirmed assignment, automatic Entity creation, media tag mutation, localization execution.
 
 ### Media 2670
@@ -69,14 +71,14 @@ Acceptance policy:
   - artist: `songchuan li`
   - work/copyright: `blue archive`
   - character: `kisaki (blue archive)`
-- C1 plan: redacted `ProviderCache`, `EntityEvidence` reverse-search row, nullable-entity `MediaEntityCandidate` suggestions for artist/work/character.
+- C1 plan: redacted `ProviderCache`, `EntityEvidence` reverse-search row, nullable-entity `MediaEntityCandidate` suggestions for artist/work/character, only when local details/raw provider artifacts provide real `query_hash`, `request_shape_redacted`, and source identifiers.
 - Still blocked: confirmed assignment, automatic Entity creation, media tag mutation, localization execution.
 
 ## Low-confidence Discard Plan
 
 - `2690`, `2654`, and `2647` map to `match_class=discarded` and `evidence_strength=discard`.
 - They should not create positive `EntityEvidence` or positive `MediaEntityCandidate` rows.
-- A later C1 persistence pass may store redacted `ProviderCache` records and `NegativeLookupCache` discard/negative records if negative persistence is explicitly approved.
+- A later C1 persistence pass may store redacted `ProviderCache` records and `NegativeLookupCache` discard/negative records if negative persistence is explicitly approved and real query metadata is available.
 - They must not be treated as character/work recognition or as candidate sources.
 
 ## Metadata Preservation
@@ -135,9 +137,9 @@ No migration is required for the narrow C1 persistence plan if JSON payloads are
 
 Recommended next phase: Phase 4.4-C1 validated high-confidence evidence persistence.
 
-C1 should persist only reviewed high-confidence sample evidence:
+C1 should persist only reviewed high-confidence sample evidence from local details/raw provider artifacts that preserve real query hashes, redacted request shapes, and source identifiers. Reduced public summaries are acceptable for reporting but are not sufficient to prove ProviderCache persistence readiness.
 
-1. `ProviderCache` redacted provider-neutral payloads for `2687` and `2670`.
+1. `ProviderCache` redacted provider-neutral payloads for `2687` and `2670` only when `query_hash_status=present`, `request_shape_status=present`, and `provider_cache_persistence_allowed=true`.
 2. `EntityEvidence` reverse-search rows for `2687` and `2670`.
 3. `MediaEntityCandidate` suggestions with `entity_id=NULL` for artist/work/character metadata from `2687` and `2670`.
 4. Optional `NegativeLookupCache` discard records for `2690`, `2654`, and `2647` if C1 explicitly includes negative policy.
@@ -175,7 +177,7 @@ Second-provider requirements:
 ## Validation
 
 - `py_compile` passed for the new Python modules, script, and focused test file.
-- Focused unit tests passed: `tests/test_phase44c0_provider_evidence_contract.py` (`14 passed`).
+- Focused unit tests passed: `tests/test_phase44c0_provider_evidence_contract.py` (`21 passed`).
 - Schema-fit audit script printed JSON without DB access.
 
 ## Safety Confirmation

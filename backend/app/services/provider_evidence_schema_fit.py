@@ -16,6 +16,8 @@ PHASE44C0_SCHEMA_FIT_AUDIT: dict[str, Any] = {
         "validated high-confidence provider evidence by using ProviderCache "
         "JSON, EntityEvidence provenance, nullable-entity MediaEntityCandidate "
         "suggestions, and NegativeLookupCache for discarded/negative outcomes. "
+        "ProviderCache and NegativeLookupCache planning still require a real "
+        "query_hash and redacted request shape from local details/raw artifacts. "
         "First-class queryable columns for match_class, manual validation, "
         "and localization state should remain a follow-up design."
     ),
@@ -23,7 +25,7 @@ PHASE44C0_SCHEMA_FIT_AUDIT: dict[str, Any] = {
         "provider_raw_redacted_cache": {
             "status": "sufficient_with_json_payload",
             "mapping": "ProviderCache.request_shape_redacted + ProviderCache.response_json_redacted",
-            "notes": "Store redacted normalized contract payloads only; no API keys, local paths, filenames, or raw image bytes.",
+            "notes": "Store redacted normalized contract payloads only when query_hash/request_shape are present; no API keys, local paths, filenames, or raw image bytes.",
         },
         "source_post_id_host_url": {
             "status": "sufficient_with_json_payload",
@@ -58,7 +60,7 @@ PHASE44C0_SCHEMA_FIT_AUDIT: dict[str, Any] = {
         "discard_negative_result": {
             "status": "sufficient",
             "mapping": "NegativeLookupCache.reason plus ProviderCache.response_json_redacted.source_match.match_class",
-            "notes": "Low-confidence manually wrong results can be cached as negative/discard outcomes without positive candidates.",
+            "notes": "Low-confidence manually wrong results can be cached as negative/discard outcomes without positive candidates only when query metadata is present.",
         },
         "suggestion_only_candidate": {
             "status": "sufficient",
@@ -109,10 +111,10 @@ PHASE44C0_SCHEMA_FIT_AUDIT: dict[str, Any] = {
         "scope": "validated_high_confidence_evidence_only",
         "recommended_without_migration": True,
         "write_order": [
-            "ProviderCache redacted contract payload",
+            "ProviderCache redacted contract payload with real query_hash/request_shape",
             "EntityEvidence reverse_search row for 2687 and 2670",
             "MediaEntityCandidate suggestion rows with entity_id NULL for artist/work/character metadata",
-            "NegativeLookupCache rows for 2690, 2654, 2647 if C1 includes negative policy",
+            "NegativeLookupCache rows for 2690, 2654, 2647 if C1 includes negative policy and real query metadata",
         ],
         "blocked": [
             "confirmed MediaEntityAssignment",

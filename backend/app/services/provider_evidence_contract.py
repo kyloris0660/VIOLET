@@ -52,6 +52,16 @@ class LocalizationStatus(str, Enum):
 
 LOCAL_PATH_RE = re.compile(r"(?i)(^|[\s\"'({\[=:;,])([a-z]:[\\/]|\\\\|file://|/(users|home|root|mnt|volumes|workspace|tmp|var)(/|$))")
 SECRET_RE = re.compile(r"(?i)(api[_-]?key|authorization|bearer\s+[A-Za-z0-9._~+\-/]{16,}|sk-[A-Za-z0-9_-]{16,})")
+SECRET_KEY_PATTERNS = (
+    "apikey",
+    "token",
+    "accesstoken",
+    "secret",
+    "password",
+    "authorization",
+    "bearer",
+    "credential",
+)
 FORBIDDEN_PUBLIC_KEYS = {
     "api_key",
     "authorization",
@@ -80,6 +90,15 @@ def _coerce_public_value(value: Any) -> Any:
     return value
 
 
+def _normalize_public_key(key: Any) -> str:
+    return re.sub(r"[_\-\s]+", "", str(key).lower())
+
+
+def _is_secret_like_key(key: Any) -> bool:
+    normalized = _normalize_public_key(key)
+    return any(pattern in normalized for pattern in SECRET_KEY_PATTERNS)
+
+
 def assert_public_payload_safe(payload: Any) -> None:
     """Fail closed if a public contract payload contains local/private data."""
     normalized = _coerce_public_value(payload)
@@ -88,7 +107,7 @@ def assert_public_payload_safe(payload: Any) -> None:
         if isinstance(value, Mapping):
             for key, item in value.items():
                 key_text = str(key).lower()
-                if key_text in FORBIDDEN_PUBLIC_KEYS:
+                if key_text in FORBIDDEN_PUBLIC_KEYS or _is_secret_like_key(key):
                     raise ValueError(f"public payload contains forbidden key: {key}")
                 visit(item)
         elif isinstance(value, list):
@@ -120,8 +139,10 @@ class ProviderQuery(PublicSerializable):
     provider_category: str
     media_id: int
     input_kind: str
-    query_hash: str
+    query_hash: str | None
+    query_hash_status: str
     request_shape_redacted: dict[str, Any]
+    request_shape_status: str
     live_request: bool
     uploaded_input_kind: str | None
     provider_policy_version: str
@@ -150,6 +171,7 @@ class SourceMatch(PublicSerializable):
     source_host: str | None
     source_url: str | None
     post_url: str | None
+    source_identifier_status: str
     rank: int | None
     score_value: float | None
     score_kind: str
@@ -190,10 +212,13 @@ class EvidencePersistencePlan(PublicSerializable):
     provider_query: ProviderQuery
     source_match: SourceMatch
     extracted_metadata: ExtractedProviderMetadata
+    provider_cache_persistence_allowed: bool
     provider_cache_planned: bool
     entity_evidence_planned: bool
     media_entity_candidate_planned: bool
     negative_lookup_cache_planned: bool = False
+    persistence_blocked_reason: str | None = None
+    persistence_blocked_reasons: tuple[str, ...] = ()
     planned_entity_candidates: tuple[PlannedEntityCandidate, ...] = ()
     confirmed_assignment_allowed: bool = False
     entity_auto_create_allowed: bool = False

@@ -1,6 +1,6 @@
 {
   "phase": "4.4-C0",
-  "generated_at": "2026-05-27",
+  "generated_at": "2026-05-28",
   "status": "completed",
   "scope": "provider-neutral evidence contract and non-mutating SauceNAO mapper foundation",
   "base_context": {
@@ -58,6 +58,10 @@
         "provider_minimum_similarity": 52.0,
         "provider_result_id": "7695035",
         "source_host": "danbooru.donmai.us",
+        "source_identifier_status": "present",
+        "query_hash_status": "present",
+        "request_shape_status": "present",
+        "provider_cache_persistence_allowed": true,
         "artist_raw": [
           "yunkaiming"
         ],
@@ -83,6 +87,10 @@
         "provider_minimum_similarity": 37.66,
         "provider_result_id": "9366672",
         "source_host": "danbooru.donmai.us",
+        "source_identifier_status": "present",
+        "query_hash_status": "present",
+        "request_shape_status": "present",
+        "provider_cache_persistence_allowed": true,
         "artist_raw": [
           "songchuan li"
         ],
@@ -128,9 +136,43 @@
     "policy_notes": [
       "minimum_similarity_alone_does_not_accept",
       "high_score_alone_does_not_accept",
-      "manual_validation_plus_source_consistency_required_for_strong_evidence_in_this_pilot",
+      "manual_validation_plus_source_identifier_required_for_strong_evidence_in_this_pilot",
+      "missing_query_hash_blocks_provider_cache_persistence_planning",
+      "missing_request_shape_blocks_provider_cache_persistence_planning",
       "low_confidence_saucenao_results_discarded_by_default"
     ]
+  },
+  "closeout_correctness_fixes": {
+    "missing_query_hash": {
+      "behavior": "no fabricated query_hash values; query_hash_status=missing blocks ProviderCache planning",
+      "provider_cache_persistence_allowed": false,
+      "persistence_blocked_reason": "missing_query_hash"
+    },
+    "missing_request_shape": {
+      "behavior": "request_shape_status=missing blocks ProviderCache planning",
+      "provider_cache_persistence_allowed": false,
+      "persistence_blocked_reason": "missing_request_shape"
+    },
+    "secret_like_public_keys": {
+      "behavior": "public payload guard rejects normalized secret-like keys recursively",
+      "examples": [
+        "saucenao_api_key",
+        "apiKey",
+        "api-key",
+        "password",
+        "token",
+        "access_token",
+        "secret",
+        "authorization",
+        "bearer",
+        "credential"
+      ]
+    },
+    "source_identifier_required_for_strong_evidence": {
+      "behavior": "high-confidence validated rows without result_id, source/post URL, or provider external ID do not become strong evidence",
+      "persistence_blocked_reason": "missing_source_identifier"
+    },
+    "c1_input_requirement": "C1 should use local details/raw provider artifacts with real query_hash, redacted request shape, and source identifiers; reduced public summaries are not enough for ProviderCache persistence readiness."
   },
   "schema_fit_audit": {
     "schema_fit_status": "sufficient_with_json_payload",
@@ -193,7 +235,7 @@
     "py_compile": "passed",
     "focused_tests": {
       "command": "python -m pytest tests/test_phase44c0_provider_evidence_contract.py -v",
-      "result": "14 passed"
+      "result": "21 passed"
     },
     "schema_fit_audit_script": "printed JSON without DB access"
   },
