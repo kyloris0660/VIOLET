@@ -67,6 +67,12 @@ V.I.O.L.E.T. (Visual Image Organizer for Local Evaluation & Tagging) extends [Bl
 
 For major features or substantial scope changes (new classifiers, DB schema changes, evaluation frameworks, etc.), produce an implementation plan and wait for maintainer approval before writing code. Bug fixes and small adjustments may proceed directly.
 
+### Workflow Weight and Artifact Lifecycle
+
+Use the GOV-2 workflow policy from `AGENTS.md` / `CLAUDE.md`: reliability remains strict for durable runtime contracts, DB/migration work, provider contracts, privacy gates, and source/iCloud/app-managed storage safety, but one-off artifacts and phase-scoped runners should stay lightweight.
+
+Classify new scripts, tools, reports, and generated artifacts as durable production code, reusable validation/safety tool, phase-scoped operational runner, one-off local artifact/ignored output, or public report/handoff/roadmap update. Reviewer findings should be fixed or deferred based on lifecycle and current-stage impact, not severity label alone.
+
 ### Browser Validation
 
 UI-affecting changes must include real browser validation before delivery. Prefer Playwright with Edge on Windows. API-only or unit tests are not sufficient when UI behavior is affected. See `CLAUDE.md` for the full validation standard.
@@ -75,7 +81,7 @@ UI-affecting changes must include real browser validation before delivery. Prefe
 
 ### General Guidelines
 
-- **Test your changes.** Run `python -m pytest tests/ -x -q` before submitting. If your change touches UI, run relevant Playwright tests as well.
+- **Test your changes.** Run the smallest validation set that proves the lifecycle and risk surface. Docs-only changes usually need document checks rather than full pytest. Durable runtime, DB, provider contract, or UI changes require focused tests and broader suites/E2E when in scope.
 - **Don't break existing functionality.** If modifying existing behavior, explain why in the PR description.
 - **Follow the existing code style.** Match surrounding patterns.
 - **Do not commit secrets.** Never commit `.env`, API keys, database credentials, or model files. The `.gitignore` handles most of these, but double-check before committing.
