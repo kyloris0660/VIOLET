@@ -350,9 +350,9 @@ The delivery report must include a dedicated **real browser validation** section
 
 ### Chinese reporting rule
 
-Final user-facing stage summaries and delivery reports must be written in Chinese (zh-CN). This includes stage summaries, delivery reports, test result summaries, risk notes, local validation steps, known limitations, and next-step recommendations.
+Final user-facing stage summaries and delivery reports must be primarily written in Chinese (zh-CN) unless the user explicitly asks otherwise. This includes CodeX final delivery reports, phase closeout reports, reviewer status reports, PR handoff reports, test result summaries, risk notes, local validation steps, known limitations, and next-step recommendations.
 
-Section headings in final delivery reports and stage summaries must also be Chinese. Keep technical identifiers in English: file paths, branch names, PR URLs, API routes, config keys, class/function names, commands, commit messages, PR titles. Code comments may remain English when appropriate.
+Section headings in final delivery reports and stage summaries must also be Chinese. Keep technical identifiers, command output, file paths, PR URLs, branch names, exact enum values, and code symbols in English when appropriate. If a report includes English command/tool output, summarize its meaning in Chinese. Code comments may remain English when appropriate.
 
 ### Final Delivery Report Standard
 
@@ -379,14 +379,17 @@ Every CodeX final report for implementation or review stages must be written in 
 12. Current blocked/ready status
 13. Recommended next step
 14. If stopped by a rule, the exact stop condition
-15. Engineering judgment / operator notes:
-    - blockers vs deferable issues
-    - risks in the current design
-    - whether the phase boundary seems too narrow or too broad
-    - whether the prompt missed important issues
-    - recommended next step
+15. `工程判断 / 操作员备注`:
+    - artifact lifecycle classification
+    - whether the phase boundary was appropriate
+    - what risks remain
+    - which reviewer findings were fixed
+    - which findings were deferred and why
+    - whether deferred items affect current-stage correctness
+    - whether the next step should proceed, pause, merge, or change direction
+    - whether CodeX found prompt-scope problems or recommends a route adjustment
 
-This engineering judgment section is advisory only. Do not expand scope without user/ChatGPT approval.
+This engineering judgment section is advisory only. It does not authorize CodeX to expand scope, merge, auto-fix reviewer feedback, start a new phase, run destructive operations, or mutate DB/provider/source without explicit approval.
 
 A short summary alone is not acceptable. If any item is not applicable, say "N/A" and why. Do not force the user to inspect the PR body or old logs to reconstruct test results.
 

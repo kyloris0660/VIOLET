@@ -31,6 +31,7 @@
 - Phase 4.4-C0 provider-neutral evidence contract is merged. It defines provider-neutral reverse-search DTOs and SauceNAO mapping, preserves raw provider artist/work/character metadata, maps validated high-confidence samples to strong exact/near-exact evidence, maps invalid low-confidence samples to discarded evidence, and performs no provider calls, uploads, DB writes, migrations, confirmed assignments, localization, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation. Traceability: PR [#79](https://github.com/kyloris0660/VIOLET/pull/79).
 - Phase 4.4-C1 validated evidence persistence is implemented in the current feature branch. It writes only the two manually validated high-confidence SauceNAO results (`2687`, `2670`) into `ProviderCache`, `EntityEvidence`, and suggestion-only `MediaEntityCandidate` rows with `entity_id=NULL`; it creates no `Entity`, no confirmed `MediaEntityAssignment`, no `media_tags`, no `TagTranslation`, no localization execution, and no positive writes for low-confidence `2690`, `2654`, or `2647`. Public report: `docs/reports/phase-4.4c1-validated-evidence-persistence.md`.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
+- GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
 ## Active Governance
 
