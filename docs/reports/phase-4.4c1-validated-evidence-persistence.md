@@ -1,6 +1,6 @@
 # Phase 4.4-C1 - Validated Evidence Persistence
 
-Date: 2026-05-28T14:58:59.897892+00:00
+Date: 2026-05-28T15:21:34.376733+00:00
 
 ## Summary
 
@@ -19,6 +19,7 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 - Nested plan identity validation requires plan/provider_query/source_match media and provider identity to agree before DB writes.
 - Duplicate requested media IDs are rejected before plan build, backup, or apply.
 - Apply mode verifies post-write gates and idempotency inside the transaction before commit.
+- Apply mode writes audit artifacts before commit so DB success is contingent on report materialization.
 - Low-confidence and approved-evidence verification is scoped to C1 row identity or before/after deltas.
 - New DB rows inserted during this closeout run: `False`
 
@@ -40,7 +41,7 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Backup
 
 - Backup created: yes
-- Backup basename: `phase-4.4c1-db-backup-20260528T145859Z.dump`
+- Backup basename: `phase-4.4c1-db-backup-20260528T152133Z.dump`
 - Backup bytes: `2655621`
 - Backup format: `pg_dump -Fc`
 - TOC verified: `True`
@@ -103,9 +104,11 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Deferred Hardening
 
 - Pre-existing candidate conflict dry-run detection.
-- Rejected candidate decision preservation on rerun.
+- Non-suggested candidate decision preservation on rerun.
 - Dry-run post-write count semantics.
 - ProviderCache query-scoped payload redesign for duplicate images.
+- Broader candidate lifecycle hardening.
+- Caller-owned transaction rollback policy for future service callers.
 
 ## Rollback
 

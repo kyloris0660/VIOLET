@@ -881,6 +881,9 @@ def build_public_summary(
             "abort_before_apply_if_dry_run_summary_unsuccessful": True,
             "post_write_gates_run_before_commit": mode == "apply",
             "commit_only_after_post_write_and_idempotency_success": mode == "apply",
+            "audit_artifacts_written_before_commit": mode == "apply"
+            and persistence.get("success") is True
+            and blocked_status is None,
             "low_confidence_check_scope": "before_after_delta_for_excluded_media_ids",
             "approved_verification_scope": "exact_c1_payload_ref_and_phase_summary",
             "final_success_depends_on_post_write_verification": True,
@@ -894,9 +897,11 @@ def build_public_summary(
             "current_db_state_after_fix": dict(db_after),
             "deferred_hardening_items": [
                 "pre_existing_candidate_conflict_dry_run_detection",
-                "rejected_candidate_rerun_preservation",
+                "non_suggested_candidate_decision_preservation_on_rerun",
                 "dry_run_post_write_count_semantics",
                 "provider_cache_query_scoped_payload_redesign_for_duplicate_images",
+                "broader_candidate_lifecycle_hardening",
+                "caller_owned_transaction_rollback_policy_for_future_service_callers",
             ],
         },
         "rollback": {
@@ -950,6 +955,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         "- Nested plan identity validation requires plan/provider_query/source_match media and provider identity to agree before DB writes.",
         "- Duplicate requested media IDs are rejected before plan build, backup, or apply.",
         "- Apply mode verifies post-write gates and idempotency inside the transaction before commit.",
+        "- Apply mode writes audit artifacts before commit so DB success is contingent on report materialization.",
         "- Low-confidence and approved-evidence verification is scoped to C1 row identity or before/after deltas.",
         f"- New DB rows inserted during this closeout run: `{summary['closeout']['new_db_writes_during_closeout']}`",
         "",
@@ -1066,9 +1072,11 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "## Deferred Hardening",
             "",
             "- Pre-existing candidate conflict dry-run detection.",
-            "- Rejected candidate decision preservation on rerun.",
+            "- Non-suggested candidate decision preservation on rerun.",
             "- Dry-run post-write count semantics.",
             "- ProviderCache query-scoped payload redesign for duplicate images.",
+            "- Broader candidate lifecycle hardening.",
+            "- Caller-owned transaction rollback policy for future service callers.",
             "",
             "## Rollback",
             "",
@@ -1096,6 +1104,56 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def build_local_details(
+    *,
+    mode: str,
+    backup: Mapping[str, Any] | None,
+    dry_summary: Mapping[str, Any],
+    persistence: Mapping[str, Any],
+    post_write_verification: Mapping[str, Any] | None,
+    idempotency_summary: Mapping[str, Any] | None,
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    plans: list[Any],
+    report_json: Path,
+    report_md: Path,
+    local_details_json: Path,
+    metadata_details_json: Path,
+) -> dict[str, Any]:
+    return {
+        "phase": PHASE,
+        "mode": mode,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "public_summary_path": str(report_json),
+        "public_report_path": str(report_md),
+        "backup": backup,
+        "dry_run": dry_summary,
+        "persistence": persistence,
+        "post_write_verification": post_write_verification,
+        "idempotency_verification": idempotency_summary,
+        "db_state_before": before,
+        "db_state_after": after,
+        "rollback_sql": build_rollback_sql(_plan_query_hashes(plans)),
+        "source_artifacts": {
+            "live_details": str(local_details_json),
+            "metadata_details": str(metadata_details_json),
+        },
+    }
+
+
+def write_audit_artifacts(
+    *,
+    report_json: Path,
+    report_md: Path,
+    details_json: Path,
+    public_summary: Mapping[str, Any],
+    local_details: Mapping[str, Any],
+) -> None:
+    write_json(report_json, public_summary)
+    write_text(report_md, render_markdown(public_summary))
+    write_json(details_json, local_details)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -1130,6 +1188,9 @@ def main(argv: list[str] | None = None) -> int:
         SessionLocal = sessionmaker(bind=engine)
         backup = None
         post_write_verification = None
+        public_summary = None
+        local_details = None
+        audit_artifacts_written = False
         with SessionLocal() as db:
             low_qhashes = low_confidence_query_hashes(live_details)
             before = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_qhashes)
@@ -1166,6 +1227,41 @@ def main(argv: list[str] | None = None) -> int:
                         after = apply_result["db_after"]
                         post_write_verification = apply_result["post_write_verification"]
                         idempotency_summary = apply_result["idempotency_summary"]
+                        public_summary = build_public_summary(
+                            mode=mode,
+                            identity=identity,
+                            plans=plans,
+                            persistence=persistence,
+                            db_before=before,
+                            db_after=after,
+                            backup=backup,
+                            idempotency_summary=idempotency_summary,
+                            post_write_verification=post_write_verification,
+                            blocked_status=blocked_status,
+                        )
+                        local_details = build_local_details(
+                            mode=mode,
+                            backup=backup,
+                            dry_summary=dry_summary,
+                            persistence=persistence,
+                            post_write_verification=post_write_verification,
+                            idempotency_summary=idempotency_summary,
+                            before=before,
+                            after=after,
+                            plans=plans,
+                            report_json=args.report_json,
+                            report_md=args.report_md,
+                            local_details_json=args.local_details_json,
+                            metadata_details_json=args.metadata_details_json,
+                        )
+                        write_audit_artifacts(
+                            report_json=args.report_json,
+                            report_md=args.report_md,
+                            details_json=args.details_json,
+                            public_summary=public_summary,
+                            local_details=local_details,
+                        )
+                        audit_artifacts_written = True
                         db.commit()
                     except Exception as exc:
                         db.rollback()
@@ -1177,44 +1273,50 @@ def main(argv: list[str] | None = None) -> int:
                             "message": str(exc),
                         }
                         blocked_status = "blocked_apply_failed"
+                        public_summary = None
+                        local_details = None
+                        audit_artifacts_written = False
             else:
                 persistence = dry_summary
                 after = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_qhashes)
 
-        public_summary = build_public_summary(
-            mode=mode,
-            identity=identity,
-            plans=plans,
-            persistence=persistence,
-            db_before=before,
-            db_after=after,
-            backup=backup,
-            idempotency_summary=idempotency_summary,
-            post_write_verification=post_write_verification,
-            blocked_status=blocked_status,
-        )
-        local_details = {
-            "phase": PHASE,
-            "mode": mode,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "public_summary_path": str(args.report_json),
-            "public_report_path": str(args.report_md),
-            "backup": backup,
-            "dry_run": dry_summary,
-            "persistence": persistence,
-            "post_write_verification": post_write_verification,
-            "idempotency_verification": idempotency_summary,
-            "db_state_before": before,
-            "db_state_after": after,
-            "rollback_sql": build_rollback_sql(_plan_query_hashes(plans)),
-            "source_artifacts": {
-                "live_details": str(args.local_details_json),
-                "metadata_details": str(args.metadata_details_json),
-            },
-        }
-        write_json(args.report_json, public_summary)
-        write_text(args.report_md, render_markdown(public_summary))
-        write_json(args.details_json, local_details)
+        if public_summary is None:
+            public_summary = build_public_summary(
+                mode=mode,
+                identity=identity,
+                plans=plans,
+                persistence=persistence,
+                db_before=before,
+                db_after=after,
+                backup=backup,
+                idempotency_summary=idempotency_summary,
+                post_write_verification=post_write_verification,
+                blocked_status=blocked_status,
+            )
+        if local_details is None:
+            local_details = build_local_details(
+                mode=mode,
+                backup=backup,
+                dry_summary=dry_summary,
+                persistence=persistence,
+                post_write_verification=post_write_verification,
+                idempotency_summary=idempotency_summary,
+                before=before,
+                after=after,
+                plans=plans,
+                report_json=args.report_json,
+                report_md=args.report_md,
+                local_details_json=args.local_details_json,
+                metadata_details_json=args.metadata_details_json,
+            )
+        if not audit_artifacts_written:
+            write_audit_artifacts(
+                report_json=args.report_json,
+                report_md=args.report_md,
+                details_json=args.details_json,
+                public_summary=public_summary,
+                local_details=local_details,
+            )
         print(json.dumps({"status": public_summary["status"], "success": public_summary["success"]}, sort_keys=True))
         engine.dispose()
         return 0 if public_summary["success"] else 2

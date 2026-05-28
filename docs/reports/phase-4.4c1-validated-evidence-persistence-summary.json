@@ -3,7 +3,7 @@
   "status": "applied",
   "success": true,
   "blocked_reasons": [],
-  "generated_at": "2026-05-28T14:58:59.897892+00:00",
+  "generated_at": "2026-05-28T15:21:34.376733+00:00",
   "approved_media_ids": [
     2687,
     2670
@@ -51,7 +51,7 @@
     "test_database_url_set": false
   },
   "backup": {
-    "basename": "phase-4.4c1-db-backup-20260528T145859Z.dump",
+    "basename": "phase-4.4c1-db-backup-20260528T152133Z.dump",
     "bytes": 2655621,
     "format": "pg_dump -Fc",
     "toc_verified": true,
@@ -251,6 +251,7 @@
     "abort_before_apply_if_dry_run_summary_unsuccessful": true,
     "post_write_gates_run_before_commit": true,
     "commit_only_after_post_write_and_idempotency_success": true,
+    "audit_artifacts_written_before_commit": true,
     "low_confidence_check_scope": "before_after_delta_for_excluded_media_ids",
     "approved_verification_scope": "exact_c1_payload_ref_and_phase_summary",
     "final_success_depends_on_post_write_verification": true,
@@ -276,9 +277,11 @@
     },
     "deferred_hardening_items": [
       "pre_existing_candidate_conflict_dry_run_detection",
-      "rejected_candidate_rerun_preservation",
+      "non_suggested_candidate_decision_preservation_on_rerun",
       "dry_run_post_write_count_semantics",
-      "provider_cache_query_scoped_payload_redesign_for_duplicate_images"
+      "provider_cache_query_scoped_payload_redesign_for_duplicate_images",
+      "broader_candidate_lifecycle_hardening",
+      "caller_owned_transaction_rollback_policy_for_future_service_callers"
     ]
   },
   "rollback": {

@@ -1082,3 +1082,92 @@ def test_runner_apply_runs_post_apply_idempotency_check(monkeypatch):
         {"apply": False, "strict": True},
     ]
     assert fake_session_local.session.committed == 1
+
+
+def test_runner_apply_writes_audit_artifacts_before_commit(monkeypatch):
+    fake_engine = _FakeEngine()
+    fake_session_local = _FakeSessionLocal()
+    calls = []
+    events = []
+
+    original_commit = fake_session_local.session.commit
+
+    def record_commit():
+        events.append("commit")
+        original_commit()
+
+    def fake_persist(_db, _plans, *, apply, options):
+        calls.append(apply)
+        if apply:
+            return _successful_persistence()
+        if len(calls) == 1:
+            return _successful_persistence()
+        return _successful_idempotency()
+
+    def fake_write_json(*_args):
+        assert fake_session_local.session.committed == 0
+        events.append("write_json")
+
+    def fake_write_text(*_args):
+        assert fake_session_local.session.committed == 0
+        events.append("write_text")
+
+    fake_session_local.session.commit = record_commit
+    monkeypatch.setattr(runner, "load_json", lambda _path: {})
+    monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _plan_2670()])
+    monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
+    monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
+    monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
+    monkeypatch.setattr(runner, "collect_db_state", lambda *_args, **_kwargs: _state())
+    monkeypatch.setattr(runner, "ensure_media_rows_present", lambda *_args: None)
+    monkeypatch.setattr(runner, "persist_provider_evidence_plans", fake_persist)
+    monkeypatch.setattr(
+        runner,
+        "create_pg_dump_backup",
+        lambda *_args: {"basename": "backup.dump", "bytes": 1, "format": "pg_dump -Fc", "toc_verified": True},
+    )
+    monkeypatch.setattr(runner, "write_json", fake_write_json)
+    monkeypatch.setattr(runner, "write_text", fake_write_text)
+
+    exit_code = runner.main(["--apply"])
+
+    assert exit_code == 0
+    assert events == ["write_json", "write_text", "write_json", "commit"]
+    assert fake_session_local.session.committed == 1
+
+
+def test_runner_apply_audit_write_failure_rolls_back_before_commit(monkeypatch):
+    fake_engine = _FakeEngine()
+    fake_session_local = _FakeSessionLocal()
+
+    def fake_persist(_db, _plans, *, apply, options):
+        if apply:
+            return _successful_persistence()
+        return _successful_idempotency()
+
+    def fail_write_json(*_args):
+        raise OSError("audit output unavailable")
+
+    monkeypatch.setattr(runner, "load_json", lambda _path: {})
+    monkeypatch.setattr(runner, "validate_local_artifact_flags", lambda *_args: None)
+    monkeypatch.setattr(runner, "build_phase44c1_plans", lambda **_kwargs: [_plan_2687(), _plan_2670()])
+    monkeypatch.setattr(runner, "load_settings_and_engine", lambda: (object(), fake_engine, _identity()))
+    monkeypatch.setattr(runner, "sessionmaker", lambda bind: fake_session_local)
+    monkeypatch.setattr(runner, "low_confidence_query_hashes", lambda _details: [])
+    monkeypatch.setattr(runner, "collect_db_state", lambda *_args, **_kwargs: _state())
+    monkeypatch.setattr(runner, "ensure_media_rows_present", lambda *_args: None)
+    monkeypatch.setattr(runner, "persist_provider_evidence_plans", fake_persist)
+    monkeypatch.setattr(
+        runner,
+        "create_pg_dump_backup",
+        lambda *_args: {"basename": "backup.dump", "bytes": 1, "format": "pg_dump -Fc", "toc_verified": True},
+    )
+    monkeypatch.setattr(runner, "write_json", fail_write_json)
+    monkeypatch.setattr(runner, "write_text", lambda *_args: None)
+
+    exit_code = runner.main(["--apply"])
+
+    assert exit_code == 2
+    assert fake_session_local.session.committed == 0
+    assert fake_session_local.session.rolled_back == 1
