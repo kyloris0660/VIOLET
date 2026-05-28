@@ -47,7 +47,9 @@ The gate distinguishes source kinds:
 | `staging_file` | No source cloud gate; DB import requires a passed staging audit artifact proving source copy completed |
 | `app_managed_file` | No source cloud gate; app storage consistency checks apply separately |
 
-Path-based local source ingestion includes local library scans, preflight scans, candidate manifest generation, cloud availability audit, staging copy validation, and staging copy execution.  Upload endpoints that receive `UploadFile` request bytes are not path-source workflows and should not be forced through Cloud Files checks.
+Path-based local source ingestion includes local library scans, preflight scans, candidate manifest generation, cloud availability audit, staging copy validation, and staging copy execution. Upload endpoints that receive `UploadFile` request bytes are not path-source workflows and should not be forced through Cloud Files checks.
+
+Provider reverse-search workflows that use already app-managed media or explicitly approved derived/resized/stripped inputs are governed by the provider privacy/upload policy, not by the iCloud source gate. They still must not expose local paths, filenames, source labels, originals, or source/iCloud data by default.
 
 The formal rule is:
 
@@ -57,6 +59,10 @@ The formal rule is:
 - Manual hydrate is not the formal workflow.
 - Structured cloud failure reasons are required.
 - Staging-to-DB import must require a passed staging audit and must not run after incomplete staging copy.
+
+Structural blockers stop the whole run: server/DB identity mismatch, unsafe staging target, target escape, protected-root overlap, invalid manifest schema, duplicate target paths, report generation failure, privacy leak, DB/app-storage/source-root confusion, or unexpected DB/app-storage/source mutation.
+
+Per-item failures are recorded, excluded from DB import eligibility, and left visible for retry/backfill/deferred recovery when they stay within the approved failure budget. Examples include `cloud_hydration_failed`, `cloud_network_unavailable`, `read_timeout`, `source_missing`, `permission_denied`, `unsupported_extension`, `size_mismatch`, and `unreadable_source`.
 
 ## Configuration
 

@@ -1,0 +1,129 @@
+{
+  "stage": "GOV-2",
+  "title": "Documentation Alignment and Workflow Weight Reduction",
+  "date": "2026-05-28",
+  "stage_type": "docs_governance_alignment",
+  "branch": "codex/gov-2-docs-alignment",
+  "base_prerequisites": {
+    "origin": "https://github.com/kyloris0660/VIOLET.git",
+    "main_head": "3261ddd7751aa6c02752bf9bd7d7f92bcc3e0749",
+    "pr_77": "merged",
+    "pr_78": "merged",
+    "pr_79": "merged"
+  },
+  "policy_summary": {
+    "reliability_remains_strict_for": [
+      "db_schema_and_migrations",
+      "provider_neutral_evidence_contracts",
+      "entity_alias_evidence_candidate_assignment_lifecycle",
+      "provider_cache_entity_evidence_media_entity_candidate_negative_lookup_cache_write_semantics",
+      "provider_upload_privacy_budget_cache_audit_rate_limit_and_run_approval",
+      "confirmed_assignment_policy",
+      "source_icloud_app_storage_mutation_safety",
+      "broad_repeated_provider_run_ledger_discipline",
+      "in_scope_e2e_zero_failures"
+    ],
+    "workflow_weight_reduction": [
+      "prefer_executable_guards_assertions_constraints_transactions_enums_allowlists_and_focused_tests",
+      "avoid_prompt_only_constraints_repeated_docs_gates_over_fragmented_phases_and_generic_one_off_frameworks",
+      "classify_artifacts_by_lifecycle",
+      "bound_reviewer_closeout_to_one_or_two_rounds_by_default",
+      "defer_future_phase_findings_to_the_phase_where_they_matter"
+    ],
+    "reviewer_decision_rule": "Severity label is a signal, not an automatic decision; lifecycle plus current-stage impact decides."
+  },
+  "artifact_lifecycle_categories": [
+    "durable_production_code",
+    "reusable_validation_safety_tool",
+    "phase_scoped_operational_runner",
+    "one_off_local_artifact_ignored_output",
+    "public_report_handoff_roadmap_update"
+  ],
+  "audited_files": [
+    {
+      "file": "README.md",
+      "action": "rewritten",
+      "reason": "concise current entry point and canonical VIOLET state"
+    },
+    {
+      "file": "AGENTS.md",
+      "action": "rewritten",
+      "reason": "GOV-2 reviewer closeout, artifact lifecycle, phase granularity, and prompt requirements"
+    },
+    {
+      "file": "CLAUDE.md",
+      "action": "rewritten",
+      "reason": "same active guidance as AGENTS.md"
+    },
+    {
+      "file": "CONTRIBUTING.md",
+      "action": "rewritten",
+      "reason": "scope-based testing and artifact classification"
+    },
+    {
+      "file": "SECURITY.md",
+      "action": "rewritten",
+      "reason": "provider upload privacy and low-confidence evidence trust boundary"
+    },
+    {
+      "file": "docs/current-handoff.md",
+      "action": "rewritten",
+      "reason": "concise current state after PR #79 and GOV-2"
+    },
+    {
+      "file": "docs/project-roadmap.md",
+      "action": "rewritten",
+      "reason": "GOV-2 route, C1/D0/B2/3.9 next steps, phase granularity"
+    },
+    {
+      "file": "docs/test-workflow.md",
+      "action": "rewritten",
+      "reason": "scope-based validation instead of broad governance duplication"
+    },
+    {
+      "file": "docs/manual-validation.md",
+      "action": "rewritten",
+      "reason": "remove stale PYTHONPATH workaround presentation and branch hardcoding"
+    },
+    {
+      "file": "docs/icloud-safe-ingestion.md",
+      "action": "rewritten",
+      "reason": "clarify path-source cloud gates versus provider privacy gates"
+    },
+    {
+      "file": "other active docs outside docs/reports",
+      "action": "kept",
+      "reason": "searched for conflicts; no direct governance rewrite needed"
+    },
+    {
+      "file": "docs/reports/** historical reports",
+      "action": "kept_archival",
+      "reason": "historical reports intentionally not rewritten"
+    }
+  ],
+  "new_reports": [
+    "docs/reports/governance-documentation-alignment-and-workflow-weight-reduction.md",
+    "docs/reports/governance-documentation-alignment-and-workflow-weight-reduction-summary.json"
+  ],
+  "next_route": [
+    "phase_4_4_c1_validated_high_confidence_evidence_persistence",
+    "phase_4_4_d0_second_provider_scouting_against_same_contract",
+    "phase_4_4_b2_sample_expansion_only_if_needed_with_explicit_samples",
+    "phase_3_9_before_broad_repeated_provider_runs_or_full_library_scale"
+  ],
+  "safety_confirmation": {
+    "runtime_code_change": false,
+    "provider_call": false,
+    "upload": false,
+    "db_write": false,
+    "db_migration": false,
+    "source_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "entity_resolver": false,
+    "similarity_clustering": false,
+    "localization_execution": false,
+    "c1_persistence": false,
+    "push_main": false,
+    "merge": false
+  }
+}

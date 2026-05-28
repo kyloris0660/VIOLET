@@ -1,4 +1,4 @@
-# V.I.O.L.E.T. — Project Roadmap
+# V.I.O.L.E.T. - Project Roadmap
 
 ## Project Vision
 
@@ -699,13 +699,24 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No provider API call, upload, DB write, DB migration, ProviderCache/NegativeLookupCache/EntityEvidence/MediaEntityCandidate/MediaEntityAssignment write, automatic Entity creation, confirmed assignment, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation occurs in C0.
 - Public reports: `docs/reports/phase-4.4c0-provider-neutral-evidence-contract.md` and `docs/reports/phase-4.4c0-provider-neutral-evidence-contract-summary.json`.
 
+### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
+
+**Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
+
+- Durable core architecture stays strict: DB schema/migrations, provider-neutral contracts, entity/evidence/candidate/assignment lifecycle, provider-cache/evidence/candidate write semantics, provider upload privacy/budget gates, confirmed assignment policy, source/iCloud/app-managed storage safety, broad/repeated provider run ledgers, and in-scope E2E pass requirements.
+- Phase-scoped and one-off tooling stays lightweight: safe and truthful for the current phase, but not polished into generic production frameworks unless explicitly promoted.
+- Reviewer closeout is bounded by lifecycle and current-stage impact. Default closeout is 1-2 fix rounds; P1/P2 severity is a signal, not an automatic blocker.
+- Findings that only matter for the next DB-writing or broad-scaling phase move into that phase's acceptance criteria instead of keeping non-mutating design PRs open indefinitely.
+- Small docs/process updates should be batched unless they remove major contradictions or unblock current work.
+- Public reports: `docs/reports/governance-documentation-alignment-and-workflow-weight-reduction.md` and `docs/reports/governance-documentation-alignment-and-workflow-weight-reduction-summary.json`.
+
 ## Upcoming Phases
 
 Current near-term options after Phase 4.4-C0:
 
 1. Phase 4.4-C1: persist only validated high-confidence evidence for `2687` and `2670` through the provider-neutral contract; still no confirmed assignments, automatic character assignments, trusted Entity creation, media_tags mutation, TagTranslation mutation, localization execution, provider rerun, or upload.
 2. Phase 4.4-D0: scout a second provider against the same contract, without a separate DB write path or live broad pilot.
-3. Phase 4.4-B2 or Phase 4.4-D1: run a larger approved-sample pilot only after C0/C1 decisions, with explicit sample IDs and one/provider-specific approval as applicable.
+3. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
 4. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
 5. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
 6. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
@@ -804,6 +815,19 @@ Every phase follows this workflow:
 7. Checkout `main`, pull
 8. **Stop.** Output delivery report. Do not auto-start the next phase.
 
+### Workflow Weight and Phase Granularity (GOV-2)
+
+Reliability remains high, but process weight should stay proportional to the artifact lifecycle and current-stage risk.
+
+- Prefer executable guards, assertions, DB constraints, transaction boundaries, enum states, allowlists/denylists, and focused tests over long prompt-only constraints, repeated docs-only gate additions, or generic frameworks for one-off scripts.
+- Classify new scripts/tools/reports/artifacts as durable production code, reusable validation/safety tool, phase-scoped operational runner, one-off local artifact/ignored output, or public report/handoff/roadmap update.
+- Durable production code, DB/migration work, provider-neutral contracts, provider-cache/evidence/candidate write semantics, and confirmed-assignment policy remain strict.
+- Reusable validation/safety tools are reviewed strictly for their safety contract, but should not be expanded into broad frameworks without evidence of cross-phase need.
+- Phase-scoped runners must be safe, privacy-preserving, data-integrity-preserving, and truthful for the current phase; they do not need arbitrary future parameter support unless promoted.
+- Default reviewer closeout is 1-2 bounded fix rounds per PR. Continue beyond that only for current-stage data corruption, DB writes executed by the PR, privacy/provider-upload safety, current report truthfulness, entity/media_tags truth pollution, core contract/schema correctness consumed by the PR, or irreversible operation safety.
+- Severity labels are signals, not automatic decisions. Lifecycle plus current-stage impact decides whether to fix now or defer.
+- Do not split phases unless the split reduces real risk or improves delivery clarity. Small docs-only updates should usually be batched unless they remove major contradictions or unblock current work.
+
 ### GitHub PR / Main Protection
 
 Agents may create branches, commit, push, create PRs, and run tests. Agents must NOT merge PRs, push to `main`, force-push `main`, or delete `main`. The user reviews and merges on GitHub.
@@ -814,7 +838,7 @@ Default PR lifecycle is a normal open PR. Create a draft PR only when the user/C
 
 ### Real Browser Validation (Mandatory)
 
-Every feature phase or UI-affecting change requires real browser validation before delivery (Playwright with system Edge preferred). The delivery report must include a **真实浏览器验收** section with: 验收方式, browser/Playwright project, URL tested, pages/flows validated, pass/fail, skipped items.
+Every feature phase or UI-affecting change requires real browser validation before delivery (Playwright with system Edge preferred). The delivery report must include a dedicated real-browser validation section with method, browser/Playwright project, URL tested, pages/flows validated, pass/fail result, and skipped items. Docs-only and non-UI governance changes do not require starting a server solely for E2E.
 
 ### Chinese Reporting
 

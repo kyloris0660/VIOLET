@@ -45,6 +45,12 @@ Debug mode (`BLOMBOORU_DEBUG=true`) exposes full exception messages including st
 
 Never commit `.env`, API keys, database credentials, LLM API keys, or model files. The `.gitignore` is configured to exclude these.
 
+### External Provider Privacy
+
+External provider calls and uploads are disabled unless a phase explicitly approves the provider policy, privacy eligibility, budget/rate-limit plan, cache/audit behavior, and run scope. Originals, local paths, filenames, source labels, iCloud/source paths, and unknown/non-anime/unapproved illustration content must not be sent to external providers by default. Derived/resized/stripped inputs may be used only after provider-specific approval.
+
+Provider evidence can support candidates, but confirmed entity assignment remains manual or explicitly policy-approved. Low-confidence provider matches must not be used as weak character recognition truth.
+
 ## Reporting Vulnerabilities
 
 If you discover a security vulnerability, please open a GitHub issue at https://github.com/kyloris0660/VIOLET/issues or contact the maintainer directly.

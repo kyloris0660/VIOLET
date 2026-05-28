@@ -12,15 +12,9 @@ This workflow is read-only unless a phase explicitly approves runtime mutation. 
 
 ## Startup Import Path Requirement
 
-Current development manual validation does **not** require:
+Current development manual validation starts from repo root with the approved venv Python and `run.py --debug`. Do not set `<repo>\backend` in `PYTHONPATH` for this validation. If reusing a shell from an older validation run, remove any stale `<repo>\backend` entry before treating startup as proof.
 
-```powershell
-$env:PYTHONPATH = "<repo>\backend"
-```
-
-Do not set `<repo>\backend` in `PYTHONPATH` for this validation. Start from repo root with the approved venv Python and `run.py --debug`. If reusing a shell from an older validation run, remove any stale `<repo>\backend` entry before treating the startup as proof.
-
-Historical note: earlier Phase 3.8d manual validation required `PYTHONPATH=<repo>\backend` because `run.py` loads `backend.app.main:app` while one backend runtime module still used a top-level `app.*` import. Phase 3.8d-G2 removed this requirement by making the startup-critical backend import package-relative.
+Historical note: earlier Phase 3.8d manual validation temporarily required that workaround. Phase 3.8d-G2 removed the requirement by making startup-critical backend imports package-relative.
 
 ## No-active-server Preflight
 
@@ -78,14 +72,14 @@ $sha = (git rev-parse --short HEAD).Trim()
   --expected-db blombooru `
   --expected-code-root "C:\Users\kyloris\Documents\AnimeLocalBooru" `
   --expected-git-sha $sha `
-  --expected-branch main `
+  --expected-branch "<expected-branch>" `
   --expected-storage-root "C:\Users\kyloris\Documents\AnimeLocalBooru" `
   --expected-python "$PY" `
   --admin-username "<local-dev-admin-user>" `
   --admin-password "<local-dev-admin-password>"
 ```
 
-Use the local development credentials documented in the project instructions. Do not paste real secrets into public reports.
+The server identity check is a hard gate. Use the expected branch for the validation target, not always `main`; for PR validation, use the PR branch. Use the local development credentials documented in the project instructions. Do not paste real secrets into public reports.
 
 ## API Smoke
 
