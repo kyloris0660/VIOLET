@@ -370,6 +370,40 @@ def test_unsafe_request_shape_blocks_positive_persistence_plan_and_public_output
     assert_public_payload_safe(plan.to_public_dict())
 
 
+def test_non_json_request_shape_blocks_persistence_without_crashing():
+    live_item = _live_item(
+        2687,
+        result_class="high_confidence_match",
+        score=96.2,
+        minimum_similarity=52.0,
+        result_id=7695035,
+        host="danbooru.donmai.us",
+        creator="yunkaiming",
+        title="honkai: star rail, honkai (series)",
+    )
+    live_item["request_shape_redacted"]["derived_bytes"] = b"private-image-bytes"
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(2687, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item=_metadata(
+            2687,
+            artist="yunkaiming",
+            works=["honkai: star rail", "honkai (series)"],
+            characters=["acheron (honkai: star rail)"],
+            result_id=7695035,
+        ),
+    )
+
+    assert plan.provider_query.request_shape_status == "invalid"
+    assert plan.provider_query.request_shape_redacted == {}
+    assert plan.provider_cache_planned is False
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert "invalid_request_shape" in plan.persistence_blocked_reasons
+    assert_public_payload_safe(plan.to_public_dict())
+
+
 def test_public_summary_row_without_local_details_has_no_positive_persistence_plan():
     live_item = _live_item(
         2687,
@@ -411,6 +445,72 @@ def test_public_summary_row_without_local_details_has_no_positive_persistence_pl
     assert plan.entity_evidence_planned is False
     assert plan.media_entity_candidate_planned is False
     assert plan.provider_provenance_status == "blocked"
+
+
+@pytest.mark.parametrize(
+    "unsafe_source_url",
+    [
+        "https://example.invalid/post?src=C:\\Users\\kyloris\\private.jpg",
+        "file://C:/Users/kyloris/private.jpg",
+    ],
+)
+def test_unsafe_source_url_blocks_positive_persistence_plan(unsafe_source_url):
+    live_item = _live_item(
+        4300,
+        result_class="high_confidence_match",
+        score=96.0,
+        minimum_similarity=50.0,
+        result_id=None,
+        host=None,
+        creator="candidate artist",
+        title="candidate work",
+    )
+    top_result = live_item["provider_result"]["normalized_payload"]["top_result"]
+    top_result["source_url"] = unsafe_source_url
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(4300, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item={"media_id": 4300, "artist": "candidate artist", "work_or_copyright": ["candidate work"]},
+    )
+
+    assert plan.source_match.source_identifier_status == "not_public_safe"
+    assert plan.source_match.evidence_strength != EvidenceStrength.strong
+    assert plan.non_persistable_source_match is True
+    assert plan.provider_cache_planned is False
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert "source_identifier_not_public_safe" in plan.persistence_blocked_reasons
+    assert_public_payload_safe(plan.to_public_dict())
+
+
+def test_secret_like_source_url_blocks_positive_persistence_plan():
+    live_item = _live_item(
+        4301,
+        result_class="high_confidence_match",
+        score=96.0,
+        minimum_similarity=50.0,
+        result_id=None,
+        host=None,
+        creator="candidate artist",
+        title="candidate work",
+    )
+    top_result = live_item["provider_result"]["normalized_payload"]["top_result"]
+    top_result["source_url"] = "https://example.invalid/post?api_key=secret"
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(4301, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item={"media_id": 4301, "artist": "candidate artist", "work_or_copyright": ["candidate work"]},
+    )
+
+    assert plan.source_match.source_identifier_status == "not_public_safe"
+    assert plan.non_persistable_source_match is True
+    assert plan.provider_cache_planned is False
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert "source_identifier_not_public_safe" in plan.persistence_blocked_reasons
+    assert_public_payload_safe(plan.to_public_dict())
 
 
 def test_valid_sha256_prefixed_query_hash_allows_provider_cache_plan():
@@ -664,6 +764,42 @@ def test_provider_score_and_policy_version_are_preserved():
     assert plan.provider_query.provider_policy_version == "phase44b1-derived-saucenao-policy-v1"
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_public_payload_rejects_non_finite_numbers(value):
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"score_value": value})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"nested": [{"score_value": value}]})
+
+
+def test_mapper_sanitizes_non_finite_provider_scores():
+    live_item = _live_item(
+        2687,
+        result_class="high_confidence_match",
+        score=float("nan"),
+        minimum_similarity=52.0,
+        result_id=7695035,
+        host="danbooru.donmai.us",
+        creator="yunkaiming",
+        title="honkai: star rail, honkai (series)",
+    )
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(2687, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item=_metadata(
+            2687,
+            artist="yunkaiming",
+            works=["honkai: star rail", "honkai (series)"],
+            characters=["acheron (honkai: star rail)"],
+            result_id=7695035,
+        ),
+    )
+
+    assert plan.source_match.score_value is None
+    assert_public_payload_safe(plan.to_public_dict())
+
+
 def test_public_serialization_excludes_private_provider_request_material():
     plan = _plan_2687()
     public_payload = plan.to_public_dict()
@@ -719,9 +855,23 @@ def test_public_serialization_excludes_private_provider_request_material():
     with pytest.raises(ValueError):
         assert_public_payload_safe({"nested": [{"safeFilename": "private.jpg"}]})
     with pytest.raises(ValueError):
+        assert_public_payload_safe({"url": "https://example.invalid/post?src=C%3A%5CUsers%5Ckyloris%5Cprivate.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"url": "https://example.invalid/post?src=%252Fhome%252Fkyloris%252Fprivate.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"url": "https://example.invalid/post?api%5Fkey%3Dsecret"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"url": "https://example.invalid/post?token%3Dsecret"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"url": "https://example.invalid/post?auth=bearer%20abcd1234efgh5678"})
+    with pytest.raises(ValueError):
         assert_public_payload_safe({"note": "C:\\Users\\kyloris\\private.jpg"})
     with pytest.raises(ValueError):
         assert_public_payload_safe({"raw_image_bytes": "abcd"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"payload": b"not-json"})
+
+    assert_public_payload_safe({"url": "https://danbooru.donmai.us/posts/7695035"})
 
     assert_public_payload_safe(
         {

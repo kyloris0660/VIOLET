@@ -181,6 +181,26 @@
       "entity_evidence_planned": false,
       "media_entity_candidate_planned": false
     },
+    "source_identifier_public_safety": {
+      "behavior": "source_url, post_url, source_host, and provider/result identifiers must pass public-safe validation before any positive persistence planning",
+      "blocked_reason": "source_identifier_not_public_safe",
+      "provider_cache_planned": false,
+      "entity_evidence_planned": false,
+      "media_entity_candidate_planned": false
+    },
+    "non_finite_numbers": {
+      "behavior": "NaN, Infinity, and -Infinity are rejected before public JSON/report emission; mapper score extraction sanitizes non-finite values to null",
+      "public_json_allow_nan": false
+    },
+    "non_json_request_shape": {
+      "behavior": "non-JSON-serializable request_shape_redacted values are marked invalid, sanitized from public output, and block persistence instead of crashing",
+      "request_shape_status": "invalid",
+      "persistence_blocked_reason": "invalid_request_shape"
+    },
+    "decoded_url_privacy_scan": {
+      "behavior": "public string checks scan raw strings and bounded percent-decoded variants to catch encoded local paths and encoded secret-like material",
+      "decode_rounds": 3
+    },
     "secret_like_public_keys": {
       "behavior": "public payload guard rejects normalized secret-like keys recursively",
       "examples": [
@@ -230,7 +250,7 @@
       "behavior": "discard, wrong, unrelated, invalid, and metadata_not_useful manual signals dominate conflicting keep/correct fields",
       "positive_persistence_planning": false
     },
-    "c1_input_requirement": "C1 should use local details/raw provider artifacts with valid query_hash, public-safe redacted request shape, and source identifiers; reduced public summaries are not enough for provider provenance readiness."
+    "c1_input_requirement": "C1 should consume only persistence-ready plans from local details/raw provider artifacts with valid query_hash, public-safe JSON redacted request shape, and public-safe source identifiers; reduced public summaries are not enough for provider provenance readiness."
   },
   "schema_fit_audit": {
     "schema_fit_status": "sufficient_with_json_payload",
@@ -293,7 +313,7 @@
     "py_compile": "passed",
     "focused_tests": {
       "command": "python -m pytest tests/test_phase44c0_provider_evidence_contract.py -v",
-      "result": "32 passed"
+      "result": "40 passed"
     },
     "schema_fit_audit_script": "printed JSON without DB access"
   },

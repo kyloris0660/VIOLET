@@ -8,11 +8,12 @@ call providers, upload images, or imply automatic entity creation.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 class ProviderRunStatus(str, Enum):
@@ -51,7 +52,9 @@ class LocalizationStatus(str, Enum):
 
 
 LOCAL_PATH_RE = re.compile(r"(?i)(^|[\s\"'({\[=:;,])([a-z]:[\\/]|\\\\|file://|/(users|home|root|mnt|volumes|workspace|tmp|var)(/|$))")
-SECRET_RE = re.compile(r"(?i)(api[_-]?key|authorization|bearer\s+[A-Za-z0-9._~+\-/]{16,}|sk-[A-Za-z0-9_-]{16,})")
+SECRET_RE = re.compile(
+    r"(?i)(api[_-]?key|access[_-]?token|(?<![a-z])token\s*[=:]|authorization|bearer\s+[A-Za-z0-9._~+\-/]{8,}|sk-[A-Za-z0-9_-]{16,})"
+)
 SECRET_KEY_PATTERNS = (
     "apikey",
     "token",
@@ -106,6 +109,18 @@ def _is_forbidden_public_key(key: Any) -> bool:
     return _normalize_public_key(key) in NORMALIZED_FORBIDDEN_PUBLIC_KEYS
 
 
+def _decoded_variants(value: str, *, rounds: int = 3) -> tuple[str, ...]:
+    variants = [value]
+    current = value
+    for _ in range(rounds):
+        decoded = unquote(current)
+        if decoded == current:
+            break
+        variants.append(decoded)
+        current = decoded
+    return tuple(variants)
+
+
 def assert_public_payload_safe(payload: Any) -> None:
     """Fail closed if a public contract payload contains local/private data."""
     normalized = _coerce_public_value(payload)
@@ -119,16 +134,24 @@ def assert_public_payload_safe(payload: Any) -> None:
         elif isinstance(value, list):
             for item in value:
                 visit(item)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            if not math.isfinite(value):
+                raise ValueError("public payload contains a non-finite number")
         elif isinstance(value, str):
-            split = urlsplit(value)
-            query_fragment = f"{split.query} {split.fragment}" if split.scheme in {"http", "https"} else value
-            if LOCAL_PATH_RE.search(value) or LOCAL_PATH_RE.search(query_fragment):
-                raise ValueError("public payload contains a local path")
-            if SECRET_RE.search(value):
-                raise ValueError("public payload contains a secret-like token")
+            for variant in _decoded_variants(value):
+                split = urlsplit(variant)
+                query_fragment = f"{split.query} {split.fragment}" if split.scheme in {"http", "https"} else variant
+                for candidate in (variant, query_fragment):
+                    if LOCAL_PATH_RE.search(candidate):
+                        raise ValueError("public payload contains a local path")
+                    if SECRET_RE.search(candidate):
+                        raise ValueError("public payload contains a secret-like token")
 
     visit(normalized)
-    json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+    try:
+        json.dumps(normalized, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("public payload is not valid JSON") from exc
 
 
 @dataclass(frozen=True)

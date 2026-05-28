@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -57,9 +58,10 @@ def _as_list(value: Any) -> tuple[str, ...]:
 
 def _as_float(value: Any) -> float | None:
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError):
         return None
+    return result if math.isfinite(result) else None
 
 
 def _as_str(value: Any) -> str | None:
@@ -74,7 +76,7 @@ def _request_shape_status(request_shape: Mapping[str, Any]) -> str:
         return "missing"
     try:
         assert_public_payload_safe(request_shape)
-    except ValueError:
+    except (TypeError, ValueError):
         return "invalid"
     return "present"
 
@@ -159,6 +161,27 @@ def _source_identifier_status(
     if result_id or source_url or post_url or provider_external_id:
         return "present"
     return "missing"
+
+
+def _source_identifier_public_safety_status(
+    *,
+    provider_result_id: str | None,
+    source_host: str | None,
+    source_url: str | None,
+    post_url: str | None,
+) -> str:
+    try:
+        assert_public_payload_safe(
+            {
+                "provider_result_id": provider_result_id,
+                "source_host": source_host,
+                "source_url": source_url,
+                "post_url": post_url,
+            }
+        )
+    except (TypeError, ValueError):
+        return "not_public_safe"
+    return "public_safe"
 
 
 def _source_match_class(
@@ -281,11 +304,29 @@ def map_saucenao_result_to_plan(
         source_host = _host_from_url(source_url) or _host_from_url(post_url)
     if post_url is None:
         post_url = _post_url(source_host, result_id)
-    source_identifier_status = _source_identifier_status(
+    raw_source_identifier_status = _source_identifier_status(
         result_id=provider_result_id,
         source_url=source_url,
         post_url=post_url,
         provider_external_id=provider_external_id,
+    )
+    source_identifier_public_safety_status = _source_identifier_public_safety_status(
+        provider_result_id=provider_result_id,
+        source_host=source_host,
+        source_url=source_url,
+        post_url=post_url,
+    )
+    source_identifier_status = raw_source_identifier_status
+    if source_identifier_public_safety_status != "public_safe":
+        source_identifier_status = "not_public_safe"
+        provider_result_id = None
+        source_host = None
+        source_url = None
+        post_url = None
+    potential_non_persistable_source_match = (
+        result_class == "high_confidence_match"
+        and _manual_status(manual_item) == ManualValidationStatus.validated_correct
+        and raw_source_identifier_status == "present"
     )
     manual_status = _manual_status(manual_item)
     match_class, evidence_strength = _source_match_class(
@@ -298,7 +339,11 @@ def map_saucenao_result_to_plan(
     raw_request_shape = _as_mapping(live_item.get("request_shape_redacted") or metadata_item.get("request_shape_redacted"))
     request_shape_status = _request_shape_status(raw_request_shape)
     request_shape = _normalized_request_shape(raw_request_shape)
-    provider_provenance_ready = query_hash_status == "present_valid" and request_shape_status == "present"
+    provider_provenance_ready = (
+        query_hash_status == "present_valid"
+        and request_shape_status == "present"
+        and source_identifier_public_safety_status == "public_safe"
+    )
     provider_provenance_status = "ready" if provider_provenance_ready else "blocked"
     provider_cache_allowed = provider_provenance_ready
     persistence_blocked_reasons = []
@@ -312,6 +357,8 @@ def map_saucenao_result_to_plan(
         persistence_blocked_reasons.append("invalid_request_shape")
     if source_identifier_status == "missing" and result_class == "high_confidence_match":
         persistence_blocked_reasons.append("missing_source_identifier")
+    if source_identifier_status == "not_public_safe":
+        persistence_blocked_reasons.append("source_identifier_not_public_safe")
     if not provider_provenance_ready:
         persistence_blocked_reasons.append("missing_provider_provenance")
 
@@ -348,7 +395,12 @@ def map_saucenao_result_to_plan(
         acceptance_policy_version=ACCEPTANCE_POLICY_VERSION,
     )
     metadata = _metadata_from_item(metadata_item=metadata_item, top_result=top_result, strong=strong)
-    positive_persistence_allowed = strong and source_identifier_status == "present" and provider_provenance_ready
+    positive_persistence_allowed = (
+        strong
+        and source_identifier_status == "present"
+        and source_identifier_public_safety_status == "public_safe"
+        and provider_provenance_ready
+    )
     planned_candidates = _planned_candidates(metadata, evidence_strength) if positive_persistence_allowed else ()
     positive_plan = positive_persistence_allowed and bool(planned_candidates)
     discard_plan = evidence_strength == EvidenceStrength.discard or match_class == SourceMatchClass.discarded
@@ -363,7 +415,7 @@ def map_saucenao_result_to_plan(
         provider_cache_planned=provider_cache_allowed,
         entity_evidence_planned=entity_evidence_planned,
         media_entity_candidate_planned=positive_plan,
-        non_persistable_source_match=strong and not positive_persistence_allowed,
+        non_persistable_source_match=(strong or potential_non_persistable_source_match) and not positive_persistence_allowed,
         negative_lookup_cache_planned=discard_plan and provider_cache_allowed,
         persistence_blocked_reason=persistence_blocked_reasons[0] if persistence_blocked_reasons else None,
         persistence_blocked_reasons=tuple(persistence_blocked_reasons),

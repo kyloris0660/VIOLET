@@ -26,7 +26,7 @@ The internal contract module is `backend/app/services/provider_evidence_contract
 - `ExtractedProviderMetadata`: raw provider artist/work/copyright/character/general tags, source title, provider metadata language/tag style, localization status, raw metadata availability, parser status.
 - `EvidencePersistencePlan`: query + source match + metadata plus provider provenance status, ProviderCache persistence gating, planned EntityEvidence, MediaEntityCandidate, NegativeLookupCache behavior, non-persistable source-match marker, blocked reasons, with `confirmed_assignment_allowed=false`, `entity_auto_create_allowed=false`, `localization_pending=true`, and `db_write_allowed=false` in C0.
 
-Public serialization rejects secret-like key names by normalized pattern, including `saucenao_api_key`, `apiKey`, `api-key`, `password`, `token`, `access_token`, `secret`, `authorization`, `bearer`, and `credential`. It also normalizes forbidden privacy keys before comparison, so variants such as `originalFilename`, `original_filename`, `original-filename`, `safeFilename`, `sourceLabel`, `imageBytes`, `localPath`, `filePath`, `absolutePath`, and `rawImageBytes` are rejected recursively. Safe provider metadata keys such as `artist`, `character`, `copyright`, `work`, `source_host`, `result_id`, and `post_id` remain allowed.
+Public serialization rejects secret-like key names by normalized pattern, including `saucenao_api_key`, `apiKey`, `api-key`, `password`, `token`, `access_token`, `secret`, `authorization`, `bearer`, and `credential`. It also normalizes forbidden privacy keys before comparison, so variants such as `originalFilename`, `original_filename`, `original-filename`, `safeFilename`, `sourceLabel`, `imageBytes`, `localPath`, `filePath`, `absolutePath`, and `rawImageBytes` are rejected recursively. String scanning checks both raw and bounded percent-decoded values, so URL-encoded local paths, `file://` values, `api_key`, `token`, and bearer-like material fail closed. Non-finite numbers and non-JSON-serializable payload values are rejected before public JSON/report emission. Safe provider metadata keys such as `artist`, `character`, `copyright`, `work`, `source_host`, `result_id`, and `post_id` remain allowed.
 
 ## SauceNAO Mapper Behavior
 
@@ -45,9 +45,12 @@ Acceptance policy:
 - `minimum_similarity` alone does not create acceptance.
 - High provider score alone does not create acceptance.
 - In this pilot, strong source match classification requires a high-confidence result plus manual validation and a concrete source identifier such as result/post ID, source/post URL, or provider external ID.
-- Positive persistence planning for `ProviderCache`, `EntityEvidence`, and `MediaEntityCandidate` also requires provider provenance readiness: traceable source identifier, valid query hash, present public-safe `request_shape_redacted`, and `provider_provenance_status=ready`.
+- Positive persistence planning for `ProviderCache`, `EntityEvidence`, and `MediaEntityCandidate` also requires provider provenance readiness: traceable public-safe source identifier fields, valid query hash, present public-safe JSON `request_shape_redacted`, and `provider_provenance_status=ready`.
 - Missing or invalid query hashes block all positive persistence planning. Missing query hashes report `missing_query_hash`; placeholders or malformed values report `invalid_query_hash`; both also report `missing_provider_provenance`.
 - Missing or unsafe request shapes block all positive persistence planning. Missing request shapes report `missing_request_shape`; unsafe request shapes are sanitized from the public contract payload and report `invalid_request_shape` plus `missing_provider_provenance`.
+- Non-JSON request shapes, such as accidental bytes, do not crash the mapper; they are sanitized to an empty public request shape, marked `request_shape_status=invalid`, and blocked from persistence.
+- Source identifiers must pass public-safe validation before positive persistence planning. Unsafe `source_url`, `post_url`, `source_host`, or provider/result ID values are sanitized from the public `SourceMatch`, report `source_identifier_not_public_safe`, and cannot plan ProviderCache, EntityEvidence, or MediaEntityCandidate rows.
+- Non-finite provider numbers such as `NaN`, `Infinity`, or `-Infinity` are rejected by public payload validation; mapper score extraction sanitizes them to `None` so public JSON remains standards-compliant.
 - Low-confidence SauceNAO results are discarded by default unless a future explicit policy approves manual salvage.
 - No confirmed `MediaEntityAssignment` and no automatic trusted `Entity` creation are allowed.
 - Reduced public summaries without full local details may still produce a useful non-persistable `SourceMatch`, but they set `non_persistable_source_match=true` and cannot plan positive evidence/candidates.
@@ -142,7 +145,7 @@ No migration is required for the narrow C1 persistence plan if JSON payloads are
 
 Recommended next phase: Phase 4.4-C1 validated high-confidence evidence persistence.
 
-C1 should persist only reviewed high-confidence sample evidence from local details/raw provider artifacts that preserve valid query hashes, public-safe redacted request shapes, and source identifiers. Reduced public summaries are acceptable for reporting but are not sufficient to prove provider provenance readiness.
+C1 should persist only reviewed high-confidence sample evidence from local details/raw provider artifacts that preserve valid query hashes, public-safe JSON redacted request shapes, and public-safe source identifiers. Reduced public summaries are acceptable for reporting but are not sufficient to prove provider provenance readiness. C1 must consume only persistence-ready plans.
 
 1. `ProviderCache` redacted provider-neutral payloads for `2687` and `2670` only when `query_hash_status=present_valid`, `request_shape_status=present`, `provider_provenance_status=ready`, and `provider_cache_persistence_allowed=true`.
 2. `EntityEvidence` reverse-search rows for `2687` and `2670` only from provenance-ready plans.
@@ -182,7 +185,7 @@ Second-provider requirements:
 ## Validation
 
 - `py_compile` passed for the new Python modules, script, and focused test file.
-- Focused unit tests passed: `tests/test_phase44c0_provider_evidence_contract.py` (`32 passed`).
+- Focused unit tests passed: `tests/test_phase44c0_provider_evidence_contract.py` (`40 passed`).
 - Schema-fit audit script printed JSON without DB access.
 
 ## Safety Confirmation
