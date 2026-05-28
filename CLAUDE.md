@@ -184,9 +184,11 @@ The `## Test plan` section must use GitHub task list syntax for major gates, for
 
 Checkboxes must reflect reality: do not mark incomplete items complete, and mark non-applicable gates as not applicable or omit them with a clear reason. Do not run full non-E2E, real dry-run, or E2E gates for docs-only or phase-scoped work unless the lifecycle/scope requires them. The `## Reviewer / Codex status` section must state whether reviewer/Codex reviewed the latest head SHA; if pending, say pending. The `## Safety confirmation` section must explicitly state no push main, no merge, no source/iCloud/staging mutation, no cleanup/reset/drop/truncate, no API key exposure, and no forbidden background systems. PR titles should stay consistent: `Phase X.Y: <clear phase title>` or `feat/fix/docs: <clear scope> (Phase X.Y)`.
 
-### Real browser validation (mandatory)
+### Real browser validation (UI/runtime scope)
 
-For every feature phase, bug fix, or UI-affecting change, the agent must perform real browser validation before delivery. This applies to changes involving: Admin UI, gallery/media grid, media detail page, search behavior, tag localization, AI tagging/review UI, local library scan workflow, settings/developer tools, user-visible text, thumbnails/fallback images, routing/navigation, any frontend JavaScript behavior.
+For every UI/runtime/browser-visible feature phase, bug fix, or behavior change, the agent must perform real browser validation before delivery. This applies to changes involving Admin UI, gallery/media grid, media detail page, search behavior, tag localization, AI tagging/review UI, local library scan workflow, settings/developer tools, user-visible text, thumbnails/fallback images, routing/navigation, frontend JavaScript behavior, or server behavior that is exercised through the browser.
+
+Docs-only, governance-only, non-UI phase-scoped runners, isolated backend contract/test changes, and report-only PRs do not require browser validation unless their actual scope touches server/UI behavior. Do not start a server solely to satisfy browser validation for a non-UI docs/governance change.
 
 **Required standard:**
 
@@ -198,7 +200,7 @@ For every feature phase, bug fix, or UI-affecting change, the agent must perform
 6. If the feature touches local files, scan, thumbnails, or media display, validate with a real local test folder when safe.
 7. If real browser validation cannot be run despite best effort, the agent must explicitly explain why (exact error) and provide the closest fallback validation. "Server was not running" is not an acceptable excuse — the agent should have started one.
 
-The delivery report must include a dedicated section: **真实浏览器验收**, containing: 验收方式, 浏览器/Playwright project, URL tested, pages/flows validated, pass/fail result, skipped or not covered items, fallback explanation if real browser validation could not be completed. A phase is not considered complete without this section.
+When browser validation is in scope, the delivery report must include a dedicated section: **真实浏览器验收**, containing: 验收方式, 浏览器/Playwright project, URL tested, pages/flows validated, pass/fail result, skipped or not covered items, fallback explanation if real browser validation could not be completed. A UI/runtime/browser-visible phase is not considered complete without this section. When browser validation is not in scope, say so explicitly and give the reason.
 
 ### Phase plan approval rule
 

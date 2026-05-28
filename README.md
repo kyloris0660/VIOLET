@@ -49,6 +49,11 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item example.env .env
+# Edit .env before startup. For Windows local dev, verify local PostgreSQL:
+# POSTGRES_HOST=localhost
+# POSTGRES_DB=blombooru
+# POSTGRES_USER=<local postgres user>
+# POSTGRES_PASSWORD=<local postgres password>
 python run.py --debug
 ```
 
