@@ -3,7 +3,7 @@
   "status": "applied",
   "success": true,
   "blocked_reasons": [],
-  "generated_at": "2026-05-28T12:11:17.613623+00:00",
+  "generated_at": "2026-05-28T13:50:43.862774+00:00",
   "approved_media_ids": [
     2687,
     2670
@@ -51,7 +51,7 @@
     "test_database_url_set": false
   },
   "backup": {
-    "basename": "phase-4.4c1-db-backup-20260528T121117Z.dump",
+    "basename": "phase-4.4c1-db-backup-20260528T135043Z.dump",
     "bytes": 2655621,
     "format": "pg_dump -Fc",
     "toc_verified": true,
@@ -135,8 +135,11 @@
   "db_state_before": {
     "approved_media_present": 2,
     "provider_cache_approved": 2,
+    "provider_cache_unrelated_existing_ignored": 0,
     "entity_evidence_approved": 2,
+    "entity_evidence_unrelated_existing_ignored": 0,
     "media_entity_candidates_c1": 7,
+    "media_entity_candidates_unrelated_existing_ignored": 0,
     "media_entity_assignments_for_approved": 0,
     "entity_count": 0,
     "tag_translation_count": 3732,
@@ -148,8 +151,11 @@
   "db_state_after": {
     "approved_media_present": 2,
     "provider_cache_approved": 2,
+    "provider_cache_unrelated_existing_ignored": 0,
     "entity_evidence_approved": 2,
+    "entity_evidence_unrelated_existing_ignored": 0,
     "media_entity_candidates_c1": 7,
+    "media_entity_candidates_unrelated_existing_ignored": 0,
     "media_entity_assignments_for_approved": 0,
     "entity_count": 0,
     "tag_translation_count": 3732,
@@ -169,7 +175,16 @@
     "provider_cache_approved_count": 2,
     "entity_evidence_approved_count": 2,
     "media_entity_candidate_c1_count": 7,
+    "provider_cache_unrelated_existing_ignored": 0,
+    "entity_evidence_unrelated_existing_ignored": 0,
+    "media_entity_candidates_unrelated_existing_ignored": 0,
     "confirmed_assignment_count_for_approved": 0,
+    "low_confidence_positive_evidence_total_before": 0,
+    "low_confidence_positive_evidence_total_after": 0,
+    "low_confidence_positive_evidence_inserted_by_c1": 0,
+    "low_confidence_candidates_total_before": 0,
+    "low_confidence_candidates_total_after": 0,
+    "low_confidence_candidates_inserted_by_c1": 0,
     "provider_cache_count_matches_expected": true,
     "entity_evidence_count_matches_expected": true,
     "media_entity_candidate_count_matches_expected": true,
@@ -177,11 +192,13 @@
     "entity_count_unchanged": true,
     "tag_translation_count_unchanged": true,
     "media_tags_for_approved_unchanged": true,
-    "low_confidence_positive_evidence_zero": true,
-    "low_confidence_candidates_zero": true
+    "low_confidence_positive_evidence_inserted_by_c1_zero": true,
+    "low_confidence_candidates_inserted_by_c1_zero": true
   },
   "idempotency_verification": {
     "status": "dry_run",
+    "idempotency_check_ran": true,
+    "idempotency_success": true,
     "success": true,
     "failure_codes": [],
     "expected_counts": {
@@ -214,7 +231,13 @@
       "Entity": {
         "inserted": 0
       }
-    }
+    },
+    "would_insert_provider_cache": 0,
+    "would_insert_entity_evidence": 0,
+    "would_insert_media_entity_candidate": 0,
+    "existing_provider_cache": 2,
+    "existing_entity_evidence": 2,
+    "existing_media_entity_candidate": 7
   },
   "closeout": {
     "manual_approval_bound_to_provider_result_ids": {
@@ -225,15 +248,23 @@
     "duplicate_media_ids_rejected_before_plan_backup_apply": true,
     "apply_mode_strict_regardless_of_strict_flag": true,
     "abort_before_apply_if_dry_run_summary_unsuccessful": true,
+    "post_write_gates_run_before_commit": true,
+    "commit_only_after_post_write_and_idempotency_success": true,
+    "low_confidence_check_scope": "before_after_delta_for_excluded_media_ids",
+    "approved_verification_scope": "exact_c1_payload_ref_and_phase_summary",
     "final_success_depends_on_post_write_verification": true,
     "final_success_depends_on_idempotency_verification": true,
     "runner_performs_post_apply_idempotency_check": true,
+    "idempotency_check_phase": "pre_commit_after_apply_transactional_dry_run",
     "new_db_writes_during_closeout": false,
     "current_db_state_after_fix": {
       "approved_media_present": 2,
       "provider_cache_approved": 2,
+      "provider_cache_unrelated_existing_ignored": 0,
       "entity_evidence_approved": 2,
+      "entity_evidence_unrelated_existing_ignored": 0,
       "media_entity_candidates_c1": 7,
+      "media_entity_candidates_unrelated_existing_ignored": 0,
       "media_entity_assignments_for_approved": 0,
       "entity_count": 0,
       "tag_translation_count": 3732,

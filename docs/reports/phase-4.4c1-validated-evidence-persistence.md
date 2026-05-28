@@ -1,6 +1,6 @@
 # Phase 4.4-C1 - Validated Evidence Persistence
 
-Date: 2026-05-28T12:11:17.613623+00:00
+Date: 2026-05-28T13:50:43.862774+00:00
 
 ## Summary
 
@@ -17,7 +17,8 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 - Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.
 - Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.
 - Duplicate requested media IDs are rejected before plan build, backup, or apply.
-- Apply mode is fail-closed when dry-run validation or post-write/idempotency verification fails.
+- Apply mode verifies post-write gates and idempotency inside the transaction before commit.
+- Low-confidence and approved-evidence verification is scoped to C1 row identity or before/after deltas.
 - New DB rows inserted during this closeout run: `False`
 
 ## Lifecycle Classification
@@ -38,7 +39,7 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Backup
 
 - Backup created: yes
-- Backup basename: `phase-4.4c1-db-backup-20260528T121117Z.dump`
+- Backup basename: `phase-4.4c1-db-backup-20260528T135043Z.dump`
 - Backup bytes: `2655621`
 - Backup format: `pg_dump -Fc`
 - TOC verified: `True`
@@ -68,14 +69,17 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 - ProviderCache approved count: `2`
 - EntityEvidence approved count: `2`
 - MediaEntityCandidate C1 count: `7`
+- ProviderCache unrelated existing ignored: `0`
+- EntityEvidence unrelated existing ignored: `0`
+- MediaEntityCandidate unrelated existing ignored: `0`
 - Confirmed assignment count for approved media: `0`
 - Verification success: `True`
 - Failure codes: `none`
 - Entity count unchanged: `True`
 - TagTranslation count unchanged: `True`
 - media_tags for approved unchanged: `True`
-- Low-confidence positive evidence count is zero: `True`
-- Low-confidence candidates count is zero: `True`
+- Low-confidence positive evidence inserted by C1: `0`
+- Low-confidence candidates inserted by C1: `0`
 - Entity count before/after: `0` / `0`
 - TagTranslation count before/after: `3732` / `3732`
 - media_tags for approved before/after: `92` / `92`
@@ -83,6 +87,7 @@ Phase 4.4-C1 persisted only the two manually validated high-confidence SauceNAO 
 ## Idempotency Verification
 
 - Status: `dry_run`
+- Check ran: `True`
 - Success: `True`
 - Failure codes: `none`
 - ProviderCache existing count: `2`

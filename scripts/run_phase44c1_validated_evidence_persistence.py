@@ -43,6 +43,7 @@ from app.services.provider_evidence_contract import assert_public_payload_safe  
 from app.services.provider_evidence_persistence_service import (  # noqa: E402
     EvidencePersistenceOptions,
     persist_provider_evidence_plans,
+    provider_cache_payload_ref,
 )
 from app.services.saucenao_evidence_mapper import map_saucenao_result_to_plan  # noqa: E402
 
@@ -494,33 +495,67 @@ def _plan_query_hashes(plans: Iterable[Any]) -> list[str]:
     return [plan.provider_query.query_hash for plan in plans if plan.provider_query.query_hash]
 
 
+def _plan_payload_refs(plans: Iterable[Any]) -> list[str]:
+    return [provider_cache_payload_ref(plan) for plan in plans]
+
+
+def _provider_cache_is_c1(row: ProviderCache, payload_refs: set[str]) -> bool:
+    payload = row.response_json_redacted if isinstance(row.response_json_redacted, Mapping) else {}
+    return payload.get("phase") == PHASE and payload.get("provider_cache_payload_ref") in payload_refs
+
+
+def _evidence_is_c1(row: EntityEvidence, payload_refs: set[str]) -> bool:
+    return (
+        row.payload_ref in payload_refs
+        and bool(row.summary)
+        and str(row.summary).startswith(f"Phase {PHASE} validated provider evidence")
+    )
+
+
 def collect_db_state(db: Session, *, plans: list[Any], low_confidence_query_hashes: list[str]) -> dict[str, Any]:
     approved_ids = [plan.media_id for plan in plans]
     qhashes = _plan_query_hashes(plans)
-    c1_evidence_filter = [
-        EntityEvidence.provider == PROVIDER,
-        EntityEvidence.source_type == "external",
-        EntityEvidence.evidence_type == "reverse_search",
-        EntityEvidence.query_hash.in_(qhashes),
-    ]
-    evidence_ids = [row[0] for row in db.query(EntityEvidence.id).filter(*c1_evidence_filter).all()] if qhashes else []
-    return {
-        "approved_media_present": db.query(Media).filter(Media.id.in_(approved_ids)).count(),
-        "provider_cache_approved": db.query(ProviderCache)
+    payload_refs = set(_plan_payload_refs(plans))
+    provider_cache_rows = (
+        db.query(ProviderCache)
         .filter(
             ProviderCache.provider == PROVIDER,
             ProviderCache.query_type == QUERY_TYPE,
             ProviderCache.query_hash.in_(qhashes),
         )
-        .count()
+        .all()
         if qhashes
-        else 0,
-        "entity_evidence_approved": db.query(EntityEvidence).filter(*c1_evidence_filter).count() if qhashes else 0,
-        "media_entity_candidates_c1": db.query(MediaEntityCandidate)
-        .filter(MediaEntityCandidate.evidence_id.in_(evidence_ids))
-        .count()
+        else []
+    )
+    c1_provider_cache_rows = [row for row in provider_cache_rows if _provider_cache_is_c1(row, payload_refs)]
+    evidence_rows = (
+        db.query(EntityEvidence)
+        .filter(
+            EntityEvidence.provider == PROVIDER,
+            EntityEvidence.source_type == "external",
+            EntityEvidence.evidence_type == "reverse_search",
+            EntityEvidence.query_hash.in_(qhashes),
+        )
+        .all()
+        if qhashes
+        else []
+    )
+    c1_evidence_rows = [row for row in evidence_rows if _evidence_is_c1(row, payload_refs)]
+    evidence_ids = [row.id for row in c1_evidence_rows]
+    c1_candidate_count = (
+        db.query(MediaEntityCandidate).filter(MediaEntityCandidate.evidence_id.in_(evidence_ids)).count()
         if evidence_ids
-        else 0,
+        else 0
+    )
+    approved_candidate_total = db.query(MediaEntityCandidate).filter(MediaEntityCandidate.media_id.in_(approved_ids)).count()
+    return {
+        "approved_media_present": db.query(Media).filter(Media.id.in_(approved_ids)).count(),
+        "provider_cache_approved": len(c1_provider_cache_rows),
+        "provider_cache_unrelated_existing_ignored": len(provider_cache_rows) - len(c1_provider_cache_rows),
+        "entity_evidence_approved": len(c1_evidence_rows),
+        "entity_evidence_unrelated_existing_ignored": len(evidence_rows) - len(c1_evidence_rows),
+        "media_entity_candidates_c1": c1_candidate_count,
+        "media_entity_candidates_unrelated_existing_ignored": max(0, approved_candidate_total - c1_candidate_count),
         "media_entity_assignments_for_approved": db.query(MediaEntityAssignment)
         .filter(MediaEntityAssignment.media_id.in_(approved_ids))
         .count(),
@@ -604,6 +639,10 @@ def build_post_write_verification(
     plans: Iterable[Any],
 ) -> dict[str, Any]:
     expected = expected_persistence_counts(plans)
+    low_confidence_positive_evidence_inserted = (
+        db_after["low_confidence_positive_evidence"] - db_before["low_confidence_positive_evidence"]
+    )
+    low_confidence_candidates_inserted = db_after["low_confidence_candidates"] - db_before["low_confidence_candidates"]
     checks = {
         "provider_cache_count_matches_expected": db_after["provider_cache_approved"] == expected["ProviderCache"],
         "entity_evidence_count_matches_expected": db_after["entity_evidence_approved"] == expected["EntityEvidence"],
@@ -613,8 +652,8 @@ def build_post_write_verification(
         "entity_count_unchanged": db_before["entity_count"] == db_after["entity_count"],
         "tag_translation_count_unchanged": db_before["tag_translation_count"] == db_after["tag_translation_count"],
         "media_tags_for_approved_unchanged": db_before["media_tags_for_approved"] == db_after["media_tags_for_approved"],
-        "low_confidence_positive_evidence_zero": db_after["low_confidence_positive_evidence"] == 0,
-        "low_confidence_candidates_zero": db_after["low_confidence_candidates"] == 0,
+        "low_confidence_positive_evidence_inserted_by_c1_zero": low_confidence_positive_evidence_inserted == 0,
+        "low_confidence_candidates_inserted_by_c1_zero": low_confidence_candidates_inserted == 0,
     }
     failure_codes = [name for name, passed in checks.items() if not passed]
     return {
@@ -624,7 +663,18 @@ def build_post_write_verification(
         "provider_cache_approved_count": db_after["provider_cache_approved"],
         "entity_evidence_approved_count": db_after["entity_evidence_approved"],
         "media_entity_candidate_c1_count": db_after["media_entity_candidates_c1"],
+        "provider_cache_unrelated_existing_ignored": db_after.get("provider_cache_unrelated_existing_ignored", 0),
+        "entity_evidence_unrelated_existing_ignored": db_after.get("entity_evidence_unrelated_existing_ignored", 0),
+        "media_entity_candidates_unrelated_existing_ignored": db_after.get(
+            "media_entity_candidates_unrelated_existing_ignored", 0
+        ),
         "confirmed_assignment_count_for_approved": db_after["media_entity_assignments_for_approved"],
+        "low_confidence_positive_evidence_total_before": db_before["low_confidence_positive_evidence"],
+        "low_confidence_positive_evidence_total_after": db_after["low_confidence_positive_evidence"],
+        "low_confidence_positive_evidence_inserted_by_c1": low_confidence_positive_evidence_inserted,
+        "low_confidence_candidates_total_before": db_before["low_confidence_candidates"],
+        "low_confidence_candidates_total_after": db_after["low_confidence_candidates"],
+        "low_confidence_candidates_inserted_by_c1": low_confidence_candidates_inserted,
         **checks,
     }
 
@@ -637,9 +687,14 @@ def build_idempotency_verification(
     if idempotency_summary is None:
         return {
             "status": "not_run",
+            "idempotency_check_ran": False,
+            "idempotency_success": False,
             "success": False,
             "failure_codes": ["idempotency_verification_not_run"],
             "expected_counts": expected,
+            "would_insert_provider_cache": None,
+            "would_insert_entity_evidence": None,
+            "would_insert_media_entity_candidate": None,
         }
 
     counts = idempotency_summary.get("counts", {})
@@ -656,10 +711,18 @@ def build_idempotency_verification(
             failure_codes.append(f"{table}_planned_count_mismatch")
     return {
         "status": "dry_run",
+        "idempotency_check_ran": True,
+        "idempotency_success": not failure_codes,
         "success": not failure_codes,
         "failure_codes": failure_codes,
         "expected_counts": expected,
         "counts": counts,
+        "would_insert_provider_cache": counts.get("ProviderCache", {}).get("inserted", 0),
+        "would_insert_entity_evidence": counts.get("EntityEvidence", {}).get("inserted", 0),
+        "would_insert_media_entity_candidate": counts.get("MediaEntityCandidate", {}).get("inserted", 0),
+        "existing_provider_cache": counts.get("ProviderCache", {}).get("existing", 0),
+        "existing_entity_evidence": counts.get("EntityEvidence", {}).get("existing", 0),
+        "existing_media_entity_candidate": counts.get("MediaEntityCandidate", {}).get("existing", 0),
     }
 
 
@@ -669,6 +732,47 @@ def _blocked_items_by_media(persistence: Mapping[str, Any]) -> dict[int, Mapping
         if item.get("status") == "blocked" and item.get("media_id") is not None:
             blocked[int(item["media_id"])] = item
     return blocked
+
+
+def apply_plans_with_pre_commit_gates(
+    db: Session,
+    *,
+    plans: list[Any],
+    db_before: Mapping[str, Any],
+    low_confidence_query_hashes: list[str],
+) -> dict[str, Any]:
+    """Apply C1 writes and run blocking gates before the caller commits."""
+    persistence = persist_provider_evidence_plans(
+        db,
+        plans,
+        apply=True,
+        options=EvidencePersistenceOptions(write_candidates=True, strict=True),
+    )
+    db_after = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_confidence_query_hashes)
+    post_write_verification = build_post_write_verification(db_before, db_after, plans)
+    if post_write_verification["success"] is not True:
+        raise PhaseC1Error(
+            "post_write_verification_failed",
+            json.dumps(post_write_verification["failure_codes"], sort_keys=True),
+        )
+    idempotency_summary = persist_provider_evidence_plans(
+        db,
+        plans,
+        apply=False,
+        options=EvidencePersistenceOptions(write_candidates=True, strict=True),
+    )
+    idempotency_verification = build_idempotency_verification(idempotency_summary, plans)
+    if idempotency_verification["success"] is not True:
+        raise PhaseC1Error(
+            "idempotency_verification_failed",
+            json.dumps(idempotency_verification["failure_codes"], sort_keys=True),
+        )
+    return {
+        "persistence": persistence,
+        "db_after": db_after,
+        "post_write_verification": post_write_verification,
+        "idempotency_summary": idempotency_summary,
+    }
 
 
 def build_public_summary(
@@ -681,6 +785,7 @@ def build_public_summary(
     db_after: Mapping[str, Any],
     backup: Mapping[str, Any] | None,
     idempotency_summary: Mapping[str, Any] | None = None,
+    post_write_verification: Mapping[str, Any] | None = None,
     blocked_status: str | None = None,
 ) -> dict[str, Any]:
     query_hashes = _plan_query_hashes(plans)
@@ -711,7 +816,7 @@ def build_public_summary(
                 "work": list(plan.extracted_metadata.work_raw),
                 "character": list(plan.extracted_metadata.character_raw),
             }
-    post_write_verification = build_post_write_verification(db_before, db_after, plans)
+    post_write_verification = post_write_verification or build_post_write_verification(db_before, db_after, plans)
     idempotency_verification = build_idempotency_verification(idempotency_summary, plans) if mode == "apply" else None
     final_success = (
         persistence.get("success") is True
@@ -773,9 +878,14 @@ def build_public_summary(
             "duplicate_media_ids_rejected_before_plan_backup_apply": True,
             "apply_mode_strict_regardless_of_strict_flag": True,
             "abort_before_apply_if_dry_run_summary_unsuccessful": True,
+            "post_write_gates_run_before_commit": mode == "apply",
+            "commit_only_after_post_write_and_idempotency_success": mode == "apply",
+            "low_confidence_check_scope": "before_after_delta_for_excluded_media_ids",
+            "approved_verification_scope": "exact_c1_payload_ref_and_phase_summary",
             "final_success_depends_on_post_write_verification": True,
             "final_success_depends_on_idempotency_verification": mode == "apply",
             "runner_performs_post_apply_idempotency_check": mode == "apply" and idempotency_summary is not None,
+            "idempotency_check_phase": "pre_commit_after_apply_transactional_dry_run" if mode == "apply" else "not_applicable",
             "new_db_writes_during_closeout": any(
                 persistence["counts"][table]["inserted"] > 0
                 for table in ("ProviderCache", "EntityEvidence", "MediaEntityCandidate")
@@ -799,7 +909,9 @@ def build_public_summary(
             "automatic_entity_created": not post_write_verification["entity_count_unchanged"],
             "media_tags_mutated": not post_write_verification["media_tags_for_approved_unchanged"],
             "tag_translation_mutated": not post_write_verification["tag_translation_count_unchanged"],
-            "low_confidence_positive_writes": not post_write_verification["low_confidence_positive_evidence_zero"],
+            "low_confidence_positive_writes": not post_write_verification[
+                "low_confidence_positive_evidence_inserted_by_c1_zero"
+            ],
         },
     }
     assert_public_payload_safe(summary)
@@ -829,7 +941,8 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         "- Approved result identities: `2687 -> 7695035`, `2670 -> 9366672`.",
         "- Live rerun details and metadata extraction details must match on provider/result/source identity before metadata is combined.",
         "- Duplicate requested media IDs are rejected before plan build, backup, or apply.",
-        "- Apply mode is fail-closed when dry-run validation or post-write/idempotency verification fails.",
+        "- Apply mode verifies post-write gates and idempotency inside the transaction before commit.",
+        "- Low-confidence and approved-evidence verification is scoped to C1 row identity or before/after deltas.",
         f"- New DB rows inserted during this closeout run: `{summary['closeout']['new_db_writes_during_closeout']}`",
         "",
         "## Lifecycle Classification",
@@ -900,14 +1013,17 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- ProviderCache approved count: `{verification['provider_cache_approved_count']}`",
             f"- EntityEvidence approved count: `{verification['entity_evidence_approved_count']}`",
             f"- MediaEntityCandidate C1 count: `{verification['media_entity_candidate_c1_count']}`",
+            f"- ProviderCache unrelated existing ignored: `{verification['provider_cache_unrelated_existing_ignored']}`",
+            f"- EntityEvidence unrelated existing ignored: `{verification['entity_evidence_unrelated_existing_ignored']}`",
+            f"- MediaEntityCandidate unrelated existing ignored: `{verification['media_entity_candidates_unrelated_existing_ignored']}`",
             f"- Confirmed assignment count for approved media: `{verification['confirmed_assignment_count_for_approved']}`",
             f"- Verification success: `{verification['success']}`",
             f"- Failure codes: `{', '.join(verification['failure_codes']) if verification['failure_codes'] else 'none'}`",
             f"- Entity count unchanged: `{verification['entity_count_unchanged']}`",
             f"- TagTranslation count unchanged: `{verification['tag_translation_count_unchanged']}`",
             f"- media_tags for approved unchanged: `{verification['media_tags_for_approved_unchanged']}`",
-            f"- Low-confidence positive evidence count is zero: `{verification['low_confidence_positive_evidence_zero']}`",
-            f"- Low-confidence candidates count is zero: `{verification['low_confidence_candidates_zero']}`",
+            f"- Low-confidence positive evidence inserted by C1: `{verification['low_confidence_positive_evidence_inserted_by_c1']}`",
+            f"- Low-confidence candidates inserted by C1: `{verification['low_confidence_candidates_inserted_by_c1']}`",
             f"- Entity count before/after: `{summary['db_state_before']['entity_count']}` / `{summary['db_state_after']['entity_count']}`",
             f"- TagTranslation count before/after: `{summary['db_state_before']['tag_translation_count']}` / `{summary['db_state_after']['tag_translation_count']}`",
             f"- media_tags for approved before/after: `{summary['db_state_before']['media_tags_for_approved']}` / `{summary['db_state_after']['media_tags_for_approved']}`",
@@ -921,12 +1037,13 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         lines.extend(
             [
                 f"- Status: `{idempotency['status']}`",
+                f"- Check ran: `{idempotency['idempotency_check_ran']}`",
                 f"- Success: `{idempotency['success']}`",
                 f"- Failure codes: `{', '.join(idempotency['failure_codes']) if idempotency['failure_codes'] else 'none'}`",
                 f"- ProviderCache existing count: `{idempotency['counts']['ProviderCache']['existing']}`",
                 f"- EntityEvidence existing count: `{idempotency['counts']['EntityEvidence']['existing']}`",
                 f"- MediaEntityCandidate existing count: `{idempotency['counts']['MediaEntityCandidate']['existing']}`",
-                f"- Would insert counts: ProviderCache `{idempotency['counts']['ProviderCache']['inserted']}`, EntityEvidence `{idempotency['counts']['EntityEvidence']['inserted']}`, MediaEntityCandidate `{idempotency['counts']['MediaEntityCandidate']['inserted']}`",
+                f"- Would insert counts: ProviderCache `{idempotency['would_insert_provider_cache']}`, EntityEvidence `{idempotency['would_insert_entity_evidence']}`, MediaEntityCandidate `{idempotency['would_insert_media_entity_candidate']}`",
             ]
         )
     else:
@@ -997,9 +1114,11 @@ def main(argv: list[str] | None = None) -> int:
         settings, engine, identity = load_settings_and_engine()
         SessionLocal = sessionmaker(bind=engine)
         backup = None
+        post_write_verification = None
         with SessionLocal() as db:
             low_qhashes = low_confidence_query_hashes(live_details)
             before = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_qhashes)
+            after = before
             ensure_media_rows_present(before, len(plans))
 
             dry_summary = persist_provider_evidence_plans(
@@ -1022,21 +1141,20 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     backup = create_pg_dump_backup(settings, backup_path)
                     try:
-                        persistence = persist_provider_evidence_plans(
+                        apply_result = apply_plans_with_pre_commit_gates(
                             db,
-                            plans,
-                            apply=True,
-                            options=EvidencePersistenceOptions(write_candidates=True, strict=True),
+                            plans=plans,
+                            db_before=before,
+                            low_confidence_query_hashes=low_qhashes,
                         )
+                        persistence = apply_result["persistence"]
+                        after = apply_result["db_after"]
+                        post_write_verification = apply_result["post_write_verification"]
+                        idempotency_summary = apply_result["idempotency_summary"]
                         db.commit()
-                        idempotency_summary = persist_provider_evidence_plans(
-                            db,
-                            plans,
-                            apply=False,
-                            options=EvidencePersistenceOptions(write_candidates=True, strict=True),
-                        )
                     except Exception as exc:
                         db.rollback()
+                        after = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_qhashes)
                         persistence = deepcopy(dry_summary)
                         persistence["success"] = False
                         persistence["apply_error"] = {
@@ -1046,8 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
                         blocked_status = "blocked_apply_failed"
             else:
                 persistence = dry_summary
-
-            after = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_qhashes)
+                after = collect_db_state(db, plans=plans, low_confidence_query_hashes=low_qhashes)
 
         public_summary = build_public_summary(
             mode=mode,
@@ -1058,6 +1175,7 @@ def main(argv: list[str] | None = None) -> int:
             db_after=after,
             backup=backup,
             idempotency_summary=idempotency_summary,
+            post_write_verification=post_write_verification,
             blocked_status=blocked_status,
         )
         local_details = {
@@ -1069,6 +1187,7 @@ def main(argv: list[str] | None = None) -> int:
             "backup": backup,
             "dry_run": dry_summary,
             "persistence": persistence,
+            "post_write_verification": post_write_verification,
             "idempotency_verification": idempotency_summary,
             "db_state_before": before,
             "db_state_after": after,

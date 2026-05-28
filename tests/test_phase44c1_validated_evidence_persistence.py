@@ -5,6 +5,9 @@ from sqlalchemy.orm import sessionmaker
 import scripts.run_phase44c1_validated_evidence_persistence as runner
 from app.database import Base
 from app.enums import (
+    EntityCandidateGeneratorEnum,
+    EntityCandidateStatusEnum,
+    EntityEvidenceTypeEnum,
     EntityMetadataSourceEnum,
     EntityReviewStatusEnum,
     EntityTypeEnum,
@@ -23,7 +26,9 @@ from app.models import (
 from app.services.provider_evidence_persistence_service import (
     EvidencePersistenceError,
     EvidencePersistenceOptions,
+    evidence_summary,
     persist_provider_evidence_plans,
+    provider_cache_payload_ref,
 )
 from app.services.saucenao_evidence_mapper import map_saucenao_result_to_plan
 from scripts.run_phase44c1_validated_evidence_persistence import (
@@ -232,12 +237,18 @@ def _state(
     media_tags: int = 0,
     low_evidence: int = 0,
     low_candidates: int = 0,
+    provider_cache_unrelated: int = 0,
+    evidence_unrelated: int = 0,
+    candidates_unrelated: int = 0,
 ) -> dict:
     return {
         "approved_media_present": 2,
         "provider_cache_approved": provider_cache,
+        "provider_cache_unrelated_existing_ignored": provider_cache_unrelated,
         "entity_evidence_approved": evidence,
+        "entity_evidence_unrelated_existing_ignored": evidence_unrelated,
         "media_entity_candidates_c1": candidates,
+        "media_entity_candidates_unrelated_existing_ignored": candidates_unrelated,
         "media_entity_assignments_for_approved": assignments,
         "entity_count": entity_count,
         "tag_translation_count": tag_translation_count,
@@ -696,6 +707,168 @@ def test_runner_style_pre_read_then_commit_persists_writes(db):
     assert db.query(MediaEntityCandidate).count() == 7
 
 
+def test_collect_db_state_counts_only_exact_c1_evidence_rows(db):
+    plan = _plan_2687()
+    unrelated = EntityEvidence(
+        provider="saucenao",
+        source_type="external",
+        evidence_type=EntityEvidenceTypeEnum.reverse_search,
+        media_id=2687,
+        query_hash=plan.provider_query.query_hash,
+        payload_ref="external:historical:unrelated",
+        score=plan.source_match.score_value,
+        summary="Historical reverse-search evidence outside C1.",
+        privacy_redacted=True,
+    )
+    db.add(unrelated)
+    db.flush()
+    db.add(
+        MediaEntityCandidate(
+            media_id=2687,
+            entity_id=None,
+            entity_type=EntityTypeEnum.character,
+            label="historical",
+            candidate_name="historical unrelated candidate",
+            score=plan.source_match.score_value,
+            status=EntityCandidateStatusEnum.suggested,
+            generator=EntityCandidateGeneratorEnum.external,
+            evidence_id=unrelated.id,
+        )
+    )
+    db.flush()
+
+    state_before_c1 = runner.collect_db_state(db, plans=[plan], low_confidence_query_hashes=[])
+
+    assert state_before_c1["entity_evidence_approved"] == 0
+    assert state_before_c1["entity_evidence_unrelated_existing_ignored"] == 1
+    assert state_before_c1["media_entity_candidates_c1"] == 0
+    assert state_before_c1["media_entity_candidates_unrelated_existing_ignored"] == 1
+
+    persist_provider_evidence_plans(db, [plan], apply=True)
+    state_after_c1 = runner.collect_db_state(db, plans=[plan], low_confidence_query_hashes=[])
+
+    assert state_after_c1["provider_cache_approved"] == 1
+    assert state_after_c1["entity_evidence_approved"] == 1
+    assert state_after_c1["entity_evidence_unrelated_existing_ignored"] == 1
+    assert state_after_c1["media_entity_candidates_c1"] == 4
+    assert state_after_c1["media_entity_candidates_unrelated_existing_ignored"] == 1
+
+
+def test_duplicate_c1_evidence_rows_are_detected_by_approved_verification(db):
+    plans = [_plan_2687(), _plan_2670()]
+    persist_provider_evidence_plans(db, plans, apply=True)
+    duplicate = EntityEvidence(
+        provider="saucenao",
+        source_type="external",
+        evidence_type=EntityEvidenceTypeEnum.reverse_search,
+        media_id=2687,
+        entity_id=None,
+        tag_id=None,
+        query_hash=plans[0].provider_query.query_hash,
+        payload_ref=provider_cache_payload_ref(plans[0]),
+        score=plans[0].source_match.score_value,
+        summary=evidence_summary(plans[0]),
+        privacy_redacted=True,
+    )
+    db.add(duplicate)
+    db.flush()
+
+    before = _state()
+    after = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
+    verification = runner.build_post_write_verification(before, after, plans)
+
+    assert after["entity_evidence_approved"] == 3
+    assert verification["success"] is False
+    assert "entity_evidence_count_matches_expected" in verification["failure_codes"]
+
+
+def test_low_confidence_preexisting_rows_do_not_count_as_c1_writes():
+    before = _state(low_evidence=2, low_candidates=3)
+    after = _state(low_evidence=2, low_candidates=3)
+
+    verification = runner.build_post_write_verification(before, after, [_plan_2687(), _plan_2670()])
+
+    assert verification["success"] is True
+    assert verification["low_confidence_positive_evidence_inserted_by_c1"] == 0
+    assert verification["low_confidence_candidates_inserted_by_c1"] == 0
+
+
+def test_low_confidence_positive_delta_blocks_c1_verification():
+    before = _state(low_evidence=2, low_candidates=3)
+    after = _state(low_evidence=3, low_candidates=4)
+
+    verification = runner.build_post_write_verification(before, after, [_plan_2687(), _plan_2670()])
+
+    assert verification["success"] is False
+    assert "low_confidence_positive_evidence_inserted_by_c1_zero" in verification["failure_codes"]
+    assert "low_confidence_candidates_inserted_by_c1_zero" in verification["failure_codes"]
+
+
+def test_apply_pre_commit_verification_failure_rolls_back_new_rows(db, monkeypatch):
+    plans = [_plan_2687(), _plan_2670()]
+    before = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
+
+    def fail_verification(*_args, **_kwargs):
+        return {"success": False, "failure_codes": ["entity_evidence_count_matches_expected"]}
+
+    monkeypatch.setattr(runner, "build_post_write_verification", fail_verification)
+
+    with pytest.raises(runner.PhaseC1Error, match="post_write_verification_failed"):
+        runner.apply_plans_with_pre_commit_gates(
+            db,
+            plans=plans,
+            db_before=before,
+            low_confidence_query_hashes=[],
+        )
+    db.rollback()
+
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+
+
+def test_apply_pre_commit_verification_success_can_commit(db):
+    plans = [_plan_2687(), _plan_2670()]
+    before = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
+
+    result = runner.apply_plans_with_pre_commit_gates(
+        db,
+        plans=plans,
+        db_before=before,
+        low_confidence_query_hashes=[],
+    )
+    db.commit()
+
+    assert result["post_write_verification"]["success"] is True
+    assert result["idempotency_summary"]["counts"]["ProviderCache"]["inserted"] == 0
+    assert db.query(ProviderCache).count() == 2
+    assert db.query(EntityEvidence).count() == 2
+    assert db.query(MediaEntityCandidate).count() == 7
+
+
+def test_apply_pre_commit_idempotency_failure_rolls_back_new_rows(db, monkeypatch):
+    plans = [_plan_2687(), _plan_2670()]
+    before = runner.collect_db_state(db, plans=plans, low_confidence_query_hashes=[])
+
+    def fail_idempotency(*_args, **_kwargs):
+        return {"success": False, "failure_codes": ["ProviderCache_would_insert"]}
+
+    monkeypatch.setattr(runner, "build_idempotency_verification", fail_idempotency)
+
+    with pytest.raises(runner.PhaseC1Error, match="idempotency_verification_failed"):
+        runner.apply_plans_with_pre_commit_gates(
+            db,
+            plans=plans,
+            db_before=before,
+            low_confidence_query_hashes=[],
+        )
+    db.rollback()
+
+    assert db.query(ProviderCache).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+
+
 def test_public_summary_success_requires_post_write_verification_success():
     summary = build_public_summary(
         mode="apply",
@@ -758,9 +931,15 @@ def test_idempotency_verification_accepts_zero_insert_existing_rows():
     result = build_idempotency_verification(_successful_idempotency(), [_plan_2687(), _plan_2670()])
 
     assert result["success"] is True
+    assert result["idempotency_check_ran"] is True
+    assert result["idempotency_success"] is True
     assert result["failure_codes"] == []
-    assert result["counts"]["ProviderCache"]["inserted"] == 0
-    assert result["counts"]["ProviderCache"]["existing"] == 2
+    assert result["would_insert_provider_cache"] == 0
+    assert result["would_insert_entity_evidence"] == 0
+    assert result["would_insert_media_entity_candidate"] == 0
+    assert result["existing_provider_cache"] == 2
+    assert result["existing_entity_evidence"] == 2
+    assert result["existing_media_entity_candidate"] == 7
 
 
 def test_public_summary_success_when_all_safety_checks_pass():
