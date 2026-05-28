@@ -15,7 +15,11 @@ from app.services.provider_evidence_contract import (
     assert_public_payload_safe,
 )
 from app.services.provider_evidence_schema_fit import audit_provider_evidence_contract_fit
-from app.services.saucenao_evidence_mapper import map_saucenao_result_to_plan
+from app.services.saucenao_evidence_mapper import map_saucenao_result_to_plan, map_saucenao_samples_to_plans
+
+
+def _valid_query_hash(media_id: int) -> str:
+    return f"{media_id:064x}"
 
 
 def _live_item(
@@ -31,7 +35,7 @@ def _live_item(
 ) -> dict:
     return {
         "media_id": media_id,
-        "query_hash": f"query-hash-{media_id}",
+        "query_hash": _valid_query_hash(media_id),
         "request_shape_redacted": {
             "phase": "4.4-B1",
             "provider_key": "saucenao",
@@ -159,8 +163,10 @@ def test_saucenao_high_confidence_validated_result_maps_to_strong_source_match(p
     assert plan.media_entity_candidate_planned is True
     assert plan.provider_cache_planned is True
     assert plan.provider_cache_persistence_allowed is True
-    assert plan.provider_query.query_hash_status == "present"
+    assert plan.provider_query.query_hash_status == "present_valid"
     assert plan.provider_query.request_shape_status == "present"
+    assert plan.provider_provenance_status == "ready"
+    assert plan.non_persistable_source_match is False
     assert plan.source_match.source_identifier_status == "present"
 
 
@@ -269,18 +275,25 @@ def test_public_report_row_without_query_hash_does_not_fabricate_cache_key():
     assert plan.provider_query.request_shape_status == "missing"
     assert plan.provider_cache_planned is False
     assert plan.provider_cache_persistence_allowed is False
+    assert plan.provider_provenance_status == "blocked"
     assert plan.persistence_blocked_reason == "missing_query_hash"
     assert "missing_request_shape" in plan.persistence_blocked_reasons
+    assert "missing_provider_provenance" in plan.persistence_blocked_reasons
     assert "missing-query-hash" not in payload_text
     assert plan.source_match.evidence_strength == EvidenceStrength.strong
+    assert plan.non_persistable_source_match is True
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert plan.planned_entity_candidates == ()
 
 
 def test_local_details_row_with_real_query_hash_allows_provider_cache_plan():
     plan = _plan_2687()
 
-    assert plan.provider_query.query_hash == "query-hash-2687"
-    assert plan.provider_query.query_hash_status == "present"
+    assert plan.provider_query.query_hash == _valid_query_hash(2687)
+    assert plan.provider_query.query_hash_status == "present_valid"
     assert plan.provider_query.request_shape_status == "present"
+    assert plan.provider_provenance_status == "ready"
     assert plan.provider_cache_planned is True
     assert plan.provider_cache_persistence_allowed is True
     assert plan.persistence_blocked_reason is None
@@ -311,11 +324,168 @@ def test_request_shape_missing_blocks_provider_cache_plan_even_with_query_hash()
         ),
     )
 
-    assert plan.provider_query.query_hash_status == "present"
+    assert plan.provider_query.query_hash_status == "present_valid"
     assert plan.provider_query.request_shape_status == "missing"
     assert plan.provider_cache_planned is False
     assert plan.provider_cache_persistence_allowed is False
+    assert plan.provider_provenance_status == "blocked"
     assert plan.persistence_blocked_reason == "missing_request_shape"
+    assert "missing_provider_provenance" in plan.persistence_blocked_reasons
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+
+
+def test_unsafe_request_shape_blocks_positive_persistence_plan_and_public_output():
+    live_item = _live_item(
+        2687,
+        result_class="high_confidence_match",
+        score=96.2,
+        minimum_similarity=52.0,
+        result_id=7695035,
+        host="danbooru.donmai.us",
+        creator="yunkaiming",
+        title="honkai: star rail, honkai (series)",
+    )
+    live_item["request_shape_redacted"]["originalFilename"] = "private.jpg"
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(2687, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item=_metadata(
+            2687,
+            artist="yunkaiming",
+            works=["honkai: star rail", "honkai (series)"],
+            characters=["acheron (honkai: star rail)"],
+            result_id=7695035,
+        ),
+    )
+
+    assert plan.provider_query.request_shape_status == "invalid"
+    assert plan.provider_query.request_shape_redacted == {}
+    assert plan.provider_cache_planned is False
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert plan.provider_provenance_status == "blocked"
+    assert "invalid_request_shape" in plan.persistence_blocked_reasons
+    assert_public_payload_safe(plan.to_public_dict())
+
+
+def test_public_summary_row_without_local_details_has_no_positive_persistence_plan():
+    live_item = _live_item(
+        2687,
+        result_class="high_confidence_match",
+        score=96.2,
+        minimum_similarity=52.0,
+        result_id=7695035,
+        host="danbooru.donmai.us",
+        creator="yunkaiming",
+        title="honkai: star rail, honkai (series)",
+    )
+    live_item.pop("query_hash")
+    live_item.pop("request_shape_redacted")
+
+    plans = map_saucenao_samples_to_plans(
+        live_details={"provider_result_items": [live_item]},
+        manual_validation_summary={
+            "manual_validation": {
+                "items": [_manual(2687, action="keep_as_strong_evidence", judgment="correct")],
+            },
+            "metadata_extraction_audit": {
+                "items": [
+                    _metadata(
+                        2687,
+                        artist="yunkaiming",
+                        works=["honkai: star rail", "honkai (series)"],
+                        characters=["acheron (honkai: star rail)"],
+                        result_id=7695035,
+                    )
+                ],
+            },
+        },
+    )
+
+    plan = plans[0]
+    assert plan.source_match.evidence_strength == EvidenceStrength.strong
+    assert plan.non_persistable_source_match is True
+    assert plan.provider_cache_planned is False
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert plan.provider_provenance_status == "blocked"
+
+
+def test_valid_sha256_prefixed_query_hash_allows_provider_cache_plan():
+    live_item = _live_item(
+        2687,
+        result_class="high_confidence_match",
+        score=96.2,
+        minimum_similarity=52.0,
+        result_id=7695035,
+        host="danbooru.donmai.us",
+        creator="yunkaiming",
+        title="honkai: star rail, honkai (series)",
+    )
+    live_item["query_hash"] = "sha256:" + ("a" * 64)
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(2687, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item=_metadata(
+            2687,
+            artist="yunkaiming",
+            works=["honkai: star rail", "honkai (series)"],
+            characters=["acheron (honkai: star rail)"],
+            result_id=7695035,
+        ),
+    )
+
+    assert plan.provider_query.query_hash == "sha256:" + ("a" * 64)
+    assert plan.provider_query.query_hash_status == "present_valid"
+    assert plan.provider_cache_planned is True
+
+
+@pytest.mark.parametrize(
+    ("query_hash", "status"),
+    [
+        ("missing-query-hash-2687", "placeholder"),
+        ("placeholder", "placeholder"),
+        ("unknown", "placeholder"),
+        ("1234", "invalid"),
+        ("a" * 63, "invalid"),
+    ],
+)
+def test_invalid_or_placeholder_query_hash_blocks_positive_persistence_plan(query_hash, status):
+    live_item = _live_item(
+        2687,
+        result_class="high_confidence_match",
+        score=96.2,
+        minimum_similarity=52.0,
+        result_id=7695035,
+        host="danbooru.donmai.us",
+        creator="yunkaiming",
+        title="honkai: star rail, honkai (series)",
+    )
+    live_item["query_hash"] = query_hash
+
+    plan = map_saucenao_result_to_plan(
+        live_item=live_item,
+        manual_item=_manual(2687, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item=_metadata(
+            2687,
+            artist="yunkaiming",
+            works=["honkai: star rail", "honkai (series)"],
+            characters=["acheron (honkai: star rail)"],
+            result_id=7695035,
+        ),
+    )
+
+    assert plan.provider_query.query_hash is None
+    assert plan.provider_query.query_hash_status == status
+    assert plan.provider_cache_planned is False
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+    assert plan.provider_provenance_status == "blocked"
+    assert plan.persistence_blocked_reason == "invalid_query_hash"
+    assert "missing_provider_provenance" in plan.persistence_blocked_reasons
 
 
 def test_high_confidence_validated_without_source_identifier_is_not_strong():
@@ -398,6 +568,77 @@ def test_provider_external_id_can_anchor_traceable_strong_evidence():
     assert plan.entity_evidence_planned is True
 
 
+def test_discard_action_dominates_conflicting_correct_judgment():
+    plan = map_saucenao_result_to_plan(
+        live_item=_live_item(
+            4200,
+            result_class="high_confidence_match",
+            score=96.0,
+            minimum_similarity=50.0,
+            result_id=123456,
+            host="danbooru.donmai.us",
+            creator="candidate artist",
+            title="candidate work",
+        ),
+        manual_item=_manual(4200, action="discard", judgment="correct"),
+        metadata_item={"media_id": 4200, "artist": "candidate artist", "work_or_copyright": ["candidate work"]},
+    )
+
+    assert plan.source_match.manual_validation_status == ManualValidationStatus.validated_wrong
+    assert plan.source_match.evidence_strength == EvidenceStrength.discard
+    assert plan.source_match.match_class == SourceMatchClass.discarded
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+
+
+def test_metadata_not_useful_dominates_correct_judgment():
+    manual = _manual(4201, action="keep_as_strong_evidence", judgment="correct")
+    manual["metadata_useful"] = "no"
+
+    plan = map_saucenao_result_to_plan(
+        live_item=_live_item(
+            4201,
+            result_class="high_confidence_match",
+            score=96.0,
+            minimum_similarity=50.0,
+            result_id=123457,
+            host="danbooru.donmai.us",
+            creator="candidate artist",
+            title="candidate work",
+        ),
+        manual_item=manual,
+        metadata_item={"media_id": 4201, "artist": "candidate artist", "work_or_copyright": ["candidate work"]},
+    )
+
+    assert plan.source_match.manual_validation_status == ManualValidationStatus.validated_wrong
+    assert plan.source_match.evidence_strength != EvidenceStrength.strong
+    assert plan.entity_evidence_planned is False
+    assert plan.media_entity_candidate_planned is False
+
+
+def test_explicit_keep_without_negative_signals_allows_positive_mapping():
+    plan = map_saucenao_result_to_plan(
+        live_item=_live_item(
+            4202,
+            result_class="high_confidence_match",
+            score=96.0,
+            minimum_similarity=50.0,
+            result_id=123458,
+            host="danbooru.donmai.us",
+            creator="candidate artist",
+            title="candidate work",
+        ),
+        manual_item=_manual(4202, action="keep_as_strong_evidence", judgment="correct"),
+        metadata_item={"media_id": 4202, "artist": "candidate artist", "work_or_copyright": ["candidate work"]},
+    )
+
+    assert plan.source_match.manual_validation_status == ManualValidationStatus.validated_correct
+    assert plan.source_match.evidence_strength == EvidenceStrength.strong
+    assert plan.provider_provenance_status == "ready"
+    assert plan.entity_evidence_planned is True
+    assert plan.media_entity_candidate_planned is True
+
+
 def test_confirmed_assignment_and_entity_auto_creation_are_blocked():
     plan = _plan_2687()
 
@@ -452,6 +693,32 @@ def test_public_serialization_excludes_private_provider_request_material():
     with pytest.raises(ValueError):
         assert_public_payload_safe({"nested": [{"credential": "short"}]})
     with pytest.raises(ValueError):
+        assert_public_payload_safe({"originalFilename": "private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"original_filename": "private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"original-filename": "private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"safeFilename": "private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"sourceLabel": "icloud"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"source_label": "icloud"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"imageBytes": "abcd"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"image_bytes": "abcd"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"localPath": "C:\\Users\\kyloris\\private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"filePath": "C:\\Users\\kyloris\\private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"absolutePath": "C:\\Users\\kyloris\\private.jpg"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"rawImageBytes": "abcd"})
+    with pytest.raises(ValueError):
+        assert_public_payload_safe({"nested": [{"safeFilename": "private.jpg"}]})
+    with pytest.raises(ValueError):
         assert_public_payload_safe({"note": "C:\\Users\\kyloris\\private.jpg"})
     with pytest.raises(ValueError):
         assert_public_payload_safe({"raw_image_bytes": "abcd"})
@@ -460,7 +727,11 @@ def test_public_serialization_excludes_private_provider_request_material():
         {
             "artist": "yunkaiming",
             "character": "acheron (honkai: star rail)",
+            "copyright": "honkai: star rail",
             "work": "honkai: star rail",
+            "source_host": "danbooru.donmai.us",
+            "result_id": "7695035",
+            "post_id": "7695035",
         }
     )
 
@@ -482,8 +753,8 @@ def test_second_provider_placeholder_uses_same_contract_without_db_specific_code
         provider_category="reverse_search",
         media_id=999,
         input_kind="derived_resized_stripped_image",
-        query_hash="example-query-hash",
-        query_hash_status="present",
+        query_hash="f" * 64,
+        query_hash_status="present_valid",
         request_shape_redacted={"media_ref": "approved_media_id:999", "local_path_included": False},
         request_shape_status="present",
         live_request=False,
@@ -521,6 +792,7 @@ def test_second_provider_placeholder_uses_same_contract_without_db_specific_code
         provider_query=query,
         source_match=source_match,
         extracted_metadata=metadata,
+        provider_provenance_status="ready",
         provider_cache_persistence_allowed=True,
         provider_cache_planned=True,
         entity_evidence_planned=True,

@@ -16,6 +16,7 @@ from .provider_evidence_contract import (
     ProviderQuery,
     SourceMatch,
     SourceMatchClass,
+    assert_public_payload_safe,
 )
 
 
@@ -27,6 +28,17 @@ ACCEPTANCE_POLICY_VERSION = "phase44c0-manual-validated-source-evidence-v1"
 SCORE_KIND = "saucenao_similarity_percent"
 INPUT_KIND = "derived_resized_stripped_image"
 UPLOADED_INPUT_KIND = "derived_resized_stripped_image"
+QUERY_HASH_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+QUERY_HASH_SHA256_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
+PLACEHOLDER_QUERY_HASHES = {
+    "missing-query-hash",
+    "placeholder",
+    "unknown",
+    "none",
+    "null",
+    "n/a",
+    "na",
+}
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
@@ -58,7 +70,29 @@ def _as_str(value: Any) -> str | None:
 
 
 def _request_shape_status(request_shape: Mapping[str, Any]) -> str:
-    return "present" if bool(request_shape) else "missing"
+    if not request_shape:
+        return "missing"
+    try:
+        assert_public_payload_safe(request_shape)
+    except ValueError:
+        return "invalid"
+    return "present"
+
+
+def _normalized_request_shape(request_shape: Mapping[str, Any]) -> dict[str, Any]:
+    return dict(request_shape) if _request_shape_status(request_shape) == "present" else {}
+
+
+def _query_hash_status(value: Any) -> tuple[str | None, str]:
+    query_hash = _as_str(value)
+    if query_hash is None:
+        return None, "missing"
+    normalized = query_hash.lower()
+    if normalized in PLACEHOLDER_QUERY_HASHES or normalized.startswith("missing-query-hash"):
+        return None, "placeholder"
+    if QUERY_HASH_HEX_RE.fullmatch(query_hash) or QUERY_HASH_SHA256_RE.fullmatch(query_hash):
+        return normalized, "present_valid"
+    return None, "invalid"
 
 
 def _host_from_url(url: str | None) -> str | None:
@@ -71,10 +105,21 @@ def _host_from_url(url: str | None) -> str | None:
 def _manual_status(manual_item: Mapping[str, Any]) -> ManualValidationStatus:
     judgment = str(manual_item.get("judgment") or "").lower()
     action = str(manual_item.get("recommended_action") or "").lower()
+    metadata_useful_raw = manual_item.get("metadata_useful")
+    metadata_useful = str(metadata_useful_raw).lower() if metadata_useful_raw is not None else ""
+    combined = " ".join(
+        str(manual_item.get(key) or "").lower()
+        for key in ("judgment", "recommended_action", "metadata_status", "validation_status", "notes")
+    )
+    negative_markers = ("discard", "wrong", "invalid", "unrelated", "metadata_not_useful", "not_useful")
+    if (
+        any(marker in combined for marker in negative_markers)
+        or metadata_useful_raw is False
+        or metadata_useful in {"false", "no", "0", "n"}
+    ):
+        return ManualValidationStatus.validated_wrong
     if action == "keep_as_strong_evidence" or judgment == "correct":
         return ManualValidationStatus.validated_correct
-    if action == "discard" or "wrong" in judgment or "invalid" in judgment or "unrelated" in judgment:
-        return ManualValidationStatus.validated_wrong
     return ManualValidationStatus.not_validated
 
 
@@ -249,18 +294,26 @@ def map_saucenao_result_to_plan(
         source_identifier_status=source_identifier_status,
     )
     strong = evidence_strength == EvidenceStrength.strong
-    query_hash = _as_str(live_item.get("query_hash") or metadata_item.get("query_hash"))
-    query_hash_status = "present" if query_hash else "missing"
-    request_shape = dict(_as_mapping(live_item.get("request_shape_redacted") or metadata_item.get("request_shape_redacted")))
-    request_shape_status = _request_shape_status(request_shape)
-    provider_cache_allowed = query_hash_status == "present" and request_shape_status == "present"
+    query_hash, query_hash_status = _query_hash_status(live_item.get("query_hash") or metadata_item.get("query_hash"))
+    raw_request_shape = _as_mapping(live_item.get("request_shape_redacted") or metadata_item.get("request_shape_redacted"))
+    request_shape_status = _request_shape_status(raw_request_shape)
+    request_shape = _normalized_request_shape(raw_request_shape)
+    provider_provenance_ready = query_hash_status == "present_valid" and request_shape_status == "present"
+    provider_provenance_status = "ready" if provider_provenance_ready else "blocked"
+    provider_cache_allowed = provider_provenance_ready
     persistence_blocked_reasons = []
     if query_hash_status == "missing":
         persistence_blocked_reasons.append("missing_query_hash")
+    if query_hash_status in {"invalid", "placeholder"}:
+        persistence_blocked_reasons.append("invalid_query_hash")
     if request_shape_status == "missing":
         persistence_blocked_reasons.append("missing_request_shape")
+    if request_shape_status == "invalid":
+        persistence_blocked_reasons.append("invalid_request_shape")
     if source_identifier_status == "missing" and result_class == "high_confidence_match":
         persistence_blocked_reasons.append("missing_source_identifier")
+    if not provider_provenance_ready:
+        persistence_blocked_reasons.append("missing_provider_provenance")
 
     provider_query = ProviderQuery(
         provider_key=PROVIDER_KEY,
@@ -295,19 +348,22 @@ def map_saucenao_result_to_plan(
         acceptance_policy_version=ACCEPTANCE_POLICY_VERSION,
     )
     metadata = _metadata_from_item(metadata_item=metadata_item, top_result=top_result, strong=strong)
-    planned_candidates = _planned_candidates(metadata, evidence_strength)
-    positive_plan = strong and bool(planned_candidates)
+    positive_persistence_allowed = strong and source_identifier_status == "present" and provider_provenance_ready
+    planned_candidates = _planned_candidates(metadata, evidence_strength) if positive_persistence_allowed else ()
+    positive_plan = positive_persistence_allowed and bool(planned_candidates)
     discard_plan = evidence_strength == EvidenceStrength.discard or match_class == SourceMatchClass.discarded
-    entity_evidence_planned = strong and source_identifier_status == "present"
+    entity_evidence_planned = positive_persistence_allowed
     return EvidencePersistencePlan(
         media_id=media_id,
         provider_query=provider_query,
         source_match=source_match,
         extracted_metadata=metadata,
+        provider_provenance_status=provider_provenance_status,
         provider_cache_persistence_allowed=provider_cache_allowed,
         provider_cache_planned=provider_cache_allowed,
         entity_evidence_planned=entity_evidence_planned,
         media_entity_candidate_planned=positive_plan,
+        non_persistable_source_match=strong and not positive_persistence_allowed,
         negative_lookup_cache_planned=discard_plan and provider_cache_allowed,
         persistence_blocked_reason=persistence_blocked_reasons[0] if persistence_blocked_reasons else None,
         persistence_blocked_reasons=tuple(persistence_blocked_reasons),

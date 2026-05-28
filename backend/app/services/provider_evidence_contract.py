@@ -64,8 +64,10 @@ SECRET_KEY_PATTERNS = (
 )
 FORBIDDEN_PUBLIC_KEYS = {
     "api_key",
+    "absolute_path",
     "authorization",
     "derived_sha256_private",
+    "file_path",
     "image_bytes",
     "local_path",
     "original_filename",
@@ -74,6 +76,7 @@ FORBIDDEN_PUBLIC_KEYS = {
     "safe_filename",
     "source_label",
 }
+NORMALIZED_FORBIDDEN_PUBLIC_KEYS = {re.sub(r"[\W_]+", "", key.lower()) for key in FORBIDDEN_PUBLIC_KEYS}
 
 
 def _coerce_public_value(value: Any) -> Any:
@@ -91,12 +94,16 @@ def _coerce_public_value(value: Any) -> Any:
 
 
 def _normalize_public_key(key: Any) -> str:
-    return re.sub(r"[_\-\s]+", "", str(key).lower())
+    return re.sub(r"[\W_]+", "", str(key).lower())
 
 
 def _is_secret_like_key(key: Any) -> bool:
     normalized = _normalize_public_key(key)
     return any(pattern in normalized for pattern in SECRET_KEY_PATTERNS)
+
+
+def _is_forbidden_public_key(key: Any) -> bool:
+    return _normalize_public_key(key) in NORMALIZED_FORBIDDEN_PUBLIC_KEYS
 
 
 def assert_public_payload_safe(payload: Any) -> None:
@@ -106,8 +113,7 @@ def assert_public_payload_safe(payload: Any) -> None:
     def visit(value: Any) -> None:
         if isinstance(value, Mapping):
             for key, item in value.items():
-                key_text = str(key).lower()
-                if key_text in FORBIDDEN_PUBLIC_KEYS or _is_secret_like_key(key):
+                if _is_forbidden_public_key(key) or _is_secret_like_key(key):
                     raise ValueError(f"public payload contains forbidden key: {key}")
                 visit(item)
         elif isinstance(value, list):
@@ -212,10 +218,12 @@ class EvidencePersistencePlan(PublicSerializable):
     provider_query: ProviderQuery
     source_match: SourceMatch
     extracted_metadata: ExtractedProviderMetadata
+    provider_provenance_status: str
     provider_cache_persistence_allowed: bool
     provider_cache_planned: bool
     entity_evidence_planned: bool
     media_entity_candidate_planned: bool
+    non_persistable_source_match: bool = False
     negative_lookup_cache_planned: bool = False
     persistence_blocked_reason: str | None = None
     persistence_blocked_reasons: tuple[str, ...] = ()

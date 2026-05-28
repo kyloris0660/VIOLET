@@ -59,9 +59,11 @@
         "provider_result_id": "7695035",
         "source_host": "danbooru.donmai.us",
         "source_identifier_status": "present",
-        "query_hash_status": "present",
+        "query_hash_status": "present_valid",
         "request_shape_status": "present",
+        "provider_provenance_status": "ready",
         "provider_cache_persistence_allowed": true,
+        "non_persistable_source_match": false,
         "artist_raw": [
           "yunkaiming"
         ],
@@ -88,9 +90,11 @@
         "provider_result_id": "9366672",
         "source_host": "danbooru.donmai.us",
         "source_identifier_status": "present",
-        "query_hash_status": "present",
+        "query_hash_status": "present_valid",
         "request_shape_status": "present",
+        "provider_provenance_status": "ready",
         "provider_cache_persistence_allowed": true,
+        "non_persistable_source_match": false,
         "artist_raw": [
           "songchuan li"
         ],
@@ -137,21 +141,45 @@
       "minimum_similarity_alone_does_not_accept",
       "high_score_alone_does_not_accept",
       "manual_validation_plus_source_identifier_required_for_strong_evidence_in_this_pilot",
-      "missing_query_hash_blocks_provider_cache_persistence_planning",
-      "missing_request_shape_blocks_provider_cache_persistence_planning",
+      "positive_persistence_planning_requires_provider_provenance_ready",
+      "missing_or_invalid_query_hash_blocks_positive_persistence_planning",
+      "missing_or_unsafe_request_shape_blocks_positive_persistence_planning",
+      "discard_wrong_unrelated_manual_signals_dominate_conflicting_keep_correct_fields",
       "low_confidence_saucenao_results_discarded_by_default"
     ]
   },
   "closeout_correctness_fixes": {
     "missing_query_hash": {
-      "behavior": "no fabricated query_hash values; query_hash_status=missing blocks ProviderCache planning",
+      "behavior": "no fabricated query_hash values; query_hash_status=missing blocks ProviderCache, EntityEvidence, and MediaEntityCandidate planning",
       "provider_cache_persistence_allowed": false,
+      "entity_evidence_planned": false,
+      "media_entity_candidate_planned": false,
       "persistence_blocked_reason": "missing_query_hash"
     },
+    "invalid_query_hash": {
+      "behavior": "placeholder or malformed query_hash values are sanitized from public output and block positive persistence planning",
+      "accepted_formats": [
+        "64 lowercase/uppercase hex sha256",
+        "sha256:<64 hex>"
+      ],
+      "query_hash_status_values": [
+        "present_valid",
+        "missing",
+        "invalid",
+        "placeholder"
+      ],
+      "persistence_blocked_reason": "invalid_query_hash"
+    },
     "missing_request_shape": {
-      "behavior": "request_shape_status=missing blocks ProviderCache planning",
+      "behavior": "request_shape_status=missing blocks ProviderCache, EntityEvidence, and MediaEntityCandidate planning",
       "provider_cache_persistence_allowed": false,
       "persistence_blocked_reason": "missing_request_shape"
+    },
+    "missing_provider_provenance": {
+      "behavior": "positive persistence planning requires provider_provenance_status=ready; reduced public summaries become non_persistable_source_match when the source match itself remains useful",
+      "provider_cache_planned": false,
+      "entity_evidence_planned": false,
+      "media_entity_candidate_planned": false
     },
     "secret_like_public_keys": {
       "behavior": "public payload guard rejects normalized secret-like keys recursively",
@@ -168,11 +196,41 @@
         "credential"
       ]
     },
+    "normalized_forbidden_privacy_keys": {
+      "behavior": "public payload guard normalizes forbidden privacy keys before serialization",
+      "examples": [
+        "originalFilename",
+        "original_filename",
+        "original-filename",
+        "safeFilename",
+        "sourceLabel",
+        "source_label",
+        "imageBytes",
+        "image_bytes",
+        "localPath",
+        "filePath",
+        "absolutePath",
+        "rawImageBytes"
+      ],
+      "safe_metadata_keys_allowed": [
+        "artist",
+        "character",
+        "copyright",
+        "work",
+        "source_host",
+        "result_id",
+        "post_id"
+      ]
+    },
     "source_identifier_required_for_strong_evidence": {
       "behavior": "high-confidence validated rows without result_id, source/post URL, or provider external ID do not become strong evidence",
       "persistence_blocked_reason": "missing_source_identifier"
     },
-    "c1_input_requirement": "C1 should use local details/raw provider artifacts with real query_hash, redacted request shape, and source identifiers; reduced public summaries are not enough for ProviderCache persistence readiness."
+    "manual_negative_signals_dominate": {
+      "behavior": "discard, wrong, unrelated, invalid, and metadata_not_useful manual signals dominate conflicting keep/correct fields",
+      "positive_persistence_planning": false
+    },
+    "c1_input_requirement": "C1 should use local details/raw provider artifacts with valid query_hash, public-safe redacted request shape, and source identifiers; reduced public summaries are not enough for provider provenance readiness."
   },
   "schema_fit_audit": {
     "schema_fit_status": "sufficient_with_json_payload",
@@ -235,7 +293,7 @@
     "py_compile": "passed",
     "focused_tests": {
       "command": "python -m pytest tests/test_phase44c0_provider_evidence_contract.py -v",
-      "result": "21 passed"
+      "result": "32 passed"
     },
     "schema_fit_audit_script": "printed JSON without DB access"
   },
