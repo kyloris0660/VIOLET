@@ -721,6 +721,20 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Does not delete or rewrite existing accepted C1 rows by default; expected hotfix DB impact is zero new rows.
 - Public reports: `docs/reports/phase-4.4c1-db-write-gate-hotfix.md` and `docs/reports/phase-4.4c1-db-write-gate-hotfix-summary.json`.
 
+### Phase 4.4-D0/D1 - Second Provider Scouting and Conditional Tiny Pilot
+
+**Goal:** Scout a second provider after SauceNAO and run a same-stage tiny five-sample live pilot only if a provider is task-appropriate and passes policy/privacy/API/quota gates.
+
+- Evaluated trace.moe, Google Cloud Vision Web Detection, Danbooru API, Gelbooru API/DAPI, AniList API, IQDB-style services, ASCII2D, TinEye API, and Pixiv-related options.
+- Corrected selection logic so trace.moe is not selected merely because it has an easy public upload API; it is classified as an anime screenshot/scene provider, not a current booru-style illustration source-discovery provider.
+- Best low-cost official pilot candidate is Google Cloud Vision Web Detection: official REST/base64 `WEB_DETECTION`, web entities, full/partial matching images, pages with matching images, first 1000 units/month free, and Web Detection $3.50/1000 units after the free tier; it still requires Google Cloud credentials/setup and explicit derived-upload approval before any tiny pilot.
+- Best dedicated reverse-image API candidate is TinEye API, but it requires a paid search bundle and `x-api-key` before any tiny pilot. IQDB-style services have high conceptual fit but lack confirmed official API/automation policy.
+- Prepared local ignored derived files during the aborted pre-correction trace.moe readiness path, but made `0` search/upload requests and uploaded `0` images.
+- Did not run a live pilot because no provider was both task-appropriate for illustration/source-backed metadata discovery and currently pilotable under the hard rules.
+- Danbooru/Gelbooru remain better future metadata lookup candidates after a known post/source ID exists, not no-source reverse-image providers.
+- No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, app-managed storage mutation, SauceNAO call, original or derived upload, scraping, cookies, browser automation, push to `main`, or merge occurred.
+- Public reports: `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot.md` and `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot-summary.json`.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -734,18 +748,20 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-C1-HF1:
+Current near-term options after Phase 4.4-D0/D1:
 
-1. Phase 4.4-D0: scout a second provider against the same contract, without a separate DB write path or live broad pilot.
-2. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-3. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
-4. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-5. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
-6. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-7. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-8. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-9. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-10. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. If source-discovery via a low-cost documented official API is the goal, decide whether to set up Google Cloud Vision Web Detection credentials/billing and explicitly approve a five-sample derived-image `WEB_DETECTION` pilot.
+2. If a dedicated reverse-image API is preferred, decide whether to set up TinEye API access/search credits, provide `x-api-key`, and explicitly approve a five-sample derived-image pilot.
+3. If source-backed metadata quality is the goal without uploads, design a no-upload Danbooru/Gelbooru metadata lookup adapter for known validated provider result IDs/source URLs, without DB writes until a separate persistence stage.
+4. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+5. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
+6. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+7. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
+8. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+9. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+10. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+11. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+12. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
