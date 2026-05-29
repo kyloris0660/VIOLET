@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-D0/D1 second-provider scouting and conditional tiny pilot (2026-05-28), after PR #82 was merged.
+> Last updated during Phase 4.4-D0/D1 second-provider scouting and conditional tiny pilot correction (2026-05-29), after PR #82 was merged.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -31,7 +31,7 @@
 - Phase 4.4-C0 provider-neutral evidence contract is merged. It defines provider-neutral reverse-search DTOs and SauceNAO mapping, preserves raw provider artist/work/character metadata, maps validated high-confidence samples to strong exact/near-exact evidence, maps invalid low-confidence samples to discarded evidence, and performs no provider calls, uploads, DB writes, migrations, confirmed assignments, localization, Entity Resolver, similarity/clustering, source/iCloud mutation, or app-managed storage mutation. Traceability: PR [#79](https://github.com/kyloris0660/VIOLET/pull/79).
 - Phase 4.4-C1 validated evidence persistence is merged. It writes only the two manually validated high-confidence SauceNAO results (`2687`, `2670`) into `ProviderCache`, `EntityEvidence`, and suggestion-only `MediaEntityCandidate` rows with `entity_id=NULL`; it creates no `Entity`, no confirmed `MediaEntityAssignment`, no `media_tags`, no `TagTranslation`, no localization execution, and no positive writes for low-confidence `2690`, `2654`, or `2647`. Public report: `docs/reports/phase-4.4c1-validated-evidence-persistence.md`. Traceability: PR [#81](https://github.com/kyloris0660/VIOLET/pull/81).
 - Phase 4.4-C1-HF1 hotfix is merged: `EvidencePersistencePlan.db_write_allowed` is enforced in the durable persistence service and the C1 runner explicitly promotes only approved validated plans to writable after all C1 gates pass. Expected DB impact was zero new rows; existing accepted C1 rows remain accepted unless later validation proves a data correction is needed. Public report: `docs/reports/phase-4.4c1-db-write-gate-hotfix.md`. Traceability: PR [#82](https://github.com/kyloris0660/VIOLET/pull/82).
-- Phase 4.4-D0/D1 second-provider scouting completed as scouting-only with no live pilot. Corrected decision logic: trace.moe is a specialized anime screenshot/scene provider and is not selected for the current illustration/source-backed metadata route. Best official/API source-discovery candidate is TinEye API, but it requires user-provided API access/search credits; IQDB-style services have high conceptual fit but lack confirmed official API/automation policy. Danbooru/Gelbooru remain better metadata lookup candidates after a known post/source ID exists, not no-source reverse-image providers. Public report: `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot.md`.
+- Phase 4.4-D0/D1 second-provider scouting completed as scouting-only with no live pilot. Corrected decision logic: trace.moe is a specialized anime screenshot/scene provider and is not selected for the current illustration/source-backed metadata route. Best low-cost official pilot candidate is Google Cloud Vision Web Detection, which has official REST/base64 `WEB_DETECTION` support and first-1000-units/month free pricing, but requires Google Cloud credentials/setup and explicit derived-upload approval. Best dedicated reverse-image API candidate is TinEye API, but it requires a paid search bundle and `x-api-key`. Danbooru/Gelbooru remain better metadata lookup candidates after a known post/source ID exists, not no-source reverse-image providers. Public report: `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot.md`.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -63,11 +63,12 @@ Workflow weight must decrease:
 
 Near-term route after Phase 4.4-D0/D1:
 
-1. If source-discovery via a documented official API is the goal, decide whether to set up TinEye API access/search credits and explicitly approve a five-sample derived-image pilot.
-2. If source-backed metadata quality is the goal without uploads, prefer a no-upload Danbooru/Gelbooru metadata lookup design for known validated provider result IDs/source URLs, without a DB write path until separately approved.
-3. Phase 4.4-B2 only if more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-4. C1 follow-up only if reviewer or later operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
-5. Phase 3.9 before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import: production Ingestion Run Ledger / Source Item State Ledger and over-selection buffer.
+1. If source-discovery via a low-cost documented official API is the goal, decide whether to set up Google Cloud Vision Web Detection credentials/billing and explicitly approve a five-sample derived-image `WEB_DETECTION` pilot.
+2. If a dedicated reverse-image API is preferred, decide whether to set up TinEye API access/search credits, provide `x-api-key`, and explicitly approve a five-sample derived-image pilot.
+3. If source-backed metadata quality is the goal without uploads, prefer a no-upload Danbooru/Gelbooru metadata lookup design for known validated provider result IDs/source URLs, without a DB write path until separately approved.
+4. Phase 4.4-B2 only if more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+5. C1 follow-up only if reviewer or later operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
+6. Phase 3.9 before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import: production Ingestion Run Ledger / Source Item State Ledger and over-selection buffer.
 
 Do not treat older "blocked until X" wording in historical reports as current unless this handoff or the roadmap repeats it as active.
 

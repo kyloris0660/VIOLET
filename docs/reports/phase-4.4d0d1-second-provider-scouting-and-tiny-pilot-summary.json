@@ -2,6 +2,7 @@
   "phase": "4.4-D0/D1",
   "title": "Second Provider Scouting and Conditional Tiny Pilot",
   "date": "2026-05-28",
+  "correction_update_date": "2026-05-29",
   "status": "completed_scouting_only_no_pilot",
   "correction_applied": {
     "trace_moe_not_selected_for_current_task": true,
@@ -34,6 +35,27 @@
   ],
   "providers_evaluated": [
     {
+      "provider_name": "Google Cloud Vision Web Detection",
+      "task_fit_score": 4,
+      "metadata_richness_score": 3,
+      "source_backed_metadata_score": 3,
+      "contract_fit_score": 4,
+      "privacy_tos_score": 4,
+      "access_readiness": "google_cloud_project_credentials_and_billing_setup_required",
+      "required_user_provided_credentials_setup": "Create or select a Google Cloud project, enable Vision API, configure approved local credentials, and approve five derived-image WEB_DETECTION uploads. Official pricing lists the first 1000 units/month as free and Web Detection at $3.50/1000 units after the free tier.",
+      "official_capabilities_verified": [
+        "detects web references to an image",
+        "supports local image via REST/base64 WEB_DETECTION request content",
+        "returns web entities",
+        "returns full and partial matching images",
+        "returns pages with matching images",
+        "first 1000 units/month free",
+        "Web Detection $3.50 per 1000 units after free tier"
+      ],
+      "live_pilot_readiness": 2,
+      "recommendation": "best_low_cost_official_pilot_candidate_setup_required"
+    },
+    {
       "provider_name": "TinEye API",
       "task_fit_score": 4,
       "metadata_richness_score": 2,
@@ -43,7 +65,7 @@
       "access_readiness": "api_credential_and_paid_search_bundle_required",
       "required_user_provided_credentials_setup": "Sign up for TinEye API, purchase or provision search credits, obtain an API key, provide it through approved local secret handling, and approve a five-sample derived-image pilot.",
       "live_pilot_readiness": 0,
-      "recommendation": "best_official_api_source_discovery_candidate_but_credential_required"
+      "recommendation": "best_dedicated_reverse_image_api_candidate_but_credential_required"
     },
     {
       "provider_name": "IQDB-style reverse image search",
@@ -132,17 +154,23 @@
   ],
   "required_decision_answers": {
     "best_fit_regardless_current_credentials": {
-      "best_official_api_candidate": "TinEye API",
+      "best_low_cost_official_pilot_candidate": "Google Cloud Vision Web Detection",
+      "best_dedicated_reverse_image_api_candidate": "TinEye API",
       "best_pure_functional_concept": "IQDB-style reverse image search",
       "note": "IQDB-style services are not selectable without clear official API and automation policy."
     },
     "best_fit_among_currently_pilotable": null,
-    "why_different": "The best task-fit options either require credentials/paid setup or lack confirmed official API/automation policy. The easiest public API, trace.moe, is task-mismatched.",
+    "why_different": "The best practical options require setup: Google Cloud Vision has official low-cost Web Detection but needs Google Cloud credentials/upload approval, TinEye has dedicated reverse-image API semantics but needs paid search bundle and x-api-key, and IQDB-style services lack confirmed official API/automation policy. The easiest public API, trace.moe, is task-mismatched.",
     "credentials_or_setup_needed": {
+      "google_cloud_vision_web_detection": [
+        "Google Cloud project with Vision API enabled",
+        "billing/credential setup compatible with approved local secret handling",
+        "explicit approval for five derived-image WEB_DETECTION uploads"
+      ],
       "tineye_api": [
         "TinEye API account",
         "search bundle or paid plan",
-        "API key supplied via approved local secret handling",
+        "x-api-key supplied via approved local secret handling",
         "explicit approval for five derived-image uploads"
       ],
       "iqdb_style": [
@@ -164,7 +192,9 @@
   },
   "route_decision": {
     "continue_trace_moe_now": false,
-    "recommended_next": "Ask user for TinEye API setup/credential decision, or choose a no-upload Danbooru/Gelbooru metadata lookup stage for already-known source IDs."
+    "best_low_cost_official_pilot_candidate": "Google Cloud Vision Web Detection",
+    "best_dedicated_reverse_image_api_candidate": "TinEye API",
+    "recommended_next": "Ask user for Google Cloud Vision setup/credential and derived-upload approval for the low-cost official pilot route, ask for TinEye paid search bundle/x-api-key for the dedicated reverse-image API route, or choose a no-upload Danbooru/Gelbooru metadata lookup stage for already-known source IDs."
   },
   "local_artifacts": [
     ".local_manifests/phase-4.4d0d1-second-provider-details.json",
