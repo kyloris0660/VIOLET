@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-D1G Google Vision tiny pilot and Pixiv filename source-prior audit (2026-05-29), after PR #83 was merged into `main`.
+> Last updated during Phase 4.4-P0 Pixiv filename source-prior auto-verification design (2026-05-31), after PR #84 was merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Historical repo name | `AnimeLocalBooru`; old links may redirect, but active references should use VIOLET |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Main branch status | `main` includes PR #83 (`2f1ad29`) as of 2026-05-29 |
+| Main branch status | `main` includes PR #84 (`bf16922`) as of 2026-05-31 |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | Project venv at `.\venv\Scripts\python.exe` |
 | Dev DB | `blombooru` on `localhost:5432` |
@@ -34,6 +34,7 @@
 - Phase 4.4-D0/D1 second-provider scouting completed as scouting-only with no live pilot. Corrected decision logic: trace.moe is a specialized anime screenshot/scene provider and is not selected for the current illustration/source-backed metadata route. Best low-cost official pilot candidate is Google Cloud Vision Web Detection, which has official REST/base64 `WEB_DETECTION` support and first-1000-units/month free pricing, but requires Google Cloud credentials/setup and explicit derived-upload approval. Best dedicated reverse-image API candidate is TinEye API, but it requires a paid search bundle and `x-api-key`. Danbooru/Gelbooru remain better metadata lookup candidates after a known post/source ID exists, not no-source reverse-image providers. Public report: `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot.md`.
 - Phase 4.4-D1G ran the approved five-sample Google Vision Web Detection tiny pilot using only derived/resized/metadata-stripped images. Current-shell `gcloud` PATH was stale, but the runner found Cloud SDK by absolute path, verified project/quota project `image-project-497811`, Vision API enabled, and ADC token availability without printing token or credential contents. Google Vision returned `exact_source_candidate` for 4 of 5 approved samples and `visually_similar_only` for 1 of 5; results remain local/report-only and are not persisted.
 - Phase 4.4-D1G also ran a read-only Pixiv filename source-prior audit over development DB/app-managed metadata only. It found Pixiv-like filename tokens in `555` of `1989` media records (`27.9%`) and `551` distinct candidate work IDs. The approved five Google samples had `0` Pixiv-prior hits and are explicitly not representative for Pixiv-prior coverage. The current DB preserves filename/app-managed basenames enough to detect many priors, but there is no dedicated `original_basename` / source-prior ledger column, so absence of a token remains a metadata retention limitation. Public report: `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior.md`.
+- Phase 4.4-P0 designed the Pixiv filename source-prior automated correspondence gate and re-ran read-only extraction over development DB/app-managed metadata only. It confirmed `555` of `1989` media records (`27.9%`) with Pixiv-like tokens and `551` distinct candidate work IDs. The P0 runner selected a private 30-item feasibility sample from real extracted candidates, but live Pixiv reference lookup was `reference_lookup_policy_blocked` because no official, documented, unauthenticated metadata/preview route was accepted. The runner made `0` Pixiv/provider requests, wrote no DB rows, and kept exact mappings only in ignored `.local_manifests` artifacts. Public report: `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md`.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -63,11 +64,11 @@ Workflow weight must decrease:
 
 ## Current Recommended Route
 
-Near-term route after Phase 4.4-D1G:
+Near-term route after Phase 4.4-P0:
 
-1. Best next route if using local deterministic signal: Phase 4.4-P0 - Pixiv Filename Source-Prior Metadata Lookup Design. Keep it non-mutating first; no Pixiv call, scraping, browser/cookies, or DB writes without a separately approved design.
-2. If Google Vision remains interesting, manually validate the D1G Google results first. Google Vision can find source-like web references, but its metadata is less structured than SauceNAO and must not become confirmed evidence without validation.
-3. If source-backed metadata quality is the goal without new uploads, design a no-upload Danbooru/Gelbooru metadata lookup adapter only after known validated source/post IDs exist, without DB writes until a separate persistence stage.
+1. If continuing the deterministic filename route, next design target is Phase 4.4-P1 - Pixiv Source-Prior Persistence for Auto-Verified High-Confidence Items. P1 still needs an approved safe reference route or another approved correspondence source before any DB write; filename-token-only rows must remain untrusted.
+2. If no safe Pixiv reference route is acceptable, choose between a no-upload metadata adapter only after known validated source/post IDs exist, or a separate policy decision about an official/documented Pixiv-compatible route.
+3. If Google Vision remains interesting, manually validate the D1G Google results first. Google Vision can find source-like web references, but its metadata is less structured than SauceNAO and must not become confirmed evidence without validation.
 4. Phase 4.4-B2 only if more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
 5. TinEye is rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
 6. Phase 3.9 before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import: production Ingestion Run Ledger / Source Item State Ledger and over-selection buffer.

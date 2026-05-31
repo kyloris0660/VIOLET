@@ -750,6 +750,20 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, app-managed storage mutation, SauceNAO/TinEye/Pixiv/Danbooru/Gelbooru call, original upload, unapproved sample upload, scraping, cookies, browser automation, push to `main`, or merge occurred.
 - Public reports: `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior.md` and `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior-summary.json`. Exact Pixiv IDs/page mappings, raw provider details, derived images, and the manual validation sheet remain ignored local artifacts.
 
+### Phase 4.4-P0 - Pixiv Filename Source-Prior Auto-Verification Design
+
+**Goal:** Correct the Pixiv filename route from manual per-image validation toward an automated pre-persistence correspondence gate, without DB writes or Pixiv/provider calls.
+
+- Defined `LocalSourceHint` / `SourcePrior` as a local deterministic hint concept, not `ProviderCache`, not confirmed `EntityEvidence`, not a confirmed assignment, and not an automatic `Entity`.
+- Parser policy remains strict: `(?<!\d)(?P<pixiv_work_id>[1-9]\d{5,11})_p(?P<page_index>\d+)(?!\d)`, lowercase `_p`, 6-12 digit positive work IDs, and uppercase variants detected only as possible variants.
+- Re-ran read-only extraction over development DB/app-managed metadata only. It confirmed Pixiv-like tokens in `555` of `1989` media records (`27.9%`) and `551` distinct candidate work IDs, with the approved five Google samples still at `0` Pixiv-prior hits.
+- Selected a private 30-item feasibility sample covering simple, suffix/timestamp, prefix, non-`p0`, and duplicate-work-ID cases; exact sample mappings remain only in ignored `.local_manifests` artifacts.
+- Safe Pixiv reference lookup was `reference_lookup_policy_blocked`: no official, documented, unauthenticated Pixiv metadata/preview route was accepted. The runner made `0` Pixiv/provider requests and downloaded no reference images.
+- Designed and unit-tested local pairwise similarity helpers for a future gate: orientation normalization, aspect ratio delta, average hash distance, difference hash distance, and average color distance. Thresholds are design-only until safe reference samples exist.
+- Future P1 should persist only `auto_verified_high_confidence` hints after separate DB-write approval and an accepted correspondence route; filename-token-only rows remain untrusted.
+- No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, broad similarity/clustering, source/iCloud mutation, app-managed storage mutation, Pixiv scraping, browser automation, cookies/login, provider call, reference-image download, push to `main`, or merge occurred.
+- Public reports: `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md` and `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification-summary.json`.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -763,12 +777,12 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-D1G:
+Current near-term options after Phase 4.4-P0:
 
-1. Phase 4.4-P0 - Pixiv Filename Source-Prior Metadata Lookup Design, if the priority is to exploit the non-trivial local deterministic prior. Keep it design/read-only first; no Pixiv call, scraping, browser/cookies, source/iCloud access, or DB writes without separate approval.
-2. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
-3. No-upload Danbooru/Gelbooru metadata lookup adapter only after known validated provider result IDs/source URLs exist, without DB writes until a separate persistence stage.
-4. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+1. Phase 4.4-P1 - Pixiv Source-Prior Persistence for Auto-Verified High-Confidence Items, only after an approved safe reference/correspondence route exists; no filename-token-only persistence.
+2. If no safe Pixiv route is accepted, choose either a no-upload metadata adapter only after known validated source/post IDs exist, or a separate policy decision for an official/documented Pixiv-compatible route.
+3. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
+4. Phase 4.4-B2 only when more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
 5. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
 6. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
 7. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
