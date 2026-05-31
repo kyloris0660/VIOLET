@@ -39,11 +39,12 @@
   "future_persistence_recommendation": {
     "filename_token_only_is_not_confirmed_evidence": true,
     "p2_requires_db_write_approval": true,
-    "p2_should_persist_local_source_hint": true,
-    "reason": "At least one sample reached auto_verified_high_confidence.",
+    "p2_should_persist_local_source_hint": false,
+    "p2_should_wait_for_manual_validation": true,
+    "reason": "At least one sample reached auto_verified_high_confidence, but non-auto-verified rows still require manual validation before P2.",
     "recommended_next_route": "Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors"
   },
-  "generated_at": "2026-05-31T16:13:20+00:00",
+  "generated_at": "2026-05-31T16:38:56+00:00",
   "manual_validation_pack": {
     "contact_sheet_html": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.html",
     "contact_sheet_md": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.md",
@@ -106,6 +107,11 @@
     "previous_mismatch_count": 4
   },
   "preview_reference_availability_distribution": {
+    "preview_candidate_counts": {
+      "preview_candidates_attempted_allowed": 4,
+      "preview_candidates_skipped_unexpected_host": 1,
+      "preview_candidates_total": 5
+    },
     "preview_candidate_host_policy_distribution": {
       "allowed_pixiv_image_host": 4,
       "blocked_unexpected_host": 1
@@ -149,10 +155,10 @@
     "http_status_distribution": {
       "200": 5
     },
-    "network_attempts_including_failures": 5,
+    "network_attempts_including_failures": 10,
     "network_error_distribution": {},
     "public_exact_urls": false,
-    "requests_attempted": 5,
+    "requests_attempted": 10,
     "status_none_count": 0,
     "stopped_early": false
   },
@@ -180,9 +186,31 @@
     {
       "finding": "Keep handoff baseline consistent",
       "p1_status": "implemented_in_current_handoff_table"
+    },
+    {
+      "finding": "Validate artwork-page redirects before following them",
+      "p1_status": "implemented_with_no_redirect_page_fetch_and_safe_redirect_policy_tests"
+    },
+    {
+      "finding": "Require HTTPS for allowlisted preview hosts",
+      "p1_status": "implemented_for_initial_preview_urls_and_redirect_targets_with_tests"
+    },
+    {
+      "finding": "Try allowed preview candidates before blocking the row",
+      "p1_status": "implemented_with_candidate_iteration_and_aggregate_candidate_counts"
+    },
+    {
+      "finding": "Avoid aborting the sample on transient network errors",
+      "p1_status": "implemented_as_per_item_network_error_with_continue_sample_tests"
+    },
+    {
+      "finding": "Restrict fallback sampling to anime items",
+      "p1_status": "implemented_with_anime_only_selection_and_insufficient_anime_reporting_tests"
     }
   ],
   "sample_selection": {
+    "anime_only": true,
+    "available_anime_candidate_count": 546,
     "category_counts": {
       "content_class_anime": 5,
       "duplicate_work_id_case": 2,
@@ -197,7 +225,9 @@
     },
     "exact_media_ids_public": false,
     "exact_pixiv_ids_public": false,
+    "insufficient_anime_candidates": false,
     "max_items": 10,
+    "non_anime_candidates_excluded": 9,
     "page_case_distribution": {
       "non_p0": 1,
       "p0": 4

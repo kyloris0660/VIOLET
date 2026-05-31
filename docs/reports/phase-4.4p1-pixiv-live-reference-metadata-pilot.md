@@ -9,6 +9,9 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 ## Sample Selection
 
 - Selected sample size: `5`.
+- Requested sample size: `5`.
+- Anime-only sample: `True`.
+- Insufficient anime candidates: `False`.
 - Strategy: `cover_non_p0_suffix_prefix_duplicate_work_id_and_p0_then_fill_anime_first`.
 - Category counts: `{"content_class_anime": 5, "duplicate_work_id_case": 2, "non_p0_page": 1, "p0_page": 4, "prefixed_token": 1, "suffix_timestamp_case": 2, "token_at_basename_start": 4}`.
 - Page case distribution: `{"non_p0": 1, "p0": 4}`.
@@ -24,8 +27,8 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 
 ## Pixiv Public-Page Probe Result
 
-- Requests attempted: `5`.
-- Network attempts including failures: `5`.
+- Requests attempted: `10`.
+- Network attempts including failures: `10`.
 - HTTP status distribution: `{"200": 5}`.
 - Status-none count: `0`.
 - Network error distribution: `{}`.
@@ -42,6 +45,7 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 
 - Preview status distribution: `{"preview_fetch_blocked_unexpected_host": 1, "reference_preview_fetched": 4}`.
 - Preview candidate host policy distribution: `{"allowed_pixiv_image_host": 4, "blocked_unexpected_host": 1}`.
+- Preview candidate counts: `{"preview_candidates_attempted_allowed": 4, "preview_candidates_skipped_unexpected_host": 1, "preview_candidates_total": 5}`.
 
 ## Correspondence Verification
 
@@ -65,8 +69,9 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 ## Future Persistence Recommendation
 
 - Recommended next route: `Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors`.
-- Reason: At least one sample reached auto_verified_high_confidence.
-- P2 should persist LocalSourceHint now: `True`.
+- Reason: At least one sample reached auto_verified_high_confidence, but non-auto-verified rows still require manual validation before P2.
+- P2 should persist LocalSourceHint now: `False`.
+- P2 should wait for manual validation: `True`.
 - Any P2 persistence still requires explicit DB-write approval and must not treat filename-token-only rows as confirmed evidence.
 
 ## Local Artifacts

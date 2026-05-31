@@ -62,6 +62,7 @@ MAX_SAMPLE_SIZE = 10
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_DELAY_SECONDS = 2.0
 MAX_PREVIEW_BYTES = 2_500_000
+PIXIV_PAGE_HOST_ALLOWLIST = frozenset({"www.pixiv.net", "pixiv.net"})
 PIXIV_IMAGE_HOST_ALLOWLIST = frozenset({"embed.pixiv.net", "i.pximg.net", "i-f.pximg.net", "i-cf.pximg.net"})
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 PRE_REVIEW_CORRESPONDENCE_BASELINE = {"auto_verified_high_confidence": 1, "auto_rejected_mismatch": 4}
@@ -72,6 +73,7 @@ SECRET_TEXT_RE = p0.SECRET_TEXT_RE
 STRONG_BLOCKED_TEXT_RE = re.compile(r"(?i)(captcha|recaptcha|verify you are human|access denied)")
 LOGIN_WALL_TEXT_RE = re.compile(r"(?i)(login required|please log in|please login|consent)")
 PIXIV_ID_IN_URL_RE = re.compile(r"/artworks/([1-9]\d{5,11})")
+PIXIV_ARTWORK_PATH_RE = re.compile(r"^/(?:[a-z]{2}/)?artworks/[1-9]\d{5,11}/?$")
 
 
 class Phase44P1Error(RuntimeError):
@@ -417,6 +419,7 @@ def select_p1_sample(private_details: dict[str, Any], media_by_id: dict[int, Med
         for detail in details
         if int(detail["media_id"]) in media_by_id
     ]
+    anime_enriched = [detail for detail in enriched if detail.get("content_class") == "anime"]
     required_categories = [
         "non_p0_page",
         "suffix_timestamp_case",
@@ -447,11 +450,11 @@ def select_p1_sample(private_details: dict[str, Any], media_by_id: dict[int, Med
             selected_ids.add(media_id)
 
     for category in required_categories:
-        for detail in enriched:
-            if category in detail["selection_categories"] and detail.get("content_class") == "anime":
+        for detail in anime_enriched:
+            if category in detail["selection_categories"]:
                 add_if_new(detail)
                 break
-    for detail in sorted(enriched, key=lambda item: (item.get("content_class") != "anime", int(item["media_id"]))):
+    for detail in sorted(anime_enriched, key=lambda item: int(item["media_id"])):
         add_if_new(detail)
         if len(selected) >= sample_size:
             break
@@ -469,6 +472,10 @@ def select_p1_sample(private_details: dict[str, Any], media_by_id: dict[int, Med
         "selected_count": len(selected),
         "requested_sample_size": sample_size,
         "max_items": MAX_SAMPLE_SIZE,
+        "anime_only": True,
+        "available_anime_candidate_count": len(anime_enriched),
+        "non_anime_candidates_excluded": max(0, len(enriched) - len(anime_enriched)),
+        "insufficient_anime_candidates": len(selected) < sample_size,
         "selection_strategy": "cover_non_p0_suffix_prefix_duplicate_work_id_and_p0_then_fill_anime_first",
         "category_counts": dict(sorted(category_counts.items())),
         "content_class_distribution": dict(sorted(content_counts.items())),
@@ -744,9 +751,55 @@ def url_host(url: str | None) -> str | None:
     return urllib.parse.urlparse(url).hostname
 
 
-def is_allowed_pixiv_image_host(url: str | None) -> bool:
+def url_scheme(url: str | None) -> str:
+    if not url:
+        return ""
+    return urllib.parse.urlparse(url).scheme.lower()
+
+
+def is_https_url(url: str | None) -> bool:
+    return url_scheme(url) == "https"
+
+
+def is_allowed_pixiv_image_url(url: str | None) -> bool:
     host = url_host(url)
-    return bool(host and host.lower() in PIXIV_IMAGE_HOST_ALLOWLIST)
+    return bool(is_https_url(url) and host and host.lower() in PIXIV_IMAGE_HOST_ALLOWLIST)
+
+
+def is_allowed_pixiv_image_host(url: str | None) -> bool:
+    return is_allowed_pixiv_image_url(url)
+
+
+def is_allowed_pixiv_page_url(url: str | None) -> bool:
+    if not is_https_url(url):
+        return False
+    parsed = urllib.parse.urlparse(url or "")
+    host = parsed.hostname
+    return bool(host and host.lower() in PIXIV_PAGE_HOST_ALLOWLIST and PIXIV_ARTWORK_PATH_RE.match(parsed.path))
+
+
+def blocked_page_redirect_reason(url: str | None) -> str:
+    parsed = urllib.parse.urlparse(url or "")
+    host = parsed.hostname or ""
+    path_query = f"{parsed.path}?{parsed.query}".lower()
+    if any(marker in path_query for marker in ("login", "captcha", "consent", "signup", "verification", "verify")):
+        return "redirect_blocked_login_captcha_consent_or_antibot"
+    if parsed.scheme.lower() != "https":
+        return "redirect_blocked_non_https"
+    if host.lower() not in PIXIV_PAGE_HOST_ALLOWLIST:
+        return "redirect_blocked_unexpected_host"
+    return "redirect_blocked_non_artwork_page"
+
+
+def preview_url_policy_rejection_reason(url: str | None, *, stage: str) -> str | None:
+    if not url:
+        return f"{stage}_url_missing"
+    if not is_https_url(url):
+        return f"{stage}_url_non_https"
+    host = url_host(url)
+    if not host or host.lower() not in PIXIV_IMAGE_HOST_ALLOWLIST:
+        return f"{stage}_url_unexpected_host"
+    return None
 
 
 def _blocked_preview_result(
@@ -756,19 +809,26 @@ def _blocked_preview_result(
     final_url: str | None = None,
     http_status: int | None = None,
 ) -> dict[str, Any]:
+    policy_status = "blocked_non_https" if "non_https" in reason else "blocked_unexpected_host"
     return {
         "status": "preview_fetch_blocked_unexpected_host",
         "image_path": None,
         "http_status": http_status,
         "reason": reason,
-        "host_policy_status": "blocked_unexpected_host",
+        "host_policy_status": policy_status,
         "preview_url_host": url_host(preview_url),
+        "preview_url_scheme": url_scheme(preview_url),
         "final_url_host": url_host(final_url),
+        "final_url_scheme": url_scheme(final_url),
     }
 
 
 def safe_filename(prefix: str, index: int, suffix: str) -> str:
     return f"{prefix}_{index:02d}.{suffix.lstrip('.')}"
+
+
+def attach_preview_candidate_stats(result: dict[str, Any], stats: dict[str, int]) -> dict[str, Any]:
+    return {**result, **stats}
 
 
 def fetch_preview_image(
@@ -786,8 +846,9 @@ def fetch_preview_image(
             "reason": "no_preview_url_candidate",
             "host_policy_status": "no_preview_url_candidate",
         }
-    if not is_allowed_pixiv_image_host(preview_url):
-        return _blocked_preview_result(reason="initial_url_unexpected_host", preview_url=preview_url)
+    rejection_reason = preview_url_policy_rejection_reason(preview_url, stage="initial")
+    if rejection_reason:
+        return _blocked_preview_result(reason=rejection_reason, preview_url=preview_url)
     if is_original_or_disallowed_preview(preview_url):
         return {
             "status": "preview_fetch_blocked",
@@ -820,9 +881,10 @@ def fetch_preview_image(
                 "final_url_host": url_host(result.final_url),
             }
         redirected_url = urllib.parse.urljoin(current_url, redirected_url)
-        if not is_allowed_pixiv_image_host(redirected_url):
+        rejection_reason = preview_url_policy_rejection_reason(redirected_url, stage="redirect")
+        if rejection_reason:
             return _blocked_preview_result(
-                reason="redirect_url_unexpected_host",
+                reason=rejection_reason,
                 preview_url=preview_url,
                 final_url=redirected_url,
                 http_status=result.status,
@@ -849,9 +911,10 @@ def fetch_preview_image(
         }
     if result is None:
         return {"status": "reference_unavailable", "image_path": None, "reason": "preview_fetch_not_attempted"}
-    if not is_allowed_pixiv_image_host(result.final_url):
+    rejection_reason = preview_url_policy_rejection_reason(result.final_url, stage="final")
+    if rejection_reason:
         return _blocked_preview_result(
-            reason="final_url_unexpected_host",
+            reason=rejection_reason,
             preview_url=preview_url,
             final_url=result.final_url,
             http_status=result.status,
@@ -912,8 +975,62 @@ def fetch_preview_image(
         "metadata_stripped": True,
         "host_policy_status": "allowed_pixiv_image_host",
         "preview_url_host": url_host(preview_url),
+        "preview_url_scheme": url_scheme(preview_url),
         "final_url_host": url_host(result.final_url),
+        "final_url_scheme": url_scheme(result.final_url),
     }
+
+
+def fetch_preview_from_candidates(
+    preview_urls: Iterable[str],
+    *,
+    output_dir: Path,
+    index: int,
+    timeout_seconds: float,
+    http_get: Callable[..., HttpResult] = safe_http_get,
+) -> dict[str, Any]:
+    candidates = [url for url in preview_urls if isinstance(url, str) and url]
+    stats = {
+        "preview_candidates_total": len(candidates),
+        "preview_candidates_skipped_unexpected_host": 0,
+        "preview_candidates_attempted_allowed": 0,
+    }
+    last_result: dict[str, Any] | None = None
+    for preview_url in candidates:
+        if preview_url_policy_rejection_reason(preview_url, stage="initial"):
+            stats["preview_candidates_skipped_unexpected_host"] += 1
+            last_result = _blocked_preview_result(reason=preview_url_policy_rejection_reason(preview_url, stage="initial") or "initial_url_rejected", preview_url=preview_url)
+            continue
+        if is_original_or_disallowed_preview(preview_url):
+            stats["preview_candidates_skipped_unexpected_host"] += 1
+            last_result = {
+                "status": "preview_fetch_blocked",
+                "image_path": None,
+                "reason": "original_or_disallowed_preview_url",
+                "host_policy_status": "blocked_original_or_disallowed",
+                "preview_url_host": url_host(preview_url),
+                "preview_url_scheme": url_scheme(preview_url),
+            }
+            continue
+        stats["preview_candidates_attempted_allowed"] += 1
+        result = fetch_preview_image(
+            preview_url,
+            output_dir=output_dir,
+            index=index,
+            timeout_seconds=timeout_seconds,
+            http_get=http_get,
+        )
+        last_result = result
+        if result.get("status") == "reference_preview_fetched":
+            return attach_preview_candidate_stats(result, stats)
+    if last_result is None:
+        last_result = {
+            "status": "reference_unavailable",
+            "image_path": None,
+            "reason": "no_preview_url_candidate",
+            "host_policy_status": "no_preview_url_candidate",
+        }
+    return attach_preview_candidate_stats(last_result, stats)
 
 
 def _average_hash(image: Image.Image, *, hash_size: int = 8) -> int:
@@ -1025,6 +1142,84 @@ def verify_correspondence(sample: dict[str, Any], preview_result: dict[str, Any]
     return {"status": scores["auto_verification_status"], "scores": scores, "local_input_kind": "app_managed_thumbnail_or_image"}
 
 
+def fetch_pixiv_page_with_redirect_policy(
+    artwork_url: str,
+    *,
+    timeout_seconds: float,
+    http_get: Callable[..., HttpResult] = safe_http_get,
+) -> tuple[HttpResult, dict[str, Any]]:
+    current_url = artwork_url
+    attempts = 0
+    redirect_count = 0
+    redirect_chain: list[str] = []
+    last_result: HttpResult | None = None
+    for _ in range(4):
+        attempts += 1
+        result = http_get(
+            current_url,
+            accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            timeout_seconds=timeout_seconds,
+            max_bytes=1_000_000,
+            allow_redirects=False,
+        )
+        last_result = result
+        if result.status not in REDIRECT_STATUSES:
+            return result, {
+                "page_redirect_policy_status": "no_redirect" if redirect_count == 0 else "followed_safe_redirect",
+                "page_redirect_count": redirect_count,
+                "page_redirect_chain_hosts": [url_host(url) for url in redirect_chain],
+                "network_attempt_count": attempts,
+            }
+        redirected_url = urllib.parse.urljoin(current_url, result.redirect_location or result.final_url)
+        redirect_chain.append(redirected_url)
+        if not is_allowed_pixiv_page_url(redirected_url):
+            return result, {
+                "page_redirect_policy_status": "blocked",
+                "page_redirect_blocked_reason": blocked_page_redirect_reason(redirected_url),
+                "page_redirect_count": redirect_count + 1,
+                "page_redirect_chain_hosts": [url_host(url) for url in redirect_chain],
+                "network_attempt_count": attempts,
+                "blocked_redirect_url_host": url_host(redirected_url),
+                "blocked_redirect_url_scheme": url_scheme(redirected_url),
+            }
+        current_url = redirected_url
+        redirect_count += 1
+    if last_result is None:
+        last_result = HttpResult(
+            url=artwork_url,
+            final_url=artwork_url,
+            status=None,
+            content_type=None,
+            content_length_header=None,
+            body=b"",
+            error="page_fetch_not_attempted",
+        )
+    return last_result, {
+        "page_redirect_policy_status": "blocked",
+        "page_redirect_blocked_reason": "too_many_page_redirects",
+        "page_redirect_count": redirect_count,
+        "page_redirect_chain_hosts": [url_host(url) for url in redirect_chain],
+        "network_attempt_count": attempts,
+    }
+
+
+def should_stop_after_blocked_reason(reason: str | None) -> bool:
+    if not reason:
+        return False
+    if reason == "network_error":
+        return False
+    return (
+        reason.startswith("http_403")
+        or reason.startswith("http_429")
+        or "login" in reason
+        or "captcha" in reason
+        or "consent" in reason
+        or "antibot" in reason
+        or reason.startswith("redirect_blocked")
+        or reason == "too_many_page_redirects"
+    )
+
+
 def probe_pixiv_pages(
     selected: list[dict[str, Any]],
     *,
@@ -1058,21 +1253,31 @@ def probe_pixiv_pages(
                 {"media_id": sample["media_id"], "pixiv_work_id": work_id, "status": "pixiv_page_blocked", "reason": stop_reason}
             )
             continue
-        result = page_http_get(artwork_url, accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", timeout_seconds=timeout_seconds, max_bytes=1_000_000)
+        result, page_fetch_policy = fetch_pixiv_page_with_redirect_policy(
+            artwork_url,
+            timeout_seconds=timeout_seconds,
+            http_get=page_http_get,
+        )
         text_body = decode_body(result)
         blocked, blocked_reason = detect_blocked_page(result.status, text_body, content_type=result.content_type)
+        if page_fetch_policy.get("page_redirect_policy_status") == "blocked":
+            blocked = True
+            blocked_reason = str(page_fetch_policy.get("page_redirect_blocked_reason") or "page_redirect_blocked")
         metadata = parse_public_metadata(text_body) if result.body and not blocked else {}
         metadata_richness = classify_metadata_richness(metadata, blocked=blocked)
         snippet = text_body[:2000]
-        preview_url = next((url for url in metadata.get("preview_image_candidates", []) if isinstance(url, str)), None)
+        preview_candidates = [url for url in metadata.get("preview_image_candidates", []) if isinstance(url, str)]
         preview_result = (
-            fetch_preview_image(preview_url, output_dir=preview_dir, index=index, timeout_seconds=timeout_seconds, http_get=preview_http_get)
-            if preview_url and not blocked
+            fetch_preview_from_candidates(preview_candidates, output_dir=preview_dir, index=index, timeout_seconds=timeout_seconds, http_get=preview_http_get)
+            if preview_candidates and not blocked
             else {
                 "status": "reference_unavailable" if not blocked else "pixiv_page_blocked",
                 "image_path": None,
                 "reason": blocked_reason or "no_preview_url_candidate",
                 "host_policy_status": "page_blocked" if blocked else "no_preview_url_candidate",
+                "preview_candidates_total": len(preview_candidates),
+                "preview_candidates_skipped_unexpected_host": 0,
+                "preview_candidates_attempted_allowed": 0,
             }
         )
         correspondence = (
@@ -1088,10 +1293,12 @@ def probe_pixiv_pages(
                 "url": artwork_url,
                 "http_status": result.status,
                 "network_attempted": True,
+                "network_attempt_count": int(page_fetch_policy.get("network_attempt_count") or 1),
                 "final_url": result.final_url,
                 "content_type": result.content_type,
                 "content_length_header": result.content_length_header,
                 "redirected": result.final_url != artwork_url,
+                **page_fetch_policy,
                 "error": result.error,
                 "blocked": blocked,
                 "blocked_reason": blocked_reason,
@@ -1114,7 +1321,7 @@ def probe_pixiv_pages(
                 **correspondence,
             }
         )
-        if blocked:
+        if blocked and should_stop_after_blocked_reason(blocked_reason):
             stop_reason = blocked_reason or "pixiv_page_blocked"
         if not stop_reason and index < len(selected) and delay_seconds > 0:
             time.sleep(delay_seconds)
@@ -1143,7 +1350,11 @@ def aggregate_public_results(
     page_results: list[dict[str, Any]],
     correspondence_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    request_count = sum(1 for item in page_results if item.get("network_attempted") or item.get("http_status") is not None)
+    request_count = sum(
+        int(item.get("network_attempt_count") or 1)
+        for item in page_results
+        if item.get("network_attempted") or item.get("http_status") is not None
+    )
     http_statuses = Counter(str(item.get("http_status")) for item in page_results if item.get("http_status") is not None)
     network_errors = Counter(
         str(item.get("error") or item.get("blocked_reason") or "status_none")
@@ -1153,6 +1364,15 @@ def aggregate_public_results(
     metadata_richness = Counter(item.get("metadata_richness") or "not_attempted" for item in page_results)
     preview_statuses = Counter(item.get("preview_result", {}).get("status") or "not_attempted" for item in page_results)
     preview_host_policy = Counter(item.get("preview_result", {}).get("host_policy_status") or "not_attempted" for item in page_results)
+    preview_candidate_totals = {
+        "preview_candidates_total": sum(int(item.get("preview_result", {}).get("preview_candidates_total") or 0) for item in page_results),
+        "preview_candidates_skipped_unexpected_host": sum(
+            int(item.get("preview_result", {}).get("preview_candidates_skipped_unexpected_host") or 0) for item in page_results
+        ),
+        "preview_candidates_attempted_allowed": sum(
+            int(item.get("preview_result", {}).get("preview_candidates_attempted_allowed") or 0) for item in page_results
+        ),
+    }
     correspondence_statuses = Counter(item.get("status") or "not_attempted" for item in correspondence_results)
     field_availability = Counter()
     hosts = Counter()
@@ -1183,6 +1403,7 @@ def aggregate_public_results(
         "preview_availability": {
             "preview_status_distribution": dict(sorted(preview_statuses.items())),
             "preview_candidate_host_policy_distribution": dict(sorted(preview_host_policy.items())),
+            "preview_candidate_counts": preview_candidate_totals,
         },
         "correspondence_verification": {
             "result_distribution": dict(sorted(correspondence_statuses.items())),
@@ -1194,9 +1415,17 @@ def aggregate_public_results(
 def future_recommendation(aggregate: dict[str, Any], booru_policy: dict[str, Any]) -> dict[str, Any]:
     correspondence = aggregate["correspondence_verification"]["result_distribution"]
     metadata = aggregate["metadata_availability"]["metadata_richness_distribution"]
+    non_auto_requires_validation = any(
+        correspondence.get(key, 0) > 0
+        for key in ("auto_rejected_mismatch", "preview_fetch_blocked", "uncertain_needs_manual_or_lookup", "metadata_only_no_reference")
+    )
     if correspondence.get("auto_verified_high_confidence", 0) > 0:
         route = "Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors"
-        reason = "At least one sample reached auto_verified_high_confidence."
+        reason = (
+            "At least one sample reached auto_verified_high_confidence, but non-auto-verified rows still require manual validation before P2."
+            if non_auto_requires_validation
+            else "At least one sample reached auto_verified_high_confidence."
+        )
     elif any(key in metadata for key in ("rich_structured_metadata", "partial_metadata_title_artist")):
         route = "bounded Pixiv metadata extraction / verification follow-up before persistence"
         reason = "Public page metadata appears useful but correspondence verification did not yet produce enough high-confidence items."
@@ -1209,7 +1438,8 @@ def future_recommendation(aggregate: dict[str, Any], booru_policy: dict[str, Any
     return {
         "recommended_next_route": route,
         "reason": reason,
-        "p2_should_persist_local_source_hint": correspondence.get("auto_verified_high_confidence", 0) > 0,
+        "p2_should_persist_local_source_hint": correspondence.get("auto_verified_high_confidence", 0) > 0 and not non_auto_requires_validation,
+        "p2_should_wait_for_manual_validation": bool(non_auto_requires_validation),
         "p2_requires_db_write_approval": True,
         "filename_token_only_is_not_confirmed_evidence": True,
     }
@@ -1315,6 +1545,9 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         "## Sample Selection",
         "",
         f"- Selected sample size: `{summary['sample_selection']['selected_count']}`.",
+        f"- Requested sample size: `{summary['sample_selection'].get('requested_sample_size')}`.",
+        f"- Anime-only sample: `{summary['sample_selection'].get('anime_only')}`.",
+        f"- Insufficient anime candidates: `{summary['sample_selection'].get('insufficient_anime_candidates')}`.",
         f"- Strategy: `{summary['sample_selection']['selection_strategy']}`.",
         f"- Category counts: `{json.dumps(summary['sample_selection']['category_counts'], sort_keys=True)}`.",
         f"- Page case distribution: `{json.dumps(summary['sample_selection']['page_case_distribution'], sort_keys=True)}`.",
@@ -1348,6 +1581,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         "",
         f"- Preview status distribution: `{json.dumps(preview['preview_status_distribution'], sort_keys=True)}`.",
         f"- Preview candidate host policy distribution: `{json.dumps(preview.get('preview_candidate_host_policy_distribution', {}), sort_keys=True)}`.",
+        f"- Preview candidate counts: `{json.dumps(preview.get('preview_candidate_counts', {}), sort_keys=True)}`.",
         "",
         "## Correspondence Verification",
         "",
@@ -1373,6 +1607,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         f"- Recommended next route: `{summary['future_persistence_recommendation']['recommended_next_route']}`.",
         f"- Reason: {summary['future_persistence_recommendation']['reason']}",
         f"- P2 should persist LocalSourceHint now: `{summary['future_persistence_recommendation']['p2_should_persist_local_source_hint']}`.",
+        f"- P2 should wait for manual validation: `{summary['future_persistence_recommendation'].get('p2_should_wait_for_manual_validation')}`.",
         "- Any P2 persistence still requires explicit DB-write approval and must not treat filename-token-only rows as confirmed evidence.",
         "",
         "## Local Artifacts",
@@ -1781,6 +2016,26 @@ def main(argv: list[str] | None = None) -> int:
         {
             "finding": "Keep handoff baseline consistent",
             "p1_status": "implemented_in_current_handoff_table",
+        },
+        {
+            "finding": "Validate artwork-page redirects before following them",
+            "p1_status": "implemented_with_no_redirect_page_fetch_and_safe_redirect_policy_tests",
+        },
+        {
+            "finding": "Require HTTPS for allowlisted preview hosts",
+            "p1_status": "implemented_for_initial_preview_urls_and_redirect_targets_with_tests",
+        },
+        {
+            "finding": "Try allowed preview candidates before blocking the row",
+            "p1_status": "implemented_with_candidate_iteration_and_aggregate_candidate_counts",
+        },
+        {
+            "finding": "Avoid aborting the sample on transient network errors",
+            "p1_status": "implemented_as_per_item_network_error_with_continue_sample_tests",
+        },
+        {
+            "finding": "Restrict fallback sampling to anime items",
+            "p1_status": "implemented_with_anime_only_selection_and_insufficient_anime_reporting_tests",
         },
     ]
     public_summary = build_public_summary(

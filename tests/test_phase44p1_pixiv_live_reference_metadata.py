@@ -33,6 +33,17 @@ def _jpeg_bytes(color=(120, 80, 40)) -> bytes:
     return output.getvalue()
 
 
+def _html_result(url: str, body: str = '<meta property="og:title" content="Public work">') -> p1.HttpResult:
+    return p1.HttpResult(
+        url=url,
+        final_url=url,
+        status=200,
+        content_type="text/html; charset=utf-8",
+        content_length_header=len(body),
+        body=body.encode("utf-8"),
+    )
+
+
 @pytest.fixture()
 def db():
     engine = create_engine(
@@ -156,6 +167,23 @@ def test_sample_selection_keeps_exact_ids_private(db):
     assert sample_summary["exact_pixiv_ids_public"] is False
     assert "100729533" not in json.dumps(sample_summary, ensure_ascii=False)
     assert "100729533" in json.dumps(selected, ensure_ascii=False)
+
+
+def test_sample_selection_fallback_stays_anime_only(db):
+    _media(db, 1, filename="100729533_p0.jpg", content_class=ContentClassEnum.anime)
+    _media(db, 2, filename="200000001_p0.jpg", content_class=ContentClassEnum.unknown)
+    _media(db, 3, filename="200000002_p0.jpg", content_class=ContentClassEnum.non_anime)
+    public, private = p0.audit_pixiv_source_priors(db, approved_ids=[])
+    media_by_id = {int(row.id): row for row in db.query(Media).all()}
+
+    sample_summary, selected = p1.select_p1_sample(private, media_by_id, sample_size=3)
+
+    assert sample_summary["anime_only"] is True
+    assert sample_summary["selected_count"] == 1
+    assert sample_summary["requested_sample_size"] == 3
+    assert sample_summary["insufficient_anime_candidates"] is True
+    assert sample_summary["non_anime_candidates_excluded"] == 2
+    assert [item["content_class"] for item in selected] == ["anime"]
 
 
 def test_public_report_excludes_exact_pixiv_ids_and_local_paths(db):
@@ -362,6 +390,29 @@ def test_preview_fetch_rejects_unexpected_host_before_fetch(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_preview_fetch_rejects_non_https_allowlisted_host_before_fetch(tmp_path):
+    def fake_get(*_args, **_kwargs):
+        raise AssertionError("non-HTTPS preview URL should not be fetched")
+
+    for url in (
+        "http://i.pximg.net/c/540x540_70/img-master/img/example_p0_master1200.jpg",
+        "ftp://i.pximg.net/c/540x540_70/img-master/img/example_p0_master1200.jpg",
+        "//i.pximg.net/c/540x540_70/img-master/img/example_p0_master1200.jpg",
+    ):
+        result = p1.fetch_preview_image(
+            url,
+            output_dir=tmp_path,
+            index=1,
+            timeout_seconds=1,
+            http_get=fake_get,
+        )
+
+        assert result["status"] == "preview_fetch_blocked_unexpected_host"
+        assert result["reason"] == "initial_url_non_https"
+        assert result["host_policy_status"] == "blocked_non_https"
+    assert not list(tmp_path.iterdir())
+
+
 def test_preview_fetch_rejects_redirect_to_unexpected_host_before_second_fetch(tmp_path):
     calls = []
 
@@ -391,6 +442,69 @@ def test_preview_fetch_rejects_redirect_to_unexpected_host_before_second_fetch(t
     assert result["reason"] == "redirect_url_unexpected_host"
     assert result["final_url_host"] == "example.test"
     assert not list(tmp_path.iterdir())
+
+
+def test_preview_fetch_rejects_redirect_to_non_https_allowlisted_host(tmp_path):
+    calls = []
+
+    def fake_get(url, **_kwargs):
+        calls.append(url)
+        return p1.HttpResult(
+            url=url,
+            final_url="http://i.pximg.net/redirected.jpg",
+            status=302,
+            content_type="text/html",
+            content_length_header=None,
+            body=b"",
+            error="http_error_302",
+            redirect_location="http://i.pximg.net/redirected.jpg",
+        )
+
+    result = p1.fetch_preview_image(
+        "https://i.pximg.net/c/540x540_70/img-master/img/example_p0_master1200.jpg",
+        output_dir=tmp_path,
+        index=1,
+        timeout_seconds=1,
+        http_get=fake_get,
+    )
+
+    assert len(calls) == 1
+    assert result["status"] == "preview_fetch_blocked_unexpected_host"
+    assert result["reason"] == "redirect_url_non_https"
+    assert result["host_policy_status"] == "blocked_non_https"
+    assert not list(tmp_path.iterdir())
+
+
+def test_preview_candidates_skip_unexpected_and_try_later_allowed_host(tmp_path):
+    calls = []
+
+    def fake_get(url, **_kwargs):
+        calls.append(url)
+        return p1.HttpResult(
+            url=url,
+            final_url=url,
+            status=200,
+            content_type="image/jpeg",
+            content_length_header=None,
+            body=_jpeg_bytes(),
+        )
+
+    result = p1.fetch_preview_from_candidates(
+        [
+            "https://example.test/static.jpg",
+            "https://i.pximg.net/c/540x540_70/img-master/img/example_p0_master1200.jpg",
+        ],
+        output_dir=tmp_path,
+        index=1,
+        timeout_seconds=1,
+        http_get=fake_get,
+    )
+
+    assert calls == ["https://i.pximg.net/c/540x540_70/img-master/img/example_p0_master1200.jpg"]
+    assert result["status"] == "reference_preview_fetched"
+    assert result["preview_candidates_total"] == 2
+    assert result["preview_candidates_skipped_unexpected_host"] == 1
+    assert result["preview_candidates_attempted_allowed"] == 1
 
 
 def test_preview_host_policy_aggregation_counts_blocked_host():
@@ -453,6 +567,138 @@ def test_network_error_counts_as_attempted_request(tmp_path):
     assert aggregate["pixiv_page_probe"]["http_status_distribution"] == {}
     assert aggregate["pixiv_page_probe"]["status_none_count"] == 1
     assert aggregate["pixiv_page_probe"]["network_error_distribution"]["url_error:TimeoutError"] == 1
+
+
+def test_page_redirect_to_unknown_host_blocked_before_follow(tmp_path):
+    calls = []
+
+    def fake_page_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return p1.HttpResult(
+            url=url,
+            final_url="https://example.test/not-pixiv",
+            status=302,
+            content_type="text/html",
+            content_length_header=None,
+            body=b"",
+            error="http_error_302",
+            redirect_location="https://example.test/not-pixiv",
+        )
+
+    sample = [
+        {
+            "media_id": 1,
+            "matches": [{"source_field": "stored_filename", "pixiv_work_id": "100729533", "page_index": 0}],
+            "local_media": {"thumbnail_path": "", "path": ""},
+        }
+    ]
+    page_results, corr = p1.probe_pixiv_pages(
+        sample,
+        timeout_seconds=1,
+        delay_seconds=0,
+        preview_dir=tmp_path,
+        storage_root=tmp_path,
+        page_http_get=fake_page_get,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1]["allow_redirects"] is False
+    assert page_results[0]["blocked"] is True
+    assert page_results[0]["blocked_reason"] == "redirect_blocked_unexpected_host"
+    assert page_results[0]["page_redirect_policy_status"] == "blocked"
+    assert corr[0]["status"] == "pixiv_page_blocked"
+
+
+def test_safe_pixiv_page_redirect_is_followed_with_no_redirect_policy(tmp_path):
+    calls = []
+
+    def fake_page_get(url, **kwargs):
+        calls.append((url, kwargs))
+        if len(calls) == 1:
+            return p1.HttpResult(
+                url=url,
+                final_url="https://www.pixiv.net/en/artworks/100729533",
+                status=302,
+                content_type="text/html",
+                content_length_header=None,
+                body=b"",
+                error="http_error_302",
+                redirect_location="https://www.pixiv.net/en/artworks/100729533",
+            )
+        return _html_result(url)
+
+    sample = [
+        {
+            "media_id": 1,
+            "matches": [{"source_field": "stored_filename", "pixiv_work_id": "100729533", "page_index": 0}],
+            "local_media": {"thumbnail_path": "", "path": ""},
+        }
+    ]
+    page_results, _corr = p1.probe_pixiv_pages(
+        sample,
+        timeout_seconds=1,
+        delay_seconds=0,
+        preview_dir=tmp_path,
+        storage_root=tmp_path,
+        page_http_get=fake_page_get,
+    )
+    aggregate = p1.aggregate_public_results(page_results, [])
+
+    assert [call[0] for call in calls] == [
+        "https://www.pixiv.net/artworks/100729533",
+        "https://www.pixiv.net/en/artworks/100729533",
+    ]
+    assert all(call[1]["allow_redirects"] is False for call in calls)
+    assert page_results[0]["blocked"] is False
+    assert page_results[0]["page_redirect_policy_status"] == "followed_safe_redirect"
+    assert page_results[0]["network_attempt_count"] == 2
+    assert aggregate["pixiv_page_probe"]["network_attempts_including_failures"] == 2
+
+
+def test_transient_network_error_records_item_and_continues_sample(tmp_path):
+    calls = []
+
+    def fake_page_get(url, **_kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            return p1.HttpResult(
+                url=url,
+                final_url=url,
+                status=None,
+                content_type=None,
+                content_length_header=None,
+                body=b"",
+                error="url_error:TimeoutError",
+            )
+        return _html_result(url)
+
+    sample = [
+        {
+            "media_id": 1,
+            "matches": [{"source_field": "stored_filename", "pixiv_work_id": "100729533", "page_index": 0}],
+            "local_media": {"thumbnail_path": "", "path": ""},
+        },
+        {
+            "media_id": 2,
+            "matches": [{"source_field": "stored_filename", "pixiv_work_id": "200000001", "page_index": 0}],
+            "local_media": {"thumbnail_path": "", "path": ""},
+        },
+    ]
+    page_results, corr = p1.probe_pixiv_pages(
+        sample,
+        timeout_seconds=1,
+        delay_seconds=0,
+        preview_dir=tmp_path,
+        storage_root=tmp_path,
+        page_http_get=fake_page_get,
+    )
+    aggregate = p1.aggregate_public_results(page_results, corr)
+
+    assert len(calls) == 2
+    assert page_results[0]["blocked_reason"] == "network_error"
+    assert page_results[1].get("status") != "not_attempted_after_stop"
+    assert aggregate["pixiv_page_probe"]["requests_attempted"] == 2
+    assert aggregate["pixiv_page_probe"]["stopped_early"] is False
 
 
 def test_image_correspondence_accepts_similar_and_rejects_mismatch():
