@@ -51,6 +51,10 @@ LOCAL_CORRESPONDENCE_DETAILS_JSON = Path(".local_manifests/phase-4.4p1-pixiv-cor
 LOCAL_SHEET_MD = Path(".local_manifests/phase-4.4p1-pixiv-metadata-sheet.md")
 LOCAL_SHEET_CSV = Path(".local_manifests/phase-4.4p1-pixiv-metadata-sheet.csv")
 LOCAL_PREVIEW_DIR = Path(".local_manifests/phase-4.4p1-pixiv-preview-derived")
+LOCAL_MANUAL_VALIDATION_SHEET_MD = Path(".local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.md")
+LOCAL_MANUAL_VALIDATION_SHEET_CSV = Path(".local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.csv")
+LOCAL_MANUAL_VALIDATION_CONTACT_SHEET_HTML = Path(".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.html")
+LOCAL_MANUAL_VALIDATION_CONTACT_SHEET_MD = Path(".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.md")
 
 PIXIV_ARTWORK_URL = "https://www.pixiv.net/artworks/{work_id}"
 DEFAULT_SAMPLE_SIZE = 5
@@ -58,6 +62,9 @@ MAX_SAMPLE_SIZE = 10
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_DELAY_SECONDS = 2.0
 MAX_PREVIEW_BYTES = 2_500_000
+PIXIV_IMAGE_HOST_ALLOWLIST = frozenset({"embed.pixiv.net", "i.pximg.net", "i-f.pximg.net", "i-cf.pximg.net"})
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+PRE_REVIEW_CORRESPONDENCE_BASELINE = {"auto_verified_high_confidence": 1, "auto_rejected_mismatch": 4}
 USER_AGENT = "VIOLET-P1-PixivPublicProbe/1.0 (no cookies; no browser automation)"
 WRITE_SQL_RE = p0.WRITE_SQL_RE
 LOCAL_PATH_RE = p0.LOCAL_PATH_RE
@@ -126,6 +133,10 @@ class OutputPaths:
     sheet_md: Path
     sheet_csv: Path
     preview_dir: Path
+    manual_validation_sheet_md: Path
+    manual_validation_sheet_csv: Path
+    manual_validation_contact_sheet_html: Path
+    manual_validation_contact_sheet_md: Path
 
 
 @dataclass(frozen=True)
@@ -137,6 +148,7 @@ class HttpResult:
     content_length_header: int | None
     body: bytes
     error: str | None = None
+    redirect_location: str | None = None
 
 
 @dataclass(frozen=True)
@@ -328,6 +340,10 @@ def resolve_output_paths(args: argparse.Namespace) -> OutputPaths:
         sheet_md=resolve_output_path(args.sheet_md, expected_parent=Path(".local_manifests")),
         sheet_csv=resolve_output_path(args.sheet_csv, expected_parent=Path(".local_manifests")),
         preview_dir=resolve_output_path(args.preview_dir, expected_parent=Path(".local_manifests")),
+        manual_validation_sheet_md=resolve_output_path(args.manual_validation_sheet_md, expected_parent=Path(".local_manifests")),
+        manual_validation_sheet_csv=resolve_output_path(args.manual_validation_sheet_csv, expected_parent=Path(".local_manifests")),
+        manual_validation_contact_sheet_html=resolve_output_path(args.manual_validation_contact_sheet_html, expected_parent=Path(".local_manifests")),
+        manual_validation_contact_sheet_md=resolve_output_path(args.manual_validation_contact_sheet_md, expected_parent=Path(".local_manifests")),
     )
 
 
@@ -348,6 +364,10 @@ def build_public_artifact_labels(paths: OutputPaths) -> dict[str, Any]:
         "metadata_sheet_md": public_path_label(paths.sheet_md),
         "metadata_sheet_csv": public_path_label(paths.sheet_csv),
         "preview_dir": public_path_label(paths.preview_dir),
+        "manual_validation_sheet_md": public_path_label(paths.manual_validation_sheet_md),
+        "manual_validation_sheet_csv": public_path_label(paths.manual_validation_sheet_csv),
+        "manual_validation_contact_sheet_html": public_path_label(paths.manual_validation_contact_sheet_html),
+        "manual_validation_contact_sheet_md": public_path_label(paths.manual_validation_contact_sheet_md),
         "full_local_paths_public": False,
         "artifacts_are_gitignored": True,
     }
@@ -362,6 +382,10 @@ def local_artifact_path_details(paths: OutputPaths) -> dict[str, str]:
         "metadata_sheet_md": str(paths.sheet_md),
         "metadata_sheet_csv": str(paths.sheet_csv),
         "preview_dir": str(paths.preview_dir),
+        "manual_validation_sheet_md": str(paths.manual_validation_sheet_md),
+        "manual_validation_sheet_csv": str(paths.manual_validation_sheet_csv),
+        "manual_validation_contact_sheet_html": str(paths.manual_validation_contact_sheet_html),
+        "manual_validation_contact_sheet_md": str(paths.manual_validation_contact_sheet_md),
     }
 
 
@@ -411,6 +435,8 @@ def select_p1_sample(private_details: dict[str, Any], media_by_id: dict[int, Med
                 {
                     **detail,
                     "local_media": {
+                        "filename": media.filename,
+                        "filename_basename": p0._basename_from_metadata(media.filename),
                         "thumbnail_path": media.thumbnail_path,
                         "path": media.path,
                         "file_type": p0._enum_label(media.file_type) or "unknown",
@@ -492,10 +518,17 @@ def build_safe_headers(*, accept: str) -> dict[str, str]:
     }
 
 
-def safe_http_get(url: str, *, accept: str, timeout_seconds: float, max_bytes: int) -> HttpResult:
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        return None
+
+
+def safe_http_get(url: str, *, accept: str, timeout_seconds: float, max_bytes: int, allow_redirects: bool = True) -> HttpResult:
     request = urllib.request.Request(url, headers=build_safe_headers(accept=accept), method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        opener = urllib.request.build_opener(_NoRedirectHandler) if not allow_redirects else None
+        response_cm = opener.open(request, timeout=timeout_seconds) if opener else urllib.request.urlopen(request, timeout=timeout_seconds)
+        with response_cm as response:
             body = response.read(max_bytes + 1)
             headers = response.headers
             return HttpResult(
@@ -509,14 +542,16 @@ def safe_http_get(url: str, *, accept: str, timeout_seconds: float, max_bytes: i
             )
     except urllib.error.HTTPError as exc:
         body = exc.read(min(max_bytes, 65536))
+        redirect_location = exc.headers.get("Location")
         return HttpResult(
             url=url,
-            final_url=exc.geturl(),
+            final_url=urllib.parse.urljoin(url, redirect_location) if redirect_location else exc.geturl(),
             status=exc.code,
             content_type=exc.headers.get("Content-Type"),
             content_length_header=_safe_int(exc.headers.get("Content-Length")),
             body=body,
             error=f"http_error_{exc.code}",
+            redirect_location=redirect_location,
         )
     except urllib.error.URLError as exc:
         return HttpResult(
@@ -577,7 +612,9 @@ def parse_public_metadata(text_body: str) -> dict[str, Any]:
         "canonical_url": parser.links.get("canonical") or parser.meta.get("og:url"),
         "preview_image_candidates": [],
         "json_ld_types": [],
+        "preload_payload_found": False,
         "preload_data_found": False,
+        "preload_parse_error_count": 0,
         "page_count": None,
         "tags": [],
         "artist_user_name": None,
@@ -609,19 +646,43 @@ def parse_public_metadata(text_body: str) -> dict[str, Any]:
     for script in parser.scripts:
         if script.get("id") != "meta-preload-data":
             continue
-        fields["preload_data_found"] = True
-        try:
-            data = json.loads(html.unescape(script.get("text") or "{}"))
-        except json.JSONDecodeError:
-            continue
-        _merge_pixiv_preload_data(fields, data)
+        _parse_and_merge_preload_payload(fields, script.get("text") or "{}")
+    for key, value in parser.meta.items():
+        lowered_key = key.lower()
+        if "meta-preload-data" in lowered_key or "preload-data" in lowered_key:
+            _parse_and_merge_preload_payload(fields, value)
     fields["preview_image_candidates"] = sorted(set(fields["preview_image_candidates"]))
     fields["metadata_fields_found"] = sorted(
         key
-        for key in ("title", "description", "canonical_url", "preview_image_candidates", "json_ld_types", "page_count", "tags", "artist_user_name", "artist_user_id")
+        for key in (
+            "title",
+            "description",
+            "canonical_url",
+            "preview_image_candidates",
+            "json_ld_types",
+            "preload_payload_found",
+            "preload_data_found",
+            "page_count",
+            "tags",
+            "artist_user_name",
+            "artist_user_id",
+        )
         if fields.get(key)
     )
     return fields
+
+
+def _parse_and_merge_preload_payload(fields: dict[str, Any], payload: str) -> None:
+    fields["preload_payload_found"] = True
+    try:
+        data = json.loads(html.unescape(payload or "{}"))
+    except json.JSONDecodeError:
+        fields["preload_parse_error_count"] = int(fields.get("preload_parse_error_count") or 0) + 1
+        return
+    if not isinstance(data, dict):
+        return
+    fields["preload_data_found"] = True
+    _merge_pixiv_preload_data(fields, data)
 
 
 def _merge_pixiv_preload_data(fields: dict[str, Any], data: dict[str, Any]) -> None:
@@ -677,6 +738,35 @@ def is_original_or_disallowed_preview(url: str) -> bool:
     return any(marker in lowered for marker in ("/img-original/", "_ugoira", ".zip"))
 
 
+def url_host(url: str | None) -> str | None:
+    if not url:
+        return None
+    return urllib.parse.urlparse(url).hostname
+
+
+def is_allowed_pixiv_image_host(url: str | None) -> bool:
+    host = url_host(url)
+    return bool(host and host.lower() in PIXIV_IMAGE_HOST_ALLOWLIST)
+
+
+def _blocked_preview_result(
+    *,
+    reason: str,
+    preview_url: str | None,
+    final_url: str | None = None,
+    http_status: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": "preview_fetch_blocked_unexpected_host",
+        "image_path": None,
+        "http_status": http_status,
+        "reason": reason,
+        "host_policy_status": "blocked_unexpected_host",
+        "preview_url_host": url_host(preview_url),
+        "final_url_host": url_host(final_url),
+    }
+
+
 def safe_filename(prefix: str, index: int, suffix: str) -> str:
     return f"{prefix}_{index:02d}.{suffix.lstrip('.')}"
 
@@ -690,17 +780,113 @@ def fetch_preview_image(
     http_get: Callable[..., HttpResult] = safe_http_get,
 ) -> dict[str, Any]:
     if not preview_url:
-        return {"status": "reference_unavailable", "image_path": None, "reason": "no_preview_url_candidate"}
+        return {
+            "status": "reference_unavailable",
+            "image_path": None,
+            "reason": "no_preview_url_candidate",
+            "host_policy_status": "no_preview_url_candidate",
+        }
+    if not is_allowed_pixiv_image_host(preview_url):
+        return _blocked_preview_result(reason="initial_url_unexpected_host", preview_url=preview_url)
     if is_original_or_disallowed_preview(preview_url):
-        return {"status": "preview_fetch_blocked", "image_path": None, "reason": "original_or_disallowed_preview_url"}
-    result = http_get(preview_url, accept="image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8", timeout_seconds=timeout_seconds, max_bytes=MAX_PREVIEW_BYTES)
+        return {
+            "status": "preview_fetch_blocked",
+            "image_path": None,
+            "reason": "original_or_disallowed_preview_url",
+            "host_policy_status": "blocked_original_or_disallowed",
+            "preview_url_host": url_host(preview_url),
+        }
+    current_url = preview_url
+    result: HttpResult | None = None
+    for _redirect_count in range(4):
+        result = http_get(
+            current_url,
+            accept="image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            timeout_seconds=timeout_seconds,
+            max_bytes=MAX_PREVIEW_BYTES,
+            allow_redirects=False,
+        )
+        if result.status not in REDIRECT_STATUSES:
+            break
+        redirected_url = result.redirect_location or result.final_url
+        if not redirected_url:
+            return {
+                "status": "reference_unavailable",
+                "image_path": None,
+                "http_status": result.status,
+                "reason": "redirect_without_location",
+                "host_policy_status": "allowed_pixiv_image_host",
+                "preview_url_host": url_host(preview_url),
+                "final_url_host": url_host(result.final_url),
+            }
+        redirected_url = urllib.parse.urljoin(current_url, redirected_url)
+        if not is_allowed_pixiv_image_host(redirected_url):
+            return _blocked_preview_result(
+                reason="redirect_url_unexpected_host",
+                preview_url=preview_url,
+                final_url=redirected_url,
+                http_status=result.status,
+            )
+        if is_original_or_disallowed_preview(redirected_url):
+            return {
+                "status": "preview_fetch_blocked",
+                "image_path": None,
+                "http_status": result.status,
+                "reason": "redirect_to_original_or_disallowed_preview_url",
+                "host_policy_status": "blocked_original_or_disallowed",
+                "preview_url_host": url_host(preview_url),
+                "final_url_host": url_host(redirected_url),
+            }
+        current_url = redirected_url
+    else:
+        return {
+            "status": "reference_unavailable",
+            "image_path": None,
+            "reason": "too_many_preview_redirects",
+            "host_policy_status": "allowed_pixiv_image_host",
+            "preview_url_host": url_host(preview_url),
+            "final_url_host": url_host(current_url),
+        }
+    if result is None:
+        return {"status": "reference_unavailable", "image_path": None, "reason": "preview_fetch_not_attempted"}
+    if not is_allowed_pixiv_image_host(result.final_url):
+        return _blocked_preview_result(
+            reason="final_url_unexpected_host",
+            preview_url=preview_url,
+            final_url=result.final_url,
+            http_status=result.status,
+        )
     if result.status in {403, 429}:
-        return {"status": "preview_fetch_blocked", "image_path": None, "http_status": result.status, "reason": f"http_{result.status}"}
+        return {
+            "status": "preview_fetch_blocked",
+            "image_path": None,
+            "http_status": result.status,
+            "reason": f"http_{result.status}",
+            "host_policy_status": "allowed_pixiv_image_host",
+            "preview_url_host": url_host(preview_url),
+            "final_url_host": url_host(result.final_url),
+        }
     if result.status != 200 or not result.body:
-        return {"status": "reference_unavailable", "image_path": None, "http_status": result.status, "reason": result.error or "non_200_or_empty"}
+        return {
+            "status": "reference_unavailable",
+            "image_path": None,
+            "http_status": result.status,
+            "reason": result.error or "non_200_or_empty",
+            "host_policy_status": "allowed_pixiv_image_host",
+            "preview_url_host": url_host(preview_url),
+            "final_url_host": url_host(result.final_url),
+        }
     content_type = result.content_type or ""
     if "image/" not in content_type.lower():
-        return {"status": "reference_unavailable", "image_path": None, "http_status": result.status, "reason": "non_image_content_type"}
+        return {
+            "status": "reference_unavailable",
+            "image_path": None,
+            "http_status": result.status,
+            "reason": "non_image_content_type",
+            "host_policy_status": "allowed_pixiv_image_host",
+            "preview_url_host": url_host(preview_url),
+            "final_url_host": url_host(result.final_url),
+        }
     output_dir.mkdir(parents=True, exist_ok=True)
     target = output_dir / safe_filename("pixiv_preview_stripped", index, "jpg")
     try:
@@ -708,7 +894,15 @@ def fetch_preview_image(
             normalized = ImageOps.exif_transpose(image).convert("RGB")
             normalized.save(target, format="JPEG", quality=90)
     except Exception as exc:
-        return {"status": "reference_unavailable", "image_path": None, "http_status": result.status, "reason": f"image_decode_failed:{type(exc).__name__}"}
+        return {
+            "status": "reference_unavailable",
+            "image_path": None,
+            "http_status": result.status,
+            "reason": f"image_decode_failed:{type(exc).__name__}",
+            "host_policy_status": "allowed_pixiv_image_host",
+            "preview_url_host": url_host(preview_url),
+            "final_url_host": url_host(result.final_url),
+        }
     return {
         "status": "reference_preview_fetched",
         "image_path": str(target),
@@ -716,6 +910,9 @@ def fetch_preview_image(
         "content_type": content_type,
         "size_bytes": target.stat().st_size,
         "metadata_stripped": True,
+        "host_policy_status": "allowed_pixiv_image_host",
+        "preview_url_host": url_host(preview_url),
+        "final_url_host": url_host(result.final_url),
     }
 
 
@@ -812,7 +1009,7 @@ def resolve_media_image_path(media_info: dict[str, Any], storage_root: Path) -> 
 
 def verify_correspondence(sample: dict[str, Any], preview_result: dict[str, Any], *, storage_root: Path) -> dict[str, Any]:
     preview_path = preview_result.get("image_path")
-    if preview_result.get("status") == "preview_fetch_blocked":
+    if preview_result.get("status") in {"preview_fetch_blocked", "preview_fetch_blocked_unexpected_host"}:
         return {"status": "preview_fetch_blocked", "scores": None, "reason": preview_result.get("reason")}
     if not preview_path:
         return {"status": "metadata_only_no_reference", "scores": None, "reason": preview_result.get("reason")}
@@ -835,6 +1032,8 @@ def probe_pixiv_pages(
     delay_seconds: float,
     preview_dir: Path,
     storage_root: Path,
+    page_http_get: Callable[..., HttpResult] = safe_http_get,
+    preview_http_get: Callable[..., HttpResult] = safe_http_get,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     page_results: list[dict[str, Any]] = []
     correspondence_results: list[dict[str, Any]] = []
@@ -851,6 +1050,7 @@ def probe_pixiv_pages(
                     "page_index": int(match["page_index"]),
                     "url": artwork_url,
                     "status": "not_attempted_after_stop",
+                    "network_attempted": False,
                     "stop_reason": stop_reason,
                 }
             )
@@ -858,7 +1058,7 @@ def probe_pixiv_pages(
                 {"media_id": sample["media_id"], "pixiv_work_id": work_id, "status": "pixiv_page_blocked", "reason": stop_reason}
             )
             continue
-        result = safe_http_get(artwork_url, accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", timeout_seconds=timeout_seconds, max_bytes=1_000_000)
+        result = page_http_get(artwork_url, accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", timeout_seconds=timeout_seconds, max_bytes=1_000_000)
         text_body = decode_body(result)
         blocked, blocked_reason = detect_blocked_page(result.status, text_body, content_type=result.content_type)
         metadata = parse_public_metadata(text_body) if result.body and not blocked else {}
@@ -866,9 +1066,14 @@ def probe_pixiv_pages(
         snippet = text_body[:2000]
         preview_url = next((url for url in metadata.get("preview_image_candidates", []) if isinstance(url, str)), None)
         preview_result = (
-            fetch_preview_image(preview_url, output_dir=preview_dir, index=index, timeout_seconds=timeout_seconds)
+            fetch_preview_image(preview_url, output_dir=preview_dir, index=index, timeout_seconds=timeout_seconds, http_get=preview_http_get)
             if preview_url and not blocked
-            else {"status": "reference_unavailable" if not blocked else "pixiv_page_blocked", "image_path": None, "reason": blocked_reason or "no_preview_url_candidate"}
+            else {
+                "status": "reference_unavailable" if not blocked else "pixiv_page_blocked",
+                "image_path": None,
+                "reason": blocked_reason or "no_preview_url_candidate",
+                "host_policy_status": "page_blocked" if blocked else "no_preview_url_candidate",
+            }
         )
         correspondence = (
             verify_correspondence(sample, preview_result, storage_root=storage_root)
@@ -882,6 +1087,7 @@ def probe_pixiv_pages(
                 "page_index": int(match["page_index"]),
                 "url": artwork_url,
                 "http_status": result.status,
+                "network_attempted": True,
                 "final_url": result.final_url,
                 "content_type": result.content_type,
                 "content_length_header": result.content_length_header,
@@ -937,10 +1143,16 @@ def aggregate_public_results(
     page_results: list[dict[str, Any]],
     correspondence_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    request_count = sum(1 for item in page_results if item.get("http_status") is not None)
+    request_count = sum(1 for item in page_results if item.get("network_attempted") or item.get("http_status") is not None)
     http_statuses = Counter(str(item.get("http_status")) for item in page_results if item.get("http_status") is not None)
+    network_errors = Counter(
+        str(item.get("error") or item.get("blocked_reason") or "status_none")
+        for item in page_results
+        if (item.get("network_attempted") or item.get("http_status") is not None) and item.get("http_status") is None
+    )
     metadata_richness = Counter(item.get("metadata_richness") or "not_attempted" for item in page_results)
     preview_statuses = Counter(item.get("preview_result", {}).get("status") or "not_attempted" for item in page_results)
+    preview_host_policy = Counter(item.get("preview_result", {}).get("host_policy_status") or "not_attempted" for item in page_results)
     correspondence_statuses = Counter(item.get("status") or "not_attempted" for item in correspondence_results)
     field_availability = Counter()
     hosts = Counter()
@@ -955,7 +1167,10 @@ def aggregate_public_results(
     return {
         "pixiv_page_probe": {
             "requests_attempted": request_count,
+            "network_attempts_including_failures": request_count,
             "http_status_distribution": dict(sorted(http_statuses.items())),
+            "status_none_count": sum(network_errors.values()),
+            "network_error_distribution": dict(sorted(network_errors.items())),
             "final_url_host_distribution": dict(sorted(hosts.items())),
             "blocked_count": sum(1 for item in page_results if item.get("blocked")),
             "stopped_early": any(item.get("status") == "not_attempted_after_stop" for item in page_results),
@@ -967,6 +1182,7 @@ def aggregate_public_results(
         },
         "preview_availability": {
             "preview_status_distribution": dict(sorted(preview_statuses.items())),
+            "preview_candidate_host_policy_distribution": dict(sorted(preview_host_policy.items())),
         },
         "correspondence_verification": {
             "result_distribution": dict(sorted(correspondence_statuses.items())),
@@ -1023,7 +1239,11 @@ def build_public_summary(
     aggregate: dict[str, Any],
     booru_policy: dict[str, Any],
     reviewer_carry_forward: list[dict[str, str]],
+    manual_validation_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    current_corr = aggregate["correspondence_verification"]["result_distribution"]
+    current_mismatch_count = int(current_corr.get("auto_rejected_mismatch", 0))
+    previous_mismatch_count = int(PRE_REVIEW_CORRESPONDENCE_BASELINE["auto_rejected_mismatch"])
     return {
         "phase": PHASE,
         "title": "Pixiv Source-Prior Live Reference / Metadata / Correspondence Pilot",
@@ -1041,6 +1261,13 @@ def build_public_summary(
         "preview_reference_availability_distribution": aggregate["preview_availability"],
         "correspondence_verification_distribution": aggregate["correspondence_verification"],
         "optional_no_upload_booru_source_url_lookup": booru_policy,
+        "manual_validation_pack": manual_validation_summary or {},
+        "pre_review_result_baseline": {
+            "correspondence_result_distribution": PRE_REVIEW_CORRESPONDENCE_BASELINE,
+            "mismatch_count_changed_after_fixes": current_mismatch_count != previous_mismatch_count,
+            "previous_mismatch_count": previous_mismatch_count,
+            "current_mismatch_count": current_mismatch_count,
+        },
         "future_persistence_recommendation": future_recommendation(aggregate, booru_policy),
         "privacy_and_safety_confirmation": {
             "db_write": False,
@@ -1104,7 +1331,10 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         "## Pixiv Public-Page Probe Result",
         "",
         f"- Requests attempted: `{page['requests_attempted']}`.",
+        f"- Network attempts including failures: `{page.get('network_attempts_including_failures', page['requests_attempted'])}`.",
         f"- HTTP status distribution: `{json.dumps(page['http_status_distribution'], sort_keys=True)}`.",
+        f"- Status-none count: `{page.get('status_none_count', 0)}`.",
+        f"- Network error distribution: `{json.dumps(page.get('network_error_distribution', {}), sort_keys=True)}`.",
         f"- Final URL host distribution: `{json.dumps(page['final_url_host_distribution'], sort_keys=True)}`.",
         f"- Blocked count: `{page['blocked_count']}`.",
         f"- Stopped early: `{page['stopped_early']}`.",
@@ -1117,11 +1347,20 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         "## Preview / Reference Availability",
         "",
         f"- Preview status distribution: `{json.dumps(preview['preview_status_distribution'], sort_keys=True)}`.",
+        f"- Preview candidate host policy distribution: `{json.dumps(preview.get('preview_candidate_host_policy_distribution', {}), sort_keys=True)}`.",
         "",
         "## Correspondence Verification",
         "",
         f"- Result distribution: `{json.dumps(corr['result_distribution'], sort_keys=True)}`.",
         f"- Threshold policy: `{corr['threshold_policy_version']}`.",
+        f"- Mismatch count changed after reviewer fixes: `{summary['pre_review_result_baseline']['mismatch_count_changed_after_fixes']}`.",
+        f"- Previous/current mismatch count: `{summary['pre_review_result_baseline']['previous_mismatch_count']}` / `{summary['pre_review_result_baseline']['current_mismatch_count']}`.",
+        "",
+        "## Manual Validation Pack",
+        "",
+        f"- Generated: `{summary.get('manual_validation_pack', {}).get('generated', False)}`.",
+        f"- Items needing manual validation: `{summary.get('manual_validation_pack', {}).get('items_needing_manual_validation', 0)}`.",
+        f"- Reason bucket distribution: `{json.dumps(summary.get('manual_validation_pack', {}).get('mismatch_reason_bucket_distribution', {}), sort_keys=True)}`.",
         "",
         "## Optional No-Upload Booru Lookup",
         "",
@@ -1146,6 +1385,244 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         lines.append(f"- {key}: `{value}`")
     lines.append("")
     return "\n".join(lines)
+
+
+def _markdown_cell(value: Any) -> str:
+    return str(value or "").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def _html_image(path_text: str | None, *, alt: str) -> str:
+    if not path_text:
+        return ""
+    path = Path(path_text)
+    if not path.exists():
+        return f"<code>{html.escape(path_text)}</code>"
+    return f'<img src="{html.escape(path.resolve().as_uri())}" alt="{html.escape(alt)}" style="max-width:320px;max-height:320px;object-fit:contain;border:1px solid #ccc">'
+
+
+def _likely_mismatch_reason(page_result: dict[str, Any], corr: dict[str, Any]) -> str:
+    status = corr.get("status")
+    if status == "auto_verified_high_confidence":
+        return "not_needed_auto_verified"
+    preview_result = page_result.get("preview_result") or {}
+    preview_status = preview_result.get("status")
+    if page_result.get("blocked") or preview_status in {"pixiv_page_blocked", "reference_unavailable"}:
+        if page_result.get("metadata_richness") in {None, "", "metadata_limited_requires_followup", "blocked"}:
+            return "metadata_parse_insufficient"
+        return "unsupported_or_unclear"
+    try:
+        page_index = int(page_result.get("page_index") or 0)
+    except (TypeError, ValueError):
+        page_index = 0
+    if page_index > 0:
+        return "page_index_mismatch_possible"
+    scores = corr.get("scores") or {}
+    if not scores:
+        return "unsupported_or_unclear"
+    aspect_delta = float(scores.get("aspect_ratio_delta") or 0)
+    ahash_distance = int(scores.get("ahash_distance") or 0)
+    dhash_distance = int(scores.get("dhash_distance") or 0)
+    color_distance = float(scores.get("average_color_distance") or 0)
+    if aspect_delta >= 0.18 and ahash_distance < 26 and dhash_distance < 26:
+        return "preview_crop_or_thumbnail_variant"
+    if status == "uncertain_needs_manual_or_lookup" or (
+        aspect_delta <= 0.08 and ahash_distance <= 14 and dhash_distance <= 16 and color_distance <= 70
+    ):
+        return "threshold_too_strict_possible"
+    if ahash_distance >= 26 or dhash_distance >= 26 or color_distance >= 130:
+        return "true_mismatch_possible"
+    return "unsupported_or_unclear"
+
+
+def build_manual_validation_rows(
+    selected: list[dict[str, Any]],
+    page_results: list[dict[str, Any]],
+    correspondence: list[dict[str, Any]],
+    *,
+    storage_root: Path,
+) -> list[dict[str, Any]]:
+    selected_by_media = {int(item["media_id"]): item for item in selected}
+    corr_by_media = {int(item["media_id"]): item for item in correspondence if item.get("media_id") is not None}
+    rows: list[dict[str, Any]] = []
+    for row_number, page_result in enumerate(page_results, start=1):
+        media_id = int(page_result["media_id"])
+        sample = selected_by_media.get(media_id, {})
+        local_media = sample.get("local_media", {})
+        corr = corr_by_media.get(media_id, {})
+        metadata = page_result.get("metadata") or {}
+        preview_result = page_result.get("preview_result") or {}
+        local_image_path = resolve_media_image_path(local_media, storage_root)
+        scores = corr.get("scores") or {}
+        likely_bucket = _likely_mismatch_reason(page_result, corr)
+        manual_needed = corr.get("status") != "auto_verified_high_confidence"
+        rows.append(
+            {
+                "row_number": row_number,
+                "manual_validation_needed": manual_needed,
+                "media_id": media_id,
+                "pixiv_work_id": page_result.get("pixiv_work_id"),
+                "page_index": page_result.get("page_index"),
+                "local_filename_basename": local_media.get("filename_basename") or local_media.get("filename") or "",
+                "local_stored_thumbnail_path": local_media.get("thumbnail_path") or "",
+                "local_stored_media_path": local_media.get("path") or "",
+                "local_resolved_image_path": str(local_image_path) if local_image_path else "",
+                "pixiv_artwork_url": page_result.get("url") or "",
+                "fetched_preview_local_path": preview_result.get("image_path") or "",
+                "preview_url_host": preview_result.get("preview_url_host") or "",
+                "preview_final_url_host": preview_result.get("final_url_host") or "",
+                "metadata_richness": page_result.get("metadata_richness") or "",
+                "title": metadata.get("title") or "",
+                "description": metadata.get("description") or "",
+                "artist_user_name": metadata.get("artist_user_name") or "",
+                "artist_user_id": metadata.get("artist_user_id") or "",
+                "tags": ";".join(str(item) for item in metadata.get("tags") or []),
+                "page_count": metadata.get("page_count") if metadata.get("page_count") is not None else "",
+                "aspect_ratio_delta": scores.get("aspect_ratio_delta", ""),
+                "ahash_distance": scores.get("ahash_distance", ""),
+                "dhash_distance": scores.get("dhash_distance", ""),
+                "average_color_distance": scores.get("average_color_distance", ""),
+                "preview_status": preview_result.get("status") or "",
+                "final_auto_status": corr.get("status") or "",
+                "likely_mismatch_reason_bucket": likely_bucket,
+                "user_visual_match": "",
+                "user_notes": "",
+            }
+        )
+    return rows
+
+
+def manual_validation_public_summary(rows: list[dict[str, Any]], paths: OutputPaths) -> dict[str, Any]:
+    bucket_counts = Counter(
+        row["likely_mismatch_reason_bucket"]
+        for row in rows
+        if row.get("manual_validation_needed") and row.get("likely_mismatch_reason_bucket")
+    )
+    return {
+        "generated": True,
+        "sheet_md": public_path_label(paths.manual_validation_sheet_md),
+        "sheet_csv": public_path_label(paths.manual_validation_sheet_csv),
+        "contact_sheet_html": public_path_label(paths.manual_validation_contact_sheet_html),
+        "contact_sheet_md": public_path_label(paths.manual_validation_contact_sheet_md),
+        "total_items": len(rows),
+        "items_needing_manual_validation": sum(1 for row in rows if row.get("manual_validation_needed")),
+        "mismatch_reason_bucket_distribution": dict(sorted(bucket_counts.items())),
+        "contains_exact_private_details": True,
+        "exact_private_details_public": False,
+    }
+
+
+def build_manual_validation_sheet_md(rows: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Phase 4.4-P1 Pixiv Manual Validation Sheet",
+        "",
+        "Local ignored artifact. It contains exact media IDs, Pixiv work IDs, filenames, URLs, and local paths.",
+        "",
+        "| row | media_id | pixiv_work_id | page_index | local_filename_basename | local_image_path | pixiv_url | reference_path | preview_host | metadata | title | artist | page_count | aspect_delta | aHash | dHash | color | auto_status | likely_bucket | user_visual_match | user_notes |",
+        "|---:|---:|---|---:|---|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|",
+    ]
+    for row in rows:
+        lines.append(
+            "| {row_number} | {media_id} | {pixiv_work_id} | {page_index} | {local_filename_basename} | {local_resolved_image_path} | {pixiv_artwork_url} | {fetched_preview_local_path} | {preview_url_host} | {metadata_richness} | {title} | {artist_user_name} | {page_count} | {aspect_ratio_delta} | {ahash_distance} | {dhash_distance} | {average_color_distance} | {final_auto_status} | {likely_mismatch_reason_bucket} |  |  |".format(
+                **{key: _markdown_cell(value) for key, value in row.items()}
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## Manual Decision Columns",
+            "",
+            "- `user_visual_match`: fill with `yes`, `no`, or `uncertain`.",
+            "- `user_notes`: record page-index, preview crop, threshold, derivative, or true mismatch observations.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_manual_validation_sheet_csv(rows: list[dict[str, Any]]) -> str:
+    fieldnames = [
+        "row_number",
+        "manual_validation_needed",
+        "media_id",
+        "pixiv_work_id",
+        "page_index",
+        "local_filename_basename",
+        "local_stored_thumbnail_path",
+        "local_stored_media_path",
+        "local_resolved_image_path",
+        "pixiv_artwork_url",
+        "fetched_preview_local_path",
+        "preview_url_host",
+        "preview_final_url_host",
+        "metadata_richness",
+        "title",
+        "description",
+        "artist_user_name",
+        "artist_user_id",
+        "tags",
+        "page_count",
+        "aspect_ratio_delta",
+        "ahash_distance",
+        "dhash_distance",
+        "average_color_distance",
+        "preview_status",
+        "final_auto_status",
+        "likely_mismatch_reason_bucket",
+        "user_visual_match",
+        "user_notes",
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue()
+
+
+def build_manual_contact_sheet_html(rows: list[dict[str, Any]]) -> str:
+    parts = [
+        "<!doctype html>",
+        "<html><head><meta charset=\"utf-8\"><title>Phase 4.4-P1 Pixiv Manual Validation Contact Sheet</title>",
+        "<style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:8px;vertical-align:top}code{white-space:pre-wrap}</style>",
+        "</head><body>",
+        "<h1>Phase 4.4-P1 Pixiv Manual Validation Contact Sheet</h1>",
+        "<p>Local ignored artifact with exact private details.</p>",
+        "<table><thead><tr><th>Row</th><th>Local</th><th>Reference</th><th>Decision</th></tr></thead><tbody>",
+    ]
+    for row in rows:
+        local_img = _html_image(row.get("local_resolved_image_path"), alt=f"local row {row['row_number']}")
+        ref_img = _html_image(row.get("fetched_preview_local_path"), alt=f"reference row {row['row_number']}")
+        parts.append(
+            "<tr>"
+            f"<td>{html.escape(str(row['row_number']))}<br><code>media_id={html.escape(str(row['media_id']))}</code><br><code>pixiv={html.escape(str(row['pixiv_work_id']))}_p{html.escape(str(row['page_index']))}</code></td>"
+            f"<td>{local_img}<br><code>{html.escape(str(row.get('local_resolved_image_path') or row.get('local_stored_thumbnail_path') or ''))}</code></td>"
+            f"<td>{ref_img}<br><a href=\"{html.escape(str(row['pixiv_artwork_url']))}\">Pixiv artwork page</a><br><code>{html.escape(str(row.get('fetched_preview_local_path') or ''))}</code></td>"
+            f"<td><strong>{html.escape(str(row['final_auto_status']))}</strong><br><code>{html.escape(str(row['likely_mismatch_reason_bucket']))}</code><br>user_visual_match: yes/no/uncertain<br>notes:</td>"
+            "</tr>"
+        )
+    parts.extend(["</tbody></table>", "</body></html>"])
+    return "\n".join(parts) + "\n"
+
+
+def build_manual_contact_sheet_md(rows: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Phase 4.4-P1 Pixiv Manual Validation Contact Sheet",
+        "",
+        "Local ignored artifact. Open the HTML contact sheet for side-by-side image previews when possible.",
+        "",
+        "| row | local image | reference image | auto status | likely bucket |",
+        "|---:|---|---|---|---|",
+    ]
+    for row in rows:
+        lines.append(
+            "| {row} | {local} | {ref} | {status} | {bucket} |".format(
+                row=_markdown_cell(row.get("row_number")),
+                local=_markdown_cell(row.get("local_resolved_image_path") or row.get("local_stored_thumbnail_path")),
+                ref=_markdown_cell(row.get("fetched_preview_local_path")),
+                status=_markdown_cell(row.get("final_auto_status")),
+                bucket=_markdown_cell(row.get("likely_mismatch_reason_bucket")),
+            )
+        )
+    return "\n".join(lines) + "\n"
 
 
 def build_metadata_sheet_md(page_results: list[dict[str, Any]], correspondence: list[dict[str, Any]]) -> str:
@@ -1241,6 +1718,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sheet-md", default=str(LOCAL_SHEET_MD))
     parser.add_argument("--sheet-csv", default=str(LOCAL_SHEET_CSV))
     parser.add_argument("--preview-dir", default=str(LOCAL_PREVIEW_DIR))
+    parser.add_argument("--manual-validation-sheet-md", default=str(LOCAL_MANUAL_VALIDATION_SHEET_MD))
+    parser.add_argument("--manual-validation-sheet-csv", default=str(LOCAL_MANUAL_VALIDATION_SHEET_CSV))
+    parser.add_argument("--manual-validation-contact-sheet-html", default=str(LOCAL_MANUAL_VALIDATION_CONTACT_SHEET_HTML))
+    parser.add_argument("--manual-validation-contact-sheet-md", default=str(LOCAL_MANUAL_VALIDATION_CONTACT_SHEET_MD))
     return parser
 
 
@@ -1274,6 +1755,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     booru_policy = booru_lookup_policy_result(enabled=bool(args.enable_booru_lookup))
     aggregate = aggregate_public_results(page_results, correspondence_results)
+    manual_validation_rows = build_manual_validation_rows(selected, page_results, correspondence_results, storage_root=config.storage_root)
+    manual_validation_summary = manual_validation_public_summary(manual_validation_rows, output_paths)
     reviewer_carry_forward = [
         {
             "finding": "Honor VIOLET_STORAGE_ROOT when loading runtime data/settings.json",
@@ -1282,6 +1765,22 @@ def main(argv: list[str] | None = None) -> int:
         {
             "finding": "Public reports must record actual resolved local artifact paths when CLI output-path overrides are used",
             "p1_status": "implemented_as_repo_relative_or_redacted_public_labels_with_local_absolute_details_private",
+        },
+        {
+            "finding": "Restrict preview fetches to approved Pixiv image hosts",
+            "p1_status": "implemented_with_initial_and_redirect_host_allowlist_and_tests",
+        },
+        {
+            "finding": "Count failed network attempts in public request total",
+            "p1_status": "implemented_with_network_attempts_including_failures_and_tests",
+        },
+        {
+            "finding": "Parse Pixiv preload metadata from meta tags",
+            "p1_status": "implemented_with_meta_content_parser_and_malformed_json_tests",
+        },
+        {
+            "finding": "Keep handoff baseline consistent",
+            "p1_status": "implemented_in_current_handoff_table",
         },
     ]
     public_summary = build_public_summary(
@@ -1294,6 +1793,7 @@ def main(argv: list[str] | None = None) -> int:
         aggregate=aggregate,
         booru_policy=booru_policy,
         reviewer_carry_forward=reviewer_carry_forward,
+        manual_validation_summary=manual_validation_summary,
     )
     private_markers = private_details.get("distinct_pixiv_work_ids", [])
     assert_public_payload_safe(public_summary, private_markers=private_markers)
@@ -1332,6 +1832,10 @@ def main(argv: list[str] | None = None) -> int:
     write_json(output_paths.correspondence_details_json, correspondence_details)
     write_text(output_paths.sheet_md, build_metadata_sheet_md(page_results, correspondence_results))
     write_text(output_paths.sheet_csv, build_metadata_sheet_csv(page_results, correspondence_results))
+    write_text(output_paths.manual_validation_sheet_md, build_manual_validation_sheet_md(manual_validation_rows))
+    write_text(output_paths.manual_validation_sheet_csv, build_manual_validation_sheet_csv(manual_validation_rows))
+    write_text(output_paths.manual_validation_contact_sheet_html, build_manual_contact_sheet_html(manual_validation_rows))
+    write_text(output_paths.manual_validation_contact_sheet_md, build_manual_contact_sheet_md(manual_validation_rows))
     write_json(output_paths.report_json, public_summary)
     write_text(output_paths.report_md, build_markdown_report(public_summary))
     print(

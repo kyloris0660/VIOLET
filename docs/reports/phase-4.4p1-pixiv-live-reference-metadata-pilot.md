@@ -25,7 +25,10 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 ## Pixiv Public-Page Probe Result
 
 - Requests attempted: `5`.
+- Network attempts including failures: `5`.
 - HTTP status distribution: `{"200": 5}`.
+- Status-none count: `0`.
+- Network error distribution: `{}`.
 - Final URL host distribution: `{"www.pixiv.net": 5}`.
 - Blocked count: `0`.
 - Stopped early: `False`.
@@ -37,12 +40,21 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 
 ## Preview / Reference Availability
 
-- Preview status distribution: `{"reference_preview_fetched": 5}`.
+- Preview status distribution: `{"preview_fetch_blocked_unexpected_host": 1, "reference_preview_fetched": 4}`.
+- Preview candidate host policy distribution: `{"allowed_pixiv_image_host": 4, "blocked_unexpected_host": 1}`.
 
 ## Correspondence Verification
 
-- Result distribution: `{"auto_rejected_mismatch": 4, "auto_verified_high_confidence": 1}`.
+- Result distribution: `{"auto_rejected_mismatch": 3, "auto_verified_high_confidence": 1, "preview_fetch_blocked": 1}`.
 - Threshold policy: `phase44p1-pilot-v1-not-production`.
+- Mismatch count changed after reviewer fixes: `True`.
+- Previous/current mismatch count: `4` / `3`.
+
+## Manual Validation Pack
+
+- Generated: `True`.
+- Items needing manual validation: `4`.
+- Reason bucket distribution: `{"page_index_mismatch_possible": 1, "true_mismatch_possible": 2, "unsupported_or_unclear": 1}`.
 
 ## Optional No-Upload Booru Lookup
 
@@ -66,6 +78,10 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 - metadata_sheet_md: `.local_manifests/phase-4.4p1-pixiv-metadata-sheet.md`
 - metadata_sheet_csv: `.local_manifests/phase-4.4p1-pixiv-metadata-sheet.csv`
 - preview_dir: `.local_manifests/phase-4.4p1-pixiv-preview-derived`
+- manual_validation_sheet_md: `.local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.md`
+- manual_validation_sheet_csv: `.local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.csv`
+- manual_validation_contact_sheet_html: `.local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.html`
+- manual_validation_contact_sheet_md: `.local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.md`
 - full_local_paths_public: `False`
 - artifacts_are_gitignored: `True`
 

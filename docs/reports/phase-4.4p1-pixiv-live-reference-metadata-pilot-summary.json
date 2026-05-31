@@ -3,6 +3,10 @@
     "artifacts_are_gitignored": true,
     "correspondence_details_json": ".local_manifests/phase-4.4p1-pixiv-correspondence-details.json",
     "full_local_paths_public": false,
+    "manual_validation_contact_sheet_html": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.html",
+    "manual_validation_contact_sheet_md": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.md",
+    "manual_validation_sheet_csv": ".local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.csv",
+    "manual_validation_sheet_md": ".local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.md",
     "metadata_sheet_csv": ".local_manifests/phase-4.4p1-pixiv-metadata-sheet.csv",
     "metadata_sheet_md": ".local_manifests/phase-4.4p1-pixiv-metadata-sheet.md",
     "preview_dir": ".local_manifests/phase-4.4p1-pixiv-preview-derived",
@@ -12,8 +16,9 @@
   },
   "correspondence_verification_distribution": {
     "result_distribution": {
-      "auto_rejected_mismatch": 4,
-      "auto_verified_high_confidence": 1
+      "auto_rejected_mismatch": 3,
+      "auto_verified_high_confidence": 1,
+      "preview_fetch_blocked": 1
     },
     "threshold_policy_version": "phase44p1-pilot-v1-not-production"
   },
@@ -38,7 +43,23 @@
     "reason": "At least one sample reached auto_verified_high_confidence.",
     "recommended_next_route": "Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors"
   },
-  "generated_at": "2026-05-31T15:39:57+00:00",
+  "generated_at": "2026-05-31T16:13:20+00:00",
+  "manual_validation_pack": {
+    "contact_sheet_html": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.html",
+    "contact_sheet_md": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.md",
+    "contains_exact_private_details": true,
+    "exact_private_details_public": false,
+    "generated": true,
+    "items_needing_manual_validation": 4,
+    "mismatch_reason_bucket_distribution": {
+      "page_index_mismatch_possible": 1,
+      "true_mismatch_possible": 2,
+      "unsupported_or_unclear": 1
+    },
+    "sheet_csv": ".local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.csv",
+    "sheet_md": ".local_manifests/phase-4.4p1-pixiv-manual-validation-sheet.md",
+    "total_items": 5
+  },
   "metadata_availability_distribution": {
     "field_availability_counts": {
       "canonical_url": 5,
@@ -75,9 +96,23 @@
     "stop_on_403_429_login_captcha_consent_or_antibot": true,
     "timeout_seconds": 10.0
   },
+  "pre_review_result_baseline": {
+    "correspondence_result_distribution": {
+      "auto_rejected_mismatch": 4,
+      "auto_verified_high_confidence": 1
+    },
+    "current_mismatch_count": 3,
+    "mismatch_count_changed_after_fixes": true,
+    "previous_mismatch_count": 4
+  },
   "preview_reference_availability_distribution": {
+    "preview_candidate_host_policy_distribution": {
+      "allowed_pixiv_image_host": 4,
+      "blocked_unexpected_host": 1
+    },
     "preview_status_distribution": {
-      "reference_preview_fetched": 5
+      "preview_fetch_blocked_unexpected_host": 1,
+      "reference_preview_fetched": 4
     }
   },
   "privacy_and_safety_confirmation": {
@@ -114,8 +149,11 @@
     "http_status_distribution": {
       "200": 5
     },
+    "network_attempts_including_failures": 5,
+    "network_error_distribution": {},
     "public_exact_urls": false,
     "requests_attempted": 5,
+    "status_none_count": 0,
     "stopped_early": false
   },
   "reviewer_carry_forward": [
@@ -126,6 +164,22 @@
     {
       "finding": "Public reports must record actual resolved local artifact paths when CLI output-path overrides are used",
       "p1_status": "implemented_as_repo_relative_or_redacted_public_labels_with_local_absolute_details_private"
+    },
+    {
+      "finding": "Restrict preview fetches to approved Pixiv image hosts",
+      "p1_status": "implemented_with_initial_and_redirect_host_allowlist_and_tests"
+    },
+    {
+      "finding": "Count failed network attempts in public request total",
+      "p1_status": "implemented_with_network_attempts_including_failures_and_tests"
+    },
+    {
+      "finding": "Parse Pixiv preload metadata from meta tags",
+      "p1_status": "implemented_with_meta_content_parser_and_malformed_json_tests"
+    },
+    {
+      "finding": "Keep handoff baseline consistent",
+      "p1_status": "implemented_in_current_handoff_table"
     }
   ],
   "sample_selection": {
