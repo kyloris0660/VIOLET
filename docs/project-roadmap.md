@@ -735,6 +735,21 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, app-managed storage mutation, SauceNAO call, original or derived upload, scraping, cookies, browser automation, push to `main`, or merge occurred.
 - Public reports: `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot.md` and `docs/reports/phase-4.4d0d1-second-provider-scouting-and-tiny-pilot-summary.json`.
 
+### Phase 4.4-D1G - Google Vision Tiny Pilot and Pixiv Source-Prior Audit
+
+**Goal:** Run the approved five-sample Google Vision Web Detection tiny pilot and separately audit Pixiv-like filename source priors from local DB/app-managed metadata only.
+
+- Google Cloud setup was available, but the current CodeX PowerShell PATH was stale. The phase recovered by discovering Cloud SDK `gcloud.cmd` through a common absolute install path, without permanently modifying PATH, installing software, printing tokens, or printing credential contents.
+- Google preflight passed: project/quota project `image-project-497811`, Vision API enabled, ADC token available and redacted, and `GOOGLE_APPLICATION_CREDENTIALS` unset.
+- Approved media IDs remained fixed to `2690`, `2687`, `2670`, `2654`, and `2647`; all five passed `content_class=anime` and app-managed media availability gates.
+- The live Google Vision pilot generated five safe derived/resized/metadata-stripped JPEG inputs under ignored `.local_manifests`, uploaded only those five derived images, and made five `WEB_DETECTION` requests.
+- Google Vision classified 4 of 5 samples as `exact_source_candidate` and 1 of 5 as `visually_similar_only`; it returned useful web/source-like references, but its artist/work/character clues are indirect web entity/page signals rather than structured booru metadata comparable to SauceNAO.
+- Pixiv filename source-prior audit scanned only DB/app-managed metadata strings and did not scan source roots, touch iCloud, hydrate cloud files, or read original source files. It found Pixiv-like filename tokens in `555` of `1989` media records (`27.9%`) and `551` distinct candidate work IDs.
+- The five approved Google samples had `0` Pixiv-prior hits and are not representative for Pixiv-prior coverage. Broader DB/app-managed metadata, not the five-sample set, is the right basis for judging the Pixiv-prior route.
+- Current DB records preserve filename and app-managed basenames well enough to detect many Pixiv-style priors, but there is no dedicated `original_basename` or source-prior ledger field; absence of a token remains a metadata retention limitation.
+- No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, source/iCloud mutation, app-managed storage mutation, SauceNAO/TinEye/Pixiv/Danbooru/Gelbooru call, original upload, unapproved sample upload, scraping, cookies, browser automation, push to `main`, or merge occurred.
+- Public reports: `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior.md` and `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior-summary.json`. Exact Pixiv IDs/page mappings, raw provider details, derived images, and the manual validation sheet remain ignored local artifacts.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -748,20 +763,21 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-D0/D1:
+Current near-term options after Phase 4.4-D1G:
 
-1. If source-discovery via a low-cost documented official API is the goal, decide whether to set up Google Cloud Vision Web Detection credentials/billing and explicitly approve a five-sample derived-image `WEB_DETECTION` pilot.
-2. If a dedicated reverse-image API is preferred, decide whether to set up TinEye API access/search credits, provide `x-api-key`, and explicitly approve a five-sample derived-image pilot.
-3. If source-backed metadata quality is the goal without uploads, design a no-upload Danbooru/Gelbooru metadata lookup adapter for known validated provider result IDs/source URLs, without DB writes until a separate persistence stage.
+1. Phase 4.4-P0 - Pixiv Filename Source-Prior Metadata Lookup Design, if the priority is to exploit the non-trivial local deterministic prior. Keep it design/read-only first; no Pixiv call, scraping, browser/cookies, source/iCloud access, or DB writes without separate approval.
+2. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
+3. No-upload Danbooru/Gelbooru metadata lookup adapter only after known validated provider result IDs/source URLs exist, without DB writes until a separate persistence stage.
 4. Phase 4.4-B2 only when more evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-5. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
-6. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-7. Exact booru/source lookup only after reverse search or another approved source-discovery path yields a source/post candidate.
-8. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-9. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-10. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-11. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-12. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+5. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
+6. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
+7. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+8. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
+9. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+10. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+11. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+12. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+13. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 

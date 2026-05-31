@@ -1,0 +1,622 @@
+{
+  "approved_sample_ids": [
+    2690,
+    2687,
+    2670,
+    2654,
+    2647
+  ],
+  "contract_fit": {
+    "google_vision": {
+      "EvidencePersistencePlan": {
+        "confirmed_assignment_allowed": false,
+        "db_write_allowed": false,
+        "entity_evidence_planned": false,
+        "media_entity_candidate_planned": false,
+        "provider_cache_planned": false
+      },
+      "ExtractedProviderMetadata": "web entity descriptions and best guess labels are untyped clues with localization_status=pending",
+      "ProviderQuery": {
+        "input_kind": "derived_resized_stripped_image",
+        "provider_key": "google_vision_web_detection",
+        "query_hash": "derived input hash kept local; public summary records presence only",
+        "request_shape_redacted": "WEB_DETECTION images:annotate request without local path, filename, token, or bytes"
+      },
+      "ProviderRunOutcome": "completed/partial/provider_error/credential_error/quota_error can be represented",
+      "SourceMatch": "matching page and image URLs can map to source_host, rank, score when present, and match_class"
+    },
+    "pixiv_filename_prior": {
+      "classification": "local_source_prior_not_provider_result",
+      "future_contract_need": "SourcePrior or LocalSourceHint extension",
+      "not_confirmed_evidence": true,
+      "not_forced_into_provider_cache": true
+    }
+  },
+  "derived_upload_count": 5,
+  "generated_at": "2026-05-29T14:32:19+00:00",
+  "google_setup_confirmation": {
+    "active_account_count": 1,
+    "active_account_present": true,
+    "adc_token_available": true,
+    "adc_token_printed": false,
+    "credential_contents_printed": false,
+    "gcloud_absolute_path_used": true,
+    "gcloud_discovery_status": "tool_found_by_absolute_path",
+    "gcloud_path_category": "explicit_absolute_path",
+    "gcloud_version_first_line": "Google Cloud SDK 570.0.0",
+    "google_application_credentials_outside_repo": null,
+    "google_application_credentials_path_printed": false,
+    "google_application_credentials_set": false,
+    "project": "image-project-497811",
+    "project_ok": true,
+    "quota_project": "image-project-497811",
+    "quota_project_ok": true,
+    "vision_api_enabled": true
+  },
+  "google_vision_aggregate": {
+    "artist_work_character_clue_item_count": 5,
+    "classification_counts": {
+      "exact_source_candidate": 4,
+      "visually_similar_only": 1
+    },
+    "exact_or_likely_source_candidate_count": 4,
+    "source_like_match_count": 4,
+    "top_hosts": {
+      "ar.pinterest.com": 1,
+      "arca.live": 4,
+      "cdn.donmai.us": 4,
+      "cdn.imagedeliveries.com": 3,
+      "i.pinimg.com": 3,
+      "pbs.twimg.com": 4,
+      "preview.redd.it": 2,
+      "s1.zerochan.net": 2,
+      "www.facebook.com": 4,
+      "www.instagram.com": 2,
+      "www.reddit.com": 2,
+      "www.tiktok.com": 7,
+      "www.youtube.com": 16,
+      "www.zerochan.net": 2,
+      "x.com": 9
+    }
+  },
+  "google_vision_request_count": 5,
+  "google_vision_results": [
+    {
+      "artist_work_character_clue_present": true,
+      "best_guess_label_count": 1,
+      "best_guess_label_summary": [
+        "cg artwork"
+      ],
+      "classification": "visually_similar_only",
+      "full_matching_image_count": 0,
+      "host_counts": {},
+      "media_id": 2690,
+      "pages_with_matching_images_count": 0,
+      "partial_matching_image_count": 0,
+      "source_like_hosts": [],
+      "urls_in_public_summary": false,
+      "useful_source_like_match": false,
+      "visually_similar_image_count": 20,
+      "web_entity_count": 9,
+      "web_entity_summary": [
+        "Latex clothing",
+        "Cartoon",
+        "Clothing",
+        "Anime",
+        "Illustration",
+        "Graphics",
+        "CG artwork",
+        "Latex"
+      ]
+    },
+    {
+      "artist_work_character_clue_present": true,
+      "best_guess_label_count": 1,
+      "best_guess_label_summary": [
+        "anime"
+      ],
+      "classification": "exact_source_candidate",
+      "full_matching_image_count": 11,
+      "host_counts": {
+        "ac.namu.la": 1,
+        "ar.pinterest.com": 1,
+        "arca.live": 2,
+        "b.thumbs.redditmedia.com": 1,
+        "cdn.donmai.us": 2,
+        "cdn.imagedeliveries.com": 3,
+        "hentaiporns.net": 1,
+        "i.pinimg.com": 2,
+        "img10.joyreactor.cc": 1,
+        "img10.joyreactor.com": 1,
+        "jp.pinterest.com": 1,
+        "kr.pinterest.com": 1,
+        "n1.kemono.cr": 1,
+        "pbs.twimg.com": 1,
+        "www.pttweb.cc": 1,
+        "www.reddit.com": 1,
+        "www.youtube.com": 4,
+        "x.com": 1
+      },
+      "media_id": 2687,
+      "pages_with_matching_images_count": 12,
+      "partial_matching_image_count": 3,
+      "source_like_hosts": [
+        "x.com"
+      ],
+      "urls_in_public_summary": false,
+      "useful_source_like_match": true,
+      "visually_similar_image_count": 20,
+      "web_entity_count": 14,
+      "web_entity_summary": [
+        "Honkai: Star Rail",
+        "Anime",
+        "Acheron",
+        "JoyReactor",
+        "Image",
+        "Cartoon",
+        "Animation",
+        "Illustration"
+      ]
+    },
+    {
+      "artist_work_character_clue_present": true,
+      "best_guess_label_count": 1,
+      "best_guess_label_summary": [
+        "cartoon"
+      ],
+      "classification": "exact_source_candidate",
+      "full_matching_image_count": 5,
+      "host_counts": {
+        "ac-o.namu.la": 1,
+        "arca.live": 2,
+        "i.17173cdn.com": 1,
+        "news.17173.com": 1,
+        "pbs.twimg.com": 1,
+        "s1.zerochan.net": 1,
+        "static.zerochan.net": 1,
+        "www.instagram.com": 1,
+        "www.youtube.com": 4,
+        "www.zerochan.net": 2,
+        "x.com": 1
+      },
+      "media_id": 2670,
+      "pages_with_matching_images_count": 11,
+      "partial_matching_image_count": 0,
+      "source_like_hosts": [
+        "s1.zerochan.net",
+        "static.zerochan.net",
+        "www.zerochan.net",
+        "x.com"
+      ],
+      "urls_in_public_summary": false,
+      "useful_source_like_match": true,
+      "visually_similar_image_count": 20,
+      "web_entity_count": 14,
+      "web_entity_summary": [
+        "Blue Archive",
+        "Ryuuge Kisaki",
+        "Cartoon",
+        "Image",
+        "Cartoon Network",
+        "Weekend at Benson's",
+        "짤 모음",
+        "Curious Pictures"
+      ]
+    },
+    {
+      "artist_work_character_clue_present": true,
+      "best_guess_label_count": 1,
+      "best_guess_label_summary": [
+        "yao guang x sunday"
+      ],
+      "classification": "exact_source_candidate",
+      "full_matching_image_count": 5,
+      "host_counts": {
+        "cdn.donmai.us": 2,
+        "fr.pinterest.com": 1,
+        "gelbooru.com": 1,
+        "i.pinimg.com": 1,
+        "lookaside.fbsbx.com": 1,
+        "pbs.twimg.com": 1,
+        "www.facebook.com": 4,
+        "www.instagram.com": 1,
+        "www.reddit.com": 1,
+        "www.threads.com": 1,
+        "www.tiktok.com": 4,
+        "www.youtube.com": 4,
+        "x.com": 4
+      },
+      "media_id": 2654,
+      "pages_with_matching_images_count": 20,
+      "partial_matching_image_count": 1,
+      "source_like_hosts": [
+        "gelbooru.com",
+        "x.com"
+      ],
+      "urls_in_public_summary": false,
+      "useful_source_like_match": true,
+      "visually_similar_image_count": 20,
+      "web_entity_count": 12,
+      "web_entity_summary": [
+        "Honkai: Star Rail",
+        "Sunday",
+        "Dan Heng",
+        "X",
+        "Character",
+        "Nymeia",
+        "spirited",
+        "Mobile app"
+      ]
+    },
+    {
+      "artist_work_character_clue_present": true,
+      "best_guess_label_count": 1,
+      "best_guess_label_summary": [
+        "zenless zone zero vivian feet"
+      ],
+      "classification": "exact_source_candidate",
+      "full_matching_image_count": 3,
+      "host_counts": {
+        "cdn.truyen-hentai.com": 1,
+        "pbs.twimg.com": 1,
+        "preview.redd.it": 2,
+        "s1.zerochan.net": 1,
+        "www.tiktok.com": 3,
+        "www.youtube.com": 4,
+        "x.com": 3
+      },
+      "media_id": 2647,
+      "pages_with_matching_images_count": 10,
+      "partial_matching_image_count": 2,
+      "source_like_hosts": [
+        "s1.zerochan.net",
+        "x.com"
+      ],
+      "urls_in_public_summary": false,
+      "useful_source_like_match": true,
+      "visually_similar_image_count": 20,
+      "web_entity_count": 15,
+      "web_entity_summary": [
+        "Zenless Zone Zero",
+        "Vivian",
+        "Genshin Impact",
+        "Character",
+        "Combo",
+        "Illustration",
+        "Guide",
+        "Fan art"
+      ]
+    }
+  ],
+  "identity": {
+    "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "db_identity_result": "development_blombooru_confirmed",
+    "db_password_included": false,
+    "local_paths_redacted": true,
+    "storage_root_equals_code_root": true,
+    "storage_root_explicitly_set": false,
+    "storage_root_mode": "code_root_default",
+    "storage_root_test_path": false,
+    "violet_env": "development"
+  },
+  "lifecycle": "phase-scoped operational runner",
+  "local_artifacts": {
+    "google_vision_derived": ".local_manifests/phase-4.4d1g-google-vision-derived/",
+    "google_vision_details": ".local_manifests/phase-4.4d1g-google-vision-details.json",
+    "ignored_by_gitignore": true,
+    "manual_validation_sheet": ".local_manifests/phase-4.4d1g-google-vision-manual-validation-sheet.md",
+    "pixiv_source_prior_details": ".local_manifests/phase-4.4d1g-pixiv-source-prior-details.json"
+  },
+  "next_step_recommendation": {
+    "danbooru_gelbooru_lookup_now": "only after known source/post IDs exist; no lookup was run in D1G",
+    "google_followup_useful": true,
+    "pixiv_prior_route_non_trivial": true,
+    "recommended": "Phase 4.4-P0 - Pixiv Filename Source-Prior Metadata Lookup Design",
+    "tineye_status": "rejected_or_deferred_due_to_cost_and_weaker_task_fit_for_this_phase"
+  },
+  "original_upload_count": 0,
+  "phase": "4.4-D1G",
+  "pixiv_filename_source_prior_audit": {
+    "approved_sample_pixiv_prior_count": 0,
+    "approved_samples_are_representative_for_pixiv_prior": false,
+    "audit_scope": "development_db_app_managed_metadata_only",
+    "cloud_files_hydrated": false,
+    "count_by_content_class": {
+      "anime": 546,
+      "non_anime": 1,
+      "unknown": 8
+    },
+    "coverage_percent": 27.9,
+    "distinct_candidate_pixiv_work_ids": 551,
+    "duplicate_work_id_count": 3,
+    "exact_pixiv_ids_in_public_report": false,
+    "icloud_touched": false,
+    "media_with_pixiv_like_filename_token": 555,
+    "metadata_fields_present_counts": {
+      "filename": 1989,
+      "path_basename": 1989,
+      "source_basename": 1989,
+      "thumbnail_basename": 1989
+    },
+    "metadata_fields_with_matches": {
+      "filename": 555,
+      "path_basename": 555,
+      "thumbnail_basename": 555
+    },
+    "metadata_retention_assessment": "filename_and_app_managed_basenames_available_but_no_dedicated_original_basename_column",
+    "metadata_retention_gap": true,
+    "original_source_files_read": false,
+    "page_index_distribution": {
+      "0": 498,
+      "1": 40,
+      "2": 11,
+      "3": 2,
+      "4": 1,
+      "5": 3
+    },
+    "source_roots_scanned": false,
+    "total_media_inspected": 1989
+  },
+  "public_redaction": {
+    "api_token": false,
+    "credential_path": false,
+    "exact_pixiv_id_mapping": false,
+    "local_absolute_paths": false,
+    "original_filenames": false,
+    "provider_urls": false,
+    "raw_image_bytes": false,
+    "raw_provider_payload": false,
+    "source_icloud_paths": false
+  },
+  "safety_confirmation": {
+    "app_managed_storage_mutation": false,
+    "automatic_entity_creation": false,
+    "browser_automation": false,
+    "confirmed_assignment": false,
+    "cookies": false,
+    "credential_or_token_content_printed": false,
+    "danbooru_gelbooru_call": false,
+    "db_migration": false,
+    "db_write": false,
+    "entity_evidence_write": false,
+    "entity_resolver": false,
+    "localization_execution": false,
+    "media_entity_candidate_write": false,
+    "media_tags_mutation": false,
+    "original_image_upload": false,
+    "pixiv_call": false,
+    "provider_cache_write": false,
+    "saucenao_call": false,
+    "scraping": false,
+    "similarity_clustering": false,
+    "source_icloud_mutation": false,
+    "tag_translation_mutation": false,
+    "tineye_call": false,
+    "unapproved_sample_upload": false
+  },
+  "sample_gate": {
+    "approved_sample_count": 5,
+    "approved_sample_media_ids": [
+      2690,
+      2687,
+      2670,
+      2654,
+      2647
+    ],
+    "blocked_count": 0,
+    "blocked_count_by_reason": {},
+    "content_class_distribution": {
+      "anime": 5
+    },
+    "eligible_count": 5,
+    "found_media_count": 5,
+    "request_plan": [
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2690,
+        "query_hash": "4dfc527fd13c9d8953ae289c35c412c9b8137dff55d77b8b86803ca51258a764",
+        "query_hash_status": "present_valid",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "feature_type": "WEB_DETECTION",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "max_results": 20,
+          "media_ref": "approved_media_id:2690",
+          "phase": "4.4-D1G",
+          "provider_key": "google_vision_web_detection",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44d1g-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2687,
+        "query_hash": "0e1df0dd85ff944401129db5cbf911d8861324a731bafa63e4a831765ad5c13d",
+        "query_hash_status": "present_valid",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "feature_type": "WEB_DETECTION",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "max_results": 20,
+          "media_ref": "approved_media_id:2687",
+          "phase": "4.4-D1G",
+          "provider_key": "google_vision_web_detection",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44d1g-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2670,
+        "query_hash": "1a817c10ad5861f0ecfb5d0b143148688e4396f95b2a9d6c7920efac7cfa382b",
+        "query_hash_status": "present_valid",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "feature_type": "WEB_DETECTION",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "max_results": 20,
+          "media_ref": "approved_media_id:2670",
+          "phase": "4.4-D1G",
+          "provider_key": "google_vision_web_detection",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44d1g-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2654,
+        "query_hash": "139c7c1bddf236850c64c7e74703c6e8b2f61ea625d7942b57f1d536531d7771",
+        "query_hash_status": "present_valid",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "feature_type": "WEB_DETECTION",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "max_results": 20,
+          "media_ref": "approved_media_id:2654",
+          "phase": "4.4-D1G",
+          "provider_key": "google_vision_web_detection",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44d1g-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      },
+      {
+        "blocked_reason": null,
+        "content_class": "anime",
+        "eligibility_status": "eligible",
+        "filename_included": false,
+        "input_kind": "derived_resized_stripped_image",
+        "local_path_included": false,
+        "media_id": 2647,
+        "query_hash": "ed913cbe6358722456eee2da4df4aab7b6a038551cd6aa419ffd55b7ba0a48da",
+        "query_hash_status": "present_valid",
+        "request_shape_redacted": {
+          "content_class": "anime",
+          "feature_type": "WEB_DETECTION",
+          "filename_included": false,
+          "input_kind": "derived_resized_stripped_image",
+          "input_privacy_mode": "derived_upload_approved_sample_only",
+          "local_path_included": false,
+          "max_derived_dimension": 768,
+          "max_results": 20,
+          "media_ref": "approved_media_id:2647",
+          "phase": "4.4-D1G",
+          "provider_key": "google_vision_web_detection",
+          "query_type": "reverse_search_derived_image",
+          "send_derived": true,
+          "send_original": false,
+          "send_thumbnail": false,
+          "source_label_included": false,
+          "transform_policy_version": "phase44d1g-derived-resized-stripped-v1"
+        },
+        "source_label_included": false,
+        "would_send_derived_image": true,
+        "would_send_original": false,
+        "would_send_thumbnail": false
+      }
+    ],
+    "requested_count": 5,
+    "requested_media_ids": [
+      2690,
+      2687,
+      2670,
+      2654,
+      2647
+    ]
+  },
+  "saucenao_comparison": {
+    "approved_samples_representative_for_pixiv_prior": false,
+    "google_on_saucenao_failures": {
+      "2647": "exact_source_candidate",
+      "2654": "exact_source_candidate",
+      "2690": "visually_similar_only"
+    },
+    "google_on_saucenao_successes": {
+      "2670": "exact_source_candidate",
+      "2687": "exact_source_candidate"
+    },
+    "google_rescued_saucenao_failure_count": 2,
+    "google_structured_metadata_comparable_to_saucenao": false,
+    "known_saucenao_manual_validation": {
+      "2647": "low_confidence_wrong_unrelated",
+      "2654": "low_confidence_wrong_unrelated",
+      "2670": "high_confidence_correct_artist_work_character_useful",
+      "2687": "high_confidence_correct_artist_work_character_useful",
+      "2690": "low_confidence_wrong_unrelated"
+    },
+    "pixiv_prior_covered_approved_sample_count": 0
+  },
+  "status": "completed",
+  "title": "Google Vision Web Detection Tiny Pilot + Pixiv Filename Source-Prior Audit"
+}
