@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-P0 Pixiv filename source-prior auto-verification design (2026-05-31), after PR #84 was merged into `main`.
+> Last updated during Phase 4.4-P1 Pixiv live reference / metadata / correspondence pilot (2026-05-31), after PR #85 was merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -35,6 +35,7 @@
 - Phase 4.4-D1G ran the approved five-sample Google Vision Web Detection tiny pilot using only derived/resized/metadata-stripped images. Current-shell `gcloud` PATH was stale, but the runner found Cloud SDK by absolute path, verified project/quota project `image-project-497811`, Vision API enabled, and ADC token availability without printing token or credential contents. Google Vision returned `exact_source_candidate` for 4 of 5 approved samples and `visually_similar_only` for 1 of 5; results remain local/report-only and are not persisted.
 - Phase 4.4-D1G also ran a read-only Pixiv filename source-prior audit over development DB/app-managed metadata only. It found Pixiv-like filename tokens in `555` of `1989` media records (`27.9%`) and `551` distinct candidate work IDs. The approved five Google samples had `0` Pixiv-prior hits and are explicitly not representative for Pixiv-prior coverage. The current DB preserves filename/app-managed basenames enough to detect many priors, but there is no dedicated `original_basename` / source-prior ledger column, so absence of a token remains a metadata retention limitation. Public report: `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior.md`.
 - Phase 4.4-P0 designed the Pixiv filename source-prior automated correspondence gate and re-ran read-only extraction over development DB/app-managed metadata only. It confirmed `555` of `1989` media records (`27.9%`) with Pixiv-like tokens and `551` distinct candidate work IDs. The P0 runner selected a private 30-item feasibility sample from real extracted candidates, but live Pixiv reference lookup was `reference_lookup_policy_blocked` because no official, documented, unauthenticated metadata/preview route was accepted. The runner made `0` Pixiv/provider requests, wrote no DB rows, and kept exact mappings only in ignored `.local_manifests` artifacts. Public report: `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md`.
+- Phase 4.4-P1 made a bounded live public-page probe over a private 5-item sample selected from real Pixiv filename priors. Public Pixiv artwork pages returned HTTP `200` for all 5 requests, with no cookies, no login, no browser automation, no Referer spoofing, and no original image download. Public page metadata was `preview_only` for all 5: canonical URL, title, description, and preview image candidates were available, but rich artist/tag/page metadata was not. Low-resolution preview/reference images were fetched for all 5 without hotlink bypass. Local correspondence checks produced `1` `auto_verified_high_confidence` and `4` `auto_rejected_mismatch` under P1 pilot thresholds. Optional no-upload booru source-URL lookup stayed `no_upload_booru_lookup_policy_blocked`; exact Pixiv/source details remain ignored local artifacts only. Public report: `docs/reports/phase-4.4p1-pixiv-live-reference-metadata-pilot.md`.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -64,13 +65,13 @@ Workflow weight must decrease:
 
 ## Current Recommended Route
 
-Near-term route after Phase 4.4-P0:
+Near-term route after Phase 4.4-P1:
 
-1. If continuing the deterministic filename route, next design target is Phase 4.4-P1 - Pixiv Source-Prior Persistence for Auto-Verified High-Confidence Items. P1 still needs an approved safe reference route or another approved correspondence source before any DB write; filename-token-only rows must remain untrusted.
-2. If no safe Pixiv reference route is acceptable, choose between a no-upload metadata adapter only after known validated source/post IDs exist, or a separate policy decision about an official/documented Pixiv-compatible route.
-3. If Google Vision remains interesting, manually validate the D1G Google results first. Google Vision can find source-like web references, but its metadata is less structured than SauceNAO and must not become confirmed evidence without validation.
-4. Phase 4.4-B2 only if more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-5. TinEye is rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
+1. If continuing the Pixiv filename route, the next possible step is a tightly bounded Phase 4.4-P2 LocalSourceHint persistence design for page/correspondence-verified items only. Do not persist filename-token-only rows as confirmed evidence, and do not broad backfill from the 5-item pilot alone.
+2. Before P2, decide whether the 1/5 high-confidence and 4/5 mismatch result is sufficient for a persistence prototype, or whether the sample/threshold/page-index handling needs one more bounded validation round.
+3. Pixiv public-page metadata is not rich enough for full entity extraction by itself in this pilot; it provides title/description/canonical/preview signals. Rich artist/character/copyright/general metadata still likely needs another approved route, such as a no-upload booru source-URL adapter after explicit policy approval.
+4. If Google Vision remains interesting, manually validate the D1G Google results first. Google Vision can find source-like web references, but its metadata is less structured than SauceNAO and must not become confirmed evidence without validation.
+5. Phase 4.4-B2 only if more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
 6. Phase 3.9 before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import: production Ingestion Run Ledger / Source Item State Ledger and over-selection buffer.
 
 Do not treat older "blocked until X" wording in historical reports as current unless this handoff or the roadmap repeats it as active.

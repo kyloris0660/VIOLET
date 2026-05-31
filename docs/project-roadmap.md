@@ -764,6 +764,21 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, broad similarity/clustering, source/iCloud mutation, app-managed storage mutation, Pixiv scraping, browser automation, cookies/login, provider call, reference-image download, push to `main`, or merge occurred.
 - Public reports: `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md` and `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification-summary.json`.
 
+### Phase 4.4-P1 - Pixiv Live Reference / Metadata / Correspondence Pilot
+
+**Goal:** Make a bounded real attempt to walk the Pixiv filename-prior route end to end on a small sample, without DB writes or persistence.
+
+- Selected a private 5-item sample from real Pixiv filename-prior candidates, covering `p0`, non-`p0`, suffix/timestamp, prefix, duplicate-work-ID, and anime-preferred cases.
+- Implemented a phase-scoped public-page probe policy: sample size 5 (max 10), concurrency 1, timeout 10s, delay 2s, no cookies, no login, no browser automation, no Referer/hotlink bypass, no retry storm, no original image download, and stop-on-blocker behavior.
+- Pixiv public artwork pages returned HTTP `200` for all 5 attempted requests. No 403/429/login/captcha stop was triggered in the final run.
+- Public metadata availability was `preview_only` for all 5 samples: canonical URL, title, description, and preview/reference image candidates were available, but rich artist/tag/page metadata was not extracted from the public HTML.
+- Low-resolution preview/reference images were fetched for all 5 without cookies, login, browser automation, Referer spoofing, or original image download. Exact preview URLs and fetched files remain ignored local artifacts only.
+- Local correspondence verification produced `1` `auto_verified_high_confidence` and `4` `auto_rejected_mismatch` under P1 pilot thresholds. These are pilot thresholds, not production thresholds, and do not create confirmed evidence.
+- Optional no-upload booru source-URL lookup stayed `no_upload_booru_lookup_policy_blocked`; no Danbooru/Gelbooru/SauceNAO/Google Vision/TinEye call or upload occurred.
+- P1 carried forward PR #85 reviewer findings: runtime settings loading now honors `VIOLET_STORAGE_ROOT`, and public artifact labels reflect resolved CLI override paths as repo-relative or redacted labels while full paths stay private.
+- No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, broad similarity/clustering, source/iCloud mutation, app-managed storage mutation, original image upload/download, Pixiv login/cookies/browser automation, hotlink/Referer bypass, high-volume requests, push to `main`, or merge occurred.
+- Public reports: `docs/reports/phase-4.4p1-pixiv-live-reference-metadata-pilot.md` and `docs/reports/phase-4.4p1-pixiv-live-reference-metadata-pilot-summary.json`.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -777,21 +792,22 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-P0:
+Current near-term options after Phase 4.4-P1:
 
-1. Phase 4.4-P1 - Pixiv Source-Prior Persistence for Auto-Verified High-Confidence Items, only after an approved safe reference/correspondence route exists; no filename-token-only persistence.
-2. If no safe Pixiv route is accepted, choose either a no-upload metadata adapter only after known validated source/post IDs exist, or a separate policy decision for an official/documented Pixiv-compatible route.
-3. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
-4. Phase 4.4-B2 only when more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-5. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
-6. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
-7. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-8. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
-9. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-10. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-11. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-12. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-13. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors, only as a bounded DB-write design for page/correspondence-verified items. Do not persist filename-token-only rows as confirmed evidence or broad backfill from the 5-item pilot alone.
+2. If 1/5 high-confidence and 4/5 mismatch is not enough evidence for P2, run one more bounded validation round focused on page-index handling, threshold calibration, and mismatch diagnosis before persistence.
+3. Pixiv public-page metadata is useful for canonical/title/description/preview signals but not rich artist/character/copyright/general extraction in this pilot. Rich entity metadata likely needs another approved route, such as a no-upload booru source-URL adapter after explicit policy approval.
+4. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
+5. Phase 4.4-B2 only when more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+6. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
+7. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
+8. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+9. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
+10. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+11. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+12. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+13. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+14. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 

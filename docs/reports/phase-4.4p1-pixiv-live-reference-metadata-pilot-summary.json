@@ -1,0 +1,210 @@
+{
+  "artifact_labels": {
+    "artifacts_are_gitignored": true,
+    "correspondence_details_json": ".local_manifests/phase-4.4p1-pixiv-correspondence-details.json",
+    "full_local_paths_public": false,
+    "metadata_sheet_csv": ".local_manifests/phase-4.4p1-pixiv-metadata-sheet.csv",
+    "metadata_sheet_md": ".local_manifests/phase-4.4p1-pixiv-metadata-sheet.md",
+    "preview_dir": ".local_manifests/phase-4.4p1-pixiv-preview-derived",
+    "reference_details_json": ".local_manifests/phase-4.4p1-pixiv-live-reference-details.json",
+    "report_json": "docs/reports/phase-4.4p1-pixiv-live-reference-metadata-pilot-summary.json",
+    "report_md": "docs/reports/phase-4.4p1-pixiv-live-reference-metadata-pilot.md"
+  },
+  "correspondence_verification_distribution": {
+    "result_distribution": {
+      "auto_rejected_mismatch": 4,
+      "auto_verified_high_confidence": 1
+    },
+    "threshold_policy_version": "phase44p1-pilot-v1-not-production"
+  },
+  "db_identity": {
+    "actual_db_name": "blombooru",
+    "code_root_label": "repo_root",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "db_identity_result": "development_blombooru_confirmed",
+    "db_password_included": false,
+    "local_paths_redacted": true,
+    "settings_source": "code_root_data_settings_json",
+    "storage_root_mode": "code_root_default",
+    "violet_env": "development"
+  },
+  "future_persistence_recommendation": {
+    "filename_token_only_is_not_confirmed_evidence": true,
+    "p2_requires_db_write_approval": true,
+    "p2_should_persist_local_source_hint": true,
+    "reason": "At least one sample reached auto_verified_high_confidence.",
+    "recommended_next_route": "Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors"
+  },
+  "generated_at": "2026-05-31T15:39:57+00:00",
+  "metadata_availability_distribution": {
+    "field_availability_counts": {
+      "canonical_url": 5,
+      "description": 5,
+      "preview_image_candidates": 5,
+      "title": 5
+    },
+    "metadata_richness_distribution": {
+      "preview_only": 5
+    }
+  },
+  "optional_no_upload_booru_source_url_lookup": {
+    "provider": null,
+    "reason": "P1 inspected the option but did not enable a no-upload booru source-URL lookup route by default; exact source query syntax and disclosure policy should be approved separately before calls.",
+    "requests_attempted": 0,
+    "source_url_query_public": false,
+    "status": "no_upload_booru_lookup_policy_blocked"
+  },
+  "p0_correction": "P0 reference_lookup_policy_blocked was a policy result, not proof the Pixiv route is invalid.",
+  "phase": "4.4-P1",
+  "pixiv_public_page_probe_policy": {
+    "browser_automation": false,
+    "browser_session": false,
+    "concurrency": 1,
+    "cookies": false,
+    "delay_seconds": 2.0,
+    "full_original_download": false,
+    "login": false,
+    "max_sample_size": 10,
+    "public_report_exact_urls": false,
+    "referer_header": false,
+    "retry_storm": false,
+    "sample_size": 5,
+    "stop_on_403_429_login_captcha_consent_or_antibot": true,
+    "timeout_seconds": 10.0
+  },
+  "preview_reference_availability_distribution": {
+    "preview_status_distribution": {
+      "reference_preview_fetched": 5
+    }
+  },
+  "privacy_and_safety_confirmation": {
+    "app_managed_storage_mutation": false,
+    "automatic_entity_creation": false,
+    "broad_similarity_or_clustering": false,
+    "browser_automation": false,
+    "confirmed_assignment": false,
+    "cookies_or_login": false,
+    "db_migration": false,
+    "db_write": false,
+    "entity_evidence_write": false,
+    "entity_resolver": false,
+    "high_volume_requests": false,
+    "hotlink_or_referer_bypass": false,
+    "localization_execution": false,
+    "media_entity_assignment_write": false,
+    "media_entity_candidate_write": false,
+    "media_tags_mutation": false,
+    "merge": false,
+    "original_image_download": false,
+    "original_image_upload": false,
+    "provider_cache_write": false,
+    "public_exact_media_to_pixiv_mapping": false,
+    "push_main": false,
+    "source_or_icloud_mutation": false,
+    "tag_translation_mutation": false
+  },
+  "request_counts_and_status_distribution": {
+    "blocked_count": 0,
+    "final_url_host_distribution": {
+      "www.pixiv.net": 5
+    },
+    "http_status_distribution": {
+      "200": 5
+    },
+    "public_exact_urls": false,
+    "requests_attempted": 5,
+    "stopped_early": false
+  },
+  "reviewer_carry_forward": [
+    {
+      "finding": "Honor VIOLET_STORAGE_ROOT when loading runtime data/settings.json",
+      "p1_status": "implemented_in_p1_runner_and_tests"
+    },
+    {
+      "finding": "Public reports must record actual resolved local artifact paths when CLI output-path overrides are used",
+      "p1_status": "implemented_as_repo_relative_or_redacted_public_labels_with_local_absolute_details_private"
+    }
+  ],
+  "sample_selection": {
+    "category_counts": {
+      "content_class_anime": 5,
+      "duplicate_work_id_case": 2,
+      "non_p0_page": 1,
+      "p0_page": 4,
+      "prefixed_token": 1,
+      "suffix_timestamp_case": 2,
+      "token_at_basename_start": 4
+    },
+    "content_class_distribution": {
+      "anime": 5
+    },
+    "exact_media_ids_public": false,
+    "exact_pixiv_ids_public": false,
+    "max_items": 10,
+    "page_case_distribution": {
+      "non_p0": 1,
+      "p0": 4
+    },
+    "requested_sample_size": 5,
+    "sample_scope": "real_extracted_pixiv_prior_candidates",
+    "selected_count": 5,
+    "selection_strategy": "cover_non_p0_suffix_prefix_duplicate_work_id_and_p0_then_fill_anime_first"
+  },
+  "source_prior_extraction_metrics": {
+    "app_managed_storage_mutated": false,
+    "approved_five_sample_pixiv_prior_count": 0,
+    "approved_samples_are_representative_for_pixiv_prior": false,
+    "audit_scope": "development_db_app_managed_metadata_only",
+    "cloud_files_hydrated": false,
+    "content_class_distribution": {
+      "anime": 546,
+      "non_anime": 1,
+      "unknown": 8
+    },
+    "coverage_percent": 27.9,
+    "db_write_allowed": false,
+    "distinct_candidate_pixiv_work_ids": 551,
+    "duplicate_work_id_count": 3,
+    "exact_pixiv_ids_in_public_report": false,
+    "field_kind_distribution": {
+      "app_managed_basename": 555,
+      "stored_filename": 555,
+      "stored_path_basename": 555
+    },
+    "icloud_touched": false,
+    "invalid_or_variant_reasons": {},
+    "invalid_or_variant_token_count": 0,
+    "media_with_one_or_more_pixiv_like_tokens": 555,
+    "metadata_fields_present_counts": {
+      "app_managed_thumbnail_basename": 1989,
+      "other_source_basename": 1989,
+      "stored_filename": 1989,
+      "stored_path_basename": 1989
+    },
+    "metadata_retention_assessment": "filename_and_app_managed_basenames_available_but_no_dedicated_original_basename_or_source_prior_ledger",
+    "metadata_retention_gap": true,
+    "multiple_token_in_one_media_count": 0,
+    "original_source_files_read": false,
+    "page_index_distribution": {
+      "0": 498,
+      "1": 40,
+      "2": 11,
+      "3": 2,
+      "4": 1,
+      "5": 3
+    },
+    "source_field_distribution": {
+      "app_managed_thumbnail_basename": 555,
+      "stored_filename": 555,
+      "stored_path_basename": 555
+    },
+    "source_roots_scanned": false,
+    "total_candidate_filename_source_priors": 1665,
+    "total_media_inspected": 1989
+  },
+  "title": "Pixiv Source-Prior Live Reference / Metadata / Correspondence Pilot",
+  "why_p1_exists": "P0 showed significant filename prior coverage and designed the gate; P1 makes a bounded real public-page probe attempt without persistence."
+}
