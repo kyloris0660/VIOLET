@@ -6,6 +6,14 @@ P0 showed significant filename prior coverage and designed the gate; P1 makes a 
 
 P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence that the Pixiv filename-prior route is technically invalid.
 
+## Prior-Art Audit
+
+- Sources inspected: `[{"license_or_status": "GPL project; conceptual reference only", "name": "gallery-dl Pixiv extractor", "url": "https://github.com/mikf/gallery-dl/blob/master/gallery_dl/extractor/pixiv.py"}, {"license_or_status": "third-party unofficial API wrapper; no dependency added", "name": "pixivpy app API wrapper and models", "url": "https://github.com/upbit/pixivpy"}, {"license_or_status": "third-party downloader; conceptual reference only", "name": "PixivUtil2 downloader model/parser", "url": "https://github.com/Nandaka/PixivUtil2"}, {"license_or_status": "official public terms; no public unauthenticated metadata API found in bounded search", "name": "pixiv Service Master Terms of Use", "url": "https://www.pixiv.net/terms/?lang=en"}]`.
+- Concepts adopted: `["Treat Pixiv identity as artwork work_id plus zero-based page_index, matching the common id_pN filename convention.", "For multi-page works, keep the selected page_index from the filename prior instead of silently falling back to p0.", "When preload metadata is available, select the illust entry keyed by the requested work_id before reading title, artist, tags, page_count, or preview URLs.", "Keep preview URL handling allowlisted, HTTPS-only, redirect-checked, and counted separately from artwork page requests."]`.
+- Routes rejected for P1: `["gallery-dl-style authenticated/cookie/refresh-token flows and original image URL expansion.", "pixivpy app API illust_detail as a default path because it is an unofficial authenticated API route.", "PixivUtil2 downloader behavior that depends on login cookies, Referer, or original/medium image downloads.", "Any browser automation, Pixiv login, cookie import, hotlink bypass, or original image download."]`.
+- Current P1 public-page probe validity: Still valid only as a tiny bounded public-page metadata/preview probe. It is not a durable Pixiv API contract and must not persist filename-token-only rows or non-auto-verified rows without manual validation and separate DB-write approval.
+- Remaining unknowns: `["Whether Pixiv will consistently expose public preload metadata for all relevant public works without login.", "Whether preview thumbnails are representative enough for automated correspondence across crops, page variants, and manga pages.", "Whether a future approved no-upload booru/source adapter can provide richer entity metadata after a Pixiv/source candidate exists."]`.
+
 ## Sample Selection
 
 - Selected sample size: `5`.
@@ -27,8 +35,10 @@ P0's `reference_lookup_policy_blocked` result was a policy stop, not evidence th
 
 ## Pixiv Public-Page Probe Result
 
-- Requests attempted: `10`.
-- Network attempts including failures: `10`.
+- Page requests attempted: `10`.
+- Preview requests attempted: `4`.
+- Total network attempts including failures: `14`.
+- Requests attempted (legacy total): `14`.
 - HTTP status distribution: `{"200": 5}`.
 - Status-none count: `0`.
 - Network error distribution: `{}`.

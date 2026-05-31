@@ -44,7 +44,7 @@
     "reason": "At least one sample reached auto_verified_high_confidence, but non-auto-verified rows still require manual validation before P2.",
     "recommended_next_route": "Phase 4.4-P2 - Pixiv LocalSourceHint Persistence for Verified Source Priors"
   },
-  "generated_at": "2026-05-31T16:38:56+00:00",
+  "generated_at": "2026-05-31T17:13:05+00:00",
   "manual_validation_pack": {
     "contact_sheet_html": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.html",
     "contact_sheet_md": ".local_manifests/phase-4.4p1-pixiv-manual-validation-contact-sheet.md",
@@ -121,6 +121,50 @@
       "reference_preview_fetched": 4
     }
   },
+  "prior_art_audit": {
+    "concepts_adopted": [
+      "Treat Pixiv identity as artwork work_id plus zero-based page_index, matching the common id_pN filename convention.",
+      "For multi-page works, keep the selected page_index from the filename prior instead of silently falling back to p0.",
+      "When preload metadata is available, select the illust entry keyed by the requested work_id before reading title, artist, tags, page_count, or preview URLs.",
+      "Keep preview URL handling allowlisted, HTTPS-only, redirect-checked, and counted separately from artwork page requests."
+    ],
+    "current_p1_public_page_probe_validity": "Still valid only as a tiny bounded public-page metadata/preview probe. It is not a durable Pixiv API contract and must not persist filename-token-only rows or non-auto-verified rows without manual validation and separate DB-write approval.",
+    "exact_sample_details_public": false,
+    "public_safe": true,
+    "remaining_unknowns": [
+      "Whether Pixiv will consistently expose public preload metadata for all relevant public works without login.",
+      "Whether preview thumbnails are representative enough for automated correspondence across crops, page variants, and manga pages.",
+      "Whether a future approved no-upload booru/source adapter can provide richer entity metadata after a Pixiv/source candidate exists."
+    ],
+    "routes_rejected_for_p1": [
+      "gallery-dl-style authenticated/cookie/refresh-token flows and original image URL expansion.",
+      "pixivpy app API illust_detail as a default path because it is an unofficial authenticated API route.",
+      "PixivUtil2 downloader behavior that depends on login cookies, Referer, or original/medium image downloads.",
+      "Any browser automation, Pixiv login, cookie import, hotlink bypass, or original image download."
+    ],
+    "sources_inspected": [
+      {
+        "license_or_status": "GPL project; conceptual reference only",
+        "name": "gallery-dl Pixiv extractor",
+        "url": "https://github.com/mikf/gallery-dl/blob/master/gallery_dl/extractor/pixiv.py"
+      },
+      {
+        "license_or_status": "third-party unofficial API wrapper; no dependency added",
+        "name": "pixivpy app API wrapper and models",
+        "url": "https://github.com/upbit/pixivpy"
+      },
+      {
+        "license_or_status": "third-party downloader; conceptual reference only",
+        "name": "PixivUtil2 downloader model/parser",
+        "url": "https://github.com/Nandaka/PixivUtil2"
+      },
+      {
+        "license_or_status": "official public terms; no public unauthenticated metadata API found in bounded search",
+        "name": "pixiv Service Master Terms of Use",
+        "url": "https://www.pixiv.net/terms/?lang=en"
+      }
+    ]
+  },
   "privacy_and_safety_confirmation": {
     "app_managed_storage_mutation": false,
     "automatic_entity_creation": false,
@@ -155,12 +199,15 @@
     "http_status_distribution": {
       "200": 5
     },
-    "network_attempts_including_failures": 10,
+    "network_attempts_including_failures": 14,
     "network_error_distribution": {},
+    "page_requests_attempted": 10,
+    "preview_requests_attempted": 4,
     "public_exact_urls": false,
-    "requests_attempted": 10,
+    "requests_attempted": 14,
     "status_none_count": 0,
-    "stopped_early": false
+    "stopped_early": false,
+    "total_network_attempts_including_failures": 14
   },
   "reviewer_carry_forward": [
     {
@@ -206,6 +253,26 @@
     {
       "finding": "Restrict fallback sampling to anime items",
       "p1_status": "implemented_with_anime_only_selection_and_insufficient_anime_reporting_tests"
+    },
+    {
+      "finding": "Probe the bucket-specific Pixiv match selected for the sample",
+      "p1_status": "implemented_with_selected_match_preserved_through_probe_and_manual_validation_pack"
+    },
+    {
+      "finding": "Select preload metadata for the requested work ID",
+      "p1_status": "implemented_with_requested_work_key_selection_and_unrelated_entry_rejection_tests"
+    },
+    {
+      "finding": "Include preview fetches in request totals",
+      "p1_status": "implemented_with_page_preview_and_total_network_attempt_counts"
+    },
+    {
+      "finding": "Convert body-read timeouts into per-item failures",
+      "p1_status": "implemented_in_safe_http_get_read_path"
+    },
+    {
+      "finding": "Gate P2 on every non-verified outcome",
+      "p1_status": "implemented_with_status_generic_non_auto_gate"
     }
   ],
   "sample_selection": {

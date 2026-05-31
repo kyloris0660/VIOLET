@@ -169,6 +169,59 @@ def test_sample_selection_keeps_exact_ids_private(db):
     assert "100729533" in json.dumps(selected, ensure_ascii=False)
 
 
+def test_sample_selection_preserves_bucket_specific_non_p0_match(db, tmp_path):
+    media = _media(db, 1, filename="100729533_p0.jpg")
+    private = {
+        "details": [
+            {
+                "media_id": 1,
+                "content_class": "anime",
+                "matches": [
+                    {
+                        "source_field": "stored_filename",
+                        "pixiv_work_id": "100729533",
+                        "page_index": 0,
+                        "token": "100729533_p0",
+                        "contexts": ["p0_page", "token_at_basename_start"],
+                    },
+                    {
+                        "source_field": "app_managed_thumbnail_basename",
+                        "pixiv_work_id": "200000001",
+                        "page_index": 2,
+                        "token": "200000001_p2",
+                        "contexts": ["non_p0_page", "prefixed_token"],
+                    },
+                ],
+            }
+        ]
+    }
+
+    sample_summary, selected = p1.select_p1_sample(private, {1: media}, sample_size=1)
+
+    assert sample_summary["page_case_distribution"] == {"non_p0": 1}
+    assert selected[0]["selected_bucket_reason"] == "non_p0_page"
+    assert selected[0]["selected_match"]["token"] == "200000001_p2"
+
+    calls = []
+
+    def fake_page_get(url, **_kwargs):
+        calls.append(url)
+        return _html_result(url)
+
+    page_results, _corr = p1.probe_pixiv_pages(
+        selected,
+        timeout_seconds=1,
+        delay_seconds=0,
+        preview_dir=tmp_path,
+        storage_root=tmp_path,
+        page_http_get=fake_page_get,
+    )
+
+    assert calls == ["https://www.pixiv.net/artworks/200000001"]
+    assert page_results[0]["selected_token"] == "200000001_p2"
+    assert page_results[0]["page_index"] == 2
+
+
 def test_sample_selection_fallback_stays_anime_only(db):
     _media(db, 1, filename="100729533_p0.jpg", content_class=ContentClassEnum.anime)
     _media(db, 2, filename="200000001_p0.jpg", content_class=ContentClassEnum.unknown)
@@ -224,6 +277,10 @@ def test_public_report_excludes_exact_pixiv_ids_and_local_paths(db):
 
     p1.assert_public_payload_safe(summary, private_markers=private["distinct_pixiv_work_ids"])
     assert "100729533" not in json.dumps(summary, ensure_ascii=False)
+    assert summary["prior_art_audit"]["public_safe"] is True
+    report = p1.build_markdown_report(summary)
+    assert "## Prior-Art Audit" in report
+    p1.assert_public_payload_safe(report, private_markers=private["distinct_pixiv_work_ids"])
 
 
 def test_page_probe_headers_use_no_cookies_or_referer():
@@ -310,6 +367,71 @@ def test_metadata_parser_handles_meta_tag_preload_payload_and_redacts_public_rep
     p1.assert_public_payload_safe(public, private_markers=["100729533"])
 
 
+def test_metadata_parser_selects_requested_preload_work_id():
+    payload = json.dumps(
+        {
+            "illust": {
+                "111111111": {
+                    "title": "Wrong Work",
+                    "userName": "Wrong Artist",
+                    "userId": "1",
+                    "pageCount": 1,
+                    "tags": {"tags": [{"tag": "wrong"}]},
+                    "urls": {"small": "https://i.pximg.net/c/540x540_70/img-master/img/wrong_p0_master1200.jpg"},
+                },
+                "222222222": {
+                    "title": "Requested Work",
+                    "userName": "Requested Artist",
+                    "userId": "2",
+                    "pageCount": 4,
+                    "tags": {"tags": [{"tag": "right"}]},
+                    "urls": {"small": "https://i.pximg.net/c/540x540_70/img-master/img/right_p0_master1200.jpg"},
+                },
+            }
+        }
+    )
+    html_fixture = f'<script id="meta-preload-data" type="application/json">{payload}</script>'
+
+    metadata = p1.parse_public_metadata(html_fixture, requested_work_id="222222222")
+
+    assert metadata["preload_requested_work_found"] is True
+    assert metadata["metadata_work_id_used"] == "222222222"
+    assert metadata["title"] == "Requested Work"
+    assert metadata["artist_user_name"] == "Requested Artist"
+    assert metadata["page_count"] == 4
+    assert metadata["tags"] == ["right"]
+    assert all("wrong" not in candidate for candidate in metadata["preview_image_candidates"])
+
+
+def test_metadata_parser_does_not_merge_unrelated_preload_entries():
+    payload = json.dumps(
+        {
+            "illust": {
+                "111111111": {
+                    "title": "Unrelated Work",
+                    "userName": "Unrelated Artist",
+                    "pageCount": 8,
+                    "tags": {"tags": [{"tag": "unrelated"}]},
+                    "urls": {"small": "https://i.pximg.net/c/540x540_70/img-master/img/unrelated_p0_master1200.jpg"},
+                }
+            }
+        }
+    )
+    html_fixture = f'<meta id="meta-preload-data" content="{p1.html.escape(payload, quote=True)}">'
+
+    metadata = p1.parse_public_metadata(html_fixture, requested_work_id="222222222")
+
+    assert metadata["preload_payload_found"] is True
+    assert metadata["preload_data_found"] is True
+    assert metadata["preload_requested_work_found"] is False
+    assert metadata["metadata_work_id_used"] is None
+    assert metadata["title"] is None
+    assert metadata["artist_user_name"] is None
+    assert metadata["page_count"] is None
+    assert metadata["tags"] == []
+    assert metadata["preview_image_candidates"] == []
+
+
 def test_metadata_parser_malformed_meta_preload_fails_safely():
     metadata = p1.parse_public_metadata('<meta name="preload-data" content="{not-json">')
 
@@ -368,6 +490,7 @@ def test_preview_fetch_accepts_allowed_pixiv_image_host(tmp_path):
     assert result["status"] == "reference_preview_fetched"
     assert result["host_policy_status"] == "allowed_pixiv_image_host"
     assert result["preview_url_host"] == "i.pximg.net"
+    assert result["preview_network_attempt_count"] == 1
     assert calls[0][1]["allow_redirects"] is False
     assert Path(result["image_path"]).exists()
 
@@ -505,6 +628,33 @@ def test_preview_candidates_skip_unexpected_and_try_later_allowed_host(tmp_path)
     assert result["preview_candidates_total"] == 2
     assert result["preview_candidates_skipped_unexpected_host"] == 1
     assert result["preview_candidates_attempted_allowed"] == 1
+    assert result["preview_network_attempt_count"] == 1
+
+
+def test_preview_fetch_request_count_is_included_in_network_totals():
+    aggregate = p1.aggregate_public_results(
+        [
+            {
+                "media_id": 1,
+                "network_attempted": True,
+                "network_attempt_count": 1,
+                "http_status": 200,
+                "final_url": "https://www.pixiv.net/artworks/123456",
+                "metadata_richness": "preview_only",
+                "preview_result": {
+                    "status": "reference_preview_fetched",
+                    "host_policy_status": "allowed_pixiv_image_host",
+                    "preview_network_attempt_count": 2,
+                },
+            }
+        ],
+        [{"media_id": 1, "status": "auto_verified_high_confidence"}],
+    )
+
+    assert aggregate["pixiv_page_probe"]["page_requests_attempted"] == 1
+    assert aggregate["pixiv_page_probe"]["preview_requests_attempted"] == 2
+    assert aggregate["pixiv_page_probe"]["total_network_attempts_including_failures"] == 3
+    assert aggregate["pixiv_page_probe"]["requests_attempted"] == 3
 
 
 def test_preview_host_policy_aggregation_counts_blocked_host():
@@ -567,6 +717,37 @@ def test_network_error_counts_as_attempted_request(tmp_path):
     assert aggregate["pixiv_page_probe"]["http_status_distribution"] == {}
     assert aggregate["pixiv_page_probe"]["status_none_count"] == 1
     assert aggregate["pixiv_page_probe"]["network_error_distribution"]["url_error:TimeoutError"] == 1
+
+
+def test_safe_http_get_read_timeout_becomes_item_failure(monkeypatch):
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "text/html", "Content-Length": "100"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, *_args):
+            raise TimeoutError("body stalled")
+
+        def geturl(self):
+            return "https://www.pixiv.net/artworks/100729533"
+
+    monkeypatch.setattr(p1.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    result = p1.safe_http_get(
+        "https://www.pixiv.net/artworks/100729533",
+        accept="text/html",
+        timeout_seconds=1,
+        max_bytes=1024,
+    )
+
+    assert result.status is None
+    assert result.body == b""
+    assert result.error == "read_error:TimeoutError"
 
 
 def test_page_redirect_to_unknown_host_blocked_before_follow(tmp_path):
@@ -734,6 +915,35 @@ def test_optional_booru_lookup_is_blocked_by_default_and_with_reserved_flag():
     assert enabled["requests_attempted"] == 0
 
 
+@pytest.mark.parametrize(
+    "non_verified_status",
+    [
+        "auto_rejected_mismatch",
+        "preview_fetch_blocked",
+        "metadata_only_no_reference",
+        "unsupported_media_type",
+        "pixiv_page_blocked",
+        "network_error",
+        "uncertain_needs_manual_or_lookup",
+    ],
+)
+def test_future_recommendation_gates_p2_on_every_non_verified_outcome(non_verified_status):
+    aggregate = {
+        "correspondence_verification": {
+            "result_distribution": {
+                "auto_verified_high_confidence": 1,
+                non_verified_status: 1,
+            }
+        },
+        "metadata_availability": {"metadata_richness_distribution": {}},
+    }
+
+    recommendation = p1.future_recommendation(aggregate, p1.booru_lookup_policy_result())
+
+    assert recommendation["p2_should_persist_local_source_hint"] is False
+    assert recommendation["p2_should_wait_for_manual_validation"] is True
+
+
 def test_manual_validation_sheet_is_private_and_public_summary_is_redacted(tmp_path):
     local_rel = Path("media/thumbnails/1.jpg")
     local_abs = tmp_path / local_rel
@@ -744,6 +954,13 @@ def test_manual_validation_sheet_is_private_and_public_summary_is_redacted(tmp_p
     selected = [
         {
             "media_id": 1,
+            "selected_bucket_reason": "non_p0_page",
+            "selected_match": {
+                "source_field": "stored_filename",
+                "pixiv_work_id": "100729533",
+                "page_index": 0,
+                "token": "100729533_p0",
+            },
             "local_media": {
                 "filename": "100729533_p0.jpg",
                 "filename_basename": "100729533_p0.jpg",
@@ -757,9 +974,20 @@ def test_manual_validation_sheet_is_private_and_public_summary_is_redacted(tmp_p
             "media_id": 1,
             "pixiv_work_id": "100729533",
             "page_index": 0,
+            "selected_bucket_reason": "non_p0_page",
+            "selected_source_field": "stored_filename",
+            "selected_token": "100729533_p0",
+            "selected_pixiv_work_id": "100729533",
+            "selected_page_index": 0,
             "url": "https://www.pixiv.net/artworks/100729533",
             "metadata_richness": "rich_structured_metadata",
-            "metadata": {"title": "Private Title", "artist_user_name": "Artist", "tags": ["tag_a"], "page_count": 1},
+            "metadata": {
+                "title": "Private Title",
+                "artist_user_name": "Artist",
+                "tags": ["tag_a"],
+                "page_count": 1,
+                "metadata_work_id_used": "100729533",
+            },
             "preview_result": {
                 "status": "reference_preview_fetched",
                 "image_path": str(preview_path),
@@ -781,10 +1009,18 @@ def test_manual_validation_sheet_is_private_and_public_summary_is_redacted(tmp_p
 
     assert rows[0]["media_id"] == 1
     assert rows[0]["pixiv_work_id"] == "100729533"
+    assert rows[0]["selected_bucket_reason"] == "non_p0_page"
+    assert rows[0]["selected_source_field"] == "stored_filename"
+    assert rows[0]["selected_token"] == "100729533_p0"
+    assert rows[0]["selected_pixiv_work_id"] == "100729533"
+    assert rows[0]["selected_page_index"] == 0
+    assert rows[0]["metadata_work_id_used"] == "100729533"
     assert rows[0]["user_visual_match"] == ""
     assert rows[0]["user_notes"] == ""
     assert rows[0]["likely_mismatch_reason_bucket"] == "preview_crop_or_thumbnail_variant"
     assert "100729533" in sheet
+    assert "selected_bucket" in sheet
+    assert "metadata_work_id_used" in sheet
     assert str(local_abs) in sheet
 
     args = p1.build_arg_parser().parse_args([])
