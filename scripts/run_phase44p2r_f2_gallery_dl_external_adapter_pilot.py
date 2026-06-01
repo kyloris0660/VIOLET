@@ -49,6 +49,7 @@ PRIVATE_SHEET_CSV = PHASE_OUTPUT_DIR / "sheet.csv"
 PRIVATE_SHEET_MD = PHASE_OUTPUT_DIR / "sheet.md"
 PRIVATE_RAW_DIR = PHASE_OUTPUT_DIR / "raw"
 PRIVATE_DOWNLOAD_DIR = PHASE_OUTPUT_DIR / "downloads"
+PRIVATE_MANUAL_VALIDATION_GUIDE = PHASE_OUTPUT_DIR / "manual-validation-guide.md"
 
 DEFAULT_SAMPLE_SIZE = 5
 MAX_SAMPLE_SIZE = 10
@@ -275,6 +276,8 @@ class CommandResult:
     stderr_redacted: str
     error_class: str | None = None
     error_is_auth_or_config: bool = False
+    parsed_media_record_count: int = 0
+    blocked_over_limit: bool = False
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -285,6 +288,8 @@ class CommandResult:
             "stdout_bytes": self.stdout_bytes,
             "stderr_error_class": self.error_class,
             "error_is_auth_or_config": self.error_is_auth_or_config,
+            "parsed_media_record_count": self.parsed_media_record_count,
+            "blocked_over_limit": self.blocked_over_limit,
         }
 
 
@@ -597,6 +602,52 @@ def classify_stderr(stderr: str) -> tuple[str | None, bool]:
     return "gallery_dl_command_failed", False
 
 
+def _parse_gallery_dl_text(text_value: str, *, source_file: Path, skip_invalid: bool = False) -> f1.ParseResult:
+    result = f1.ParseResult(records=[], files=[source_file])
+    stripped = text_value.strip()
+    if not stripped:
+        return result
+    parsed_as_whole = False
+    if stripped[0] in "[{":
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            payload = None
+        else:
+            records, unsupported = f1._extract_raw_records(payload, source_file=source_file)
+            result.records.extend(records)
+            result.unsupported_shape_count += unsupported
+            parsed_as_whole = True
+    if parsed_as_whole:
+        return result
+    for line_no, line in enumerate(text_value.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            result.invalid_json_count += 1
+            if skip_invalid:
+                result.skipped_invalid_count += 1
+                continue
+            raise f1.JsonInputError(f"invalid_gallery_dl_json:{source_file}:{line_no}:{exc.msg}") from exc
+        records, unsupported = f1._extract_raw_records(payload, source_file=source_file, source_line=line_no)
+        result.records.extend(records)
+        result.unsupported_shape_count += unsupported
+    return result
+
+
+def _merge_parse_results(results: Sequence[f1.ParseResult]) -> f1.ParseResult:
+    merged = f1.ParseResult(records=[], files=[])
+    for result in results:
+        merged.records.extend(result.records)
+        merged.files.extend(result.files)
+        merged.invalid_json_count += result.invalid_json_count
+        merged.unsupported_shape_count += result.unsupported_shape_count
+        merged.skipped_invalid_count += result.skipped_invalid_count
+    return merged
+
+
 def _write_raw_stdout(raw_dir: Path, index: int, stdout: str) -> Path:
     raw_dir = resolve_repo_path(raw_dir)
     require_under_phase_output(raw_dir)
@@ -612,10 +663,14 @@ def run_metadata_commands(
     entrypoint: GalleryDlEntrypoint,
     raw_dir: Path,
     *,
+    max_records: int,
     runner: CompletedRunner = subprocess.run,
     timeout: int = 120,
-) -> list[CommandResult]:
+) -> tuple[list[CommandResult], f1.ParseResult]:
+    enforce_record_count(0, max_records)
     results: list[CommandResult] = []
+    accepted_parse_results: list[f1.ParseResult] = []
+    accepted_media_record_count = 0
     markers = [sample.work_id for sample in samples]
     for index, sample in enumerate(samples, start=1):
         command = build_metadata_command(entrypoint, sample.work_id)
@@ -660,10 +715,23 @@ def run_metadata_commands(
 
         stdout_path = None
         stdout = completed.stdout or ""
-        if stdout:
-            stdout_path = _write_raw_stdout(raw_dir, index, stdout)
         error_class, auth_blocked = classify_stderr(completed.stderr or "")
         success = completed.returncode == 0 and bool(stdout.strip())
+        parsed = f1.ParseResult(records=[], files=[])
+        parsed_media_count = 0
+        blocked_over_limit = False
+        if success:
+            candidate_path = resolve_repo_path(raw_dir) / f"metadata-{index:02d}.jsonl"
+            parsed = _parse_gallery_dl_text(stdout, source_file=candidate_path)
+            parsed_media_count = len(parsed.media_records)
+            if accepted_media_record_count + parsed_media_count > max_records:
+                success = False
+                blocked_over_limit = True
+                error_class = "generated_output_exceeds_max_records"
+            else:
+                stdout_path = _write_raw_stdout(raw_dir, index, stdout)
+                accepted_media_record_count += parsed_media_count
+                accepted_parse_results.append(parsed)
         results.append(
             CommandResult(
                 command_kind="metadata",
@@ -675,9 +743,13 @@ def run_metadata_commands(
                 stderr_redacted=redact_text(completed.stderr or "", private_markers=markers),
                 error_class=None if success else error_class or "empty_metadata_output",
                 error_is_auth_or_config=auth_blocked,
+                parsed_media_record_count=parsed_media_count,
+                blocked_over_limit=blocked_over_limit,
             )
         )
-    return results
+        if blocked_over_limit:
+            break
+    return results, _merge_parse_results(accepted_parse_results)
 
 
 def run_reference_download_commands(
@@ -848,6 +920,23 @@ def select_local_pixiv_prior_samples(prior_index: f1.LocalPriorIndex, *, sample_
     return public, selected
 
 
+def build_private_media_lookup(session: Session, media_ids: Iterable[int]) -> dict[str, dict[str, Any]]:
+    ids = sorted({int(media_id) for media_id in media_ids})
+    if not ids:
+        return {}
+    rows = session.query(f1.Media).filter(f1.Media.id.in_(ids)).order_by(f1.Media.id.asc()).all()
+    return {
+        str(int(row.id)): {
+            "media_id": int(row.id),
+            "filename": row.filename,
+            "path": row.path,
+            "thumbnail_path": row.thumbnail_path,
+            "content_class": f1._enum_label(row.content_class) or "unset",
+        }
+        for row in rows
+    }
+
+
 def parse_gallery_dl_json_inputs(input_path: str | Path, *, skip_invalid: bool = False) -> f1.ParseResult:
     return f1.parse_gallery_dl_json_inputs(input_path, skip_invalid=skip_invalid)
 
@@ -991,7 +1080,12 @@ def output_containment_summary(output_dir: Path, *, private_paths: Sequence[Path
     }
 
 
-def command_summary(command_results: Sequence[CommandResult], reference_results: Sequence[CommandResult]) -> dict[str, Any]:
+def command_summary(
+    command_results: Sequence[CommandResult],
+    reference_results: Sequence[CommandResult],
+    *,
+    max_record_limit: int,
+) -> dict[str, Any]:
     metadata = [result for result in command_results if result.command_kind == "metadata"]
     reference = [result for result in reference_results if result.command_kind == "reference_download"]
     return {
@@ -999,6 +1093,9 @@ def command_summary(command_results: Sequence[CommandResult], reference_results:
         "reference_command_template": GALLERY_DL_REFERENCE_COMMAND_TEMPLATE if reference else None,
         "exact_commands_private_only": True,
         "subprocess_uses_shell": False,
+        "max_record_limit": max_record_limit,
+        "record_cap_enforced_before_accepted_raw_write": True,
+        "blocked_over_limit_count": sum(1 for result in metadata if result.blocked_over_limit),
         "metadata_command_count": len(metadata),
         "metadata_success_count": sum(1 for result in metadata if result.success),
         "metadata_failure_count": sum(1 for result in metadata if not result.success),
@@ -1083,6 +1180,8 @@ def build_public_summary(
     command_public: Mapping[str, Any],
     download_public: Mapping[str, Any],
     containment: Mapping[str, Any],
+    raw_scope: Mapping[str, Any],
+    manual_validation_guide: Path,
 ) -> dict[str, Any]:
     richness_counts = Counter(record.metadata_richness for record in records)
     raw_shape_counts = Counter(record.record_shape for record in parse_result.records)
@@ -1118,6 +1217,9 @@ def build_public_summary(
         "command_summary": dict(command_public),
         "input_summary": {
             "raw_file_count": len(parse_result.files),
+            "current_run_raw_file_count": raw_scope.get("current_run_raw_file_count", len(parse_result.files)),
+            "stale_raw_files_ignored_count": raw_scope.get("stale_raw_files_ignored_count", 0),
+            "raw_input_scope": raw_scope.get("raw_input_scope", "current_run_only"),
             "raw_record_count": len(parse_result.records),
             "raw_event_count": parse_result.raw_event_count,
             "directory_context_event_count": parse_result.directory_context_event_count,
@@ -1144,6 +1246,24 @@ def build_public_summary(
             visual_check_performed=bool(download_public.get("downloaded_file_count")),
         ),
         "output_containment": dict(containment),
+        "manual_validation": {
+            "guide_private_path": _rel(resolve_repo_path(manual_validation_guide)),
+            "guide_is_private_ignored_artifact": True,
+            "ready_for_manual_prevalidation": True,
+        },
+        "deferred_reviewer_items": {
+            "deferred_reference_subset_status_mapping": (
+                "Deferred because the actual F2 rerun did not enable reference downloads; this becomes hardening for "
+                "the reference-download validation phase."
+            ),
+            "deferred_page_specific_reference_download": (
+                "Deferred because the actual F2 rerun did not perform reference downloads; page-specific range selection "
+                "must be fixed before validating reference-download mode."
+            ),
+            "deferred_dry_run_without_gallery_dl": (
+                "Deferred because this is CI/review convenience and does not affect the current real metadata pilot."
+            ),
+        },
         "normalized_dto": {
             "name": "PixivGalleryDlAdapterRecord",
             "source_adapter": "gallery_dl_external",
@@ -1229,6 +1349,7 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "## Metadata Records",
         "",
         f"- Input summary: `{json.dumps(summary['input_summary'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Current-run raw scope: `{summary['input_summary'].get('raw_input_scope')}`; current-run files `{summary['input_summary'].get('current_run_raw_file_count')}`, stale files ignored `{summary['input_summary'].get('stale_raw_files_ignored_count')}`.",
         f"- Schema field availability: `{json.dumps(summary['schema_field_availability'], ensure_ascii=False, sort_keys=True)}`.",
         f"- Metadata richness distribution: `{json.dumps(summary['metadata_richness_distribution'], ensure_ascii=False, sort_keys=True)}`.",
         f"- Raw record shape distribution: `{json.dumps(summary['raw_record_shape_distribution'], ensure_ascii=False, sort_keys=True)}`.",
@@ -1254,6 +1375,22 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "",
         f"- Containment: `{json.dumps(summary['output_containment'], ensure_ascii=False, sort_keys=True)}`.",
         "",
+        "## Git / PR Traceability",
+        "",
+        f"- Traceability: `{json.dumps(summary['git_context'], ensure_ascii=False, sort_keys=True)}`.",
+        "",
+        "## Manual Validation Guide",
+        "",
+        f"- Guide: `{json.dumps(summary['manual_validation'], ensure_ascii=False, sort_keys=True)}`.",
+        "",
+        "## Deferred Reviewer Items",
+        "",
+    ]
+    for key, value in summary["deferred_reviewer_items"].items():
+        lines.append(f"- `{key}`: {value}")
+    lines.extend(
+        [
+            "",
         "## External Adapter Route Readiness",
         "",
         f"- Readiness: `{json.dumps(summary['external_adapter_route_readiness'], ensure_ascii=False, sort_keys=True)}`.",
@@ -1266,7 +1403,8 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "",
         "## Safety Confirmation",
         "",
-    ]
+        ]
+    )
     for key, value in summary["privacy_and_safety_confirmation"].items():
         lines.append(f"- `{key}`: `{value}`.")
     lines.append("")
@@ -1275,7 +1413,12 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
     return report
 
 
-def build_private_sheet_csv(records: Sequence[PixivGalleryDlAdapterRecord]) -> str:
+def build_private_sheet_csv(
+    records: Sequence[PixivGalleryDlAdapterRecord],
+    *,
+    private_media_lookup: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
+    private_media_lookup = private_media_lookup or {}
     buffer = io.StringIO()
     writer = csv.DictWriter(
         buffer,
@@ -1295,6 +1438,9 @@ def build_private_sheet_csv(records: Sequence[PixivGalleryDlAdapterRecord]) -> s
             "reference_download_status",
             "correspondence_status",
             "local_media_id_private",
+            "local_filename_private",
+            "local_path_private",
+            "local_thumbnail_path_private",
             "duplicate_local_media_ids_private",
             "canonical_url",
             "gallery_dl_filename",
@@ -1303,6 +1449,7 @@ def build_private_sheet_csv(records: Sequence[PixivGalleryDlAdapterRecord]) -> s
     )
     writer.writeheader()
     for record in records:
+        media_private = private_media_lookup.get(str(record.local_media_id_private or ""), {})
         writer.writerow(
             {
                 "work_id": record.work_id or "",
@@ -1320,6 +1467,9 @@ def build_private_sheet_csv(records: Sequence[PixivGalleryDlAdapterRecord]) -> s
                 "reference_download_status": record.reference_download_status,
                 "correspondence_status": record.correspondence_status,
                 "local_media_id_private": record.local_media_id_private or "",
+                "local_filename_private": media_private.get("filename", ""),
+                "local_path_private": media_private.get("path", ""),
+                "local_thumbnail_path_private": media_private.get("thumbnail_path", ""),
                 "duplicate_local_media_ids_private": ";".join(str(item) for item in record.duplicate_local_media_ids_private),
                 "canonical_url": record.canonical_url or "",
                 "gallery_dl_filename": record.gallery_dl_filename or "",
@@ -1328,18 +1478,24 @@ def build_private_sheet_csv(records: Sequence[PixivGalleryDlAdapterRecord]) -> s
     return buffer.getvalue()
 
 
-def build_private_sheet_markdown(records: Sequence[PixivGalleryDlAdapterRecord]) -> str:
+def build_private_sheet_markdown(
+    records: Sequence[PixivGalleryDlAdapterRecord],
+    *,
+    private_media_lookup: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
+    private_media_lookup = private_media_lookup or {}
     lines = [
         "# Phase 4.4-P2R-F2 Private Mapping Sheet",
         "",
         "This ignored local artifact may contain exact Pixiv IDs, filenames, and media IDs.",
         "",
-        "| work_id | page_index | content_class | local_match_status | page_index_status | reference | correspondence | media_id |",
-        "|---|---:|---|---|---|---|---|---:|",
+        "| work_id | page_index | content_class | local_match_status | page_index_status | reference | correspondence | media_id | local_path | thumbnail_path |",
+        "|---|---:|---|---|---|---|---|---:|---|---|",
     ]
     for record in records:
+        media_private = private_media_lookup.get(str(record.local_media_id_private or ""), {})
         lines.append(
-            "| {work_id} | {page_index} | {content_class} | {match} | {page_status} | {reference} | {correspondence} | {media_id} |".format(
+            "| {work_id} | {page_index} | {content_class} | {match} | {page_status} | {reference} | {correspondence} | {media_id} | {local_path} | {thumbnail_path} |".format(
                 work_id=record.work_id or "",
                 page_index="" if record.page_index is None else record.page_index,
                 content_class=record.local_match_content_class or "",
@@ -1348,32 +1504,153 @@ def build_private_sheet_markdown(records: Sequence[PixivGalleryDlAdapterRecord])
                 reference=record.reference_download_status,
                 correspondence=record.correspondence_status,
                 media_id=record.local_media_id_private or "",
+                local_path=media_private.get("path", ""),
+                thumbnail_path=media_private.get("thumbnail_path", ""),
             )
         )
     lines.append("")
     return "\n".join(lines)
 
 
+def build_manual_validation_guide(
+    *,
+    records: Sequence[PixivGalleryDlAdapterRecord],
+    sheet_md: Path,
+    sheet_csv: Path,
+    details_json: Path,
+    private_media_lookup: Mapping[str, Mapping[str, Any]],
+) -> str:
+    eligible = [
+        record
+        for record in records
+        if record.local_match_status == "metadata_matches_eligible_anime_local_prior"
+    ]
+    lines = [
+        "# Phase 4.4-P2R-F2 人工预验收说明",
+        "",
+        "这是一份私有本地说明，可能包含精确 Pixiv ID、media_id、文件名和本地路径；不要提交到 GitHub。",
+        "",
+        "## 先打开哪个文件",
+        "",
+        f"1. 先打开 `{_rel(resolve_repo_path(sheet_md))}`，它是最适合逐行查看的人工验收表。",
+        f"2. 需要完整 JSON 细节时，再打开 `{_rel(resolve_repo_path(details_json))}`。",
+        f"3. 如果想用表格软件筛选，打开 `{_rel(resolve_repo_path(sheet_csv))}`。",
+        "",
+        "## 重点看哪些行",
+        "",
+        "优先检查 `local_match_status = metadata_matches_eligible_anime_local_prior` 的行。",
+        "这些行表示 gallery-dl 的 Pixiv metadata 与本地 anime content_class 的 filename prior 匹配，是未来 LocalSourceHint 设计最相关的候选。",
+        "`metadata_work_id_found_no_local_match` 行只说明本次 gallery-dl 返回了同一 work 的其他页或 metadata，但没有匹配到本地 filename prior；本轮不要把它们当作可持久化候选。",
+        "",
+        "## 每行怎么验",
+        "",
+        "对每个 eligible 行，按下面顺序检查：",
+        "",
+        "1. 看 `work_id` 和 `canonical_url`，手动打开 `https://www.pixiv.net/artworks/<work_id>`。",
+        "2. 看 `page_index` 和 `page_count`：`page_index` 是从 0 开始，Pixiv 页面通常显示为第 `page_index + 1` 张。",
+        "3. 看本地列：`local_path_private` / `local_thumbnail_path_private` / `local_filename_private`。优先用缩略图或本地媒体预览和 Pixiv 对应页做人工比对。",
+        "4. 看 metadata：`title`、`artist_name`、`artist_id`、`tags`、`translated_tags`、`caption`、`page_count`。",
+        "5. 如果 Pixiv 页面无法打开，记录为 `visual_match=uncertain`，不要凭 filename 强行确认。",
+        "",
+        "## 每行需要记录什么",
+        "",
+        "建议把下面字段填回给 ChatGPT，或复制成一个小表：",
+        "",
+        "| work_id | media_id | page_index | work_id_match | page_index_match | metadata_quality | visual_match | notes |",
+        "|---|---:|---:|---|---|---|---|---|",
+        "| <work_id> | <media_id> | <page_index> | yes/no/uncertain | yes/no/uncertain | rich/partial/poor | yes/no/uncertain | <备注> |",
+        "",
+        "判断建议：",
+        "",
+        "- `work_id_match=yes`：Pixiv 页面确实是本地文件对应的作品。",
+        "- `page_index_match=yes`：本地图像对应 Pixiv work 的同一页；多页作品尤其要看这里。",
+        "- `metadata_quality=rich`：title、artist、tags、page_count 基本齐全且合理。",
+        "- `visual_match=yes`：本地缩略图/媒体和 Pixiv 对应页视觉上是同一图或明确同一页。",
+        "- 任一项拿不准就填 `uncertain`，不要为了通过验收而猜。",
+        "",
+        "## 本轮 eligible 行清单",
+        "",
+        "| work_id | page_index | page_count | media_id | title | artist | local_path | thumbnail_path | Pixiv URL |",
+        "|---|---:|---:|---:|---|---|---|---|---|",
+    ]
+    for record in eligible:
+        media_private = private_media_lookup.get(str(record.local_media_id_private or ""), {})
+        lines.append(
+            "| {work_id} | {page_index} | {page_count} | {media_id} | {title} | {artist} | {local_path} | {thumbnail_path} | {url} |".format(
+                work_id=record.work_id or "",
+                page_index="" if record.page_index is None else record.page_index,
+                page_count="" if record.page_count is None else record.page_count,
+                media_id=record.local_media_id_private or "",
+                title=(record.title or "").replace("|", "\\|"),
+                artist=(record.artist_name or record.artist_id or "").replace("|", "\\|"),
+                local_path=str(media_private.get("path", "")).replace("|", "\\|"),
+                thumbnail_path=str(media_private.get("thumbnail_path", "")).replace("|", "\\|"),
+                url=record.canonical_url or "",
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## 如何汇总给 ChatGPT",
+            "",
+            "请给出：",
+            "",
+            "1. eligible 行总数、你实际检查了几行。",
+            "2. `visual_match=yes/no/uncertain` 的数量。",
+            "3. 是否发现 work_id 或 page_index 明显错误。",
+            "4. 是否 metadata 足够支持下一步 LocalSourceHint persistence design。",
+            "5. 如果多页或视觉对应不确定，请说明是否需要先进入 reference-download validation。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _empty_parse_result(raw_dir: Path) -> f1.ParseResult:
-    files = []
-    raw = resolve_repo_path(raw_dir)
-    if raw.exists():
-        files = sorted(path for path in raw.rglob("*") if path.is_file() and path.suffix.lower() in f1.JSON_EXTENSIONS)
-    return f1.ParseResult(records=[], files=files)
+    _ = raw_dir
+    return f1.ParseResult(records=[], files=[])
 
 
-def _git_context() -> dict[str, Any]:
+def current_run_raw_scope_summary(raw_dir: Path, accepted_raw_files: Sequence[str | Path]) -> dict[str, Any]:
+    root = resolve_repo_path(raw_dir)
+    accepted = {resolve_repo_path(path) for path in accepted_raw_files if path}
+    all_raw_files: set[Path] = set()
+    if root.exists():
+        all_raw_files = {
+            path.resolve()
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix.lower() in f1.JSON_EXTENSIONS
+        }
+    stale = sorted(all_raw_files - accepted)
+    return {
+        "raw_input_scope": "current_run_only",
+        "current_run_raw_file_count": len(accepted),
+        "stale_raw_files_ignored_count": len(stale),
+        "stale_raw_files_private": [_rel(path) for path in stale],
+    }
+
+
+def _git_context(*, pr_number: int | None = None, pr_head_sha: str | None = None) -> dict[str, Any]:
     def run_git(args: list[str]) -> str:
         try:
             return subprocess.check_output(["git", *args], cwd=str(ROOT), text=True, stderr=subprocess.DEVNULL).strip()
         except Exception:
             return ""
 
+    status = run_git(["status", "--porcelain"])
+    head_sha = run_git(["rev-parse", "HEAD"])
+    base_main_sha = run_git(["rev-parse", "origin/main"])
     return {
-        "branch": run_git(["branch", "--show-current"]),
-        "head_sha": run_git(["rev-parse", "HEAD"]),
-        "origin_main_sha": run_git(["rev-parse", "origin/main"]),
-        "head_equals_origin_main_at_branch_start": run_git(["rev-parse", "HEAD"]) == run_git(["rev-parse", "origin/main"]),
+        "base_main_sha": base_main_sha,
+        "branch_name": run_git(["branch", "--show-current"]),
+        "report_generation_head_sha": head_sha,
+        "origin_main_sha": base_main_sha,
+        "report_generated_from_worktree": True,
+        "working_tree_had_uncommitted_changes_at_report_generation": bool(status.strip()),
+        "pr_number": pr_number,
+        "pr_head_sha_at_report_generation": pr_head_sha or head_sha,
+        "final_pushed_commit_sha_reported_in_final_delivery": True,
+        "self_referential_commit_sha_not_embedded": True,
     }
 
 
@@ -1396,8 +1673,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--details-json", default=str(PRIVATE_DETAILS_JSON))
     parser.add_argument("--sheet-csv", default=str(PRIVATE_SHEET_CSV))
     parser.add_argument("--sheet-md", default=str(PRIVATE_SHEET_MD))
+    parser.add_argument("--manual-validation-guide", default=str(PRIVATE_MANUAL_VALIDATION_GUIDE))
     parser.add_argument("--raw-dir", default=str(PRIVATE_RAW_DIR))
     parser.add_argument("--download-dir", default=str(PRIVATE_DOWNLOAD_DIR))
+    parser.add_argument("--pr-number", type=int, default=89)
+    parser.add_argument("--pr-head-sha", default="")
     parser.add_argument("--pr88-state", default="MERGED")
     parser.add_argument("--pr88-merged-at", default="2026-06-01T05:51:44Z")
     parser.add_argument("--pr88-merge-commit", default="a9ea099d08b0fb51213cb3e82177d57f3200c627")
@@ -1416,6 +1696,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     details_json = resolve_repo_path(args.details_json)
     sheet_csv = resolve_repo_path(args.sheet_csv)
     sheet_md = resolve_repo_path(args.sheet_md)
+    manual_validation_guide = resolve_repo_path(args.manual_validation_guide)
 
     enforce_sample_size(args.sample_size)
     enforce_record_count(0, args.max_records)
@@ -1423,6 +1704,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     config = load_project_config(ROOT)
     db_identity: dict[str, Any] | None = None
     prior_index: f1.LocalPriorIndex | None = None
+    private_media_lookup: dict[str, dict[str, Any]] = {}
     if not args.no_db:
         engine = create_engine(config.database_url)
         f1.install_read_only_guard(engine)
@@ -1447,6 +1729,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         samples: list[SelectedSample] = []
     else:
         sample_public, samples = select_local_pixiv_prior_samples(prior_index, sample_size=args.sample_size)
+        if not args.no_db:
+            media_ids = [media_id for sample in samples for media_id in sample.local_media_ids_private]
+            engine = create_engine(config.database_url)
+            f1.install_read_only_guard(engine)
+            SessionLocal = sessionmaker(bind=engine)
+            session = SessionLocal()
+            try:
+                private_media_lookup = build_private_media_lookup(session, media_ids)
+            finally:
+                session.close()
+                engine.dispose()
     if len(samples) > MAX_SAMPLE_SIZE:
         raise SampleGateError("sample_size_exceeds_max_10")
 
@@ -1459,17 +1752,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.dry_run or args.skip_network:
         parse_result = _empty_parse_result(raw_dir)
     else:
-        metadata_results = run_metadata_commands(samples, entrypoint, raw_dir, timeout=args.timeout)
+        metadata_results, parse_result = run_metadata_commands(
+            samples,
+            entrypoint,
+            raw_dir,
+            max_records=args.max_records,
+            timeout=args.timeout,
+        )
         if metadata_results and not any(result.success for result in metadata_results):
             if any(result.error_is_auth_or_config for result in metadata_results):
                 raise GalleryDlAuthBlocked("gallery_dl_auth_or_config_blocked")
-        successful_raw_files = [
-            resolve_repo_path(result.stdout_path_private)
-            for result in metadata_results
-            if result.success and result.stdout_path_private
-        ]
-        parse_input = raw_dir if successful_raw_files else raw_dir
-        parse_result = parse_gallery_dl_json_inputs(parse_input) if successful_raw_files else _empty_parse_result(raw_dir)
         records = normalize_adapter_records(parse_result, entrypoint=entrypoint)
         enforce_record_count(len(records), args.max_records)
         records, join_summary = join_records_to_local_priors(records, prior_index)
@@ -1494,6 +1786,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "local_prior_content_class_distribution": prior_index.content_class_distribution if prior_index else {},
         }
 
+    successful_raw_files = [
+        result.stdout_path_private
+        for result in metadata_results
+        if result.success and result.stdout_path_private
+    ]
+    raw_scope = current_run_raw_scope_summary(raw_dir, successful_raw_files)
     download_public, download_private = summarize_download_artifacts(
         download_dir,
         cleanup=args.cleanup_downloads,
@@ -1506,9 +1804,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     containment = output_containment_summary(
         output_dir,
-        private_paths=[details_json, sheet_csv, sheet_md, raw_dir, download_dir],
+        private_paths=[details_json, sheet_csv, sheet_md, manual_validation_guide, raw_dir, download_dir],
     )
-    public_command = command_summary(metadata_results, reference_results)
+    public_command = command_summary(metadata_results, reference_results, max_record_limit=args.max_records)
     generated_at = _now_iso()
     pr_context = {
         "pr88_state": args.pr88_state,
@@ -1519,7 +1817,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     summary = build_public_summary(
         generated_at=generated_at,
         pr_context=pr_context,
-        git_context=_git_context(),
+        git_context=_git_context(pr_number=args.pr_number, pr_head_sha=args.pr_head_sha or None),
         entrypoint=entrypoint,
         db_identity=db_identity,
         sample_public=sample_public,
@@ -1529,6 +1827,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         command_public=public_command,
         download_public=download_public,
         containment=containment,
+        raw_scope=raw_scope,
+        manual_validation_guide=manual_validation_guide,
     )
     markers = _private_markers(records, samples)
     f1.assert_public_payload_safe(summary, private_markers=markers)
@@ -1545,19 +1845,32 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "metadata_command_results_private": [asdict(result) for result in metadata_results],
             "reference_command_results_private": [asdict(result) for result in reference_results],
             "records_private": [record.to_private_dict() for record in records],
+            "private_media_lookup": private_media_lookup,
+            "raw_scope_private": raw_scope,
             "download_artifacts": download_private,
             "db_identity_public": db_identity,
             "sample_summary_public": sample_public,
         },
     )
-    write_private_text(sheet_csv, build_private_sheet_csv(records))
-    write_private_text(sheet_md, build_private_sheet_markdown(records))
+    write_private_text(sheet_csv, build_private_sheet_csv(records, private_media_lookup=private_media_lookup))
+    write_private_text(sheet_md, build_private_sheet_markdown(records, private_media_lookup=private_media_lookup))
+    write_private_text(
+        manual_validation_guide,
+        build_manual_validation_guide(
+            records=records,
+            sheet_md=sheet_md,
+            sheet_csv=sheet_csv,
+            details_json=details_json,
+            private_media_lookup=private_media_lookup,
+        ),
+    )
     return {
         "ok": True,
         "phase": PHASE,
         "report_md": _rel(resolve_repo_path(args.report_md)),
         "report_json": _rel(resolve_repo_path(args.report_json)),
         "private_details": _rel(details_json),
+        "manual_validation_guide": _rel(manual_validation_guide),
         "sample_selected_count": sample_public.get("selected_count"),
         "metadata_success_count": public_command.get("metadata_success_count"),
         "metadata_failure_count": public_command.get("metadata_failure_count"),

@@ -1,7 +1,9 @@
 {
   "artifact_lifecycle": "phase_scoped_operational_runner",
   "command_summary": {
+    "blocked_over_limit_count": 0,
     "exact_commands_private_only": true,
+    "max_record_limit": 10,
     "metadata_auth_or_config_failure_count": 0,
     "metadata_command_count": 5,
     "metadata_command_template": "<gallery_dl_entrypoint> --dump-json --no-download https://www.pixiv.net/artworks/<WORK_ID>",
@@ -9,51 +11,62 @@
     "metadata_success_count": 5,
     "per_item_results_public": [
       {
+        "blocked_over_limit": false,
         "command_kind": "metadata",
         "error_is_auth_or_config": false,
         "exit_code": 0,
         "item_index": 1,
+        "parsed_media_record_count": 1,
         "stderr_error_class": null,
         "stdout_bytes": 3587,
         "success": true
       },
       {
+        "blocked_over_limit": false,
         "command_kind": "metadata",
         "error_is_auth_or_config": false,
         "exit_code": 0,
         "item_index": 2,
+        "parsed_media_record_count": 5,
         "stderr_error_class": null,
         "stdout_bytes": 17103,
         "success": true
       },
       {
+        "blocked_over_limit": false,
         "command_kind": "metadata",
         "error_is_auth_or_config": false,
         "exit_code": 0,
         "item_index": 3,
+        "parsed_media_record_count": 1,
         "stderr_error_class": null,
         "stdout_bytes": 3687,
         "success": true
       },
       {
+        "blocked_over_limit": false,
         "command_kind": "metadata",
         "error_is_auth_or_config": false,
         "exit_code": 0,
         "item_index": 4,
+        "parsed_media_record_count": 2,
         "stderr_error_class": null,
         "stdout_bytes": 6081,
         "success": true
       },
       {
+        "blocked_over_limit": false,
         "command_kind": "metadata",
         "error_is_auth_or_config": false,
         "exit_code": 0,
         "item_index": 5,
+        "parsed_media_record_count": 1,
         "stderr_error_class": null,
         "stdout_bytes": 3785,
         "success": true
       }
     ],
+    "record_cap_enforced_before_accepted_raw_write": true,
     "reference_command_count": 0,
     "reference_command_template": null,
     "reference_failure_count": 0,
@@ -91,6 +104,11 @@
     "settings_source": "defaults_without_settings_file",
     "storage_root_mode": "code_root_default",
     "violet_env": "development"
+  },
+  "deferred_reviewer_items": {
+    "deferred_dry_run_without_gallery_dl": "Deferred because this is CI/review convenience and does not affect the current real metadata pilot.",
+    "deferred_page_specific_reference_download": "Deferred because the actual F2 rerun did not perform reference downloads; page-specific range selection must be fixed before validating reference-download mode.",
+    "deferred_reference_subset_status_mapping": "Deferred because the actual F2 rerun did not enable reference downloads; this becomes hardening for the reference-download validation phase."
   },
   "download_summary": {
     "cleanup_file_count": 0,
@@ -132,21 +150,30 @@
     "uses_project_python": false,
     "version": "1.32.1"
   },
-  "generated_at": "2026-06-01T06:13:40+00:00",
+  "generated_at": "2026-06-01T09:24:04+00:00",
   "git_context": {
-    "branch": "codex/phase44p2r-f2-gallery-dl-external-adapter-pilot",
-    "head_equals_origin_main_at_branch_start": true,
-    "head_sha": "a9ea099d08b0fb51213cb3e82177d57f3200c627",
-    "origin_main_sha": "a9ea099d08b0fb51213cb3e82177d57f3200c627"
+    "base_main_sha": "a9ea099d08b0fb51213cb3e82177d57f3200c627",
+    "branch_name": "codex/phase44p2r-f2-gallery-dl-external-adapter-pilot",
+    "final_pushed_commit_sha_reported_in_final_delivery": true,
+    "origin_main_sha": "a9ea099d08b0fb51213cb3e82177d57f3200c627",
+    "pr_head_sha_at_report_generation": "09825417bf1eea248cb9118dc5d2d3a6e14bfe1d",
+    "pr_number": 89,
+    "report_generated_from_worktree": true,
+    "report_generation_head_sha": "09825417bf1eea248cb9118dc5d2d3a6e14bfe1d",
+    "self_referential_commit_sha_not_embedded": true,
+    "working_tree_had_uncommitted_changes_at_report_generation": true
   },
   "input_summary": {
+    "current_run_raw_file_count": 5,
     "directory_context_event_count": 5,
     "invalid_json_count": 0,
     "normalized_media_record_count": 10,
     "raw_event_count": 15,
     "raw_file_count": 5,
+    "raw_input_scope": "current_run_only",
     "raw_record_count": 15,
     "skipped_invalid_count": 0,
+    "stale_raw_files_ignored_count": 0,
     "unsupported_shape_count": 0,
     "url_media_event_count": 10
   },
@@ -180,6 +207,11 @@
       "metadata_matches_eligible_anime_local_prior": 6,
       "metadata_work_id_found_no_local_match": 4
     }
+  },
+  "manual_validation": {
+    "guide_is_private_ignored_artifact": true,
+    "guide_private_path": ".local_manifests/phase-4.4p2r-f2-gallery-dl-external-adapter-pilot/manual-validation-guide.md",
+    "ready_for_manual_prevalidation": true
   },
   "metadata_richness_distribution": {
     "rich_structured_metadata": 10

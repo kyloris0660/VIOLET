@@ -29,11 +29,12 @@ PR #88 validated local gallery-dl JSON import. F2 tests whether V.I.O.L.E.T. can
 
 ## Command Results
 
-- Command summary: `{"exact_commands_private_only": true, "metadata_auth_or_config_failure_count": 0, "metadata_command_count": 5, "metadata_command_template": "<gallery_dl_entrypoint> --dump-json --no-download https://www.pixiv.net/artworks/<WORK_ID>", "metadata_failure_count": 0, "metadata_success_count": 5, "per_item_results_public": [{"command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 1, "stderr_error_class": null, "stdout_bytes": 3587, "success": true}, {"command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 2, "stderr_error_class": null, "stdout_bytes": 17103, "success": true}, {"command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 3, "stderr_error_class": null, "stdout_bytes": 3687, "success": true}, {"command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 4, "stderr_error_class": null, "stdout_bytes": 6081, "success": true}, {"command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 5, "stderr_error_class": null, "stdout_bytes": 3785, "success": true}], "reference_command_count": 0, "reference_command_template": null, "reference_failure_count": 0, "reference_success_count": 0, "subprocess_uses_shell": false}`.
+- Command summary: `{"blocked_over_limit_count": 0, "exact_commands_private_only": true, "max_record_limit": 10, "metadata_auth_or_config_failure_count": 0, "metadata_command_count": 5, "metadata_command_template": "<gallery_dl_entrypoint> --dump-json --no-download https://www.pixiv.net/artworks/<WORK_ID>", "metadata_failure_count": 0, "metadata_success_count": 5, "per_item_results_public": [{"blocked_over_limit": false, "command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 1, "parsed_media_record_count": 1, "stderr_error_class": null, "stdout_bytes": 3587, "success": true}, {"blocked_over_limit": false, "command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 2, "parsed_media_record_count": 5, "stderr_error_class": null, "stdout_bytes": 17103, "success": true}, {"blocked_over_limit": false, "command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 3, "parsed_media_record_count": 1, "stderr_error_class": null, "stdout_bytes": 3687, "success": true}, {"blocked_over_limit": false, "command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 4, "parsed_media_record_count": 2, "stderr_error_class": null, "stdout_bytes": 6081, "success": true}, {"blocked_over_limit": false, "command_kind": "metadata", "error_is_auth_or_config": false, "exit_code": 0, "item_index": 5, "parsed_media_record_count": 1, "stderr_error_class": null, "stdout_bytes": 3785, "success": true}], "record_cap_enforced_before_accepted_raw_write": true, "reference_command_count": 0, "reference_command_template": null, "reference_failure_count": 0, "reference_success_count": 0, "subprocess_uses_shell": false}`.
 
 ## Metadata Records
 
-- Input summary: `{"directory_context_event_count": 5, "invalid_json_count": 0, "normalized_media_record_count": 10, "raw_event_count": 15, "raw_file_count": 5, "raw_record_count": 15, "skipped_invalid_count": 0, "unsupported_shape_count": 0, "url_media_event_count": 10}`.
+- Input summary: `{"current_run_raw_file_count": 5, "directory_context_event_count": 5, "invalid_json_count": 0, "normalized_media_record_count": 10, "raw_event_count": 15, "raw_file_count": 5, "raw_input_scope": "current_run_only", "raw_record_count": 15, "skipped_invalid_count": 0, "stale_raw_files_ignored_count": 0, "unsupported_shape_count": 0, "url_media_event_count": 10}`.
+- Current-run raw scope: `current_run_only`; current-run files `5`, stale files ignored `0`.
 - Schema field availability: `{"artist_id": 10, "artist_name": 10, "caption": 7, "extractor_category": 10, "gallery_dl_filename": 10, "image_url_kinds": 10, "page_count": 10, "page_index": 10, "tags": 10, "title": 10, "translated_tags": 0, "work_id": 10}`.
 - Metadata richness distribution: `{"rich_structured_metadata": 10}`.
 - Raw record shape distribution: `{"gallery_dl_directory_context_event": 5, "gallery_dl_url_media_event": 10}`.
@@ -58,6 +59,20 @@ PR #88 validated local gallery-dl JSON import. F2 tests whether V.I.O.L.E.T. can
 ## Output Containment
 
 - Containment: `{"gitignored_private_artifacts": true, "output_path_violation": false, "phase_output_root": ".local_manifests/<phase-private-root>", "private_artifacts_under_phase_root": true, "public_reports_under_docs_reports": true}`.
+
+## Git / PR Traceability
+
+- Traceability: `{"base_main_sha": "a9ea099d08b0fb51213cb3e82177d57f3200c627", "branch_name": "codex/phase44p2r-f2-gallery-dl-external-adapter-pilot", "final_pushed_commit_sha_reported_in_final_delivery": true, "origin_main_sha": "a9ea099d08b0fb51213cb3e82177d57f3200c627", "pr_head_sha_at_report_generation": "09825417bf1eea248cb9118dc5d2d3a6e14bfe1d", "pr_number": 89, "report_generated_from_worktree": true, "report_generation_head_sha": "09825417bf1eea248cb9118dc5d2d3a6e14bfe1d", "self_referential_commit_sha_not_embedded": true, "working_tree_had_uncommitted_changes_at_report_generation": true}`.
+
+## Manual Validation Guide
+
+- Guide: `{"guide_is_private_ignored_artifact": true, "guide_private_path": ".local_manifests/phase-4.4p2r-f2-gallery-dl-external-adapter-pilot/manual-validation-guide.md", "ready_for_manual_prevalidation": true}`.
+
+## Deferred Reviewer Items
+
+- `deferred_reference_subset_status_mapping`: Deferred because the actual F2 rerun did not enable reference downloads; this becomes hardening for the reference-download validation phase.
+- `deferred_page_specific_reference_download`: Deferred because the actual F2 rerun did not perform reference downloads; page-specific range selection must be fixed before validating reference-download mode.
+- `deferred_dry_run_without_gallery_dl`: Deferred because this is CI/review convenience and does not affect the current real metadata pilot.
 
 ## External Adapter Route Readiness
 

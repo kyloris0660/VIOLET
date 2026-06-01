@@ -128,8 +128,9 @@ def test_command_construction_uses_argument_list_and_no_shell(tmp_path):
     raw_dir = pilot.PHASE_OUTPUT_DIR / "raw-unit-test-command"
     shutil.rmtree(ROOT / raw_dir, ignore_errors=True)
     try:
-        result = pilot.run_metadata_commands([sample], _entrypoint(), raw_dir, runner=fake_run)
+        result, parse_result = pilot.run_metadata_commands([sample], _entrypoint(), raw_dir, max_records=10, runner=fake_run)
         assert result[0].success is True
+        assert len(parse_result.media_records) == 1
         assert isinstance(seen["args"], list)
         assert seen["shell"] is False
         assert seen["args"][:3] == ["py", "-m", "gallery_dl"]
@@ -137,6 +138,149 @@ def test_command_construction_uses_argument_list_and_no_shell(tmp_path):
         assert "--no-download" in seen["args"]
     finally:
         shutil.rmtree(ROOT / raw_dir, ignore_errors=True)
+
+
+def test_stale_raw_file_is_ignored_and_current_raw_is_parsed():
+    raw_dir = pilot.PHASE_OUTPUT_DIR / "raw-unit-test-stale"
+    raw_root = ROOT / raw_dir
+    shutil.rmtree(raw_root, ignore_errors=True)
+    raw_root.mkdir(parents=True)
+    (raw_root / "stale.jsonl").write_text(
+        json.dumps([3, {"id": 199999999, "num": 0, "filename": "199999999_p0"}]),
+        encoding="utf-8",
+    )
+    sample = pilot.SelectedSample(
+        work_id="100000021",
+        page_indexes=(0,),
+        content_classes=("anime",),
+        local_media_ids_private=(21,),
+        local_basenames_private=("100000021_p0.jpg",),
+        has_p0_page=True,
+        has_non_p0_page=False,
+        duplicate_or_ambiguous=False,
+    )
+
+    def fake_run(args, **kwargs):
+        return _completed(args, stdout=json.dumps([3, {"id": 100000021, "num": 0, "filename": "100000021_p0"}]))
+
+    try:
+        results, parse_result = pilot.run_metadata_commands([sample], _entrypoint(), raw_dir, max_records=10, runner=fake_run)
+        raw_scope = pilot.current_run_raw_scope_summary(
+            raw_dir,
+            [result.stdout_path_private for result in results if result.stdout_path_private],
+        )
+        records = pilot.normalize_adapter_records(parse_result, entrypoint=_entrypoint())
+        assert [record.work_id for record in records] == ["100000021"]
+        assert raw_scope["current_run_raw_file_count"] == 1
+        assert raw_scope["stale_raw_files_ignored_count"] == 1
+    finally:
+        shutil.rmtree(raw_root, ignore_errors=True)
+
+
+def test_rerun_with_smaller_sample_does_not_include_previous_records():
+    raw_dir = pilot.PHASE_OUTPUT_DIR / "raw-unit-test-rerun"
+    raw_root = ROOT / raw_dir
+    shutil.rmtree(raw_root, ignore_errors=True)
+    raw_root.mkdir(parents=True)
+    (raw_root / "metadata-02.jsonl").write_text(
+        json.dumps([3, {"id": 100000022, "num": 0, "filename": "100000022_p0"}]),
+        encoding="utf-8",
+    )
+    sample = pilot.SelectedSample(
+        work_id="100000023",
+        page_indexes=(0,),
+        content_classes=("anime",),
+        local_media_ids_private=(23,),
+        local_basenames_private=("100000023_p0.jpg",),
+        has_p0_page=True,
+        has_non_p0_page=False,
+        duplicate_or_ambiguous=False,
+    )
+
+    def fake_run(args, **kwargs):
+        return _completed(args, stdout=json.dumps([3, {"id": 100000023, "num": 0, "filename": "100000023_p0"}]))
+
+    try:
+        _, parse_result = pilot.run_metadata_commands([sample], _entrypoint(), raw_dir, max_records=10, runner=fake_run)
+        records = pilot.normalize_adapter_records(parse_result, entrypoint=_entrypoint())
+        assert [record.work_id for record in records] == ["100000023"]
+    finally:
+        shutil.rmtree(raw_root, ignore_errors=True)
+
+
+def test_record_cap_allows_within_limit_and_writes_accepted_raw():
+    raw_dir = pilot.PHASE_OUTPUT_DIR / "raw-unit-test-cap-ok"
+    raw_root = ROOT / raw_dir
+    shutil.rmtree(raw_root, ignore_errors=True)
+    sample = pilot.SelectedSample(
+        work_id="100000024",
+        page_indexes=(0,),
+        content_classes=("anime",),
+        local_media_ids_private=(24,),
+        local_basenames_private=("100000024_p0.jpg",),
+        has_p0_page=True,
+        has_non_p0_page=False,
+        duplicate_or_ambiguous=False,
+    )
+
+    def fake_run(args, **kwargs):
+        return _completed(
+            args,
+            stdout="\n".join(
+                [
+                    json.dumps([3, {"id": 100000024, "num": 0, "filename": "100000024_p0"}]),
+                    json.dumps([3, {"id": 100000024, "num": 1, "filename": "100000024_p1"}]),
+                ]
+            ),
+        )
+
+    try:
+        results, parse_result = pilot.run_metadata_commands([sample], _entrypoint(), raw_dir, max_records=2, runner=fake_run)
+        assert results[0].success is True
+        assert results[0].blocked_over_limit is False
+        assert len(parse_result.media_records) == 2
+        assert (raw_root / "metadata-01.jsonl").exists()
+    finally:
+        shutil.rmtree(raw_root, ignore_errors=True)
+
+
+def test_record_cap_blocks_before_accepted_raw_write():
+    raw_dir = pilot.PHASE_OUTPUT_DIR / "raw-unit-test-cap-block"
+    raw_root = ROOT / raw_dir
+    shutil.rmtree(raw_root, ignore_errors=True)
+    sample = pilot.SelectedSample(
+        work_id="100000025",
+        page_indexes=(0,),
+        content_classes=("anime",),
+        local_media_ids_private=(25,),
+        local_basenames_private=("100000025_p0.jpg",),
+        has_p0_page=True,
+        has_non_p0_page=False,
+        duplicate_or_ambiguous=False,
+    )
+
+    def fake_run(args, **kwargs):
+        return _completed(
+            args,
+            stdout="\n".join(
+                [
+                    json.dumps([3, {"id": 100000025, "num": 0, "filename": "100000025_p0"}]),
+                    json.dumps([3, {"id": 100000025, "num": 1, "filename": "100000025_p1"}]),
+                ]
+            ),
+        )
+
+    try:
+        results, parse_result = pilot.run_metadata_commands([sample], _entrypoint(), raw_dir, max_records=1, runner=fake_run)
+        assert results[0].success is False
+        assert results[0].blocked_over_limit is True
+        assert results[0].error_class == "generated_output_exceeds_max_records"
+        assert len(parse_result.media_records) == 0
+        assert not (raw_root / "metadata-01.jsonl").exists()
+        raw_scope = pilot.current_run_raw_scope_summary(raw_dir, [])
+        assert raw_scope["current_run_raw_file_count"] == 0
+    finally:
+        shutil.rmtree(raw_root, ignore_errors=True)
 
 
 def test_project_python_module_mode_uses_sys_executable():
@@ -267,6 +411,8 @@ def test_public_report_redacts_exact_ids_paths_and_secret_payloads(tmp_path):
         command_public={"metadata_command_count": 1},
         download_public={"downloaded_file_count": 0, "downloaded_total_bytes": 0},
         containment={"output_path_violation": False},
+        raw_scope={"raw_input_scope": "current_run_only", "current_run_raw_file_count": 1, "stale_raw_files_ignored_count": 0},
+        manual_validation_guide=pilot.PRIVATE_MANUAL_VALIDATION_GUIDE,
     )
     report = pilot.build_markdown_report(summary, private_markers=["100000003", "100000003_p0.jpg", str(tmp_path)])
     assert "100000003" not in json.dumps(summary, ensure_ascii=False)
@@ -353,3 +499,13 @@ def test_private_artifact_paths_must_stay_under_local_manifests(tmp_path):
     assert containment["private_artifacts_under_phase_root"] is True
     with pytest.raises(pilot.OutputPathError, match="gallery_dl_output_path_violation"):
         pilot.output_containment_summary(pilot.PHASE_OUTPUT_DIR, private_paths=[tmp_path / "outside.json"])
+
+
+def test_git_context_reports_pr_traceability_fields():
+    context = pilot._git_context(pr_number=89, pr_head_sha="abc123")
+    assert context["pr_number"] == 89
+    assert context["pr_head_sha_at_report_generation"] == "abc123"
+    assert context["report_generated_from_worktree"] is True
+    assert "base_main_sha" in context
+    assert "branch_name" in context
+    assert "working_tree_had_uncommitted_changes_at_report_generation" in context
