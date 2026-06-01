@@ -2,8 +2,9 @@
 
 Lifecycle: phase-scoped operational runner. It invokes a user-installed
 gallery-dl boundary for a bounded Pixiv filename-prior sample, converts raw
-Pixiv metadata into non-persistent tag/entity candidates, writes public-safe
-reports plus ignored private artifacts, and never writes database rows.
+Pixiv metadata into tag/entity candidate middleware rows, writes public-safe
+reports plus ignored private artifacts, and writes only the approved external
+tag category lookup cache table when DB cache writes are enabled.
 """
 
 from __future__ import annotations
@@ -16,14 +17,18 @@ import os
 import re
 import subprocess
 import sys
+import time
 import unicodedata
+import urllib.error
+import urllib.request
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
+from urllib.parse import quote
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,12 +45,20 @@ from app.enums import (  # noqa: E402
     EntityTypeEnum,
     TagCategoryEnum,
 )
-from app.models import Entity, EntityAlias, EntityExternalIdentity, Tag, TagAlias  # noqa: E402
+from app.database import migrate_add_external_tag_category_lookup_cache  # noqa: E402
+from app.models import (  # noqa: E402
+    Entity,
+    EntityAlias,
+    EntityExternalIdentity,
+    ExternalTagCategoryLookupCache,
+    Tag,
+    TagAlias,
+)
 from scripts import run_phase44p2r_f1_gallery_dl_json_import_pilot as f1  # noqa: E402
 from scripts import run_phase44p2r_f2_gallery_dl_external_adapter_pilot as f2  # noqa: E402
 
-PHASE = "4.4-P2R-F3"
-TITLE = "Pixiv Metadata Normalization and Tag/Entity Candidate Middleware Pilot"
+PHASE = "4.4-P2R-F3b"
+TITLE = "Automated Pixiv Tag Category Lookup and Classification Cache Pilot"
 PHASE_SLUG = "phase-4.4p2r-f3-pixiv-metadata-normalization-pilot"
 
 REPORT_MD = Path(f"docs/reports/{PHASE_SLUG}.md")
@@ -58,6 +71,8 @@ PRIVATE_TAG_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "tag-candidates.csv"
 PRIVATE_TAG_CANDIDATES_MD = PHASE_OUTPUT_DIR / "tag-candidates.md"
 PRIVATE_ENTITY_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "entity-candidates.csv"
 PRIVATE_ENTITY_CANDIDATES_MD = PHASE_OUTPUT_DIR / "entity-candidates.md"
+PRIVATE_LOOKUP_CACHE_CSV = PHASE_OUTPUT_DIR / "lookup-cache-sheet.csv"
+PRIVATE_LOOKUP_CACHE_MD = PHASE_OUTPUT_DIR / "lookup-cache-sheet.md"
 PRIVATE_MANUAL_REVIEW_GUIDE = PHASE_OUTPUT_DIR / "manual-review-guide.md"
 PRIVATE_RAW_DIR = PHASE_OUTPUT_DIR / "raw"
 
@@ -65,9 +80,23 @@ DEFAULT_SAMPLE_SIZE = 30
 MAX_SAMPLE_SIZE = 50
 DEFAULT_MAX_RECORDS = 200
 MAX_RECORDS_WITHOUT_RENEWED_APPROVAL = 200
+DEFAULT_TAG_LOOKUP_LIMIT = 200
+MAX_TAG_LOOKUP_LIMIT_WITHOUT_RENEWED_APPROVAL = 500
+DEFAULT_TAG_LOOKUP_DELAY_SECONDS = 0.25
+DEFAULT_TAG_LOOKUP_TIMEOUT_SECONDS = 20
 GALLERY_DL_METADATA_COMMAND_TEMPLATE = (
     "<gallery_dl_entrypoint> --dump-json --no-download https://www.pixiv.net/artworks/<WORK_ID>"
 )
+EXTERNAL_TAG_LOOKUP_SOURCE = "danbooru_tags_and_aliases_api_v1"
+EXTERNAL_TAG_LOOKUP_BASE_URL = "https://danbooru.donmai.us/tags.json"
+EXTERNAL_TAG_ALIAS_LOOKUP_BASE_URL = "https://danbooru.donmai.us/tag_aliases.json"
+EXTERNAL_TAG_LOOKUP_DOC_URL = "https://danbooru.donmai.us/wiki_pages/help%3Aapi"
+EXTERNAL_TAG_LOOKUP_USER_AGENT = "VIOLET-Phase44P2R-F3b/1.0 (bounded tag category lookup pilot)"
+PREVIOUS_F3_BASELINE = {
+    "ambiguous_unknown_candidate_count": 305,
+    "copyright_series_candidate_count": 0,
+    "character_candidate_count": 0,
+}
 
 GENERAL_DESCRIPTOR_TERMS = frozenset(
     {
@@ -132,6 +161,29 @@ SENSITIVE_OR_META_TERMS = frozenset(
 ORIGINAL_WORK_TERMS = frozenset({"original", "oc", "創作", "オリジナル", "原创", "原創"})
 ENTITY_NAMESPACES = frozenset({"artist", "character", "copyright"})
 LOOKUP_SOURCE_EXTERNAL_DISABLED = "external_category_lookup_disabled_in_f3"
+PIXIV_IDENTITY_PROVIDERS = frozenset(
+    {
+        "pixiv",
+        "pixiv_user",
+        "pixiv_user_id",
+        "pixiv_artist",
+        "pixiv_artist_id",
+    }
+)
+FORBIDDEN_TRUTH_TABLES = frozenset(
+    {
+        "blombooru_entities",
+        "blombooru_entity_aliases",
+        "blombooru_entity_external_identities",
+        "blombooru_entity_evidence",
+        "blombooru_media_entity_candidates",
+        "blombooru_media_entity_assignments",
+        "blombooru_media_tags",
+        "blombooru_provider_cache",
+        "blombooru_negative_lookup_cache",
+        "blombooru_tag_translations",
+    }
+)
 
 GalleryDlEntrypoint = f2.GalleryDlEntrypoint
 CommandResult = f2.CommandResult
@@ -183,15 +235,78 @@ class LocalEntityMatch:
     confidence: float = 0.9
 
 
+@dataclass(frozen=True)
+class ExternalTagLookupResult:
+    raw_tag: str
+    normalized_tag: str
+    lookup_source: str
+    source_tag_id: str | None
+    source_tag_name: str | None
+    source_category_raw: str | None
+    mapped_candidate_namespace: str | None
+    confidence: float | None
+    provenance_url_or_key: str | None
+    status: str
+    cache_status: str
+    lookup_error: str | None = None
+
+    def to_cache_fields(self) -> dict[str, Any]:
+        return {
+            "raw_tag": self.raw_tag,
+            "normalized_tag": self.normalized_tag,
+            "lookup_source": self.lookup_source,
+            "source_tag_id": self.source_tag_id,
+            "source_tag_name": self.source_tag_name,
+            "source_category_raw": self.source_category_raw,
+            "mapped_candidate_namespace": self.mapped_candidate_namespace,
+            "confidence": self.confidence,
+            "provenance_url_or_key": self.provenance_url_or_key,
+            "status": self.status,
+            "last_checked_at": datetime.now(timezone.utc),
+            "lookup_error": self.lookup_error,
+            "manual_override_status": "none",
+        }
+
+    def to_private_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ExternalLookupSummary:
+    lookup_source: str = EXTERNAL_TAG_LOOKUP_SOURCE
+    enabled: bool = True
+    unique_normalized_tag_count: int = 0
+    lookup_limit: int = DEFAULT_TAG_LOOKUP_LIMIT
+    hard_lookup_limit: int = MAX_TAG_LOOKUP_LIMIT_WITHOUT_RENEWED_APPROVAL
+    lookup_delay_seconds: float = DEFAULT_TAG_LOOKUP_DELAY_SECONDS
+    lookup_timeout_seconds: int = DEFAULT_TAG_LOOKUP_TIMEOUT_SECONDS
+    request_count: int = 0
+    cache_hit_count: int = 0
+    cache_miss_count: int = 0
+    cache_write_count: int = 0
+    cache_write_enabled: bool = True
+    provider_blocked: bool = False
+    provider_block_reason: str | None = None
+    hit_count: int = 0
+    not_found_count: int = 0
+    lookup_error_count: int = 0
+    resolved_namespace_counts: dict[str, int] = field(default_factory=dict)
+
+    def public_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 @dataclass
 class LocalClassificationIndex:
     tag_matches: dict[str, LocalTagCategoryMatch] = field(default_factory=dict)
     entity_matches: dict[str, LocalEntityMatch] = field(default_factory=dict)
+    provider_entity_matches: dict[tuple[str, str], LocalEntityMatch] = field(default_factory=dict)
     total_tags_indexed: int = 0
     total_tag_aliases_indexed: int = 0
     total_entities_indexed: int = 0
     total_entity_aliases_indexed: int = 0
     total_external_identities_indexed: int = 0
+    total_provider_scoped_external_identities_indexed: int = 0
 
     def public_summary(self) -> dict[str, Any]:
         return {
@@ -200,6 +315,9 @@ class LocalClassificationIndex:
             "local_entities_indexed": self.total_entities_indexed,
             "local_entity_aliases_indexed": self.total_entity_aliases_indexed,
             "local_external_identities_indexed": self.total_external_identities_indexed,
+            "local_provider_scoped_external_identities_indexed": self.total_provider_scoped_external_identities_indexed,
+            "external_identities_match_raw_pixiv_tags": False,
+            "external_identity_lookup_requires_provider_namespace": True,
             "db_read_only": True,
             "db_write_allowed": False,
         }
@@ -633,6 +751,33 @@ def _tag_namespace(category: str) -> str:
     return "general"
 
 
+def map_danbooru_category_to_namespace(category: Any) -> str:
+    raw = str(category).strip().casefold()
+    mapping = {
+        "0": "general",
+        "general": "general",
+        "1": "artist",
+        "artist": "artist",
+        "3": "copyright",
+        "copyright": "copyright",
+        "4": "character",
+        "character": "character",
+        "5": "meta",
+        "meta": "meta",
+    }
+    return mapping.get(raw, "unknown")
+
+
+def _provider_identity_key(provider: str | None, external_id: str | None) -> tuple[str, str] | None:
+    if not provider or external_id is None:
+        return None
+    normalized_provider = normalize_unicode_tag(provider).casefold()
+    normalized_external_id = normalize_unicode_tag(external_id)
+    if not normalized_provider or not normalized_external_id:
+        return None
+    return normalized_provider, normalized_external_id
+
+
 def _trusted_alias_source(source: str | None, needs_review: bool | None) -> bool:
     if needs_review:
         return False
@@ -647,6 +792,39 @@ def _trusted_alias_source(source: str | None, needs_review: bool | None) -> bool
 def _put_entity_match(index: LocalClassificationIndex, key_value: str, match: LocalEntityMatch) -> None:
     for key in _lookup_key_variants(key_value):
         index.entity_matches.setdefault(key, match)
+
+
+def _put_provider_entity_match(
+    index: LocalClassificationIndex,
+    provider: str | None,
+    external_id: str | None,
+    match: LocalEntityMatch,
+) -> None:
+    identity_key = _provider_identity_key(provider, external_id)
+    if identity_key is not None:
+        index.provider_entity_matches.setdefault(identity_key, match)
+
+
+def _pixiv_provider_entity_match(
+    index: LocalClassificationIndex,
+    *,
+    provider: str,
+    external_id: str | None,
+) -> LocalEntityMatch | None:
+    identity_key = _provider_identity_key(provider, external_id)
+    if identity_key is None:
+        return None
+    normalized_provider, normalized_external_id = identity_key
+    providers = {normalized_provider}
+    if normalized_provider == "pixiv_user":
+        providers.update({"pixiv", "pixiv_user_id", "pixiv_artist", "pixiv_artist_id"})
+    for candidate_provider in providers:
+        if candidate_provider not in PIXIV_IDENTITY_PROVIDERS:
+            continue
+        match = index.provider_entity_matches.get((candidate_provider, normalized_external_id))
+        if match:
+            return match
+    return None
 
 
 def _put_tag_match(index: LocalClassificationIndex, key_value: str, match: LocalTagCategoryMatch) -> None:
@@ -736,10 +914,348 @@ def build_local_classification_index(session: Session) -> LocalClassificationInd
             source=str(identity.provider),
             confidence=0.9,
         )
-        _put_entity_match(index, str(identity.external_id), match)
+        _put_provider_entity_match(index, str(identity.provider), str(identity.external_id), match)
         indexed_identity_count += 1
     index.total_external_identities_indexed = indexed_identity_count
+    index.total_provider_scoped_external_identities_indexed = indexed_identity_count
     return index
+
+
+def enforce_tag_lookup_limit(limit: int) -> None:
+    if limit < 0 or limit > MAX_TAG_LOOKUP_LIMIT_WITHOUT_RENEWED_APPROVAL:
+        raise SampleGateError("tag_lookup_cap_exceeded")
+
+
+def build_tag_lookup_inputs(
+    records: Sequence[f2.PixivGalleryDlAdapterRecord],
+) -> dict[str, tuple[str, str]]:
+    inputs: dict[str, tuple[str, str]] = {}
+    for record in records:
+        for raw_tag in record.tags:
+            normalized_tag = normalize_unicode_tag(raw_tag)
+            key = lookup_key(normalized_tag)
+            if key:
+                inputs.setdefault(key, (raw_tag, normalized_tag))
+    return inputs
+
+
+def fetch_danbooru_tag_payload(normalized_key: str, *, timeout: int) -> list[dict[str, Any]]:
+    query = quote(normalized_key, safe="*_-")
+    url = f"{EXTERNAL_TAG_LOOKUP_BASE_URL}?search[name_matches]={query}&limit=5"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": EXTERNAL_TAG_LOOKUP_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {403, 429}:
+            raise ExternalLookupProviderBlocked(f"danbooru_lookup_blocked_http_{exc.code}") from exc
+        raise
+    if not isinstance(payload, list):
+        raise Phase44P2RF3Error("external_tag_lookup_payload_shape_invalid")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def fetch_danbooru_tag_alias_payload(normalized_key: str, *, timeout: int) -> list[dict[str, Any]]:
+    query = quote(normalized_key, safe="*_-")
+    url = (
+        f"{EXTERNAL_TAG_ALIAS_LOOKUP_BASE_URL}"
+        f"?search[antecedent_name]={query}&search[status]=active&limit=5"
+    )
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": EXTERNAL_TAG_LOOKUP_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {403, 429}:
+            raise ExternalLookupProviderBlocked(f"danbooru_alias_lookup_blocked_http_{exc.code}") from exc
+        raise
+    if not isinstance(payload, list):
+        raise Phase44P2RF3Error("external_tag_alias_lookup_payload_shape_invalid")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+class ExternalLookupProviderBlocked(Phase44P2RF3Error):
+    pass
+
+
+def _select_danbooru_tag_match(payload: Sequence[Mapping[str, Any]], normalized_key: str) -> Mapping[str, Any] | None:
+    for item in payload:
+        name = item.get("name")
+        if isinstance(name, str) and lookup_key(name) == normalized_key:
+            return item
+    for item in payload:
+        name = item.get("name")
+        if isinstance(name, str) and lookup_key(name).replace("_", "") == normalized_key.replace("_", ""):
+            return item
+    return None
+
+
+def fetch_danbooru_tag_category_payload(normalized_key: str, *, timeout: int) -> tuple[list[dict[str, Any]], int, str]:
+    tag_payload = fetch_danbooru_tag_payload(normalized_key, timeout=timeout)
+    request_count = 1
+    if _select_danbooru_tag_match(tag_payload, normalized_key):
+        return tag_payload, request_count, normalized_key
+
+    alias_payload = fetch_danbooru_tag_alias_payload(normalized_key, timeout=timeout)
+    request_count += 1
+    for alias in alias_payload:
+        consequent_name = alias.get("consequent_name")
+        if not isinstance(consequent_name, str) or not consequent_name:
+            continue
+        canonical_key = lookup_key(consequent_name)
+        if not canonical_key:
+            continue
+        canonical_payload = fetch_danbooru_tag_payload(canonical_key, timeout=timeout)
+        request_count += 1
+        if _select_danbooru_tag_match(canonical_payload, canonical_key):
+            return canonical_payload, request_count, canonical_key
+    return tag_payload, request_count, normalized_key
+
+
+def _coerce_fetch_result(fetch_result: Any, *, default_key: str) -> tuple[list[dict[str, Any]], int, str]:
+    if isinstance(fetch_result, tuple) and len(fetch_result) == 3:
+        payload, request_count, matched_key = fetch_result
+        return list(payload), int(request_count), str(matched_key)
+    if isinstance(fetch_result, tuple) and len(fetch_result) == 2:
+        payload, request_count = fetch_result
+        return list(payload), int(request_count), default_key
+    return list(fetch_result), 1, default_key
+
+
+def _lookup_result_from_danbooru_payload(
+    *,
+    raw_tag: str,
+    normalized_tag: str,
+    payload: Sequence[Mapping[str, Any]],
+    cache_status: str,
+    matched_lookup_key: str | None = None,
+) -> ExternalTagLookupResult:
+    key = lookup_key(normalized_tag)
+    match_key = matched_lookup_key or key
+    match = _select_danbooru_tag_match(payload, match_key)
+    if not match:
+        return ExternalTagLookupResult(
+            raw_tag=raw_tag,
+            normalized_tag=normalized_tag,
+            lookup_source=EXTERNAL_TAG_LOOKUP_SOURCE,
+            source_tag_id=None,
+            source_tag_name=None,
+            source_category_raw=None,
+            mapped_candidate_namespace="unknown",
+            confidence=0.0,
+            provenance_url_or_key=f"{EXTERNAL_TAG_LOOKUP_SOURCE}:{key}",
+            status="not_found",
+            cache_status=cache_status,
+        )
+
+    source_tag_id = match.get("id")
+    source_tag_name = match.get("name")
+    source_category = match.get("category")
+    namespace = map_danbooru_category_to_namespace(source_category)
+    status = "hit" if namespace != "unknown" else "lookup_error"
+    error = None if status == "hit" else "unknown_danbooru_category"
+    provenance = (
+        f"https://danbooru.donmai.us/tags/{source_tag_id}"
+        if source_tag_id is not None
+        else f"{EXTERNAL_TAG_LOOKUP_SOURCE}:{key}"
+    )
+    return ExternalTagLookupResult(
+        raw_tag=raw_tag,
+        normalized_tag=normalized_tag,
+        lookup_source=EXTERNAL_TAG_LOOKUP_SOURCE,
+        source_tag_id=str(source_tag_id) if source_tag_id is not None else None,
+        source_tag_name=str(source_tag_name) if source_tag_name is not None else None,
+        source_category_raw=str(source_category) if source_category is not None else None,
+        mapped_candidate_namespace=namespace,
+        confidence=0.84 if status == "hit" else 0.0,
+        provenance_url_or_key=provenance,
+        status=status,
+        cache_status=cache_status,
+        lookup_error=error,
+    )
+
+
+def _cache_row_to_lookup_result(row: ExternalTagCategoryLookupCache) -> ExternalTagLookupResult:
+    return ExternalTagLookupResult(
+        raw_tag=str(row.raw_tag or ""),
+        normalized_tag=str(row.normalized_tag),
+        lookup_source=str(row.lookup_source),
+        source_tag_id=str(row.source_tag_id) if row.source_tag_id is not None else None,
+        source_tag_name=str(row.source_tag_name) if row.source_tag_name is not None else None,
+        source_category_raw=str(row.source_category_raw) if row.source_category_raw is not None else None,
+        mapped_candidate_namespace=str(row.mapped_candidate_namespace) if row.mapped_candidate_namespace else None,
+        confidence=float(row.confidence) if row.confidence is not None else None,
+        provenance_url_or_key=str(row.provenance_url_or_key) if row.provenance_url_or_key else None,
+        status=str(row.status),
+        cache_status="hit",
+        lookup_error=str(row.lookup_error) if row.lookup_error else None,
+    )
+
+
+def _upsert_lookup_cache_result(session: Session, result: ExternalTagLookupResult) -> bool:
+    fields = result.to_cache_fields()
+    row = (
+        session.query(ExternalTagCategoryLookupCache)
+        .filter(
+            ExternalTagCategoryLookupCache.lookup_source == result.lookup_source,
+            ExternalTagCategoryLookupCache.normalized_tag == result.normalized_tag,
+        )
+        .one_or_none()
+    )
+    if row is None and result.source_tag_id:
+        row = (
+            session.query(ExternalTagCategoryLookupCache)
+            .filter(
+                ExternalTagCategoryLookupCache.lookup_source == result.lookup_source,
+                ExternalTagCategoryLookupCache.source_tag_id == result.source_tag_id,
+            )
+            .one_or_none()
+        )
+    if row is None:
+        session.add(ExternalTagCategoryLookupCache(**fields))
+        return True
+    for key, value in fields.items():
+        if key == "first_seen_at":
+            continue
+        setattr(row, key, value)
+    return False
+
+
+def lookup_external_tag_categories(
+    records: Sequence[f2.PixivGalleryDlAdapterRecord],
+    *,
+    session: Session | None,
+    lookup_limit: int,
+    delay_seconds: float,
+    timeout_seconds: int,
+    cache_writes_enabled: bool,
+    fetcher: Callable[[str, int], list[dict[str, Any]]] | None = None,
+) -> tuple[dict[str, ExternalTagLookupResult], ExternalLookupSummary]:
+    enforce_tag_lookup_limit(lookup_limit)
+    tag_inputs = build_tag_lookup_inputs(records)
+    ordered_keys = list(tag_inputs.keys())
+    capped_keys = ordered_keys[:lookup_limit]
+    summary = ExternalLookupSummary(
+        unique_normalized_tag_count=len(tag_inputs),
+        lookup_limit=lookup_limit,
+        lookup_delay_seconds=delay_seconds,
+        lookup_timeout_seconds=timeout_seconds,
+        cache_write_enabled=bool(cache_writes_enabled and session is not None),
+    )
+    if not tag_inputs:
+        return {}, summary
+
+    results: dict[str, ExternalTagLookupResult] = {}
+    if session is not None and capped_keys:
+        cached_rows = (
+            session.query(ExternalTagCategoryLookupCache)
+            .filter(
+                ExternalTagCategoryLookupCache.lookup_source == EXTERNAL_TAG_LOOKUP_SOURCE,
+                ExternalTagCategoryLookupCache.normalized_tag.in_(
+                    [tag_inputs[key][1] for key in capped_keys]
+                ),
+            )
+            .all()
+        )
+        for row in cached_rows:
+            key = lookup_key(str(row.normalized_tag))
+            if key in tag_inputs:
+                results[key] = _cache_row_to_lookup_result(row)
+        summary.cache_hit_count = len(results)
+
+    fetch = fetcher or (lambda key, timeout: fetch_danbooru_tag_category_payload(key, timeout=timeout))
+    missed_keys = [key for key in capped_keys if key not in results]
+    summary.cache_miss_count = len(missed_keys)
+    for idx, key in enumerate(missed_keys):
+        raw_tag, normalized_tag = tag_inputs[key]
+        if idx > 0 and delay_seconds > 0:
+            time.sleep(delay_seconds)
+        try:
+            payload, request_count, matched_lookup_key = _coerce_fetch_result(
+                fetch(key, timeout_seconds),
+                default_key=key,
+            )
+            summary.request_count += request_count
+            result = _lookup_result_from_danbooru_payload(
+                raw_tag=raw_tag,
+                normalized_tag=normalized_tag,
+                payload=payload,
+                cache_status="miss",
+                matched_lookup_key=matched_lookup_key,
+            )
+        except ExternalLookupProviderBlocked as exc:
+            summary.provider_blocked = True
+            summary.provider_block_reason = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001 - item-level lookup failures stay unresolved.
+            summary.request_count += 1
+            result = ExternalTagLookupResult(
+                raw_tag=raw_tag,
+                normalized_tag=normalized_tag,
+                lookup_source=EXTERNAL_TAG_LOOKUP_SOURCE,
+                source_tag_id=None,
+                source_tag_name=None,
+                source_category_raw=None,
+                mapped_candidate_namespace="unknown",
+                confidence=0.0,
+                provenance_url_or_key=f"{EXTERNAL_TAG_LOOKUP_SOURCE}:{key}",
+                status="lookup_error",
+                cache_status="miss",
+                lookup_error=exc.__class__.__name__,
+            )
+        results[key] = result
+        if session is not None and cache_writes_enabled:
+            _upsert_lookup_cache_result(session, result)
+            summary.cache_write_count += 1
+
+    if session is not None and cache_writes_enabled and summary.cache_write_count:
+        session.commit()
+
+    status_counts = Counter(result.status for result in results.values())
+    namespace_counts = Counter(
+        result.mapped_candidate_namespace or "unknown"
+        for result in results.values()
+        if result.status == "hit"
+    )
+    summary.hit_count = status_counts.get("hit", 0)
+    summary.not_found_count = status_counts.get("not_found", 0)
+    summary.lookup_error_count = status_counts.get("lookup_error", 0)
+    summary.resolved_namespace_counts = dict(sorted(namespace_counts.items()))
+    return results, summary
+
+
+def install_external_lookup_cache_write_guard(engine) -> None:
+    write_re = re.compile(r"^\s*(insert|update|delete|alter|drop|truncate|create)\b", re.IGNORECASE)
+    allowed_cache_write_re = re.compile(
+        r"^\s*(insert\s+into|update)\s+\"?blombooru_external_tag_category_lookup_cache\"?\b",
+        re.IGNORECASE,
+    )
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def _guard(_conn, _cursor, statement, _parameters, _context, _executemany):
+        sql = str(statement).strip()
+        if not write_re.search(sql):
+            return
+        if allowed_cache_write_re.search(sql):
+            return
+        lowered = sql.casefold()
+        touched_truth_tables = sorted(table for table in FORBIDDEN_TRUTH_TABLES if table in lowered)
+        detail = ",".join(touched_truth_tables) if touched_truth_tables else "non_cache_write"
+        raise f1.ReadOnlyViolation(f"db_write_blocked_except_external_tag_category_lookup_cache:{detail}")
 
 
 def _is_sensitive_or_meta(key: str) -> bool:
@@ -759,7 +1275,7 @@ def _looks_like_proper_noun_candidate(normalized: str) -> bool:
         return False
     has_cjk = any("\u3040" <= char <= "\u30ff" or "\u3400" <= char <= "\u9fff" for char in normalized)
     has_upper = any(char.isupper() for char in normalized if char.isalpha())
-    has_punct = any(char in normalized for char in (":", "・", "／", "/", "&", "+"))
+    has_punct = any(char in normalized for char in (":", "\u30fb", "\uff0f", "/", "&", "+"))
     return has_cjk or has_upper or has_punct
 
 
@@ -775,26 +1291,48 @@ def _record_base_fields(record: f2.PixivGalleryDlAdapterRecord) -> dict[str, Any
     }
 
 
-def _artist_candidate(record: f2.PixivGalleryDlAdapterRecord) -> PixivCandidateRow | None:
+def _artist_candidate(
+    record: f2.PixivGalleryDlAdapterRecord,
+    *,
+    local_index: LocalClassificationIndex,
+) -> PixivCandidateRow | None:
     if not (record.artist_name or record.artist_id):
         return None
     eligible = bool(record.eligible_for_future_entity_candidate)
+    entity_match = _pixiv_provider_entity_match(
+        local_index,
+        provider="pixiv_user",
+        external_id=record.artist_id,
+    )
+    reason = "pixiv_user_metadata"
+    confidence = 0.92
+    existing_entity_match = False
+    existing_entity_id_private: int | None = None
+    requires_manual_review = False
+    if entity_match:
+        reason = "pixiv_user_metadata_verified_local_pixiv_identity"
+        confidence = max(0.93, entity_match.confidence)
+        existing_entity_match = True
+        existing_entity_id_private = entity_match.entity_id_private
+        eligible = False
     return PixivCandidateRow(
         **_record_base_fields(record),
         raw_tag="",
         normalized_tag=normalize_unicode_tag(record.artist_name or record.artist_id or ""),
         candidate_kind="entity_candidate",
         candidate_namespace="artist",
-        confidence=0.92,
-        reason="pixiv_user_metadata",
+        confidence=confidence,
+        reason=reason,
         lookup_source="pixiv_metadata",
-        lookup_key="user",
+        lookup_key="pixiv_user_id" if record.artist_id else "pixiv_user_name",
         lookup_category="artist",
         provenance="pixiv_user_metadata_field",
         cache_status="not_applicable",
+        existing_entity_match=existing_entity_match,
+        existing_entity_id_private=existing_entity_id_private,
         future_entity_candidate_eligible=eligible,
         future_tag_suggestion_eligible=False,
-        requires_manual_review=False,
+        requires_manual_review=requires_manual_review,
         db_write_allowed=False,
     )
 
@@ -804,6 +1342,7 @@ def classify_pixiv_tag(
     *,
     record: f2.PixivGalleryDlAdapterRecord,
     local_index: LocalClassificationIndex,
+    external_lookup_results: Mapping[str, ExternalTagLookupResult] | None = None,
 ) -> PixivCandidateRow:
     normalized = normalize_unicode_tag(raw_tag)
     key = lookup_key(normalized)
@@ -879,6 +1418,31 @@ def classify_pixiv_tag(
             future_entity_candidate_eligible=False,
             future_tag_suggestion_eligible=False,
             requires_manual_review=True,
+            db_write_allowed=False,
+        )
+
+    lookup_result = (external_lookup_results or {}).get(key)
+    if lookup_result and lookup_result.status == "hit" and lookup_result.mapped_candidate_namespace:
+        namespace = lookup_result.mapped_candidate_namespace
+        is_entity_namespace = namespace in ENTITY_NAMESPACES
+        return PixivCandidateRow(
+            **base,
+            raw_tag=raw_tag,
+            normalized_tag=normalized,
+            candidate_kind="entity_candidate" if is_entity_namespace else "tag_candidate",
+            candidate_namespace=namespace,
+            confidence=float(lookup_result.confidence or 0.0),
+            reason="external_tag_category_lookup",
+            lookup_source=lookup_result.lookup_source,
+            lookup_key=key,
+            lookup_category=lookup_result.source_category_raw,
+            provenance=lookup_result.provenance_url_or_key,
+            cache_status=lookup_result.cache_status,
+            future_entity_candidate_eligible=bool(
+                record.eligible_for_future_entity_candidate and is_entity_namespace
+            ),
+            future_tag_suggestion_eligible=not is_entity_namespace,
+            requires_manual_review=is_entity_namespace,
             db_write_allowed=False,
         )
 
@@ -1021,16 +1585,22 @@ def _original_work_status(rows: Sequence[PixivCandidateRow]) -> str:
 def normalize_metadata_candidates(
     records: Sequence[f2.PixivGalleryDlAdapterRecord],
     local_index: LocalClassificationIndex,
+    external_lookup_results: Mapping[str, ExternalTagLookupResult] | None = None,
 ) -> tuple[list[PixivNormalizedMetadataCandidate], list[PixivCandidateRow]]:
     normalized_records: list[PixivNormalizedMetadataCandidate] = []
     all_rows: list[PixivCandidateRow] = []
     for record in records:
         rows: list[PixivCandidateRow] = []
-        artist = _artist_candidate(record)
+        artist = _artist_candidate(record, local_index=local_index)
         if artist:
             rows.append(artist)
         tag_rows = [
-            classify_pixiv_tag(raw_tag, record=record, local_index=local_index)
+            classify_pixiv_tag(
+                raw_tag,
+                record=record,
+                local_index=local_index,
+                external_lookup_results=external_lookup_results,
+            )
             for raw_tag in record.tags
         ]
         rows.extend(tag_rows)
@@ -1199,42 +1769,150 @@ def command_summary(results: Sequence[CommandResult], *, max_record_limit: int) 
     }
 
 
+def tag_category_lookup_cache_summary(
+    *,
+    db_enabled: bool,
+    table_available: bool,
+    cache_writes_enabled: bool,
+    lookup_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    unique_tag_count = int(lookup_summary.get("unique_normalized_tag_count", 0) or 0)
+    if not db_enabled:
+        mode = "db_skipped"
+    elif not table_available:
+        mode = "db_cache_unavailable"
+    elif unique_tag_count == 0:
+        mode = "db_cache_skipped_no_tags"
+    elif cache_writes_enabled:
+        mode = "db_cache_enabled"
+    else:
+        mode = "db_cache_read_only"
+    return {
+        "table": "blombooru_external_tag_category_lookup_cache",
+        "table_available": table_available,
+        "cache_write_mode": mode,
+        "cache_write_enabled": bool(cache_writes_enabled and db_enabled and table_available),
+        "cache_write_count": int(lookup_summary.get("cache_write_count", 0) or 0),
+        "cache_hit_count": int(lookup_summary.get("cache_hit_count", 0) or 0),
+        "cache_miss_count": int(lookup_summary.get("cache_miss_count", 0) or 0),
+        "truth_table_write_count": 0,
+        "provider_cache_write_count": 0,
+        "entity_evidence_write_count": 0,
+        "media_entity_candidate_write_count": 0,
+        "confirmed_assignment_write_count": 0,
+    }
+
+
+def classification_improvement_summary(
+    *,
+    candidate_rows: Sequence[PixivCandidateRow],
+    lookup_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    namespace_counts = Counter(row.candidate_namespace for row in candidate_rows)
+    ambiguous_unknown = namespace_counts.get("ambiguous", 0) + namespace_counts.get("unknown", 0)
+    copyright_count = namespace_counts.get("copyright", 0)
+    character_count = namespace_counts.get("character", 0)
+    return {
+        "baseline_previous_f3": dict(PREVIOUS_F3_BASELINE),
+        "current_ambiguous_unknown_candidate_count": ambiguous_unknown,
+        "current_copyright_series_candidate_count": copyright_count,
+        "current_character_candidate_count": character_count,
+        "ambiguous_unknown_delta_vs_previous_f3": ambiguous_unknown
+        - int(PREVIOUS_F3_BASELINE["ambiguous_unknown_candidate_count"]),
+        "copyright_series_delta_vs_previous_f3": copyright_count
+        - int(PREVIOUS_F3_BASELINE["copyright_series_candidate_count"]),
+        "character_delta_vs_previous_f3": character_count
+        - int(PREVIOUS_F3_BASELINE["character_candidate_count"]),
+        "unique_tag_lookup_hit_count": int(lookup_summary.get("hit_count", 0) or 0),
+        "unique_tag_lookup_total_count": int(lookup_summary.get("unique_normalized_tag_count", 0) or 0),
+    }
+
+
 def future_route_recommendation(
     records: Sequence[f2.PixivGalleryDlAdapterRecord],
     normalized_records: Sequence[PixivNormalizedMetadataCandidate],
     rows: Sequence[PixivCandidateRow],
+    *,
+    entrypoint: GalleryDlEntrypoint,
+    join_summary: Mapping[str, Any],
+    lookup_summary: Mapping[str, Any],
+    db_cache_summary: Mapping[str, Any],
 ) -> dict[str, str]:
     if not records:
         return {
             "decision": "E_stop_or_reroute",
             "reason": "gallery-dl did not produce usable metadata records for normalization",
             "db_persistence": "not_recommended",
+            "local_source_hint_pixiv_metadata": "not_recommended",
+            "tag_classification_cache": "not_ready",
+            "entity_candidate_persistence": "blocked",
         }
+    status_counts = dict(join_summary.get("status_counts") or {})
+    eligible_join_count = int(status_counts.get("metadata_matches_eligible_anime_local_prior", 0) or 0)
+    command_ready = entrypoint.reproducibility_status in {
+        "stable_project_python_module",
+        "external_executable_discovered",
+    }
+    unique_tag_count = int(lookup_summary.get("unique_normalized_tag_count", 0) or 0)
+    lookup_hit_count = int(lookup_summary.get("hit_count", 0) or 0)
+    lookup_coverage = lookup_hit_count / max(unique_tag_count, 1)
+    cache_available = bool(
+        db_cache_summary.get("table_available")
+        and db_cache_summary.get("cache_write_mode") in {"db_cache_enabled", "db_cache_skipped_no_tags"}
+    )
     records_with_tags = sum(1 for record in records if record.tags)
     artist_coverage = sum(1 for record in records if record.artist_name or record.artist_id) / max(len(records), 1)
     unresolved = sum(1 for row in rows if row.candidate_kind in {"unknown_or_unresolved_pixiv_tag", "ambiguous_proper_noun_candidate"})
-    if records_with_tags and artist_coverage >= 0.8:
+    if not command_ready or eligible_join_count <= 0 or not cache_available:
+        blockers = []
+        if not command_ready:
+            blockers.append("gallery_dl_command_boundary_is_conditional_or_dry_run")
+        if eligible_join_count <= 0:
+            blockers.append("eligible_local_join_count_is_zero")
+        if not cache_available:
+            blockers.append("external_tag_category_lookup_cache_not_available")
+        return {
+            "decision": "B_harden_lookup_cache_and_gallery_dl_command_boundary_before_persistence",
+            "reason": ",".join(blockers),
+            "db_persistence": "cache_table_only_current_stage_LocalSourceHint_and_PixivMetadata_wait",
+            "local_source_hint_pixiv_metadata": "not_recommended_until_command_join_and_lookup_cache_gates_pass",
+            "tag_classification_cache": "pilot_cache_available" if cache_available else "needs_cache_availability",
+            "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
+        }
+    if records_with_tags and artist_coverage >= 0.8 and lookup_coverage >= 0.5:
         return {
             "decision": "A_proceed_to_LocalSourceHint_PixivMetadata_persistence_design",
-            "reason": "metadata fields are rich and the middleware produced a safe PixivMetadata/LocalSourceHint-shaped view; EntityCandidate persistence should wait because copyright/character category evidence remains sparse",
-            "db_persistence": "LocalSourceHint_design_justified_next_EntityCandidate_persistence_should_wait",
+            "reason": "metadata fields are rich, eligible local joins exist, gallery-dl command boundary is reproducible, and automated tag category lookup/cache coverage passed the persistence-design gate",
+            "db_persistence": "LocalSourceHint_and_PixivMetadata_design_may_be_next_cache_table_can_be_promoted_with_review_EntityCandidate_should_wait",
+            "local_source_hint_pixiv_metadata": "recommended_for_design_only",
+            "tag_classification_cache": "ready_for_persistence_design_review",
+            "entity_candidate_persistence": "blocked_until_future_candidate_lifecycle_design",
         }
-    if records_with_tags and normalized_records and unresolved < len(rows):
+    if records_with_tags and normalized_records and unresolved < len(rows) and lookup_coverage >= 0.25:
         return {
-            "decision": "B_do_another_larger_no_DB_normalization_pilot",
-            "reason": "normalization preserved metadata and classified a subset, but coverage is not yet strong enough for persistence design",
-            "db_persistence": "not_recommended_until_more_category_evidence",
+            "decision": "B_harden_lookup_cache_before_persistence_design",
+            "reason": "automated lookup classified a subset, but coverage is below the persistence-design threshold",
+            "db_persistence": "cache_table_only_current_stage_LocalSourceHint_and_PixivMetadata_wait",
+            "local_source_hint_pixiv_metadata": "not_recommended_until_lookup_coverage_improves",
+            "tag_classification_cache": "continue_lookup_source_hardening",
+            "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
         }
     if records_with_tags:
         return {
-            "decision": "D_add_deterministic_alias_entity_matching_improvements",
-            "reason": "raw tags are available and safely preserved, but most tags remain unresolved without stronger category evidence",
-            "db_persistence": "LocalSourceHint_may_be_designable_later_EntityCandidate_should_wait",
+            "decision": "D_expand_or_change_automated_tag_category_lookup_route",
+            "reason": "raw tags are available and safely preserved, but automated category lookup coverage is too low for persistence design",
+            "db_persistence": "cache_table_only_current_stage_other_persistence_not_recommended",
+            "local_source_hint_pixiv_metadata": "not_recommended_until_lookup_route_improves",
+            "tag_classification_cache": "needs_additional_lookup_source_or_alias_strategy",
+            "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
         }
     return {
         "decision": "E_stop_or_reroute",
         "reason": "Pixiv metadata did not provide enough raw tags for the middleware route",
         "db_persistence": "not_recommended",
+        "local_source_hint_pixiv_metadata": "not_recommended",
+        "tag_classification_cache": "not_ready",
+        "entity_candidate_persistence": "blocked",
     }
 
 
@@ -1275,6 +1953,8 @@ def build_public_summary(
     command_public: Mapping[str, Any],
     raw_scope: Mapping[str, Any],
     local_index_summary: Mapping[str, Any],
+    lookup_summary: Mapping[str, Any],
+    db_cache_summary: Mapping[str, Any],
     containment: Mapping[str, Any],
     manual_review_guide: Path,
 ) -> dict[str, Any]:
@@ -1293,7 +1973,8 @@ def build_public_summary(
         "why_this_stage_exists": (
             "PR #89 and F2 validated real gallery-dl metadata retrieval and local Pixiv filename-prior "
             "correspondence. F3 tests whether those raw Pixiv metadata fields can become a structured, "
-            "non-persistent tag/entity candidate middleware view without treating raw Pixiv tags as confirmed truth."
+            "tag/entity candidate middleware view backed by automated category lookup/cache evidence without "
+            "treating raw Pixiv tags as confirmed truth."
         ),
         "pr89_merge_confirmation": dict(pr_context),
         "git_context": dict(git_context),
@@ -1345,10 +2026,12 @@ def build_public_summary(
             "candidate_classification_distribution": candidate_dist,
             "lookup_source_coverage": {
                 "local_db_read_only": lookup_counts.get("local_db_read_only", 0),
+                EXTERNAL_TAG_LOOKUP_SOURCE: lookup_counts.get(EXTERNAL_TAG_LOOKUP_SOURCE, 0),
                 "deterministic_fallback": lookup_counts.get("deterministic_fallback", 0),
                 LOOKUP_SOURCE_EXTERNAL_DISABLED: lookup_counts.get(LOOKUP_SOURCE_EXTERNAL_DISABLED, 0),
-                "external_category_lookup_enabled": False,
-                "external_category_lookup_reason": "not_enabled_in_f3_default_run; no broad tag lookup or credentials",
+                "external_category_lookup_enabled": True,
+                "external_category_lookup_source": EXTERNAL_TAG_LOOKUP_SOURCE,
+                "external_category_lookup_public_doc": EXTERNAL_TAG_LOOKUP_DOC_URL,
             },
             "artist_candidate_count": namespace_counts.get("artist", 0),
             "copyright_series_candidate_count": namespace_counts.get("copyright", 0),
@@ -1362,6 +2045,12 @@ def build_public_summary(
             "automatic_entity_count": 0,
             "db_write_allowed_count": sum(1 for row in candidate_rows if row.db_write_allowed),
         },
+        "automated_tag_category_lookup": dict(lookup_summary),
+        "tag_category_lookup_cache": dict(db_cache_summary),
+        "classification_improvement_vs_previous_f3": classification_improvement_summary(
+            candidate_rows=candidate_rows,
+            lookup_summary=lookup_summary,
+        ),
         "local_classification_index": dict(local_index_summary),
         "original_unknown_handling": {
             "original_work_status_distribution": dict(sorted(original_counts.items())),
@@ -1381,7 +2070,15 @@ def build_public_summary(
             "manual_review_is_sparse_correction_oriented": True,
         },
         "output_containment": dict(containment),
-        "future_route_recommendation": future_route_recommendation(records, normalized_records, candidate_rows),
+        "future_route_recommendation": future_route_recommendation(
+            records,
+            normalized_records,
+            candidate_rows,
+            entrypoint=entrypoint,
+            join_summary=join_summary,
+            lookup_summary=lookup_summary,
+            db_cache_summary=db_cache_summary,
+        ),
         "privacy_and_safety_confirmation": {
             "public_report_contains_exact_pixiv_ids": False,
             "public_report_contains_exact_media_ids": False,
@@ -1390,10 +2087,13 @@ def build_public_summary(
             "public_report_contains_raw_gallery_dl_json": False,
             "public_report_contains_raw_image_urls": False,
             "public_report_contains_raw_pixiv_tags": False,
-            "db_write": False,
-            "db_migration": False,
+            "db_write": bool(db_cache_summary.get("cache_write_count", 0)),
+            "db_write_limited_to_external_tag_category_lookup_cache": True,
+            "db_migration": bool(db_cache_summary.get("table_available")),
+            "db_migration_limited_to_external_tag_category_lookup_cache": True,
             "local_source_hint_write": False,
             "provider_cache_write": False,
+            "external_tag_category_lookup_cache_write": int(db_cache_summary.get("cache_write_count", 0)),
             "entity_evidence_write": False,
             "media_entity_candidate_write": False,
             "negative_lookup_cache_write": False,
@@ -1462,6 +2162,12 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- Sensitive/meta candidates: `{summary['classification_middleware']['sensitive_meta_candidate_count']}`.",
         f"- Alias-group candidates: `{summary['classification_middleware']['alias_group_candidate_count']}`.",
         f"- Lookup source coverage: `{json.dumps(summary['classification_middleware']['lookup_source_coverage'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Automated category lookup: `{json.dumps(summary['automated_tag_category_lookup'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Classification improvement vs previous F3: `{json.dumps(summary['classification_improvement_vs_previous_f3'], ensure_ascii=False, sort_keys=True)}`.",
+        "",
+        "## Lookup Cache",
+        "",
+        f"- Cache/mapping table: `{json.dumps(summary['tag_category_lookup_cache'], ensure_ascii=False, sort_keys=True)}`.",
         "",
         "## Original / Ambiguous Handling",
         "",
@@ -1499,6 +2205,30 @@ def _candidate_csv(rows: Sequence[PixivCandidateRow]) -> str:
     writer.writeheader()
     for row in rows:
         writer.writerow(row.to_private_dict())
+    return buffer.getvalue()
+
+
+def _lookup_cache_csv(results: Mapping[str, ExternalTagLookupResult]) -> str:
+    rows = [result.to_private_dict() for result in results.values()]
+    fieldnames = [
+        "raw_tag",
+        "normalized_tag",
+        "lookup_source",
+        "source_tag_id",
+        "source_tag_name",
+        "source_category_raw",
+        "mapped_candidate_namespace",
+        "confidence",
+        "provenance_url_or_key",
+        "status",
+        "cache_status",
+        "lookup_error",
+    ]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({field: row.get(field, "") for field in fieldnames})
     return buffer.getvalue()
 
 
@@ -1601,6 +2331,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
     parser.add_argument("--max-records", type=int, default=DEFAULT_MAX_RECORDS)
+    parser.add_argument("--tag-lookup-limit", type=int, default=DEFAULT_TAG_LOOKUP_LIMIT)
+    parser.add_argument("--tag-lookup-delay-seconds", type=float, default=DEFAULT_TAG_LOOKUP_DELAY_SECONDS)
+    parser.add_argument("--tag-lookup-timeout", type=int, default=DEFAULT_TAG_LOOKUP_TIMEOUT_SECONDS)
+    parser.add_argument("--disable-db-cache-writes", action="store_true")
     parser.add_argument("--output-dir", default=str(PHASE_OUTPUT_DIR))
     parser.add_argument("--gallery-dl-command", default=os.getenv("VIOLET_GALLERY_DL_COMMAND", ""))
     parser.add_argument("--skip-network", action="store_true", help="Testing-only: select samples and write a dry report without network calls.")
@@ -1616,6 +2350,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tag-candidates-md", default=str(PRIVATE_TAG_CANDIDATES_MD))
     parser.add_argument("--entity-candidates-csv", default=str(PRIVATE_ENTITY_CANDIDATES_CSV))
     parser.add_argument("--entity-candidates-md", default=str(PRIVATE_ENTITY_CANDIDATES_MD))
+    parser.add_argument("--lookup-cache-csv", default=str(PRIVATE_LOOKUP_CACHE_CSV))
+    parser.add_argument("--lookup-cache-md", default=str(PRIVATE_LOOKUP_CACHE_MD))
     parser.add_argument("--manual-review-guide", default=str(PRIVATE_MANUAL_REVIEW_GUIDE))
     parser.add_argument("--raw-dir", default=str(PRIVATE_RAW_DIR))
     parser.add_argument("--pr-number", type=int, default=0)
@@ -1625,6 +2361,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pr89-merge-commit", default="1d123172fd0e064e38e0ffe01e13611aa8bcc8e6")
     parser.add_argument("--pr89-url", default="https://github.com/kyloris0660/VIOLET/pull/89")
     return parser
+
+
+def entrypoint_for_args(args: argparse.Namespace) -> GalleryDlEntrypoint:
+    if args.dry_run or args.skip_network:
+        command = f2.split_operator_command(args.gallery_dl_command or "") if args.gallery_dl_command else ()
+        return GalleryDlEntrypoint(
+            mode="dry_run_no_gallery_dl_probe",
+            command=command,
+            version=None,
+            available=False,
+            reproducibility_status="dry_run_no_gallery_dl_probe",
+        )
+    return probe_gallery_dl_entrypoint(args.gallery_dl_command or None)
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -1642,15 +2391,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tag_candidates_md = resolve_repo_path(args.tag_candidates_md)
     entity_candidates_csv = resolve_repo_path(args.entity_candidates_csv)
     entity_candidates_md = resolve_repo_path(args.entity_candidates_md)
+    lookup_cache_csv = resolve_repo_path(args.lookup_cache_csv)
+    lookup_cache_md = resolve_repo_path(args.lookup_cache_md)
     manual_review_guide = resolve_repo_path(args.manual_review_guide)
 
     enforce_sample_size(args.sample_size)
     enforce_record_count(0, args.max_records)
+    enforce_tag_lookup_limit(args.tag_lookup_limit)
 
     config = f2.load_project_config(ROOT)
     db_identity: dict[str, Any] | None = None
     prior_index: f1.LocalPriorIndex | None = None
     local_index = LocalClassificationIndex()
+    db_cache_table_available = False
     samples: list[SelectedSample] = []
     sample_public: dict[str, Any]
     if args.no_db:
@@ -1664,7 +2417,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
     else:
         engine = create_engine(config.database_url)
-        f1.install_read_only_guard(engine)
+        migrate_add_external_tag_category_lookup_cache(engine, inspect(engine))
+        db_cache_table_available = (
+            "blombooru_external_tag_category_lookup_cache" in inspect(engine).get_table_names()
+        )
+        install_external_lookup_cache_write_guard(engine)
         SessionLocal = sessionmaker(bind=engine)
         session: Session = SessionLocal()
         try:
@@ -1676,7 +2433,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             session.close()
             engine.dispose()
 
-    entrypoint = probe_gallery_dl_entrypoint(args.gallery_dl_command or None)
+    entrypoint = entrypoint_for_args(args)
 
     metadata_results: list[CommandResult] = []
     parse_result = _empty_parse_result(raw_dir)
@@ -1714,7 +2471,58 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             downloaded_file_count=0,
         )
 
-    normalized_records, candidate_rows = normalize_metadata_candidates(records, local_index)
+    lookup_results: dict[str, ExternalTagLookupResult] = {}
+    lookup_summary = ExternalLookupSummary(
+        enabled=bool(records),
+        unique_normalized_tag_count=len(build_tag_lookup_inputs(records)),
+        lookup_limit=args.tag_lookup_limit,
+        lookup_delay_seconds=args.tag_lookup_delay_seconds,
+        lookup_timeout_seconds=args.tag_lookup_timeout,
+        cache_write_enabled=bool(
+            records and not args.no_db and not args.disable_db_cache_writes and db_cache_table_available
+        ),
+    )
+    if records:
+        if args.no_db:
+            lookup_results, lookup_summary = lookup_external_tag_categories(
+                records,
+                session=None,
+                lookup_limit=args.tag_lookup_limit,
+                delay_seconds=args.tag_lookup_delay_seconds,
+                timeout_seconds=args.tag_lookup_timeout,
+                cache_writes_enabled=False,
+            )
+        else:
+            engine = create_engine(config.database_url)
+            install_external_lookup_cache_write_guard(engine)
+            SessionLocal = sessionmaker(bind=engine)
+            session = SessionLocal()
+            try:
+                lookup_results, lookup_summary = lookup_external_tag_categories(
+                    records,
+                    session=session,
+                    lookup_limit=args.tag_lookup_limit,
+                    delay_seconds=args.tag_lookup_delay_seconds,
+                    timeout_seconds=args.tag_lookup_timeout,
+                    cache_writes_enabled=not args.disable_db_cache_writes,
+                )
+            finally:
+                session.close()
+                engine.dispose()
+
+    lookup_summary_public = lookup_summary.public_dict()
+    db_cache_public = tag_category_lookup_cache_summary(
+        db_enabled=not args.no_db,
+        table_available=db_cache_table_available,
+        cache_writes_enabled=not args.disable_db_cache_writes,
+        lookup_summary=lookup_summary_public,
+    )
+
+    normalized_records, candidate_rows = normalize_metadata_candidates(
+        records,
+        local_index,
+        external_lookup_results=lookup_results,
+    )
     media_summaries = build_media_summaries(normalized_records, candidate_rows)
     tag_rows = [
         row
@@ -1750,6 +2558,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             tag_candidates_md,
             entity_candidates_csv,
             entity_candidates_md,
+            lookup_cache_csv,
+            lookup_cache_md,
             manual_review_guide,
             raw_dir,
         ],
@@ -1779,6 +2589,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         command_public=public_command,
         raw_scope=raw_scope,
         local_index_summary=local_index.public_summary(),
+        lookup_summary=lookup_summary_public,
+        db_cache_summary=db_cache_public,
         containment=containment,
         manual_review_guide=manual_review_guide,
     )
@@ -1799,6 +2611,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "records_private": [record.to_private_dict() for record in records],
             "normalized_records_private": [record.to_private_dict() for record in normalized_records],
             "candidate_rows_private": [row.to_private_dict() for row in candidate_rows],
+            "lookup_results_private": [result.to_private_dict() for result in lookup_results.values()],
+            "lookup_summary_public": lookup_summary_public,
+            "tag_category_lookup_cache_public": db_cache_public,
             "media_summaries_private": list(media_summaries),
             "raw_scope_private": raw_scope,
             "db_identity_public": db_identity,
@@ -1812,6 +2627,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_text(tag_candidates_md, _rows_markdown([row.to_private_dict() for row in tag_rows]))
     write_private_text(entity_candidates_csv, _candidate_csv(entity_rows))
     write_private_text(entity_candidates_md, _rows_markdown([row.to_private_dict() for row in entity_rows]))
+    write_private_text(lookup_cache_csv, _lookup_cache_csv(lookup_results))
+    write_private_text(
+        lookup_cache_md,
+        _rows_markdown([result.to_private_dict() for result in lookup_results.values()]),
+    )
     write_private_text(manual_review_guide, build_manual_review_guide())
 
     return {

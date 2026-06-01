@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -20,9 +20,23 @@ if str(ROOT) not in sys.path:
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.database import Base  # noqa: E402
-from app.enums import EntityMetadataSourceEnum, EntityStatusEnum, EntityTypeEnum, TagCategoryEnum  # noqa: E402
-from app.models import Entity, EntityAlias, Tag  # noqa: E402
+from app.database import Base, migrate_add_external_tag_category_lookup_cache  # noqa: E402
+from app.enums import (  # noqa: E402
+    EntityExternalIdentityStatusEnum,
+    EntityMetadataSourceEnum,
+    EntityStatusEnum,
+    EntityTypeEnum,
+    TagCategoryEnum,
+)
+from app.models import (  # noqa: E402
+    Entity,
+    EntityAlias,
+    EntityEvidence,
+    EntityExternalIdentity,
+    ExternalTagCategoryLookupCache,
+    MediaEntityCandidate,
+    Tag,
+)
 from scripts import run_phase44p2r_f3_pixiv_metadata_normalization_pilot as pilot  # noqa: E402
 
 
@@ -264,6 +278,13 @@ def test_public_report_redacts_exact_ids_paths_and_private_markers(tmp_path):
         command_public={"metadata_command_count": 1},
         raw_scope={"raw_input_scope": "current_run_only", "current_run_raw_file_count": 1, "stale_raw_files_ignored_count": 0},
         local_index_summary=pilot.LocalClassificationIndex().public_summary(),
+        lookup_summary=pilot.ExternalLookupSummary(unique_normalized_tag_count=1).public_dict(),
+        db_cache_summary=pilot.tag_category_lookup_cache_summary(
+            db_enabled=True,
+            table_available=True,
+            cache_writes_enabled=True,
+            lookup_summary=pilot.ExternalLookupSummary(unique_normalized_tag_count=1).public_dict(),
+        ),
         containment={"output_path_violation": False},
         manual_review_guide=pilot.PRIVATE_MANUAL_REVIEW_GUIDE,
     )
@@ -282,6 +303,7 @@ def test_private_artifact_paths_must_stay_under_local_manifests(tmp_path):
             pilot.PRIVATE_MEDIA_SUMMARY_CSV,
             pilot.PRIVATE_TAG_CANDIDATES_CSV,
             pilot.PRIVATE_ENTITY_CANDIDATES_CSV,
+            pilot.PRIVATE_LOOKUP_CACHE_CSV,
             pilot.PRIVATE_MANUAL_REVIEW_GUIDE,
             pilot.PRIVATE_RAW_DIR,
         ],
@@ -289,3 +311,288 @@ def test_private_artifact_paths_must_stay_under_local_manifests(tmp_path):
     assert containment["private_artifacts_under_phase_root"] is True
     with pytest.raises(pilot.OutputPathError, match="f3_output_path_violation"):
         pilot.output_containment_summary(pilot.PHASE_OUTPUT_DIR, private_paths=[tmp_path / "outside.json"])
+
+
+def test_danbooru_category_mapping_covers_expected_namespaces():
+    assert pilot.map_danbooru_category_to_namespace(0) == "general"
+    assert pilot.map_danbooru_category_to_namespace(1) == "artist"
+    assert pilot.map_danbooru_category_to_namespace(3) == "copyright"
+    assert pilot.map_danbooru_category_to_namespace(4) == "character"
+    assert pilot.map_danbooru_category_to_namespace(5) == "meta"
+    assert pilot.map_danbooru_category_to_namespace("unexpected") == "unknown"
+
+
+def test_external_identity_lookup_is_provider_namespaced(db):
+    work = Entity(
+        type=EntityTypeEnum.work,
+        canonical_name="Provider foreign work",
+        normalized_key="provider_foreign_work",
+        status=EntityStatusEnum.active,
+    )
+    artist = Entity(
+        type=EntityTypeEnum.artist,
+        canonical_name="Pixiv artist",
+        normalized_key="pixiv_artist",
+        status=EntityStatusEnum.active,
+    )
+    db.add_all([work, artist])
+    db.flush()
+    db.add(
+        EntityExternalIdentity(
+            entity_id=work.id,
+            provider="danbooru",
+            external_id="12345",
+            identity_status=EntityExternalIdentityStatusEnum.verified,
+        )
+    )
+    db.add(
+        EntityExternalIdentity(
+            entity_id=artist.id,
+            provider="pixiv",
+            external_id="67890",
+            identity_status=EntityExternalIdentityStatusEnum.verified,
+        )
+    )
+    db.commit()
+
+    index = pilot.build_local_classification_index(db)
+    raw_numeric_record = _record(tags=("12345",), artist_name=None, artist_id=None)
+    _normalized, raw_rows = pilot.normalize_metadata_candidates([raw_numeric_record], index)
+
+    assert raw_rows[0].candidate_kind == "unknown_or_unresolved_pixiv_tag"
+    assert raw_rows[0].existing_entity_match is False
+
+    artist_record = _record(tags=(), artist_name="Pixiv artist", artist_id="67890")
+    _normalized, artist_rows = pilot.normalize_metadata_candidates([artist_record], index)
+    artist_row = artist_rows[0]
+    assert artist_row.reason == "pixiv_user_metadata_verified_local_pixiv_identity"
+    assert artist_row.existing_entity_match is True
+    assert artist_row.existing_entity_id_private == artist.id
+
+
+def test_external_lookup_cache_hit_avoids_network_and_classifies(db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="hakurei_reimu",
+            normalized_tag="hakurei_reimu",
+            lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+            source_tag_id="1",
+            source_tag_name="hakurei_reimu",
+            source_category_raw="4",
+            mapped_candidate_namespace="character",
+            confidence=0.84,
+            provenance_url_or_key="https://danbooru.donmai.us/tags/1",
+            status="hit",
+        )
+    )
+    db.commit()
+
+    def fail_fetcher(_key, _timeout):
+        raise AssertionError("network should not be called for cache hit")
+
+    record = _record(tags=("hakurei_reimu",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fail_fetcher,
+    )
+    _normalized, rows = pilot.normalize_metadata_candidates(
+        [record],
+        pilot.LocalClassificationIndex(),
+        external_lookup_results=lookup_results,
+    )
+
+    assert summary.cache_hit_count == 1
+    assert summary.request_count == 0
+    assert rows[0].candidate_namespace == "character"
+    assert rows[0].reason == "external_tag_category_lookup"
+    assert rows[0].cache_status == "hit"
+
+
+def test_external_lookup_cache_miss_fetches_and_writes_cache(db):
+    calls = []
+
+    def fake_fetcher(key, _timeout):
+        calls.append(key)
+        return [{"id": 2, "name": key, "category": 3}]
+
+    record = _record(tags=("blue_archive",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fake_fetcher,
+    )
+
+    cached = db.query(ExternalTagCategoryLookupCache).one()
+    assert calls == ["blue_archive"]
+    assert summary.cache_miss_count == 1
+    assert summary.request_count == 1
+    assert summary.cache_write_count == 1
+    assert lookup_results["blue_archive"].mapped_candidate_namespace == "copyright"
+    assert cached.lookup_source == pilot.EXTERNAL_TAG_LOOKUP_SOURCE
+    assert cached.mapped_candidate_namespace == "copyright"
+
+
+def test_danbooru_alias_lookup_resolves_to_canonical_tag(monkeypatch):
+    def fake_tag_payload(key, *, timeout):
+        assert timeout == 1
+        if key == "alias_name":
+            return []
+        if key == "canonical_character":
+            return [{"id": 4, "name": "canonical_character", "category": 4}]
+        raise AssertionError(key)
+
+    def fake_alias_payload(key, *, timeout):
+        assert key == "alias_name"
+        assert timeout == 1
+        return [{"antecedent_name": "alias_name", "consequent_name": "canonical_character", "status": "active"}]
+
+    monkeypatch.setattr(pilot, "fetch_danbooru_tag_payload", fake_tag_payload)
+    monkeypatch.setattr(pilot, "fetch_danbooru_tag_alias_payload", fake_alias_payload)
+
+    payload, request_count, matched_lookup_key = pilot.fetch_danbooru_tag_category_payload("alias_name", timeout=1)
+    result = pilot._lookup_result_from_danbooru_payload(
+        raw_tag="alias_name",
+        normalized_tag="alias_name",
+        payload=payload,
+        cache_status="miss",
+        matched_lookup_key=matched_lookup_key,
+    )
+
+    assert request_count == 3
+    assert result.status == "hit"
+    assert result.mapped_candidate_namespace == "character"
+
+
+def test_external_lookup_not_found_or_failure_stays_unresolved(db):
+    record = _record(tags=("missing_tag", "broken_tag"), artist_name=None, artist_id=None)
+
+    def fake_fetcher(key, _timeout):
+        if key == "missing_tag":
+            return []
+        raise RuntimeError("boom")
+
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fake_fetcher,
+    )
+    _normalized, rows = pilot.normalize_metadata_candidates(
+        [record],
+        pilot.LocalClassificationIndex(),
+        external_lookup_results=lookup_results,
+    )
+
+    assert summary.not_found_count == 1
+    assert summary.lookup_error_count == 1
+    assert lookup_results["missing_tag"].status == "not_found"
+    assert lookup_results["broken_tag"].status == "lookup_error"
+    assert {row.candidate_kind for row in rows} == {"unknown_or_unresolved_pixiv_tag"}
+
+
+def test_external_lookup_cap_limits_requests(db):
+    calls = []
+
+    def fake_fetcher(key, _timeout):
+        calls.append(key)
+        return [{"id": len(calls), "name": key, "category": 0}]
+
+    record = _record(tags=("tag_a", "tag_b", "tag_c"), artist_name=None, artist_id=None)
+    _lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=None,
+        lookup_limit=2,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=False,
+        fetcher=fake_fetcher,
+    )
+
+    assert summary.unique_normalized_tag_count == 3
+    assert summary.request_count == 2
+    assert calls == ["tag_a", "tag_b"]
+    with pytest.raises(pilot.SampleGateError, match="tag_lookup_cap_exceeded"):
+        pilot.enforce_tag_lookup_limit(pilot.MAX_TAG_LOOKUP_LIMIT_WITHOUT_RENEWED_APPROVAL + 1)
+
+
+def test_external_lookup_cache_migration_creates_table():
+    engine = create_engine("sqlite://")
+    try:
+        migrate_add_external_tag_category_lookup_cache(engine, inspect(engine))
+        inspector = inspect(engine)
+        assert "blombooru_external_tag_category_lookup_cache" in inspector.get_table_names()
+        columns = {column["name"] for column in inspector.get_columns("blombooru_external_tag_category_lookup_cache")}
+        assert {
+            "lookup_source",
+            "normalized_tag",
+            "source_tag_id",
+            "mapped_candidate_namespace",
+            "status",
+            "manual_override_status",
+        }.issubset(columns)
+    finally:
+        engine.dispose()
+
+
+def test_external_lookup_write_guard_allows_cache_only():
+    engine = create_engine("sqlite://")
+    try:
+        Base.metadata.create_all(engine)
+        pilot.install_external_lookup_cache_write_guard(engine)
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO blombooru_external_tag_category_lookup_cache "
+                    "(raw_tag, normalized_tag, lookup_source, status) "
+                    "VALUES ('x', 'x', 'danbooru_tags_api_v1', 'not_found')"
+                )
+            )
+        with pytest.raises(pilot.f1.ReadOnlyViolation):
+            with engine.begin() as conn:
+                conn.execute(text("INSERT INTO blombooru_media_tags (media_id, tag_id) VALUES (1, 1)"))
+    finally:
+        engine.dispose()
+
+
+def test_cache_lookup_writes_no_truth_tables(db):
+    def fake_fetcher(key, _timeout):
+        return [{"id": 3, "name": key, "category": 4}]
+
+    record = _record(tags=("sample_character",), artist_name=None, artist_id=None)
+    pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fake_fetcher,
+    )
+
+    assert db.query(ExternalTagCategoryLookupCache).count() == 1
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+
+
+def test_dry_run_entrypoint_does_not_probe_gallery_dl(monkeypatch):
+    def fail_probe(_command):
+        raise AssertionError("dry-run must not probe gallery-dl")
+
+    monkeypatch.setattr(pilot, "probe_gallery_dl_entrypoint", fail_probe)
+    args = pilot.build_arg_parser().parse_args(["--dry-run", "--gallery-dl-command", "gallery-dl"])
+    entrypoint = pilot.entrypoint_for_args(args)
+
+    assert entrypoint.mode == "dry_run_no_gallery_dl_probe"
+    assert entrypoint.reproducibility_status == "dry_run_no_gallery_dl_probe"
