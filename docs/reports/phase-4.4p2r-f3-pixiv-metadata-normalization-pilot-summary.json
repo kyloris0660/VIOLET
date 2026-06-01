@@ -463,7 +463,7 @@
     "decision": "B_harden_lookup_cache_and_gallery_dl_command_boundary_before_persistence",
     "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
     "local_source_hint_pixiv_metadata": "not_recommended_until_command_join_and_lookup_cache_gates_pass",
-    "reason": "gallery_dl_command_boundary_is_conditional_or_dry_run",
+    "reason": "gallery_dl_command_boundary_is_conditional_or_dry_run,automated_category_lookup_coverage_below_threshold",
     "tag_classification_cache": "pilot_cache_available"
   },
   "gallery_dl_command_mode": {
@@ -484,18 +484,18 @@
     "uses_project_python": false,
     "version": "1.32.1"
   },
-  "generated_at": "2026-06-01T12:40:37+00:00",
+  "generated_at": "2026-06-01T12:42:55+00:00",
   "git_context": {
     "base_main_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
     "branch_name": "codex/phase44p2r-f3-pixiv-metadata-normalization-pilot",
     "final_pushed_commit_sha_reported_in_final_delivery": true,
     "origin_main_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
-    "pr_head_sha_at_report_generation": "0c54c8109fb8dc1405982fe0f1994539fef5c13c",
+    "pr_head_sha_at_report_generation": "69931ccd8b81951dbba98554a423adb31d83939b",
     "pr_number": 90,
     "report_generated_from_worktree": true,
-    "report_generation_head_sha": "0c54c8109fb8dc1405982fe0f1994539fef5c13c",
+    "report_generation_head_sha": "69931ccd8b81951dbba98554a423adb31d83939b",
     "self_referential_commit_sha_not_embedded": true,
-    "working_tree_had_uncommitted_changes_at_report_generation": false
+    "working_tree_had_uncommitted_changes_at_report_generation": true
   },
   "input_summary": {
     "current_run_raw_file_count": 30,

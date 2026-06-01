@@ -61,7 +61,7 @@ PR #89 and F2 validated real gallery-dl metadata retrieval and local Pixiv filen
 ## Recommended Next Phase
 
 - Decision: `B_harden_lookup_cache_and_gallery_dl_command_boundary_before_persistence`.
-- Reason: `gallery_dl_command_boundary_is_conditional_or_dry_run`.
+- Reason: `gallery_dl_command_boundary_is_conditional_or_dry_run,automated_category_lookup_coverage_below_threshold`.
 - DB persistence: `cache_table_only_current_stage_LocalSourceHint_and_PixivMetadata_wait`.
 
 ## Safety Confirmation

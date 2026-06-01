@@ -1863,7 +1863,8 @@ def future_route_recommendation(
     records_with_tags = sum(1 for record in records if record.tags)
     artist_coverage = sum(1 for record in records if record.artist_name or record.artist_id) / max(len(records), 1)
     unresolved = sum(1 for row in rows if row.candidate_kind in {"unknown_or_unresolved_pixiv_tag", "ambiguous_proper_noun_candidate"})
-    if not command_ready or eligible_join_count <= 0 or not cache_available:
+    lookup_coverage_ready = lookup_coverage >= 0.5
+    if not command_ready or eligible_join_count <= 0 or not cache_available or not lookup_coverage_ready:
         blockers = []
         if not command_ready:
             blockers.append("gallery_dl_command_boundary_is_conditional_or_dry_run")
@@ -1871,6 +1872,8 @@ def future_route_recommendation(
             blockers.append("eligible_local_join_count_is_zero")
         if not cache_available:
             blockers.append("external_tag_category_lookup_cache_not_available")
+        if not lookup_coverage_ready:
+            blockers.append("automated_category_lookup_coverage_below_threshold")
         return {
             "decision": "B_harden_lookup_cache_and_gallery_dl_command_boundary_before_persistence",
             "reason": ",".join(blockers),
