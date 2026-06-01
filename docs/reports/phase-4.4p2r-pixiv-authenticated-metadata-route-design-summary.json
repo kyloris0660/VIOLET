@@ -1,0 +1,235 @@
+{
+  "phase": "4.4-P2R",
+  "title": "Pixiv Authenticated Metadata Route Scouting and Adapter Design",
+  "stage_type": "route_scouting_design_report",
+  "not_persistence_phase": true,
+  "pr86_route_decision": {
+    "public_page_preview_runner_should_continue_as_main_route": false,
+    "recommendation": "Do not merge PR #86 as the Pixiv metadata route; leave it open only as diagnostic evidence or close it as superseded after P2R review.",
+    "reason": "PR #86 reached public pages/previews but metadata stayed preview_only and the public HTML/preview route remained brittle."
+  },
+  "project_evidence": {
+    "p0_pixiv_prior_media_count": 555,
+    "p0_total_media_inspected": 1989,
+    "p0_coverage_percent": 27.9,
+    "p0_distinct_candidate_work_ids": 551,
+    "p1_sample_size": 5,
+    "p1_metadata_richness_distribution": {
+      "preview_only": 5
+    },
+    "p1_correspondence_distribution": {
+      "auto_verified_high_confidence": 1,
+      "auto_rejected_mismatch": 3,
+      "preview_fetch_blocked": 1
+    },
+    "p1_manual_validation_required": true
+  },
+  "sources_inspected": [
+    {
+      "name": "gallery-dl",
+      "url": "https://github.com/mikf/gallery-dl",
+      "license": "GPL-2.0",
+      "use": "conceptual reference or external user-installed tool boundary only"
+    },
+    {
+      "name": "gallery-dl Pixiv extractor",
+      "url": "https://github.com/mikf/gallery-dl/blob/master/gallery_dl/extractor/pixiv.py",
+      "use": "work/page convention, metadata shape, refresh-token app API flow"
+    },
+    {
+      "name": "gallery-dl configuration and options docs",
+      "url": "https://github.com/mikf/gallery-dl/blob/master/docs/configuration.rst",
+      "use": "refresh-token, cookies, archive, download=false, metadata postprocessor"
+    },
+    {
+      "name": "pixivpy",
+      "url": "https://github.com/upbit/pixivpy",
+      "license": "Unlicense",
+      "use": "structured illust_detail metadata model and refresh-token auth model"
+    },
+    {
+      "name": "PixivUtil2",
+      "url": "https://github.com/Nandaka/PixivUtil2",
+      "license": "BSD-2-Clause",
+      "use": "AJAX payload field model, pageCount/page URL handling, downloader/cookie risk"
+    },
+    {
+      "name": "Pixiv Service Master Terms",
+      "url": "https://www.pixiv.net/terms/?lang=en",
+      "use": "official policy surface checked; no legal conclusion"
+    },
+    {
+      "name": "Pixiv robots.txt",
+      "url": "https://www.pixiv.net/robots.txt",
+      "use": "broad crawling caution"
+    }
+  ],
+  "official_public_metadata_api_found": false,
+  "official_api_uncertainty_note": "No official public artwork metadata API was found in bounded research; this is not a legal/TOS determination.",
+  "route_scores": [
+    {
+      "route": "A_internal_violet_authenticated_adapter",
+      "metadata_richness": 5,
+      "reliability": 4,
+      "implementation_cost_score": 1,
+      "maintenance_cost_score": 1,
+      "privacy_secret_safety": 2,
+      "tos_policy_safety": 2,
+      "contract_fit": 4,
+      "small_pilot_suitability": 3,
+      "broad_run_suitability": 2,
+      "avoid_original_download": 4,
+      "metadata_only_by_work_id": 5,
+      "public_redaction": 4,
+      "decision": "not_first"
+    },
+    {
+      "route": "B_external_gallery_dl_adapter",
+      "metadata_richness": 5,
+      "reliability": 5,
+      "implementation_cost_score": 3,
+      "maintenance_cost_score": 4,
+      "privacy_secret_safety": 3,
+      "tos_policy_safety": 3,
+      "contract_fit": 5,
+      "small_pilot_suitability": 5,
+      "broad_run_suitability": 3,
+      "avoid_original_download": 4,
+      "metadata_only_by_work_id": 5,
+      "public_redaction": 5,
+      "decision": "preferred_after_json_import"
+    },
+    {
+      "route": "C_pixivpy_style_adapter",
+      "metadata_richness": 5,
+      "reliability": 4,
+      "implementation_cost_score": 3,
+      "maintenance_cost_score": 2,
+      "privacy_secret_safety": 2,
+      "tos_policy_safety": 2,
+      "contract_fit": 4,
+      "small_pilot_suitability": 3,
+      "broad_run_suitability": 2,
+      "avoid_original_download": 5,
+      "metadata_only_by_work_id": 5,
+      "public_redaction": 4,
+      "decision": "fallback_or_comparison"
+    },
+    {
+      "route": "D_manual_local_metadata_import",
+      "metadata_richness": 4,
+      "reliability": 4,
+      "implementation_cost_score": 4,
+      "maintenance_cost_score": 5,
+      "privacy_secret_safety": 5,
+      "tos_policy_safety": 4,
+      "contract_fit": 5,
+      "small_pilot_suitability": 5,
+      "broad_run_suitability": 2,
+      "avoid_original_download": 5,
+      "metadata_only_by_work_id": 4,
+      "public_redaction": 5,
+      "decision": "preferred_next_pilot"
+    },
+    {
+      "route": "E_continue_public_page_preview_route",
+      "metadata_richness": 2,
+      "reliability": 1,
+      "implementation_cost_score": 2,
+      "maintenance_cost_score": 1,
+      "privacy_secret_safety": 4,
+      "tos_policy_safety": 2,
+      "contract_fit": 2,
+      "small_pilot_suitability": 2,
+      "broad_run_suitability": 1,
+      "avoid_original_download": 3,
+      "metadata_only_by_work_id": 2,
+      "public_redaction": 4,
+      "decision": "diagnostic_only_not_main_route"
+    }
+  ],
+  "recommended_route": {
+    "near_term": "manual_gallery_dl_json_metadata_import_pilot",
+    "next_after_success": "external_gallery_dl_adapter_design",
+    "not_recommended_first": [
+      "internal_violet_pixiv_authenticated_adapter",
+      "pixivpy_style_adapter",
+      "continued_public_page_preview_runner"
+    ]
+  },
+  "credential_requirements": {
+    "manual_json_import": "none inside V.I.O.L.E.T.",
+    "external_gallery_dl_adapter": [
+      "user-managed gallery-dl Pixiv refresh-token or cookies depending on gallery-dl configuration",
+      "credentials stored outside repo and not in V.I.O.L.E.T. DB",
+      "V.I.O.L.E.T. may receive only a private config/profile reference"
+    ],
+    "internal_or_pixivpy_adapter": [
+      "refresh token",
+      "access token handling",
+      "OS-backed secret storage or encrypted local-only storage outside repo"
+    ],
+    "public_artifacts_must_include_secrets": false
+  },
+  "metadata_only_feasibility": {
+    "feasible_in_principle": true,
+    "supporting_evidence": [
+      "gallery-dl --dump-json / --no-download / metadata postprocessor options",
+      "pixivpy illust_detail structured JSON"
+    ],
+    "future_pilot_must_prove": [
+      "no image bytes downloaded",
+      "no original download",
+      "exact command behavior",
+      "request counts",
+      "redacted public output"
+    ]
+  },
+  "minimal_safe_next_pilot": {
+    "name": "Phase 4.4-P2R-F1 - gallery-dl JSON metadata import pilot",
+    "sample_size": "5_to_10_private_work_ids",
+    "network_inside_violet": false,
+    "db_write": false,
+    "image_download": false,
+    "output": [
+      "normalized local JSON validation",
+      "public-safe report",
+      "private ignored exact mapping sheet"
+    ]
+  },
+  "forbidden_until_later_phase": {
+    "db_write": false,
+    "db_migration": false,
+    "local_source_hint_write": false,
+    "provider_cache_write": false,
+    "entity_evidence_write": false,
+    "media_entity_candidate_write": false,
+    "negative_lookup_cache_write": false,
+    "confirmed_assignment": false,
+    "automatic_entity_creation": false,
+    "media_tags_mutation": false,
+    "tag_translation_mutation": false,
+    "localization_execution": false,
+    "entity_resolver": false,
+    "broad_similarity_or_clustering": false,
+    "authenticated_pixiv_request": false,
+    "gallery_dl_live_run_with_credentials": false,
+    "image_download": false,
+    "original_image_download": false
+  },
+  "safety_confirmation": {
+    "db_write": false,
+    "db_migration": false,
+    "pixiv_login": false,
+    "cookie_import": false,
+    "refresh_token_use": false,
+    "authenticated_pixiv_request": false,
+    "gallery_dl_live_run_with_credentials": false,
+    "image_download": false,
+    "original_image_download": false,
+    "source_or_icloud_mutation": false,
+    "app_managed_storage_mutation": false,
+    "push_main": false,
+    "merge": false
+  }
+}

@@ -764,6 +764,18 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No DB write, DB migration, ProviderCache/EntityEvidence/MediaEntityCandidate write, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, broad similarity/clustering, source/iCloud mutation, app-managed storage mutation, Pixiv scraping, browser automation, cookies/login, provider call, reference-image download, push to `main`, or merge occurred.
 - Public reports: `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md` and `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification-summary.json`.
 
+### Phase 4.4-P2R - Pixiv Authenticated Metadata Route Scouting and Adapter Design
+
+**Goal:** Stop polishing the unauthenticated public-page / preview route and choose a reliable future Pixiv metadata route based on mature implementations.
+
+- PR #86 proved public Pixiv pages/previews can be reached in a tiny non-mutating pilot, but metadata stayed `preview_only` and the route remained brittle around HTML/previews, redirects, preview hosts, page-index/crop mismatch, and report-truthfulness edge cases.
+- Bounded prior-art review inspected gallery-dl, pixivpy, PixivUtil2, Pixiv terms/policies, and robots.txt. No official public artwork metadata API was found in this bounded pass; this is not a legal/TOS conclusion.
+- Mature Pixiv metadata implementations use authenticated or tool-mediated routes: gallery-dl supports Pixiv refresh-token auth, `{id}_p{num}` page convention, multi-page metadata, JSON output, request sleep, archive behavior, and no-download/metadata modes; pixivpy exposes structured `illust_detail`; PixivUtil2 confirms AJAX field and page handling but is downloader/cookie/Referer oriented.
+- Recommended route: first run a manual gallery-dl JSON metadata import pilot with no Pixiv network inside V.I.O.L.E.T.; if that succeeds, design an external gallery-dl adapter. Do not implement a first-party Pixiv authenticated adapter or pixivpy-style adapter unless the gallery-dl boundary proves insufficient.
+- PR #86 should not be merged as the durable Pixiv metadata foundation. It may remain as diagnostic evidence or be closed as superseded after the P2R route design is accepted.
+- No DB write, DB migration, LocalSourceHint, ProviderCache, EntityEvidence, MediaEntityCandidate, NegativeLookupCache, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, Pixiv login/cookie/refresh-token use, authenticated request, gallery-dl credentialed run, image download, source/iCloud mutation, app-managed storage mutation, push to `main`, or merge occurred.
+- Public reports: `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design.md` and `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design-summary.json`.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -777,21 +789,23 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-P0:
+Current near-term options after Phase 4.4-P2R:
 
-1. Phase 4.4-P1 - Pixiv Source-Prior Persistence for Auto-Verified High-Confidence Items, only after an approved safe reference/correspondence route exists; no filename-token-only persistence.
-2. If no safe Pixiv route is accepted, choose either a no-upload metadata adapter only after known validated source/post IDs exist, or a separate policy decision for an official/documented Pixiv-compatible route.
-3. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
-4. Phase 4.4-B2 only when more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-5. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
-6. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
-7. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-8. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
-9. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-10. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-11. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-12. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-13. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+1. Preferred next Pixiv route: Phase 4.4-P2R-F1 manual gallery-dl JSON metadata import pilot. Use `5-10` private Pixiv work IDs, no Pixiv network inside V.I.O.L.E.T., no credentials in the app, no image downloads, no DB writes, and public/private artifact separation.
+2. If the JSON import validates metadata richness and page-index mapping, design an external gallery-dl adapter that invokes a user-installed gallery-dl boundary with explicit credential, no-download, rate-limit, cache/audit, and redaction policy.
+3. Do not merge PR #86 as the durable Pixiv metadata route. Public-page preview probing is diagnostic/fallback only, not the source of reliable Pixiv tags/artist/page metadata.
+4. Internal V.I.O.L.E.T. Pixiv authenticated adapter or pixivpy-style adapter only if the gallery-dl JSON/import boundary is insufficient and the user approves local secret storage plus Pixiv policy risk.
+5. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
+6. Phase 4.4-B2 only when more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
+7. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
+8. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
+9. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+10. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
+11. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+12. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, and `972`.
+13. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+14. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+15. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
