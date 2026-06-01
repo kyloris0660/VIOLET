@@ -33,26 +33,33 @@ PR #87 chose gallery-dl JSON metadata import as the immediate Pixiv metadata rou
 ## Input And Records
 
 - Input file count: `6`.
-- Record count: `16`.
+- Raw record count: `16`.
+- Raw event count: `16`.
+- Directory context event count: `6`.
+- URL media event count: `10`.
+- Normalized media record count: `10`.
 - Invalid JSON count: `0`.
 - Unsupported shape count: `0`.
-- Record shape distribution: `{"gallery_dl_directory_event": 6, "gallery_dl_url_event": 10}`.
+- Raw record shape distribution: `{"gallery_dl_directory_context_event": 6, "gallery_dl_url_media_event": 10}`.
+- Normalized media record shape distribution: `{"gallery_dl_url_media_event": 10}`.
 
 ## Schema Field Availability
 
-- Field availability: `{"artist_id": 16, "artist_name": 16, "caption": 10, "extractor_category": 16, "gallery_dl_filename": 10, "image_url_kinds": 10, "page_count": 16, "page_index": 16, "tags": 16, "title": 16, "translated_tags": 0, "work_id": 16}`.
-- Tags/artist/title/page_count: `{"artist_id": 16, "artist_name": 16, "page_count": 16, "tags": 16, "title": 16, "translated_tags": 0}`.
-- Metadata richness distribution: `{"rich_structured_metadata": 16}`.
+- Field availability: `{"artist_id": 10, "artist_name": 10, "caption": 7, "extractor_category": 10, "gallery_dl_filename": 10, "image_url_kinds": 10, "page_count": 10, "page_index": 10, "tags": 10, "title": 10, "translated_tags": 0, "work_id": 10}`.
+- Tags/artist/title/page_count: `{"artist_id": 10, "artist_name": 10, "page_count": 10, "tags": 10, "title": 10, "translated_tags": 0}`.
+- Metadata richness distribution: `{"rich_structured_metadata": 10}`.
 
 ## Local Source-Prior Join
 
-- Join status counts: `{"metadata_matches_local_filename_prior": 11, "metadata_work_id_found_no_local_match": 5}`.
+- Join status counts: `{"metadata_matches_eligible_anime_local_prior": 6, "metadata_work_id_found_no_local_match": 4}`.
+- Match content-class counts: `{"anime": 6}`.
+- Future eligibility counts: `{"eligible_for_future_entity_candidate": 6, "eligible_for_future_local_source_hint": 6, "ineligible_for_future_entity_candidate": 4, "ineligible_for_future_local_source_hint": 4}`.
 - Local prior keys without metadata: `549`.
 - Local prior total media inspected: `1989`.
 
 ## Page Index Validation
 
-- Page-index status counts: `{"page_index_within_page_count": 16}`.
+- Page-index status counts: `{"page_index_within_page_count": 10}`.
 
 ## Normalized DTO
 
@@ -64,7 +71,7 @@ PR #87 chose gallery-dl JSON metadata import as the immediate Pixiv metadata rou
 ## Correspondence Feasibility
 
 - Visual check performed: `False`.
-- Status counts: `{"metadata_work_page_match_no_visual_check": 16}`.
+- Status counts: `{"metadata_work_page_match_no_visual_check": 10}`.
 - Image correspondence blocker: `False`.
 
 ## External Adapter Readiness
@@ -80,7 +87,7 @@ PR #87 chose gallery-dl JSON metadata import as the immediate Pixiv metadata rou
 ## Future Route Recommendation
 
 - Decision: `A_proceed_to_external_gallery_dl_metadata_reference_adapter_pilot`.
-- Reason: `gallery-dl JSON provided structured metadata and at least one local filename-prior join succeeded`.
+- Reason: `gallery-dl JSON provided structured metadata and at least one eligible anime local filename-prior join succeeded`.
 - DB persistence: `later_phase_only`.
 
 ## Privacy And Safety Confirmation

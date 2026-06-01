@@ -24,6 +24,23 @@ from app.models import Media  # noqa: E402
 from scripts import run_phase44p2r_f1_gallery_dl_json_import_pilot as pilot  # noqa: E402
 
 
+CONFIG_ENV_KEYS = [
+    "VIOLET_ENV",
+    "VIOLET_STORAGE_ROOT",
+    "TEST_DATABASE_URL",
+    "POSTGRES_DB",
+    "POSTGRES_HOST",
+    "POSTGRES_PORT",
+    "POSTGRES_USER",
+    "POSTGRES_PASSWORD",
+]
+
+
+def _clear_config_env(monkeypatch):
+    for key in CONFIG_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture()
 def db():
     engine = create_engine(
@@ -75,6 +92,12 @@ def _write(path: Path, payload: str) -> Path:
     return path
 
 
+def _write_settings(storage_root: Path, database: dict) -> None:
+    settings_file = storage_root / "data" / "settings.json"
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps({"database": database}), encoding="utf-8")
+
+
 def test_jsonl_parsing_accepts_gallery_dl_event_lines(tmp_path):
     input_file = _write(
         tmp_path / "sample.jsonl",
@@ -90,10 +113,14 @@ def test_jsonl_parsing_accepts_gallery_dl_event_lines(tmp_path):
     result = pilot.parse_gallery_dl_json_inputs(input_file)
     records = pilot.normalize_records(result, adapter_version="test")
 
-    assert len(records) == 2
+    assert result.raw_event_count == 2
+    assert result.directory_context_event_count == 1
+    assert result.url_media_event_count == 1
+    assert len(result.directory_context_records) == 1
+    assert len(records) == 1
     assert records[0].work_id == "100000001"
-    assert records[1].page_index == 0
-    assert records[1].record_shape == "gallery_dl_url_event"
+    assert records[0].page_index == 0
+    assert records[0].record_shape == "gallery_dl_url_media_event"
 
 
 def test_json_array_parsing_accepts_gallery_dl_dump_shape(tmp_path):
@@ -110,14 +137,35 @@ def test_json_array_parsing_accepts_gallery_dl_dump_shape(tmp_path):
     result = pilot.parse_gallery_dl_json_inputs(input_file)
     records = pilot.normalize_records(result, adapter_version=None)
 
-    assert len(records) == 2
-    assert records[1].work_id == "100000002"
-    assert records[1].page_index == 1
+    assert result.raw_event_count == 2
+    assert result.directory_context_event_count == 1
+    assert result.url_media_event_count == 1
+    assert len(records) == 1
+    assert records[0].work_id == "100000002"
+    assert records[0].page_index == 1
+
+
+def test_directory_event_is_private_context_not_media_record(tmp_path):
+    input_file = _write(
+        tmp_path / "directory-only.json",
+        json.dumps([2, {"id": 100000013, "title": "directory context", "num": 0, "page_count": 1}]),
+    )
+
+    result = pilot.parse_gallery_dl_json_inputs(input_file)
+    records = pilot.normalize_records(result, adapter_version=None)
+
+    assert len(result.records) == 1
+    assert result.records[0].is_media_record is False
+    assert result.directory_context_event_count == 1
+    assert records == []
 
 
 def test_json_parser_accepts_powershell_utf16_redirect_output(tmp_path):
     input_file = tmp_path / "powershell-smoke.json"
-    input_file.write_text(json.dumps([[2, {"id": 100000012, "num": 0, "page_count": 1}]]), encoding="utf-16")
+    input_file.write_text(
+        json.dumps([[3, "https://example.invalid/100000012_p0.jpg", {"id": 100000012, "num": 0, "page_count": 1}]]),
+        encoding="utf-16",
+    )
 
     result = pilot.parse_gallery_dl_json_inputs(input_file)
     record = pilot.normalize_records(result, adapter_version=None)[0]
@@ -169,6 +217,90 @@ def test_schema_variations_are_normalized(tmp_path):
     assert record.image_url_kinds_available
 
 
+def test_settings_json_database_precedence_is_honored(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    storage_root = tmp_path / "storage"
+    _write_settings(
+        storage_root,
+        {
+            "name": "from_settings",
+            "host": "settings-host",
+            "port": 5544,
+            "user": "settings-user",
+            "password": "settings-password",
+        },
+    )
+    monkeypatch.setenv("VIOLET_STORAGE_ROOT", str(storage_root))
+    monkeypatch.setenv("POSTGRES_DB", "from_env")
+    monkeypatch.setenv("POSTGRES_HOST", "env-host")
+    monkeypatch.setenv("POSTGRES_USER", "env-user")
+
+    config = pilot.load_project_config(project_root=tmp_path)
+
+    assert config.db_name == "from_settings"
+    assert config.db_host == "settings-host"
+    assert config.db_port == 5544
+    assert config.db_user == "settings-user"
+    assert config.database_url.database == "from_settings"
+    assert config.settings_source == "settings_json"
+    assert config.storage_root_mode == "explicit_violet_storage_root"
+
+
+def test_violet_storage_root_controls_settings_location(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    root_storage = tmp_path / "data"
+    root_storage.mkdir()
+    (root_storage / "settings.json").write_text(
+        json.dumps({"database": {"name": "wrong_root_settings"}}),
+        encoding="utf-8",
+    )
+    storage_root = tmp_path / "storage"
+    _write_settings(storage_root, {"name": "storage_settings"})
+    monkeypatch.setenv("VIOLET_STORAGE_ROOT", str(storage_root))
+
+    config = pilot.load_project_config(project_root=tmp_path)
+
+    assert config.db_name == "storage_settings"
+    assert config.settings_file_exists is True
+    assert config.storage_root_mode == "explicit_violet_storage_root"
+
+
+def test_test_database_url_is_honored_and_forbidden_dev_db_fails_closed(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru")
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://u:p@localhost/custom_test_db")
+
+    config = pilot.load_project_config(project_root=tmp_path)
+
+    assert config.db_name == "custom_test_db"
+    assert config.database_url.database == "custom_test_db"
+    assert config.database_url_source == "test_database_url"
+
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://u:p@localhost/blombooru")
+    with pytest.raises(pilot.ConfigBlockedError, match="production-like DB"):
+        pilot.load_project_config(project_root=tmp_path)
+
+    monkeypatch.setenv("TEST_DATABASE_URL", "")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru")
+    with pytest.raises(pilot.ConfigBlockedError, match="test-specific POSTGRES_DB"):
+        pilot.load_project_config(project_root=tmp_path)
+
+
+def test_public_db_identity_labels_do_not_emit_secret_fields(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("POSTGRES_PASSWORD", "super-private-password")
+    monkeypatch.setenv("POSTGRES_DB", "public_safe_db")
+    config = pilot.load_project_config(project_root=tmp_path)
+
+    payload = pilot.build_db_identity_payload(config, "public_safe_db")
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    assert "super-private-password" not in serialized
+    assert "password" not in serialized.lower()
+    pilot.assert_public_payload_safe(payload)
+
+
 def test_public_report_redacts_exact_pixiv_ids_and_local_paths(tmp_path):
     raw = pilot.GalleryDlRawRecord(
         data={"id": 100000005, "num": 0, "page_count": 1, "title": "safe"},
@@ -200,6 +332,50 @@ def test_public_report_redacts_exact_pixiv_ids_and_local_paths(tmp_path):
         pilot.assert_public_payload_safe({"leak": "C:\\Users\\person\\100000005_p0.jpg"})
 
 
+def test_public_summary_separates_raw_directory_url_and_media_counts(tmp_path):
+    input_file = _write(
+        tmp_path / "events.json",
+        json.dumps(
+            [
+                [2, {"id": 100000014, "num": 0, "page_count": 1, "title": "context"}],
+                [
+                    3,
+                    "https://example.invalid/100000014_p0.jpg",
+                    {"id": 100000014, "filename": "100000014_p0", "num": 0, "page_count": 1},
+                ],
+            ]
+        ),
+    )
+    parse_result = pilot.parse_gallery_dl_json_inputs(input_file)
+    records = pilot.normalize_records(parse_result, adapter_version="1.0")
+    joined, join_summary = pilot.join_records_to_local_priors(records, None)
+
+    summary = pilot.build_public_summary(
+        generated_at="2026-06-01T00:00:00+00:00",
+        parse_result=parse_result,
+        records=joined,
+        gallery_env={"gallery_dl_available": True, "gallery_dl_version": "1.0"},
+        command_summary={"metadata_command_count": 1, "metadata_success_count": 1, "metadata_failure_count": 0},
+        join_summary=join_summary,
+        db_identity=None,
+        download_public={
+            "bounded_downloads_used": False,
+            "downloaded_file_count": 0,
+            "downloaded_total_bytes": 0,
+            "cleanup_performed": False,
+        },
+        unexpected_images={"unexpected_image_files_detected": False, "unexpected_image_file_count": 0},
+        pr_context={"pr87_state": "MERGED", "pr86_state": "CLOSED"},
+    )
+
+    assert summary["input_summary"]["raw_event_count"] == 2
+    assert summary["input_summary"]["directory_context_event_count"] == 1
+    assert summary["input_summary"]["url_media_event_count"] == 1
+    assert summary["input_summary"]["normalized_media_record_count"] == 1
+    assert summary["raw_record_shape_distribution"]["gallery_dl_directory_context_event"] == 1
+    assert summary["record_shape_distribution"]["gallery_dl_url_media_event"] == 1
+
+
 def test_secret_like_token_or_cookie_payload_is_blocked():
     with pytest.raises(pilot.PrivacyBlocked):
         pilot.normalize_gallery_dl_record(
@@ -227,13 +403,16 @@ def test_local_filename_prior_join_success_duplicate_and_page_out_of_range(db):
 
     joined, summary = pilot.join_records_to_local_priors(records, prior_index)
 
-    assert joined[0].local_match_status == "metadata_matches_local_filename_prior"
+    assert joined[0].local_match_status == "metadata_matches_eligible_anime_local_prior"
     assert joined[0].local_media_id_private == 1
+    assert joined[0].eligible_for_future_local_source_hint is True
+    assert joined[0].eligible_for_future_entity_candidate is True
     assert joined[1].local_match_status == "duplicate_or_ambiguous_local_match"
     assert joined[2].local_match_status == "page_index_out_of_range"
-    assert summary["status_counts"]["metadata_matches_local_filename_prior"] == 1
+    assert summary["status_counts"]["metadata_matches_eligible_anime_local_prior"] == 1
     assert summary["status_counts"]["duplicate_or_ambiguous_local_match"] == 1
     assert summary["status_counts"]["page_index_out_of_range"] == 1
+    assert summary["match_content_class_counts"]["anime"] == 2
 
 
 def test_missing_page_index_is_classified():
@@ -243,6 +422,39 @@ def test_missing_page_index_is_classified():
     )
     assert joined[0].local_match_status == "missing_page_index"
     assert summary["page_index_status_counts"]["missing_page_index"] == 1
+
+
+@pytest.mark.parametrize(
+    ("content_class", "expected_status"),
+    [
+        (ContentClassEnum.anime, "metadata_matches_eligible_anime_local_prior"),
+        (ContentClassEnum.non_anime, "metadata_matches_ineligible_content_class"),
+        (ContentClassEnum.unknown, "metadata_matches_ineligible_content_class"),
+    ],
+)
+def test_future_candidate_eligibility_requires_anime_content_class(db, content_class, expected_status):
+    _media(db, 20, filename="100000020_p0.jpg", content_class=content_class)
+    prior_index = pilot.build_local_prior_index(db)
+    records = [
+        pilot.PixivGalleryDlMetadataRecord(
+            work_id="100000020",
+            page_index=0,
+            page_count=1,
+            metadata_richness="rich_structured_metadata",
+        )
+    ]
+
+    joined, summary = pilot.join_records_to_local_priors(records, prior_index)
+
+    assert joined[0].local_match_status == expected_status
+    assert joined[0].local_match_content_classes_private == (content_class.value,)
+    assert summary["match_content_class_counts"][content_class.value] == 1
+    if content_class is ContentClassEnum.anime:
+        assert joined[0].eligible_for_future_local_source_hint is True
+        assert joined[0].eligible_for_future_entity_candidate is True
+    else:
+        assert joined[0].eligible_for_future_local_source_hint is False
+        assert joined[0].eligible_for_future_entity_candidate is False
 
 
 def test_read_only_guard_blocks_db_writes():

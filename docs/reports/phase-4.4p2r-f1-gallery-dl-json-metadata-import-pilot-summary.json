@@ -13,7 +13,7 @@
   "correspondence_feasibility": {
     "image_correspondence_is_blocker": false,
     "status_counts": {
-      "metadata_work_page_match_no_visual_check": 16
+      "metadata_work_page_match_no_visual_check": 10
     },
     "visual_check_performed": false
   },
@@ -23,9 +23,13 @@
     "configured_db_name": "blombooru",
     "configured_db_port": 5432,
     "configured_db_user": "postgres",
+    "database_url_source": "settings_env_or_default",
     "db_read_only_guard_installed": true,
     "db_sensitive_value_included": false,
     "local_paths_redacted": true,
+    "settings_file_exists": false,
+    "settings_source": "defaults_without_settings_file",
+    "storage_root_mode": "code_root_default",
     "violet_env": "development"
   },
   "download_summary": {
@@ -79,12 +83,12 @@
     "version_capture": "record gallery-dl --version or equivalent module entrypoint version"
   },
   "extractor_category_distribution": {
-    "pixiv": 16
+    "pixiv": 10
   },
   "future_route_recommendation": {
     "db_persistence": "later_phase_only",
     "decision": "A_proceed_to_external_gallery_dl_metadata_reference_adapter_pilot",
-    "reason": "gallery-dl JSON provided structured metadata and at least one local filename-prior join succeeded"
+    "reason": "gallery-dl JSON provided structured metadata and at least one eligible anime local filename-prior join succeeded"
   },
   "gallery_dl_environment": {
     "attempts": [
@@ -103,16 +107,30 @@
     "gallery_dl_available": true,
     "gallery_dl_version": "1.32.1"
   },
-  "generated_at": "2026-06-01T04:54:17+00:00",
+  "generated_at": "2026-06-01T05:21:16+00:00",
   "input_summary": {
+    "directory_context_event_count": 6,
     "input_file_count": 6,
     "invalid_json_count": 0,
     "json_input_found": true,
-    "record_count": 16,
+    "normalized_media_record_count": 10,
+    "raw_event_count": 16,
+    "raw_record_count": 16,
+    "record_count": 10,
     "skipped_invalid_count": 0,
-    "unsupported_shape_count": 0
+    "unsupported_shape_count": 0,
+    "url_media_event_count": 10
   },
   "local_source_prior_join": {
+    "approved_future_source_content_classes": [
+      "anime"
+    ],
+    "future_eligibility_counts": {
+      "eligible_for_future_entity_candidate": 6,
+      "eligible_for_future_local_source_hint": 6,
+      "ineligible_for_future_entity_candidate": 4,
+      "ineligible_for_future_local_source_hint": 4
+    },
     "local_prior_content_class_distribution": {
       "anime": 546,
       "non_anime": 1,
@@ -123,16 +141,19 @@
     "local_prior_total_media": 555,
     "local_prior_total_media_inspected": 1989,
     "local_prior_without_metadata": 549,
+    "match_content_class_counts": {
+      "anime": 6
+    },
     "page_index_status_counts": {
-      "page_index_within_page_count": 16
+      "page_index_within_page_count": 10
     },
     "status_counts": {
-      "metadata_matches_local_filename_prior": 11,
-      "metadata_work_id_found_no_local_match": 5
+      "metadata_matches_eligible_anime_local_prior": 6,
+      "metadata_work_id_found_no_local_match": 4
     }
   },
   "metadata_richness_distribution": {
-    "rich_structured_metadata": 16
+    "rich_structured_metadata": 10
   },
   "normalized_dto": {
     "db_write_allowed": false,
@@ -149,14 +170,17 @@
       "evidence_strength_candidate": "not_evidence",
       "extractor_category": "pixiv",
       "extractor_subcategory": "work",
-      "image_url_kinds_available": [],
+      "image_url_kinds_available": [
+        "url"
+      ],
+      "local_match_content_class_approved": false,
       "local_match_status": "metadata_work_id_found_no_local_match",
       "metadata_richness": "rich_structured_metadata",
       "page_count_present": true,
       "page_index_present": true,
       "page_index_status": "page_index_within_page_count",
       "privacy_level": "private_exact_mapping",
-      "record_shape": "gallery_dl_directory_event",
+      "record_shape": "gallery_dl_url_media_event",
       "source_adapter": "gallery_dl_json",
       "tag_count": 4,
       "title_present": true,
@@ -166,7 +190,7 @@
     "source_adapter": "gallery_dl_json"
   },
   "page_index_validation_results": {
-    "page_index_within_page_count": 16
+    "page_index_within_page_count": 10
   },
   "phase": "4.4-P2R-F1",
   "pr_context": {
@@ -198,30 +222,33 @@
     "sensitive_material_printed_or_committed": false,
     "source_or_icloud_mutation": false
   },
+  "raw_record_shape_distribution": {
+    "gallery_dl_directory_context_event": 6,
+    "gallery_dl_url_media_event": 10
+  },
   "record_shape_distribution": {
-    "gallery_dl_directory_event": 6,
-    "gallery_dl_url_event": 10
+    "gallery_dl_url_media_event": 10
   },
   "schema_field_availability": {
-    "artist_id": 16,
-    "artist_name": 16,
-    "caption": 10,
-    "extractor_category": 16,
+    "artist_id": 10,
+    "artist_name": 10,
+    "caption": 7,
+    "extractor_category": 10,
     "gallery_dl_filename": 10,
     "image_url_kinds": 10,
-    "page_count": 16,
-    "page_index": 16,
-    "tags": 16,
-    "title": 16,
+    "page_count": 10,
+    "page_index": 10,
+    "tags": 10,
+    "title": 10,
     "translated_tags": 0,
-    "work_id": 16
+    "work_id": 10
   },
   "tags_artist_title_page_count_availability": {
-    "artist_id": 16,
-    "artist_name": 16,
-    "page_count": 16,
-    "tags": 16,
-    "title": 16,
+    "artist_id": 10,
+    "artist_name": 10,
+    "page_count": 10,
+    "tags": 10,
+    "title": 10,
     "translated_tags": 0
   },
   "title": "gallery-dl JSON Metadata Import Pilot and External Adapter Readiness",

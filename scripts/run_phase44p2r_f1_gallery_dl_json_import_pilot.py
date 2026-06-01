@@ -26,7 +26,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import urlsplit
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +85,7 @@ SECRET_KEY_PATTERNS = (
 )
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"}
 JSON_EXTENSIONS = {".json", ".jsonl", ".ndjson"}
+APPROVED_FUTURE_SOURCE_CONTENT_CLASSES = frozenset({"anime"})
 
 
 class Phase44P2RF1Error(RuntimeError):
@@ -111,26 +112,28 @@ class ReadOnlyViolation(Phase44P2RF1Error):
     pass
 
 
+class ConfigBlockedError(Phase44P2RF1Error):
+    pass
+
+
+class IdentityBlockedError(Phase44P2RF1Error):
+    pass
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_root: Path
     violet_env: str
+    database_url: URL
     db_user: str
     db_password: str
     db_host: str
     db_port: int
     db_name: str
-
-    @property
-    def database_url(self) -> URL:
-        return URL.create(
-            drivername="postgresql",
-            username=self.db_user,
-            password=self.db_password,
-            host=self.db_host,
-            port=self.db_port,
-            database=self.db_name,
-        )
+    settings_source: str
+    storage_root_mode: str
+    settings_file_exists: bool
+    database_url_source: str
 
 
 @dataclass
@@ -140,6 +143,7 @@ class GalleryDlRawRecord:
     source_line: int | None
     record_shape: str
     event_type: int | None = None
+    is_media_record: bool = True
 
 
 @dataclass
@@ -149,6 +153,26 @@ class ParseResult:
     invalid_json_count: int = 0
     unsupported_shape_count: int = 0
     skipped_invalid_count: int = 0
+
+    @property
+    def raw_event_count(self) -> int:
+        return sum(1 for record in self.records if record.event_type is not None)
+
+    @property
+    def directory_context_event_count(self) -> int:
+        return sum(1 for record in self.records if record.event_type == 2)
+
+    @property
+    def url_media_event_count(self) -> int:
+        return sum(1 for record in self.records if record.event_type == 3 and record.is_media_record)
+
+    @property
+    def media_records(self) -> list[GalleryDlRawRecord]:
+        return [record for record in self.records if record.is_media_record]
+
+    @property
+    def directory_context_records(self) -> list[GalleryDlRawRecord]:
+        return [record for record in self.records if record.event_type == 2 and not record.is_media_record]
 
 
 @dataclass
@@ -193,6 +217,8 @@ class PixivGalleryDlMetadataRecord:
     page_index_status: str = "not_checked"
     local_media_id_private: int | None = None
     duplicate_local_media_ids_private: tuple[int, ...] = ()
+    local_match_content_classes_private: tuple[str, ...] = ()
+    local_match_content_class_approved: bool = False
     privacy_level: str = "private_exact_mapping"
     eligible_for_future_local_source_hint: bool = False
     eligible_for_future_entity_candidate: bool = False
@@ -223,6 +249,7 @@ class PixivGalleryDlMetadataRecord:
             "metadata_richness": self.metadata_richness,
             "local_match_status": self.local_match_status,
             "page_index_status": self.page_index_status,
+            "local_match_content_class_approved": self.local_match_content_class_approved,
             "privacy_level": self.privacy_level,
             "eligible_for_future_local_source_hint": self.eligible_for_future_local_source_hint,
             "eligible_for_future_entity_candidate": self.eligible_for_future_entity_candidate,
@@ -359,24 +386,132 @@ def write_json(path: Path, payload: Any, *, expected_parent: Path) -> None:
     path.write_text(json.dumps(_coerce_json_safe(payload), indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def load_project_config() -> ProjectConfig:
-    env_path = ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            key, value = stripped.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+FORBIDDEN_TEST_DB_NAMES = frozenset({"blombooru", "production", "main", "postgres"})
+VALID_VIOLET_ENVS = frozenset({"development", "test", "production"})
 
+
+def _read_dotenv_values(project_root: Path) -> dict[str, str]:
+    env_path = project_root / ".env"
+    values: dict[str, str] = {}
+    if not env_path.exists():
+        return values
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        values[key.strip()] = value.strip().strip("\"'")
+    return values
+
+
+def _env_value(dotenv_values: Mapping[str, str], key: str, default: str = "") -> str:
+    if key in os.environ:
+        return os.environ[key]
+    return dotenv_values.get(key, default)
+
+
+def _load_settings_json(settings_file: Path) -> tuple[dict[str, Any], str]:
+    if not settings_file.exists():
+        return {}, "defaults_without_settings_file"
+    try:
+        payload = json.loads(settings_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ConfigBlockedError("identity_blocked: data/settings.json is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ConfigBlockedError("identity_blocked: data/settings.json root is not an object")
+    return payload, "settings_json"
+
+
+def _parse_db_name_from_url(url: str) -> str:
+    parsed = make_url(url)
+    if not parsed.database:
+        raise ConfigBlockedError("identity_blocked: cannot parse DB name from TEST_DATABASE_URL")
+    return str(parsed.database)
+
+
+def _database_settings_value(
+    file_settings: Mapping[str, Any],
+    dotenv_values: Mapping[str, str],
+    settings_key: str,
+    env_key: str,
+    default: Any,
+) -> Any:
+    database_settings = file_settings.get("database", {})
+    if isinstance(database_settings, Mapping) and database_settings.get(settings_key) not in (None, ""):
+        return database_settings[settings_key]
+    env_value = _env_value(dotenv_values, env_key, "")
+    if env_value not in (None, ""):
+        return env_value
+    return default
+
+
+def load_project_config(project_root: Path = ROOT) -> ProjectConfig:
+    project_root = project_root.resolve()
+    dotenv_values = _read_dotenv_values(project_root)
+    violet_env = _env_value(dotenv_values, "VIOLET_ENV", "development").strip().lower()
+    if violet_env not in VALID_VIOLET_ENVS:
+        raise ConfigBlockedError(f"identity_blocked: invalid VIOLET_ENV={violet_env!r}")
+
+    storage_env = _env_value(dotenv_values, "VIOLET_STORAGE_ROOT", "").strip()
+    storage_root = Path(storage_env) if storage_env else project_root
+    storage_root_mode = "explicit_violet_storage_root" if storage_env else "code_root_default"
+    settings_file = storage_root / "data" / "settings.json"
+    file_settings, settings_source = _load_settings_json(settings_file)
+
+    test_url = _env_value(dotenv_values, "TEST_DATABASE_URL", "").strip()
+    if violet_env == "test" and test_url:
+        db_name = _parse_db_name_from_url(test_url)
+        if db_name.lower() in FORBIDDEN_TEST_DB_NAMES:
+            raise ConfigBlockedError(
+                f"identity_blocked: VIOLET_ENV=test but TEST_DATABASE_URL points to production-like DB {db_name!r}"
+            )
+        database_url = make_url(test_url)
+        return ProjectConfig(
+            project_root=project_root,
+            violet_env=violet_env,
+            database_url=database_url,
+            db_user=str(database_url.username or ""),
+            db_password=str(database_url.password or ""),
+            db_host=str(database_url.host or ""),
+            db_port=int(database_url.port or 5432),
+            db_name=db_name,
+            settings_source=settings_source,
+            storage_root_mode=storage_root_mode,
+            settings_file_exists=settings_file.exists(),
+            database_url_source="test_database_url",
+        )
+
+    db_name = str(_database_settings_value(file_settings, dotenv_values, "name", "POSTGRES_DB", "blombooru"))
+    if violet_env == "test" and db_name.lower() in FORBIDDEN_TEST_DB_NAMES:
+        raise ConfigBlockedError(
+            "identity_blocked: VIOLET_ENV=test requires TEST_DATABASE_URL or a test-specific POSTGRES_DB"
+        )
+
+    db_user = str(_database_settings_value(file_settings, dotenv_values, "user", "POSTGRES_USER", "postgres"))
+    db_password = str(_database_settings_value(file_settings, dotenv_values, "password", "POSTGRES_PASSWORD", ""))
+    db_host = str(_database_settings_value(file_settings, dotenv_values, "host", "POSTGRES_HOST", "db"))
+    db_port = int(_database_settings_value(file_settings, dotenv_values, "port", "POSTGRES_PORT", 5432))
+    database_url = URL.create(
+        drivername="postgresql",
+        username=db_user,
+        password=db_password,
+        host=db_host,
+        port=db_port,
+        database=db_name,
+    )
     return ProjectConfig(
-        project_root=ROOT,
-        violet_env=os.environ.get("VIOLET_ENV", "development"),
-        db_user=os.environ.get("POSTGRES_USER", "postgres"),
-        db_password=os.environ.get("POSTGRES_PASSWORD", "password"),
-        db_host=os.environ.get("POSTGRES_HOST", "localhost"),
-        db_port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        db_name=os.environ.get("POSTGRES_DB", "blombooru"),
+        project_root=project_root,
+        violet_env=violet_env,
+        database_url=database_url,
+        db_user=db_user,
+        db_password=db_password,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        settings_source=settings_source,
+        storage_root_mode=storage_root_mode,
+        settings_file_exists=settings_file.exists(),
+        database_url_source="settings_env_or_default",
     )
 
 
@@ -387,8 +522,13 @@ def install_read_only_guard(engine: Any) -> None:
             raise ReadOnlyViolation("db_write_blocked")
 
 
-def prove_db_identity(session: Session, config: ProjectConfig) -> dict[str, Any]:
-    actual_db = session.execute(text("SELECT current_database()")).scalar()
+def build_db_identity_payload(config: ProjectConfig, actual_db: str) -> dict[str, Any]:
+    if not config.db_name:
+        raise IdentityBlockedError("identity_blocked: configured DB name is empty")
+    if str(actual_db) != config.db_name:
+        raise IdentityBlockedError(
+            f"identity_blocked: configured DB {config.db_name!r} does not match actual DB {actual_db!r}"
+        )
     return {
         "violet_env": config.violet_env,
         "configured_db_host": config.db_host,
@@ -396,10 +536,19 @@ def prove_db_identity(session: Session, config: ProjectConfig) -> dict[str, Any]
         "configured_db_user": config.db_user,
         "configured_db_name": config.db_name,
         "actual_db_name": str(actual_db),
+        "settings_source": config.settings_source,
+        "storage_root_mode": config.storage_root_mode,
+        "settings_file_exists": config.settings_file_exists,
+        "database_url_source": config.database_url_source,
         "db_sensitive_value_included": False,
         "db_read_only_guard_installed": True,
         "local_paths_redacted": True,
     }
+
+
+def prove_db_identity(session: Session, config: ProjectConfig) -> dict[str, Any]:
+    actual_db = session.execute(text("SELECT current_database()")).scalar()
+    return build_db_identity_payload(config, str(actual_db))
 
 
 def _json_files_from_input(input_path: Path) -> list[Path]:
@@ -424,14 +573,14 @@ def read_json_text(file_path: Path) -> str:
     raise JsonInputError(f"unsupported_json_text_encoding:{file_path}")
 
 
-def _dict_from_gallery_dl_event(value: Sequence[Any]) -> tuple[dict[str, Any] | None, str, int | None]:
+def _dict_from_gallery_dl_event(value: Sequence[Any]) -> tuple[dict[str, Any] | None, str, int | None, bool]:
     if not value or not isinstance(value[0], int):
-        return None, "unsupported_list_record", None
+        return None, "unsupported_list_record", None, False
     event_type = int(value[0])
     if event_type == 2 and len(value) >= 2 and isinstance(value[1], Mapping):
         data = dict(value[1])
         data["_gallery_dl_event_type"] = event_type
-        return data, "gallery_dl_directory_event", event_type
+        return data, "gallery_dl_directory_context_event", event_type, False
     if event_type == 3:
         event_url = next((item for item in value[1:] if isinstance(item, str) and item.startswith(("http://", "https://"))), None)
         event_payload = next((item for item in reversed(value[1:]) if isinstance(item, Mapping)), None)
@@ -440,13 +589,13 @@ def _dict_from_gallery_dl_event(value: Sequence[Any]) -> tuple[dict[str, Any] | 
             data["_gallery_dl_event_type"] = event_type
             if event_url and "url" not in data:
                 data["_gallery_dl_event_url"] = event_url
-            return data, "gallery_dl_url_event", event_type
+            return data, "gallery_dl_url_media_event", event_type, True
     event_payload = next((item for item in value[1:] if isinstance(item, Mapping)), None)
     if event_payload is not None:
         data = dict(event_payload)
         data["_gallery_dl_event_type"] = event_type
-        return data, "gallery_dl_other_event", event_type
-    return None, f"unsupported_gallery_dl_event_{event_type}", event_type
+        return data, "gallery_dl_other_context_event", event_type, False
+    return None, f"unsupported_gallery_dl_event_{event_type}", event_type, False
 
 
 def _extract_raw_records(payload: Any, *, source_file: Path, source_line: int | None = None) -> tuple[list[GalleryDlRawRecord], int]:
@@ -462,7 +611,7 @@ def _extract_raw_records(payload: Any, *, source_file: Path, source_line: int | 
         ], 0
     if isinstance(payload, list):
         if payload and isinstance(payload[0], int):
-            data, shape, event_type = _dict_from_gallery_dl_event(payload)
+            data, shape, event_type, is_media_record = _dict_from_gallery_dl_event(payload)
             if data is None:
                 return [], 1
             return [
@@ -472,6 +621,7 @@ def _extract_raw_records(payload: Any, *, source_file: Path, source_line: int | 
                     source_line=source_line,
                     record_shape=shape,
                     event_type=event_type,
+                    is_media_record=is_media_record,
                 )
             ], 0
         records: list[GalleryDlRawRecord] = []
@@ -719,7 +869,7 @@ def normalize_gallery_dl_record(raw: GalleryDlRawRecord, *, adapter_version: str
 
 
 def normalize_records(parse_result: ParseResult, *, adapter_version: str | None) -> list[PixivGalleryDlMetadataRecord]:
-    return [normalize_gallery_dl_record(raw, adapter_version=adapter_version) for raw in parse_result.records]
+    return [normalize_gallery_dl_record(raw, adapter_version=adapter_version) for raw in parse_result.media_records]
 
 
 def build_local_prior_index(db: Session) -> LocalPriorIndex:
@@ -771,6 +921,8 @@ def join_records_to_local_priors(
     joined: list[PixivGalleryDlMetadataRecord] = []
     status_counts: Counter[str] = Counter()
     page_status_counts: Counter[str] = Counter()
+    match_content_class_counts: Counter[str] = Counter()
+    eligibility_counts: Counter[str] = Counter()
     metadata_keys: set[tuple[str, int]] = set()
 
     for record in records:
@@ -787,9 +939,19 @@ def join_records_to_local_priors(
                 updated.local_match_status = "local_prior_join_not_run"
             else:
                 matches = prior_index.by_work_page.get((updated.work_id, int(updated.page_index)), [])
+                content_classes = tuple(sorted({match.content_class for match in matches}))
+                updated.local_match_content_classes_private = content_classes
+                for content_class in content_classes:
+                    match_content_class_counts[content_class] += 1
                 if len(matches) == 1:
-                    updated.local_match_status = "metadata_matches_local_filename_prior"
                     updated.local_media_id_private = matches[0].media_id
+                    updated.local_match_content_class_approved = (
+                        matches[0].content_class in APPROVED_FUTURE_SOURCE_CONTENT_CLASSES
+                    )
+                    if updated.local_match_content_class_approved:
+                        updated.local_match_status = "metadata_matches_eligible_anime_local_prior"
+                    else:
+                        updated.local_match_status = "metadata_matches_ineligible_content_class"
                 elif len(matches) > 1:
                     updated.local_match_status = "duplicate_or_ambiguous_local_match"
                     updated.duplicate_local_media_ids_private = tuple(sorted(match.media_id for match in matches))
@@ -805,7 +967,9 @@ def join_records_to_local_priors(
         else:
             updated.page_index_status = "page_index_within_page_count"
 
-        updated.eligible_for_future_local_source_hint = updated.local_match_status == "metadata_matches_local_filename_prior"
+        updated.eligible_for_future_local_source_hint = (
+            updated.local_match_status == "metadata_matches_eligible_anime_local_prior"
+        )
         updated.eligible_for_future_entity_candidate = (
             updated.eligible_for_future_local_source_hint
             and updated.metadata_richness in {"rich_structured_metadata", "partial_structured_metadata"}
@@ -817,6 +981,8 @@ def join_records_to_local_priors(
         joined.append(updated)
         status_counts[updated.local_match_status] += 1
         page_status_counts[updated.page_index_status] += 1
+        eligibility_counts["eligible_for_future_local_source_hint" if updated.eligible_for_future_local_source_hint else "ineligible_for_future_local_source_hint"] += 1
+        eligibility_counts["eligible_for_future_entity_candidate" if updated.eligible_for_future_entity_candidate else "ineligible_for_future_entity_candidate"] += 1
 
     local_prior_without_metadata = 0
     if prior_index is not None:
@@ -825,6 +991,9 @@ def join_records_to_local_priors(
     return joined, {
         "status_counts": dict(sorted(status_counts.items())),
         "page_index_status_counts": dict(sorted(page_status_counts.items())),
+        "match_content_class_counts": dict(sorted(match_content_class_counts.items())),
+        "future_eligibility_counts": dict(sorted(eligibility_counts.items())),
+        "approved_future_source_content_classes": sorted(APPROVED_FUTURE_SOURCE_CONTENT_CLASSES),
         "local_prior_without_metadata": local_prior_without_metadata,
         "local_prior_join_ran": prior_index is not None,
         "local_prior_total_keys": prior_index.total_prior_keys if prior_index else 0,
@@ -1044,12 +1213,12 @@ def external_adapter_readiness_design() -> dict[str, Any]:
 def future_route_recommendation(records: Sequence[PixivGalleryDlMetadataRecord], join_summary: Mapping[str, Any]) -> dict[str, Any]:
     richness_counts = Counter(record.metadata_richness for record in records)
     join_counts = Counter(join_summary.get("status_counts", {}))
-    local_match_count = join_counts.get("metadata_matches_local_filename_prior", 0)
+    local_match_count = join_counts.get("metadata_matches_eligible_anime_local_prior", 0)
     rich_count = richness_counts.get("rich_structured_metadata", 0) + richness_counts.get("partial_structured_metadata", 0)
     if records and rich_count and local_match_count:
         return {
             "decision": "A_proceed_to_external_gallery_dl_metadata_reference_adapter_pilot",
-            "reason": "gallery-dl JSON provided structured metadata and at least one local filename-prior join succeeded",
+            "reason": "gallery-dl JSON provided structured metadata and at least one eligible anime local filename-prior join succeeded",
             "db_persistence": "later_phase_only",
         }
     if records and rich_count:
@@ -1087,6 +1256,7 @@ def build_public_summary(
     richness_counts = Counter(record.metadata_richness for record in records)
     extractor_counts = Counter(record.extractor_category or "missing" for record in records)
     record_shape_counts = Counter(record.record_shape for record in records)
+    raw_record_shape_counts = Counter(record.record_shape for record in parse_result.records)
     source_file_count = len(parse_result.files)
     public = {
         "phase": PHASE,
@@ -1107,6 +1277,11 @@ def build_public_summary(
         "input_summary": {
             "json_input_found": source_file_count > 0,
             "input_file_count": source_file_count,
+            "raw_record_count": len(parse_result.records),
+            "raw_event_count": parse_result.raw_event_count,
+            "directory_context_event_count": parse_result.directory_context_event_count,
+            "url_media_event_count": parse_result.url_media_event_count,
+            "normalized_media_record_count": len(records),
             "record_count": len(records),
             "invalid_json_count": parse_result.invalid_json_count,
             "skipped_invalid_count": parse_result.skipped_invalid_count,
@@ -1115,6 +1290,7 @@ def build_public_summary(
         "schema_field_availability": field_availability(records),
         "metadata_richness_distribution": dict(sorted(richness_counts.items())),
         "record_shape_distribution": dict(sorted(record_shape_counts.items())),
+        "raw_record_shape_distribution": dict(sorted(raw_record_shape_counts.items())),
         "extractor_category_distribution": dict(sorted(extractor_counts.items())),
         "local_source_prior_join": dict(join_summary),
         "page_index_validation_results": dict(join_summary.get("page_index_status_counts", {})),
@@ -1201,10 +1377,15 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "## Input And Records",
         "",
         f"- Input file count: `{summary['input_summary']['input_file_count']}`.",
-        f"- Record count: `{summary['input_summary']['record_count']}`.",
+        f"- Raw record count: `{summary['input_summary']['raw_record_count']}`.",
+        f"- Raw event count: `{summary['input_summary']['raw_event_count']}`.",
+        f"- Directory context event count: `{summary['input_summary']['directory_context_event_count']}`.",
+        f"- URL media event count: `{summary['input_summary']['url_media_event_count']}`.",
+        f"- Normalized media record count: `{summary['input_summary']['normalized_media_record_count']}`.",
         f"- Invalid JSON count: `{summary['input_summary']['invalid_json_count']}`.",
         f"- Unsupported shape count: `{summary['input_summary']['unsupported_shape_count']}`.",
-        f"- Record shape distribution: `{json.dumps(summary['record_shape_distribution'], sort_keys=True)}`.",
+        f"- Raw record shape distribution: `{json.dumps(summary['raw_record_shape_distribution'], sort_keys=True)}`.",
+        f"- Normalized media record shape distribution: `{json.dumps(summary['record_shape_distribution'], sort_keys=True)}`.",
         "",
         "## Schema Field Availability",
         "",
@@ -1215,6 +1396,8 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "## Local Source-Prior Join",
         "",
         f"- Join status counts: `{json.dumps(summary['local_source_prior_join'].get('status_counts', {}), sort_keys=True)}`.",
+        f"- Match content-class counts: `{json.dumps(summary['local_source_prior_join'].get('match_content_class_counts', {}), sort_keys=True)}`.",
+        f"- Future eligibility counts: `{json.dumps(summary['local_source_prior_join'].get('future_eligibility_counts', {}), sort_keys=True)}`.",
         f"- Local prior keys without metadata: `{summary['local_source_prior_join'].get('local_prior_without_metadata')}`.",
         f"- Local prior total media inspected: `{summary['local_source_prior_join'].get('local_prior_total_media_inspected')}`.",
         "",
@@ -1434,6 +1617,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "contains_exact_local_filenames_or_basenames": True,
         "public_report_contains_exact_mappings": False,
         "records": [record.to_private_dict() for record in records],
+        "directory_context_records": [
+            {
+                "data": record.data,
+                "source_file": record.source_file,
+                "source_line": record.source_line,
+                "record_shape": record.record_shape,
+                "event_type": record.event_type,
+            }
+            for record in parse_result.directory_context_records
+        ],
         "parse_files_private": [_rel(path) for path in parse_result.files],
         "private_raw_copies": private_raw_copies,
         "download_artifacts": download_private,
