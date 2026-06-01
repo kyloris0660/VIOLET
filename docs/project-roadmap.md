@@ -802,7 +802,7 @@ Current near-term options after Phase 4.4-P2R:
 9. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
 10. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
 11. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-12. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, and `972`.
+12. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
 13. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
 14. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
 15. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.

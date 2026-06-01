@@ -166,9 +166,11 @@ opt-in, bounded, rate-limited, redacted, and separately approved.
 
 ## Candidate Route Evaluation
 
-Scores use 1 low / 5 high. For risk columns, 5 means lower risk.
+Scores use 1 low / 5 high. For `Implementation ease` and
+`Maintainability`, higher means lower implementation/maintenance cost. For risk
+columns, 5 means lower risk.
 
-| Route | Metadata richness | Reliability | Implementation cost | Maintenance cost | Privacy/secret safety | TOS/policy risk | Contract fit | Small pilot | Broad run | Avoid originals | Metadata-only by work ID | Public redaction |
+| Route | Metadata richness | Reliability | Implementation ease | Maintainability | Privacy/secret safety | TOS/policy risk | Contract fit | Small pilot | Broad run | Avoid originals | Metadata-only by work ID | Public redaction |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | A. Internal V.I.O.L.E.T. authenticated adapter | 5 | 4 | 1 | 1 | 2 | 2 | 4 | 3 | 2 | 4 | 5 | 4 |
 | B. External gallery-dl adapter | 5 | 5 | 3 | 4 | 3 | 3 | 5 | 5 | 3 | 4 | 5 | 5 |
