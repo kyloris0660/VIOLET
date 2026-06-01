@@ -587,7 +587,17 @@ def build_reference_download_command(entrypoint: GalleryDlEntrypoint, work_id: s
 
 
 def redact_text(text: str, *, private_markers: Iterable[str] = ()) -> str:
-    redacted = SECRET_VALUE_RE.sub(lambda match: (match.group(1) or match.group(2) or match.group(3) or "[REDACTED]") + "[REDACTED]", text)
+    redacted = re.sub(
+        r"(?i)(authorization\s*[=:]\s*bearer\s+)[^\s]+",
+        lambda match: match.group(1) + "[REDACTED]",
+        text,
+    )
+    redacted = SECRET_VALUE_RE.sub(lambda match: (match.group(1) or match.group(2) or match.group(3) or "[REDACTED]") + "[REDACTED]", redacted)
+    redacted = re.sub(
+        r"(?i)(authorization\s*[=:]\s*)\[REDACTED\]\s+\[REDACTED\]",
+        lambda match: match.group(1) + "Bearer [REDACTED]",
+        redacted,
+    )
     redacted = f1.LOCAL_PATH_RE.sub("[REDACTED_LOCAL_PATH]", redacted)
     for marker in sorted((str(item) for item in private_markers if item), key=len, reverse=True):
         redacted = redacted.replace(marker, "[REDACTED_PRIVATE_ID]")

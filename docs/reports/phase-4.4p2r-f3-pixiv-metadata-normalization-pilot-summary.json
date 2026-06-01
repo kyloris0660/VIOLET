@@ -1,0 +1,634 @@
+{
+  "artifact_lifecycle": "phase_scoped_operational_runner",
+  "classification_middleware": {
+    "alias_group_candidate_count": 0,
+    "ambiguous_unknown_candidate_count": 305,
+    "artist_candidate_count": 41,
+    "automatic_entity_count": 0,
+    "candidate_classification_distribution": {
+      "candidate_kind_counts": {
+        "ambiguous_proper_noun_candidate": 294,
+        "entity_candidate": 41,
+        "original_work_context": 3,
+        "sensitive_or_meta_tag_candidate": 13,
+        "tag_candidate": 24,
+        "unknown_or_unresolved_pixiv_tag": 8
+      },
+      "candidate_namespace_counts": {
+        "ambiguous": 297,
+        "artist": 41,
+        "general": 24,
+        "meta": 13,
+        "unknown": 8
+      },
+      "candidate_reason_counts": {
+        "deterministic_general_descriptor_fallback": 20,
+        "deterministic_original_marker": 3,
+        "deterministic_proper_noun_shape_unverified": 294,
+        "deterministic_sensitive_or_meta_descriptor": 13,
+        "existing_tag_category_match": 4,
+        "no_provenance_backed_category": 8,
+        "pixiv_user_metadata": 41
+      },
+      "db_write_allowed_count": 0,
+      "lookup_source_counts": {
+        "deterministic_fallback": 330,
+        "external_category_lookup_disabled_in_f3": 8,
+        "local_db_read_only": 4,
+        "pixiv_metadata": 41
+      },
+      "manual_review_required_count": 325
+    },
+    "candidate_row_count": 383,
+    "character_candidate_count": 0,
+    "confirmed_assignment_count": 0,
+    "copyright_series_candidate_count": 0,
+    "db_write_allowed_count": 0,
+    "general_descriptive_tag_candidate_count": 24,
+    "lookup_source_coverage": {
+      "deterministic_fallback": 330,
+      "external_category_lookup_disabled_in_f3": 8,
+      "external_category_lookup_enabled": false,
+      "external_category_lookup_reason": "not_enabled_in_f3_default_run; no broad tag lookup or credentials",
+      "local_db_read_only": 4
+    },
+    "normalized_dto": "PixivNormalizedMetadataCandidate",
+    "sensitive_meta_candidate_count": 13
+  },
+  "command_summary": {
+    "blocked_over_limit_count": 0,
+    "exact_commands_private_only": true,
+    "max_record_limit": 200,
+    "metadata_auth_or_config_failure_count": 0,
+    "metadata_command_count": 30,
+    "metadata_command_template": "<gallery_dl_entrypoint> --dump-json --no-download https://www.pixiv.net/artworks/<WORK_ID>",
+    "metadata_failure_count": 0,
+    "metadata_success_count": 30,
+    "per_item_results_public": [
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 1,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3587,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 2,
+        "parsed_media_record_count": 5,
+        "stderr_error_class": null,
+        "stdout_bytes": 17103,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 3,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 4737,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 4,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3687,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 5,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 6081,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 6,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3785,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 7,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4081,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 8,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 9,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3083,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 10,
+        "parsed_media_record_count": 3,
+        "stderr_error_class": null,
+        "stdout_bytes": 7757,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 11,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5688,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 12,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4117,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 13,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4131,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 14,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3253,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 15,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3395,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 16,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 5669,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 17,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 18,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3737,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 19,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3147,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 20,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5571,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 21,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3581,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 22,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 7923,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 23,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3497,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 24,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3391,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 25,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3527,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 26,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 27,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 28,
+        "parsed_media_record_count": 4,
+        "stderr_error_class": null,
+        "stdout_bytes": 10394,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 29,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 6627,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 30,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3871,
+        "success": true
+      }
+    ],
+    "record_cap_enforced_before_accepted_raw_write": true,
+    "reference_download_enabled": false,
+    "subprocess_uses_shell": false
+  },
+  "db_identity": {
+    "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "database_url_source": "settings_env_or_default",
+    "db_read_only_guard_installed": true,
+    "db_sensitive_value_included": false,
+    "local_paths_redacted": true,
+    "settings_file_exists": false,
+    "settings_source": "defaults_without_settings_file",
+    "storage_root_mode": "code_root_default",
+    "violet_env": "development"
+  },
+  "future_route_recommendation": {
+    "db_persistence": "LocalSourceHint_design_justified_next_EntityCandidate_persistence_should_wait",
+    "decision": "A_proceed_to_LocalSourceHint_PixivMetadata_persistence_design",
+    "reason": "metadata fields are rich and the middleware produced a safe PixivMetadata/LocalSourceHint-shaped view; EntityCandidate persistence should wait because copyright/character category evidence remains sparse"
+  },
+  "gallery_dl_command_mode": {
+    "attempts": [
+      {
+        "available": true,
+        "mode": "explicit_operator_command_mode",
+        "returncode": 0,
+        "version_present": true
+      }
+    ],
+    "available": true,
+    "command_path_public": "explicit operator command",
+    "mode": "explicit_operator_command_mode",
+    "reproducibility_status": "conditional_explicit_operator_command",
+    "uses_explicit_operator_command": true,
+    "uses_external_executable": false,
+    "uses_project_python": false,
+    "version": "1.32.1"
+  },
+  "generated_at": "2026-06-01T11:03:06+00:00",
+  "git_context": {
+    "base_main_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
+    "branch_name": "codex/phase44p2r-f3-pixiv-metadata-normalization-pilot",
+    "final_pushed_commit_sha_reported_in_final_delivery": true,
+    "origin_main_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
+    "pr_head_sha_at_report_generation": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
+    "pr_number": null,
+    "report_generated_from_worktree": true,
+    "report_generation_head_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
+    "self_referential_commit_sha_not_embedded": true,
+    "working_tree_had_uncommitted_changes_at_report_generation": true
+  },
+  "input_summary": {
+    "current_run_raw_file_count": 30,
+    "directory_context_event_count": 26,
+    "invalid_json_count": 0,
+    "normalized_candidate_media_record_count": 41,
+    "normalized_media_record_count": 41,
+    "raw_event_count": 71,
+    "raw_file_count": 30,
+    "raw_input_scope": "current_run_only",
+    "raw_record_count": 71,
+    "skipped_invalid_count": 0,
+    "stale_raw_files_ignored_count": 0,
+    "unsupported_shape_count": 0,
+    "url_media_event_count": 41
+  },
+  "local_classification_index": {
+    "db_read_only": true,
+    "db_write_allowed": false,
+    "local_entities_indexed": 0,
+    "local_entity_aliases_indexed": 0,
+    "local_external_identities_indexed": 0,
+    "local_tag_aliases_indexed": 0,
+    "local_tag_categories_indexed": 3889
+  },
+  "local_source_prior_join": {
+    "approved_future_source_content_classes": [
+      "anime"
+    ],
+    "future_eligibility_counts": {
+      "eligible_for_future_entity_candidate": 28,
+      "eligible_for_future_local_source_hint": 28,
+      "ineligible_for_future_entity_candidate": 13,
+      "ineligible_for_future_local_source_hint": 13
+    },
+    "local_prior_content_class_distribution": {
+      "anime": 546,
+      "non_anime": 1,
+      "unknown": 8
+    },
+    "local_prior_join_ran": true,
+    "local_prior_total_keys": 555,
+    "local_prior_total_media": 555,
+    "local_prior_total_media_inspected": 1989,
+    "local_prior_without_metadata": 527,
+    "match_content_class_counts": {
+      "anime": 28
+    },
+    "page_index_status_counts": {
+      "page_index_within_page_count": 41
+    },
+    "status_counts": {
+      "metadata_matches_eligible_anime_local_prior": 28,
+      "metadata_work_id_found_no_local_match": 13
+    }
+  },
+  "manual_review_needs": {
+    "candidate_rows_requiring_manual_review": 325,
+    "manual_review_is_sparse_correction_oriented": true,
+    "media_records_requiring_manual_review": 41,
+    "private_manual_review_guide": ".local_manifests/phase-4.4p2r-f3-pixiv-metadata-normalization-pilot/manual-review-guide.md"
+  },
+  "metadata_richness_summary": {
+    "artist_candidate_coverage_count": 41,
+    "metadata_richness_distribution": {
+      "rich_structured_metadata": 41
+    },
+    "records_with_page_count": 41,
+    "records_with_title": 41,
+    "schema_field_availability": {
+      "artist_id": 41,
+      "artist_name": 41,
+      "caption": 22,
+      "extractor_category": 41,
+      "gallery_dl_filename": 41,
+      "image_url_kinds": 41,
+      "page_count": 41,
+      "page_index": 41,
+      "tags": 41,
+      "title": 41,
+      "translated_tags": 0,
+      "work_id": 41
+    }
+  },
+  "original_unknown_handling": {
+    "original_work_status_distribution": {
+      "original_or_unknown_work_context": 38,
+      "original_work_context_claimed_by_pixiv_tag": 3
+    },
+    "raw_pixiv_original_tag_is_not_confirmed_truth": true,
+    "records_without_forced_copyright": 41
+  },
+  "output_containment": {
+    "gitignored_private_artifacts": true,
+    "output_path_violation": false,
+    "phase_output_root": ".local_manifests/<phase-private-root>",
+    "private_artifacts_under_phase_root": true,
+    "public_reports_under_docs_reports": true
+  },
+  "phase": "4.4-P2R-F3",
+  "pr89_merge_confirmation": {
+    "merge_commit": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
+    "merged_at": "2026-06-01T10:31:55Z",
+    "number": 89,
+    "state": "MERGED",
+    "url": "https://github.com/kyloris0660/VIOLET/pull/89"
+  },
+  "privacy_and_safety_confirmation": {
+    "app_managed_storage_mutation": false,
+    "automatic_entity": false,
+    "broad_gallery_dl_run": false,
+    "confirmed_assignment": false,
+    "db_migration": false,
+    "db_write": false,
+    "entity_evidence_write": false,
+    "entity_resolver": false,
+    "full_library_gallery_dl_run": false,
+    "image_download": false,
+    "local_manifests_committed": false,
+    "local_source_hint_write": false,
+    "localization_execution": false,
+    "media_entity_candidate_write": false,
+    "media_tags_mutation": false,
+    "merge": false,
+    "negative_lookup_cache_write": false,
+    "next_phase_started": false,
+    "provider_cache_write": false,
+    "public_report_contains_exact_local_filenames": false,
+    "public_report_contains_exact_local_paths": false,
+    "public_report_contains_exact_media_ids": false,
+    "public_report_contains_exact_pixiv_ids": false,
+    "public_report_contains_raw_gallery_dl_json": false,
+    "public_report_contains_raw_image_urls": false,
+    "public_report_contains_raw_pixiv_tags": false,
+    "push_main": false,
+    "reference_download": false,
+    "source_or_icloud_mutation": false,
+    "tag_translation_mutation": false
+  },
+  "raw_pixiv_tag_availability_summary": {
+    "exact_raw_tags_public": false,
+    "normalized_unicode_tag_occurrences": 342,
+    "raw_tag_order_preserved": true,
+    "records_with_raw_pixiv_tags": 41,
+    "total_raw_pixiv_tag_occurrences": 342
+  },
+  "sample_gate": {
+    "default_sample_size": 30,
+    "enforced_before_local_join": true,
+    "enforced_before_private_mapping_artifacts": true,
+    "max_normalized_media_page_records_without_renewed_approval": 200,
+    "max_sample_size_without_renewed_approval": 50,
+    "status": "passed"
+  },
+  "sample_selection": {
+    "content_class_distribution": {
+      "anime": 30
+    },
+    "default_sample_size": 30,
+    "duplicate_or_ambiguous_count": 0,
+    "exact_filenames_public": false,
+    "exact_media_ids_public": false,
+    "exact_work_ids_public": false,
+    "max_normalized_records": 200,
+    "max_sample_size": 50,
+    "multi_local_page_work_count": 2,
+    "page_case_distribution": {
+      "non_p0_only": 1,
+      "p0_and_non_p0": 2,
+      "p0_only": 27
+    },
+    "prior_total_keys": 555,
+    "prior_total_media": 555,
+    "prior_total_media_inspected": 1989,
+    "requested_sample_size": 30,
+    "sample_gate_status": "passed",
+    "selected_count": 30,
+    "selection_strategy": "anime_only_cover_p0_non_p0_multi_page_then_fill_by_work_id"
+  },
+  "title": "Pixiv Metadata Normalization and Tag/Entity Candidate Middleware Pilot",
+  "why_this_stage_exists": "PR #89 and F2 validated real gallery-dl metadata retrieval and local Pixiv filename-prior correspondence. F3 tests whether those raw Pixiv metadata fields can become a structured, non-persistent tag/entity candidate middleware view without treating raw Pixiv tags as confirmed truth."
+}
