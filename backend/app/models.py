@@ -602,6 +602,69 @@ class ExternalTagCategoryLookupCache(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class PixivTagTaxonomyKnowledgeBase(Base):
+    __tablename__ = 'blombooru_pixiv_tag_taxonomy_kb'
+    __table_args__ = (
+        UniqueConstraint('source_scope', 'canonical_key', name='uq_pixiv_tag_taxonomy_scope_key'),
+        Index('ix_pixiv_tag_taxonomy_status_namespace', 'status', 'candidate_namespace'),
+        Index('ix_pixiv_tag_taxonomy_canonical_key', 'canonical_key'),
+        Index('ix_pixiv_tag_taxonomy_updated', 'updated_at'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    raw_tag = Column(String(500), nullable=True)
+    normalized_tag = Column(String(500), nullable=False, index=True)
+    canonical_key = Column(String(500), nullable=False, index=True)
+    source_scope = Column(String(100), nullable=False, default='pixiv_raw_tag_v1', server_default='pixiv_raw_tag_v1')
+    language_script_hints = Column(JSON, nullable=True)
+    candidate_namespace = Column(String(50), nullable=False, default='unknown', server_default='unknown', index=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String(50), nullable=False, default='unresolved', server_default='unresolved', index=True)
+    source_summary = Column(JSON, nullable=True)
+    frequency = Column(Integer, nullable=False, default=0, server_default='0')
+    high_value_score = Column(Float, nullable=True)
+    unresolved_reason = Column(String(100), nullable=True, index=True)
+    next_action = Column(String(255), nullable=True)
+    manual_override_status = Column(String(50), nullable=False, default='none', server_default='none')
+    manual_override_value = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class PixivTagAliasKnowledgeBase(Base):
+    __tablename__ = 'blombooru_pixiv_tag_alias_kb'
+    __table_args__ = (
+        UniqueConstraint(
+            'source_canonical_key',
+            'target_canonical_key',
+            'relation_type',
+            'evidence_source',
+            name='uq_pixiv_tag_alias_relation_evidence',
+        ),
+        Index('ix_pixiv_tag_alias_relation_status', 'relation_type', 'status'),
+        Index('ix_pixiv_tag_alias_source_key', 'source_canonical_key'),
+        Index('ix_pixiv_tag_alias_target_key', 'target_canonical_key'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_tag = Column(String(500), nullable=False)
+    source_canonical_key = Column(String(500), nullable=False, index=True)
+    target_tag = Column(String(500), nullable=False)
+    target_canonical_key = Column(String(500), nullable=False, index=True)
+    relation_type = Column(String(100), nullable=False, index=True)
+    evidence_source = Column(String(100), nullable=False, index=True)
+    evidence_payload = Column(JSON, nullable=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String(50), nullable=False, default='candidate', server_default='candidate', index=True)
+    frequency = Column(Integer, nullable=False, default=0, server_default='0')
+    manual_override_status = Column(String(50), nullable=False, default='none', server_default='none')
+    manual_override_value = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (
