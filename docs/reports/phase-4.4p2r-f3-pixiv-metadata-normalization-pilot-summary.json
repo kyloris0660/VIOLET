@@ -6,6 +6,7 @@
     "cache_write_count": 0,
     "cache_write_enabled": true,
     "enabled": true,
+    "external_request_budget": 600,
     "hard_lookup_limit": 500,
     "hit_count": 18,
     "lookup_delay_seconds": 0.05,
@@ -22,6 +23,7 @@
     "not_found_count": 115,
     "provider_block_reason": null,
     "provider_blocked": false,
+    "request_budget_exhausted": false,
     "request_count": 0,
     "resolved_namespace_counts": {
       "artist": 1,
@@ -158,6 +160,14 @@
     },
     "normalized_dto": "PixivNormalizedMetadataCandidate",
     "sensitive_meta_candidate_count": 0
+  },
+  "closeout_conclusion": {
+    "classification_middleware_completed": false,
+    "coverage_target_reached": false,
+    "entity_candidate_recommendation": "blocked_until_category_coverage_and_provenance_improve",
+    "multisource_lookup_cache_proof_completed": true,
+    "next_stage_recommendation": "taxonomy_alias_knowledge_base_stage_required",
+    "persistence_recommendation": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet"
   },
   "command_summary": {
     "blocked_over_limit_count": 0,
@@ -527,8 +537,12 @@
     "high_value_proper_noun_like_resolution_rate": 0.1484,
     "high_value_proper_noun_like_resolved_count": 19,
     "high_value_proper_noun_like_tag_count": 128,
+    "lookup_error_count": 0,
     "lookup_limit": 200,
     "lookup_limit_covers_all_unique_tags": true,
+    "lookup_sources_successfully_exhausted": true,
+    "provider_blocked": false,
+    "request_budget_exhausted": false,
     "resolved_unique_tag_count": 22,
     "resolved_unique_tag_coverage": 0.1654,
     "target_status": "not_reached_after_exhaustion",
@@ -550,12 +564,12 @@
     "violet_env": "development"
   },
   "future_route_recommendation": {
-    "db_persistence": "cache_table_only_current_stage_LocalSourceHint_and_PixivMetadata_wait",
-    "decision": "B_harden_lookup_cache_and_gallery_dl_command_boundary_before_persistence",
-    "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
-    "local_source_hint_pixiv_metadata": "not_recommended_until_command_join_and_lookup_cache_gates_pass",
-    "reason": "gallery_dl_command_boundary_is_conditional_or_dry_run,automated_category_lookup_coverage_below_threshold",
-    "tag_classification_cache": "pilot_cache_available"
+    "db_persistence": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+    "decision": "taxonomy_alias_knowledge_base_stage_required",
+    "entity_candidate_persistence": "blocked_until_category_coverage_and_provenance_improve",
+    "local_source_hint_pixiv_metadata": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+    "reason": "multisource_lookup_cache_proof_completed_but_category_coverage_target_not_reached",
+    "tag_classification_cache": "multisource_lookup_cache_proof_completed_coverage_not_reached"
   },
   "gallery_dl_command_mode": {
     "attempts": [
@@ -782,6 +796,7 @@
   },
   "tag_category_lookup_cache": {
     "cache_hit_count": 18,
+    "cache_migration_ran": true,
     "cache_miss_count": 0,
     "cache_write_count": 0,
     "cache_write_enabled": true,

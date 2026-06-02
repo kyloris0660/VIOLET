@@ -235,6 +235,9 @@ class PrivacyBlocked(Phase44P2RF3Error):
     pass
 
 
+MANUAL_OVERRIDE_VALUE_UNSET = object()
+
+
 @dataclass(frozen=True)
 class LocalTagCategoryMatch:
     tag_id_private: int
@@ -278,7 +281,7 @@ class ExternalTagLookupResult:
         self,
         *,
         manual_override_status: str | None = None,
-        manual_override_value: str | None = None,
+        manual_override_value: Any = MANUAL_OVERRIDE_VALUE_UNSET,
     ) -> dict[str, Any]:
         return {
             "raw_tag": self.raw_tag,
@@ -304,7 +307,7 @@ class ExternalTagLookupResult:
             ),
             **(
                 {"manual_override_value": manual_override_value}
-                if manual_override_value is not None
+                if manual_override_value is not MANUAL_OVERRIDE_VALUE_UNSET
                 else {}
             ),
         }
@@ -360,6 +363,8 @@ class TagLookupInput:
 class ExternalLookupSummary:
     lookup_source: str = "multisource_tag_category_lookup_v1"
     lookup_sources_attempted: list[str] = field(default_factory=list)
+    external_request_budget: int = 0
+    request_budget_exhausted: bool = False
     source_request_counts: dict[str, int] = field(default_factory=dict)
     source_cache_hit_counts: dict[str, int] = field(default_factory=dict)
     source_negative_cache_hit_counts: dict[str, int] = field(default_factory=dict)
@@ -914,15 +919,15 @@ def multilingual_normalize_tag(raw_tag: str) -> MultilingualTagNormalization:
     underscore = lookup_key(punctuation)
     candidates: list[str] = []
     for value in (
-        raw,
-        nfkc,
-        whitespace,
         punctuation,
         bracket,
         casefolded or "",
         underscore,
         punctuation.replace(" ", "_"),
         bracket.replace(" ", "_"),
+        raw,
+        nfkc,
+        whitespace,
     ):
         candidate = lookup_key(value)
         if candidate and candidate not in candidates:
@@ -1409,7 +1414,7 @@ def _upsert_lookup_cache_result(
     result: ExternalTagLookupResult,
     *,
     manual_override_status: str | None = None,
-    manual_override_value: str | None = None,
+    manual_override_value: Any = MANUAL_OVERRIDE_VALUE_UNSET,
 ) -> bool:
     fields = result.to_cache_fields(
         manual_override_status=manual_override_status,
@@ -1423,7 +1428,8 @@ def _upsert_lookup_cache_result(
         )
         .one_or_none()
     )
-    if row is None and result.source_tag_id:
+    source_tag_id_unique_for_lookup = result.lookup_source != DANBOORU_ALIAS_SOURCE
+    if row is None and result.source_tag_id and source_tag_id_unique_for_lookup:
         row = (
             session.query(ExternalTagCategoryLookupCache)
             .filter(
@@ -1449,7 +1455,7 @@ def _upsert_lookup_cache_result(
             continue
         if key in {"raw_tag", "normalized_tag"} and getattr(row, key, None):
             continue
-        if key in {"manual_override_status", "manual_override_value"} and value is None:
+        if key == "manual_override_status" and value is None:
             continue
         setattr(row, key, value)
     return False
@@ -1461,8 +1467,30 @@ def _lookup_one_external_source(
     *,
     timeout_seconds: int,
     fetcher: Callable[[str, int], Any] | None = None,
+    max_requests: int | None = None,
+    delay_seconds: float = 0.0,
 ) -> tuple[ExternalTagLookupResult, int]:
     key = tag_input.canonical_lookup_key
+    if max_requests is not None and max_requests <= 0:
+        return (
+            ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id=None,
+                source_tag_name=None,
+                source_category_raw=None,
+                mapped_candidate_namespace="unknown",
+                confidence=0.0,
+                provenance_url_or_key=f"{source}:{key}",
+                status="lookup_error",
+                cache_status="miss",
+                lookup_error="external_request_budget_exhausted",
+            ),
+            0,
+        )
     if fetcher is not None:
         payload, request_count, matched_lookup_key = _coerce_fetch_result(fetcher(key, timeout_seconds), default_key=key)
         return (
@@ -1497,12 +1525,16 @@ def _lookup_one_external_source(
         alias_payload = fetch_danbooru_tag_alias_payload(key, timeout=timeout_seconds)
         request_count = 1
         for alias in alias_payload:
+            if max_requests is not None and request_count >= max_requests:
+                break
             consequent_name = alias.get("consequent_name")
             if not isinstance(consequent_name, str) or not consequent_name:
                 continue
             canonical_key = lookup_key(consequent_name)
             if not canonical_key:
                 continue
+            if delay_seconds > 0:
+                time.sleep(delay_seconds)
             tag_payload = fetch_danbooru_tag_payload(canonical_key, timeout=timeout_seconds)
             request_count += 1
             result = _lookup_result_from_danbooru_payload(
@@ -1573,6 +1605,7 @@ def lookup_external_tag_categories(
     summary = ExternalLookupSummary(
         unique_normalized_tag_count=len(tag_inputs),
         lookup_limit=lookup_limit,
+        external_request_budget=lookup_limit * max(len(lookup_sources), 1),
         lookup_delay_seconds=delay_seconds,
         lookup_timeout_seconds=timeout_seconds,
         cache_write_enabled=bool(cache_writes_enabled and session is not None),
@@ -1619,16 +1652,24 @@ def lookup_external_tag_categories(
                 results[key] = cached_result
                 last_result = cached_result
                 break
+            remaining_request_budget = max(summary.external_request_budget - summary.request_count, 0)
+            if remaining_request_budget <= 0:
+                summary.request_budget_exhausted = True
+                break
             try:
                 result, request_count = _lookup_one_external_source(
                     source,
                     tag_input,
                     timeout_seconds=timeout_seconds,
                     fetcher=fetcher if len(lookup_sources) == 1 else None,
+                    max_requests=remaining_request_budget,
+                    delay_seconds=delay_seconds,
                 )
                 summary.request_count += request_count
                 summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + request_count
             except ExternalLookupProviderBlocked as exc:
+                summary.request_count += 1
+                summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + 1
                 summary.provider_blocked = True
                 summary.provider_block_reason = str(exc)
                 result = ExternalTagLookupResult(
@@ -2372,6 +2413,7 @@ def tag_category_lookup_cache_summary(
     *,
     db_enabled: bool,
     table_available: bool,
+    cache_migration_ran: bool,
     cache_writes_enabled: bool,
     lookup_summary: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2389,6 +2431,7 @@ def tag_category_lookup_cache_summary(
     return {
         "table": "blombooru_external_tag_category_lookup_cache",
         "table_available": table_available,
+        "cache_migration_ran": cache_migration_ran,
         "cache_write_mode": mode,
         "cache_write_enabled": bool(cache_writes_enabled and db_enabled and table_available),
         "cache_write_count": int(lookup_summary.get("cache_write_count", 0) or 0),
@@ -2513,11 +2556,24 @@ def coverage_target_summary(
     lookup_sources_exhausted = all(
         source in attempted for source in (DANBOORU_TAGS_SOURCE, DANBOORU_ALIAS_SOURCE, SAFEBOORU_TAGS_SOURCE)
     )
-    automated_paths_exhausted = bool(lookup_limit_covers_all_unique_tags and lookup_sources_exhausted)
+    lookup_error_count = int(lookup_summary.get("lookup_error_count") or 0)
+    source_lookup_error_counts = dict(lookup_summary.get("source_lookup_error_counts") or {})
+    provider_blocked = bool(lookup_summary.get("provider_blocked"))
+    request_budget_exhausted = bool(lookup_summary.get("request_budget_exhausted"))
+    lookup_sources_successfully_exhausted = bool(
+        lookup_sources_exhausted
+        and not provider_blocked
+        and not request_budget_exhausted
+        and lookup_error_count == 0
+        and not source_lookup_error_counts
+    )
+    automated_paths_exhausted = bool(lookup_limit_covers_all_unique_tags and lookup_sources_successfully_exhausted)
     if target_reached:
         target_status = "reached"
     elif automated_paths_exhausted:
         target_status = "not_reached_after_exhaustion"
+    elif lookup_limit_covers_all_unique_tags:
+        target_status = "not_reached_current_iteration"
     else:
         target_status = "not_reached_bounded_lookup_cap"
     return {
@@ -2525,6 +2581,10 @@ def coverage_target_summary(
         "unique_tag_count": len(unique_keys),
         "lookup_limit": lookup_limit,
         "lookup_limit_covers_all_unique_tags": lookup_limit_covers_all_unique_tags,
+        "lookup_sources_successfully_exhausted": lookup_sources_successfully_exhausted,
+        "provider_blocked": provider_blocked,
+        "lookup_error_count": lookup_error_count,
+        "request_budget_exhausted": request_budget_exhausted,
         "automated_paths_exhausted": automated_paths_exhausted,
         "resolved_unique_tag_count": len(resolved_keys),
         "resolved_unique_tag_coverage": round(unique_coverage, 4),
@@ -2597,12 +2657,14 @@ def future_route_recommendation(
         if not lookup_coverage_ready:
             blockers.append("automated_category_lookup_coverage_below_threshold")
         return {
-            "decision": "B_harden_lookup_cache_and_gallery_dl_command_boundary_before_persistence",
+            "decision": "taxonomy_alias_knowledge_base_stage_required",
             "reason": ",".join(blockers),
-            "db_persistence": "cache_table_only_current_stage_LocalSourceHint_and_PixivMetadata_wait",
-            "local_source_hint_pixiv_metadata": "not_recommended_until_command_join_and_lookup_cache_gates_pass",
-            "tag_classification_cache": "pilot_cache_available" if cache_available else "needs_cache_availability",
-            "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
+            "db_persistence": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+            "local_source_hint_pixiv_metadata": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+            "tag_classification_cache": "multisource_lookup_cache_proof_completed_coverage_not_reached"
+            if cache_available
+            else "needs_cache_availability",
+            "entity_candidate_persistence": "blocked_until_category_coverage_and_provenance_improve",
         }
     if records_with_tags and artist_coverage >= 0.8 and lookup_coverage >= 0.5:
         return {
@@ -2615,21 +2677,21 @@ def future_route_recommendation(
         }
     if records_with_tags and normalized_records and unresolved < len(rows) and lookup_coverage >= 0.25:
         return {
-            "decision": "B_harden_lookup_cache_before_persistence_design",
+            "decision": "taxonomy_alias_knowledge_base_stage_required",
             "reason": "automated lookup classified a subset, but coverage is below the persistence-design threshold",
-            "db_persistence": "cache_table_only_current_stage_LocalSourceHint_and_PixivMetadata_wait",
-            "local_source_hint_pixiv_metadata": "not_recommended_until_lookup_coverage_improves",
-            "tag_classification_cache": "continue_lookup_source_hardening",
-            "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
+            "db_persistence": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+            "local_source_hint_pixiv_metadata": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+            "tag_classification_cache": "multisource_lookup_cache_proof_completed_coverage_not_reached",
+            "entity_candidate_persistence": "blocked_until_category_coverage_and_provenance_improve",
         }
     if records_with_tags:
         return {
-            "decision": "D_expand_or_change_automated_tag_category_lookup_route",
+            "decision": "taxonomy_alias_knowledge_base_stage_required",
             "reason": "raw tags are available and safely preserved, but automated category lookup coverage is too low for persistence design",
-            "db_persistence": "cache_table_only_current_stage_other_persistence_not_recommended",
-            "local_source_hint_pixiv_metadata": "not_recommended_until_lookup_route_improves",
-            "tag_classification_cache": "needs_additional_lookup_source_or_alias_strategy",
-            "entity_candidate_persistence": "blocked_no_truth_table_writes_current_stage",
+            "db_persistence": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+            "local_source_hint_pixiv_metadata": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+            "tag_classification_cache": "multisource_lookup_cache_proof_completed_coverage_not_reached",
+            "entity_candidate_persistence": "blocked_until_category_coverage_and_provenance_improve",
         }
     return {
         "decision": "E_stop_or_reroute",
@@ -2838,7 +2900,7 @@ def build_public_summary(
             "public_report_contains_raw_pixiv_tags": False,
             "db_write": bool(db_cache_summary.get("cache_write_count", 0)),
             "db_write_limited_to_external_tag_category_lookup_cache": True,
-            "db_migration": bool(db_cache_summary.get("table_available")),
+            "db_migration": bool(db_cache_summary.get("cache_migration_ran")),
             "db_migration_limited_to_external_tag_category_lookup_cache": True,
             "local_source_hint_write": False,
             "provider_cache_write": False,
@@ -3188,6 +3250,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     prior_index: f1.LocalPriorIndex | None = None
     local_index = LocalClassificationIndex()
     db_cache_table_available = False
+    cache_migration_ran = False
     samples: list[SelectedSample] = []
     sample_public: dict[str, Any]
     if args.no_db:
@@ -3203,6 +3266,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         engine = create_engine(config.database_url)
         if cache_migration_allowed(args):
             migrate_add_external_tag_category_lookup_cache(engine, inspect(engine))
+            cache_migration_ran = True
         db_cache_table_available = (
             "blombooru_external_tag_category_lookup_cache" in inspect(engine).get_table_names()
         )
@@ -3299,6 +3363,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     db_cache_public = tag_category_lookup_cache_summary(
         db_enabled=not args.no_db,
         table_available=db_cache_table_available,
+        cache_migration_ran=cache_migration_ran,
         cache_writes_enabled=not args.disable_db_cache_writes,
         lookup_summary=lookup_summary_public,
     )

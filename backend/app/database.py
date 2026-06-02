@@ -1040,11 +1040,16 @@ def migrate_add_external_tag_category_lookup_cache(engine, inspector):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
                     CONSTRAINT uq_external_tag_category_lookup_key UNIQUE (lookup_source, normalized_tag),
-                    CONSTRAINT uq_external_tag_category_canonical_lookup_key UNIQUE (lookup_source, canonical_lookup_key),
-                    CONSTRAINT uq_external_tag_category_source_tag_id UNIQUE (lookup_source, source_tag_id)
+                    CONSTRAINT uq_external_tag_category_canonical_lookup_key UNIQUE (lookup_source, canonical_lookup_key)
                 )
             """))
             created_table = True
+
+        if conn.dialect.name == 'postgresql':
+            conn.execute(text(
+                "ALTER TABLE blombooru_external_tag_category_lookup_cache "
+                "DROP CONSTRAINT IF EXISTS uq_external_tag_category_source_tag_id"
+            ))
 
         columns = (
             {
@@ -1076,6 +1081,7 @@ def migrate_add_external_tag_category_lookup_cache(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source ON blombooru_external_tag_category_lookup_cache(lookup_source)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_external_tag_category_canonical_lookup_key_idx ON blombooru_external_tag_category_lookup_cache(lookup_source, canonical_lookup_key)",
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source_canonical ON blombooru_external_tag_category_lookup_cache(lookup_source, canonical_lookup_key)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source_tag_id ON blombooru_external_tag_category_lookup_cache(lookup_source, source_tag_id)",
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source_status ON blombooru_external_tag_category_lookup_cache(lookup_source, status)",
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_namespace ON blombooru_external_tag_category_lookup_cache(mapped_candidate_namespace)",
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_checked ON blombooru_external_tag_category_lookup_cache(last_checked_at)",

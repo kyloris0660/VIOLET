@@ -571,9 +571,9 @@ class ExternalTagCategoryLookupCache(Base):
     __table_args__ = (
         UniqueConstraint('lookup_source', 'normalized_tag', name='uq_external_tag_category_lookup_key'),
         UniqueConstraint('lookup_source', 'canonical_lookup_key', name='uq_external_tag_category_canonical_lookup_key'),
-        UniqueConstraint('lookup_source', 'source_tag_id', name='uq_external_tag_category_source_tag_id'),
         Index('ix_external_tag_category_lookup_source_status', 'lookup_source', 'status'),
         Index('ix_external_tag_category_lookup_source_canonical', 'lookup_source', 'canonical_lookup_key'),
+        Index('ix_external_tag_category_lookup_source_tag_id', 'lookup_source', 'source_tag_id'),
         Index('ix_external_tag_category_lookup_namespace', 'mapped_candidate_namespace'),
         Index('ix_external_tag_category_lookup_checked', 'last_checked_at'),
     )
