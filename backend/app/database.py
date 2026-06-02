@@ -211,6 +211,7 @@ def check_and_migrate_schema(engine):
         migrate_add_entity_metadata_tables,
         migrate_add_external_tag_category_lookup_cache,
         migrate_add_pixiv_tag_taxonomy_alias_kb,
+        migrate_add_source_metadata_name_registry,
     ]
     
     for migration in migrations:
@@ -1217,6 +1218,228 @@ def migrate_add_pixiv_tag_taxonomy_alias_kb(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_alias_relation_status ON blombooru_pixiv_tag_alias_kb(relation_type, status)",
             "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_alias_source_key ON blombooru_pixiv_tag_alias_kb(source_canonical_key)",
             "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_alias_target_key ON blombooru_pixiv_tag_alias_kb(target_canonical_key)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_source_metadata_name_registry(engine, inspector):
+    """Create Phase 4.4-P2R-F5 provider-neutral source metadata/name tables.
+
+    This migration is additive only. It creates source-layer metadata, tag,
+    name, alias-candidate, registry, and evidence-staging tables. It does not
+    alter Entity, EntityAlias, EntityEvidence, MediaEntityCandidate,
+    MediaEntityAssignment, ProviderCache, NegativeLookupCache, media_tags,
+    TagTranslation, LocalSourceHint-style tables, or confirmed assignments.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON' if not is_sqlite else 'JSON'
+    bool_true = '1' if is_sqlite else 'TRUE'
+
+    with engine.connect() as conn:
+        if 'blombooru_source_metadata_records' not in tables:
+            logger.info("Creating blombooru_source_metadata_records table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_metadata_records (
+                    id {pk_type},
+                    provider VARCHAR(100) NOT NULL,
+                    provider_run_id VARCHAR(255),
+                    run_label VARCHAR(255),
+                    provider_record_key VARCHAR(500) NOT NULL,
+                    media_id INTEGER,
+                    source_work_id VARCHAR(255),
+                    source_page_index INTEGER,
+                    source_url VARCHAR(1000),
+                    title VARCHAR(1000),
+                    artist_name VARCHAR(500),
+                    artist_id VARCHAR(255),
+                    confidence FLOAT,
+                    similarity FLOAT,
+                    metadata_kind VARCHAR(100) NOT NULL DEFAULT 'provider_metadata',
+                    raw_metadata_json {json_type},
+                    provenance {json_type},
+                    status VARCHAR(50) NOT NULL DEFAULT 'observed',
+                    retrieved_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_metadata_provider_record_key UNIQUE (provider, provider_record_key)
+                )
+            """))
+
+        if 'blombooru_source_tag_observations' not in tables:
+            logger.info("Creating blombooru_source_tag_observations table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_tag_observations (
+                    id {pk_type},
+                    source_metadata_record_id INTEGER NOT NULL REFERENCES blombooru_source_metadata_records(id) ON DELETE CASCADE,
+                    provider VARCHAR(100) NOT NULL,
+                    observation_key VARCHAR(500) NOT NULL,
+                    raw_tag VARCHAR(500) NOT NULL,
+                    normalized_tag VARCHAR(500) NOT NULL,
+                    canonical_tag_key VARCHAR(500) NOT NULL,
+                    source_tag_kind VARCHAR(100) NOT NULL DEFAULT 'provider_tag',
+                    source_category_raw VARCHAR(100),
+                    language_hint VARCHAR(50),
+                    confidence FLOAT,
+                    order_index INTEGER,
+                    taxonomy_kb_id INTEGER,
+                    status VARCHAR(50) NOT NULL DEFAULT 'observed',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_tag_observation_record_key UNIQUE (
+                        source_metadata_record_id,
+                        observation_key
+                    )
+                )
+            """))
+
+        if 'blombooru_source_tag_registry' not in tables:
+            logger.info("Creating blombooru_source_tag_registry table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_tag_registry (
+                    id {pk_type},
+                    provider_scope VARCHAR(100) NOT NULL DEFAULT 'global',
+                    normalized_tag VARCHAR(500) NOT NULL,
+                    canonical_tag_key VARCHAR(500) NOT NULL,
+                    raw_variants_json {json_type},
+                    first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_seen_at TIMESTAMP WITH TIME ZONE,
+                    seen_count INTEGER NOT NULL DEFAULT 0,
+                    example_source_metadata_id INTEGER,
+                    taxonomy_status VARCHAR(50) NOT NULL DEFAULT 'unclassified',
+                    governance_status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_tag_registry_scope_key UNIQUE (provider_scope, canonical_tag_key)
+                )
+            """))
+
+        if 'blombooru_source_name_observations' not in tables:
+            logger.info("Creating blombooru_source_name_observations table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_name_observations (
+                    id {pk_type},
+                    source_metadata_record_id INTEGER NOT NULL REFERENCES blombooru_source_metadata_records(id) ON DELETE CASCADE,
+                    provider VARCHAR(100) NOT NULL,
+                    observation_key VARCHAR(500) NOT NULL,
+                    media_id INTEGER,
+                    source_work_id VARCHAR(255),
+                    source_page_index INTEGER,
+                    raw_name VARCHAR(500) NOT NULL,
+                    normalized_name VARCHAR(500) NOT NULL,
+                    canonical_name_key VARCHAR(500) NOT NULL,
+                    name_role VARCHAR(100) NOT NULL,
+                    source_field VARCHAR(100) NOT NULL,
+                    language_hint VARCHAR(50),
+                    script_hint VARCHAR(50),
+                    confidence FLOAT,
+                    provenance {json_type},
+                    requires_review BOOLEAN NOT NULL DEFAULT {bool_true},
+                    status VARCHAR(50) NOT NULL DEFAULT 'observed',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_name_observation_record_key UNIQUE (
+                        source_metadata_record_id,
+                        observation_key
+                    )
+                )
+            """))
+
+        if 'blombooru_source_name_registry' not in tables:
+            logger.info("Creating blombooru_source_name_registry table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_name_registry (
+                    id {pk_type},
+                    canonical_name_key VARCHAR(500) NOT NULL,
+                    primary_display_name VARCHAR(500) NOT NULL,
+                    normalized_display_name VARCHAR(500) NOT NULL,
+                    raw_variants_json {json_type},
+                    provider_coverage_json {json_type},
+                    role_distribution_json {json_type},
+                    first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_seen_at TIMESTAMP WITH TIME ZONE,
+                    seen_count INTEGER NOT NULL DEFAULT 0,
+                    governance_status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+                    manual_override_status VARCHAR(50) NOT NULL DEFAULT 'none',
+                    notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_name_registry_key UNIQUE (canonical_name_key)
+                )
+            """))
+
+        if 'blombooru_source_name_alias_candidates' not in tables:
+            logger.info("Creating blombooru_source_name_alias_candidates table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_name_alias_candidates (
+                    id {pk_type},
+                    source_name_key VARCHAR(500) NOT NULL,
+                    target_name_key VARCHAR(500) NOT NULL,
+                    source_display_name VARCHAR(500) NOT NULL,
+                    target_display_name VARCHAR(500) NOT NULL,
+                    relation_type VARCHAR(100) NOT NULL,
+                    evidence_source VARCHAR(100) NOT NULL,
+                    evidence_payload {json_type},
+                    confidence FLOAT,
+                    status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+                    requires_review BOOLEAN NOT NULL DEFAULT {bool_true},
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_name_alias_relation_evidence UNIQUE (
+                        source_name_key,
+                        target_name_key,
+                        relation_type,
+                        evidence_source
+                    )
+                )
+            """))
+
+        if 'blombooru_source_metadata_evidence' not in tables:
+            logger.info("Creating blombooru_source_metadata_evidence table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_metadata_evidence (
+                    id {pk_type},
+                    source_metadata_record_id INTEGER NOT NULL REFERENCES blombooru_source_metadata_records(id) ON DELETE CASCADE,
+                    evidence_key VARCHAR(500) NOT NULL,
+                    observation_type VARCHAR(100) NOT NULL,
+                    observation_id INTEGER,
+                    evidence_kind VARCHAR(100) NOT NULL,
+                    evidence_strength VARCHAR(50) NOT NULL DEFAULT 'unknown',
+                    provenance {json_type},
+                    status VARCHAR(50) NOT NULL DEFAULT 'staged',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_metadata_evidence_record_key UNIQUE (
+                        source_metadata_record_id,
+                        evidence_key
+                    )
+                )
+            """))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_source_metadata_provider_status ON blombooru_source_metadata_records(provider, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_metadata_media_provider ON blombooru_source_metadata_records(media_id, provider)",
+            "CREATE INDEX IF NOT EXISTS ix_source_metadata_work_page ON blombooru_source_metadata_records(source_work_id, source_page_index)",
+            "CREATE INDEX IF NOT EXISTS ix_source_tag_observation_provider_kind ON blombooru_source_tag_observations(provider, source_tag_kind)",
+            "CREATE INDEX IF NOT EXISTS ix_source_tag_observation_canonical ON blombooru_source_tag_observations(canonical_tag_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_tag_registry_governance ON blombooru_source_tag_registry(governance_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_tag_registry_taxonomy ON blombooru_source_tag_registry(taxonomy_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_observation_provider_role ON blombooru_source_name_observations(provider, name_role)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_observation_canonical ON blombooru_source_name_observations(canonical_name_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_observation_media_role ON blombooru_source_name_observations(media_id, name_role)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_registry_governance ON blombooru_source_name_registry(governance_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_registry_manual_override ON blombooru_source_name_registry(manual_override_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_alias_source_key ON blombooru_source_name_alias_candidates(source_name_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_alias_target_key ON blombooru_source_name_alias_candidates(target_name_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_alias_relation_status ON blombooru_source_name_alias_candidates(relation_type, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_metadata_evidence_kind_status ON blombooru_source_metadata_evidence(evidence_kind, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_metadata_evidence_observation ON blombooru_source_metadata_evidence(observation_type, observation_id)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))
