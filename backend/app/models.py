@@ -566,6 +566,42 @@ class ProviderCache(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ExternalTagCategoryLookupCache(Base):
+    __tablename__ = 'blombooru_external_tag_category_lookup_cache'
+    __table_args__ = (
+        UniqueConstraint('lookup_source', 'normalized_tag', name='uq_external_tag_category_lookup_key'),
+        UniqueConstraint('lookup_source', 'canonical_lookup_key', name='uq_external_tag_category_canonical_lookup_key'),
+        Index('ix_external_tag_category_lookup_source_status', 'lookup_source', 'status'),
+        Index('ix_external_tag_category_lookup_source_canonical', 'lookup_source', 'canonical_lookup_key'),
+        Index('ix_external_tag_category_lookup_source_tag_id', 'lookup_source', 'source_tag_id'),
+        Index('ix_external_tag_category_lookup_namespace', 'mapped_candidate_namespace'),
+        Index('ix_external_tag_category_lookup_checked', 'last_checked_at'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    raw_tag = Column(String(500), nullable=True)
+    normalized_tag = Column(String(500), nullable=False, index=True)
+    canonical_lookup_key = Column(String(500), nullable=True, index=True)
+    lookup_source = Column(String(100), nullable=False, index=True)
+    lookup_source_version = Column(String(100), nullable=True)
+    source_tag_id = Column(String(255), nullable=True, index=True)
+    source_tag_name = Column(String(500), nullable=True)
+    source_category_raw = Column(String(100), nullable=True)
+    mapped_candidate_namespace = Column(String(50), nullable=True, index=True)
+    confidence = Column(Float, nullable=True)
+    provenance_url_or_key = Column(String(1000), nullable=True)
+    status = Column(String(50), nullable=False, default='pending', server_default='pending', index=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_checked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    retry_after = Column(DateTime(timezone=True), nullable=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    lookup_error = Column(Text, nullable=True)
+    manual_override_status = Column(String(50), nullable=False, default='none', server_default='none')
+    manual_override_value = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (

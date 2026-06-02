@@ -209,6 +209,7 @@ def check_and_migrate_schema(engine):
         migrate_add_content_classification,
         migrate_add_classification_force_reclassify,
         migrate_add_entity_metadata_tables,
+        migrate_add_external_tag_category_lookup_cache,
     ]
     
     for migration in migrations:
@@ -990,6 +991,102 @@ def migrate_add_entity_metadata_tables(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_blombooru_provider_cache_error_class ON blombooru_provider_cache(error_class)",
             "CREATE INDEX IF NOT EXISTS ix_blombooru_negative_lookup_cache_expires_at ON blombooru_negative_lookup_cache(expires_at)",
             "CREATE INDEX IF NOT EXISTS ix_blombooru_negative_lookup_cache_provider ON blombooru_negative_lookup_cache(provider)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_external_tag_category_lookup_cache(engine, inspector):
+    """Create the external tag category lookup cache table.
+
+    This table stores reproducible provider category lookup evidence for raw
+    tag classification. It is intentionally separate from ProviderCache,
+    EntityEvidence, MediaEntityCandidate, confirmed assignments, and media_tags.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+
+    with engine.connect() as conn:
+        created_table = False
+        if 'blombooru_external_tag_category_lookup_cache' not in tables:
+            logger.info("Creating blombooru_external_tag_category_lookup_cache table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_external_tag_category_lookup_cache (
+                    id {pk_type},
+                    raw_tag VARCHAR(500),
+                    normalized_tag VARCHAR(500) NOT NULL,
+                    canonical_lookup_key VARCHAR(500),
+                    lookup_source VARCHAR(100) NOT NULL,
+                    lookup_source_version VARCHAR(100),
+                    source_tag_id VARCHAR(255),
+                    source_tag_name VARCHAR(500),
+                    source_category_raw VARCHAR(100),
+                    mapped_candidate_namespace VARCHAR(50),
+                    confidence FLOAT,
+                    provenance_url_or_key VARCHAR(1000),
+                    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                    first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_checked_at TIMESTAMP WITH TIME ZONE,
+                    retry_after TIMESTAMP WITH TIME ZONE,
+                    expires_at TIMESTAMP WITH TIME ZONE,
+                    lookup_error TEXT,
+                    manual_override_status VARCHAR(50) NOT NULL DEFAULT 'none',
+                    manual_override_value VARCHAR(500),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_external_tag_category_lookup_key UNIQUE (lookup_source, normalized_tag),
+                    CONSTRAINT uq_external_tag_category_canonical_lookup_key UNIQUE (lookup_source, canonical_lookup_key)
+                )
+            """))
+            created_table = True
+
+        if conn.dialect.name == 'postgresql':
+            conn.execute(text(
+                "ALTER TABLE blombooru_external_tag_category_lookup_cache "
+                "DROP CONSTRAINT IF EXISTS uq_external_tag_category_source_tag_id"
+            ))
+
+        columns = (
+            {
+                'canonical_lookup_key',
+                'lookup_source_version',
+                'retry_after',
+                'expires_at',
+                'manual_override_value',
+            }
+            if created_table
+            else {
+                column['name']
+                for column in inspector.get_columns('blombooru_external_tag_category_lookup_cache')
+            }
+        )
+        add_column_statements = {
+            'canonical_lookup_key': "ALTER TABLE blombooru_external_tag_category_lookup_cache ADD COLUMN canonical_lookup_key VARCHAR(500)",
+            'lookup_source_version': "ALTER TABLE blombooru_external_tag_category_lookup_cache ADD COLUMN lookup_source_version VARCHAR(100)",
+            'retry_after': "ALTER TABLE blombooru_external_tag_category_lookup_cache ADD COLUMN retry_after TIMESTAMP WITH TIME ZONE",
+            'expires_at': "ALTER TABLE blombooru_external_tag_category_lookup_cache ADD COLUMN expires_at TIMESTAMP WITH TIME ZONE",
+            'manual_override_value': "ALTER TABLE blombooru_external_tag_category_lookup_cache ADD COLUMN manual_override_value VARCHAR(500)",
+        }
+        for column_name, statement in add_column_statements.items():
+            if column_name not in columns:
+                conn.execute(text(statement))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_normalized_tag ON blombooru_external_tag_category_lookup_cache(normalized_tag)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source ON blombooru_external_tag_category_lookup_cache(lookup_source)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_external_tag_category_canonical_lookup_key_idx ON blombooru_external_tag_category_lookup_cache(lookup_source, canonical_lookup_key)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source_canonical ON blombooru_external_tag_category_lookup_cache(lookup_source, canonical_lookup_key)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source_tag_id ON blombooru_external_tag_category_lookup_cache(lookup_source, source_tag_id)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_source_status ON blombooru_external_tag_category_lookup_cache(lookup_source, status)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_namespace ON blombooru_external_tag_category_lookup_cache(mapped_candidate_namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_checked ON blombooru_external_tag_category_lookup_cache(last_checked_at)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_retry_after ON blombooru_external_tag_category_lookup_cache(retry_after)",
+            "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_expires_at ON blombooru_external_tag_category_lookup_cache(expires_at)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))
