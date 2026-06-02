@@ -210,6 +210,7 @@ def check_and_migrate_schema(engine):
         migrate_add_classification_force_reclassify,
         migrate_add_entity_metadata_tables,
         migrate_add_external_tag_category_lookup_cache,
+        migrate_add_pixiv_tag_taxonomy_alias_kb,
     ]
     
     for migration in migrations:
@@ -1087,6 +1088,135 @@ def migrate_add_external_tag_category_lookup_cache(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_checked ON blombooru_external_tag_category_lookup_cache(last_checked_at)",
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_retry_after ON blombooru_external_tag_category_lookup_cache(retry_after)",
             "CREATE INDEX IF NOT EXISTS ix_external_tag_category_lookup_expires_at ON blombooru_external_tag_category_lookup_cache(expires_at)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_pixiv_tag_taxonomy_alias_kb(engine, inspector):
+    """Create Phase 4.4-P2R-F4 Pixiv taxonomy/alias KB tables.
+
+    This migration is additive only. It creates dedicated KB/cache tables for
+    Pixiv raw-tag taxonomy and alias evidence, and does not alter entity,
+    evidence, candidate, assignment, ProviderCache, NegativeLookupCache,
+    media_tags, TagTranslation, or LocalSourceHint-style truth/product tables.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON' if not is_sqlite else 'JSON'
+
+    with engine.connect() as conn:
+        created_taxonomy_table = False
+        created_alias_table = False
+        if 'blombooru_pixiv_tag_taxonomy_kb' not in tables:
+            logger.info("Creating blombooru_pixiv_tag_taxonomy_kb table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_pixiv_tag_taxonomy_kb (
+                    id {pk_type},
+                    raw_tag VARCHAR(500),
+                    normalized_tag VARCHAR(500) NOT NULL,
+                    canonical_key VARCHAR(500) NOT NULL,
+                    source_scope VARCHAR(100) NOT NULL DEFAULT 'pixiv_raw_tag_v1',
+                    language_script_hints {json_type},
+                    candidate_namespace VARCHAR(50) NOT NULL DEFAULT 'unknown',
+                    confidence FLOAT,
+                    status VARCHAR(50) NOT NULL DEFAULT 'unresolved',
+                    source_summary {json_type},
+                    frequency INTEGER NOT NULL DEFAULT 0,
+                    high_value_score FLOAT,
+                    unresolved_reason VARCHAR(100),
+                    next_action VARCHAR(255),
+                    manual_override_status VARCHAR(50) NOT NULL DEFAULT 'none',
+                    manual_override_value VARCHAR(500),
+                    notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_pixiv_tag_taxonomy_scope_key UNIQUE (source_scope, canonical_key)
+                )
+            """))
+            created_taxonomy_table = True
+
+        if 'blombooru_pixiv_tag_alias_kb' not in tables:
+            logger.info("Creating blombooru_pixiv_tag_alias_kb table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_pixiv_tag_alias_kb (
+                    id {pk_type},
+                    source_tag VARCHAR(500) NOT NULL,
+                    source_canonical_key VARCHAR(500) NOT NULL,
+                    target_tag VARCHAR(500) NOT NULL,
+                    target_canonical_key VARCHAR(500) NOT NULL,
+                    relation_type VARCHAR(100) NOT NULL,
+                    evidence_source VARCHAR(100) NOT NULL,
+                    evidence_payload {json_type},
+                    confidence FLOAT,
+                    status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+                    frequency INTEGER NOT NULL DEFAULT 0,
+                    manual_override_status VARCHAR(50) NOT NULL DEFAULT 'none',
+                    manual_override_value VARCHAR(500),
+                    notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_pixiv_tag_alias_relation_evidence UNIQUE (
+                        source_canonical_key,
+                        target_canonical_key,
+                        relation_type,
+                        evidence_source
+                    )
+                )
+            """))
+            created_alias_table = True
+
+        table_columns = {
+            table_name: {
+                column['name']
+                for column in inspector.get_columns(table_name)
+            }
+            for table_name in (
+                'blombooru_pixiv_tag_taxonomy_kb',
+                'blombooru_pixiv_tag_alias_kb',
+            )
+            if table_name in set(inspector.get_table_names())
+        }
+        taxonomy_add_columns = {
+            'source_scope': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN source_scope VARCHAR(100) NOT NULL DEFAULT 'pixiv_raw_tag_v1'",
+            'language_script_hints': f"ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN language_script_hints {json_type}",
+            'source_summary': f"ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN source_summary {json_type}",
+            'frequency': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN frequency INTEGER NOT NULL DEFAULT 0",
+            'high_value_score': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN high_value_score FLOAT",
+            'unresolved_reason': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN unresolved_reason VARCHAR(100)",
+            'next_action': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN next_action VARCHAR(255)",
+            'manual_override_status': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN manual_override_status VARCHAR(50) NOT NULL DEFAULT 'none'",
+            'manual_override_value': "ALTER TABLE blombooru_pixiv_tag_taxonomy_kb ADD COLUMN manual_override_value VARCHAR(500)",
+        }
+        if not created_taxonomy_table:
+            for column_name, statement in taxonomy_add_columns.items():
+                if column_name not in table_columns.get('blombooru_pixiv_tag_taxonomy_kb', set()):
+                    conn.execute(text(statement))
+
+        alias_add_columns = {
+            'evidence_payload': f"ALTER TABLE blombooru_pixiv_tag_alias_kb ADD COLUMN evidence_payload {json_type}",
+            'frequency': "ALTER TABLE blombooru_pixiv_tag_alias_kb ADD COLUMN frequency INTEGER NOT NULL DEFAULT 0",
+            'manual_override_status': "ALTER TABLE blombooru_pixiv_tag_alias_kb ADD COLUMN manual_override_status VARCHAR(50) NOT NULL DEFAULT 'none'",
+            'manual_override_value': "ALTER TABLE blombooru_pixiv_tag_alias_kb ADD COLUMN manual_override_value VARCHAR(500)",
+        }
+        if not created_alias_table:
+            for column_name, statement in alias_add_columns.items():
+                if column_name not in table_columns.get('blombooru_pixiv_tag_alias_kb', set()):
+                    conn.execute(text(statement))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_taxonomy_status_namespace ON blombooru_pixiv_tag_taxonomy_kb(status, candidate_namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_taxonomy_canonical_key ON blombooru_pixiv_tag_taxonomy_kb(canonical_key)",
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_taxonomy_unresolved_reason ON blombooru_pixiv_tag_taxonomy_kb(unresolved_reason)",
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_taxonomy_updated ON blombooru_pixiv_tag_taxonomy_kb(updated_at)",
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_alias_relation_status ON blombooru_pixiv_tag_alias_kb(relation_type, status)",
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_alias_source_key ON blombooru_pixiv_tag_alias_kb(source_canonical_key)",
+            "CREATE INDEX IF NOT EXISTS ix_pixiv_tag_alias_target_key ON blombooru_pixiv_tag_alias_kb(target_canonical_key)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))

@@ -1,0 +1,1070 @@
+{
+  "alias_kb": {
+    "entry_count": 76,
+    "evidence_source_counts": {
+      "multilingual_normalization": 5,
+      "pixiv_parenthetical_pattern": 18,
+      "pixiv_same_work_tag_cooccurrence": 53
+    },
+    "manual_override_entry_count": 0,
+    "relation_type_counts": {
+      "cooccurrence_candidate": 53,
+      "parenthetical_character_of_work": 18,
+      "translation": 5
+    }
+  },
+  "artifact_lifecycle": "phase_scoped_operational_runner",
+  "automated_tag_category_lookup": {
+    "cache_error_cooldown_count": 0,
+    "cache_expired_retryable_count": 0,
+    "cache_hit_count": 18,
+    "cache_hit_resolved_count": 18,
+    "cache_miss_count": 374,
+    "cache_negative_not_found_count": 332,
+    "cache_write_count": 0,
+    "cache_write_enabled": false,
+    "enabled": true,
+    "external_request_budget": 0,
+    "hard_lookup_limit": 500,
+    "hit_count": 18,
+    "lookup_delay_seconds": 0.25,
+    "lookup_error_count": 66,
+    "lookup_limit": 500,
+    "lookup_source": "f4_taxonomy_alias_cache_only_lookup_v1",
+    "lookup_sources_attempted": [
+      "danbooru_tags_api_v2",
+      "danbooru_tag_aliases_api_v2",
+      "safebooru_tags_xml_api_v1",
+      "gelbooru_tags_xml_api_v1"
+    ],
+    "lookup_timeout_seconds": 20,
+    "negative_cache_hit_count": 332,
+    "not_found_count": 110,
+    "provider_block_reason": "external_lookup_network_skipped_after_bounded_live_timeout",
+    "provider_blocked": true,
+    "provider_blocked_sources": [
+      "danbooru_tags_api_v2",
+      "danbooru_tag_aliases_api_v2",
+      "safebooru_tags_xml_api_v1",
+      "gelbooru_tags_xml_api_v1"
+    ],
+    "request_budget_exhausted": false,
+    "request_count": 0,
+    "resolved_namespace_counts": {
+      "artist": 1,
+      "character": 1,
+      "copyright": 3,
+      "general": 13
+    },
+    "source_cache_hit_counts": {
+      "danbooru_tags_api_v2": 17,
+      "safebooru_tags_xml_api_v1": 1
+    },
+    "source_cache_miss_counts": {
+      "danbooru_tag_aliases_api_v2": 66,
+      "danbooru_tags_api_v2": 66,
+      "gelbooru_tags_xml_api_v1": 176,
+      "safebooru_tags_xml_api_v1": 66
+    },
+    "source_cache_write_counts": {},
+    "source_hit_counts": {
+      "danbooru_tags_api_v2": 17,
+      "safebooru_tags_xml_api_v1": 1
+    },
+    "source_lookup_error_counts": {
+      "f4_cache_only_network_skipped": 66
+    },
+    "source_negative_cache_hit_counts": {
+      "danbooru_tag_aliases_api_v2": 111,
+      "danbooru_tags_api_v2": 111,
+      "safebooru_tags_xml_api_v1": 110
+    },
+    "source_not_found_counts": {
+      "safebooru_tags_xml_api_v1": 110
+    },
+    "source_request_counts": {},
+    "unique_normalized_tag_count": 194
+  },
+  "before_after_comparison": {
+    "f4": {
+      "ambiguous_unknown_candidate_count": 528,
+      "high_value_resolution_rate": 0.1394,
+      "resolved_unique_tag_coverage": 0.2,
+      "top_high_impact_governance_rate": 1.0
+    },
+    "pr90": {
+      "ambiguous_unknown_candidate_count": 262,
+      "high_value_resolution_rate": 0.1484,
+      "resolved_unique_tag_coverage": 0.1654
+    }
+  },
+  "command_summary": {
+    "blocked_over_limit_count": 0,
+    "exact_commands_private_only": true,
+    "max_record_limit": 500,
+    "metadata_auth_or_config_failure_count": 0,
+    "metadata_command_count": 50,
+    "metadata_command_template": "<gallery_dl_entrypoint> --dump-json --no-download https://www.pixiv.net/artworks/<WORK_ID>",
+    "metadata_failure_count": 0,
+    "metadata_success_count": 50,
+    "per_item_results_public": [
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 1,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3587,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 2,
+        "parsed_media_record_count": 5,
+        "stderr_error_class": null,
+        "stdout_bytes": 17103,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 3,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 4737,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 4,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3687,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 5,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 6081,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 6,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3785,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 7,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4081,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 8,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 9,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3083,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 10,
+        "parsed_media_record_count": 3,
+        "stderr_error_class": null,
+        "stdout_bytes": 7757,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 11,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5688,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 12,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4117,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 13,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4131,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 14,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3253,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 15,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3395,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 16,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 5669,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 17,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 18,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3737,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 19,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3147,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 20,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5571,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 21,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3581,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 22,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 7923,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 23,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3497,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 24,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3391,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 25,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3527,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 26,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 27,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 28,
+        "parsed_media_record_count": 4,
+        "stderr_error_class": null,
+        "stdout_bytes": 10394,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 29,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 6627,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 30,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3871,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 31,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5457,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 32,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3419,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 33,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4571,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 34,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4669,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 35,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3661,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 36,
+        "parsed_media_record_count": 3,
+        "stderr_error_class": null,
+        "stdout_bytes": 9001,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 37,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 7089,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 38,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3433,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 39,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 40,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3557,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 41,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3277,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 42,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 3747,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 43,
+        "parsed_media_record_count": 1,
+        "stderr_error_class": null,
+        "stdout_bytes": 4383,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 44,
+        "parsed_media_record_count": 6,
+        "stderr_error_class": null,
+        "stdout_bytes": 13912,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 45,
+        "parsed_media_record_count": 3,
+        "stderr_error_class": null,
+        "stdout_bytes": 7409,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 46,
+        "parsed_media_record_count": 0,
+        "stderr_error_class": null,
+        "stdout_bytes": 137,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 47,
+        "parsed_media_record_count": 3,
+        "stderr_error_class": null,
+        "stdout_bytes": 9557,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 48,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5691,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 49,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 5587,
+        "success": true
+      },
+      {
+        "blocked_over_limit": false,
+        "command_kind": "metadata_reuse_raw",
+        "error_is_auth_or_config": false,
+        "exit_code": 0,
+        "item_index": 50,
+        "parsed_media_record_count": 2,
+        "stderr_error_class": null,
+        "stdout_bytes": 6615,
+        "success": true
+      }
+    ],
+    "record_cap_enforced_before_accepted_raw_write": true,
+    "reference_download_enabled": false,
+    "subprocess_uses_shell": false
+  },
+  "coverage_target": {
+    "ambiguous_unknown_candidate_count_after_f4": 528,
+    "ambiguous_unknown_reduction_vs_pr90": -1.0153,
+    "classification_target_reached": false,
+    "coverage_target_thresholds": {
+      "ambiguous_reduction": 0.6,
+      "high_value_resolution": 0.8,
+      "top_high_impact_governance": 1.0,
+      "unique_tag_coverage": 0.6
+    },
+    "governance_target_reached": true,
+    "high_value_proper_noun_like_resolution_rate": 0.1394,
+    "high_value_proper_noun_like_resolved_count": 29,
+    "high_value_proper_noun_like_tag_count": 208,
+    "resolved_unique_tag_count": 42,
+    "resolved_unique_tag_coverage": 0.2,
+    "target_reached": false,
+    "target_status": "classification_not_reached_top_high_impact_governed",
+    "thresholds_reached": {
+      "ambiguous_reduction": false,
+      "high_value_proper_noun_classification": false,
+      "top_high_impact_governance": true,
+      "unique_tag_classification": false
+    },
+    "top_high_impact_count": 50,
+    "top_high_impact_governance_rate": 1.0,
+    "top_high_impact_governed_count": 50,
+    "unique_tag_count": 210
+  },
+  "curated_mapping": {
+    "input_mapping_count": 0,
+    "no_mapping_invented": true,
+    "template_private_artifact": "private_curated_mapping_template_csv"
+  },
+  "db_identity": {
+    "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "database_url_source": "settings_env_or_default",
+    "db_read_only_guard_installed": true,
+    "db_sensitive_value_included": false,
+    "local_paths_redacted": true,
+    "settings_file_exists": false,
+    "settings_source": "defaults_without_settings_file",
+    "storage_root_mode": "code_root_default",
+    "violet_env": "development"
+  },
+  "generated_at": "2026-06-02T12:07:56+00:00",
+  "git_context": {
+    "base_main_sha": "e9d49ea921f5a98ed63e496647b89d0f322de522",
+    "branch_name": "codex/phase44p2r-f4-pixiv-taxonomy-alias-kb",
+    "final_pushed_commit_sha_reported_in_final_delivery": true,
+    "origin_main_sha": "e9d49ea921f5a98ed63e496647b89d0f322de522",
+    "pr_head_sha_at_report_generation": "e9d49ea921f5a98ed63e496647b89d0f322de522",
+    "pr_number": null,
+    "report_generated_from_worktree": true,
+    "report_generation_head_sha": "e9d49ea921f5a98ed63e496647b89d0f322de522",
+    "self_referential_commit_sha_not_embedded": true,
+    "working_tree_had_uncommitted_changes_at_report_generation": true
+  },
+  "input_summary": {
+    "external_lookup_network_skipped": true,
+    "local_source_prior_join": {
+      "approved_future_source_content_classes": [
+        "anime"
+      ],
+      "future_eligibility_counts": {
+        "eligible_for_future_entity_candidate": 46,
+        "eligible_for_future_local_source_hint": 46,
+        "ineligible_for_future_entity_candidate": 29,
+        "ineligible_for_future_local_source_hint": 29
+      },
+      "local_prior_content_class_distribution": {
+        "anime": 546,
+        "non_anime": 1,
+        "unknown": 8
+      },
+      "local_prior_join_ran": true,
+      "local_prior_total_keys": 555,
+      "local_prior_total_media": 555,
+      "local_prior_total_media_inspected": 1989,
+      "local_prior_without_metadata": 509,
+      "match_content_class_counts": {
+        "anime": 46
+      },
+      "page_index_status_counts": {
+        "page_index_within_page_count": 75
+      },
+      "status_counts": {
+        "metadata_matches_eligible_anime_local_prior": 46,
+        "metadata_work_id_found_no_local_match": 29
+      }
+    },
+    "max_external_requests": 180,
+    "max_records": 500,
+    "max_unique_tags": 500,
+    "max_work_ids": 100,
+    "metadata_command_count": 50,
+    "metadata_success_count": 50,
+    "normalized_candidate_media_record_count": 75,
+    "normalized_media_record_count": 75,
+    "raw_record_count": 125,
+    "raw_scope": {
+      "current_run_raw_file_count": 50,
+      "raw_input_scope": "current_run_only",
+      "stale_raw_files_ignored_count": 0,
+      "stale_raw_files_private": []
+    },
+    "reuse_raw_metadata": true,
+    "sample_size_requested": 50,
+    "unique_normalized_tag_count": 210
+  },
+  "kb_write_summary": {
+    "alias_insert_count": 0,
+    "alias_update_count": 76,
+    "cache_migration_ran": false,
+    "external_cache_table_available": true,
+    "external_cache_write_count": 0,
+    "kb_migration_ran": true,
+    "table_names": [
+      "blombooru_pixiv_tag_taxonomy_kb",
+      "blombooru_pixiv_tag_alias_kb",
+      "blombooru_external_tag_category_lookup_cache"
+    ],
+    "taxonomy_alias_tables_available": true,
+    "taxonomy_insert_count": 0,
+    "taxonomy_update_count": 210
+  },
+  "phase": "4.4-P2R-F4",
+  "pr90_baseline": {
+    "ambiguous_unknown_candidate_count": 262,
+    "high_value_proper_noun_like_resolution_rate": 0.1484,
+    "high_value_proper_noun_like_resolved_count": 19,
+    "high_value_proper_noun_like_tag_count": 128,
+    "original_f3_ambiguous_unknown_candidate_count": 305,
+    "resolved_unique_tag_count": 22,
+    "resolved_unique_tag_coverage": 0.1654,
+    "unique_tag_count": 133
+  },
+  "pr90_merge_confirmation": {
+    "merge_commit": "e9d49ea921f5a98ed63e496647b89d0f322de522",
+    "merged_at": "2026-06-02T10:50:31Z",
+    "number": 90,
+    "state": "MERGED",
+    "url": "https://github.com/kyloris0660/VIOLET/pull/90"
+  },
+  "pr90_private_artifacts": {
+    "available": false,
+    "available_count": 0,
+    "expected_count": 11,
+    "missing_count": 11,
+    "private_artifact_root": ".local_manifests\\phase-4.4p2r-f3-pixiv-metadata-normalization-pilot",
+    "regeneration_required_if_live_run": true
+  },
+  "pr90_report_baseline": {
+    "available": true,
+    "classification_middleware": {
+      "alias_group_candidate_count": 0,
+      "ambiguous_unknown_candidate_count": 262,
+      "artist_candidate_count": 42,
+      "automatic_entity_count": 0,
+      "candidate_classification_distribution": {
+        "candidate_kind_counts": {
+          "ambiguous_proper_noun_candidate": 253,
+          "entity_candidate": 104,
+          "original_work_context": 3,
+          "tag_candidate": 69,
+          "unknown_or_unresolved_pixiv_tag": 6
+        },
+        "candidate_namespace_counts": {
+          "ambiguous": 256,
+          "artist": 42,
+          "character": 27,
+          "copyright": 35,
+          "general": 69,
+          "unknown": 6
+        },
+        "candidate_reason_counts": {
+          "deterministic_general_descriptor_fallback": 8,
+          "deterministic_original_marker": 3,
+          "deterministic_proper_noun_shape_unverified": 253,
+          "existing_tag_category_match": 4,
+          "external_tag_category_lookup": 68,
+          "no_provenance_backed_category": 6,
+          "pixiv_parenthetical_character_work_pattern": 52,
+          "pixiv_user_metadata": 41
+        },
+        "db_write_allowed_count": 0,
+        "lookup_source_counts": {
+          "danbooru_tags_api_v2": 56,
+          "deterministic_fallback": 264,
+          "external_category_lookup_disabled_in_f3": 6,
+          "local_db_read_only": 4,
+          "pixiv_metadata": 41,
+          "pixiv_parenthetical_pattern": 52,
+          "safebooru_tags_xml_api_v1": 12
+        },
+        "manual_review_required_count": 333
+      },
+      "candidate_row_count": 435,
+      "character_candidate_count": 27,
+      "confirmed_assignment_count": 0,
+      "copyright_series_candidate_count": 35,
+      "db_write_allowed_count": 0,
+      "general_descriptive_tag_candidate_count": 69,
+      "lookup_source_coverage": {
+        "deterministic_fallback": 264,
+        "external_category_lookup_disabled_in_f3": 6,
+        "external_category_lookup_enabled": true,
+        "external_category_lookup_public_docs": {
+          "danbooru": "https://danbooru.donmai.us/wiki_pages/help%3Aapi",
+          "safebooru": "https://safebooru.org/index.php"
+        },
+        "external_category_lookup_sources": [
+          "danbooru_tags_api_v2",
+          "danbooru_tag_aliases_api_v2",
+          "safebooru_tags_xml_api_v1"
+        ],
+        "legacy_source_candidate_count": 0,
+        "local_db_read_only": 4,
+        "source_candidate_counts": {
+          "danbooru_tags_api_v2": 56,
+          "safebooru_tags_xml_api_v1": 12
+        }
+      },
+      "normalized_dto": "PixivNormalizedMetadataCandidate",
+      "sensitive_meta_candidate_count": 0
+    },
+    "closeout_conclusion": {
+      "bounded_closeout_fix_status": {
+        "alias_cache_preserves_antecedent_key": true,
+        "cache_hit_applies_manual_override": true,
+        "dry_run_skip_network_side_effect_free": true,
+        "failed_multi_request_lookup_counted_against_budget": true,
+        "local_entity_tag_category_requires_trusted_provenance": true,
+        "manual_override_preserved_on_refresh": true,
+        "private_output_paths_validated_before_side_effects": true,
+        "provider_block_stops_further_same_source_requests": true,
+        "public_report_paths_validated_before_side_effects": true,
+        "requested_sample_size_respected_before_seed_selection": true,
+        "retry_after_cooldown_respected": true,
+        "sample_seed_selection_respects_requested_capacity": true
+      },
+      "classification_middleware_completed": false,
+      "coverage_target_reached": false,
+      "entity_candidate_recommendation": "blocked_until_category_coverage_and_provenance_improve",
+      "multisource_lookup_cache_proof_completed": true,
+      "next_stage_recommendation": "taxonomy_alias_knowledge_base_stage_required",
+      "persistence_recommendation": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet"
+    },
+    "coverage_target": {
+      "additional_source_evaluation": {
+        "gelbooru_dapi": "rejected_for_this_pilot_live_probe_returned_http_401_without_credentials",
+        "safebooru_dapi": "implemented_public_xml_tag_type_lookup"
+      },
+      "ambiguous_unknown_reduction_vs_original_f3": 0.141,
+      "automated_paths_attempted": [
+        "local_db_read_only",
+        "danbooru_tags_api_v2",
+        "danbooru_tag_aliases_api_v2",
+        "safebooru_tags_xml_api_v1",
+        "pixiv_parenthetical_pattern_parser",
+        "deterministic_fallback"
+      ],
+      "automated_paths_exhausted": true,
+      "coverage_target_thresholds": {
+        "ambiguous_unknown_reduction": 0.6,
+        "high_value_resolution": 0.8,
+        "unique_tag_coverage": 0.6
+      },
+      "high_value_proper_noun_like_resolution_rate": 0.1484,
+      "high_value_proper_noun_like_resolved_count": 19,
+      "high_value_proper_noun_like_tag_count": 128,
+      "lookup_error_count": 0,
+      "lookup_limit": 200,
+      "lookup_limit_covers_all_unique_tags": true,
+      "lookup_source_statuses": {
+        "danbooru_tag_aliases_api_v2": "source_attempted_successfully_exhausted",
+        "danbooru_tags_api_v2": "source_attempted_successfully_exhausted",
+        "safebooru_tags_xml_api_v1": "source_attempted_successfully_exhausted"
+      },
+      "lookup_sources_successfully_exhausted": true,
+      "provider_blocked": false,
+      "request_budget_exhausted": false,
+      "resolved_unique_tag_count": 22,
+      "resolved_unique_tag_coverage": 0.1654,
+      "target_status": "not_reached_after_exhaustion",
+      "unique_tag_count": 133
+    },
+    "phase": "4.4-P2R-F3b",
+    "unresolved_reason_buckets": {
+      "deterministic_original_marker": 3,
+      "deterministic_proper_noun_shape_unverified": 253,
+      "no_provenance_backed_category": 6
+    }
+  },
+  "public_report_redaction": {
+    "contains_exact_local_paths": false,
+    "contains_exact_media_ids": false,
+    "contains_exact_pixiv_ids": false,
+    "contains_raw_gallery_dl_json": false,
+    "contains_raw_image_urls": false,
+    "contains_raw_pixiv_tags": false,
+    "exact_unresolved_tags_private_only": true
+  },
+  "recommendation": {
+    "entity_candidate_persistence": "blocked_until_category_coverage_and_provenance_improve",
+    "next_route": "continue_taxonomy_alias_kb_with_curated_mapping_or_new_source",
+    "persistence_recommendation": "do_not_persist_LocalSourceHint_or_PixivMetadata_yet",
+    "reason": "coverage_target_not_reached"
+  },
+  "safety_confirmation": {
+    "additive_db_migration": true,
+    "app_managed_storage_mutation": false,
+    "automatic_entity_creation": false,
+    "confirmed_assignment": false,
+    "db_write_limited_to_taxonomy_alias_external_tag_category_cache": true,
+    "entity_alias_write": false,
+    "entity_evidence_write": false,
+    "entity_external_identity_write": false,
+    "entity_resolver": false,
+    "entity_write": false,
+    "llm_classification": false,
+    "local_source_hint_write": false,
+    "media_entity_assignment_write": false,
+    "media_entity_candidate_write": false,
+    "media_tags_mutation": false,
+    "merge": false,
+    "negative_lookup_cache_write": false,
+    "provider_cache_write": false,
+    "push_main": false,
+    "sample_specific_hardcoded_mapping": false,
+    "source_or_icloud_mutation": false,
+    "tag_translation_mutation": false
+  },
+  "sample_selection": {
+    "content_class_distribution": {
+      "anime": 50
+    },
+    "default_sample_size": 30,
+    "duplicate_or_ambiguous_count": 0,
+    "exact_filenames_public": false,
+    "exact_media_ids_public": false,
+    "exact_work_ids_public": false,
+    "max_normalized_records": 200,
+    "max_sample_size": 50,
+    "multi_local_page_work_count": 2,
+    "page_case_distribution": {
+      "non_p0_only": 5,
+      "p0_and_non_p0": 2,
+      "p0_only": 43
+    },
+    "prior_total_keys": 555,
+    "prior_total_media": 555,
+    "prior_total_media_inspected": 1989,
+    "requested_sample_size": 50,
+    "requested_sample_size_respected": true,
+    "sample_gate_status": "passed",
+    "selected_count": 50,
+    "selection_strategy": "anime_only_cover_p0_non_p0_multi_page_then_fill_by_work_id"
+  },
+  "strategy_layers_attempted": {
+    "alias_cooccurrence_evidence": true,
+    "curated_mapping_import_path": true,
+    "danbooru_alias_canonical": true,
+    "danbooru_exact": true,
+    "gelbooru_or_unavailable_proof": true,
+    "local_trusted_db_evidence": true,
+    "multilingual_normalization": true,
+    "pixiv_parenthetical_pattern": true,
+    "pr90_lookup_cache": true,
+    "safebooru": true,
+    "unresolved_reason_bucketing": true
+  },
+  "taxonomy_kb": {
+    "candidate_namespace_counts": {
+      "ambiguous": 162,
+      "artist": 1,
+      "character": 19,
+      "copyright": 9,
+      "general": 13,
+      "unknown": 6
+    },
+    "entry_count": 210,
+    "manual_override_entry_count": 0,
+    "resolved_entry_count": 42,
+    "status_counts": {
+      "resolved": 42,
+      "unresolved_governed": 168
+    },
+    "unresolved_reason_buckets": {
+      "provider_limited_or_lookup_error": 62,
+      "provider_not_found": 106
+    }
+  },
+  "title": "Pixiv Taxonomy / Alias Knowledge Base Construction and Classification Closure Pilot",
+  "top_unresolved_private_artifact": "private_unresolved_tags_analysis_csv",
+  "unresolved_reason_buckets": {
+    "provider_limited_or_lookup_error": 62,
+    "provider_not_found": 106
+  },
+  "why_this_stage_exists": "PR #90 completed lookup/cache proof but did not reach classification coverage. F4 builds a taxonomy/alias KB and unresolved governance layer before any truth-table persistence."
+}
