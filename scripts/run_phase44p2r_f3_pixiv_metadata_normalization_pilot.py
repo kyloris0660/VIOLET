@@ -21,9 +21,10 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import quote
@@ -73,6 +74,10 @@ PRIVATE_ENTITY_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "entity-candidates.csv"
 PRIVATE_ENTITY_CANDIDATES_MD = PHASE_OUTPUT_DIR / "entity-candidates.md"
 PRIVATE_LOOKUP_CACHE_CSV = PHASE_OUTPUT_DIR / "lookup-cache-sheet.csv"
 PRIVATE_LOOKUP_CACHE_MD = PHASE_OUTPUT_DIR / "lookup-cache-sheet.md"
+PRIVATE_UNRESOLVED_TAGS_CSV = PHASE_OUTPUT_DIR / "unresolved-tags-analysis.csv"
+PRIVATE_UNRESOLVED_TAGS_MD = PHASE_OUTPUT_DIR / "unresolved-tags-analysis.md"
+PRIVATE_PARENTHETICAL_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "parenthetical-pattern-candidates.csv"
+PRIVATE_PARENTHETICAL_CANDIDATES_MD = PHASE_OUTPUT_DIR / "parenthetical-pattern-candidates.md"
 PRIVATE_MANUAL_REVIEW_GUIDE = PHASE_OUTPUT_DIR / "manual-review-guide.md"
 PRIVATE_RAW_DIR = PHASE_OUTPUT_DIR / "raw"
 
@@ -92,10 +97,25 @@ EXTERNAL_TAG_LOOKUP_BASE_URL = "https://danbooru.donmai.us/tags.json"
 EXTERNAL_TAG_ALIAS_LOOKUP_BASE_URL = "https://danbooru.donmai.us/tag_aliases.json"
 EXTERNAL_TAG_LOOKUP_DOC_URL = "https://danbooru.donmai.us/wiki_pages/help%3Aapi"
 EXTERNAL_TAG_LOOKUP_USER_AGENT = "VIOLET-Phase44P2R-F3b/1.0 (bounded tag category lookup pilot)"
+DANBOORU_TAGS_SOURCE = "danbooru_tags_api_v2"
+DANBOORU_ALIAS_SOURCE = "danbooru_tag_aliases_api_v2"
+SAFEBOORU_TAGS_SOURCE = "safebooru_tags_xml_api_v1"
+SAFEBOORU_TAG_LOOKUP_BASE_URL = "https://safebooru.org/index.php"
+SUCCESSFUL_LOOKUP_STATUSES = frozenset({"hit"})
+NEGATIVE_LOOKUP_CACHE_TTL_SECONDS = 24 * 60 * 60
+LOOKUP_ERROR_RETRY_AFTER_SECONDS = 60 * 60
+DEFAULT_LOOKUP_SOURCES = (DANBOORU_TAGS_SOURCE, DANBOORU_ALIAS_SOURCE, SAFEBOORU_TAGS_SOURCE)
 PREVIOUS_F3_BASELINE = {
     "ambiguous_unknown_candidate_count": 305,
     "copyright_series_candidate_count": 0,
     "character_candidate_count": 0,
+}
+PREVIOUS_DANBOORU_ONLY_F3B = {
+    "ambiguous_unknown_candidate_count": 262,
+    "copyright_series_candidate_count": 9,
+    "character_candidate_count": 1,
+    "unique_tag_lookup_hit_count": 17,
+    "unique_tag_lookup_total_count": 133,
 }
 
 GENERAL_DESCRIPTOR_TERMS = frozenset(
@@ -239,7 +259,9 @@ class LocalEntityMatch:
 class ExternalTagLookupResult:
     raw_tag: str
     normalized_tag: str
+    canonical_lookup_key: str
     lookup_source: str
+    lookup_source_version: str | None
     source_tag_id: str | None
     source_tag_name: str | None
     source_category_raw: str | None
@@ -249,12 +271,21 @@ class ExternalTagLookupResult:
     status: str
     cache_status: str
     lookup_error: str | None = None
+    retry_after: str | None = None
+    expires_at: str | None = None
 
-    def to_cache_fields(self) -> dict[str, Any]:
+    def to_cache_fields(
+        self,
+        *,
+        manual_override_status: str | None = None,
+        manual_override_value: str | None = None,
+    ) -> dict[str, Any]:
         return {
             "raw_tag": self.raw_tag,
             "normalized_tag": self.normalized_tag,
+            "canonical_lookup_key": self.canonical_lookup_key,
             "lookup_source": self.lookup_source,
+            "lookup_source_version": self.lookup_source_version,
             "source_tag_id": self.source_tag_id,
             "source_tag_name": self.source_tag_name,
             "source_category_raw": self.source_category_raw,
@@ -263,17 +294,80 @@ class ExternalTagLookupResult:
             "provenance_url_or_key": self.provenance_url_or_key,
             "status": self.status,
             "last_checked_at": datetime.now(timezone.utc),
+            "retry_after": _parse_iso_datetime(self.retry_after),
+            "expires_at": _parse_iso_datetime(self.expires_at),
             "lookup_error": self.lookup_error,
-            "manual_override_status": "none",
+            **(
+                {"manual_override_status": manual_override_status}
+                if manual_override_status is not None
+                else {}
+            ),
+            **(
+                {"manual_override_value": manual_override_value}
+                if manual_override_value is not None
+                else {}
+            ),
         }
 
     def to_private_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class MultilingualTagNormalization:
+    raw_tag: str
+    unicode_nfkc_normalized: str
+    whitespace_normalized: str
+    casefolded_latin_form: str | None
+    underscore_form: str
+    punctuation_normalized_form: str
+    bracket_normalized_form: str
+    lookup_candidates: tuple[str, ...]
+    canonical_lookup_key: str
+
+    def public_safe_dict(self) -> dict[str, Any]:
+        return {
+            "lookup_candidate_count": len(self.lookup_candidates),
+            "has_casefolded_latin_form": self.casefolded_latin_form is not None,
+            "canonical_lookup_key_present": bool(self.canonical_lookup_key),
+        }
+
+    def to_private_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ParentheticalTagPattern:
+    raw_tag: str
+    outer_name: str
+    inner_work_or_context: str
+    bracket_style: str
+    ambiguous_or_nested: bool = False
+
+    def to_private_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class TagLookupInput:
+    raw_tag: str
+    normalized_tag: str
+    canonical_lookup_key: str
+    lookup_candidates: tuple[str, ...]
+
+
 @dataclass
 class ExternalLookupSummary:
-    lookup_source: str = EXTERNAL_TAG_LOOKUP_SOURCE
+    lookup_source: str = "multisource_tag_category_lookup_v1"
+    lookup_sources_attempted: list[str] = field(default_factory=list)
+    source_request_counts: dict[str, int] = field(default_factory=dict)
+    source_cache_hit_counts: dict[str, int] = field(default_factory=dict)
+    source_negative_cache_hit_counts: dict[str, int] = field(default_factory=dict)
+    source_cache_miss_counts: dict[str, int] = field(default_factory=dict)
+    source_cache_write_counts: dict[str, int] = field(default_factory=dict)
+    source_hit_counts: dict[str, int] = field(default_factory=dict)
+    source_not_found_counts: dict[str, int] = field(default_factory=dict)
+    source_lookup_error_counts: dict[str, int] = field(default_factory=dict)
     enabled: bool = True
     unique_normalized_tag_count: int = 0
     lookup_limit: int = DEFAULT_TAG_LOOKUP_LIMIT
@@ -282,6 +376,7 @@ class ExternalLookupSummary:
     lookup_timeout_seconds: int = DEFAULT_TAG_LOOKUP_TIMEOUT_SECONDS
     request_count: int = 0
     cache_hit_count: int = 0
+    negative_cache_hit_count: int = 0
     cache_miss_count: int = 0
     cache_write_count: int = 0
     cache_write_enabled: bool = True
@@ -337,6 +432,14 @@ class PixivCandidateRow:
     candidate_namespace: str
     confidence: float
     reason: str
+    unicode_nfkc_normalized: str | None = None
+    whitespace_normalized: str | None = None
+    casefolded_latin_form: str | None = None
+    underscore_form: str | None = None
+    punctuation_normalized_form: str | None = None
+    bracket_normalized_form: str | None = None
+    lookup_candidates: tuple[str, ...] = ()
+    canonical_lookup_key: str | None = None
     lookup_source: str | None = None
     lookup_key: str | None = None
     lookup_category: str | None = None
@@ -367,6 +470,8 @@ class PixivNormalizedMetadataCandidate:
     artist_id_private: str | None
     raw_pixiv_tags: tuple[str, ...]
     normalized_unicode_tags: tuple[str, ...]
+    multilingual_normalizations: list[dict[str, Any]]
+    parenthetical_patterns: list[dict[str, Any]]
     tag_candidates: list[dict[str, Any]]
     entity_candidates: list[dict[str, Any]]
     unresolved_or_ambiguous_tags: tuple[str, ...]
@@ -382,6 +487,45 @@ class PixivNormalizedMetadataCandidate:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _future_iso(seconds: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).replace(microsecond=0).isoformat()
+
+
+def _not_found_cache_is_fresh(row: ExternalTagCategoryLookupCache, *, source: str) -> bool:
+    if str(row.status) != "not_found":
+        return False
+    if row.lookup_source_version and str(row.lookup_source_version) != source:
+        return False
+    expires_at = row.expires_at
+    if not expires_at and row.last_checked_at:
+        checked_at = row.last_checked_at
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+        expires_at = checked_at + timedelta(seconds=NEGATIVE_LOOKUP_CACHE_TTL_SECONDS)
+    if not expires_at:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at > datetime.now(timezone.utc)
+
+
+def _with_default_cache_lifecycle(result: ExternalTagLookupResult) -> ExternalTagLookupResult:
+    if result.status == "not_found" and not result.expires_at:
+        return replace(result, expires_at=_future_iso(NEGATIVE_LOOKUP_CACHE_TTL_SECONDS))
+    if result.status == "lookup_error" and not result.retry_after:
+        return replace(result, retry_after=_future_iso(LOOKUP_ERROR_RETRY_AFTER_SECONDS))
+    return result
 
 
 def _rel(path: Path) -> str:
@@ -712,14 +856,114 @@ def lookup_key(value: str) -> str:
     return re.sub(r"_+", "_", normalized).strip("_")
 
 
-def _lookup_key_variants(value: str) -> set[str]:
-    normalized = normalize_unicode_tag(value)
-    keys = {
-        lookup_key(normalized),
-        normalize_unicode_tag(normalized).casefold(),
-        normalize_unicode_tag(normalized).casefold().replace("_", " "),
-        normalize_unicode_tag(normalized).casefold().replace(" ", "_"),
+PUNCTUATION_TRANSLATION = str.maketrans(
+    {
+        "\u3000": " ",
+        "\uff08": "(",
+        "\uff09": ")",
+        "\u3010": "(",
+        "\u3011": ")",
+        "\u300c": "(",
+        "\u300d": ")",
+        "\u300e": "(",
+        "\u300f": ")",
+        "\uff3b": "[",
+        "\uff3d": "]",
+        "\uff0f": "/",
+        "\uff1a": ":",
+        "\uff06": "&",
+        "\uff0b": "+",
+        "\uff0d": "-",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2212": "-",
+        "\u30fb": "_",
+        "\u00b7": "_",
+        "\uff0c": ",",
+        "\u3001": ",",
     }
+)
+
+
+def punctuation_normalize(value: str) -> str:
+    translated = normalize_unicode_tag(value).translate(PUNCTUATION_TRANSLATION)
+    translated = re.sub(r"\s*([()/:,&+\-\[\]])\s*", r"\1", translated)
+    return re.sub(r"\s+", " ", translated).strip()
+
+
+def bracket_normalize(value: str) -> str:
+    normalized = punctuation_normalize(value)
+    normalized = re.sub(r"\[([^\[\]]+)\]", r"(\1)", normalized)
+    return normalized
+
+
+def _is_latinish(value: str) -> bool:
+    return any("a" <= char.casefold() <= "z" for char in value)
+
+
+def multilingual_normalize_tag(raw_tag: str) -> MultilingualTagNormalization:
+    raw = str(raw_tag)
+    nfkc = unicodedata.normalize("NFKC", raw)
+    whitespace = re.sub(r"\s+", " ", nfkc).strip()
+    punctuation = punctuation_normalize(whitespace)
+    bracket = bracket_normalize(punctuation)
+    casefolded = punctuation.casefold() if _is_latinish(punctuation) else None
+    underscore = lookup_key(punctuation)
+    candidates: list[str] = []
+    for value in (
+        raw,
+        nfkc,
+        whitespace,
+        punctuation,
+        bracket,
+        casefolded or "",
+        underscore,
+        punctuation.replace(" ", "_"),
+        bracket.replace(" ", "_"),
+    ):
+        candidate = lookup_key(value)
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return MultilingualTagNormalization(
+        raw_tag=raw,
+        unicode_nfkc_normalized=nfkc,
+        whitespace_normalized=whitespace,
+        casefolded_latin_form=casefolded,
+        underscore_form=underscore,
+        punctuation_normalized_form=punctuation,
+        bracket_normalized_form=bracket,
+        lookup_candidates=tuple(candidates),
+        canonical_lookup_key=candidates[0] if candidates else "",
+    )
+
+
+def tag_normalization_fields(raw_tag: str) -> dict[str, Any]:
+    profile = multilingual_normalize_tag(raw_tag)
+    return {
+        "unicode_nfkc_normalized": profile.unicode_nfkc_normalized,
+        "whitespace_normalized": profile.whitespace_normalized,
+        "casefolded_latin_form": profile.casefolded_latin_form,
+        "underscore_form": profile.underscore_form,
+        "punctuation_normalized_form": profile.punctuation_normalized_form,
+        "bracket_normalized_form": profile.bracket_normalized_form,
+        "lookup_candidates": profile.lookup_candidates,
+        "canonical_lookup_key": profile.canonical_lookup_key,
+    }
+
+
+def _lookup_key_variants(value: str) -> set[str]:
+    normalized = multilingual_normalize_tag(value)
+    keys = {
+        lookup_key(normalized.raw_tag),
+        lookup_key(normalized.unicode_nfkc_normalized),
+        lookup_key(normalized.punctuation_normalized_form),
+        lookup_key(normalized.bracket_normalized_form),
+        normalized.canonical_lookup_key,
+    }
+    keys.update(normalized.lookup_candidates)
     return {key for key in keys if key}
 
 
@@ -928,14 +1172,22 @@ def enforce_tag_lookup_limit(limit: int) -> None:
 
 def build_tag_lookup_inputs(
     records: Sequence[f2.PixivGalleryDlAdapterRecord],
-) -> dict[str, tuple[str, str]]:
-    inputs: dict[str, tuple[str, str]] = {}
+) -> dict[str, TagLookupInput]:
+    inputs: dict[str, TagLookupInput] = {}
     for record in records:
         for raw_tag in record.tags:
-            normalized_tag = normalize_unicode_tag(raw_tag)
-            key = lookup_key(normalized_tag)
+            profile = multilingual_normalize_tag(raw_tag)
+            key = profile.canonical_lookup_key
             if key:
-                inputs.setdefault(key, (raw_tag, normalized_tag))
+                inputs.setdefault(
+                    key,
+                    TagLookupInput(
+                        raw_tag=raw_tag,
+                        normalized_tag=profile.whitespace_normalized,
+                        canonical_lookup_key=key,
+                        lookup_candidates=profile.lookup_candidates,
+                    ),
+                )
     return inputs
 
 
@@ -1026,6 +1278,38 @@ def fetch_danbooru_tag_category_payload(normalized_key: str, *, timeout: int) ->
     return tag_payload, request_count, normalized_key
 
 
+def fetch_safebooru_tag_payload(normalized_key: str, *, timeout: int) -> list[dict[str, Any]]:
+    query = quote(normalized_key, safe="*_-")
+    url = f"{SAFEBOORU_TAG_LOOKUP_BASE_URL}?page=dapi&s=tag&q=index&name={query}"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/xml",
+            "User-Agent": EXTERNAL_TAG_LOOKUP_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        if exc.code in {403, 429}:
+            raise ExternalLookupProviderBlocked(f"safebooru_lookup_blocked_http_{exc.code}") from exc
+        raise
+    root = ET.fromstring(payload)
+    tags: list[dict[str, Any]] = []
+    for tag in root.findall("tag"):
+        tags.append(
+            {
+                "id": tag.attrib.get("id"),
+                "name": tag.attrib.get("name"),
+                "category": tag.attrib.get("type"),
+                "count": tag.attrib.get("count"),
+            }
+        )
+    return tags
+
+
 def _coerce_fetch_result(fetch_result: Any, *, default_key: str) -> tuple[list[dict[str, Any]], int, str]:
     if isinstance(fetch_result, tuple) and len(fetch_result) == 3:
         payload, request_count, matched_key = fetch_result
@@ -1040,24 +1324,29 @@ def _lookup_result_from_danbooru_payload(
     *,
     raw_tag: str,
     normalized_tag: str,
+    canonical_lookup_key: str,
+    lookup_source: str,
+    lookup_source_version: str,
     payload: Sequence[Mapping[str, Any]],
     cache_status: str,
     matched_lookup_key: str | None = None,
 ) -> ExternalTagLookupResult:
-    key = lookup_key(normalized_tag)
+    key = canonical_lookup_key or lookup_key(normalized_tag)
     match_key = matched_lookup_key or key
     match = _select_danbooru_tag_match(payload, match_key)
     if not match:
         return ExternalTagLookupResult(
             raw_tag=raw_tag,
             normalized_tag=normalized_tag,
-            lookup_source=EXTERNAL_TAG_LOOKUP_SOURCE,
+            canonical_lookup_key=key,
+            lookup_source=lookup_source,
+            lookup_source_version=lookup_source_version,
             source_tag_id=None,
             source_tag_name=None,
             source_category_raw=None,
             mapped_candidate_namespace="unknown",
             confidence=0.0,
-            provenance_url_or_key=f"{EXTERNAL_TAG_LOOKUP_SOURCE}:{key}",
+            provenance_url_or_key=f"{lookup_source}:{key}",
             status="not_found",
             cache_status=cache_status,
         )
@@ -1068,15 +1357,20 @@ def _lookup_result_from_danbooru_payload(
     namespace = map_danbooru_category_to_namespace(source_category)
     status = "hit" if namespace != "unknown" else "lookup_error"
     error = None if status == "hit" else "unknown_danbooru_category"
-    provenance = (
-        f"https://danbooru.donmai.us/tags/{source_tag_id}"
-        if source_tag_id is not None
-        else f"{EXTERNAL_TAG_LOOKUP_SOURCE}:{key}"
-    )
+    if lookup_source == SAFEBOORU_TAGS_SOURCE:
+        provenance = f"{SAFEBOORU_TAGS_SOURCE}:tag_id:{source_tag_id}" if source_tag_id is not None else f"{lookup_source}:{key}"
+    else:
+        provenance = (
+            f"https://danbooru.donmai.us/tags/{source_tag_id}"
+            if source_tag_id is not None
+            else f"{lookup_source}:{key}"
+        )
     return ExternalTagLookupResult(
         raw_tag=raw_tag,
         normalized_tag=normalized_tag,
-        lookup_source=EXTERNAL_TAG_LOOKUP_SOURCE,
+        canonical_lookup_key=key,
+        lookup_source=lookup_source,
+        lookup_source_version=lookup_source_version,
         source_tag_id=str(source_tag_id) if source_tag_id is not None else None,
         source_tag_name=str(source_tag_name) if source_tag_name is not None else None,
         source_category_raw=str(source_category) if source_category is not None else None,
@@ -1093,7 +1387,9 @@ def _cache_row_to_lookup_result(row: ExternalTagCategoryLookupCache) -> External
     return ExternalTagLookupResult(
         raw_tag=str(row.raw_tag or ""),
         normalized_tag=str(row.normalized_tag),
+        canonical_lookup_key=str(row.canonical_lookup_key or lookup_key(str(row.normalized_tag))),
         lookup_source=str(row.lookup_source),
+        lookup_source_version=str(row.lookup_source_version) if row.lookup_source_version else None,
         source_tag_id=str(row.source_tag_id) if row.source_tag_id is not None else None,
         source_tag_name=str(row.source_tag_name) if row.source_tag_name is not None else None,
         source_category_raw=str(row.source_category_raw) if row.source_category_raw is not None else None,
@@ -1103,16 +1399,27 @@ def _cache_row_to_lookup_result(row: ExternalTagCategoryLookupCache) -> External
         status=str(row.status),
         cache_status="hit",
         lookup_error=str(row.lookup_error) if row.lookup_error else None,
+        retry_after=row.retry_after.isoformat() if row.retry_after else None,
+        expires_at=row.expires_at.isoformat() if row.expires_at else None,
     )
 
 
-def _upsert_lookup_cache_result(session: Session, result: ExternalTagLookupResult) -> bool:
-    fields = result.to_cache_fields()
+def _upsert_lookup_cache_result(
+    session: Session,
+    result: ExternalTagLookupResult,
+    *,
+    manual_override_status: str | None = None,
+    manual_override_value: str | None = None,
+) -> bool:
+    fields = result.to_cache_fields(
+        manual_override_status=manual_override_status,
+        manual_override_value=manual_override_value,
+    )
     row = (
         session.query(ExternalTagCategoryLookupCache)
         .filter(
             ExternalTagCategoryLookupCache.lookup_source == result.lookup_source,
-            ExternalTagCategoryLookupCache.normalized_tag == result.normalized_tag,
+            ExternalTagCategoryLookupCache.canonical_lookup_key == result.canonical_lookup_key,
         )
         .one_or_none()
     )
@@ -1126,13 +1433,124 @@ def _upsert_lookup_cache_result(session: Session, result: ExternalTagLookupResul
             .one_or_none()
         )
     if row is None:
+        row = (
+            session.query(ExternalTagCategoryLookupCache)
+            .filter(
+                ExternalTagCategoryLookupCache.lookup_source == result.lookup_source,
+                ExternalTagCategoryLookupCache.normalized_tag == result.normalized_tag,
+            )
+            .one_or_none()
+        )
+    if row is None:
         session.add(ExternalTagCategoryLookupCache(**fields))
         return True
     for key, value in fields.items():
         if key == "first_seen_at":
             continue
+        if key in {"raw_tag", "normalized_tag"} and getattr(row, key, None):
+            continue
+        if key in {"manual_override_status", "manual_override_value"} and value is None:
+            continue
         setattr(row, key, value)
     return False
+
+
+def _lookup_one_external_source(
+    source: str,
+    tag_input: TagLookupInput,
+    *,
+    timeout_seconds: int,
+    fetcher: Callable[[str, int], Any] | None = None,
+) -> tuple[ExternalTagLookupResult, int]:
+    key = tag_input.canonical_lookup_key
+    if fetcher is not None:
+        payload, request_count, matched_lookup_key = _coerce_fetch_result(fetcher(key, timeout_seconds), default_key=key)
+        return (
+            _lookup_result_from_danbooru_payload(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=key,
+                lookup_source=source,
+                lookup_source_version=source,
+                payload=payload,
+                cache_status="miss",
+                matched_lookup_key=matched_lookup_key,
+            ),
+            request_count,
+        )
+    if source == DANBOORU_TAGS_SOURCE:
+        payload = fetch_danbooru_tag_payload(key, timeout=timeout_seconds)
+        return (
+            _lookup_result_from_danbooru_payload(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=key,
+                lookup_source=source,
+                lookup_source_version=source,
+                payload=payload,
+                cache_status="miss",
+                matched_lookup_key=key,
+            ),
+            1,
+        )
+    if source == DANBOORU_ALIAS_SOURCE:
+        alias_payload = fetch_danbooru_tag_alias_payload(key, timeout=timeout_seconds)
+        request_count = 1
+        for alias in alias_payload:
+            consequent_name = alias.get("consequent_name")
+            if not isinstance(consequent_name, str) or not consequent_name:
+                continue
+            canonical_key = lookup_key(consequent_name)
+            if not canonical_key:
+                continue
+            tag_payload = fetch_danbooru_tag_payload(canonical_key, timeout=timeout_seconds)
+            request_count += 1
+            result = _lookup_result_from_danbooru_payload(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=key,
+                lookup_source=source,
+                lookup_source_version=source,
+                payload=tag_payload,
+                cache_status="miss",
+                matched_lookup_key=canonical_key,
+            )
+            if result.status == "hit":
+                return result, request_count
+        return (
+            ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id=None,
+                source_tag_name=None,
+                source_category_raw=None,
+                mapped_candidate_namespace="unknown",
+                confidence=0.0,
+                provenance_url_or_key=f"{source}:{key}",
+                status="not_found",
+                cache_status="miss",
+            ),
+            request_count,
+        )
+    if source == SAFEBOORU_TAGS_SOURCE:
+        payload = fetch_safebooru_tag_payload(key, timeout=timeout_seconds)
+        return (
+            _lookup_result_from_danbooru_payload(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=key,
+                lookup_source=source,
+                lookup_source_version=source,
+                payload=payload,
+                cache_status="miss",
+                matched_lookup_key=key,
+            ),
+            1,
+        )
+    raise Phase44P2RF3Error(f"unsupported_lookup_source:{source}")
 
 
 def lookup_external_tag_categories(
@@ -1143,9 +1561,12 @@ def lookup_external_tag_categories(
     delay_seconds: float,
     timeout_seconds: int,
     cache_writes_enabled: bool,
-    fetcher: Callable[[str, int], list[dict[str, Any]]] | None = None,
+    fetcher: Callable[[str, int], Any] | None = None,
+    lookup_sources: Sequence[str] = DEFAULT_LOOKUP_SOURCES,
 ) -> tuple[dict[str, ExternalTagLookupResult], ExternalLookupSummary]:
     enforce_tag_lookup_limit(lookup_limit)
+    if fetcher is not None and tuple(lookup_sources) == DEFAULT_LOOKUP_SOURCES:
+        lookup_sources = (EXTERNAL_TAG_LOOKUP_SOURCE,)
     tag_inputs = build_tag_lookup_inputs(records)
     ordered_keys = list(tag_inputs.keys())
     capped_keys = ordered_keys[:lookup_limit]
@@ -1155,72 +1576,107 @@ def lookup_external_tag_categories(
         lookup_delay_seconds=delay_seconds,
         lookup_timeout_seconds=timeout_seconds,
         cache_write_enabled=bool(cache_writes_enabled and session is not None),
+        lookup_sources_attempted=list(lookup_sources),
     )
     if not tag_inputs:
         return {}, summary
 
     results: dict[str, ExternalTagLookupResult] = {}
-    if session is not None and capped_keys:
-        cached_rows = (
-            session.query(ExternalTagCategoryLookupCache)
-            .filter(
-                ExternalTagCategoryLookupCache.lookup_source == EXTERNAL_TAG_LOOKUP_SOURCE,
-                ExternalTagCategoryLookupCache.normalized_tag.in_(
-                    [tag_inputs[key][1] for key in capped_keys]
-                ),
-            )
-            .all()
-        )
-        for row in cached_rows:
-            key = lookup_key(str(row.normalized_tag))
-            if key in tag_inputs:
-                results[key] = _cache_row_to_lookup_result(row)
-        summary.cache_hit_count = len(results)
-
-    fetch = fetcher or (lambda key, timeout: fetch_danbooru_tag_category_payload(key, timeout=timeout))
-    missed_keys = [key for key in capped_keys if key not in results]
-    summary.cache_miss_count = len(missed_keys)
-    for idx, key in enumerate(missed_keys):
-        raw_tag, normalized_tag = tag_inputs[key]
+    for idx, key in enumerate(capped_keys):
+        tag_input = tag_inputs[key]
         if idx > 0 and delay_seconds > 0:
             time.sleep(delay_seconds)
-        try:
-            payload, request_count, matched_lookup_key = _coerce_fetch_result(
-                fetch(key, timeout_seconds),
-                default_key=key,
-            )
-            summary.request_count += request_count
-            result = _lookup_result_from_danbooru_payload(
-                raw_tag=raw_tag,
-                normalized_tag=normalized_tag,
-                payload=payload,
-                cache_status="miss",
-                matched_lookup_key=matched_lookup_key,
-            )
-        except ExternalLookupProviderBlocked as exc:
-            summary.provider_blocked = True
-            summary.provider_block_reason = str(exc)
-            raise
-        except Exception as exc:  # noqa: BLE001 - item-level lookup failures stay unresolved.
-            summary.request_count += 1
-            result = ExternalTagLookupResult(
-                raw_tag=raw_tag,
-                normalized_tag=normalized_tag,
-                lookup_source=EXTERNAL_TAG_LOOKUP_SOURCE,
-                source_tag_id=None,
-                source_tag_name=None,
-                source_category_raw=None,
-                mapped_candidate_namespace="unknown",
-                confidence=0.0,
-                provenance_url_or_key=f"{EXTERNAL_TAG_LOOKUP_SOURCE}:{key}",
-                status="lookup_error",
-                cache_status="miss",
-                lookup_error=exc.__class__.__name__,
-            )
-        results[key] = result
-        if session is not None and cache_writes_enabled:
-            _upsert_lookup_cache_result(session, result)
-            summary.cache_write_count += 1
+        last_result: ExternalTagLookupResult | None = None
+        for source in lookup_sources:
+            cached_result: ExternalTagLookupResult | None = None
+            if session is not None:
+                cached_row = (
+                    session.query(ExternalTagCategoryLookupCache)
+                    .filter(
+                        ExternalTagCategoryLookupCache.lookup_source == source,
+                        ExternalTagCategoryLookupCache.canonical_lookup_key == key,
+                    )
+                    .one_or_none()
+                )
+                if cached_row and str(cached_row.status) in SUCCESSFUL_LOOKUP_STATUSES:
+                    cached_result = _cache_row_to_lookup_result(cached_row)
+                    summary.cache_hit_count += 1
+                    summary.source_cache_hit_counts[source] = summary.source_cache_hit_counts.get(source, 0) + 1
+                elif cached_row and _not_found_cache_is_fresh(cached_row, source=source):
+                    last_result = _cache_row_to_lookup_result(cached_row)
+                    summary.negative_cache_hit_count += 1
+                    summary.source_negative_cache_hit_counts[source] = (
+                        summary.source_negative_cache_hit_counts.get(source, 0) + 1
+                    )
+                    continue
+                else:
+                    summary.cache_miss_count += 1
+                    summary.source_cache_miss_counts[source] = summary.source_cache_miss_counts.get(source, 0) + 1
+            else:
+                summary.cache_miss_count += 1
+                summary.source_cache_miss_counts[source] = summary.source_cache_miss_counts.get(source, 0) + 1
+            if cached_result:
+                results[key] = cached_result
+                last_result = cached_result
+                break
+            try:
+                result, request_count = _lookup_one_external_source(
+                    source,
+                    tag_input,
+                    timeout_seconds=timeout_seconds,
+                    fetcher=fetcher if len(lookup_sources) == 1 else None,
+                )
+                summary.request_count += request_count
+                summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + request_count
+            except ExternalLookupProviderBlocked as exc:
+                summary.provider_blocked = True
+                summary.provider_block_reason = str(exc)
+                result = ExternalTagLookupResult(
+                    raw_tag=tag_input.raw_tag,
+                    normalized_tag=tag_input.normalized_tag,
+                    canonical_lookup_key=key,
+                    lookup_source=source,
+                    lookup_source_version=source,
+                    source_tag_id=None,
+                    source_tag_name=None,
+                    source_category_raw=None,
+                    mapped_candidate_namespace="unknown",
+                    confidence=0.0,
+                    provenance_url_or_key=f"{source}:{key}",
+                    status="lookup_error",
+                    cache_status="miss",
+                    lookup_error=str(exc),
+                )
+            except Exception as exc:  # noqa: BLE001 - item-level lookup failures stay unresolved.
+                summary.request_count += 1
+                summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + 1
+                result = ExternalTagLookupResult(
+                    raw_tag=tag_input.raw_tag,
+                    normalized_tag=tag_input.normalized_tag,
+                    canonical_lookup_key=key,
+                    lookup_source=source,
+                    lookup_source_version=source,
+                    source_tag_id=None,
+                    source_tag_name=None,
+                    source_category_raw=None,
+                    mapped_candidate_namespace="unknown",
+                    confidence=0.0,
+                    provenance_url_or_key=f"{source}:{key}",
+                    status="lookup_error",
+                    cache_status="miss",
+                    lookup_error=exc.__class__.__name__,
+                )
+            result = _with_default_cache_lifecycle(result)
+            last_result = result
+            if session is not None and cache_writes_enabled:
+                _upsert_lookup_cache_result(session, result)
+                summary.cache_write_count += 1
+                summary.source_cache_write_counts[source] = summary.source_cache_write_counts.get(source, 0) + 1
+            if result.status == "hit":
+                results[key] = result
+                break
+        if key not in results and last_result is not None:
+            results[key] = last_result
 
     if session is not None and cache_writes_enabled and summary.cache_write_count:
         session.commit()
@@ -1235,6 +1691,13 @@ def lookup_external_tag_categories(
     summary.not_found_count = status_counts.get("not_found", 0)
     summary.lookup_error_count = status_counts.get("lookup_error", 0)
     summary.resolved_namespace_counts = dict(sorted(namespace_counts.items()))
+    for result in results.values():
+        if result.status == "hit":
+            summary.source_hit_counts[result.lookup_source] = summary.source_hit_counts.get(result.lookup_source, 0) + 1
+        elif result.status == "not_found":
+            summary.source_not_found_counts[result.lookup_source] = summary.source_not_found_counts.get(result.lookup_source, 0) + 1
+        elif result.status == "lookup_error":
+            summary.source_lookup_error_counts[result.lookup_source] = summary.source_lookup_error_counts.get(result.lookup_source, 0) + 1
     return results, summary
 
 
@@ -1277,6 +1740,115 @@ def _looks_like_proper_noun_candidate(normalized: str) -> bool:
     has_upper = any(char.isupper() for char in normalized if char.isalpha())
     has_punct = any(char in normalized for char in (":", "\u30fb", "\uff0f", "/", "&", "+"))
     return has_cjk or has_upper or has_punct
+
+
+def parse_pixiv_parenthetical_tag(raw_tag: str) -> ParentheticalTagPattern | None:
+    profile = multilingual_normalize_tag(raw_tag)
+    text = profile.bracket_normalized_form
+    if not text or text.count("(") != 1 or text.count(")") != 1:
+        return None
+    start = text.find("(")
+    end = text.rfind(")")
+    if start <= 0 or end <= start + 1 or end != len(text) - 1:
+        return None
+    outer = text[:start].strip()
+    inner = text[start + 1 : end].strip()
+    if not outer or not inner:
+        return None
+    if any(mark in outer + inner for mark in ("(", ")")):
+        return ParentheticalTagPattern(
+            raw_tag=raw_tag,
+            outer_name=outer,
+            inner_work_or_context=inner,
+            bracket_style="normalized_parentheses",
+            ambiguous_or_nested=True,
+        )
+    return ParentheticalTagPattern(
+        raw_tag=raw_tag,
+        outer_name=outer,
+        inner_work_or_context=inner,
+        bracket_style="normalized_parentheses",
+    )
+
+
+def _parenthetical_part_candidate(
+    part: str,
+    *,
+    raw_tag: str,
+    record: f2.PixivGalleryDlAdapterRecord,
+    expected_namespace: str,
+    local_index: LocalClassificationIndex,
+    external_lookup_results: Mapping[str, ExternalTagLookupResult] | None,
+) -> PixivCandidateRow:
+    evidence_row = classify_pixiv_tag(
+        part,
+        record=record,
+        local_index=local_index,
+        external_lookup_results=external_lookup_results,
+    )
+    confirmed_by_source = evidence_row.candidate_namespace == expected_namespace and evidence_row.lookup_source in {
+        "local_db_read_only",
+        DANBOORU_TAGS_SOURCE,
+        DANBOORU_ALIAS_SOURCE,
+        SAFEBOORU_TAGS_SOURCE,
+        EXTERNAL_TAG_LOOKUP_SOURCE,
+    }
+    confidence = max(0.72, evidence_row.confidence) if confirmed_by_source else 0.58
+    return PixivCandidateRow(
+        **{
+            **_record_base_fields(record),
+            **tag_normalization_fields(part),
+        },
+        raw_tag=raw_tag,
+        normalized_tag=normalize_unicode_tag(part),
+        candidate_kind="entity_candidate",
+        candidate_namespace=expected_namespace,
+        confidence=confidence,
+        reason="pixiv_parenthetical_character_work_pattern",
+        lookup_source=evidence_row.lookup_source if confirmed_by_source else "pixiv_parenthetical_pattern",
+        lookup_key=lookup_key(part),
+        lookup_category=evidence_row.lookup_category if confirmed_by_source else "pattern_inferred_context",
+        provenance=evidence_row.provenance if confirmed_by_source else "pixiv_raw_tag_parenthetical_structure",
+        cache_status=evidence_row.cache_status if confirmed_by_source else "not_applicable",
+        existing_entity_match=evidence_row.existing_entity_match if confirmed_by_source else False,
+        existing_alias_match=evidence_row.existing_alias_match if confirmed_by_source else False,
+        existing_entity_id_private=evidence_row.existing_entity_id_private if confirmed_by_source else None,
+        existing_alias_id_private=evidence_row.existing_alias_id_private if confirmed_by_source else None,
+        future_entity_candidate_eligible=bool(record.eligible_for_future_entity_candidate),
+        future_tag_suggestion_eligible=False,
+        requires_manual_review=True,
+        db_write_allowed=False,
+    )
+
+
+def parenthetical_candidate_rows(
+    raw_tag: str,
+    *,
+    record: f2.PixivGalleryDlAdapterRecord,
+    local_index: LocalClassificationIndex,
+    external_lookup_results: Mapping[str, ExternalTagLookupResult] | None,
+) -> list[PixivCandidateRow]:
+    pattern = parse_pixiv_parenthetical_tag(raw_tag)
+    if not pattern or pattern.ambiguous_or_nested:
+        return []
+    return [
+        _parenthetical_part_candidate(
+            pattern.outer_name,
+            raw_tag=raw_tag,
+            record=record,
+            expected_namespace="character",
+            local_index=local_index,
+            external_lookup_results=external_lookup_results,
+        ),
+        _parenthetical_part_candidate(
+            pattern.inner_work_or_context,
+            raw_tag=raw_tag,
+            record=record,
+            expected_namespace="copyright",
+            local_index=local_index,
+            external_lookup_results=external_lookup_results,
+        ),
+    ]
 
 
 def _record_base_fields(record: f2.PixivGalleryDlAdapterRecord) -> dict[str, Any]:
@@ -1346,7 +1918,10 @@ def classify_pixiv_tag(
 ) -> PixivCandidateRow:
     normalized = normalize_unicode_tag(raw_tag)
     key = lookup_key(normalized)
-    base = _record_base_fields(record)
+    base = {
+        **_record_base_fields(record),
+        **tag_normalization_fields(raw_tag),
+    }
 
     entity_match = local_index.entity_matches.get(key)
     if entity_match:
@@ -1603,6 +2178,21 @@ def normalize_metadata_candidates(
             )
             for raw_tag in record.tags
         ]
+        pattern_rows: list[PixivCandidateRow] = []
+        parenthetical_patterns = []
+        for raw_tag in record.tags:
+            pattern = parse_pixiv_parenthetical_tag(raw_tag)
+            if pattern:
+                parenthetical_patterns.append(pattern.to_private_dict())
+            pattern_rows.extend(
+                parenthetical_candidate_rows(
+                    raw_tag,
+                    record=record,
+                    local_index=local_index,
+                    external_lookup_results=external_lookup_results,
+                )
+            )
+        tag_rows.extend(pattern_rows)
         rows.extend(tag_rows)
         rows.extend(_alias_group_candidates(tag_rows, record=record))
         original_status = _original_work_status(rows)
@@ -1625,6 +2215,11 @@ def normalize_metadata_candidates(
                 artist_id_private=record.artist_id,
                 raw_pixiv_tags=tuple(record.tags),
                 normalized_unicode_tags=tuple(normalize_unicode_tag(tag) for tag in record.tags),
+                multilingual_normalizations=[
+                    multilingual_normalize_tag(tag).to_private_dict()
+                    for tag in record.tags
+                ],
+                parenthetical_patterns=parenthetical_patterns,
                 tag_candidates=[
                     row.to_private_dict()
                     for row in rows
@@ -1733,6 +2328,10 @@ def output_containment_summary(output_dir: Path, *, private_paths: Sequence[Path
     }
 
 
+def validate_private_output_paths_before_effects(output_dir: Path, *, private_paths: Sequence[Path]) -> None:
+    output_containment_summary(output_dir, private_paths=private_paths)
+
+
 def current_run_raw_scope_summary(raw_dir: Path, accepted_raw_files: Sequence[str | Path]) -> dict[str, Any]:
     root = resolve_repo_path(raw_dir)
     accepted = {resolve_repo_path(path) for path in accepted_raw_files if path}
@@ -1825,6 +2424,129 @@ def classification_improvement_summary(
         - int(PREVIOUS_F3_BASELINE["character_candidate_count"]),
         "unique_tag_lookup_hit_count": int(lookup_summary.get("hit_count", 0) or 0),
         "unique_tag_lookup_total_count": int(lookup_summary.get("unique_normalized_tag_count", 0) or 0),
+    }
+
+
+def unresolved_reason_buckets(rows: Sequence[PixivCandidateRow]) -> dict[str, int]:
+    unresolved_rows = [
+        row
+        for row in rows
+        if row.candidate_namespace in {"ambiguous", "unknown"}
+        or row.candidate_kind in {"unknown_or_unresolved_pixiv_tag", "ambiguous_proper_noun_candidate"}
+    ]
+    return dict(sorted(Counter(row.reason for row in unresolved_rows).items()))
+
+
+def parenthetical_pattern_summary(rows: Sequence[PixivCandidateRow]) -> dict[str, Any]:
+    pattern_rows = [row for row in rows if row.reason == "pixiv_parenthetical_character_work_pattern"]
+    namespace_counts = Counter(row.candidate_namespace for row in pattern_rows)
+    return {
+        "parenthetical_candidate_count": len(pattern_rows),
+        "parenthetical_character_candidate_count": namespace_counts.get("character", 0),
+        "parenthetical_copyright_candidate_count": namespace_counts.get("copyright", 0),
+        "parenthetical_resolved_count": len(pattern_rows),
+        "parenthetical_confirmed_assignment_count": 0,
+    }
+
+
+def coverage_target_summary(
+    records: Sequence[f2.PixivGalleryDlAdapterRecord],
+    rows: Sequence[PixivCandidateRow],
+    lookup_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    unique_keys = {multilingual_normalize_tag(tag).canonical_lookup_key for record in records for tag in record.tags}
+    unique_keys.discard("")
+    resolved_sources = {
+        "local_db_read_only",
+        DANBOORU_TAGS_SOURCE,
+        DANBOORU_ALIAS_SOURCE,
+        SAFEBOORU_TAGS_SOURCE,
+        EXTERNAL_TAG_LOOKUP_SOURCE,
+        "pixiv_parenthetical_pattern",
+    }
+    resolved_keys = {
+        row.canonical_lookup_key or row.lookup_key or lookup_key(row.normalized_tag)
+        for row in rows
+        if (row.lookup_source in resolved_sources or row.reason == "pixiv_parenthetical_character_work_pattern")
+        and row.candidate_namespace not in {"ambiguous", "unknown"}
+    }
+    resolved_keys &= unique_keys
+    unique_coverage = len(resolved_keys) / max(len(unique_keys), 1)
+
+    namespace_counts = Counter(row.candidate_namespace for row in rows)
+    ambiguous_unknown = namespace_counts.get("ambiguous", 0) + namespace_counts.get("unknown", 0)
+    ambiguous_reduction = (
+        (int(PREVIOUS_F3_BASELINE["ambiguous_unknown_candidate_count"]) - ambiguous_unknown)
+        / max(int(PREVIOUS_F3_BASELINE["ambiguous_unknown_candidate_count"]), 1)
+    )
+
+    high_value_keys = {
+        multilingual_normalize_tag(tag).canonical_lookup_key
+        for record in records
+        for tag in record.tags
+        if _looks_like_proper_noun_candidate(normalize_unicode_tag(tag))
+    }
+    high_value_keys.discard("")
+    high_value_resolved = {
+        key
+        for key in high_value_keys
+        if any(
+            (row.canonical_lookup_key or row.lookup_key or lookup_key(row.normalized_tag)) == key
+            and row.candidate_namespace in {"artist", "copyright", "character", "general", "meta"}
+            and (
+                row.lookup_source in resolved_sources
+                or row.reason == "pixiv_parenthetical_character_work_pattern"
+            )
+            for row in rows
+        )
+    }
+    high_value_resolution_rate = len(high_value_resolved) / max(len(high_value_keys), 1)
+
+    target_reached = (
+        unique_coverage >= 0.6
+        or ambiguous_reduction >= 0.6
+        or high_value_resolution_rate >= 0.8
+    )
+    attempted = list(lookup_summary.get("lookup_sources_attempted") or [])
+    lookup_limit = int(lookup_summary.get("lookup_limit") or 0)
+    lookup_limit_covers_all_unique_tags = lookup_limit >= len(unique_keys)
+    lookup_sources_exhausted = all(
+        source in attempted for source in (DANBOORU_TAGS_SOURCE, DANBOORU_ALIAS_SOURCE, SAFEBOORU_TAGS_SOURCE)
+    )
+    automated_paths_exhausted = bool(lookup_limit_covers_all_unique_tags and lookup_sources_exhausted)
+    if target_reached:
+        target_status = "reached"
+    elif automated_paths_exhausted:
+        target_status = "not_reached_after_exhaustion"
+    else:
+        target_status = "not_reached_bounded_lookup_cap"
+    return {
+        "target_status": target_status,
+        "unique_tag_count": len(unique_keys),
+        "lookup_limit": lookup_limit,
+        "lookup_limit_covers_all_unique_tags": lookup_limit_covers_all_unique_tags,
+        "automated_paths_exhausted": automated_paths_exhausted,
+        "resolved_unique_tag_count": len(resolved_keys),
+        "resolved_unique_tag_coverage": round(unique_coverage, 4),
+        "ambiguous_unknown_reduction_vs_original_f3": round(ambiguous_reduction, 4),
+        "high_value_proper_noun_like_tag_count": len(high_value_keys),
+        "high_value_proper_noun_like_resolved_count": len(high_value_resolved),
+        "high_value_proper_noun_like_resolution_rate": round(high_value_resolution_rate, 4),
+        "coverage_target_thresholds": {
+            "unique_tag_coverage": 0.6,
+            "ambiguous_unknown_reduction": 0.6,
+            "high_value_resolution": 0.8,
+        },
+        "automated_paths_attempted": [
+            "local_db_read_only",
+            *attempted,
+            "pixiv_parenthetical_pattern_parser",
+            "deterministic_fallback",
+        ],
+        "additional_source_evaluation": {
+            "gelbooru_dapi": "rejected_for_this_pilot_live_probe_returned_http_401_without_credentials",
+            "safebooru_dapi": "implemented_public_xml_tag_type_lookup",
+        },
     }
 
 
@@ -1968,6 +2690,7 @@ def build_public_summary(
     kind_counts = Counter(row.candidate_kind for row in candidate_rows)
     lookup_counts = Counter(row.lookup_source or "none" for row in candidate_rows)
     total_tag_occurrences = sum(len(record.tags) for record in records)
+    coverage_summary = coverage_target_summary(records, candidate_rows, lookup_summary)
     public = {
         "phase": PHASE,
         "title": TITLE,
@@ -2029,12 +2752,20 @@ def build_public_summary(
             "candidate_classification_distribution": candidate_dist,
             "lookup_source_coverage": {
                 "local_db_read_only": lookup_counts.get("local_db_read_only", 0),
-                EXTERNAL_TAG_LOOKUP_SOURCE: lookup_counts.get(EXTERNAL_TAG_LOOKUP_SOURCE, 0),
+                "external_category_lookup_sources": list(DEFAULT_LOOKUP_SOURCES),
+                "source_candidate_counts": {
+                    source: lookup_counts.get(source, 0)
+                    for source in DEFAULT_LOOKUP_SOURCES
+                    if lookup_counts.get(source, 0)
+                },
+                "legacy_source_candidate_count": lookup_counts.get(EXTERNAL_TAG_LOOKUP_SOURCE, 0),
                 "deterministic_fallback": lookup_counts.get("deterministic_fallback", 0),
                 LOOKUP_SOURCE_EXTERNAL_DISABLED: lookup_counts.get(LOOKUP_SOURCE_EXTERNAL_DISABLED, 0),
                 "external_category_lookup_enabled": True,
-                "external_category_lookup_source": EXTERNAL_TAG_LOOKUP_SOURCE,
-                "external_category_lookup_public_doc": EXTERNAL_TAG_LOOKUP_DOC_URL,
+                "external_category_lookup_public_docs": {
+                    "danbooru": EXTERNAL_TAG_LOOKUP_DOC_URL,
+                    "safebooru": SAFEBOORU_TAG_LOOKUP_BASE_URL,
+                },
             },
             "artist_candidate_count": namespace_counts.get("artist", 0),
             "copyright_series_candidate_count": namespace_counts.get("copyright", 0),
@@ -2054,6 +2785,21 @@ def build_public_summary(
             candidate_rows=candidate_rows,
             lookup_summary=lookup_summary,
         ),
+        "before_after_comparison": {
+            "original_f3_baseline": dict(PREVIOUS_F3_BASELINE),
+            "previous_danbooru_only_f3b": dict(PREVIOUS_DANBOORU_ONLY_F3B),
+            "current_multisource_pattern_f3b": {
+                "ambiguous_unknown_candidate_count": namespace_counts.get("ambiguous", 0)
+                + namespace_counts.get("unknown", 0),
+                "copyright_series_candidate_count": namespace_counts.get("copyright", 0),
+                "character_candidate_count": namespace_counts.get("character", 0),
+                "unique_tag_lookup_hit_count": int(lookup_summary.get("hit_count", 0) or 0),
+                "unique_tag_lookup_total_count": int(lookup_summary.get("unique_normalized_tag_count", 0) or 0),
+            },
+        },
+        "coverage_target": coverage_summary,
+        "unresolved_reason_buckets": unresolved_reason_buckets(candidate_rows),
+        "parenthetical_pattern_summary": parenthetical_pattern_summary(candidate_rows),
         "local_classification_index": dict(local_index_summary),
         "original_unknown_handling": {
             "original_work_status_distribution": dict(sorted(original_counts.items())),
@@ -2167,6 +2913,10 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- Lookup source coverage: `{json.dumps(summary['classification_middleware']['lookup_source_coverage'], ensure_ascii=False, sort_keys=True)}`.",
         f"- Automated category lookup: `{json.dumps(summary['automated_tag_category_lookup'], ensure_ascii=False, sort_keys=True)}`.",
         f"- Classification improvement vs previous F3: `{json.dumps(summary['classification_improvement_vs_previous_f3'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Before/after comparison: `{json.dumps(summary['before_after_comparison'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Coverage target: `{json.dumps(summary['coverage_target'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Unresolved reason buckets: `{json.dumps(summary['unresolved_reason_buckets'], ensure_ascii=False, sort_keys=True)}`.",
+        f"- Parenthetical pattern summary: `{json.dumps(summary['parenthetical_pattern_summary'], ensure_ascii=False, sort_keys=True)}`.",
         "",
         "## Lookup Cache",
         "",
@@ -2355,6 +3105,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entity-candidates-md", default=str(PRIVATE_ENTITY_CANDIDATES_MD))
     parser.add_argument("--lookup-cache-csv", default=str(PRIVATE_LOOKUP_CACHE_CSV))
     parser.add_argument("--lookup-cache-md", default=str(PRIVATE_LOOKUP_CACHE_MD))
+    parser.add_argument("--unresolved-tags-csv", default=str(PRIVATE_UNRESOLVED_TAGS_CSV))
+    parser.add_argument("--unresolved-tags-md", default=str(PRIVATE_UNRESOLVED_TAGS_MD))
+    parser.add_argument("--parenthetical-candidates-csv", default=str(PRIVATE_PARENTHETICAL_CANDIDATES_CSV))
+    parser.add_argument("--parenthetical-candidates-md", default=str(PRIVATE_PARENTHETICAL_CANDIDATES_MD))
     parser.add_argument("--manual-review-guide", default=str(PRIVATE_MANUAL_REVIEW_GUIDE))
     parser.add_argument("--raw-dir", default=str(PRIVATE_RAW_DIR))
     parser.add_argument("--pr-number", type=int, default=0)
@@ -2379,12 +3133,15 @@ def entrypoint_for_args(args: argparse.Namespace) -> GalleryDlEntrypoint:
     return probe_gallery_dl_entrypoint(args.gallery_dl_command or None)
 
 
+def cache_migration_allowed(args: argparse.Namespace) -> bool:
+    return not (args.no_db or args.dry_run or args.skip_network)
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = resolve_repo_path(args.output_dir)
     f1.require_under_path(output_dir, ROOT / ".local_manifests", code="f3_output_path_violation")
     if PHASE_SLUG not in output_dir.as_posix():
         raise OutputPathError("f3_output_path_violation")
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     raw_dir = resolve_repo_path(args.raw_dir)
     details_json = resolve_repo_path(args.details_json)
@@ -2396,7 +3153,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     entity_candidates_md = resolve_repo_path(args.entity_candidates_md)
     lookup_cache_csv = resolve_repo_path(args.lookup_cache_csv)
     lookup_cache_md = resolve_repo_path(args.lookup_cache_md)
+    unresolved_tags_csv = resolve_repo_path(args.unresolved_tags_csv)
+    unresolved_tags_md = resolve_repo_path(args.unresolved_tags_md)
+    parenthetical_candidates_csv = resolve_repo_path(args.parenthetical_candidates_csv)
+    parenthetical_candidates_md = resolve_repo_path(args.parenthetical_candidates_md)
     manual_review_guide = resolve_repo_path(args.manual_review_guide)
+
+    private_paths = [
+        details_json,
+        media_summary_csv,
+        media_summary_md,
+        tag_candidates_csv,
+        tag_candidates_md,
+        entity_candidates_csv,
+        entity_candidates_md,
+        lookup_cache_csv,
+        lookup_cache_md,
+        unresolved_tags_csv,
+        unresolved_tags_md,
+        parenthetical_candidates_csv,
+        parenthetical_candidates_md,
+        manual_review_guide,
+        raw_dir,
+    ]
+    validate_private_output_paths_before_effects(output_dir, private_paths=private_paths)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     enforce_sample_size(args.sample_size)
     enforce_record_count(0, args.max_records)
@@ -2420,7 +3201,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
     else:
         engine = create_engine(config.database_url)
-        migrate_add_external_tag_category_lookup_cache(engine, inspect(engine))
+        if cache_migration_allowed(args):
+            migrate_add_external_tag_category_lookup_cache(engine, inspect(engine))
         db_cache_table_available = (
             "blombooru_external_tag_category_lookup_cache" in inspect(engine).get_table_names()
         )
@@ -2544,6 +3326,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for row in candidate_rows
         if row.candidate_kind in {"entity_candidate", "candidate_alias_group"}
     ]
+    parenthetical_rows = [
+        row for row in candidate_rows if row.reason == "pixiv_parenthetical_character_work_pattern"
+    ]
+    unresolved_rows = [
+        row
+        for row in candidate_rows
+        if row.candidate_namespace in {"ambiguous", "unknown"}
+        or row.candidate_kind in {"unknown_or_unresolved_pixiv_tag", "ambiguous_proper_noun_candidate"}
+    ]
 
     successful_raw_files = [
         result.stdout_path_private
@@ -2553,19 +3344,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     raw_scope = current_run_raw_scope_summary(raw_dir, successful_raw_files)
     containment = output_containment_summary(
         output_dir,
-        private_paths=[
-            details_json,
-            media_summary_csv,
-            media_summary_md,
-            tag_candidates_csv,
-            tag_candidates_md,
-            entity_candidates_csv,
-            entity_candidates_md,
-            lookup_cache_csv,
-            lookup_cache_md,
-            manual_review_guide,
-            raw_dir,
-        ],
+        private_paths=private_paths,
     )
     public_command = command_summary(metadata_results, max_record_limit=args.max_records)
     generated_at = _now_iso()
@@ -2614,6 +3393,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "records_private": [record.to_private_dict() for record in records],
             "normalized_records_private": [record.to_private_dict() for record in normalized_records],
             "candidate_rows_private": [row.to_private_dict() for row in candidate_rows],
+            "parenthetical_candidate_rows_private": [row.to_private_dict() for row in parenthetical_rows],
+            "unresolved_rows_private": [row.to_private_dict() for row in unresolved_rows],
             "lookup_results_private": [result.to_private_dict() for result in lookup_results.values()],
             "lookup_summary_public": lookup_summary_public,
             "tag_category_lookup_cache_public": db_cache_public,
@@ -2634,6 +3415,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_text(
         lookup_cache_md,
         _rows_markdown([result.to_private_dict() for result in lookup_results.values()]),
+    )
+    write_private_text(unresolved_tags_csv, _candidate_csv(unresolved_rows))
+    write_private_text(unresolved_tags_md, _rows_markdown([row.to_private_dict() for row in unresolved_rows]))
+    write_private_text(parenthetical_candidates_csv, _candidate_csv(parenthetical_rows))
+    write_private_text(
+        parenthetical_candidates_md,
+        _rows_markdown([row.to_private_dict() for row in parenthetical_rows]),
     )
     write_private_text(manual_review_guide, build_manual_review_guide())
 

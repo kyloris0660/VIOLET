@@ -1,18 +1,24 @@
 {
   "artifact_lifecycle": "phase_scoped_operational_runner",
   "automated_tag_category_lookup": {
-    "cache_hit_count": 133,
+    "cache_hit_count": 18,
     "cache_miss_count": 0,
     "cache_write_count": 0,
     "cache_write_enabled": true,
     "enabled": true,
     "hard_lookup_limit": 500,
-    "hit_count": 17,
-    "lookup_delay_seconds": 0.25,
-    "lookup_error_count": 1,
+    "hit_count": 18,
+    "lookup_delay_seconds": 0.05,
+    "lookup_error_count": 0,
     "lookup_limit": 200,
-    "lookup_source": "danbooru_tags_and_aliases_api_v1",
-    "lookup_timeout_seconds": 20,
+    "lookup_source": "multisource_tag_category_lookup_v1",
+    "lookup_sources_attempted": [
+      "danbooru_tags_api_v2",
+      "danbooru_tag_aliases_api_v2",
+      "safebooru_tags_xml_api_v1"
+    ],
+    "lookup_timeout_seconds": 5,
+    "negative_cache_hit_count": 347,
     "not_found_count": 115,
     "provider_block_reason": null,
     "provider_blocked": false,
@@ -21,9 +27,50 @@
       "artist": 1,
       "character": 1,
       "copyright": 3,
-      "general": 12
+      "general": 13
     },
+    "source_cache_hit_counts": {
+      "danbooru_tags_api_v2": 17,
+      "safebooru_tags_xml_api_v1": 1
+    },
+    "source_cache_miss_counts": {},
+    "source_cache_write_counts": {},
+    "source_hit_counts": {
+      "danbooru_tags_api_v2": 17,
+      "safebooru_tags_xml_api_v1": 1
+    },
+    "source_lookup_error_counts": {},
+    "source_negative_cache_hit_counts": {
+      "danbooru_tag_aliases_api_v2": 116,
+      "danbooru_tags_api_v2": 116,
+      "safebooru_tags_xml_api_v1": 115
+    },
+    "source_not_found_counts": {
+      "safebooru_tags_xml_api_v1": 115
+    },
+    "source_request_counts": {},
     "unique_normalized_tag_count": 133
+  },
+  "before_after_comparison": {
+    "current_multisource_pattern_f3b": {
+      "ambiguous_unknown_candidate_count": 262,
+      "character_candidate_count": 27,
+      "copyright_series_candidate_count": 35,
+      "unique_tag_lookup_hit_count": 18,
+      "unique_tag_lookup_total_count": 133
+    },
+    "original_f3_baseline": {
+      "ambiguous_unknown_candidate_count": 305,
+      "character_candidate_count": 0,
+      "copyright_series_candidate_count": 0
+    },
+    "previous_danbooru_only_f3b": {
+      "ambiguous_unknown_candidate_count": 262,
+      "character_candidate_count": 1,
+      "copyright_series_candidate_count": 9,
+      "unique_tag_lookup_hit_count": 17,
+      "unique_tag_lookup_total_count": 133
+    }
   },
   "classification_improvement_vs_previous_f3": {
     "ambiguous_unknown_delta_vs_previous_f3": -43,
@@ -32,12 +79,12 @@
       "character_candidate_count": 0,
       "copyright_series_candidate_count": 0
     },
-    "character_delta_vs_previous_f3": 1,
-    "copyright_series_delta_vs_previous_f3": 9,
+    "character_delta_vs_previous_f3": 27,
+    "copyright_series_delta_vs_previous_f3": 35,
     "current_ambiguous_unknown_candidate_count": 262,
-    "current_character_candidate_count": 1,
-    "current_copyright_series_candidate_count": 9,
-    "unique_tag_lookup_hit_count": 17,
+    "current_character_candidate_count": 27,
+    "current_copyright_series_candidate_count": 35,
+    "unique_tag_lookup_hit_count": 18,
     "unique_tag_lookup_total_count": 133
   },
   "classification_middleware": {
@@ -48,7 +95,7 @@
     "candidate_classification_distribution": {
       "candidate_kind_counts": {
         "ambiguous_proper_noun_candidate": 253,
-        "entity_candidate": 52,
+        "entity_candidate": 104,
         "original_work_context": 3,
         "tag_candidate": 69,
         "unknown_or_unresolved_pixiv_tag": 6
@@ -56,44 +103,58 @@
       "candidate_namespace_counts": {
         "ambiguous": 256,
         "artist": 42,
-        "character": 1,
-        "copyright": 9,
+        "character": 27,
+        "copyright": 35,
         "general": 69,
         "unknown": 6
       },
       "candidate_reason_counts": {
-        "deterministic_general_descriptor_fallback": 20,
+        "deterministic_general_descriptor_fallback": 8,
         "deterministic_original_marker": 3,
         "deterministic_proper_noun_shape_unverified": 253,
         "existing_tag_category_match": 4,
-        "external_tag_category_lookup": 56,
+        "external_tag_category_lookup": 68,
         "no_provenance_backed_category": 6,
+        "pixiv_parenthetical_character_work_pattern": 52,
         "pixiv_user_metadata": 41
       },
       "db_write_allowed_count": 0,
       "lookup_source_counts": {
-        "danbooru_tags_and_aliases_api_v1": 56,
-        "deterministic_fallback": 276,
+        "danbooru_tags_api_v2": 56,
+        "deterministic_fallback": 264,
         "external_category_lookup_disabled_in_f3": 6,
         "local_db_read_only": 4,
-        "pixiv_metadata": 41
+        "pixiv_metadata": 41,
+        "pixiv_parenthetical_pattern": 52,
+        "safebooru_tags_xml_api_v1": 12
       },
-      "manual_review_required_count": 293
+      "manual_review_required_count": 333
     },
-    "candidate_row_count": 383,
-    "character_candidate_count": 1,
+    "candidate_row_count": 435,
+    "character_candidate_count": 27,
     "confirmed_assignment_count": 0,
-    "copyright_series_candidate_count": 9,
+    "copyright_series_candidate_count": 35,
     "db_write_allowed_count": 0,
     "general_descriptive_tag_candidate_count": 69,
     "lookup_source_coverage": {
-      "danbooru_tags_and_aliases_api_v1": 56,
-      "deterministic_fallback": 276,
+      "deterministic_fallback": 264,
       "external_category_lookup_disabled_in_f3": 6,
       "external_category_lookup_enabled": true,
-      "external_category_lookup_public_doc": "https://danbooru.donmai.us/wiki_pages/help%3Aapi",
-      "external_category_lookup_source": "danbooru_tags_and_aliases_api_v1",
-      "local_db_read_only": 4
+      "external_category_lookup_public_docs": {
+        "danbooru": "https://danbooru.donmai.us/wiki_pages/help%3Aapi",
+        "safebooru": "https://safebooru.org/index.php"
+      },
+      "external_category_lookup_sources": [
+        "danbooru_tags_api_v2",
+        "danbooru_tag_aliases_api_v2",
+        "safebooru_tags_xml_api_v1"
+      ],
+      "legacy_source_candidate_count": 0,
+      "local_db_read_only": 4,
+      "source_candidate_counts": {
+        "danbooru_tags_api_v2": 56,
+        "safebooru_tags_xml_api_v1": 12
+      }
     },
     "normalized_dto": "PixivNormalizedMetadataCandidate",
     "sensitive_meta_candidate_count": 0
@@ -443,6 +504,36 @@
     "reference_download_enabled": false,
     "subprocess_uses_shell": false
   },
+  "coverage_target": {
+    "additional_source_evaluation": {
+      "gelbooru_dapi": "rejected_for_this_pilot_live_probe_returned_http_401_without_credentials",
+      "safebooru_dapi": "implemented_public_xml_tag_type_lookup"
+    },
+    "ambiguous_unknown_reduction_vs_original_f3": 0.141,
+    "automated_paths_attempted": [
+      "local_db_read_only",
+      "danbooru_tags_api_v2",
+      "danbooru_tag_aliases_api_v2",
+      "safebooru_tags_xml_api_v1",
+      "pixiv_parenthetical_pattern_parser",
+      "deterministic_fallback"
+    ],
+    "automated_paths_exhausted": true,
+    "coverage_target_thresholds": {
+      "ambiguous_unknown_reduction": 0.6,
+      "high_value_resolution": 0.8,
+      "unique_tag_coverage": 0.6
+    },
+    "high_value_proper_noun_like_resolution_rate": 0.1484,
+    "high_value_proper_noun_like_resolved_count": 19,
+    "high_value_proper_noun_like_tag_count": 128,
+    "lookup_limit": 200,
+    "lookup_limit_covers_all_unique_tags": true,
+    "resolved_unique_tag_count": 22,
+    "resolved_unique_tag_coverage": 0.1654,
+    "target_status": "not_reached_after_exhaustion",
+    "unique_tag_count": 133
+  },
   "db_identity": {
     "actual_db_name": "blombooru",
     "configured_db_host": "localhost",
@@ -484,16 +575,16 @@
     "uses_project_python": false,
     "version": "1.32.1"
   },
-  "generated_at": "2026-06-01T12:42:55+00:00",
+  "generated_at": "2026-06-02T06:19:30+00:00",
   "git_context": {
     "base_main_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
     "branch_name": "codex/phase44p2r-f3-pixiv-metadata-normalization-pilot",
     "final_pushed_commit_sha_reported_in_final_delivery": true,
     "origin_main_sha": "1d123172fd0e064e38e0ffe01e13611aa8bcc8e6",
-    "pr_head_sha_at_report_generation": "69931ccd8b81951dbba98554a423adb31d83939b",
+    "pr_head_sha_at_report_generation": "4c70e898db70bd7a547f80df3ca6c42c7dc63497",
     "pr_number": 90,
     "report_generated_from_worktree": true,
-    "report_generation_head_sha": "69931ccd8b81951dbba98554a423adb31d83939b",
+    "report_generation_head_sha": "4c70e898db70bd7a547f80df3ca6c42c7dc63497",
     "self_referential_commit_sha_not_embedded": true,
     "working_tree_had_uncommitted_changes_at_report_generation": true
   },
@@ -556,7 +647,7 @@
     }
   },
   "manual_review_needs": {
-    "candidate_rows_requiring_manual_review": 293,
+    "candidate_rows_requiring_manual_review": 333,
     "manual_review_is_sparse_correction_oriented": true,
     "media_records_requiring_manual_review": 41,
     "private_manual_review_guide": ".local_manifests/phase-4.4p2r-f3-pixiv-metadata-normalization-pilot/manual-review-guide.md"
@@ -585,12 +676,12 @@
   },
   "original_unknown_handling": {
     "original_work_status_distribution": {
-      "known_or_candidate_work_context": 9,
-      "original_or_unknown_work_context": 29,
-      "original_work_context_claimed_by_pixiv_tag": 3
+      "known_or_candidate_work_context": 28,
+      "original_or_unknown_work_context": 11,
+      "original_work_context_claimed_by_pixiv_tag": 2
     },
     "raw_pixiv_original_tag_is_not_confirmed_truth": true,
-    "records_without_forced_copyright": 32
+    "records_without_forced_copyright": 13
   },
   "output_containment": {
     "gitignored_private_artifacts": true,
@@ -598,6 +689,13 @@
     "phase_output_root": ".local_manifests/<phase-private-root>",
     "private_artifacts_under_phase_root": true,
     "public_reports_under_docs_reports": true
+  },
+  "parenthetical_pattern_summary": {
+    "parenthetical_candidate_count": 52,
+    "parenthetical_character_candidate_count": 26,
+    "parenthetical_confirmed_assignment_count": 0,
+    "parenthetical_copyright_candidate_count": 26,
+    "parenthetical_resolved_count": 52
   },
   "phase": "4.4-P2R-F3b",
   "pr89_merge_confirmation": {
@@ -683,7 +781,7 @@
     "selection_strategy": "anime_only_cover_p0_non_p0_multi_page_then_fill_by_work_id"
   },
   "tag_category_lookup_cache": {
-    "cache_hit_count": 133,
+    "cache_hit_count": 18,
     "cache_miss_count": 0,
     "cache_write_count": 0,
     "cache_write_enabled": true,
@@ -697,5 +795,10 @@
     "truth_table_write_count": 0
   },
   "title": "Automated Pixiv Tag Category Lookup and Classification Cache Pilot",
+  "unresolved_reason_buckets": {
+    "deterministic_original_marker": 3,
+    "deterministic_proper_noun_shape_unverified": 253,
+    "no_provenance_backed_category": 6
+  },
   "why_this_stage_exists": "PR #89 and F2 validated real gallery-dl metadata retrieval and local Pixiv filename-prior correspondence. F3 tests whether those raw Pixiv metadata fields can become a structured, tag/entity candidate middleware view backed by automated category lookup/cache evidence without treating raw Pixiv tags as confirmed truth."
 }

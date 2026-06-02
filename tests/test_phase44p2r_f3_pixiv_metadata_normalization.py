@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -375,7 +376,9 @@ def test_external_lookup_cache_hit_avoids_network_and_classifies(db):
         ExternalTagCategoryLookupCache(
             raw_tag="hakurei_reimu",
             normalized_tag="hakurei_reimu",
+            canonical_lookup_key="hakurei_reimu",
             lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+            lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
             source_tag_id="1",
             source_tag_name="hakurei_reimu",
             source_category_raw="4",
@@ -462,6 +465,9 @@ def test_danbooru_alias_lookup_resolves_to_canonical_tag(monkeypatch):
     result = pilot._lookup_result_from_danbooru_payload(
         raw_tag="alias_name",
         normalized_tag="alias_name",
+        canonical_lookup_key="alias_name",
+        lookup_source=pilot.DANBOORU_ALIAS_SOURCE,
+        lookup_source_version=pilot.DANBOORU_ALIAS_SOURCE,
         payload=payload,
         cache_status="miss",
         matched_lookup_key=matched_lookup_key,
@@ -596,3 +602,465 @@ def test_dry_run_entrypoint_does_not_probe_gallery_dl(monkeypatch):
 
     assert entrypoint.mode == "dry_run_no_gallery_dl_probe"
     assert entrypoint.reproducibility_status == "dry_run_no_gallery_dl_probe"
+
+
+def test_canonical_lookup_key_reuses_equivalent_display_forms(db):
+    first = pilot.ExternalTagLookupResult(
+        raw_tag="Blue Archive",
+        normalized_tag="Blue Archive",
+        canonical_lookup_key="blue_archive",
+        lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        source_tag_id="42",
+        source_tag_name="blue_archive",
+        source_category_raw="3",
+        mapped_candidate_namespace="copyright",
+        confidence=0.84,
+        provenance_url_or_key="provider:42",
+        status="hit",
+        cache_status="miss",
+    )
+    pilot._upsert_lookup_cache_result(db, first)
+    db.commit()
+
+    def fail_fetcher(_key, _timeout):
+        raise AssertionError("canonical cache hit should avoid network")
+
+    record = _record(tags=("blue_archive",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fail_fetcher,
+    )
+
+    assert summary.cache_hit_count == 1
+    assert summary.request_count == 0
+    assert lookup_results["blue_archive"].source_tag_id == "42"
+
+
+def test_source_tag_id_upsert_preserves_existing_display_fields(db):
+    first = pilot.ExternalTagLookupResult(
+        raw_tag="Blue Archive",
+        normalized_tag="Blue Archive",
+        canonical_lookup_key="blue_archive",
+        lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        source_tag_id="42",
+        source_tag_name="blue_archive",
+        source_category_raw="3",
+        mapped_candidate_namespace="copyright",
+        confidence=0.84,
+        provenance_url_or_key="provider:42",
+        status="hit",
+        cache_status="miss",
+    )
+    second = pilot.ExternalTagLookupResult(
+        raw_tag="blue_archive",
+        normalized_tag="blue_archive",
+        canonical_lookup_key="blue_archive",
+        lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        source_tag_id="42",
+        source_tag_name="blue_archive",
+        source_category_raw="3",
+        mapped_candidate_namespace="copyright",
+        confidence=0.9,
+        provenance_url_or_key="provider:42",
+        status="hit",
+        cache_status="miss",
+    )
+
+    pilot._upsert_lookup_cache_result(db, first)
+    db.commit()
+    pilot._upsert_lookup_cache_result(db, second)
+    db.commit()
+
+    row = db.query(ExternalTagCategoryLookupCache).one()
+    assert row.raw_tag == "Blue Archive"
+    assert row.normalized_tag == "Blue Archive"
+    assert row.canonical_lookup_key == "blue_archive"
+    assert row.confidence == pytest.approx(0.9)
+
+
+def test_manual_override_survives_cache_refresh_and_explicit_update_changes_it(db):
+    row = ExternalTagCategoryLookupCache(
+        raw_tag="x",
+        normalized_tag="x",
+        canonical_lookup_key="x",
+        lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        status="hit",
+        manual_override_status="operator_override",
+        manual_override_value="character",
+    )
+    db.add(row)
+    db.commit()
+    refresh = pilot.ExternalTagLookupResult(
+        raw_tag="x",
+        normalized_tag="x",
+        canonical_lookup_key="x",
+        lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+        source_tag_id="7",
+        source_tag_name="x",
+        source_category_raw="0",
+        mapped_candidate_namespace="general",
+        confidence=0.5,
+        provenance_url_or_key="provider:7",
+        status="hit",
+        cache_status="miss",
+    )
+
+    pilot._upsert_lookup_cache_result(db, refresh)
+    db.commit()
+    row = db.query(ExternalTagCategoryLookupCache).one()
+    assert row.manual_override_status == "operator_override"
+    assert row.manual_override_value == "character"
+
+    pilot._upsert_lookup_cache_result(
+        db,
+        refresh,
+        manual_override_status="none",
+        manual_override_value=None,
+    )
+    db.commit()
+    row = db.query(ExternalTagCategoryLookupCache).one()
+    assert row.manual_override_status == "none"
+
+
+def test_lookup_error_cache_row_is_retryable(db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="retry_me",
+            normalized_tag="retry_me",
+            canonical_lookup_key="retry_me",
+            lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+            lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+            status="lookup_error",
+            lookup_error="TimeoutError",
+        )
+    )
+    db.commit()
+
+    def fake_fetcher(key, _timeout):
+        return [{"id": 8, "name": key, "category": 4}]
+
+    record = _record(tags=("retry_me",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fake_fetcher,
+    )
+
+    assert summary.cache_hit_count == 0
+    assert summary.request_count == 1
+    assert lookup_results["retry_me"].status == "hit"
+
+
+def test_weaker_not_found_does_not_block_stronger_source(monkeypatch, db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="alias_name",
+            normalized_tag="alias_name",
+            canonical_lookup_key="alias_name",
+            lookup_source="weak_source",
+            lookup_source_version="weak_source",
+            status="not_found",
+        )
+    )
+    db.commit()
+
+    def fake_lookup(source, tag_input, *, timeout_seconds, fetcher=None):
+        if source == "weak_source":
+            return (
+                pilot.ExternalTagLookupResult(
+                    raw_tag=tag_input.raw_tag,
+                    normalized_tag=tag_input.normalized_tag,
+                    canonical_lookup_key=tag_input.canonical_lookup_key,
+                    lookup_source=source,
+                    lookup_source_version=source,
+                    source_tag_id=None,
+                    source_tag_name=None,
+                    source_category_raw=None,
+                    mapped_candidate_namespace="unknown",
+                    confidence=0.0,
+                    provenance_url_or_key="weak:alias_name",
+                    status="not_found",
+                    cache_status="miss",
+                ),
+                1,
+            )
+        return (
+            pilot.ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=tag_input.canonical_lookup_key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id="9",
+                source_tag_name="canonical_name",
+                source_category_raw="4",
+                mapped_candidate_namespace="character",
+                confidence=0.84,
+                provenance_url_or_key="strong:9",
+                status="hit",
+                cache_status="miss",
+            ),
+            1,
+        )
+
+    monkeypatch.setattr(pilot, "_lookup_one_external_source", fake_lookup)
+    record = _record(tags=("alias_name",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        lookup_sources=("weak_source", "strong_source"),
+    )
+
+    assert summary.request_count == 2
+    assert lookup_results["alias_name"].lookup_source == "strong_source"
+    assert lookup_results["alias_name"].mapped_candidate_namespace == "character"
+
+
+def test_fresh_not_found_negative_cache_skips_same_source_but_not_stronger_source(monkeypatch, db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="alias_name",
+            normalized_tag="alias_name",
+            canonical_lookup_key="alias_name",
+            lookup_source="weak_source",
+            lookup_source_version="weak_source",
+            status="not_found",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    )
+    db.commit()
+    called_sources = []
+
+    def fake_lookup(source, tag_input, *, timeout_seconds, fetcher=None):
+        called_sources.append(source)
+        return (
+            pilot.ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=tag_input.canonical_lookup_key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id="9",
+                source_tag_name="canonical_name",
+                source_category_raw="4",
+                mapped_candidate_namespace="character",
+                confidence=0.84,
+                provenance_url_or_key="strong:9",
+                status="hit",
+                cache_status="miss",
+            ),
+            1,
+        )
+
+    monkeypatch.setattr(pilot, "_lookup_one_external_source", fake_lookup)
+    record = _record(tags=("alias_name",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        lookup_sources=("weak_source", "strong_source"),
+    )
+
+    assert called_sources == ["strong_source"]
+    assert summary.cache_hit_count == 0
+    assert summary.negative_cache_hit_count == 1
+    assert summary.source_negative_cache_hit_counts == {"weak_source": 1}
+    assert summary.request_count == 1
+    assert lookup_results["alias_name"].lookup_source == "strong_source"
+    assert lookup_results["alias_name"].mapped_candidate_namespace == "character"
+
+
+def test_validate_private_output_paths_before_network_blocks_unsafe_raw_dir(tmp_path):
+    with pytest.raises(pilot.OutputPathError, match="f3_output_path_violation"):
+        pilot.validate_private_output_paths_before_effects(
+            pilot.PHASE_OUTPUT_DIR,
+            private_paths=[tmp_path / "outside-raw"],
+        )
+
+
+def test_dry_run_mode_disables_cache_migration():
+    args = pilot.build_arg_parser().parse_args(["--dry-run"])
+    assert args.dry_run is True
+    assert pilot.cache_migration_allowed(args) is False
+
+
+def test_multilingual_normalization_forms_preserve_raw_and_variants():
+    japanese = pilot.multilingual_normalize_tag("\u30e2\u30ca\uff08\u539f\u795e\uff09")
+    chinese = pilot.multilingual_normalize_tag("\u89d2\u8272\u540d\uff08\u4f5c\u54c1\u540d\uff09")
+    korean = pilot.multilingual_normalize_tag("\ud558\uce20\ub124 \ubbf8\ucfe0")
+    fullwidth = pilot.multilingual_normalize_tag("\uff21\uff22\uff23\u3000\uff11\uff12\uff13")
+    latin = pilot.multilingual_normalize_tag("Blue Archive")
+
+    assert japanese.raw_tag == "\u30e2\u30ca\uff08\u539f\u795e\uff09"
+    assert japanese.bracket_normalized_form == "\u30e2\u30ca(\u539f\u795e)"
+    assert chinese.raw_tag == "\u89d2\u8272\u540d\uff08\u4f5c\u54c1\u540d\uff09"
+    assert korean.raw_tag == "\ud558\uce20\ub124 \ubbf8\ucfe0"
+    assert fullwidth.unicode_nfkc_normalized == "ABC 123"
+    assert fullwidth.underscore_form == "abc_123"
+    assert latin.casefolded_latin_form == "blue archive"
+    assert latin.underscore_form == "blue_archive"
+
+
+def test_parenthetical_parser_extracts_ascii_and_fullwidth_forms():
+    ascii_pattern = pilot.parse_pixiv_parenthetical_tag("\u30e2\u30ca(\u539f\u795e)")
+    fullwidth_pattern = pilot.parse_pixiv_parenthetical_tag("\u30e2\u30ca\uff08\u539f\u795e\uff09")
+    nested = pilot.parse_pixiv_parenthetical_tag("a(b(c))")
+
+    assert ascii_pattern is not None
+    assert ascii_pattern.outer_name == "\u30e2\u30ca"
+    assert ascii_pattern.inner_work_or_context == "\u539f\u795e"
+    assert fullwidth_pattern is not None
+    assert fullwidth_pattern.outer_name == "\u30e2\u30ca"
+    assert nested is None
+
+
+def test_parenthetical_candidates_are_reviewable_not_confirmed_assignments():
+    record = _record(tags=("\u30e2\u30ca(\u539f\u795e)",), artist_name=None, artist_id=None)
+    _normalized, rows = pilot.normalize_metadata_candidates([record], pilot.LocalClassificationIndex())
+    pattern_rows = [row for row in rows if row.reason == "pixiv_parenthetical_character_work_pattern"]
+
+    assert {row.candidate_namespace for row in pattern_rows} == {"character", "copyright"}
+    assert all(row.requires_manual_review for row in pattern_rows)
+    assert all(row.db_write_allowed is False for row in pattern_rows)
+    assert not any(row.existing_entity_match for row in pattern_rows)
+
+
+def test_safebooru_category_mapping_with_mocked_response(monkeypatch):
+    def fake_safebooru(key, *, timeout):
+        assert key == "blue_archive"
+        assert timeout == 1
+        return [{"id": "10", "name": "blue_archive", "category": "3"}]
+
+    monkeypatch.setattr(pilot, "fetch_safebooru_tag_payload", fake_safebooru)
+    tag_input = pilot.TagLookupInput(
+        raw_tag="Blue Archive",
+        normalized_tag="Blue Archive",
+        canonical_lookup_key="blue_archive",
+        lookup_candidates=("blue_archive",),
+    )
+    result, request_count = pilot._lookup_one_external_source(
+        pilot.SAFEBOORU_TAGS_SOURCE,
+        tag_input,
+        timeout_seconds=1,
+    )
+
+    assert request_count == 1
+    assert result.mapped_candidate_namespace == "copyright"
+    assert result.lookup_source == pilot.SAFEBOORU_TAGS_SOURCE
+
+
+def test_coverage_target_evaluation_and_unresolved_buckets():
+    record = _record(tags=("Blue Archive", "Mystery Name"), artist_name=None, artist_id=None)
+    rows = [
+        pilot.PixivCandidateRow(
+            media_id_private=1,
+            work_id_private="1",
+            page_index=0,
+            title_private=None,
+            artist_name_private=None,
+            artist_id_private=None,
+            raw_tag="Blue Archive",
+            normalized_tag="Blue Archive",
+            candidate_kind="entity_candidate",
+            candidate_namespace="copyright",
+            confidence=0.84,
+            reason="external_category_lookup",
+            canonical_lookup_key="blue_archive",
+            lookup_source=pilot.DANBOORU_TAGS_SOURCE,
+            lookup_key="blue_archive",
+            db_write_allowed=False,
+        ),
+        pilot.PixivCandidateRow(
+            media_id_private=1,
+            work_id_private="1",
+            page_index=0,
+            title_private=None,
+            artist_name_private=None,
+            artist_id_private=None,
+            raw_tag="Mystery Name",
+            normalized_tag="Mystery Name",
+            candidate_kind="unknown_or_unresolved_pixiv_tag",
+            candidate_namespace="unknown",
+            confidence=0.2,
+            reason="unresolved_no_source_match",
+            canonical_lookup_key="mystery_name",
+            lookup_source="deterministic_fallback",
+            lookup_key="mystery_name",
+            db_write_allowed=False,
+        ),
+    ]
+    rows.extend(
+        pilot.PixivCandidateRow(
+            media_id_private=1,
+            work_id_private="1",
+            page_index=0,
+            title_private=None,
+            artist_name_private=None,
+            artist_id_private=None,
+            raw_tag=f"unresolved_{idx}",
+            normalized_tag=f"unresolved_{idx}",
+            candidate_kind="unknown_or_unresolved_pixiv_tag",
+            candidate_namespace="unknown",
+            confidence=0.2,
+            reason="unresolved_no_source_match",
+            canonical_lookup_key=f"unresolved_{idx}",
+            lookup_source="deterministic_fallback",
+            lookup_key=f"unresolved_{idx}",
+            db_write_allowed=False,
+        )
+        for idx in range(304)
+    )
+    lookup_summary = pilot.ExternalLookupSummary(
+        unique_normalized_tag_count=2,
+        lookup_limit=2,
+        lookup_sources_attempted=[
+            pilot.DANBOORU_TAGS_SOURCE,
+            pilot.DANBOORU_ALIAS_SOURCE,
+            pilot.SAFEBOORU_TAGS_SOURCE,
+        ],
+    ).public_dict()
+
+    coverage = pilot.coverage_target_summary([record], rows, lookup_summary)
+    buckets = pilot.unresolved_reason_buckets(rows)
+
+    assert coverage["target_status"] == "not_reached_after_exhaustion"
+    assert coverage["lookup_limit_covers_all_unique_tags"] is True
+    assert coverage["automated_paths_exhausted"] is True
+    assert coverage["resolved_unique_tag_count"] == 1
+    assert buckets == {"unresolved_no_source_match": 305}
+
+    capped_lookup_summary = pilot.ExternalLookupSummary(
+        unique_normalized_tag_count=2,
+        lookup_limit=1,
+        lookup_sources_attempted=[
+            pilot.DANBOORU_TAGS_SOURCE,
+            pilot.DANBOORU_ALIAS_SOURCE,
+            pilot.SAFEBOORU_TAGS_SOURCE,
+        ],
+    ).public_dict()
+    capped_coverage = pilot.coverage_target_summary([record], rows, capped_lookup_summary)
+
+    assert capped_coverage["target_status"] == "not_reached_bounded_lookup_cap"
+    assert capped_coverage["lookup_limit_covers_all_unique_tags"] is False
+    assert capped_coverage["automated_paths_exhausted"] is False
