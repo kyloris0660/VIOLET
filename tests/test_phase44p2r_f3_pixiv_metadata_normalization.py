@@ -417,6 +417,61 @@ def test_external_lookup_cache_hit_avoids_network_and_classifies(db):
     assert rows[0].cache_status == "hit"
 
 
+def test_external_lookup_cache_hit_applies_manual_override_without_truth_writes(db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="provider_general",
+            normalized_tag="provider_general",
+            canonical_lookup_key="provider_general",
+            lookup_source=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+            lookup_source_version=pilot.EXTERNAL_TAG_LOOKUP_SOURCE,
+            source_tag_id="12",
+            source_tag_name="provider_general",
+            source_category_raw="0",
+            mapped_candidate_namespace="general",
+            confidence=0.84,
+            provenance_url_or_key="provider:12",
+            status="hit",
+            manual_override_status="operator_override",
+            manual_override_value="character",
+        )
+    )
+    db.commit()
+
+    def fail_fetcher(_key, _timeout):
+        raise AssertionError("manual override cache hit should avoid network")
+
+    record = _record(tags=("provider_general",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        fetcher=fail_fetcher,
+    )
+    _normalized, rows = pilot.normalize_metadata_candidates(
+        [record],
+        pilot.LocalClassificationIndex(),
+        external_lookup_results=lookup_results,
+    )
+
+    result = lookup_results["provider_general"]
+    assert summary.cache_hit_resolved_count == 1
+    assert result.provider_mapped_candidate_namespace == "general"
+    assert result.manual_override_status == "operator_override"
+    assert result.manual_override_value == "character"
+    assert result.mapped_candidate_namespace == "character"
+    assert result.effective_namespace_reason == "manual_override"
+    assert rows[0].candidate_namespace == "character"
+    assert rows[0].reason == "external_tag_category_lookup_manual_override"
+    assert rows[0].db_write_allowed is False
+    assert db.query(Entity).count() == 0
+    assert db.query(EntityEvidence).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+
+
 def test_external_lookup_cache_miss_fetches_and_writes_cache(db):
     calls = []
 
@@ -846,6 +901,97 @@ def test_lookup_error_cache_row_is_retryable(db):
     assert lookup_results["retry_me"].status == "hit"
 
 
+def test_lookup_error_future_retry_after_suppresses_requery(monkeypatch, db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="cooldown_tag",
+            normalized_tag="cooldown_tag",
+            canonical_lookup_key="cooldown_tag",
+            lookup_source="cooldown_source",
+            lookup_source_version="cooldown_source",
+            status="lookup_error",
+            lookup_error="provider_blocked",
+            retry_after=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    )
+    db.commit()
+
+    def fail_lookup(*_args, **_kwargs):
+        raise AssertionError("retry_after cooldown should suppress same-source requery")
+
+    monkeypatch.setattr(pilot, "_lookup_one_external_source", fail_lookup)
+    record = _record(tags=("cooldown_tag",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        lookup_sources=("cooldown_source",),
+    )
+
+    assert summary.request_count == 0
+    assert summary.cache_error_cooldown_count == 1
+    assert lookup_results["cooldown_tag"].status == "lookup_error"
+    assert lookup_results["cooldown_tag"].cache_status == "error_cooldown"
+
+
+def test_lookup_error_expired_retry_after_allows_requery(monkeypatch, db):
+    db.add(
+        ExternalTagCategoryLookupCache(
+            raw_tag="expired_cooldown",
+            normalized_tag="expired_cooldown",
+            canonical_lookup_key="expired_cooldown",
+            lookup_source="cooldown_source",
+            lookup_source_version="cooldown_source",
+            status="lookup_error",
+            lookup_error="provider_blocked",
+            retry_after=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+    )
+    db.commit()
+    calls = []
+
+    def fake_lookup(source, tag_input, *, timeout_seconds, fetcher=None, max_requests=None, delay_seconds=0):
+        calls.append(source)
+        return (
+            pilot.ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=tag_input.canonical_lookup_key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id="13",
+                source_tag_name="expired_cooldown",
+                source_category_raw="4",
+                mapped_candidate_namespace="character",
+                confidence=0.84,
+                provenance_url_or_key="provider:13",
+                status="hit",
+                cache_status="miss",
+            ),
+            1,
+        )
+
+    monkeypatch.setattr(pilot, "_lookup_one_external_source", fake_lookup)
+    record = _record(tags=("expired_cooldown",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        lookup_sources=("cooldown_source",),
+    )
+
+    assert calls == ["cooldown_source"]
+    assert summary.cache_expired_retryable_count == 1
+    assert summary.request_count == 1
+    assert lookup_results["expired_cooldown"].status == "hit"
+
+
 def test_expired_not_found_retries_same_source(monkeypatch, db):
     db.add(
         ExternalTagCategoryLookupCache(
@@ -1103,6 +1249,70 @@ def test_validate_private_output_paths_blocks_unsafe_artifact_before_cache_write
         )
 
 
+def test_invalid_public_report_path_blocks_before_network_or_db(tmp_path, monkeypatch):
+    output_dir = pilot.PHASE_OUTPUT_DIR / "pytest-report-path-block"
+    shutil.rmtree(output_dir, ignore_errors=True)
+
+    def fail_create_engine(*_args, **_kwargs):
+        raise AssertionError("invalid public report path must block before DB work")
+
+    def fail_entrypoint(*_args, **_kwargs):
+        raise AssertionError("invalid public report path must block before gallery-dl probe")
+
+    def fail_metadata(*_args, **_kwargs):
+        raise AssertionError("invalid public report path must block before metadata network")
+
+    monkeypatch.setattr(pilot, "create_engine", fail_create_engine)
+    monkeypatch.setattr(pilot, "entrypoint_for_args", fail_entrypoint)
+    monkeypatch.setattr(pilot, "run_metadata_commands", fail_metadata)
+    args = pilot.build_arg_parser().parse_args(
+        [
+            "--output-dir",
+            str(output_dir),
+            "--report-json",
+            str(tmp_path / "unsafe-summary.json"),
+            "--report-md",
+            str(pilot.REPORT_MD.parent / "pytest-safe-report.md"),
+            "--details-json",
+            str(output_dir / "details.json"),
+            "--media-summary-csv",
+            str(output_dir / "media-summary.csv"),
+            "--media-summary-md",
+            str(output_dir / "media-summary.md"),
+            "--tag-candidates-csv",
+            str(output_dir / "tag-candidates.csv"),
+            "--tag-candidates-md",
+            str(output_dir / "tag-candidates.md"),
+            "--entity-candidates-csv",
+            str(output_dir / "entity-candidates.csv"),
+            "--entity-candidates-md",
+            str(output_dir / "entity-candidates.md"),
+            "--lookup-cache-csv",
+            str(output_dir / "lookup-cache-sheet.csv"),
+            "--lookup-cache-md",
+            str(output_dir / "lookup-cache-sheet.md"),
+            "--unresolved-tags-csv",
+            str(output_dir / "unresolved-tags-analysis.csv"),
+            "--unresolved-tags-md",
+            str(output_dir / "unresolved-tags-analysis.md"),
+            "--parenthetical-candidates-csv",
+            str(output_dir / "parenthetical-pattern-candidates.csv"),
+            "--parenthetical-candidates-md",
+            str(output_dir / "parenthetical-pattern-candidates.md"),
+            "--manual-review-guide",
+            str(output_dir / "manual-review-guide.md"),
+            "--raw-dir",
+            str(output_dir / "raw"),
+        ]
+    )
+
+    try:
+        with pytest.raises(pilot.OutputPathError, match="f3_report_path_violation"):
+            pilot.run(args)
+    finally:
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+
 def test_dry_run_mode_disables_cache_migration():
     args = pilot.build_arg_parser().parse_args(["--dry-run"])
     assert args.dry_run is True
@@ -1313,6 +1523,51 @@ def test_provider_blocked_requests_are_counted(monkeypatch):
     assert lookup_results["blocked_tag"].status == "lookup_error"
 
 
+def test_failed_multi_request_lookup_counts_all_requests_and_stops_on_budget(monkeypatch):
+    called_sources = []
+
+    def fake_lookup(source, tag_input, *, timeout_seconds, fetcher=None, max_requests=None, delay_seconds=0):
+        called_sources.append(source)
+        if source == "multi_fail_source":
+            raise pilot.ExternalLookupRequestError("alias_consequent_failed", request_count=2)
+        return (
+            pilot.ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=tag_input.canonical_lookup_key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id="99",
+                source_tag_name="should_not_run",
+                source_category_raw="4",
+                mapped_candidate_namespace="character",
+                confidence=0.84,
+                provenance_url_or_key="provider:99",
+                status="hit",
+                cache_status="miss",
+            ),
+            1,
+        )
+
+    monkeypatch.setattr(pilot, "_lookup_one_external_source", fake_lookup)
+    record = _record(tags=("multi_request_tag",), artist_name=None, artist_id=None)
+    lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=None,
+        lookup_limit=1,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=False,
+        lookup_sources=("multi_fail_source", "later_source"),
+    )
+
+    assert called_sources == ["multi_fail_source"]
+    assert summary.request_count == 2
+    assert summary.source_request_counts == {"multi_fail_source": 2}
+    assert summary.request_budget_exhausted is True
+    assert lookup_results["multi_request_tag"].status == "lookup_error"
+
+
 def test_coverage_target_evaluation_and_unresolved_buckets():
     record = _record(tags=("Blue Archive", "Mystery Name"), artist_name=None, artist_id=None)
     rows = [
@@ -1421,6 +1676,7 @@ def test_coverage_target_evaluation_and_unresolved_buckets():
     ).public_dict()
     errored_coverage = pilot.coverage_target_summary([record], rows, errored_lookup_summary)
 
-    assert errored_coverage["target_status"] == "not_reached_current_iteration"
+    assert errored_coverage["target_status"] == "not_reached_provider_limited"
     assert errored_coverage["lookup_sources_successfully_exhausted"] is False
     assert errored_coverage["automated_paths_exhausted"] is False
+    assert errored_coverage["lookup_source_statuses"][pilot.DANBOORU_TAGS_SOURCE] == "source_attempted_but_errored"

@@ -235,6 +235,12 @@ class PrivacyBlocked(Phase44P2RF3Error):
     pass
 
 
+class ExternalLookupRequestError(Phase44P2RF3Error):
+    def __init__(self, message: str, *, request_count: int = 1):
+        super().__init__(message)
+        self.request_count = max(int(request_count), 0)
+
+
 MANUAL_OVERRIDE_VALUE_UNSET = object()
 
 
@@ -276,6 +282,11 @@ class ExternalTagLookupResult:
     lookup_error: str | None = None
     retry_after: str | None = None
     expires_at: str | None = None
+    provider_mapped_candidate_namespace: str | None = None
+    manual_override_status: str | None = None
+    manual_override_value: str | None = None
+    effective_mapped_candidate_namespace: str | None = None
+    effective_namespace_reason: str | None = None
 
     def to_cache_fields(
         self,
@@ -381,7 +392,11 @@ class ExternalLookupSummary:
     lookup_timeout_seconds: int = DEFAULT_TAG_LOOKUP_TIMEOUT_SECONDS
     request_count: int = 0
     cache_hit_count: int = 0
+    cache_hit_resolved_count: int = 0
     negative_cache_hit_count: int = 0
+    cache_negative_not_found_count: int = 0
+    cache_error_cooldown_count: int = 0
+    cache_expired_retryable_count: int = 0
     cache_miss_count: int = 0
     cache_write_count: int = 0
     cache_write_enabled: bool = True
@@ -525,6 +540,19 @@ def _not_found_cache_is_fresh(row: ExternalTagCategoryLookupCache, *, source: st
     return expires_at > datetime.now(timezone.utc)
 
 
+def _lookup_error_cache_in_cooldown(row: ExternalTagCategoryLookupCache, *, source: str) -> bool:
+    if str(row.status) != "lookup_error":
+        return False
+    if row.lookup_source_version and str(row.lookup_source_version) != source:
+        return False
+    retry_after = row.retry_after
+    if not retry_after:
+        return False
+    if retry_after.tzinfo is None:
+        retry_after = retry_after.replace(tzinfo=timezone.utc)
+    return retry_after > datetime.now(timezone.utc)
+
+
 def _with_default_cache_lifecycle(result: ExternalTagLookupResult) -> ExternalTagLookupResult:
     if result.status == "not_found" and not result.expires_at:
         return replace(result, expires_at=_future_iso(NEGATIVE_LOOKUP_CACHE_TTL_SECONDS))
@@ -577,6 +605,15 @@ def write_public_json(path: Path, payload: Any) -> None:
 def write_public_text(path: Path, content: str, *, private_markers: Iterable[str]) -> None:
     f1.assert_public_payload_safe(content, private_markers=private_markers)
     f1.write_text(resolve_repo_path(path), content, expected_parent=Path("docs/reports"))
+
+
+def validate_public_report_paths_before_effects(*, report_json: Path, report_md: Path) -> None:
+    for path in (report_json, report_md):
+        resolved = resolve_repo_path(path)
+        try:
+            f1.require_under_path(resolved, ROOT / "docs/reports", code="f3_report_path_violation")
+        except f1.OutputPathError as exc:
+            raise OutputPathError(str(exc)) from exc
 
 
 def enforce_sample_size(sample_size: int) -> None:
@@ -1246,7 +1283,9 @@ def fetch_danbooru_tag_alias_payload(normalized_key: str, *, timeout: int) -> li
 
 
 class ExternalLookupProviderBlocked(Phase44P2RF3Error):
-    pass
+    def __init__(self, message: str, *, request_count: int = 1):
+        super().__init__(message)
+        self.request_count = max(int(request_count), 0)
 
 
 def _select_danbooru_tag_match(payload: Sequence[Mapping[str, Any]], normalized_key: str) -> Mapping[str, Any] | None:
@@ -1388,7 +1427,20 @@ def _lookup_result_from_danbooru_payload(
     )
 
 
-def _cache_row_to_lookup_result(row: ExternalTagCategoryLookupCache) -> ExternalTagLookupResult:
+def _manual_override_is_active(status: str | None, value: str | None) -> bool:
+    return bool(status and status != "none" and value)
+
+
+def _cache_row_to_lookup_result(
+    row: ExternalTagCategoryLookupCache,
+    *,
+    cache_status: str = "hit",
+) -> ExternalTagLookupResult:
+    provider_namespace = str(row.mapped_candidate_namespace) if row.mapped_candidate_namespace else None
+    manual_status = str(row.manual_override_status or "none")
+    manual_value = str(row.manual_override_value) if row.manual_override_value else None
+    override_active = _manual_override_is_active(manual_status, manual_value)
+    effective_namespace = manual_value if override_active else provider_namespace
     return ExternalTagLookupResult(
         raw_tag=str(row.raw_tag or ""),
         normalized_tag=str(row.normalized_tag),
@@ -1398,14 +1450,19 @@ def _cache_row_to_lookup_result(row: ExternalTagCategoryLookupCache) -> External
         source_tag_id=str(row.source_tag_id) if row.source_tag_id is not None else None,
         source_tag_name=str(row.source_tag_name) if row.source_tag_name is not None else None,
         source_category_raw=str(row.source_category_raw) if row.source_category_raw is not None else None,
-        mapped_candidate_namespace=str(row.mapped_candidate_namespace) if row.mapped_candidate_namespace else None,
+        mapped_candidate_namespace=effective_namespace,
         confidence=float(row.confidence) if row.confidence is not None else None,
         provenance_url_or_key=str(row.provenance_url_or_key) if row.provenance_url_or_key else None,
         status=str(row.status),
-        cache_status="hit",
+        cache_status=cache_status,
         lookup_error=str(row.lookup_error) if row.lookup_error else None,
         retry_after=row.retry_after.isoformat() if row.retry_after else None,
         expires_at=row.expires_at.isoformat() if row.expires_at else None,
+        provider_mapped_candidate_namespace=provider_namespace,
+        manual_override_status=manual_status,
+        manual_override_value=manual_value,
+        effective_mapped_candidate_namespace=effective_namespace,
+        effective_namespace_reason="manual_override" if override_active else "provider_mapping",
     )
 
 
@@ -1507,7 +1564,12 @@ def _lookup_one_external_source(
             request_count,
         )
     if source == DANBOORU_TAGS_SOURCE:
-        payload = fetch_danbooru_tag_payload(key, timeout=timeout_seconds)
+        try:
+            payload = fetch_danbooru_tag_payload(key, timeout=timeout_seconds)
+        except ExternalLookupProviderBlocked as exc:
+            raise ExternalLookupProviderBlocked(str(exc), request_count=max(exc.request_count, 1)) from exc
+        except Exception as exc:
+            raise ExternalLookupRequestError(exc.__class__.__name__, request_count=1) from exc
         return (
             _lookup_result_from_danbooru_payload(
                 raw_tag=tag_input.raw_tag,
@@ -1522,7 +1584,12 @@ def _lookup_one_external_source(
             1,
         )
     if source == DANBOORU_ALIAS_SOURCE:
-        alias_payload = fetch_danbooru_tag_alias_payload(key, timeout=timeout_seconds)
+        try:
+            alias_payload = fetch_danbooru_tag_alias_payload(key, timeout=timeout_seconds)
+        except ExternalLookupProviderBlocked as exc:
+            raise ExternalLookupProviderBlocked(str(exc), request_count=max(exc.request_count, 1)) from exc
+        except Exception as exc:
+            raise ExternalLookupRequestError(exc.__class__.__name__, request_count=1) from exc
         request_count = 1
         for alias in alias_payload:
             if max_requests is not None and request_count >= max_requests:
@@ -1535,7 +1602,19 @@ def _lookup_one_external_source(
                 continue
             if delay_seconds > 0:
                 time.sleep(delay_seconds)
-            tag_payload = fetch_danbooru_tag_payload(canonical_key, timeout=timeout_seconds)
+            attempted_request_count = request_count + 1
+            try:
+                tag_payload = fetch_danbooru_tag_payload(canonical_key, timeout=timeout_seconds)
+            except ExternalLookupProviderBlocked as exc:
+                raise ExternalLookupProviderBlocked(
+                    str(exc),
+                    request_count=max(exc.request_count, attempted_request_count),
+                ) from exc
+            except Exception as exc:
+                raise ExternalLookupRequestError(
+                    exc.__class__.__name__,
+                    request_count=attempted_request_count,
+                ) from exc
             request_count += 1
             result = _lookup_result_from_danbooru_payload(
                 raw_tag=tag_input.raw_tag,
@@ -1568,7 +1647,12 @@ def _lookup_one_external_source(
             request_count,
         )
     if source == SAFEBOORU_TAGS_SOURCE:
-        payload = fetch_safebooru_tag_payload(key, timeout=timeout_seconds)
+        try:
+            payload = fetch_safebooru_tag_payload(key, timeout=timeout_seconds)
+        except ExternalLookupProviderBlocked as exc:
+            raise ExternalLookupProviderBlocked(str(exc), request_count=max(exc.request_count, 1)) from exc
+        except Exception as exc:
+            raise ExternalLookupRequestError(exc.__class__.__name__, request_count=1) from exc
         return (
             _lookup_result_from_danbooru_payload(
                 raw_tag=tag_input.raw_tag,
@@ -1634,15 +1718,23 @@ def lookup_external_tag_categories(
                 if cached_row and str(cached_row.status) in SUCCESSFUL_LOOKUP_STATUSES:
                     cached_result = _cache_row_to_lookup_result(cached_row)
                     summary.cache_hit_count += 1
+                    summary.cache_hit_resolved_count += 1
                     summary.source_cache_hit_counts[source] = summary.source_cache_hit_counts.get(source, 0) + 1
                 elif cached_row and _not_found_cache_is_fresh(cached_row, source=source):
-                    last_result = _cache_row_to_lookup_result(cached_row)
+                    last_result = _cache_row_to_lookup_result(cached_row, cache_status="negative_not_found")
                     summary.negative_cache_hit_count += 1
+                    summary.cache_negative_not_found_count += 1
                     summary.source_negative_cache_hit_counts[source] = (
                         summary.source_negative_cache_hit_counts.get(source, 0) + 1
                     )
                     continue
+                elif cached_row and _lookup_error_cache_in_cooldown(cached_row, source=source):
+                    last_result = _cache_row_to_lookup_result(cached_row, cache_status="error_cooldown")
+                    summary.cache_error_cooldown_count += 1
+                    continue
                 else:
+                    if cached_row and str(cached_row.status) in {"not_found", "lookup_error"}:
+                        summary.cache_expired_retryable_count += 1
                     summary.cache_miss_count += 1
                     summary.source_cache_miss_counts[source] = summary.source_cache_miss_counts.get(source, 0) + 1
             else:
@@ -1668,10 +1760,31 @@ def lookup_external_tag_categories(
                 summary.request_count += request_count
                 summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + request_count
             except ExternalLookupProviderBlocked as exc:
-                summary.request_count += 1
-                summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + 1
+                request_count = max(int(getattr(exc, "request_count", 1)), 0)
+                summary.request_count += request_count
+                summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + request_count
                 summary.provider_blocked = True
                 summary.provider_block_reason = str(exc)
+                result = ExternalTagLookupResult(
+                    raw_tag=tag_input.raw_tag,
+                    normalized_tag=tag_input.normalized_tag,
+                    canonical_lookup_key=key,
+                    lookup_source=source,
+                    lookup_source_version=source,
+                    source_tag_id=None,
+                    source_tag_name=None,
+                    source_category_raw=None,
+                    mapped_candidate_namespace="unknown",
+                    confidence=0.0,
+                    provenance_url_or_key=f"{source}:{key}",
+                    status="lookup_error",
+                    cache_status="miss",
+                    lookup_error=str(exc),
+                )
+            except ExternalLookupRequestError as exc:
+                request_count = max(int(getattr(exc, "request_count", 1)), 0)
+                summary.request_count += request_count
+                summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + request_count
                 result = ExternalTagLookupResult(
                     raw_tag=tag_input.raw_tag,
                     normalized_tag=tag_input.normalized_tag,
@@ -1707,6 +1820,8 @@ def lookup_external_tag_categories(
                     cache_status="miss",
                     lookup_error=exc.__class__.__name__,
                 )
+            if summary.request_count > summary.external_request_budget:
+                summary.request_budget_exhausted = True
             result = _with_default_cache_lifecycle(result)
             last_result = result
             if session is not None and cache_writes_enabled:
@@ -2041,6 +2156,11 @@ def classify_pixiv_tag(
     if lookup_result and lookup_result.status == "hit" and lookup_result.mapped_candidate_namespace:
         namespace = lookup_result.mapped_candidate_namespace
         is_entity_namespace = namespace in ENTITY_NAMESPACES
+        reason = (
+            "external_tag_category_lookup_manual_override"
+            if lookup_result.effective_namespace_reason == "manual_override"
+            else "external_tag_category_lookup"
+        )
         return PixivCandidateRow(
             **base,
             raw_tag=raw_tag,
@@ -2048,7 +2168,7 @@ def classify_pixiv_tag(
             candidate_kind="entity_candidate" if is_entity_namespace else "tag_candidate",
             candidate_namespace=namespace,
             confidence=float(lookup_result.confidence or 0.0),
-            reason="external_tag_category_lookup",
+            reason=reason,
             lookup_source=lookup_result.lookup_source,
             lookup_key=key,
             lookup_category=lookup_result.source_category_raw,
@@ -2560,16 +2680,28 @@ def coverage_target_summary(
     source_lookup_error_counts = dict(lookup_summary.get("source_lookup_error_counts") or {})
     provider_blocked = bool(lookup_summary.get("provider_blocked"))
     request_budget_exhausted = bool(lookup_summary.get("request_budget_exhausted"))
+    provider_limited = bool(
+        provider_blocked or request_budget_exhausted or lookup_error_count > 0 or source_lookup_error_counts
+    )
+    lookup_source_statuses: dict[str, str] = {}
+    for source in (DANBOORU_TAGS_SOURCE, DANBOORU_ALIAS_SOURCE, SAFEBOORU_TAGS_SOURCE):
+        if source not in attempted:
+            lookup_source_statuses[source] = "source_not_attempted"
+        elif source_lookup_error_counts.get(source):
+            lookup_source_statuses[source] = "source_attempted_but_errored"
+        elif provider_blocked:
+            lookup_source_statuses[source] = "source_attempted_but_blocked_or_provider_limited"
+        else:
+            lookup_source_statuses[source] = "source_attempted_successfully_exhausted"
     lookup_sources_successfully_exhausted = bool(
         lookup_sources_exhausted
-        and not provider_blocked
-        and not request_budget_exhausted
-        and lookup_error_count == 0
-        and not source_lookup_error_counts
+        and not provider_limited
     )
     automated_paths_exhausted = bool(lookup_limit_covers_all_unique_tags and lookup_sources_successfully_exhausted)
     if target_reached:
         target_status = "reached"
+    elif lookup_limit_covers_all_unique_tags and provider_limited:
+        target_status = "not_reached_provider_limited"
     elif automated_paths_exhausted:
         target_status = "not_reached_after_exhaustion"
     elif lookup_limit_covers_all_unique_tags:
@@ -2585,6 +2717,7 @@ def coverage_target_summary(
         "provider_blocked": provider_blocked,
         "lookup_error_count": lookup_error_count,
         "request_budget_exhausted": request_budget_exhausted,
+        "lookup_source_statuses": lookup_source_statuses,
         "automated_paths_exhausted": automated_paths_exhausted,
         "resolved_unique_tag_count": len(resolved_keys),
         "resolved_unique_tag_coverage": round(unique_coverage, 4),
@@ -3032,6 +3165,11 @@ def _lookup_cache_csv(results: Mapping[str, ExternalTagLookupResult]) -> str:
         "source_tag_id",
         "source_tag_name",
         "source_category_raw",
+        "provider_mapped_candidate_namespace",
+        "manual_override_status",
+        "manual_override_value",
+        "effective_mapped_candidate_namespace",
+        "effective_namespace_reason",
         "mapped_candidate_namespace",
         "confidence",
         "provenance_url_or_key",
@@ -3204,6 +3342,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     f1.require_under_path(output_dir, ROOT / ".local_manifests", code="f3_output_path_violation")
     if PHASE_SLUG not in output_dir.as_posix():
         raise OutputPathError("f3_output_path_violation")
+
+    report_json = resolve_repo_path(args.report_json)
+    report_md = resolve_repo_path(args.report_md)
+    validate_public_report_paths_before_effects(report_json=report_json, report_md=report_md)
 
     raw_dir = resolve_repo_path(args.raw_dir)
     details_json = resolve_repo_path(args.details_json)
@@ -3444,8 +3586,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     markers = _private_markers(records, samples)
     f1.assert_public_payload_safe(summary, private_markers=markers)
     report = build_markdown_report(summary, private_markers=markers)
-    write_public_json(resolve_repo_path(args.report_json), summary)
-    write_public_text(resolve_repo_path(args.report_md), report, private_markers=markers)
+    write_public_json(report_json, summary)
+    write_public_text(report_md, report, private_markers=markers)
 
     write_private_json(
         details_json,
@@ -3493,8 +3635,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": True,
         "phase": PHASE,
-        "report_md": _rel(resolve_repo_path(args.report_md)),
-        "report_json": _rel(resolve_repo_path(args.report_json)),
+        "report_md": _rel(report_md),
+        "report_json": _rel(report_json),
         "private_details": _rel(details_json),
         "manual_review_guide": _rel(manual_review_guide),
         "sample_selected_count": sample_public.get("selected_count"),

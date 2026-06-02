@@ -1,8 +1,12 @@
 {
   "artifact_lifecycle": "phase_scoped_operational_runner",
   "automated_tag_category_lookup": {
+    "cache_error_cooldown_count": 0,
+    "cache_expired_retryable_count": 0,
     "cache_hit_count": 18,
+    "cache_hit_resolved_count": 18,
     "cache_miss_count": 0,
+    "cache_negative_not_found_count": 347,
     "cache_write_count": 0,
     "cache_write_enabled": true,
     "enabled": true,
@@ -162,6 +166,16 @@
     "sensitive_meta_candidate_count": 0
   },
   "closeout_conclusion": {
+    "bounded_closeout_fix_status": {
+      "alias_cache_preserves_antecedent_key": true,
+      "cache_hit_applies_manual_override": true,
+      "dry_run_skip_network_side_effect_free": true,
+      "failed_multi_request_lookup_counted_against_budget": true,
+      "manual_override_preserved_on_refresh": true,
+      "private_output_paths_validated_before_side_effects": true,
+      "public_report_paths_validated_before_side_effects": true,
+      "retry_after_cooldown_respected": true
+    },
     "classification_middleware_completed": false,
     "coverage_target_reached": false,
     "entity_candidate_recommendation": "blocked_until_category_coverage_and_provenance_improve",
@@ -540,6 +554,11 @@
     "lookup_error_count": 0,
     "lookup_limit": 200,
     "lookup_limit_covers_all_unique_tags": true,
+    "lookup_source_statuses": {
+      "danbooru_tag_aliases_api_v2": "source_attempted_successfully_exhausted",
+      "danbooru_tags_api_v2": "source_attempted_successfully_exhausted",
+      "safebooru_tags_xml_api_v1": "source_attempted_successfully_exhausted"
+    },
     "lookup_sources_successfully_exhausted": true,
     "provider_blocked": false,
     "request_budget_exhausted": false,
@@ -702,6 +721,8 @@
     "output_path_violation": false,
     "phase_output_root": ".local_manifests/<phase-private-root>",
     "private_artifacts_under_phase_root": true,
+    "private_paths_validated_before_network_db_and_raw_writes": true,
+    "public_report_paths_validated_before_network_db_and_cache_writes": true,
     "public_reports_under_docs_reports": true
   },
   "parenthetical_pattern_summary": {
