@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import quote
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event, inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +54,7 @@ from app.models import (  # noqa: E402
     ExternalTagCategoryLookupCache,
     Tag,
     TagAlias,
+    blombooru_media_tags,
 )
 from scripts import run_phase44p2r_f1_gallery_dl_json_import_pilot as f1  # noqa: E402
 from scripts import run_phase44p2r_f2_gallery_dl_external_adapter_pilot as f2  # noqa: E402
@@ -190,6 +191,14 @@ PIXIV_IDENTITY_PROVIDERS = frozenset(
         "pixiv_artist_id",
     }
 )
+TRUSTED_LOCAL_TAG_CATEGORY_SOURCES = frozenset(
+    {
+        EntityMetadataSourceEnum.manual.value,
+        EntityMetadataSourceEnum.imported.value,
+        EntityMetadataSourceEnum.trusted_external.value,
+        EntityMetadataSourceEnum.system.value,
+    }
+)
 FORBIDDEN_TRUTH_TABLES = frozenset(
     {
         "blombooru_entities",
@@ -250,6 +259,8 @@ class LocalTagCategoryMatch:
     tag_name_private: str
     category: str
     match_kind: str
+    trusted_for_entity_namespace: bool = False
+    trusted_source_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -402,6 +413,7 @@ class ExternalLookupSummary:
     cache_write_enabled: bool = True
     provider_blocked: bool = False
     provider_block_reason: str | None = None
+    provider_blocked_sources: list[str] = field(default_factory=list)
     hit_count: int = 0
     not_found_count: int = 0
     lookup_error_count: int = 0
@@ -422,6 +434,9 @@ class LocalClassificationIndex:
     total_entity_aliases_indexed: int = 0
     total_external_identities_indexed: int = 0
     total_provider_scoped_external_identities_indexed: int = 0
+    total_entity_namespace_tag_categories_seen: int = 0
+    total_trusted_entity_namespace_tag_categories_indexed: int = 0
+    total_untrusted_entity_namespace_tag_categories_seen: int = 0
 
     def public_summary(self) -> dict[str, Any]:
         return {
@@ -431,6 +446,10 @@ class LocalClassificationIndex:
             "local_entity_aliases_indexed": self.total_entity_aliases_indexed,
             "local_external_identities_indexed": self.total_external_identities_indexed,
             "local_provider_scoped_external_identities_indexed": self.total_provider_scoped_external_identities_indexed,
+            "local_entity_tag_category_requires_trusted_provenance": True,
+            "entity_namespace_tag_categories_seen": self.total_entity_namespace_tag_categories_seen,
+            "trusted_entity_namespace_tag_categories_indexed": self.total_trusted_entity_namespace_tag_categories_indexed,
+            "untrusted_entity_namespace_tag_categories_seen": self.total_untrusted_entity_namespace_tag_categories_seen,
             "external_identities_match_raw_pixiv_tags": False,
             "external_identity_lookup_requires_provider_namespace": True,
             "db_read_only": True,
@@ -834,6 +853,8 @@ def select_local_pixiv_prior_samples(
     selected_ids: set[str] = set()
 
     def add_first(predicate: Callable[[SelectedSample], bool]) -> None:
+        if len(selected) >= sample_size:
+            return
         for sample in ordered:
             if sample.work_id not in selected_ids and predicate(sample):
                 selected.append(sample)
@@ -868,6 +889,7 @@ def select_local_pixiv_prior_samples(
     public = {
         "selected_count": len(selected),
         "requested_sample_size": sample_size,
+        "requested_sample_size_respected": len(selected) <= sample_size,
         "default_sample_size": DEFAULT_SAMPLE_SIZE,
         "max_sample_size": MAX_SAMPLE_SIZE,
         "max_normalized_records": MAX_RECORDS_WITHOUT_RENEWED_APPROVAL,
@@ -1075,6 +1097,33 @@ def _trusted_alias_source(source: str | None, needs_review: bool | None) -> bool
     }
 
 
+def _is_entity_namespace_tag_category(category: str) -> bool:
+    return _tag_namespace(category) in ENTITY_NAMESPACES
+
+
+def _trusted_local_tag_category_source(source: str | None, is_suggestion: bool | None) -> bool:
+    if is_suggestion:
+        return False
+    if not source:
+        return False
+    return str(source) in TRUSTED_LOCAL_TAG_CATEGORY_SOURCES
+
+
+def _trusted_local_entity_tag_source_counts(session: Session) -> dict[int, int]:
+    counts: Counter[int] = Counter()
+    rows = session.execute(
+        select(
+            blombooru_media_tags.c.tag_id,
+            blombooru_media_tags.c.source,
+            blombooru_media_tags.c.is_suggestion,
+        )
+    ).all()
+    for tag_id, source, is_suggestion in rows:
+        if _trusted_local_tag_category_source(str(source) if source is not None else None, bool(is_suggestion)):
+            counts[int(tag_id)] += 1
+    return dict(counts)
+
+
 def _put_entity_match(index: LocalClassificationIndex, key_value: str, match: LocalEntityMatch) -> None:
     for key in _lookup_key_variants(key_value):
         index.entity_matches.setdefault(key, match)
@@ -1120,15 +1169,28 @@ def _put_tag_match(index: LocalClassificationIndex, key_value: str, match: Local
 
 def build_local_classification_index(session: Session) -> LocalClassificationIndex:
     index = LocalClassificationIndex()
+    trusted_entity_tag_source_counts = _trusted_local_entity_tag_source_counts(session)
 
     tags = session.query(Tag).order_by(Tag.id.asc()).all()
     index.total_tags_indexed = len(tags)
     for tag in tags:
+        category = _enum_value(tag.category or TagCategoryEnum.general)
+        is_entity_category = _is_entity_namespace_tag_category(category)
+        trusted_source_count = trusted_entity_tag_source_counts.get(int(tag.id), 0)
+        trusted_for_entity_namespace = bool(is_entity_category and trusted_source_count > 0)
+        if is_entity_category:
+            index.total_entity_namespace_tag_categories_seen += 1
+            if trusted_for_entity_namespace:
+                index.total_trusted_entity_namespace_tag_categories_indexed += 1
+            else:
+                index.total_untrusted_entity_namespace_tag_categories_seen += 1
         match = LocalTagCategoryMatch(
             tag_id_private=int(tag.id),
             tag_name_private=str(tag.name),
-            category=_enum_value(tag.category or TagCategoryEnum.general),
+            category=category,
             match_kind="existing_tag_category_match",
+            trusted_for_entity_namespace=trusted_for_entity_namespace,
+            trusted_source_count=trusted_source_count,
         )
         _put_tag_match(index, str(tag.name), match)
 
@@ -1138,11 +1200,17 @@ def build_local_classification_index(session: Session) -> LocalClassificationInd
         target = alias.target_tag
         if not target:
             continue
+        category = _enum_value(target.category or TagCategoryEnum.general)
+        trusted_source_count = trusted_entity_tag_source_counts.get(int(target.id), 0)
         match = LocalTagCategoryMatch(
             tag_id_private=int(target.id),
             tag_name_private=str(target.name),
-            category=_enum_value(target.category or TagCategoryEnum.general),
+            category=category,
             match_kind="existing_tag_alias_category_match",
+            trusted_for_entity_namespace=bool(
+                _is_entity_namespace_tag_category(category) and trusted_source_count > 0
+            ),
+            trusted_source_count=trusted_source_count,
         )
         _put_tag_match(index, str(alias.alias_name), match)
 
@@ -1699,12 +1767,15 @@ def lookup_external_tag_categories(
         return {}, summary
 
     results: dict[str, ExternalTagLookupResult] = {}
+    blocked_sources: set[str] = set()
     for idx, key in enumerate(capped_keys):
         tag_input = tag_inputs[key]
         if idx > 0 and delay_seconds > 0:
             time.sleep(delay_seconds)
         last_result: ExternalTagLookupResult | None = None
         for source in lookup_sources:
+            if source in blocked_sources:
+                continue
             cached_result: ExternalTagLookupResult | None = None
             if session is not None:
                 cached_row = (
@@ -1748,6 +1819,7 @@ def lookup_external_tag_categories(
             if remaining_request_budget <= 0:
                 summary.request_budget_exhausted = True
                 break
+            cache_result_allowed = True
             try:
                 result, request_count = _lookup_one_external_source(
                     source,
@@ -1765,6 +1837,10 @@ def lookup_external_tag_categories(
                 summary.source_request_counts[source] = summary.source_request_counts.get(source, 0) + request_count
                 summary.provider_blocked = True
                 summary.provider_block_reason = str(exc)
+                if source not in blocked_sources:
+                    blocked_sources.add(source)
+                    summary.provider_blocked_sources.append(source)
+                cache_result_allowed = False
                 result = ExternalTagLookupResult(
                     raw_tag=tag_input.raw_tag,
                     normalized_tag=tag_input.normalized_tag,
@@ -1824,7 +1900,7 @@ def lookup_external_tag_categories(
                 summary.request_budget_exhausted = True
             result = _with_default_cache_lifecycle(result)
             last_result = result
-            if session is not None and cache_writes_enabled:
+            if session is not None and cache_writes_enabled and cache_result_allowed:
                 _upsert_lookup_cache_result(session, result)
                 summary.cache_write_count += 1
                 summary.source_cache_write_counts[source] = summary.source_cache_write_counts.get(source, 0) + 1
@@ -2111,26 +2187,33 @@ def classify_pixiv_tag(
     if tag_match:
         namespace = _tag_namespace(tag_match.category)
         is_entity_namespace = namespace in ENTITY_NAMESPACES
-        return PixivCandidateRow(
-            **base,
-            raw_tag=raw_tag,
-            normalized_tag=normalized,
-            candidate_kind="entity_candidate" if is_entity_namespace else "tag_candidate",
-            candidate_namespace=namespace,
-            confidence=0.78 if is_entity_namespace else 0.7,
-            reason=tag_match.match_kind,
-            lookup_source="local_db_read_only",
-            lookup_key=key,
-            lookup_category=tag_match.category,
-            provenance="existing_tag_category",
-            cache_status="not_applicable",
-            future_entity_candidate_eligible=bool(
-                record.eligible_for_future_entity_candidate and is_entity_namespace
-            ),
-            future_tag_suggestion_eligible=not is_entity_namespace,
-            requires_manual_review=is_entity_namespace,
-            db_write_allowed=False,
-        )
+        if is_entity_namespace and not tag_match.trusted_for_entity_namespace:
+            tag_match = None
+        else:
+            return PixivCandidateRow(
+                **base,
+                raw_tag=raw_tag,
+                normalized_tag=normalized,
+                candidate_kind="entity_candidate" if is_entity_namespace else "tag_candidate",
+                candidate_namespace=namespace,
+                confidence=0.78 if is_entity_namespace else 0.7,
+                reason=tag_match.match_kind,
+                lookup_source="local_db_read_only",
+                lookup_key=key,
+                lookup_category=tag_match.category,
+                provenance=(
+                    "existing_tag_category_trusted_local_source"
+                    if is_entity_namespace
+                    else "existing_tag_category"
+                ),
+                cache_status="not_applicable",
+                future_entity_candidate_eligible=bool(
+                    record.eligible_for_future_entity_candidate and is_entity_namespace
+                ),
+                future_tag_suggestion_eligible=not is_entity_namespace,
+                requires_manual_review=is_entity_namespace,
+                db_write_allowed=False,
+            )
 
     if _is_original_marker(key, normalized):
         return PixivCandidateRow(
@@ -2493,6 +2576,17 @@ def validate_private_output_paths_before_effects(output_dir: Path, *, private_pa
     output_containment_summary(output_dir, private_paths=private_paths)
 
 
+def validate_all_output_paths_before_effects(
+    output_dir: Path,
+    *,
+    private_paths: Sequence[Path],
+    report_json: Path,
+    report_md: Path,
+) -> None:
+    validate_public_report_paths_before_effects(report_json=report_json, report_md=report_md)
+    validate_private_output_paths_before_effects(output_dir, private_paths=private_paths)
+
+
 def current_run_raw_scope_summary(raw_dir: Path, accepted_raw_files: Sequence[str | Path]) -> dict[str, Any]:
     root = resolve_repo_path(raw_dir)
     accepted = {resolve_repo_path(path) for path in accepted_raw_files if path}
@@ -2679,6 +2773,7 @@ def coverage_target_summary(
     lookup_error_count = int(lookup_summary.get("lookup_error_count") or 0)
     source_lookup_error_counts = dict(lookup_summary.get("source_lookup_error_counts") or {})
     provider_blocked = bool(lookup_summary.get("provider_blocked"))
+    provider_blocked_sources = set(lookup_summary.get("provider_blocked_sources") or [])
     request_budget_exhausted = bool(lookup_summary.get("request_budget_exhausted"))
     provider_limited = bool(
         provider_blocked or request_budget_exhausted or lookup_error_count > 0 or source_lookup_error_counts
@@ -2687,6 +2782,8 @@ def coverage_target_summary(
     for source in (DANBOORU_TAGS_SOURCE, DANBOORU_ALIAS_SOURCE, SAFEBOORU_TAGS_SOURCE):
         if source not in attempted:
             lookup_source_statuses[source] = "source_not_attempted"
+        elif source in provider_blocked_sources:
+            lookup_source_statuses[source] = "source_attempted_but_blocked"
         elif source_lookup_error_counts.get(source):
             lookup_source_statuses[source] = "source_attempted_but_errored"
         elif provider_blocked:
@@ -3345,7 +3442,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     report_json = resolve_repo_path(args.report_json)
     report_md = resolve_repo_path(args.report_md)
-    validate_public_report_paths_before_effects(report_json=report_json, report_md=report_md)
 
     raw_dir = resolve_repo_path(args.raw_dir)
     details_json = resolve_repo_path(args.details_json)
@@ -3380,7 +3476,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         manual_review_guide,
         raw_dir,
     ]
-    validate_private_output_paths_before_effects(output_dir, private_paths=private_paths)
+    # Hard pre-side-effect gate: keep this before directory creation, sample selection,
+    # gallery-dl/network, DB migration, and cache writes.
+    validate_all_output_paths_before_effects(
+        output_dir,
+        private_paths=private_paths,
+        report_json=report_json,
+        report_md=report_md,
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     enforce_sample_size(args.sample_size)

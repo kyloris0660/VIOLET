@@ -27,6 +27,7 @@ from app.enums import (  # noqa: E402
     EntityMetadataSourceEnum,
     EntityStatusEnum,
     EntityTypeEnum,
+    FileTypeEnum,
     TagCategoryEnum,
 )
 from app.models import (  # noqa: E402
@@ -35,8 +36,10 @@ from app.models import (  # noqa: E402
     EntityEvidence,
     EntityExternalIdentity,
     ExternalTagCategoryLookupCache,
+    Media,
     MediaEntityCandidate,
     Tag,
+    blombooru_media_tags,
 )
 from scripts import run_phase44p2r_f3_pixiv_metadata_normalization_pilot as pilot  # noqa: E402
 
@@ -92,6 +95,55 @@ def _record(**overrides):
     }
     values.update(overrides)
     return pilot.f2.PixivGalleryDlAdapterRecord(**values)
+
+
+def _attach_tag_to_media(db, tag: Tag, *, source: str, is_suggestion: bool = False) -> Media:
+    media = Media(
+        filename=f"media-{tag.id or tag.name}.jpg",
+        path=f"/tmp/violet-test-media-{tag.id or tag.name}.jpg",
+        hash=f"hash-{tag.id or tag.name}",
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.execute(
+        blombooru_media_tags.insert().values(
+            media_id=media.id,
+            tag_id=tag.id,
+            source=source,
+            confidence=0.95,
+            is_locked=True,
+            is_suggestion=is_suggestion,
+        )
+    )
+    db.flush()
+    return media
+
+
+def _prior_candidate(work_id: str, page_index: int, media_id: int) -> pilot.f1.LocalPriorCandidate:
+    return pilot.f1.LocalPriorCandidate(
+        media_id=media_id,
+        content_class="anime",
+        work_id=work_id,
+        page_index=page_index,
+        source_fields=("filename_prior",),
+        basenames_private=(f"{work_id}_p{page_index}.jpg",),
+    )
+
+
+def _diverse_prior_index() -> pilot.f1.LocalPriorIndex:
+    return pilot.f1.LocalPriorIndex(
+        by_work_page={
+            ("100000001", 0): [_prior_candidate("100000001", 0, 1)],
+            ("100000002", 1): [_prior_candidate("100000002", 1, 2)],
+            ("100000003", 0): [_prior_candidate("100000003", 0, 3)],
+            ("100000003", 1): [_prior_candidate("100000003", 1, 4)],
+        },
+        total_media_inspected=4,
+        total_prior_media=4,
+        total_prior_keys=4,
+        content_class_distribution={"anime": 4},
+    )
 
 
 def test_raw_pixiv_tags_and_unicode_are_preserved():
@@ -169,7 +221,10 @@ def test_existing_entity_and_alias_match_are_read_only_entity_candidates(db):
 
 def test_existing_tag_category_classifies_without_entity_creation(db):
     db.add(Tag(name="1girl", category=TagCategoryEnum.general))
-    db.add(Tag(name="sample_character", category=TagCategoryEnum.character))
+    character_tag = Tag(name="sample_character", category=TagCategoryEnum.character)
+    db.add(character_tag)
+    db.flush()
+    _attach_tag_to_media(db, character_tag, source=EntityMetadataSourceEnum.manual.value)
     db.commit()
     index = pilot.build_local_classification_index(db)
     record = _record(tags=("1girl", "sample_character"), artist_name=None, artist_id=None)
@@ -183,6 +238,36 @@ def test_existing_tag_category_classifies_without_entity_creation(db):
     assert character.candidate_kind == "entity_candidate"
     assert character.candidate_namespace == "character"
     assert character.existing_entity_match is False
+
+
+def test_ai_generated_local_tag_category_does_not_promote_entity_candidate(db):
+    ai_tag = Tag(name="Blue Archive", category=TagCategoryEnum.copyright)
+    db.add(ai_tag)
+    db.flush()
+    _attach_tag_to_media(db, ai_tag, source="wd_tagger", is_suggestion=True)
+    db.commit()
+    index = pilot.build_local_classification_index(db)
+    record = _record(tags=("Blue Archive",), artist_name=None, artist_id=None)
+
+    _normalized, rows = pilot.normalize_metadata_candidates([record], index)
+
+    assert index.total_untrusted_entity_namespace_tag_categories_seen == 1
+    assert not any(row.lookup_source == "local_db_read_only" for row in rows)
+    assert rows[0].candidate_kind == "ambiguous_proper_noun_candidate"
+    assert rows[0].candidate_namespace == "ambiguous"
+
+
+def test_unknown_provenance_local_tag_category_does_not_promote_entity_candidate(db):
+    db.add(Tag(name="Unknown Work", category=TagCategoryEnum.copyright))
+    db.commit()
+    index = pilot.build_local_classification_index(db)
+    record = _record(tags=("Unknown Work",), artist_name=None, artist_id=None)
+
+    _normalized, rows = pilot.normalize_metadata_candidates([record], index)
+
+    assert index.total_untrusted_entity_namespace_tag_categories_seen == 1
+    assert not any(row.candidate_kind == "entity_candidate" for row in rows)
+    assert rows[0].candidate_namespace == "ambiguous"
 
 
 def test_fallback_classifies_ambiguous_general_sensitive_and_unknown():
@@ -207,6 +292,30 @@ def test_sample_and_record_caps_fail_closed():
         pilot.enforce_record_count(201, 200)
     with pytest.raises(pilot.SampleGateError, match="sample_or_record_cap_exceeded"):
         pilot.enforce_record_count(0, 201)
+
+
+def test_sample_seed_selection_respects_requested_capacity():
+    prior_index = _diverse_prior_index()
+
+    public_one, selected_one = pilot.select_local_pixiv_prior_samples(prior_index, sample_size=1)
+    public_two, selected_two = pilot.select_local_pixiv_prior_samples(prior_index, sample_size=2)
+
+    assert len(selected_one) == 1
+    assert public_one["selected_count"] == 1
+    assert public_one["requested_sample_size_respected"] is True
+    assert len(selected_two) == 2
+    assert public_two["selected_count"] == 2
+    assert public_two["requested_sample_size_respected"] is True
+
+
+def test_default_sample_seed_selection_preserves_diversity_when_capacity_allows():
+    public, selected = pilot.select_local_pixiv_prior_samples(_diverse_prior_index(), sample_size=3)
+
+    assert len(selected) == 3
+    assert public["requested_sample_size_respected"] is True
+    assert any(sample.has_p0_page and not sample.has_non_p0_page for sample in selected)
+    assert any(sample.has_non_p0_page for sample in selected)
+    assert any(len(sample.page_indexes) > 1 for sample in selected)
 
 
 def test_record_cap_blocks_before_accepted_raw_write():
@@ -1521,6 +1630,55 @@ def test_provider_blocked_requests_are_counted(monkeypatch):
     assert summary.request_count == 1
     assert summary.source_request_counts == {"blocked_source": 1}
     assert lookup_results["blocked_tag"].status == "lookup_error"
+
+
+def test_provider_block_stops_further_same_provider_requests(monkeypatch, db):
+    calls = []
+
+    def fake_lookup(source, tag_input, *, timeout_seconds, fetcher=None, max_requests=None, delay_seconds=0):
+        calls.append((source, tag_input.canonical_lookup_key))
+        if source == "blocked_source":
+            raise pilot.ExternalLookupProviderBlocked("blocked_for_test")
+        return (
+            pilot.ExternalTagLookupResult(
+                raw_tag=tag_input.raw_tag,
+                normalized_tag=tag_input.normalized_tag,
+                canonical_lookup_key=tag_input.canonical_lookup_key,
+                lookup_source=source,
+                lookup_source_version=source,
+                source_tag_id=None,
+                source_tag_name=None,
+                source_category_raw=None,
+                mapped_candidate_namespace="unknown",
+                confidence=0.0,
+                provenance_url_or_key=f"{source}:{tag_input.canonical_lookup_key}",
+                status="not_found",
+                cache_status="miss",
+            ),
+            1,
+        )
+
+    monkeypatch.setattr(pilot, "_lookup_one_external_source", fake_lookup)
+    record = _record(tags=("blocked_one", "blocked_two"), artist_name=None, artist_id=None)
+    _lookup_results, summary = pilot.lookup_external_tag_categories(
+        [record],
+        session=db,
+        lookup_limit=10,
+        delay_seconds=0,
+        timeout_seconds=1,
+        cache_writes_enabled=True,
+        lookup_sources=("blocked_source", "safe_source"),
+    )
+
+    assert calls == [
+        ("blocked_source", "blocked_one"),
+        ("safe_source", "blocked_one"),
+        ("safe_source", "blocked_two"),
+    ]
+    assert summary.provider_blocked is True
+    assert summary.provider_blocked_sources == ["blocked_source"]
+    assert summary.source_request_counts == {"blocked_source": 1, "safe_source": 2}
+    assert db.query(ExternalTagCategoryLookupCache).filter_by(lookup_source="blocked_source").count() == 0
 
 
 def test_failed_multi_request_lookup_counts_all_requests_and_stops_on_budget(monkeypatch):

@@ -27,6 +27,7 @@
     "not_found_count": 115,
     "provider_block_reason": null,
     "provider_blocked": false,
+    "provider_blocked_sources": [],
     "request_budget_exhausted": false,
     "request_count": 0,
     "resolved_namespace_counts": {
@@ -171,10 +172,14 @@
       "cache_hit_applies_manual_override": true,
       "dry_run_skip_network_side_effect_free": true,
       "failed_multi_request_lookup_counted_against_budget": true,
+      "local_entity_tag_category_requires_trusted_provenance": true,
       "manual_override_preserved_on_refresh": true,
       "private_output_paths_validated_before_side_effects": true,
+      "provider_block_stops_further_same_source_requests": true,
       "public_report_paths_validated_before_side_effects": true,
-      "retry_after_cooldown_respected": true
+      "requested_sample_size_respected_before_seed_selection": true,
+      "retry_after_cooldown_respected": true,
+      "sample_seed_selection_respects_requested_capacity": true
     },
     "classification_middleware_completed": false,
     "coverage_target_reached": false,
@@ -642,6 +647,8 @@
     "external_identities_match_raw_pixiv_tags": false,
     "external_identity_lookup_requires_provider_namespace": true,
     "local_entities_indexed": 0,
+    "local_entity_tag_category_requires_trusted_provenance": true,
+    "local_entity_tag_trusted_provenance_counts_recomputed_in_reported_run": false,
     "local_entity_aliases_indexed": 0,
     "local_external_identities_indexed": 0,
     "local_provider_scoped_external_identities_indexed": 0,
@@ -811,6 +818,7 @@
     "prior_total_media": 555,
     "prior_total_media_inspected": 1989,
     "requested_sample_size": 30,
+    "requested_sample_size_respected": true,
     "sample_gate_status": "passed",
     "selected_count": 30,
     "selection_strategy": "anime_only_cover_p0_non_p0_multi_page_then_fill_by_work_id"
