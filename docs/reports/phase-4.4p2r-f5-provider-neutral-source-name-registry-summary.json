@@ -467,6 +467,7 @@
     "no_mapping_invented": true,
     "template_private_artifact": "curated-name-mapping-template.csv"
   },
+  "current_head_self_audit_sha": "c0f3aa467ccffcbecb33216efcf2769f5368d48c",
   "db_identity": {
     "actual_db_name": "blombooru",
     "configured_db_host": "localhost",
@@ -707,6 +708,15 @@
     "success": true,
     "updated": {}
   },
+  "evidence_consistency": {
+    "cached_model_outputs_reused": true,
+    "current_head_self_audit_sha": "c0f3aa467ccffcbecb33216efcf2769f5368d48c",
+    "gallery_dl_external_provider_requests": 64,
+    "image_uploads": 0,
+    "large_llm_validation_rerun_performed_for_evidence_pack": false,
+    "public_summary_external_provider_requests_corrected": true,
+    "validation_head_sha": "cbaa3744ad17baaaa02791e5d766f225ea10bab7"
+  },
   "expanded_real_data_validation": {
     "fixture_coverage_satisfies_real_targets": false,
     "real_pixiv": {
@@ -816,7 +826,11 @@
     "source_searchable_name_assertion_goal_met": true
   },
   "input_summary": {
-    "external_provider_requests": 0,
+    "external_provider_request_sources": {
+      "image_uploads": 0,
+      "real_pixiv_gallery_dl_metadata_enrichment": 64
+    },
+    "external_provider_requests": 64,
     "input_source": "built_in_public_safe_provider_shape_fixtures",
     "local_artifact_cleanup": {
       "bytes_removed": 297022,
@@ -1017,6 +1031,7 @@
     "next_route": "review_source_name_registry_then_design_bounded_entity_candidate_bridge"
   },
   "report_generation_head_sha": "cbaa3744ad17baaaa02791e5d766f225ea10bab7",
+  "report_update_base_head_sha": "c0f3aa467ccffcbecb33216efcf2769f5368d48c",
   "row_counts": {
     "alias_candidates_by_relation_type": {
       "parenthetical_character_of_work": 44,
@@ -1327,6 +1342,9 @@
     }
   },
   "title": "Provider-Neutral Source Metadata + Source Name / Alias Registry Foundation",
+  "validation_head_matches_current_pr_head": false,
+  "validation_head_relationship": "The clean apply-db/LLM validation run was generated at validation_head_sha. Current-head self-audit fixes are covered by focused tests and cached-artifact consistency checks; the final review pack records the exact current PR head after the report commit.",
+  "validation_head_sha": "cbaa3744ad17baaaa02791e5d766f225ea10bab7",
   "write_guard_result": {
     "allowed_tables": [
       "blombooru_source_metadata_evidence",
