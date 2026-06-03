@@ -303,6 +303,95 @@ def test_coverage_metric_excludes_not_applicable_no_person_signal():
     assert coverage["coverage"] == 1.0
 
 
+def test_real_pixiv_source_prior_only_is_not_metadata_rich():
+    source_prior = {
+        "provider": "pixiv",
+        "provider_record_key": "db-source-prior:pixiv:unit:p0:m1",
+        "media_id": 1,
+        "source_work_id": "100000001",
+        "source_page_index": 0,
+        "metadata_kind": "local_pixiv_source_prior",
+        "data_type_label": runner.DATA_TYPE_REAL,
+    }
+
+    assert runner.is_real_pixiv_metadata_rich_record(source_prior) is False
+
+
+def test_gallery_dl_pixiv_metadata_becomes_real_metadata_rich_record():
+    metadata = runner.f1.PixivGalleryDlMetadataRecord(
+        work_id="100000002",
+        page_index=0,
+        page_count=1,
+        title="Metadata Title",
+        artist_name="Metadata Artist",
+        artist_id="artist-1",
+        tags=("Hero Name(Work Name)", "blue hair"),
+        canonical_url="https://www.pixiv.net/artworks/100000002",
+        metadata_richness="rich_structured_metadata",
+        record_shape="gallery_dl_url_media_event",
+    )
+    row = runner.pixiv_gallery_dl_record_to_source_record(
+        metadata,
+        source_prior_lookup={
+            ("100000002", 0): {
+                "media_id": 42,
+                "source_work_id": "100000002",
+                "source_page_index": 0,
+            }
+        },
+        source_index=1,
+        stdout_path=ROOT / ".local_manifests" / runner.PHASE_SLUG / "unit-gallery.jsonl",
+    )
+
+    assert row is not None
+    assert runner.is_real_pixiv_metadata_rich_record(row) is True
+    assert row["metadata_kind"] == "gallery_dl_real_pixiv_metadata"
+    assert row["provenance"]["gallery_dl_metadata_only"] is True
+    assert row["provenance"]["no_download"] is True
+    assert row["_source_title_only_fields"] == ["title", "pixiv_title"]
+
+
+def test_pixiv_source_title_candidate_does_not_auto_create_work_title_identity():
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:title-only",
+            "title": "Only Source Title",
+            "data_type_label": runner.DATA_TYPE_REAL,
+            "_disable_name_extraction_fields": ["title", "pixiv_title"],
+            "_source_title_only_fields": ["title", "pixiv_title"],
+        }
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    candidates = runner.build_searchable_name_candidates(bundle, records, max_candidates=10)
+
+    assert not any(row.source_field == "pixiv_title" and row.name_role == "work_title" for row in bundle.name_observations)
+    assert bundle.metadata_records[0].applicability_status == "not_applicable_no_person_signal"
+    title_candidate = next(row for row in candidates if row.source_kind == "source_title_candidate")
+    assert title_candidate.raw_input == "Only Source Title"
+    assert title_candidate.role_hint == "source_title"
+    assert title_candidate.context["title_is_not_deterministic_work_title_identity"] is True
+
+
+def test_boolean_and_non_string_values_are_not_sent_to_llm_candidates():
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:bad-values",
+            "title": True,
+            "artist_name": False,
+            "tags": [True, {"name": False}, 123, "Hero Name(Work Name)"],
+            "data_type_label": runner.DATA_TYPE_REAL,
+        }
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    candidates = runner.build_searchable_name_candidates(bundle, records, max_candidates=10)
+
+    assert {row.raw_tag for row in bundle.tag_observations} == {"Hero Name(Work Name)"}
+    assert all(row.raw_input not in {"True", "False", "123"} for row in candidates)
+    assert any(row.raw_input == "Hero Name(Work Name)" for row in candidates)
+
+
 def test_raw_saucenao_signal_denominator_is_not_derived_from_extracted_names():
     bundle = service.build_source_registry_bundle([
         {
@@ -321,6 +410,24 @@ def test_raw_saucenao_signal_denominator_is_not_derived_from_extracted_names():
     assert coverage["role_covered_counts"] == {}
     assert coverage["coverage"] == 0.0
     assert bundle.metadata_records[0].applicability_status == "applicable_name_signal_uncovered"
+
+
+def test_raw_signal_denominator_ignores_uncanonicalizable_creator_value():
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "saucenao",
+            "provider_record_key": "sauce:empty-creator-key",
+            "creator": "!!!",
+            "work_or_copyright": "Indexable Work",
+        }
+    ])
+
+    coverage = service.provider_name_coverage(bundle)["providers"]["saucenao"]
+    assert coverage["applicable_name_signal_count"] == 1
+    assert coverage["role_applicable_counts"] == {"work_title": 1}
+    assert coverage["role_covered_counts"] == {"work_title": 1}
+    assert coverage["coverage"] == 1.0
+    assert not bundle.metadata_records[0].raw_name_signal_flags["has_raw_creator_signal"]
 
 
 def test_raw_pixiv_parenthetical_signal_denominator_survives_disabled_extraction():
@@ -817,6 +924,41 @@ def test_saucenao_work_or_copyright_assertion_role():
     assert validated.searchable_status == "searchable_active"
 
 
+def test_saucenao_provider_field_assertion_is_provider_backed_without_llm(monkeypatch):
+    records = [
+        {
+            "provider": "saucenao",
+            "provider_record_key": "saucenao:test:provider-backed",
+            "work_or_copyright": "Sauce Work",
+            "data_type_label": runner.DATA_TYPE_ARTIFACT,
+        }
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    args = runner.build_arg_parser().parse_args(["--use-llm-api"])
+
+    def fail_provider():
+        raise AssertionError("provider field assertion should not call LLM when no LLM candidates remain")
+
+    monkeypatch.setattr(runner, "source_assertion_provider_from_env", fail_provider)
+    candidates, assertions, summary, inputs, outputs, review_rows = runner.classify_source_searchable_name_assertions(
+        args,
+        bundle,
+        records,
+    )
+
+    assert len(candidates) == 1
+    assert len(assertions) == 1
+    assert assertions[0].provider == "saucenao"
+    assert assertions[0].asserted_role == "work_title"
+    assert assertions[0].status == "searchable_active"
+    assert assertions[0].model_name == "provider_field_saucenao"
+    assert summary["provider_field_assertions"] == 1
+    assert summary["api_call_attempted"] is False
+    assert inputs == []
+    assert outputs == []
+    assert review_rows[0]["status"] == "searchable_active"
+
+
 def test_model_searchable_active_writes_only_assertion_table(db):
     bundle = service.build_source_registry_bundle([
         {
@@ -887,6 +1029,20 @@ def test_search_validation_from_assertions():
     summary = runner.assertion_search_validation_summary(rows)
     assert summary["positive_matched_count"] >= 1
     assert summary["false_positive_suspected_count"] == 0
+
+
+def test_zero_unresolved_rate_satisfies_real_pixiv_assertion_target():
+    candidates = [_candidate(f"Hero {index}(Work Name)") for index in range(runner.REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET)]
+    assertions = []
+    for candidate in candidates:
+        validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+        assertions.append(runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model"))
+
+    summary = runner.source_searchable_assertion_coverage_summary(candidates, assertions)
+
+    assert summary["real_pixiv_high_impact"]["coverage"] == 1.0
+    assert summary["real_pixiv_high_impact"]["unresolved_rate"] == 0.0
+    assert summary["real_pixiv_searchable_assertion_target_met"] is True
 
 
 def test_no_db_llm_flag_does_not_call_api_or_write_db():

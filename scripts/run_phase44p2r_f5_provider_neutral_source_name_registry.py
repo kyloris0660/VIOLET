@@ -60,6 +60,7 @@ from app.services.source_metadata_registry_service import (  # noqa: E402
     validate_search_queries,
 )
 from scripts import run_phase44p2r_f1_gallery_dl_json_import_pilot as f1  # noqa: E402
+from scripts import run_phase44p2r_f2_gallery_dl_external_adapter_pilot as f2  # noqa: E402
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -74,8 +75,10 @@ DATA_TYPE_LABELS = {DATA_TYPE_REAL, DATA_TYPE_ARTIFACT, DATA_TYPE_FIXTURE}
 TARGET_RECORD_COUNT_DEFAULT = 100
 MIN_RECORD_COUNT = 75
 REAL_PIXIV_SOURCE_PRIOR_MIN = 50
+REAL_PIXIV_METADATA_RICH_MIN = 30
 REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET = 20
 SAUCENAO_ARTIFACT_RECORD_TARGET = 10
+REAL_PIXIV_GALLERY_DL_ATTEMPT_LIMIT_DEFAULT = 45
 MAX_RECORD_COUNT = 150
 SOURCE_ASSERTION_PROMPT_VERSION = "phase44p2r_f5_source_searchable_name_assertion_v1"
 SOURCE_ASSERTION_SCHEMA_VERSION = "source_searchable_name_assertion_v1"
@@ -88,6 +91,7 @@ ASSERTION_ROLES = frozenset(
         "artist",
         "creator",
         "work_title",
+        "source_title",
         "general_descriptor",
         "popularity_marker",
         "unknown",
@@ -100,6 +104,7 @@ ASSERTION_REASON_CODES = frozenset(
         "parenthetical_character_work",
         "known_character_name",
         "known_work_title",
+        "source_title_context",
         "known_artist_creator",
         "popularity_marker",
         "descriptive_tag",
@@ -127,6 +132,9 @@ PRIVATE_MODEL_CLASSIFICATION_INPUTS_JSONL = PHASE_OUTPUT_DIR / "model-classifica
 PRIVATE_MODEL_CLASSIFICATION_OUTPUTS_JSONL = PHASE_OUTPUT_DIR / "model-classification-outputs.jsonl"
 PRIVATE_MODEL_CLASSIFICATION_REVIEW_CSV = PHASE_OUTPUT_DIR / "model-classification-review.csv"
 PRIVATE_REAL_PIXIV_SEARCHABLE_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "real-pixiv-searchable-candidates.csv"
+PRIVATE_REAL_PIXIV_CANDIDATE_INPUTS_CSV = PHASE_OUTPUT_DIR / "real-pixiv-candidate-inputs.csv"
+PRIVATE_REAL_PIXIV_METADATA_RICH_RECORDS_CSV = PHASE_OUTPUT_DIR / "real-pixiv-metadata-rich-records.csv"
+PRIVATE_GALLERY_DL_REAL_PIXIV_METADATA_DIR = PHASE_OUTPUT_DIR / "gallery-dl-real-pixiv-metadata"
 PRIVATE_PROVIDER_NAME_COVERAGE_CSV = PHASE_OUTPUT_DIR / "provider-name-coverage.csv"
 PRIVATE_RAW_APPLICABLE_NAME_SIGNALS_CSV = PHASE_OUTPUT_DIR / "raw-applicable-name-signals.csv"
 PRIVATE_SEARCH_VALIDATION_CSV = PHASE_OUTPUT_DIR / "name-search-index-validation.csv"
@@ -475,6 +483,255 @@ CANONICAL_LOCAL_ROOT = Path.home() / "Documents" / "AnimeLocalBooru"
 CANONICAL_LOCAL_MANIFESTS = CANONICAL_LOCAL_ROOT / ".local_manifests"
 
 
+def is_real_pixiv_metadata_rich_record(row: Mapping[str, Any]) -> bool:
+    provider = canonical_source_key(row.get("provider") or "")
+    data_type = normalize_source_text(row.get("data_type_label"))
+    if provider != "pixiv" or data_type != DATA_TYPE_REAL:
+        return False
+    tags = _split_tag_text(row.get("tags"))
+    raw_metadata = row.get("raw_metadata_json") if isinstance(row.get("raw_metadata_json"), Mapping) else {}
+    provenance = row.get("provenance") if isinstance(row.get("provenance"), Mapping) else {}
+    return bool(
+        tags
+        or normalize_source_text(row.get("title"))
+        or normalize_source_text(row.get("artist_name") or row.get("artist"))
+        or row.get("page_count") is not None
+        or raw_metadata.get("metadata_richness")
+        or provenance.get("raw_provider_payload_available")
+        or provenance.get("gallery_dl_metadata_only")
+    )
+
+
+def pixiv_gallery_dl_record_to_source_record(
+    record: f1.PixivGalleryDlMetadataRecord,
+    *,
+    source_prior_lookup: Mapping[tuple[str, int], Mapping[str, Any]],
+    source_index: int,
+    stdout_path: Path,
+) -> dict[str, Any] | None:
+    work_id = normalize_source_text(record.work_id)
+    if not work_id:
+        return None
+    page_index = int(record.page_index or 0)
+    prior = source_prior_lookup.get((work_id, page_index)) or source_prior_lookup.get((work_id, 0)) or {}
+    tags = [tag for tag in [*record.tags, *record.translated_tags] if isinstance(tag, str) and normalize_source_text(tag)]
+    row = {
+        "provider": "pixiv",
+        "provider_record_key": f"gallery-dl-real-pixiv:metadata:{source_index}:p{page_index}",
+        "media_id": _safe_int(prior.get("media_id"), default=0) or None,
+        "source_work_id": work_id,
+        "source_page_index": page_index,
+        "source_url": record.canonical_url,
+        "title": record.title,
+        "artist_name": record.artist_name,
+        "artist_id": record.artist_id,
+        "tags": tags,
+        "page_count": record.page_count,
+        "metadata_kind": "gallery_dl_real_pixiv_metadata",
+        "data_type_label": DATA_TYPE_REAL,
+        "_disable_name_extraction_fields": ["title", "pixiv_title"],
+        "_source_title_only_fields": ["title", "pixiv_title"],
+        "raw_metadata_json": {
+            "source_prior_kind": "pixiv_work_id_page_index",
+            "metadata_acquisition_route": "bounded_gallery_dl_dump_json_no_download",
+            "metadata_richness": record.metadata_richness,
+            "record_shape": record.record_shape,
+            "page_count_present": record.page_count is not None,
+            "title_present": bool(record.title),
+            "artist_name_present": bool(record.artist_name),
+            "artist_id_present": record.artist_id is not None,
+            "tag_count": len(tags),
+            "canonical_url_present": bool(record.canonical_url),
+            "raw_provider_payload_available_private_artifact": True,
+            "private_stdout_artifact": _rel(resolve_repo_path(stdout_path)),
+            "exact_pixiv_id_publicly_redacted": True,
+            "local_path_included": False,
+            "filename_included": False,
+        },
+        "provenance": {
+            "source": "bounded_gallery_dl_metadata_regeneration",
+            "read_only": True,
+            "external_provider_request_in_this_run": True,
+            "gallery_dl_metadata_only": True,
+            "raw_provider_payload_available": True,
+            "no_download": True,
+            "image_upload": False,
+            "local_path_included": False,
+            "filename_included": False,
+        },
+    }
+    return row if is_real_pixiv_metadata_rich_record(row) else None
+
+
+def enrich_real_pixiv_source_priors_with_gallery_dl(
+    source_prior_records: Sequence[Mapping[str, Any]],
+    *,
+    target_count: int,
+    attempt_limit: int,
+    raw_output_dir: Path,
+    gallery_dl_command: str | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    raw_output_dir = resolve_repo_path(raw_output_dir)
+    require_under_phase_output(raw_output_dir)
+    summary: dict[str, Any] = {
+        "attempted": False,
+        "metadata_acquisition_route": "bounded_gallery_dl_dump_json_no_download",
+        "source_prior_input_count": len(source_prior_records),
+        "source_prior_only_records_count": len(source_prior_records),
+        "metadata_rich_target": int(target_count),
+        "gallery_dl_attempt_limit": int(attempt_limit),
+        "gallery_dl_attempted_count": 0,
+        "gallery_dl_success_count": 0,
+        "gallery_dl_failure_count": 0,
+        "cached_private_artifact_hit_count": 0,
+        "metadata_rich_record_count": 0,
+        "field_presence_counts": {},
+        "command_status_counts": {},
+        "gallery_dl_available": False,
+        "gallery_dl_mode": None,
+        "gallery_dl_version_present": False,
+        "external_provider_requests": 0,
+        "image_downloads": 0,
+        "image_uploads": 0,
+        "raw_payload_publicly_redacted": True,
+    }
+    if target_count <= 0 or attempt_limit <= 0 or not source_prior_records:
+        return [], summary
+
+    try:
+        entrypoint = f2.probe_gallery_dl_entrypoint(
+            gallery_dl_command or None,
+            python_executable=sys.executable,
+        )
+    except f2.GalleryDlUnavailable as exc:
+        summary.update(
+            {
+                "attempted": True,
+                "gallery_dl_available": False,
+                "failure_reason": normalize_source_text(str(exc)) or type(exc).__name__,
+            }
+        )
+        return [], summary
+
+    summary.update(
+        {
+            "attempted": True,
+            "gallery_dl_available": True,
+            "gallery_dl_mode": entrypoint.mode,
+            "gallery_dl_version_present": bool(entrypoint.version),
+            "command_entrypoint_public_label": f2._public_command_label(entrypoint),
+        }
+    )
+    raw_output_dir.mkdir(parents=True, exist_ok=True)
+    source_prior_lookup: dict[tuple[str, int], Mapping[str, Any]] = {}
+    selected_work_ids: list[str] = []
+    seen_work_ids: set[str] = set()
+    for row in source_prior_records:
+        work_id = normalize_source_text(row.get("source_work_id") or row.get("work_id"))
+        if not work_id or work_id in seen_work_ids:
+            continue
+        page = _safe_int(row.get("source_page_index", row.get("page_index")), default=0)
+        source_prior_lookup[(work_id, page)] = row
+        selected_work_ids.append(work_id)
+        seen_work_ids.add(work_id)
+        if len(selected_work_ids) >= attempt_limit:
+            break
+
+    rows: list[dict[str, Any]] = []
+    seen_records: set[tuple[str, int]] = set()
+    status_counts: Counter[str] = Counter()
+    field_counts: Counter[str] = Counter()
+
+    for item_index, work_id in enumerate(selected_work_ids, start=1):
+        if len(rows) >= target_count:
+            break
+        stdout_path = raw_output_dir / f"metadata-{item_index:03d}.jsonl"
+        stderr_path = raw_output_dir / f"metadata-{item_index:03d}.stderr.txt"
+        if stdout_path.exists() and stdout_path.stat().st_size > 0:
+            summary["cached_private_artifact_hit_count"] += 1
+        else:
+            command = f2.build_metadata_command(entrypoint, work_id)
+            summary["gallery_dl_attempted_count"] += 1
+            summary["external_provider_requests"] += 1
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=90,
+                    shell=False,
+                    check=False,
+                )
+            except subprocess.SubprocessError as exc:
+                status_counts[type(exc).__name__] += 1
+                summary["gallery_dl_failure_count"] += 1
+                continue
+            stdout_path.write_text(completed.stdout or "", encoding="utf-8", newline="\n")
+            stderr_path.write_text(
+                f2.redact_text(completed.stderr or "", private_markers=[work_id]),
+                encoding="utf-8",
+                newline="\n",
+            )
+            if completed.returncode != 0:
+                status_counts[f"exit_{completed.returncode}"] += 1
+                summary["gallery_dl_failure_count"] += 1
+                continue
+        try:
+            parse_result = f1.parse_gallery_dl_json_inputs(stdout_path, skip_invalid=True)
+            normalized_records = f1.normalize_records(parse_result, adapter_version=entrypoint.version)
+        except Exception as exc:
+            status_counts[f"parse_{type(exc).__name__}"] += 1
+            summary["gallery_dl_failure_count"] += 1
+            continue
+        successful_for_item = False
+        for normalized in normalized_records:
+            source_row = pixiv_gallery_dl_record_to_source_record(
+                normalized,
+                source_prior_lookup=source_prior_lookup,
+                source_index=item_index,
+                stdout_path=stdout_path,
+            )
+            if source_row is None:
+                continue
+            key = (
+                normalize_source_text(source_row.get("source_work_id")),
+                _safe_int(source_row.get("source_page_index"), default=0),
+            )
+            if key in seen_records:
+                continue
+            seen_records.add(key)
+            rows.append(source_row)
+            successful_for_item = True
+            if source_row.get("title"):
+                field_counts["title"] += 1
+            if source_row.get("artist_name"):
+                field_counts["artist_name"] += 1
+            if _split_tag_text(source_row.get("tags")):
+                field_counts["tags"] += 1
+            if source_row.get("page_count") is not None:
+                field_counts["page_count"] += 1
+            if source_row.get("source_url"):
+                field_counts["source_url"] += 1
+            if len(rows) >= target_count:
+                break
+        if successful_for_item:
+            status_counts["success"] += 1
+            summary["gallery_dl_success_count"] += 1
+        else:
+            status_counts["no_metadata_rich_media_record"] += 1
+            summary["gallery_dl_failure_count"] += 1
+
+    summary["metadata_rich_record_count"] = len(rows)
+    summary["source_prior_only_records_count"] = max(0, len(source_prior_records) - len(rows))
+    summary["field_presence_counts"] = dict(sorted(field_counts.items()))
+    summary["command_status_counts"] = dict(sorted(status_counts.items()))
+    summary["metadata_rich_minimum_met"] = len(rows) >= REAL_PIXIV_METADATA_RICH_MIN
+    return rows, summary
+
+
 def scale_provider_records(
     records: Sequence[Mapping[str, Any]],
     args: argparse.Namespace,
@@ -508,13 +765,23 @@ def scale_provider_records(
             added_counts[source_bucket] += 1
         return added
 
-    real_pixiv_records: list[dict[str, Any]] = []
+    real_pixiv_source_prior_records: list[dict[str, Any]] = []
     real_pixiv_summary: dict[str, Any] = {"attempted": False, "record_count": 0}
+    real_pixiv_enriched_records: list[dict[str, Any]] = []
+    real_pixiv_enrichment_summary: dict[str, Any] = {"attempted": False, "metadata_rich_record_count": 0}
     if not args.no_db and not args.dry_run:
-        real_pixiv_records, real_pixiv_summary = load_real_pixiv_source_prior_records_from_db(
+        real_pixiv_source_prior_records, real_pixiv_summary = load_real_pixiv_source_prior_records_from_db(
             limit=max(int(args.real_pixiv_source_prior_min), REAL_PIXIV_SOURCE_PRIOR_MIN)
         )
-    add_many(real_pixiv_records, source_bucket="real_pixiv_source_prior_db")
+        if not args.disable_gallery_dl_metadata_enrichment:
+            real_pixiv_enriched_records, real_pixiv_enrichment_summary = enrich_real_pixiv_source_priors_with_gallery_dl(
+                real_pixiv_source_prior_records,
+                target_count=int(args.real_pixiv_metadata_rich_min),
+                attempt_limit=int(args.gallery_dl_metadata_attempt_limit),
+                raw_output_dir=resolve_repo_path(args.gallery_dl_metadata_raw_dir),
+                gallery_dl_command=args.gallery_dl_command or None,
+            )
+    add_many(real_pixiv_enriched_records, source_bucket="real_pixiv_gallery_dl_metadata_rich")
 
     pixiv_artifact_records, pixiv_artifact_summary = load_existing_pixiv_artifact_records(
         limit=max(REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET, 20)
@@ -544,14 +811,18 @@ def scale_provider_records(
         "added_source_bucket_counts": dict(sorted(added_counts.items())),
         "real_pixiv_source_prior_minimum": int(args.real_pixiv_source_prior_min),
         "real_pixiv_source_prior_summary": real_pixiv_summary,
+        "real_pixiv_metadata_rich_minimum": int(args.real_pixiv_metadata_rich_min),
+        "real_pixiv_metadata_enrichment_summary": real_pixiv_enrichment_summary,
         "existing_pixiv_artifact_summary": pixiv_artifact_summary,
         "existing_saucenao_artifact_record_count": added_counts.get("saucenao_existing_artifact_or_report", 0),
         "existing_saucenao_artifact_target": SAUCENAO_ARTIFACT_RECORD_TARGET,
         "fixture_or_mock_record_count": data_type_counts.get(DATA_TYPE_FIXTURE, 0),
         "meets_scale_minimum": len(final_records) >= MIN_RECORD_COUNT,
-        "meets_real_pixiv_source_prior_minimum": (
-            provider_data_type_counts.get(f"pixiv:{DATA_TYPE_REAL}", 0)
-            >= int(args.real_pixiv_source_prior_min)
+        "meets_real_pixiv_source_prior_minimum": real_pixiv_summary.get("record_count", 0)
+        >= int(args.real_pixiv_source_prior_min),
+        "meets_real_pixiv_metadata_rich_minimum": (
+            real_pixiv_enrichment_summary.get("metadata_rich_record_count", 0)
+            >= int(args.real_pixiv_metadata_rich_min)
         ),
     }
 
@@ -683,7 +954,7 @@ def load_existing_pixiv_artifact_records(*, limit: int) -> tuple[list[dict[str, 
                 "artist_id": user.get("id") if isinstance(user, Mapping) else None,
                 "tags": tags,
                 "metadata_kind": "gallery_dl_pixiv_metadata",
-                "data_type_label": DATA_TYPE_REAL,
+                "data_type_label": DATA_TYPE_ARTIFACT,
                 "raw_metadata_json": {
                     "artifact_source_kind": "canonical_gallery_dl_pixiv_smoke",
                     "raw_payload_publicly_redacted": True,
@@ -790,10 +1061,14 @@ def _split_tag_text(value: Any) -> list[str]:
                 text_value = item.get("name") or item.get("tag") or item.get("label") or item.get("value")
             else:
                 text_value = item
+            if not isinstance(text_value, str):
+                continue
             normalized = normalize_source_text(text_value)
             if normalized:
                 rows.append(normalized)
         return rows
+    if not isinstance(value, str):
+        return []
     text_value = normalize_source_text(value)
     if not text_value:
         return []
@@ -809,6 +1084,18 @@ def _safe_int(value: Any, *, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _as_source_label(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        return normalize_source_text(value.get("source")) or normalize_source_text(value.get("metadata_source")) or None
+    return normalize_source_text(value) or None
+
+
+def _candidate_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return normalize_source_text(value) or None
 
 
 def load_existing_saucenao_artifact_records(*, limit: int) -> list[dict[str, Any]]:
@@ -1031,6 +1318,8 @@ def build_searchable_name_candidates(
         source_name_observation_key: str | None = None,
         context: Mapping[str, Any] | None = None,
     ) -> None:
+        if not isinstance(raw_input, str):
+            return
         raw = normalize_source_text(raw_input)
         if not raw:
             return
@@ -1062,15 +1351,21 @@ def build_searchable_name_candidates(
             return
         record_key = provider_record_lookup_key(provider, provider_record_key)
         raw_record = raw_record_by_key.get(record_key, {})
+        artist_name = _candidate_text(raw_record.get("artist_name")) or _candidate_text(raw_record.get("artist"))
         candidate_context = {
-            "title": normalize_source_text(raw_record.get("title")) or None,
-            "artist_name_present": bool(normalize_source_text(raw_record.get("artist_name"))),
+            "title": _candidate_text(raw_record.get("title")),
+            "artist_name": artist_name,
+            "artist_name_present": bool(artist_name),
             "sibling_tags": tags_by_record.get(record_key, [])[:12],
             "parenthetical_outer": outer,
             "parenthetical_inner": inner,
             "source_field": source_field,
             "role_hint": role_hint,
             "data_type_label": data_type_label,
+            "source_url_present": bool(_candidate_text(raw_record.get("source_url")) or _candidate_text(raw_record.get("post_url"))),
+            "page_count_present": raw_record.get("page_count") is not None,
+            "metadata_kind": normalize_source_text(raw_record.get("metadata_kind")) or None,
+            "metadata_source": _as_source_label(raw_record.get("provenance")),
         }
         if context:
             candidate_context.update(dict(context))
@@ -1126,6 +1421,31 @@ def build_searchable_name_candidates(
             },
         )
 
+    for record_key, raw_record in raw_record_by_key.items():
+        provider = canonical_source_key(raw_record.get("provider") or "generic_provider")
+        if provider != "pixiv":
+            continue
+        metadata = metadata_by_key.get(record_key)
+        if metadata is None:
+            continue
+        title = _candidate_text(raw_record.get("title"))
+        if not title:
+            continue
+        add_candidate(
+            provider=provider,
+            provider_record_key=normalize_source_text(raw_record.get("provider_record_key")),
+            raw_input=title,
+            data_type_label=metadata.data_type_label,
+            source_kind="source_title_candidate",
+            source_field="pixiv_source_title",
+            role_hint="source_title",
+            context={
+                "title_candidate_requires_llm_evidence": True,
+                "title_is_not_deterministic_work_title_identity": True,
+                "tag_count": len(tags_by_record.get(record_key, [])),
+            },
+        )
+
     def priority(candidate: SearchableNameCandidate) -> tuple[int, int, str]:
         if candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_REAL and candidate.high_impact:
             bucket = 0
@@ -1143,7 +1463,46 @@ def build_searchable_name_candidates(
             bucket = 6
         return bucket, -candidate.occurrence_count, candidate.candidate_key
 
-    return sorted(candidates_by_key.values(), key=priority)[:limit]
+    sorted_candidates = sorted(candidates_by_key.values(), key=priority)
+    if len(sorted_candidates) <= limit:
+        return sorted_candidates
+
+    selected: dict[str, SearchableNameCandidate] = {}
+
+    def add_quota(predicate, quota: int) -> None:
+        if quota <= 0 or len(selected) >= limit:
+            return
+        added = 0
+        for candidate in sorted_candidates:
+            if len(selected) >= limit or added >= quota:
+                return
+            if candidate.candidate_key in selected or not predicate(candidate):
+                continue
+            selected[candidate.candidate_key] = candidate
+            added += 1
+
+    real_pixiv_quota = min(limit, max(REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET * 4, 80))
+    saucenao_quota = min(max(SAUCENAO_ARTIFACT_RECORD_TARGET * 3, 30), max(0, limit - real_pixiv_quota))
+    pixiv_artifact_quota = min(20, max(0, limit - real_pixiv_quota - saucenao_quota))
+
+    add_quota(
+        lambda candidate: candidate.provider == "pixiv"
+        and candidate.data_type_label == DATA_TYPE_REAL
+        and candidate.high_impact,
+        real_pixiv_quota,
+    )
+    add_quota(
+        lambda candidate: candidate.provider == "saucenao"
+        and candidate.data_type_label in {DATA_TYPE_REAL, DATA_TYPE_ARTIFACT}
+        and (candidate.role_hint in {"artist", "creator", "work_title"} or candidate.source_field == "saucenao_work_or_copyright"),
+        saucenao_quota,
+    )
+    add_quota(
+        lambda candidate: candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_ARTIFACT,
+        pixiv_artifact_quota,
+    )
+    add_quota(lambda _candidate: True, limit - len(selected))
+    return list(selected.values())[:limit]
 
 
 def _safe_url_host(url: str) -> str | None:
@@ -1163,7 +1522,8 @@ def source_assertion_provider_from_env() -> tuple[BaseLLMProvider | None, dict[s
         "provider": "fallback_only",
         "llm_provider_label": "fallback",
         "fallback_provider_type": fallback_provider_type,
-        "model_label": fallback_model if fallback_model else "unknown",
+        "model_label": "fallback_model_configured" if fallback_model else "unknown",
+        "model_name_redacted": bool(fallback_model),
         "fallback_enabled": fallback_enabled,
         "llm_access_configured": bool(fallback_key and fallback_model and fallback_url),
         "llm_access_stored": False,
@@ -1246,6 +1606,8 @@ def source_assertion_system_prompt() -> str:
         "Use searchable_active only when the tag/name is a plausible searchable source identity at source-search level. "
         "Use rejected for clearly descriptive/generic/not-name-like/popularity markers. Use unresolved or needs_review for ambiguity. "
         "For parenthetical character-work tags, extract the outer name and work_context when supported by the text. "
+        "For Pixiv artwork titles, use asserted_role=source_title unless surrounding tags/artist/source context strongly supports work_title; "
+        "never treat a title alone as Entity truth. "
         "Set should_not_be_entity_truth to true for every row. Do not include hidden reasoning; evidence_summary must be concise. "
         "The response must start with '[' and end with ']'."
     )
@@ -1539,6 +1901,34 @@ def unresolved_assertion_draft_from_model_failure(
     )
 
 
+def provider_field_assertion_output(candidate: SearchableNameCandidate) -> ValidatedModelAssertion | None:
+    if candidate.provider != "saucenao" or candidate.source_kind != "source_name_observation":
+        return None
+    role = candidate.role_hint
+    if candidate.source_field == "saucenao_work_or_copyright":
+        role = "work_title"
+    if role not in {"artist", "creator", "work_title"}:
+        return None
+    reason_code = "known_artist_creator" if role in {"artist", "creator"} else "known_work_title"
+    return ValidatedModelAssertion(
+        input=candidate.raw_input,
+        normalized_input=candidate.normalized_input,
+        is_name_like=True,
+        asserted_role=role,
+        extracted_name=candidate.normalized_input,
+        base_name=candidate.normalized_input,
+        work_context=None,
+        alias_candidates=(),
+        is_searchable_identity=True,
+        searchable_status="searchable_active",
+        confidence="high",
+        reason_code=reason_code,
+        evidence_summary="High-confidence SauceNAO provider field retained as a source-search assertion.",
+        requires_review=True,
+        should_not_be_entity_truth=True,
+    )
+
+
 def classify_source_searchable_name_assertions(
     args: argparse.Namespace,
     bundle: SourceRegistryBundle,
@@ -1572,6 +1962,8 @@ def classify_source_searchable_name_assertions(
         "chunk_retries": 0,
         "chunk_split_recoveries": 0,
         "single_candidate_failures_downgraded": 0,
+        "provider_field_assertions": 0,
+        "llm_candidate_count": 0,
         "invalid_output_reason_counts": {},
         "repair_strategies_attempted": [],
     }
@@ -1585,16 +1977,31 @@ def classify_source_searchable_name_assertions(
         base_summary["mode"] = "api_not_called_no_candidates"
         return candidates, [], base_summary, [], [], []
 
-    provider, provider_summary = source_assertion_provider_from_env()
-    base_summary.update(provider_summary)
-    if provider is None:
-        raise Phase44P2RF5Error("source_searchable_name_assertion_api_unavailable")
+    provider_field_rows: list[tuple[SearchableNameCandidate, ValidatedModelAssertion]] = []
+    llm_candidates: list[SearchableNameCandidate] = []
+    for candidate in candidates:
+        provider_output = provider_field_assertion_output(candidate)
+        if provider_output is None:
+            llm_candidates.append(candidate)
+        else:
+            provider_field_rows.append((candidate, provider_output))
+    base_summary["provider_field_assertions"] = len(provider_field_rows)
+    base_summary["llm_candidate_count"] = len(llm_candidates)
 
-    base_summary["api_call_attempted"] = True
-    base_summary["mode"] = "llm_api_structured_json_validation"
+    provider: BaseLLMProvider | None = None
+    if llm_candidates:
+        provider, provider_summary = source_assertion_provider_from_env()
+        base_summary.update(provider_summary)
+        if provider is None:
+            raise Phase44P2RF5Error("source_searchable_name_assertion_api_unavailable")
+
+        base_summary["api_call_attempted"] = True
+        base_summary["mode"] = "llm_api_structured_json_validation"
+    else:
+        base_summary["mode"] = "provider_field_assertions_only"
     chunks = [
-        candidates[index : index + int(args.source_assertion_chunk_size)]
-        for index in range(0, len(candidates), int(args.source_assertion_chunk_size))
+        llm_candidates[index : index + int(args.source_assertion_chunk_size)]
+        for index in range(0, len(llm_candidates), int(args.source_assertion_chunk_size))
     ]
     inputs_private: list[dict[str, Any]] = []
     outputs_private: list[dict[str, Any]] = []
@@ -1602,6 +2009,17 @@ def classify_source_searchable_name_assertions(
     drafts: list[SourceSearchableNameAssertionDraft] = []
     invalid_reasons: Counter[str] = Counter()
     repair_strategies: set[str] = set()
+
+    for candidate, validated in provider_field_rows:
+        draft = assertion_draft_from_model_output(
+            candidate,
+            validated,
+            model_name="provider_field_saucenao",
+        )
+        drafts.append(draft)
+        review_rows.append(_assertion_review_row(candidate, validated))
+        base_summary["outputs_valid"] += 1
+        base_summary[validated.searchable_status] += 1
 
     def record_failed_attempt(
         chunk: Sequence[SearchableNameCandidate],
@@ -1702,7 +2120,8 @@ def classify_source_searchable_name_assertions(
             await classify_chunk_with_repair(chunk, strategy="initial_chunk")
 
     try:
-        asyncio.run(classify_all())
+        if chunks:
+            asyncio.run(classify_all())
     except LLMProviderError as exc:
         raise Phase44P2RF5Error(f"source_searchable_name_assertion_api_failed:{type(exc).__name__}") from None
 
@@ -1805,6 +2224,7 @@ def source_searchable_assertion_coverage_summary(
             "not_name_like",
             "popularity_marker",
             "known_work_title",
+            "source_title_context",
             "known_artist_creator",
             "known_character_name",
             "parenthetical_character_work",
@@ -1859,10 +2279,12 @@ def source_searchable_assertion_coverage_summary(
     parenthetical_summary = group_summary(parenthetical)
     saucenao_summary = group_summary(saucenao)
     real_pixiv_supply_sufficient = len(real_pixiv_high) >= REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET
+    real_pixiv_unresolved_rate = real_summary["unresolved_rate"]
     real_pixiv_target_met = (
         real_summary["coverage"] is not None
         and real_summary["coverage"] >= 0.8
-        and (real_summary["unresolved_rate"] or 1.0) <= 0.2
+        and real_pixiv_unresolved_rate is not None
+        and real_pixiv_unresolved_rate <= 0.2
         and real_pixiv_supply_sufficient
     )
     parenthetical_target_met = (
@@ -2230,7 +2652,20 @@ def build_public_summary(
         provider="saucenao",
         data_type_labels=[DATA_TYPE_REAL, DATA_TYPE_ARTIFACT],
     )
-    real_pixiv_sample_min_met = pixiv_real["record_count"] >= REAL_PIXIV_SOURCE_PRIOR_MIN
+    scale_up_summary = dict(input_summary.get("scale_up") or {})
+    pixiv_metadata_flow = dict(scale_up_summary.get("real_pixiv_metadata_enrichment_summary") or {})
+    real_pixiv_metadata_rich_count = int(
+        pixiv_metadata_flow.get("metadata_rich_record_count") or pixiv_real["record_count"] or 0
+    )
+    real_pixiv_metadata_rich_minimum = int(
+        scale_up_summary.get("real_pixiv_metadata_rich_minimum") or REAL_PIXIV_METADATA_RICH_MIN
+    )
+    real_pixiv_source_prior_summary = dict(scale_up_summary.get("real_pixiv_source_prior_summary") or {})
+    real_pixiv_source_prior_min_met = (
+        int(real_pixiv_source_prior_summary.get("record_count") or 0)
+        >= int(scale_up_summary.get("real_pixiv_source_prior_minimum") or REAL_PIXIV_SOURCE_PRIOR_MIN)
+    )
+    real_pixiv_sample_min_met = real_pixiv_metadata_rich_count >= real_pixiv_metadata_rich_minimum
     real_pixiv_applicable_min_met = (
         pixiv_real["applicable_name_signal_count"] >= REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET
     )
@@ -2281,7 +2716,23 @@ def build_public_summary(
         "coverage_by_provider_and_data_type": coverage_by_type,
         "expanded_real_data_validation": {
             "real_pixiv": pixiv_real,
-            "real_pixiv_source_prior_records_at_least_50": real_pixiv_sample_min_met,
+            "real_pixiv_metadata_flow": {
+                "source_prior_input_count": real_pixiv_source_prior_summary.get("record_count", 0),
+                "source_prior_records_at_least_50": real_pixiv_source_prior_min_met,
+                "source_prior_only_records_do_not_count_as_metadata_rich": True,
+                "metadata_rich_record_count": real_pixiv_metadata_rich_count,
+                "metadata_rich_minimum": real_pixiv_metadata_rich_minimum,
+                "metadata_rich_records_at_least_30": real_pixiv_sample_min_met,
+                "metadata_acquisition_route": pixiv_metadata_flow.get("metadata_acquisition_route"),
+                "field_presence_counts": pixiv_metadata_flow.get("field_presence_counts", {}),
+                "gallery_dl_attempted_count": pixiv_metadata_flow.get("gallery_dl_attempted_count", 0),
+                "gallery_dl_success_count": pixiv_metadata_flow.get("gallery_dl_success_count", 0),
+                "source_prior_only_records_count": pixiv_metadata_flow.get("source_prior_only_records_count", 0),
+                "image_downloads": pixiv_metadata_flow.get("image_downloads", 0),
+                "image_uploads": pixiv_metadata_flow.get("image_uploads", 0),
+            },
+            "real_pixiv_source_prior_records_at_least_50": real_pixiv_source_prior_min_met,
+            "real_pixiv_metadata_rich_records_at_least_30": real_pixiv_sample_min_met,
             "real_pixiv_applicable_name_signal_target": REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET,
             "real_pixiv_applicable_name_signal_sample_met": real_pixiv_applicable_min_met,
             "real_pixiv_applicable_name_coverage_at_least_80": real_pixiv_coverage_met,
@@ -2324,7 +2775,8 @@ def build_public_summary(
             "source_metadata_record_candidates_at_least_75": scale_minimum_met,
             "source_metadata_record_candidates_preferred_100": counts["source_metadata_records"] >= TARGET_RECORD_COUNT_DEFAULT,
             "source_metadata_record_candidates_hard_max_150": hard_max_respected,
-            "real_pixiv_source_prior_records_at_least_50": real_pixiv_sample_min_met,
+            "real_pixiv_source_prior_records_at_least_50": real_pixiv_source_prior_min_met,
+            "real_pixiv_metadata_rich_records_at_least_30": real_pixiv_sample_min_met,
             "real_pixiv_applicable_name_signal_records_at_least_20": real_pixiv_applicable_min_met,
             "apply_db_executed": bool(db_write_summary.get("apply")),
             "apply_db_success": apply_db_success,
@@ -2393,6 +2845,7 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- SauceNAO applicable name coverage: `{summary['saucenao_applicable_name_coverage']}`.",
         f"- Not applicable no-person-signal count: `{summary['not_applicable_no_person_signal_count']}`.",
         f"- Expanded real/artifact validation: `{json.dumps(summary['expanded_real_data_validation'], sort_keys=True)}`.",
+        f"- Real Pixiv metadata flow: `{json.dumps(summary['expanded_real_data_validation']['real_pixiv_metadata_flow'], sort_keys=True)}`.",
         f"- Source searchable name assertion layer: `{json.dumps(summary['source_searchable_name_assertion_layer'], sort_keys=True)}`.",
         f"- Reviewer fixes applied: `provider_scoped_metadata_key, registry_merge, numeric_booru_category, saucenao_work_or_copyright, stale_observation_retirement, source_tag_registry_merge, raw_denominator_coverage, complete_write_guard, post_truncation_scale_metrics`.",
         "",
@@ -2631,6 +3084,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-classification-outputs-jsonl", default=str(PRIVATE_MODEL_CLASSIFICATION_OUTPUTS_JSONL))
     parser.add_argument("--model-classification-review-csv", default=str(PRIVATE_MODEL_CLASSIFICATION_REVIEW_CSV))
     parser.add_argument("--real-pixiv-searchable-candidates-csv", default=str(PRIVATE_REAL_PIXIV_SEARCHABLE_CANDIDATES_CSV))
+    parser.add_argument("--real-pixiv-candidate-inputs-csv", default=str(PRIVATE_REAL_PIXIV_CANDIDATE_INPUTS_CSV))
+    parser.add_argument("--real-pixiv-metadata-rich-records-csv", default=str(PRIVATE_REAL_PIXIV_METADATA_RICH_RECORDS_CSV))
     parser.add_argument("--provider-name-coverage-csv", default=str(PRIVATE_PROVIDER_NAME_COVERAGE_CSV))
     parser.add_argument("--raw-applicable-name-signals-csv", default=str(PRIVATE_RAW_APPLICABLE_NAME_SIGNALS_CSV))
     parser.add_argument("--search-validation-csv", default=str(PRIVATE_SEARCH_VALIDATION_CSV))
@@ -2641,6 +3096,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--target-record-count", type=int, default=TARGET_RECORD_COUNT_DEFAULT)
     parser.add_argument("--real-pixiv-source-prior-min", type=int, default=REAL_PIXIV_SOURCE_PRIOR_MIN)
+    parser.add_argument("--real-pixiv-metadata-rich-min", type=int, default=REAL_PIXIV_METADATA_RICH_MIN)
+    parser.add_argument("--gallery-dl-metadata-attempt-limit", type=int, default=REAL_PIXIV_GALLERY_DL_ATTEMPT_LIMIT_DEFAULT)
+    parser.add_argument("--gallery-dl-command", default=os.getenv("VIOLET_GALLERY_DL_COMMAND", ""))
+    parser.add_argument("--gallery-dl-metadata-raw-dir", default=str(PRIVATE_GALLERY_DL_REAL_PIXIV_METADATA_DIR))
+    parser.add_argument("--disable-gallery-dl-metadata-enrichment", action="store_true")
     parser.add_argument("--max-records", type=int, default=MAX_RECORD_COUNT)
     parser.add_argument("--disable-scale-up", action="store_true")
     parser.add_argument("--use-llm-api", action="store_true")
@@ -2670,6 +3130,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolve_repo_path(args.model_classification_outputs_jsonl),
         resolve_repo_path(args.model_classification_review_csv),
         resolve_repo_path(args.real_pixiv_searchable_candidates_csv),
+        resolve_repo_path(args.real_pixiv_candidate_inputs_csv),
+        resolve_repo_path(args.real_pixiv_metadata_rich_records_csv),
         resolve_repo_path(args.provider_name_coverage_csv),
         resolve_repo_path(args.raw_applicable_name_signals_csv),
         resolve_repo_path(args.search_validation_csv),
@@ -2682,6 +3144,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         report_json=resolve_repo_path(args.report_json),
         report_md=resolve_repo_path(args.report_md),
     )
+    require_under_phase_output(resolve_repo_path(args.gallery_dl_metadata_raw_dir))
     if int(args.source_assertion_max_candidates) > SOURCE_ASSERTION_HARD_MAX_CANDIDATES:
         raise Phase44P2RF5Error("source_assertion_candidate_hard_max_exceeded")
     if int(args.source_assertion_chunk_size) <= 0:
@@ -2707,6 +3170,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ) = classify_source_searchable_name_assertions(args, bundle, records)
     assertion_search_rows = searchable_assertion_search_rows(searchable_name_assertions, searchable_candidates)
     db_identity, db_write_summary = db_apply_summary(args, bundle, searchable_name_assertions)
+    real_pixiv_metadata_rich_records = [row for row in records if is_real_pixiv_metadata_rich_record(row)]
+    real_pixiv_candidate_input_rows = [
+        asdict(row)
+        for row in searchable_candidates
+        if row.provider == "pixiv" and row.data_type_label == DATA_TYPE_REAL
+    ]
     summary = build_public_summary(
         records=records,
         bundle=bundle,
@@ -2739,6 +3208,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "source_name_alias_candidates": [asdict(row) for row in bundle.alias_candidates],
             "source_metadata_evidence": [asdict(row) for row in bundle.evidence],
             "source_searchable_name_candidates": [asdict(row) for row in searchable_candidates],
+            "real_pixiv_metadata_rich_records": real_pixiv_metadata_rich_records,
+            "real_pixiv_candidate_inputs": real_pixiv_candidate_input_rows,
             "source_searchable_name_assertions": [asdict(row) for row in searchable_name_assertions],
             "model_classification_review": model_review_rows,
             "raw_applicable_name_signals": raw_applicable_signal_rows(bundle),
@@ -2757,14 +3228,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_text(resolve_repo_path(args.model_classification_inputs_jsonl), _jsonl(model_inputs_private))
     write_private_text(resolve_repo_path(args.model_classification_outputs_jsonl), _jsonl(model_outputs_private))
     write_private_text(resolve_repo_path(args.model_classification_review_csv), _csv(model_review_rows))
-    write_private_text(
-        resolve_repo_path(args.real_pixiv_searchable_candidates_csv),
-        _csv(
-            asdict(row)
-            for row in searchable_candidates
-            if row.provider == "pixiv" and row.data_type_label == DATA_TYPE_REAL
-        ),
-    )
+    write_private_text(resolve_repo_path(args.real_pixiv_searchable_candidates_csv), _csv(real_pixiv_candidate_input_rows))
+    write_private_text(resolve_repo_path(args.real_pixiv_candidate_inputs_csv), _csv(real_pixiv_candidate_input_rows))
+    write_private_text(resolve_repo_path(args.real_pixiv_metadata_rich_records_csv), _csv(real_pixiv_metadata_rich_records))
     write_private_text(resolve_repo_path(args.provider_name_coverage_csv), _coverage_csv(provider_name_coverage(bundle)))
     write_private_text(resolve_repo_path(args.raw_applicable_name_signals_csv), _csv(raw_applicable_signal_rows(bundle)))
     write_private_text(resolve_repo_path(args.search_validation_csv), _csv(list(search_rows) + list(assertion_search_rows)))
@@ -2778,6 +3244,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "source_name_registry": len(bundle.name_registry),
         "alias_candidates": len(bundle.alias_candidates),
         "source_searchable_name_assertions": len(searchable_name_assertions),
+        "real_pixiv_metadata_rich_records": len(real_pixiv_metadata_rich_records),
+        "real_pixiv_candidate_inputs": len(real_pixiv_candidate_input_rows),
         "source_assertion_mode": llm_classification_summary.get("mode"),
         "pixiv_coverage": summary["pixiv_applicable_name_coverage"],
         "saucenao_coverage": summary["saucenao_applicable_name_coverage"],

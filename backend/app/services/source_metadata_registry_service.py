@@ -303,6 +303,8 @@ def _as_text_list(value: Any) -> list[str]:
             text = item.get("name") or item.get("tag") or item.get("label") or item.get("value")
         else:
             text = item
+        if not isinstance(text, str):
+            continue
         normalized = normalize_source_text(text)
         if normalized:
             result.append(normalized)
@@ -327,6 +329,8 @@ def _tag_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             category = None
             kind = "provider_tag"
             confidence = None
+        if not isinstance(raw, str):
+            continue
         raw_text = normalize_source_text(raw)
         if raw_text:
             rows.append(
@@ -373,6 +377,17 @@ def _source_field_name(provider: str, field_name: str) -> str:
     return f"{provider}_{field_name}"
 
 
+def _source_title_only_fields(payload: Mapping[str, Any]) -> set[str]:
+    return {
+        canonical_source_key(value)
+        for value in _as_text_list(
+            payload.get("source_title_only_fields")
+            or payload.get("_source_title_only_fields")
+        )
+        if canonical_source_key(value)
+    }
+
+
 def raw_applicable_name_signal_summary(
     payload: Mapping[str, Any],
     *,
@@ -384,6 +399,7 @@ def raw_applicable_name_signal_summary(
     roles: set[str] = set()
     tag_rows = list(tag_rows if tag_rows is not None else _tag_rows(payload))
     tag_category_map = dict(tag_category_map or {})
+    source_title_only_fields = _source_title_only_fields(payload)
 
     def mark(role: str, *flag_names: str) -> None:
         if role in NAME_ROLES:
@@ -396,7 +412,9 @@ def raw_applicable_name_signal_summary(
             flags["has_raw_work_title_signal"] = True
 
     for field_name, role, _confidence, _requires_review in SOURCE_FIELD_SPECS:
-        if not _as_text_list(payload.get(field_name)):
+        if _extraction_field_disabled(source_title_only_fields, provider=provider, field_name=field_name):
+            continue
+        if not any(canonical_source_key(value) for value in _as_text_list(payload.get(field_name))):
             continue
         if field_name in {"artist_name", "artist"}:
             mark(role, "has_raw_artist_signal")
