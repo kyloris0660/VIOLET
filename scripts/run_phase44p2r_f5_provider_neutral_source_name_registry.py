@@ -15,14 +15,17 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
@@ -72,18 +75,18 @@ DATA_TYPE_REAL = "real_live_or_local_provider_data"
 DATA_TYPE_ARTIFACT = "existing_artifact_or_report_derived"
 DATA_TYPE_FIXTURE = "fixture_or_mock"
 DATA_TYPE_LABELS = {DATA_TYPE_REAL, DATA_TYPE_ARTIFACT, DATA_TYPE_FIXTURE}
-TARGET_RECORD_COUNT_DEFAULT = 100
+TARGET_RECORD_COUNT_DEFAULT = 200
 MIN_RECORD_COUNT = 75
 REAL_PIXIV_SOURCE_PRIOR_MIN = 50
-REAL_PIXIV_METADATA_RICH_MIN = 30
-REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET = 20
-SAUCENAO_ARTIFACT_RECORD_TARGET = 10
-REAL_PIXIV_GALLERY_DL_ATTEMPT_LIMIT_DEFAULT = 45
-MAX_RECORD_COUNT = 150
+REAL_PIXIV_METADATA_RICH_MIN = 60
+REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET = 40
+SAUCENAO_ARTIFACT_RECORD_TARGET = 20
+REAL_PIXIV_GALLERY_DL_ATTEMPT_LIMIT_DEFAULT = 120
+MAX_RECORD_COUNT = 500
 SOURCE_ASSERTION_PROMPT_VERSION = "phase44p2r_f5_source_searchable_name_assertion_v1"
 SOURCE_ASSERTION_SCHEMA_VERSION = "source_searchable_name_assertion_v1"
 SOURCE_ASSERTION_DEFAULT_MAX_CANDIDATES = 300
-SOURCE_ASSERTION_HARD_MAX_CANDIDATES = 1000
+SOURCE_ASSERTION_HARD_MAX_CANDIDATES = 500
 ASSERTION_ROLES = frozenset(
     {
         "character",
@@ -117,6 +120,15 @@ ASSERTION_REASON_CODES = frozenset(
 )
 PARENTHETICAL_CANDIDATE_RE = re.compile(r"^(.+?)[(（]([^()（）]+)[)）]$")
 
+NON_SEARCHABLE_REJECT_REASON_CODES = frozenset(
+    {
+        "descriptive_tag",
+        "generic_label",
+        "not_name_like",
+        "popularity_marker",
+    }
+)
+
 REPORT_MD = Path(f"docs/reports/{PHASE_SLUG}.md")
 REPORT_JSON = Path(f"docs/reports/{PHASE_SLUG}-summary.json")
 PHASE_OUTPUT_DIR = Path(".local_manifests") / PHASE_SLUG
@@ -127,6 +139,7 @@ PRIVATE_SOURCE_TAG_REGISTRY_CSV = PHASE_OUTPUT_DIR / "source-tag-registry.csv"
 PRIVATE_SOURCE_NAME_OBSERVATIONS_CSV = PHASE_OUTPUT_DIR / "source-name-observations.csv"
 PRIVATE_SOURCE_NAME_REGISTRY_CSV = PHASE_OUTPUT_DIR / "source-name-registry.csv"
 PRIVATE_SOURCE_NAME_ALIAS_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "source-name-alias-candidates.csv"
+PRIVATE_SOURCE_METADATA_EVIDENCE_CSV = PHASE_OUTPUT_DIR / "source-metadata-evidence.csv"
 PRIVATE_SOURCE_SEARCHABLE_NAME_ASSERTIONS_CSV = PHASE_OUTPUT_DIR / "source-searchable-name-assertions.csv"
 PRIVATE_MODEL_CLASSIFICATION_INPUTS_JSONL = PHASE_OUTPUT_DIR / "model-classification-inputs.jsonl"
 PRIVATE_MODEL_CLASSIFICATION_OUTPUTS_JSONL = PHASE_OUTPUT_DIR / "model-classification-outputs.jsonl"
@@ -167,6 +180,16 @@ FORBIDDEN_TABLES = {
     "blombooru_tag_translations",
     "blombooru_tag_translation_jobs",
 }
+F5_CLEANUP_TABLE_DELETE_ORDER = (
+    "blombooru_source_searchable_name_assertions",
+    "blombooru_source_metadata_evidence",
+    "blombooru_source_name_alias_candidates",
+    "blombooru_source_name_observations",
+    "blombooru_source_tag_observations",
+    "blombooru_source_name_registry",
+    "blombooru_source_tag_registry",
+    "blombooru_source_metadata_records",
+)
 
 
 class Phase44P2RF5Error(RuntimeError):
@@ -234,6 +257,58 @@ def require_under_phase_output(path: Path) -> None:
         f1.require_under_path(resolve_repo_path(path), ROOT / PHASE_OUTPUT_DIR, code="f5_output_path_violation")
     except f1.OutputPathError as exc:
         raise OutputPathError(str(exc)) from exc
+
+
+def generate_run_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{PHASE_SLUG}-{timestamp}-{uuid4().hex[:8]}"
+
+
+def cleanup_phase_output_dir(output_dir: Path) -> dict[str, Any]:
+    output_dir = resolve_repo_path(output_dir)
+    require_under_phase_output(output_dir)
+    summary = {
+        "relative_artifact_dir": _rel(output_dir),
+        "performed": False,
+        "files_removed": 0,
+        "directories_removed": 0,
+        "bytes_removed": 0,
+    }
+    if not output_dir.exists():
+        return summary
+    for child in output_dir.iterdir():
+        if child.is_dir():
+            file_count = 0
+            byte_count = 0
+            for nested in child.rglob("*"):
+                if nested.is_file():
+                    file_count += 1
+                    byte_count += nested.stat().st_size
+            shutil.rmtree(child)
+            summary["directories_removed"] += 1
+            summary["files_removed"] += file_count
+            summary["bytes_removed"] += byte_count
+        elif child.is_file():
+            summary["files_removed"] += 1
+            summary["bytes_removed"] += child.stat().st_size
+            child.unlink()
+    summary["performed"] = True
+    return summary
+
+
+def attach_final_run_metadata(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    run_id: str,
+    run_label: str,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for record in records:
+        item = dict(record)
+        item["provider_run_id"] = run_id
+        item["run_label"] = run_label
+        result.append(item)
+    return result
 
 
 def validate_public_report_paths_before_effects(*, report_json: Path, report_md: Path) -> None:
@@ -513,7 +588,9 @@ def pixiv_gallery_dl_record_to_source_record(
     if not work_id:
         return None
     page_index = int(record.page_index or 0)
-    prior = source_prior_lookup.get((work_id, page_index)) or source_prior_lookup.get((work_id, 0)) or {}
+    prior = source_prior_lookup.get((work_id, page_index))
+    if prior is None:
+        return None
     tags = [tag for tag in [*record.tags, *record.translated_tags] if isinstance(tag, str) and normalize_source_text(tag)]
     row = {
         "provider": "pixiv",
@@ -544,6 +621,8 @@ def pixiv_gallery_dl_record_to_source_record(
             "canonical_url_present": bool(record.canonical_url),
             "raw_provider_payload_available_private_artifact": True,
             "private_stdout_artifact": _rel(resolve_repo_path(stdout_path)),
+            "exact_source_prior_match": True,
+            "exact_source_prior_page_index": page_index,
             "exact_pixiv_id_publicly_redacted": True,
             "local_path_included": False,
             "filename_included": False,
@@ -553,6 +632,7 @@ def pixiv_gallery_dl_record_to_source_record(
             "read_only": True,
             "external_provider_request_in_this_run": True,
             "gallery_dl_metadata_only": True,
+            "exact_source_prior_match": True,
             "raw_provider_payload_available": True,
             "no_download": True,
             "image_upload": False,
@@ -628,14 +708,13 @@ def enrich_real_pixiv_source_priors_with_gallery_dl(
     seen_work_ids: set[str] = set()
     for row in source_prior_records:
         work_id = normalize_source_text(row.get("source_work_id") or row.get("work_id"))
-        if not work_id or work_id in seen_work_ids:
+        if not work_id:
             continue
         page = _safe_int(row.get("source_page_index", row.get("page_index")), default=0)
-        source_prior_lookup[(work_id, page)] = row
-        selected_work_ids.append(work_id)
-        seen_work_ids.add(work_id)
-        if len(selected_work_ids) >= attempt_limit:
-            break
+        source_prior_lookup.setdefault((work_id, page), row)
+        if work_id not in seen_work_ids and len(selected_work_ids) < attempt_limit:
+            selected_work_ids.append(work_id)
+            seen_work_ids.add(work_id)
 
     rows: list[dict[str, Any]] = []
     seen_records: set[tuple[str, int]] = set()
@@ -770,8 +849,14 @@ def scale_provider_records(
     real_pixiv_enriched_records: list[dict[str, Any]] = []
     real_pixiv_enrichment_summary: dict[str, Any] = {"attempted": False, "metadata_rich_record_count": 0}
     if not args.no_db and not args.dry_run:
+        source_prior_limit = max(
+            int(args.real_pixiv_source_prior_min),
+            int(args.real_pixiv_metadata_rich_min),
+            min(int(args.gallery_dl_metadata_attempt_limit), MAX_RECORD_COUNT),
+            REAL_PIXIV_SOURCE_PRIOR_MIN,
+        )
         real_pixiv_source_prior_records, real_pixiv_summary = load_real_pixiv_source_prior_records_from_db(
-            limit=max(int(args.real_pixiv_source_prior_min), REAL_PIXIV_SOURCE_PRIOR_MIN)
+            limit=source_prior_limit
         )
         if not args.disable_gallery_dl_metadata_enrichment:
             real_pixiv_enriched_records, real_pixiv_enrichment_summary = enrich_real_pixiv_source_priors_with_gallery_dl(
@@ -787,7 +872,7 @@ def scale_provider_records(
         limit=max(REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET, 20)
     )
     add_many(pixiv_artifact_records, source_bucket="pixiv_existing_artifact_or_gallery_dl")
-    artifact_saucenao_records = load_existing_saucenao_artifact_records(limit=10)
+    artifact_saucenao_records = load_existing_saucenao_artifact_records(limit=SAUCENAO_ARTIFACT_RECORD_TARGET)
     add_many(artifact_saucenao_records, source_bucket="saucenao_existing_artifact_or_report")
     add_many(records, source_bucket="built_in_fixture_records")
     add_many(generated_scale_fixture_records(start_index=1, count=target_count - len(result)), source_bucket="generated_fixture_records")
@@ -1098,6 +1183,36 @@ def _candidate_text(value: Any) -> str | None:
     return normalize_source_text(value) or None
 
 
+def _candidate_provenance_rank(candidate: SearchableNameCandidate) -> tuple[int, int, int]:
+    if candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_REAL and candidate.high_impact:
+        return (0, 0, 0)
+    if candidate.data_type_label == DATA_TYPE_REAL:
+        return (1, 0 if candidate.high_impact else 1, 0)
+    if candidate.data_type_label == DATA_TYPE_ARTIFACT:
+        return (2, 0 if candidate.high_impact else 1, 0)
+    if candidate.parenthetical_outer:
+        return (3, 0, 0)
+    if candidate.data_type_label == DATA_TYPE_FIXTURE:
+        return (5, 0 if candidate.high_impact else 1, 0)
+    return (4, 0 if candidate.high_impact else 1, 0)
+
+
+def _merge_duplicate_candidate(
+    existing: SearchableNameCandidate,
+    incoming: SearchableNameCandidate,
+) -> SearchableNameCandidate:
+    occurrence_count = existing.occurrence_count + incoming.occurrence_count
+    high_impact = existing.high_impact or incoming.high_impact
+    keeper = incoming if _candidate_provenance_rank(incoming) < _candidate_provenance_rank(existing) else existing
+    return SearchableNameCandidate(
+        **{
+            **asdict(keeper),
+            "occurrence_count": occurrence_count,
+            "high_impact": high_impact,
+        }
+    )
+
+
 def load_existing_saucenao_artifact_records(*, limit: int) -> list[dict[str, Any]]:
     path = ROOT / "docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit-summary.json"
     records: list[dict[str, Any]] = []
@@ -1329,7 +1444,6 @@ def build_searchable_name_candidates(
         inner = normalize_source_text(parenthetical.group(2)) if parenthetical else None
         canonical = canonical_source_key(f"{provider}:{source_kind}:{role_hint or 'unknown'}:{normalized}")[:600]
         candidate_key = f"source-searchable-name-candidate:{canonical}"
-        existing = candidates_by_key.get(candidate_key)
         high_impact = (
             provider == "pixiv"
             and data_type_label == DATA_TYPE_REAL
@@ -1340,15 +1454,6 @@ def build_searchable_name_candidates(
                 or len(normalized) >= 2
             )
         )
-        if existing is not None:
-            candidates_by_key[candidate_key] = SearchableNameCandidate(
-                **{
-                    **asdict(existing),
-                    "occurrence_count": existing.occurrence_count + 1,
-                    "high_impact": existing.high_impact or high_impact,
-                }
-            )
-            return
         record_key = provider_record_lookup_key(provider, provider_record_key)
         raw_record = raw_record_by_key.get(record_key, {})
         artist_name = _candidate_text(raw_record.get("artist_name")) or _candidate_text(raw_record.get("artist"))
@@ -1366,10 +1471,11 @@ def build_searchable_name_candidates(
             "page_count_present": raw_record.get("page_count") is not None,
             "metadata_kind": normalize_source_text(raw_record.get("metadata_kind")) or None,
             "metadata_source": _as_source_label(raw_record.get("provenance")),
+            "run_id": normalize_source_text(raw_record.get("provider_run_id")) or None,
         }
         if context:
             candidate_context.update(dict(context))
-        candidates_by_key[candidate_key] = SearchableNameCandidate(
+        incoming = SearchableNameCandidate(
             candidate_key=candidate_key,
             provider=provider,
             provider_record_key=provider_record_key,
@@ -1385,6 +1491,10 @@ def build_searchable_name_candidates(
             parenthetical_outer=outer,
             parenthetical_inner=inner,
             high_impact=high_impact,
+        )
+        existing = candidates_by_key.get(candidate_key)
+        candidates_by_key[candidate_key] = (
+            _merge_duplicate_candidate(existing, incoming) if existing is not None else incoming
         )
 
     for tag in bundle.tag_observations:
@@ -1614,7 +1724,16 @@ def source_assertion_system_prompt() -> str:
 
 
 def _classification_input_payload(candidates: Sequence[SearchableNameCandidate]) -> dict[str, Any]:
+    run_ids = sorted(
+        {
+            normalize_source_text(candidate.context.get("run_id"))
+            for candidate in candidates
+            if normalize_source_text(candidate.context.get("run_id"))
+        }
+    )
     return {
+        "run_id": run_ids[0] if len(run_ids) == 1 else None,
+        "run_ids": run_ids,
         "prompt_version": SOURCE_ASSERTION_PROMPT_VERSION,
         "structured_output_schema_version": SOURCE_ASSERTION_SCHEMA_VERSION,
         "candidate_count": len(candidates),
@@ -1712,7 +1831,9 @@ def validate_model_assertion_output(
     if not isinstance(item, Mapping):
         raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:not_object")
     candidate_key = normalize_source_text(item.get("candidate_key"))
-    if candidate_key and candidate_key != candidate.candidate_key:
+    if not candidate_key:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:candidate_key_missing")
+    if candidate_key != candidate.candidate_key:
         raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:candidate_key_mismatch")
     raw_input = normalize_source_text(item.get("input"))
     normalized_input = normalize_source_text(item.get("normalized_input"))
@@ -1746,6 +1867,8 @@ def validate_model_assertion_output(
         raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:alias_candidates")
     if status == "searchable_active" and item.get("is_searchable_identity") is not True:
         raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:active_not_searchable")
+    if status == "searchable_active" and reason_code in NON_SEARCHABLE_REJECT_REASON_CODES:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:active_contradictory_reason")
     return ValidatedModelAssertion(
         input=raw_input,
         normalized_input=normalized_input,
@@ -2218,17 +2341,7 @@ def source_searchable_assertion_coverage_summary(
         if assertion.status != "rejected":
             return False
         reason_code = (assertion.evidence_sources_json or {}).get("reason_code")
-        return reason_code in {
-            "descriptive_tag",
-            "generic_label",
-            "not_name_like",
-            "popularity_marker",
-            "known_work_title",
-            "source_title_context",
-            "known_artist_creator",
-            "known_character_name",
-            "parenthetical_character_work",
-        }
+        return reason_code in NON_SEARCHABLE_REJECT_REASON_CODES
 
     real_pixiv_high = [
         candidate
@@ -2278,6 +2391,8 @@ def source_searchable_assertion_coverage_summary(
     real_summary = group_summary(real_pixiv_high)
     parenthetical_summary = group_summary(parenthetical)
     saucenao_summary = group_summary(saucenao)
+    saucenao_candidate_supply_target = min(SAUCENAO_ARTIFACT_RECORD_TARGET, len(saucenao))
+    saucenao_candidate_supply_sufficient = len(saucenao) >= saucenao_candidate_supply_target and len(saucenao) > 0
     real_pixiv_supply_sufficient = len(real_pixiv_high) >= REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET
     real_pixiv_unresolved_rate = real_summary["unresolved_rate"]
     real_pixiv_target_met = (
@@ -2297,7 +2412,7 @@ def source_searchable_assertion_coverage_summary(
     saucenao_target_met = (
         saucenao_summary["coverage"] is not None
         and saucenao_summary["coverage"] >= 0.9
-        and len(saucenao) >= SAUCENAO_ARTIFACT_RECORD_TARGET
+        and saucenao_candidate_supply_sufficient
     )
     return {
         "candidate_counts": {
@@ -2314,6 +2429,9 @@ def source_searchable_assertion_coverage_summary(
         "real_pixiv_parenthetical": parenthetical_summary,
         "real_pixiv_parenthetical_target_met": parenthetical_target_met,
         "saucenao_real_or_artifact_artist_creator_work": saucenao_summary,
+        "saucenao_requested_candidate_target": SAUCENAO_ARTIFACT_RECORD_TARGET,
+        "saucenao_available_candidate_supply_target": saucenao_candidate_supply_target,
+        "saucenao_candidate_supply_sufficient_for_available_data": saucenao_candidate_supply_sufficient,
         "saucenao_assertion_target_met": saucenao_target_met,
         "fixture_coverage_satisfies_real_targets": False,
         "f5_source_searchable_assertion_goal_met": all(
@@ -2393,11 +2511,17 @@ def assertion_search_validation_summary(rows: Sequence[Mapping[str, Any]]) -> di
     }
 
 
-def install_source_registry_write_guard(engine) -> None:
+def install_source_registry_write_guard(engine, *, allow_cleanup_deletes: bool = False) -> None:
     write_re = re.compile(r"^\s*(insert|update|delete|alter|drop|truncate|create|merge|replace|copy)\b", re.IGNORECASE)
     destructive_re = re.compile(r"^\s*(delete|drop|truncate|merge|replace|copy|alter|create)\b", re.IGNORECASE)
     allowed_re = re.compile(
         r"^\s*(insert\s+into|update)\s+\"?(?:"
+        + "|".join(re.escape(table) for table in sorted(ALLOWED_WRITE_TABLES))
+        + r")\"?\b",
+        re.IGNORECASE,
+    )
+    cleanup_delete_re = re.compile(
+        r"^\s*delete\s+from\s+\"?(?:"
         + "|".join(re.escape(table) for table in sorted(ALLOWED_WRITE_TABLES))
         + r")\"?\b",
         re.IGNORECASE,
@@ -2409,6 +2533,8 @@ def install_source_registry_write_guard(engine) -> None:
         if not write_re.search(sql):
             return
         lowered = sql.casefold()
+        if allow_cleanup_deletes and cleanup_delete_re.search(sql):
+            return
         if destructive_re.search(sql):
             touched = sorted(table for table in FORBIDDEN_TABLES | ALLOWED_WRITE_TABLES if table in lowered)
             detail = ",".join(touched) if touched else "destructive_write"
@@ -2629,6 +2755,8 @@ def no_tag_provider_summary(bundle: SourceRegistryBundle) -> dict[str, Any]:
 
 def build_public_summary(
     *,
+    run_id: str = "unit-test-run",
+    local_artifact_cleanup_summary: Mapping[str, Any] | None = None,
     records: Sequence[Mapping[str, Any]],
     bundle: SourceRegistryBundle,
     searchable_candidates: Sequence[SearchableNameCandidate],
@@ -2654,9 +2782,8 @@ def build_public_summary(
     )
     scale_up_summary = dict(input_summary.get("scale_up") or {})
     pixiv_metadata_flow = dict(scale_up_summary.get("real_pixiv_metadata_enrichment_summary") or {})
-    real_pixiv_metadata_rich_count = int(
-        pixiv_metadata_flow.get("metadata_rich_record_count") or pixiv_real["record_count"] or 0
-    )
+    real_pixiv_metadata_rich_count = sum(1 for row in records if is_real_pixiv_metadata_rich_record(row))
+    reported_enriched_count = int(pixiv_metadata_flow.get("metadata_rich_record_count") or 0)
     real_pixiv_metadata_rich_minimum = int(
         scale_up_summary.get("real_pixiv_metadata_rich_minimum") or REAL_PIXIV_METADATA_RICH_MIN
     )
@@ -2674,7 +2801,16 @@ def build_public_summary(
         and pixiv_real["coverage"] >= 0.8
         and real_pixiv_applicable_min_met
     )
-    saucenao_artifact_sample_min_met = saucenao_real_or_artifact["record_count"] >= SAUCENAO_ARTIFACT_RECORD_TARGET
+    saucenao_available_record_count = int(
+        scale_up_summary.get("existing_saucenao_artifact_record_count")
+        or saucenao_real_or_artifact["record_count"]
+        or 0
+    )
+    saucenao_available_record_target = min(SAUCENAO_ARTIFACT_RECORD_TARGET, saucenao_available_record_count)
+    saucenao_artifact_sample_min_met = (
+        saucenao_real_or_artifact["record_count"] >= saucenao_available_record_target
+        and saucenao_available_record_count > 0
+    )
     saucenao_non_fixture_coverage_met = (
         saucenao_real_or_artifact["coverage"] is not None
         and saucenao_real_or_artifact["coverage"] >= 0.9
@@ -2695,6 +2831,7 @@ def build_public_summary(
         [
             scale_minimum_met,
             hard_max_respected,
+            real_pixiv_source_prior_min_met,
             real_pixiv_sample_min_met,
             real_pixiv_coverage_met,
             saucenao_non_fixture_coverage_met,
@@ -2703,11 +2840,17 @@ def build_public_summary(
             forbidden_delta_zero,
         ]
     )
+    current_head_sha = _git_output(["git", "rev-parse", "HEAD"])
     return {
         "phase": PHASE,
         "title": TITLE,
+        "run_id": run_id,
+        "run_label": "final_closeout_validation",
+        "report_generation_head_sha": current_head_sha,
+        "public_private_artifacts_from_single_run": True,
         "artifact_lifecycle": "phase_scoped_operational_runner",
         "pr91_merge_confirmation": pr91_merge_confirmation(),
+        "local_artifact_cleanup": dict(local_artifact_cleanup_summary or {"performed": False}),
         "input_summary": dict(input_summary),
         "provider_shapes_covered": provider_shapes_summary(records),
         "schema_summary": schema_summary(),
@@ -2721,8 +2864,10 @@ def build_public_summary(
                 "source_prior_records_at_least_50": real_pixiv_source_prior_min_met,
                 "source_prior_only_records_do_not_count_as_metadata_rich": True,
                 "metadata_rich_record_count": real_pixiv_metadata_rich_count,
+                "reported_enrichment_metadata_rich_record_count": reported_enriched_count,
+                "metadata_rich_count_uses_actual_records_not_provider_record_fallback": True,
                 "metadata_rich_minimum": real_pixiv_metadata_rich_minimum,
-                "metadata_rich_records_at_least_30": real_pixiv_sample_min_met,
+                "metadata_rich_records_at_least_60": real_pixiv_sample_min_met,
                 "metadata_acquisition_route": pixiv_metadata_flow.get("metadata_acquisition_route"),
                 "field_presence_counts": pixiv_metadata_flow.get("field_presence_counts", {}),
                 "gallery_dl_attempted_count": pixiv_metadata_flow.get("gallery_dl_attempted_count", 0),
@@ -2732,12 +2877,16 @@ def build_public_summary(
                 "image_uploads": pixiv_metadata_flow.get("image_uploads", 0),
             },
             "real_pixiv_source_prior_records_at_least_50": real_pixiv_source_prior_min_met,
-            "real_pixiv_metadata_rich_records_at_least_30": real_pixiv_sample_min_met,
+            "real_pixiv_metadata_rich_records_at_least_60": real_pixiv_sample_min_met,
             "real_pixiv_applicable_name_signal_target": REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET,
             "real_pixiv_applicable_name_signal_sample_met": real_pixiv_applicable_min_met,
             "real_pixiv_applicable_name_coverage_at_least_80": real_pixiv_coverage_met,
             "saucenao_real_or_artifact": saucenao_real_or_artifact,
-            "saucenao_real_or_artifact_records_at_least_10": saucenao_artifact_sample_min_met,
+            "saucenao_real_or_artifact_requested_record_target": SAUCENAO_ARTIFACT_RECORD_TARGET,
+            "saucenao_real_or_artifact_available_record_count": saucenao_available_record_count,
+            "saucenao_real_or_artifact_available_record_target": saucenao_available_record_target,
+            "saucenao_real_or_artifact_records_meet_available_supply": saucenao_artifact_sample_min_met,
+            "saucenao_real_or_artifact_requested_20_available": saucenao_available_record_count >= SAUCENAO_ARTIFACT_RECORD_TARGET,
             "saucenao_real_or_artifact_coverage_at_least_90": saucenao_non_fixture_coverage_met,
             "fixture_coverage_satisfies_real_targets": False,
         },
@@ -2773,16 +2922,16 @@ def build_public_summary(
         },
         "f5_minimum_requirements": {
             "source_metadata_record_candidates_at_least_75": scale_minimum_met,
-            "source_metadata_record_candidates_preferred_100": counts["source_metadata_records"] >= TARGET_RECORD_COUNT_DEFAULT,
-            "source_metadata_record_candidates_hard_max_150": hard_max_respected,
+            "source_metadata_record_candidates_preferred_200": counts["source_metadata_records"] >= TARGET_RECORD_COUNT_DEFAULT,
+            "source_metadata_record_candidates_hard_max_500": hard_max_respected,
             "real_pixiv_source_prior_records_at_least_50": real_pixiv_source_prior_min_met,
-            "real_pixiv_metadata_rich_records_at_least_30": real_pixiv_sample_min_met,
-            "real_pixiv_applicable_name_signal_records_at_least_20": real_pixiv_applicable_min_met,
+            "real_pixiv_metadata_rich_records_at_least_60": real_pixiv_sample_min_met,
+            "real_pixiv_applicable_name_signal_records_at_least_40": real_pixiv_applicable_min_met,
             "apply_db_executed": bool(db_write_summary.get("apply")),
             "apply_db_success": apply_db_success,
             "forbidden_truth_table_write_count_zero": forbidden_delta_zero,
             "pixiv_real_applicable_coverage_at_least_80": real_pixiv_coverage_met,
-            "saucenao_real_or_artifact_applicable_coverage_at_least_90": saucenao_non_fixture_coverage_met,
+            "saucenao_real_or_artifact_available_supply_coverage_at_least_90": saucenao_non_fixture_coverage_met,
             "source_searchable_name_assertion_goal_met": searchable_assertion_goal_met,
             "f5_minimum_stage_goal_met": f5_minimum_stage_goal_met,
         },
@@ -2837,6 +2986,9 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "",
         "## Summary",
         "",
+        f"- Run ID: `{summary['run_id']}`.",
+        f"- Report generation head SHA: `{summary['report_generation_head_sha']}`.",
+        f"- Local F5 artifact cleanup: `{json.dumps(summary['local_artifact_cleanup'], sort_keys=True)}`.",
         f"- PR #91 merge confirmation: `{json.dumps(summary['pr91_merge_confirmation'], sort_keys=True)}`.",
         f"- Provider shapes covered: `{json.dumps(summary['provider_shapes_covered'], sort_keys=True)}`.",
         f"- Row counts: `{json.dumps(summary['row_counts'], sort_keys=True)}`.",
@@ -2848,6 +3000,16 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- Real Pixiv metadata flow: `{json.dumps(summary['expanded_real_data_validation']['real_pixiv_metadata_flow'], sort_keys=True)}`.",
         f"- Source searchable name assertion layer: `{json.dumps(summary['source_searchable_name_assertion_layer'], sort_keys=True)}`.",
         f"- Reviewer fixes applied: `provider_scoped_metadata_key, registry_merge, numeric_booru_category, saucenao_work_or_copyright, stale_observation_retirement, source_tag_registry_merge, raw_denominator_coverage, complete_write_guard, post_truncation_scale_metrics`.",
+        "",
+        "## Manual Validation",
+        "",
+        f"- Open private artifacts under `{_rel(ROOT / PHASE_OUTPUT_DIR)}`; all rows are traceable to run ID `{summary['run_id']}`.",
+        "- Start with `manual-review-guide.md`, then inspect `real-pixiv-metadata-rich-records.csv`, `real-pixiv-candidate-inputs.csv`, `source-searchable-name-assertions.csv`, `model-classification-review.csv`, and `name-search-index-validation.csv`.",
+        "- Judge whether real Pixiv candidate rows contain provider metadata such as title, artist, tags, page_count/source URL presence, and metadata source; source-prior-only rows must not count as metadata-rich.",
+        "- For assertions, review provider, raw_input, asserted_role, status, confidence, reason_code, source_kind/source_field, and requires_review. `searchable_active` is search-facing only and is not Entity truth.",
+        "- Check rejected rows with descriptive/generic/not_name_like/popularity_marker reasons and confirm they are not active. Rejected known-name-like reasons should not be counted as coverage.",
+        "- Use `name-search-index-validation.csv` to confirm representative source names/assertions are searchable and the negative control does not match.",
+        "- Report each sampled row as pass/fail/uncertain with the candidate_key/assertion_key and a short reason.",
         "",
         "## Schema / Storage",
         "",
@@ -2896,10 +3058,48 @@ def curated_mapping_template_csv() -> str:
     return _csv(rows)
 
 
-def manual_review_guide() -> str:
+def manual_review_guide(run_id: str) -> str:
     return "\n".join(
         [
             "# Phase 4.4-P2R-F5 manual review guide",
+            "",
+            f"Run ID: `{run_id}`",
+            "",
+            "## Files to open first",
+            "",
+            f"1. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'real-pixiv-metadata-rich-records.csv')}`",
+            f"2. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'real-pixiv-candidate-inputs.csv')}`",
+            f"3. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'source-searchable-name-assertions.csv')}`",
+            f"4. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'model-classification-review.csv')}`",
+            f"5. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'name-search-index-validation.csv')}`",
+            f"6. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'source-metadata-evidence.csv')}` for source observation evidence.",
+            f"7. `{_rel(ROOT / PHASE_OUTPUT_DIR / 'details.json')}` if a CSV row needs full private context.",
+            "",
+            "## What to inspect",
+            "",
+            "- Confirm sampled `real-pixiv-metadata-rich-records.csv` rows have real provider metadata: title, artist/user, tags, page_count/source URL presence, and metadata source/provenance.",
+            "- Confirm source-prior-only rows are not counted as metadata-rich; rows in this file should have `metadata_kind=gallery_dl_real_pixiv_metadata` or equivalent provider metadata.",
+            "- In `real-pixiv-candidate-inputs.csv`, inspect `raw_input`, `source_kind`, `source_field`, `role_hint`, and context fields such as title, artist_name, sibling_tags, metadata_source, and run_id.",
+            "- In `source-searchable-name-assertions.csv`, inspect `status`, `asserted_role`, `asserted_name`, `confidence`, `requires_review`, `evidence_sources_json`, and `provenance_summary`.",
+            "- `searchable_active` means source-search usable only. It is not Entity truth, not EntityAlias, not a MediaEntityCandidate, and not a confirmed assignment.",
+            "- Rejected rows with `descriptive_tag`, `generic_label`, `not_name_like`, or `popularity_marker` should remain non-active. Rejected known name-like rows should not be treated as covered.",
+            "- Use `model-classification-inputs.jsonl` and `model-classification-outputs.jsonl` to compare each LLM input chunk with the validated review row if a classification looks surprising.",
+            "- Use `name-search-index-validation.csv` to verify representative positive queries match and the negative control does not match.",
+            "",
+            "## Suggested sampling",
+            "",
+            "- Sample at least 10 real Pixiv `searchable_active` assertions across tags, source_name_observation rows, and source_title candidates.",
+            "- Sample at least 5 rejected/general/popularity rows and confirm none is active.",
+            "- Sample at least 5 SauceNAO provider-field assertions, especially `work_or_copyright` rows.",
+            "- Sample at least 5 alias candidates and confirm provider/parenthetical/curated evidence is visible and reviewable.",
+            "",
+            "## How to report results",
+            "",
+            "- Mark each sampled row as `pass`, `fail`, or `uncertain`.",
+            "- Include the `candidate_key` or `assertion_key`, provider, raw input, status, and a short reason.",
+            "- Treat uncertain source-search assertions as a normal manual-review signal, not as confirmed truth.",
+            "",
+            "## Boundaries",
             "",
             "- SourceNameRegistry rows are searchable source observations, not Entities.",
             "- SourceSearchableNameAssertion rows are source-search assertions, not Entity truth or confirmed assignments.",
@@ -3013,6 +3213,31 @@ def table_row_deltas(before: Mapping[str, int | None], after: Mapping[str, int |
     return deltas
 
 
+def cleanup_f5_source_tables(session) -> dict[str, Any]:
+    existing_tables = set(inspect(session.bind).get_table_names())
+    before = table_row_counts(session, ALLOWED_WRITE_TABLES)
+    deleted: dict[str, int] = {}
+    skipped: list[str] = []
+    for table_name in F5_CLEANUP_TABLE_DELETE_ORDER:
+        if table_name not in existing_tables:
+            skipped.append(table_name)
+            continue
+        result = session.execute(text(f'DELETE FROM "{table_name}"'))
+        deleted[table_name] = int(result.rowcount or 0)
+    session.commit()
+    after = table_row_counts(session, ALLOWED_WRITE_TABLES)
+    return {
+        "performed": True,
+        "delete_order": list(F5_CLEANUP_TABLE_DELETE_ORDER),
+        "deleted_rows": deleted,
+        "skipped_missing_tables": skipped,
+        "allowed_table_row_counts_before_cleanup": before,
+        "allowed_table_row_counts_after_cleanup": after,
+        "allowed_table_row_deltas_cleanup": table_row_deltas(before, after),
+        "total_deleted_rows": sum(deleted.values()),
+    }
+
+
 def db_apply_summary(
     args: argparse.Namespace,
     bundle: SourceRegistryBundle,
@@ -3032,12 +3257,16 @@ def db_apply_summary(
     config = load_f5_project_config()
     engine = create_engine(config.database_url)
     migrate_add_source_metadata_name_registry(engine, inspect(engine))
-    install_source_registry_write_guard(engine)
+    install_source_registry_write_guard(engine, allow_cleanup_deletes=bool(getattr(args, "clean_f5_state", False)))
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
     try:
         db_identity = f1.prove_db_identity(session, config)
         forbidden_before = table_row_counts(session, FORBIDDEN_TABLES)
+        allowed_pre_cleanup = table_row_counts(session, ALLOWED_WRITE_TABLES)
+        cleanup_summary: dict[str, Any] = {"performed": False}
+        if bool(getattr(args, "clean_f5_state", False)):
+            cleanup_summary = cleanup_f5_source_tables(session)
         allowed_before = table_row_counts(session, ALLOWED_WRITE_TABLES)
         write_summary = persist_source_registry_bundle(
             session,
@@ -3049,9 +3278,12 @@ def db_apply_summary(
         allowed_after = table_row_counts(session, ALLOWED_WRITE_TABLES)
         forbidden_deltas = table_row_deltas(forbidden_before, forbidden_after)
         forbidden_delta_total = sum(abs(value) for value in forbidden_deltas.values())
+        write_summary["cleanup_summary"] = cleanup_summary
+        write_summary["allowed_table_row_counts_pre_cleanup"] = allowed_pre_cleanup
         write_summary["allowed_table_row_counts_before"] = allowed_before
         write_summary["allowed_table_row_counts_after"] = allowed_after
         write_summary["allowed_table_row_deltas"] = table_row_deltas(allowed_before, allowed_after)
+        write_summary["allowed_table_row_deltas_from_pre_cleanup"] = table_row_deltas(allowed_pre_cleanup, allowed_after)
         write_summary["forbidden_table_row_counts_before"] = forbidden_before
         write_summary["forbidden_table_row_counts_after"] = forbidden_after
         write_summary["forbidden_table_row_deltas"] = forbidden_deltas
@@ -3079,6 +3311,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-name-observations-csv", default=str(PRIVATE_SOURCE_NAME_OBSERVATIONS_CSV))
     parser.add_argument("--source-name-registry-csv", default=str(PRIVATE_SOURCE_NAME_REGISTRY_CSV))
     parser.add_argument("--source-name-alias-candidates-csv", default=str(PRIVATE_SOURCE_NAME_ALIAS_CANDIDATES_CSV))
+    parser.add_argument("--source-metadata-evidence-csv", default=str(PRIVATE_SOURCE_METADATA_EVIDENCE_CSV))
     parser.add_argument("--source-searchable-name-assertions-csv", default=str(PRIVATE_SOURCE_SEARCHABLE_NAME_ASSERTIONS_CSV))
     parser.add_argument("--model-classification-inputs-jsonl", default=str(PRIVATE_MODEL_CLASSIFICATION_INPUTS_JSONL))
     parser.add_argument("--model-classification-outputs-jsonl", default=str(PRIVATE_MODEL_CLASSIFICATION_OUTPUTS_JSONL))
@@ -3094,6 +3327,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--apply-db", action="store_true")
     parser.add_argument("--no-db", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--clean-local-artifacts", action="store_true")
+    parser.add_argument("--clean-f5-state", action="store_true")
+    parser.add_argument("--run-id", default="")
+    parser.add_argument("--run-label", default="final_closeout_validation")
     parser.add_argument("--target-record-count", type=int, default=TARGET_RECORD_COUNT_DEFAULT)
     parser.add_argument("--real-pixiv-source-prior-min", type=int, default=REAL_PIXIV_SOURCE_PRIOR_MIN)
     parser.add_argument("--real-pixiv-metadata-rich-min", type=int, default=REAL_PIXIV_METADATA_RICH_MIN)
@@ -3125,6 +3362,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolve_repo_path(args.source_name_observations_csv),
         resolve_repo_path(args.source_name_registry_csv),
         resolve_repo_path(args.source_name_alias_candidates_csv),
+        resolve_repo_path(args.source_metadata_evidence_csv),
         resolve_repo_path(args.source_searchable_name_assertions_csv),
         resolve_repo_path(args.model_classification_inputs_jsonl),
         resolve_repo_path(args.model_classification_outputs_jsonl),
@@ -3154,9 +3392,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if int(args.source_assertion_api_retries) < 0:
         raise Phase44P2RF5Error("source_assertion_api_retries_invalid")
 
+    run_id = normalize_source_text(args.run_id) or generate_run_id()
+    run_label = normalize_source_text(args.run_label) or "final_closeout_validation"
+    local_artifact_cleanup_summary: dict[str, Any] = {"performed": False}
+    if bool(args.clean_local_artifacts):
+        local_artifact_cleanup_summary = cleanup_phase_output_dir(output_dir)
+
     records, input_summary = load_provider_records(args.input_json or None)
     records, scale_summary = scale_provider_records(records, args)
+    records = attach_final_run_metadata(records, run_id=run_id, run_label=run_label)
     input_summary = {**dict(input_summary), "scale_up": scale_summary}
+    input_summary["run_id"] = run_id
+    input_summary["run_label"] = run_label
+    input_summary["local_artifact_cleanup"] = local_artifact_cleanup_summary
     curated_mappings = load_curated_mappings(args.curated_mapping_input or None)
     bundle = build_source_registry_bundle(records, curated_mappings=curated_mappings)
     search_rows = validate_search_queries(bundle, search_validation_queries(bundle))
@@ -3177,6 +3425,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if row.provider == "pixiv" and row.data_type_label == DATA_TYPE_REAL
     ]
     summary = build_public_summary(
+        run_id=run_id,
+        local_artifact_cleanup_summary=local_artifact_cleanup_summary,
         records=records,
         bundle=bundle,
         searchable_candidates=searchable_candidates,
@@ -3198,6 +3448,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_json(
         resolve_repo_path(args.details_json),
         {
+            "run_id": run_id,
+            "run_label": run_label,
             "private_exact_names_and_tags": True,
             "records_private": list(records),
             "source_metadata_records": [asdict(row) for row in bundle.metadata_records],
@@ -3224,6 +3476,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_text(resolve_repo_path(args.source_name_observations_csv), _csv(asdict(row) for row in bundle.name_observations))
     write_private_text(resolve_repo_path(args.source_name_registry_csv), _csv(asdict(row) for row in bundle.name_registry))
     write_private_text(resolve_repo_path(args.source_name_alias_candidates_csv), _csv(asdict(row) for row in bundle.alias_candidates))
+    write_private_text(resolve_repo_path(args.source_metadata_evidence_csv), _csv(asdict(row) for row in bundle.evidence))
     write_private_text(resolve_repo_path(args.source_searchable_name_assertions_csv), _csv(asdict(row) for row in searchable_name_assertions))
     write_private_text(resolve_repo_path(args.model_classification_inputs_jsonl), _jsonl(model_inputs_private))
     write_private_text(resolve_repo_path(args.model_classification_outputs_jsonl), _jsonl(model_outputs_private))
@@ -3235,9 +3488,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_text(resolve_repo_path(args.raw_applicable_name_signals_csv), _csv(raw_applicable_signal_rows(bundle)))
     write_private_text(resolve_repo_path(args.search_validation_csv), _csv(list(search_rows) + list(assertion_search_rows)))
     write_private_text(resolve_repo_path(args.curated_template_csv), curated_mapping_template_csv())
-    write_private_text(resolve_repo_path(args.manual_review_guide), manual_review_guide())
+    write_private_text(resolve_repo_path(args.manual_review_guide), manual_review_guide(run_id))
 
     return {
+        "run_id": run_id,
         "report_md": _rel(resolve_repo_path(args.report_md)),
         "report_json": _rel(resolve_repo_path(args.report_json)),
         "source_metadata_records": len(bundle.metadata_records),

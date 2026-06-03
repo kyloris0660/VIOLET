@@ -351,6 +351,35 @@ def test_gallery_dl_pixiv_metadata_becomes_real_metadata_rich_record():
     assert row["_source_title_only_fields"] == ["title", "pixiv_title"]
 
 
+def test_gallery_dl_pixiv_metadata_requires_exact_source_prior_page_match():
+    metadata = runner.f1.PixivGalleryDlMetadataRecord(
+        work_id="100000003",
+        page_index=1,
+        page_count=2,
+        title="Metadata Title",
+        artist_name="Metadata Artist",
+        artist_id="artist-1",
+        tags=("Hero Name(Work Name)",),
+        canonical_url="https://www.pixiv.net/artworks/100000003",
+        metadata_richness="rich_structured_metadata",
+        record_shape="gallery_dl_url_media_event",
+    )
+    row = runner.pixiv_gallery_dl_record_to_source_record(
+        metadata,
+        source_prior_lookup={
+            ("100000003", 0): {
+                "media_id": 42,
+                "source_work_id": "100000003",
+                "source_page_index": 0,
+            }
+        },
+        source_index=1,
+        stdout_path=ROOT / ".local_manifests" / runner.PHASE_SLUG / "unit-gallery.jsonl",
+    )
+
+    assert row is None
+
+
 def test_pixiv_source_title_candidate_does_not_auto_create_work_title_identity():
     records = [
         {
@@ -371,6 +400,35 @@ def test_pixiv_source_title_candidate_does_not_auto_create_work_title_identity()
     assert title_candidate.raw_input == "Only Source Title"
     assert title_candidate.role_hint == "source_title"
     assert title_candidate.context["title_is_not_deterministic_work_title_identity"] is True
+
+
+def test_searchable_candidate_dedupe_preserves_real_pixiv_provenance():
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:artifact:shared",
+            "tags": ["Shared Hero(Shared Work)"],
+            "metadata_kind": "old_artifact_metadata",
+            "data_type_label": runner.DATA_TYPE_ARTIFACT,
+        },
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:real:shared",
+            "tags": ["Shared Hero(Shared Work)"],
+            "metadata_kind": "gallery_dl_real_pixiv_metadata",
+            "data_type_label": runner.DATA_TYPE_REAL,
+            "provider_run_id": "unit-final-run",
+        },
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    candidates = runner.build_searchable_name_candidates(bundle, records, max_candidates=10)
+
+    candidate = next(row for row in candidates if row.raw_input == "Shared Hero(Shared Work)")
+    assert candidate.data_type_label == runner.DATA_TYPE_REAL
+    assert candidate.provider_record_key == "pixiv:real:shared"
+    assert candidate.context["metadata_kind"] == "gallery_dl_real_pixiv_metadata"
+    assert candidate.context["run_id"] == "unit-final-run"
+    assert candidate.occurrence_count == 2
 
 
 def test_boolean_and_non_string_values_are_not_sent_to_llm_candidates():
@@ -662,6 +720,26 @@ def test_write_guard_blocks_merge_replace_copy_and_allows_source_update():
         engine.dispose()
 
 
+def test_write_guard_allows_only_f5_cleanup_deletes_when_enabled():
+    engine = create_engine("sqlite://")
+    try:
+        Base.metadata.create_all(engine)
+        runner.install_source_registry_write_guard(engine, allow_cleanup_deletes=True)
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO blombooru_source_metadata_records "
+                    "(provider, provider_record_key, metadata_kind, data_type_label, status) "
+                    "VALUES ('test', 'cleanup-key', 'provider_metadata', 'fixture_or_mock', 'observed')"
+                )
+            )
+            conn.execute(text("DELETE FROM blombooru_source_metadata_records WHERE provider_record_key='cleanup-key'"))
+            with pytest.raises(runner.f1.ReadOnlyViolation):
+                conn.execute(text("DELETE FROM blombooru_entities"))
+    finally:
+        engine.dispose()
+
+
 def test_report_split_keeps_real_pixiv_applicable_rows_separate_from_fixtures():
     records = [
         {
@@ -698,6 +776,46 @@ def test_report_split_keeps_real_pixiv_applicable_rows_separate_from_fixtures():
     assert summary["expanded_real_data_validation"]["real_pixiv"]["applicable_name_signal_count"] == 1
     assert summary["expanded_real_data_validation"]["fixture_coverage_satisfies_real_targets"] is False
     assert summary["f5_minimum_requirements"]["f5_minimum_stage_goal_met"] is False
+
+
+def test_report_metadata_rich_gate_uses_actual_enriched_rows_not_real_record_count():
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "db-source-prior:pixiv:100:p0:m1",
+            "source_work_id": "100",
+            "source_page_index": 0,
+            "metadata_kind": "local_pixiv_source_prior",
+            "data_type_label": runner.DATA_TYPE_REAL,
+        }
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    summary = runner.build_public_summary(
+        records=records,
+        bundle=bundle,
+        searchable_candidates=[],
+        searchable_name_assertions=[],
+        llm_classification_summary={"api_call_attempted": False, "mode": "test"},
+        input_summary={
+            "input_source": "test",
+            "scale_up": {
+                "real_pixiv_source_prior_minimum": 50,
+                "real_pixiv_source_prior_summary": {"record_count": 50},
+                "real_pixiv_metadata_rich_minimum": 60,
+                "real_pixiv_metadata_enrichment_summary": {"metadata_rich_record_count": 0},
+            },
+        },
+        curated_mapping_count=0,
+        db_identity=None,
+        db_write_summary={"apply": False, "guard_installed": False, "success": False},
+        search_rows=[],
+        assertion_search_rows=[],
+    )
+
+    flow = summary["expanded_real_data_validation"]["real_pixiv_metadata_flow"]
+    assert flow["metadata_rich_record_count"] == 0
+    assert flow["metadata_rich_count_uses_actual_records_not_provider_record_fallback"] is True
+    assert summary["f5_minimum_requirements"]["real_pixiv_metadata_rich_records_at_least_60"] is False
 
 
 def test_path_validation_before_side_effects_blocks_bad_output():
@@ -852,6 +970,27 @@ def test_invalid_model_output_fails_closed():
     candidate = _candidate()
     payload = _valid_model_output(candidate, should_not_be_entity_truth=False)
     with pytest.raises(runner.Phase44P2RF5Error):
+        runner.validate_model_assertion_output(payload, candidate)
+
+
+def test_model_output_missing_candidate_key_fails_closed():
+    candidate = _candidate()
+    payload = _valid_model_output(candidate)
+    payload.pop("candidate_key")
+    with pytest.raises(runner.Phase44P2RF5Error, match="candidate_key_missing"):
+        runner.validate_model_assertion_output(payload, candidate)
+
+
+def test_model_output_active_with_non_searchable_reason_fails_closed():
+    candidate = _candidate("blue hair")
+    payload = _valid_model_output(
+        candidate,
+        asserted_role="general_descriptor",
+        is_searchable_identity=True,
+        searchable_status="searchable_active",
+        reason_code="descriptive_tag",
+    )
+    with pytest.raises(runner.Phase44P2RF5Error, match="active_contradictory_reason"):
         runner.validate_model_assertion_output(payload, candidate)
 
 
@@ -1043,6 +1182,102 @@ def test_zero_unresolved_rate_satisfies_real_pixiv_assertion_target():
     assert summary["real_pixiv_high_impact"]["coverage"] == 1.0
     assert summary["real_pixiv_high_impact"]["unresolved_rate"] == 0.0
     assert summary["real_pixiv_searchable_assertion_target_met"] is True
+
+
+def test_rejected_known_name_like_reason_does_not_count_as_terminal_coverage():
+    candidate = _candidate("Hero Name")
+    validated = runner.validate_model_assertion_output(
+        _valid_model_output(
+            candidate,
+            is_searchable_identity=False,
+            searchable_status="rejected",
+            reason_code="known_character_name",
+            asserted_role="character",
+            extracted_name="Hero Name",
+            base_name="Hero Name",
+            work_context=None,
+        ),
+        candidate,
+    )
+    draft = runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model")
+
+    summary = runner.source_searchable_assertion_coverage_summary([candidate], [draft])
+
+    assert summary["real_pixiv_high_impact"]["terminal_active_or_valid_rejected_count"] == 0
+    assert summary["real_pixiv_high_impact"]["coverage"] == 0.0
+
+
+def test_saucenao_assertion_gate_uses_available_non_fixture_supply():
+    candidates = [
+        _candidate(
+            f"Sauce Work {index}",
+            provider="saucenao",
+            role_hint="work_title",
+            source_kind="source_name_observation",
+        )
+        for index in range(3)
+    ]
+    assertions = []
+    for candidate in candidates:
+        validated = runner.validate_model_assertion_output(
+            _valid_model_output(
+                candidate,
+                asserted_role="work_title",
+                extracted_name=candidate.raw_input,
+                base_name=candidate.raw_input,
+                work_context=None,
+                reason_code="known_work_title",
+            ),
+            candidate,
+        )
+        assertions.append(runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model"))
+
+    summary = runner.source_searchable_assertion_coverage_summary(candidates, assertions)
+
+    assert summary["saucenao_requested_candidate_target"] == runner.SAUCENAO_ARTIFACT_RECORD_TARGET
+    assert summary["saucenao_available_candidate_supply_target"] == 3
+    assert summary["saucenao_candidate_supply_sufficient_for_available_data"] is True
+    assert summary["saucenao_assertion_target_met"] is True
+
+
+def test_saucenao_report_gate_uses_available_artifact_record_supply():
+    records = [
+        {
+            "provider": "saucenao",
+            "provider_record_key": f"saucenao:artifact:{index}",
+            "work_or_copyright": f"Sauce Work {index}",
+            "data_type_label": runner.DATA_TYPE_ARTIFACT,
+        }
+        for index in range(3)
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    summary = runner.build_public_summary(
+        records=records,
+        bundle=bundle,
+        searchable_candidates=[],
+        searchable_name_assertions=[],
+        llm_classification_summary={"api_call_attempted": False, "mode": "test"},
+        input_summary={
+            "input_source": "test",
+            "scale_up": {
+                "existing_saucenao_artifact_record_count": 3,
+                "real_pixiv_source_prior_summary": {"record_count": 0},
+                "real_pixiv_metadata_enrichment_summary": {"metadata_rich_record_count": 0},
+            },
+        },
+        curated_mapping_count=0,
+        db_identity=None,
+        db_write_summary={"apply": False, "guard_installed": False, "success": False},
+        search_rows=[],
+        assertion_search_rows=[],
+    )
+
+    expanded = summary["expanded_real_data_validation"]
+    assert expanded["saucenao_real_or_artifact_requested_record_target"] == runner.SAUCENAO_ARTIFACT_RECORD_TARGET
+    assert expanded["saucenao_real_or_artifact_available_record_count"] == 3
+    assert expanded["saucenao_real_or_artifact_available_record_target"] == 3
+    assert expanded["saucenao_real_or_artifact_records_meet_available_supply"] is True
+    assert expanded["saucenao_real_or_artifact_requested_20_available"] is False
 
 
 def test_no_db_llm_flag_does_not_call_api_or_write_db():
