@@ -609,7 +609,7 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
         tag_rows=raw_tag_rows,
         tag_category_map=tag_category_map,
     )
-    disabled_fields = _disabled_name_extraction_fields(payload)
+    disabled_fields = _disabled_name_extraction_fields(payload) | _source_title_only_fields(payload)
     disable_parenthetical = bool(payload.get("disable_parenthetical_name_extraction"))
     disable_category_names = bool(payload.get("disable_category_name_extraction"))
 
@@ -1374,7 +1374,9 @@ def persist_source_registry_bundle(
                 setattr(row, key, value)
             summary["updated"]["SourceMetadataEvidence"] += 1
 
-    for record_key, drafts in assertion_drafts_by_record.items():
+    refreshed_record_keys = set(metadata_by_key)
+    for record_key in sorted(refreshed_record_keys | set(assertion_drafts_by_record)):
+        drafts = assertion_drafts_by_record.get(record_key, [])
         metadata = metadata_by_key.get(record_key)
         if metadata is None:
             raise ValueError(f"source_searchable_name_assertion_metadata_missing:{record_key}")

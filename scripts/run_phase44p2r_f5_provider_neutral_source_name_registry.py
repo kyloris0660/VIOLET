@@ -132,6 +132,7 @@ NON_SEARCHABLE_REJECT_REASON_CODES = frozenset(
         "popularity_marker",
     }
 )
+ACTIVE_SEARCHABLE_ROLES = frozenset({"character", "person", "artist", "creator", "work_title", "source_title"})
 
 REPORT_MD = Path(f"docs/reports/{PHASE_SLUG}.md")
 REPORT_JSON = Path(f"docs/reports/{PHASE_SLUG}-summary.json")
@@ -569,15 +570,14 @@ def is_real_pixiv_metadata_rich_record(row: Mapping[str, Any]) -> bool:
         return False
     tags = _split_tag_text(row.get("tags"))
     raw_metadata = row.get("raw_metadata_json") if isinstance(row.get("raw_metadata_json"), Mapping) else {}
-    provenance = row.get("provenance") if isinstance(row.get("provenance"), Mapping) else {}
+    metadata_richness = normalize_source_text(raw_metadata.get("metadata_richness") or row.get("metadata_richness"))
     return bool(
         tags
         or normalize_source_text(row.get("title"))
         or normalize_source_text(row.get("artist_name") or row.get("artist"))
         or row.get("page_count") is not None
-        or raw_metadata.get("metadata_richness")
-        or provenance.get("raw_provider_payload_available")
-        or provenance.get("gallery_dl_metadata_only")
+        or normalize_source_text(row.get("source_url"))
+        or metadata_richness in {"rich_structured_metadata", "partial_structured_metadata"}
     )
 
 
@@ -1896,6 +1896,8 @@ def validate_model_assertion_output(
         raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:active_not_searchable")
     if status == "searchable_active" and reason_code in NON_SEARCHABLE_REJECT_REASON_CODES:
         raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:active_contradictory_reason")
+    if status == "searchable_active" and role not in ACTIVE_SEARCHABLE_ROLES:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:active_non_identity_role")
     return ValidatedModelAssertion(
         input=raw_input,
         normalized_input=normalized_input,
@@ -3430,6 +3432,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     records, scale_summary = scale_provider_records(records, args)
     records = attach_final_run_metadata(records, run_id=run_id, run_label=run_label)
     input_summary = {**dict(input_summary), "scale_up": scale_summary}
+    scale_external_requests = int(
+        (dict(scale_summary.get("real_pixiv_metadata_enrichment_summary") or {})).get("external_provider_requests") or 0
+    )
+    input_summary["external_provider_requests"] = int(input_summary.get("external_provider_requests") or 0) + scale_external_requests
+    input_summary["external_provider_request_sources"] = {
+        "real_pixiv_gallery_dl_metadata_enrichment": scale_external_requests,
+        "image_uploads": 0,
+    }
     input_summary["run_id"] = run_id
     input_summary["run_label"] = run_label
     input_summary["local_artifact_cleanup"] = local_artifact_cleanup_summary

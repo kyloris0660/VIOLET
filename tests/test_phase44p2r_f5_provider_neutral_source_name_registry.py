@@ -380,6 +380,29 @@ def test_gallery_dl_pixiv_metadata_requires_exact_source_prior_page_match():
     assert row is None
 
 
+def test_gallery_dl_sparse_pixiv_metadata_is_not_metadata_rich_even_with_exact_match():
+    metadata = runner.f1.PixivGalleryDlMetadataRecord(
+        work_id="100000004",
+        page_index=0,
+        metadata_richness="minimal_metadata",
+        record_shape="gallery_dl_url_media_event",
+    )
+    row = runner.pixiv_gallery_dl_record_to_source_record(
+        metadata,
+        source_prior_lookup={
+            ("100000004", 0): {
+                "media_id": 42,
+                "source_work_id": "100000004",
+                "source_page_index": 0,
+            }
+        },
+        source_index=1,
+        stdout_path=ROOT / ".local_manifests" / runner.PHASE_SLUG / "unit-gallery.jsonl",
+    )
+
+    assert row is None
+
+
 def test_pixiv_source_title_candidate_does_not_auto_create_work_title_identity():
     records = [
         {
@@ -387,7 +410,6 @@ def test_pixiv_source_title_candidate_does_not_auto_create_work_title_identity()
             "provider_record_key": "pixiv:title-only",
             "title": "Only Source Title",
             "data_type_label": runner.DATA_TYPE_REAL,
-            "_disable_name_extraction_fields": ["title", "pixiv_title"],
             "_source_title_only_fields": ["title", "pixiv_title"],
         }
     ]
@@ -1006,6 +1028,19 @@ def test_model_output_active_with_non_searchable_reason_fails_closed():
         runner.validate_model_assertion_output(payload, candidate)
 
 
+def test_model_output_active_with_non_identity_role_fails_closed():
+    candidate = _candidate("Hero Name")
+    payload = _valid_model_output(
+        candidate,
+        asserted_role="general_descriptor",
+        is_searchable_identity=True,
+        searchable_status="searchable_active",
+        reason_code="known_character_name",
+    )
+    with pytest.raises(runner.Phase44P2RF5Error, match="active_non_identity_role"):
+        runner.validate_model_assertion_output(payload, candidate)
+
+
 def test_parenthetical_tag_model_classification_to_assertion_draft():
     candidate = _candidate()
     validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
@@ -1170,6 +1205,45 @@ def test_refresh_retires_stale_searchable_name_assertions(db):
     assert summary["retired"]["SourceSearchableNameAssertion"] == 1
     assert db.query(SourceSearchableNameAssertion).filter_by(status="superseded").count() == 1
     assert db.query(SourceSearchableNameAssertion).filter_by(status="searchable_active").count() == 1
+
+
+def test_refresh_with_no_current_assertion_drafts_retires_stale_assertions(db):
+    original_bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:assertion-refresh-zero",
+            "tags": ["Hero Name(Work Name)"],
+        }
+    ])
+    candidates = runner.build_searchable_name_candidates(
+        original_bundle,
+        [
+            {
+                "provider": "pixiv",
+                "provider_record_key": "pixiv:test:assertion-refresh-zero",
+                "tags": ["Hero Name(Work Name)"],
+                "data_type_label": runner.DATA_TYPE_REAL,
+            }
+        ],
+        max_candidates=10,
+    )
+    candidate = next(row for row in candidates if row.source_kind == "source_tag_observation")
+    validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+    draft = runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model")
+    service.persist_source_registry_bundle(db, original_bundle, apply=True, searchable_name_assertions=[draft])
+
+    refreshed_bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:assertion-refresh-zero",
+            "tags": [],
+        }
+    ])
+    summary = service.persist_source_registry_bundle(db, refreshed_bundle, apply=True, searchable_name_assertions=[])
+
+    assert summary["retired"]["SourceSearchableNameAssertion"] == 1
+    assert db.query(SourceSearchableNameAssertion).filter_by(status="superseded").count() == 1
+    assert db.query(SourceSearchableNameAssertion).filter_by(status="searchable_active").count() == 0
 
 
 def test_search_validation_from_assertions():
