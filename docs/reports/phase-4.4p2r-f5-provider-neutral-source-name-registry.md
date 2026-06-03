@@ -4,8 +4,10 @@
 
 - Run ID: `phase-4.4p2r-f5-provider-neutral-source-name-registry-20260603T145113Z-8bef10f1`.
 - Validation head SHA (clean apply-db/LLM run): `cbaa3744ad17baaaa02791e5d766f225ea10bab7`.
-- Current-head self-audit SHA before report update: `c0f3aa467ccffcbecb33216efcf2769f5368d48c`.
-- Validation/report SHA relationship: the full clean validation run was generated at the validation head above; the current head adds reviewer-blocker fixes plus report/evidence clarification, and the review pack records the exact final PR head after commit.
+- Current-head self-audit SHA before the first report update: `c0f3aa467ccffcbecb33216efcf2769f5368d48c`.
+- Latest reviewer-reviewed PR head before this blocker-fix update: `3ad1629f314f4cf5927407a3bca1c042d0bc7c31`.
+- Report update base head for the latest reviewer-current-head fixes: `3ad1629f314f4cf5927407a3bca1c042d0bc7c31`.
+- Validation/report SHA relationship: the full clean validation run was generated at the validation head above; the latest reviewer-reviewed PR head was `3ad1629f314f4cf5927407a3bca1c042d0bc7c31`; this report update fixes current-head evidence blockers in a descendant commit. Because a tracked report cannot embed its own final commit SHA without becoming self-referential, the final review pack and PR body record the exact pushed PR head after this commit.
 - Local F5 artifact cleanup: `{"bytes_removed": 297022, "directories_removed": 1, "files_removed": 128, "performed": true, "relative_artifact_dir": ".local_manifests/phase-4.4p2r-f5-provider-neutral-source-name-registry"}`.
 - PR #91 merge confirmation: `{"head_contains_pr91_merge_commit": true, "merge_commit": "f6f02891aac5d7453e8dc3543209e6ff67c61815", "number": 91, "origin_main_sha_at_report_generation": "f6f02891aac5d7453e8dc3543209e6ff67c61815", "report_generation_head_sha": "cbaa3744ad17baaaa02791e5d766f225ea10bab7", "state": "MERGED", "url": "https://github.com/kyloris0660/VIOLET/pull/91"}`.
 - External provider request summary: `{"image_uploads": 0, "real_pixiv_gallery_dl_metadata_enrichment": 64}`; total metadata requests `64`, image uploads `0`.

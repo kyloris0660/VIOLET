@@ -576,7 +576,6 @@ def is_real_pixiv_metadata_rich_record(row: Mapping[str, Any]) -> bool:
         or normalize_source_text(row.get("title"))
         or normalize_source_text(row.get("artist_name") or row.get("artist"))
         or row.get("page_count") is not None
-        or normalize_source_text(row.get("source_url"))
         or metadata_richness in {"rich_structured_metadata", "partial_structured_metadata"}
     )
 

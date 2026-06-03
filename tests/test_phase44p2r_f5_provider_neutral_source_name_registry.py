@@ -384,6 +384,7 @@ def test_gallery_dl_sparse_pixiv_metadata_is_not_metadata_rich_even_with_exact_m
     metadata = runner.f1.PixivGalleryDlMetadataRecord(
         work_id="100000004",
         page_index=0,
+        canonical_url="https://www.pixiv.net/artworks/100000004",
         metadata_richness="minimal_metadata",
         record_shape="gallery_dl_url_media_event",
     )
