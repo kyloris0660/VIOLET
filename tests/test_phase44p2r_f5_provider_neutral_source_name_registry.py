@@ -78,7 +78,7 @@ def test_pixiv_source_metadata_creates_metadata_tag_and_name_rows():
     assert len(bundle.tag_observations) == 2
     roles = {row.name_role for row in bundle.name_observations}
     assert {"artist", "work_title", "character"}.issubset(roles)
-    assert bundle.record_statuses["pixiv:test:1"] == "applicable_name_signal_covered"
+    assert bundle.record_statuses[service.provider_record_lookup_key("pixiv", "pixiv:test:1")] == "applicable_name_signal_covered"
 
 
 def test_pixiv_parenthetical_character_extraction_and_relation():
@@ -120,6 +120,23 @@ def test_saucenao_style_artist_and_title_extraction():
     assert "saucenao_title" in fields
 
 
+def test_saucenao_work_or_copyright_extraction():
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "saucenao",
+            "provider_record_key": "saucenao:test:work-or-copyright",
+            "creator": "Sauce Creator",
+            "work_or_copyright": ["Sauce Work"],
+        }
+    ])
+    assert any(
+        row.raw_name == "Sauce Work"
+        and row.name_role == "work_title"
+        and row.source_field == "saucenao_work_or_copyright"
+        for row in bundle.name_observations
+    )
+
+
 def test_danbooru_character_tag_becomes_source_name_observation():
     bundle = service.build_source_registry_bundle([
         {
@@ -129,6 +146,28 @@ def test_danbooru_character_tag_becomes_source_name_observation():
         }
     ])
     assert any(row.raw_name == "Dan Character" and row.name_role == "character" for row in bundle.name_observations)
+
+
+def test_booru_numeric_categories_become_source_name_roles():
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "danbooru",
+            "provider_record_key": "danbooru:test:numeric-categories",
+            "tags": [
+                {"name": "Numeric Artist", "category": 1},
+                {"name": "Numeric Work", "category": 3},
+                {"name": "Numeric Character", "category": 4},
+                {"name": "Numeric General", "category": 0},
+                {"name": "Numeric Meta", "category": 5},
+            ],
+        }
+    ])
+    by_name = {row.raw_name: row.name_role for row in bundle.name_observations}
+    assert by_name["Numeric Artist"] == "artist"
+    assert by_name["Numeric Work"] == "work_title"
+    assert by_name["Numeric Character"] == "character"
+    assert "Numeric General" not in by_name
+    assert "Numeric Meta" not in by_name
 
 
 def test_danbooru_copyright_tag_does_not_become_person():
@@ -164,7 +203,7 @@ def test_no_tag_provider_has_zero_tags_names_and_is_not_failure():
     assert len(bundle.metadata_records) == 1
     assert len(bundle.tag_observations) == 0
     assert len(bundle.name_observations) == 0
-    assert bundle.record_statuses["none:test:1"] == "not_applicable_no_person_signal"
+    assert bundle.record_statuses[service.provider_record_lookup_key("no_tag_provider", "none:test:1")] == "not_applicable_no_person_signal"
 
 
 def test_canonical_name_key_normalization():
@@ -276,6 +315,52 @@ def test_no_forbidden_truth_table_writes_when_source_registry_is_persisted(db):
     assert db.execute(text(f"SELECT COUNT(*) FROM {blombooru_media_tags.name}")).scalar() == 0
 
 
+def test_metadata_lookup_key_includes_provider_when_provider_record_key_collides(db):
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "shared-record-key",
+            "artist_name": "Pixiv Collision Artist",
+            "tags": [{"name": "Pixiv Collision Tag", "category": "artist"}],
+        },
+        {
+            "provider": "danbooru",
+            "provider_record_key": "shared-record-key",
+            "tags": [{"name": "Danbooru Collision Character", "category": "character"}],
+        },
+    ])
+    service.persist_source_registry_bundle(db, bundle, apply=True)
+
+    pixiv_record = db.query(SourceMetadataRecord).filter_by(provider="pixiv", provider_record_key="shared-record-key").one()
+    danbooru_record = db.query(SourceMetadataRecord).filter_by(provider="danbooru", provider_record_key="shared-record-key").one()
+    assert pixiv_record.id != danbooru_record.id
+    assert db.query(SourceTagObservation).filter_by(source_metadata_record_id=pixiv_record.id).count() == 1
+    assert db.query(SourceTagObservation).filter_by(source_metadata_record_id=danbooru_record.id).count() == 1
+    assert {
+        row.provider
+        for row in db.query(SourceNameObservation).filter(
+            SourceNameObservation.source_metadata_record_id.in_([pixiv_record.id, danbooru_record.id])
+        )
+    } == {"pixiv", "danbooru"}
+
+
+def test_source_name_registry_merges_across_apply_batches(db):
+    first = service.build_source_registry_bundle([
+        {"provider": "pixiv", "provider_record_key": "batch:1", "artist_name": "Shared Registry Name"}
+    ])
+    second = service.build_source_registry_bundle([
+        {"provider": "saucenao", "provider_record_key": "batch:2", "creator": "shared registry name"}
+    ])
+
+    service.persist_source_registry_bundle(db, first, apply=True)
+    service.persist_source_registry_bundle(db, second, apply=True)
+
+    row = db.query(SourceNameRegistry).filter_by(canonical_name_key="shared_registry_name").one()
+    assert row.seen_count == 2
+    assert set(row.provider_coverage_json) == {"pixiv", "saucenao"}
+    assert row.role_distribution_json == {"artist": 1, "creator": 1}
+
+
 def test_dry_run_no_db_writes(db):
     bundle = service.build_source_registry_bundle(runner.default_provider_shape_records())
     summary = service.persist_source_registry_bundle(db, bundle, apply=False)
@@ -290,6 +375,22 @@ def test_no_db_mode_no_db_writes():
     _identity, summary = runner.db_apply_summary(args, bundle)
     assert summary["apply"] is False
     assert summary["guard_installed"] is False
+
+
+def test_scale_up_labels_records_and_adds_no_match_control():
+    args = runner.build_arg_parser().parse_args(["--no-db"])
+    records, input_summary = runner.load_provider_records(None)
+    scaled, scale_summary = runner.scale_provider_records(records, args)
+    bundle = service.build_source_registry_bundle(scaled)
+    search_rows = service.validate_search_queries(bundle, runner.search_validation_queries(bundle))
+    search_summary = runner.search_validation_summary(search_rows)
+
+    assert len(scaled) >= runner.MIN_RECORD_COUNT
+    assert all(row.get("data_type_label") in runner.DATA_TYPE_LABELS for row in scaled)
+    assert scale_summary["scale_up_enabled"] is True
+    assert search_summary["positive_queries_matched"] is True
+    assert search_summary["no_match_control_present"] is True
+    assert search_summary["unmatched_count"] == 1
 
 
 def test_write_guard_blocks_forbidden_truth_table_write():

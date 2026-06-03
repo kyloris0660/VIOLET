@@ -29,6 +29,9 @@ from ..models import (
 NAME_ROLES = frozenset({"character", "person", "artist", "creator", "work_title", "unknown_name"})
 PERSON_LIKE_ROLES = frozenset({"character", "person", "artist", "creator"})
 TAG_CATEGORIES_TO_NAME_ROLE = {
+    "1": "artist",
+    "3": "work_title",
+    "4": "character",
     "character": "character",
     "artist": "artist",
     "copyright": "work_title",
@@ -91,6 +94,7 @@ class SourceMetadataDraft:
     confidence: float | None = None
     similarity: float | None = None
     metadata_kind: str = "provider_metadata"
+    data_type_label: str = "fixture_or_mock"
     raw_metadata_json: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
     status: str = "observed"
@@ -115,6 +119,7 @@ class SourceNameAliasDraft:
 
 @dataclass(frozen=True)
 class SourceMetadataEvidenceDraft:
+    provider: str
     provider_record_key: str
     evidence_key: str
     observation_type: str
@@ -132,6 +137,7 @@ class SourceTagRegistryDraft:
     canonical_tag_key: str
     raw_variants_json: list[str]
     seen_count: int
+    example_provider: str | None
     example_provider_record_key: str | None
     taxonomy_status: str = "unclassified"
     governance_status: str = "candidate"
@@ -185,6 +191,10 @@ def canonical_source_key(value: Any) -> str:
     text = re.sub(r"[\s/／・·,，|]+", "_", text)
     text = re.sub(r"[^\w:()+.-]+", "_", text, flags=re.UNICODE)
     return re.sub(r"_+", "_", text).strip("_")
+
+
+def provider_record_lookup_key(provider: str, provider_record_key: str) -> str:
+    return f"{canonical_source_key(provider)}::{normalize_source_text(provider_record_key)}"
 
 
 def language_and_script_hint(value: str) -> tuple[str | None, str | None]:
@@ -306,6 +316,8 @@ def _source_field_name(provider: str, field_name: str) -> str:
         return f"saucenao_{field_name}"
     if provider == "saucenao" and field_name in {"title", "work", "material", "copyright"}:
         return "saucenao_title"
+    if provider == "saucenao" and field_name == "work_or_copyright":
+        return "saucenao_work_or_copyright"
     return f"{provider}_{field_name}"
 
 
@@ -413,6 +425,7 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
     aliases: list[SourceNameAliasDraft] = []
     evidence: list[SourceMetadataEvidenceDraft] = [
         SourceMetadataEvidenceDraft(
+            provider=provider,
             provider_record_key=provider_record_key,
             evidence_key=f"{provider_record_key}:metadata_snapshot",
             observation_type="source_metadata_record",
@@ -530,6 +543,7 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
         ("work", "work_title", 0.84, True),
         ("material", "work_title", 0.82, True),
         ("copyright", "work_title", 0.84, True),
+        ("work_or_copyright", "work_title", 0.86, True),
         ("characters", "character", 0.9, True),
         ("character", "character", 0.9, True),
         ("person", "person", 0.86, True),
@@ -586,6 +600,8 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
         confidence=_float_or_none(payload.get("confidence")),
         similarity=_float_or_none(payload.get("similarity") or payload.get("score")),
         metadata_kind=normalize_source_text(payload.get("metadata_kind")) or "provider_metadata",
+        data_type_label=normalize_source_text(payload.get("data_type_label") or payload.get("source_data_type_label"))
+        or "fixture_or_mock",
         raw_metadata_json=raw_metadata,
         provenance=dict(_as_mapping(payload.get("provenance") or {"input_shape": "provider_metadata_fixture"})),
         status="observed",
@@ -596,6 +612,7 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
     for name in names:
         evidence.append(
             SourceMetadataEvidenceDraft(
+                provider=name.provider,
                 provider_record_key=provider_record_key,
                 evidence_key=f"{name.observation_key}:name_extraction",
                 observation_type="source_name_observation",
@@ -670,7 +687,10 @@ def build_source_registry_bundle(
         name_registry=tuple(name_registry),
         alias_candidates=tuple(alias_rows),
         evidence=tuple(evidence_rows),
-        record_statuses={row.provider_record_key: row.applicability_status for row in metadata_rows},
+        record_statuses={
+            provider_record_lookup_key(row.provider, row.provider_record_key): row.applicability_status
+            for row in metadata_rows
+        },
     )
 
 
@@ -688,6 +708,7 @@ def _build_tag_registry(tags: Sequence[SourceTagDraft]) -> list[SourceTagRegistr
                 canonical_tag_key=key,
                 raw_variants_json=variants,
                 seen_count=len(values),
+                example_provider=values[0].provider,
                 example_provider_record_key=values[0].provider_record_key,
             )
         )
@@ -745,23 +766,31 @@ def _build_name_registry(
 
 
 def provider_name_coverage(bundle: SourceRegistryBundle) -> dict[str, Any]:
-    by_record = {row.provider_record_key: row for row in bundle.metadata_records}
+    by_record = {
+        provider_record_lookup_key(row.provider, row.provider_record_key): row
+        for row in bundle.metadata_records
+    }
     names_by_record: dict[str, list[SourceNameDraft]] = defaultdict(list)
     for name in bundle.name_observations:
-        names_by_record[name.provider_record_key].append(name)
+        names_by_record[provider_record_lookup_key(name.provider, name.provider_record_key)].append(name)
 
     providers = sorted({row.provider for row in bundle.metadata_records})
     provider_summary: dict[str, Any] = {}
     for provider in providers:
         records = [row for row in bundle.metadata_records if row.provider == provider]
         applicable = [row for row in records if row.applicability_status != "not_applicable_no_person_signal"]
-        covered = [row for row in applicable if names_by_record.get(row.provider_record_key)]
+        covered = [
+            row
+            for row in applicable
+            if names_by_record.get(provider_record_lookup_key(row.provider, row.provider_record_key))
+        ]
         role_applicable: Counter[str] = Counter()
         role_covered: Counter[str] = Counter()
         for record in applicable:
+            record_key = provider_record_lookup_key(record.provider, record.provider_record_key)
             for role in record.signal_roles:
                 role_applicable[role] += 1
-                if any(name.name_role == role for name in names_by_record.get(record.provider_record_key, [])):
+                if any(name.name_role == role for name in names_by_record.get(record_key, [])):
                     role_covered[role] += 1
         provider_summary[provider] = {
             "record_count": len(records),
@@ -855,6 +884,17 @@ def bundle_public_counts(bundle: SourceRegistryBundle) -> dict[str, Any]:
         "source_name_alias_candidates": len(bundle.alias_candidates),
         "source_metadata_evidence": len(bundle.evidence),
         "metadata_records_by_provider": dict(sorted(Counter(row.provider for row in bundle.metadata_records).items())),
+        "metadata_records_by_data_type": dict(
+            sorted(Counter(row.data_type_label for row in bundle.metadata_records).items())
+        ),
+        "metadata_records_by_provider_and_data_type": dict(
+            sorted(
+                Counter(
+                    f"{row.provider}:{row.data_type_label}"
+                    for row in bundle.metadata_records
+                ).items()
+            )
+        ),
         "tag_observations_by_provider": dict(sorted(Counter(row.provider for row in bundle.tag_observations).items())),
         "name_observations_by_provider": dict(sorted(Counter(row.provider for row in bundle.name_observations).items())),
         "alias_candidates_by_relation_type": dict(sorted(Counter(row.relation_type for row in bundle.alias_candidates).items())),
@@ -915,7 +955,7 @@ def persist_source_registry_bundle(
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceMetadataRecord"] += 1
-        metadata_by_key[draft.provider_record_key] = row
+        metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)] = row
     session.flush()
 
     for draft in bundle.tag_registry:
@@ -934,7 +974,7 @@ def persist_source_registry_bundle(
             summary["updated"]["SourceTagRegistry"] += 1
 
     for draft in bundle.tag_observations:
-        metadata = metadata_by_key[draft.provider_record_key]
+        metadata = metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)]
         row = (
             session.query(SourceTagObservation)
             .filter_by(source_metadata_record_id=metadata.id, observation_key=draft.observation_key)
@@ -949,22 +989,9 @@ def persist_source_registry_bundle(
                 setattr(row, key, value)
             summary["updated"]["SourceTagObservation"] += 1
 
-    for draft in bundle.name_registry:
-        row = session.query(SourceNameRegistry).filter_by(canonical_name_key=draft.canonical_name_key).one_or_none()
-        fields = _name_registry_fields(draft)
-        if row is None:
-            session.add(SourceNameRegistry(**fields))
-            summary["inserted"]["SourceNameRegistry"] += 1
-        else:
-            if str(row.manual_override_status or "none") != "none":
-                fields.pop("manual_override_status", None)
-            for key, value in fields.items():
-                setattr(row, key, value)
-            summary["updated"]["SourceNameRegistry"] += 1
-
     name_by_observation_key: dict[str, SourceNameObservation] = {}
     for draft in bundle.name_observations:
-        metadata = metadata_by_key[draft.provider_record_key]
+        metadata = metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)]
         row = (
             session.query(SourceNameObservation)
             .filter_by(source_metadata_record_id=metadata.id, observation_key=draft.observation_key)
@@ -979,8 +1006,26 @@ def persist_source_registry_bundle(
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceNameObservation"] += 1
-        name_by_observation_key[draft.observation_key] = row
+        name_by_observation_key[
+            provider_record_lookup_key(draft.provider, draft.provider_record_key) + f"::{draft.observation_key}"
+        ] = row
     session.flush()
+
+    for draft in bundle.name_registry:
+        row = session.query(SourceNameRegistry).filter_by(canonical_name_key=draft.canonical_name_key).one_or_none()
+        fields = _merged_name_registry_fields(session, draft, row)
+        if row is None:
+            session.add(SourceNameRegistry(**fields))
+            summary["inserted"]["SourceNameRegistry"] += 1
+        else:
+            if str(row.manual_override_status or "none") != "none":
+                fields.pop("manual_override_status", None)
+                fields.pop("primary_display_name", None)
+                fields.pop("normalized_display_name", None)
+                fields.pop("notes", None)
+            for key, value in fields.items():
+                setattr(row, key, value)
+            summary["updated"]["SourceNameRegistry"] += 1
 
     for draft in bundle.alias_candidates:
         row = (
@@ -1003,10 +1048,15 @@ def persist_source_registry_bundle(
             summary["updated"]["SourceNameAliasCandidate"] += 1
 
     for draft in bundle.evidence:
-        metadata = metadata_by_key[draft.provider_record_key]
+        metadata = metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)]
         observation_id = None
-        if draft.observation_key and draft.observation_key in name_by_observation_key:
-            observation_id = int(name_by_observation_key[draft.observation_key].id)
+        scoped_observation_key = (
+            provider_record_lookup_key(draft.provider, draft.provider_record_key) + f"::{draft.observation_key}"
+            if draft.observation_key
+            else None
+        )
+        if scoped_observation_key and scoped_observation_key in name_by_observation_key:
+            observation_id = int(name_by_observation_key[scoped_observation_key].id)
         row = (
             session.query(SourceMetadataEvidence)
             .filter_by(source_metadata_record_id=metadata.id, evidence_key=draft.evidence_key)
@@ -1047,8 +1097,13 @@ def _tag_registry_fields(
     metadata_by_key: Mapping[str, SourceMetadataRecord],
 ) -> dict[str, Any]:
     fields = asdict(draft)
+    example_provider = fields.pop("example_provider", None)
     provider_record_key = fields.pop("example_provider_record_key", None)
-    metadata = metadata_by_key.get(provider_record_key) if provider_record_key else None
+    metadata = (
+        metadata_by_key.get(provider_record_lookup_key(example_provider, provider_record_key))
+        if example_provider and provider_record_key
+        else None
+    )
     fields["example_source_metadata_id"] = int(metadata.id) if metadata and metadata.id else None
     fields["last_seen_at"] = datetime.now(timezone.utc)
     return fields
@@ -1067,6 +1122,41 @@ def _name_registry_fields(draft: SourceNameRegistryDraft) -> dict[str, Any]:
     return fields
 
 
+def _merged_name_registry_fields(
+    session: Session,
+    draft: SourceNameRegistryDraft,
+    existing: SourceNameRegistry | None,
+) -> dict[str, Any]:
+    fields = _name_registry_fields(draft)
+    observations = (
+        session.query(SourceNameObservation)
+        .filter_by(canonical_name_key=draft.canonical_name_key)
+        .all()
+    )
+    if not observations:
+        return fields
+
+    variants = sorted({normalize_source_text(row.raw_name) for row in observations if normalize_source_text(row.raw_name)})
+    provider_counts = Counter(row.provider for row in observations)
+    role_counts = Counter(row.name_role for row in observations)
+    primary = (
+        existing.primary_display_name
+        if existing is not None and str(existing.manual_override_status or "none") != "none"
+        else (variants[0] if variants else draft.primary_display_name)
+    )
+    fields.update(
+        {
+            "primary_display_name": primary,
+            "normalized_display_name": normalize_source_text(primary),
+            "raw_variants_json": variants,
+            "provider_coverage_json": dict(sorted(provider_counts.items())),
+            "role_distribution_json": dict(sorted(role_counts.items())),
+            "seen_count": len(observations),
+        }
+    )
+    return fields
+
+
 def _alias_fields(draft: SourceNameAliasDraft) -> dict[str, Any]:
     return asdict(draft)
 
@@ -1077,6 +1167,7 @@ def _evidence_fields(
     observation_id: int | None,
 ) -> dict[str, Any]:
     fields = asdict(draft)
+    fields.pop("provider", None)
     fields.pop("provider_record_key", None)
     fields.pop("observation_key", None)
     fields["source_metadata_record_id"] = source_metadata_record_id

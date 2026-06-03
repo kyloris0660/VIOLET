@@ -1262,6 +1262,7 @@ def migrate_add_source_metadata_name_registry(engine, inspector):
                     confidence FLOAT,
                     similarity FLOAT,
                     metadata_kind VARCHAR(100) NOT NULL DEFAULT 'provider_metadata',
+                    data_type_label VARCHAR(100) NOT NULL DEFAULT 'fixture_or_mock',
                     raw_metadata_json {json_type},
                     provenance {json_type},
                     status VARCHAR(50) NOT NULL DEFAULT 'observed',
@@ -1271,6 +1272,14 @@ def migrate_add_source_metadata_name_registry(engine, inspector):
                     CONSTRAINT uq_source_metadata_provider_record_key UNIQUE (provider, provider_record_key)
                 )
             """))
+        else:
+            columns = {column['name'] for column in inspector.get_columns('blombooru_source_metadata_records')}
+            if 'data_type_label' not in columns:
+                logger.info("Adding blombooru_source_metadata_records.data_type_label...")
+                conn.execute(text(
+                    "ALTER TABLE blombooru_source_metadata_records "
+                    "ADD COLUMN data_type_label VARCHAR(100) NOT NULL DEFAULT 'fixture_or_mock'"
+                ))
 
         if 'blombooru_source_tag_observations' not in tables:
             logger.info("Creating blombooru_source_tag_observations table...")
@@ -1426,6 +1435,7 @@ def migrate_add_source_metadata_name_registry(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_provider_status ON blombooru_source_metadata_records(provider, status)",
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_media_provider ON blombooru_source_metadata_records(media_id, provider)",
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_work_page ON blombooru_source_metadata_records(source_work_id, source_page_index)",
+            "CREATE INDEX IF NOT EXISTS ix_source_metadata_data_type ON blombooru_source_metadata_records(data_type_label)",
             "CREATE INDEX IF NOT EXISTS ix_source_tag_observation_provider_kind ON blombooru_source_tag_observations(provider, source_tag_kind)",
             "CREATE INDEX IF NOT EXISTS ix_source_tag_observation_canonical ON blombooru_source_tag_observations(canonical_tag_key)",
             "CREATE INDEX IF NOT EXISTS ix_source_tag_registry_governance ON blombooru_source_tag_registry(governance_status)",

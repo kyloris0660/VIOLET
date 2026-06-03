@@ -689,6 +689,7 @@ class SourceMetadataRecord(Base):
     confidence = Column(Float, nullable=True)
     similarity = Column(Float, nullable=True)
     metadata_kind = Column(String(100), nullable=False, default='provider_metadata', server_default='provider_metadata', index=True)
+    data_type_label = Column(String(100), nullable=False, default='fixture_or_mock', server_default='fixture_or_mock', index=True)
     raw_metadata_json = Column(JSON, nullable=True)
     provenance = Column(JSON, nullable=True)
     status = Column(String(50), nullable=False, default='observed', server_default='observed', index=True)

@@ -15,12 +15,12 @@ import os
 import re
 import subprocess
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +31,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.database import migrate_add_source_metadata_name_registry  # noqa: E402
+from app.models import Media  # noqa: E402
 from app.services.source_metadata_registry_service import (  # noqa: E402
     CuratedNameMapping,
     SourceRegistryBundle,
@@ -48,6 +49,14 @@ from scripts import run_phase44p2r_f1_gallery_dl_json_import_pilot as f1  # noqa
 PHASE = "4.4-P2R-F5"
 PHASE_SLUG = "phase-4.4p2r-f5-provider-neutral-source-name-registry"
 TITLE = "Provider-Neutral Source Metadata + Source Name / Alias Registry Foundation"
+DATA_TYPE_REAL = "real_live_or_local_provider_data"
+DATA_TYPE_ARTIFACT = "existing_artifact_or_report_derived"
+DATA_TYPE_FIXTURE = "fixture_or_mock"
+DATA_TYPE_LABELS = {DATA_TYPE_REAL, DATA_TYPE_ARTIFACT, DATA_TYPE_FIXTURE}
+TARGET_RECORD_COUNT_DEFAULT = 75
+MIN_RECORD_COUNT = 50
+REAL_PIXIV_SOURCE_PRIOR_MIN = 30
+MAX_RECORD_COUNT = 100
 
 REPORT_MD = Path(f"docs/reports/{PHASE_SLUG}.md")
 REPORT_JSON = Path(f"docs/reports/{PHASE_SLUG}-summary.json")
@@ -175,7 +184,7 @@ def write_private_json(path: Path, payload: Any) -> None:
 
 def load_provider_records(path: str | Path | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not path:
-        return default_provider_shape_records(), {
+        return _ensure_data_type_labels(default_provider_shape_records(), default_label=DATA_TYPE_FIXTURE), {
             "input_source": "built_in_public_safe_provider_shape_fixtures",
             "real_pixiv_raw_metadata_available": False,
             "external_provider_requests": 0,
@@ -193,13 +202,23 @@ def load_provider_records(path: str | Path | None) -> tuple[list[dict[str, Any]]
         records = payload
     if not isinstance(records, list) or not all(isinstance(row, Mapping) for row in records):
         raise Phase44P2RF5Error("provider_input_json_shape_invalid")
-    return [dict(row) for row in records], {
+    return _ensure_data_type_labels([dict(row) for row in records], default_label=DATA_TYPE_FIXTURE), {
         "input_source": "operator_supplied_provider_records_json",
         "input_record_count": len(records),
         "real_pixiv_raw_metadata_available": True,
         "external_provider_requests": 0,
         "provider_uploads": 0,
     }
+
+
+def _ensure_data_type_labels(records: Sequence[Mapping[str, Any]], *, default_label: str) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for row in records:
+        item = dict(row)
+        label = normalize_source_text(item.get("data_type_label") or item.get("source_data_type_label") or default_label)
+        item["data_type_label"] = label if label in DATA_TYPE_LABELS else default_label
+        result.append(item)
+    return result
 
 
 def load_curated_mappings(path: str | Path | None) -> list[CuratedNameMapping]:
@@ -350,6 +369,274 @@ def default_provider_shape_records() -> list[dict[str, Any]]:
     ]
 
 
+PIXIV_ARTWORK_RE = re.compile(r"pixiv\.net/(?:en/)?artworks/([1-9]\d{5,12})", re.IGNORECASE)
+PIXIV_FILE_RE = re.compile(r"(?<!\d)([1-9]\d{5,12})_p(\d{1,4})(?!\d)")
+
+
+def scale_provider_records(
+    records: Sequence[Mapping[str, Any]],
+    args: argparse.Namespace,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    target_count = max(MIN_RECORD_COUNT, min(int(args.target_record_count), int(args.max_records), MAX_RECORD_COUNT))
+    if args.input_json or args.disable_scale_up:
+        return list(records), {
+            "scale_up_enabled": False,
+            "scale_up_reason": "operator_input_or_disabled",
+            "target_record_count": target_count,
+        }
+
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_many(rows: Iterable[Mapping[str, Any]]) -> int:
+        added = 0
+        for row in rows:
+            if len(result) >= target_count:
+                break
+            item = dict(row)
+            provider = canonical_source_key(item.get("provider") or "generic_provider")
+            provider_record_key = normalize_source_text(item.get("provider_record_key"))
+            key = (provider, provider_record_key)
+            if not provider or not provider_record_key or key in seen:
+                continue
+            result.append(item)
+            seen.add(key)
+            added += 1
+        return added
+
+    real_pixiv_records: list[dict[str, Any]] = []
+    real_pixiv_summary: dict[str, Any] = {"attempted": False, "record_count": 0}
+    if not args.no_db and not args.dry_run:
+        real_pixiv_records, real_pixiv_summary = load_real_pixiv_source_prior_records_from_db(
+            limit=max(int(args.real_pixiv_source_prior_min), REAL_PIXIV_SOURCE_PRIOR_MIN)
+        )
+    add_many(real_pixiv_records)
+
+    artifact_saucenao_records = load_existing_saucenao_artifact_records(limit=10)
+    add_many(artifact_saucenao_records)
+    add_many(records)
+    add_many(generated_scale_fixture_records(start_index=1, count=target_count - len(result)))
+
+    data_type_counts = Counter(row.get("data_type_label") for row in result)
+    return result[: int(args.max_records)], {
+        "scale_up_enabled": True,
+        "target_record_count": target_count,
+        "actual_record_count": len(result[: int(args.max_records)]),
+        "minimum_record_count_required": MIN_RECORD_COUNT,
+        "preferred_record_count": TARGET_RECORD_COUNT_DEFAULT,
+        "max_record_count": int(args.max_records),
+        "data_type_counts": dict(sorted(data_type_counts.items())),
+        "real_pixiv_source_prior_minimum": int(args.real_pixiv_source_prior_min),
+        "real_pixiv_source_prior_summary": real_pixiv_summary,
+        "existing_saucenao_artifact_record_count": len(artifact_saucenao_records),
+        "fixture_or_mock_record_count": data_type_counts.get(DATA_TYPE_FIXTURE, 0),
+        "meets_scale_minimum": len(result) >= MIN_RECORD_COUNT,
+        "meets_real_pixiv_source_prior_minimum": len(real_pixiv_records) >= int(args.real_pixiv_source_prior_min),
+    }
+
+
+def load_real_pixiv_source_prior_records_from_db(*, limit: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    config = f1.load_project_config(ROOT)
+    engine = create_engine(config.database_url)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    records: list[dict[str, Any]] = []
+    scanned = 0
+    try:
+        db_identity = f1.prove_db_identity(session, config)
+        for media_id, filename, source in session.query(Media.id, Media.filename, Media.source).order_by(Media.id.asc()):
+            scanned += 1
+            prior = _pixiv_source_prior_from_values(filename=filename, source=source)
+            if prior is None:
+                continue
+            work_id, page_index, source_url, matched_field = prior
+            records.append(
+                {
+                    "provider": "pixiv",
+                    "provider_record_key": f"db-source-prior:pixiv:{work_id}:p{page_index}:m{media_id}",
+                    "media_id": int(media_id),
+                    "source_work_id": work_id,
+                    "source_page_index": page_index,
+                    "source_url": source_url,
+                    "metadata_kind": "local_pixiv_source_prior",
+                    "data_type_label": DATA_TYPE_REAL,
+                    "raw_metadata_json": {
+                        "source_prior_kind": "pixiv_work_id_page_index",
+                        "work_id": work_id,
+                        "page_index": page_index,
+                        "matched_field": matched_field,
+                        "local_path_included": False,
+                        "filename_included": False,
+                    },
+                    "provenance": {
+                        "source": "local_db_media_source_or_filename_prior",
+                        "read_only": True,
+                        "external_provider_request": False,
+                    },
+                }
+            )
+            if len(records) >= limit:
+                break
+        return records, {
+            "attempted": True,
+            "record_count": len(records),
+            "scanned_media_count": scanned,
+            "db_identity": {
+                key: db_identity.get(key)
+                for key in (
+                    "violet_env",
+                    "actual_db_name",
+                    "configured_db_name",
+                    "configured_db_host",
+                    "configured_db_port",
+                    "database_url_source",
+                )
+            },
+            "local_paths_included": False,
+            "filename_values_included": False,
+            "external_provider_requests": 0,
+        }
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _pixiv_source_prior_from_values(*, filename: str | None, source: str | None) -> tuple[str, int, str | None, str] | None:
+    for field_name, value in (("source", source), ("filename", filename)):
+        text_value = normalize_source_text(value)
+        if not text_value:
+            continue
+        url_match = PIXIV_ARTWORK_RE.search(text_value)
+        if url_match:
+            page_match = PIXIV_FILE_RE.search(text_value)
+            return url_match.group(1), int(page_match.group(2)) if page_match else 0, text_value, field_name
+        file_match = PIXIV_FILE_RE.search(text_value)
+        if file_match:
+            return file_match.group(1), int(file_match.group(2)), None, field_name
+    return None
+
+
+def load_existing_saucenao_artifact_records(*, limit: int) -> list[dict[str, Any]]:
+    path = ROOT / "docs/reports/phase-4.4b1-manual-validation-and-saucenao-metadata-audit-summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    items = (
+        payload.get("metadata_extraction_audit", {}).get("items", [])
+        if isinstance(payload, Mapping)
+        else []
+    )
+    records: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            continue
+        fields_present = any(item.get(key) for key in ("artist", "work_or_copyright", "characters"))
+        source_host = normalize_source_text(item.get("source_url_host"))
+        if not fields_present and not source_host:
+            continue
+        records.append(
+            {
+                "provider": "saucenao",
+                "provider_record_key": f"artifact:saucenao:b1:{index + 1}",
+                "source_work_id": f"artifact_saucenao_b1_{index + 1}",
+                "similarity": item.get("score"),
+                "artist": item.get("artist"),
+                "work_or_copyright": item.get("work_or_copyright"),
+                "characters": item.get("characters"),
+                "metadata_kind": "saucenao_report_derived_metadata",
+                "data_type_label": DATA_TYPE_ARTIFACT,
+                "raw_metadata_json": {
+                    "phase_report": "phase-4.4b1-manual-validation-and-saucenao-metadata-audit-summary.json",
+                    "result_class": item.get("result_class"),
+                    "score": item.get("score"),
+                    "source_url_host": source_host or None,
+                    "media_id_included": False,
+                },
+                "provenance": {
+                    "source": "existing_public_phase_report",
+                    "raw_provider_payload_available": False,
+                    "external_provider_request_in_this_run": False,
+                },
+            }
+        )
+        if len(records) >= limit:
+            break
+    return _ensure_data_type_labels(records, default_label=DATA_TYPE_ARTIFACT)
+
+
+def generated_scale_fixture_records(*, start_index: int, count: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for offset in range(max(0, count)):
+        index = start_index + offset
+        selector = index % 5
+        if selector == 0:
+            rows.append(
+                {
+                    "provider": "pixiv",
+                    "provider_record_key": f"fixture:pixiv:scale:{index}:p0",
+                    "source_work_id": f"fixture_pixiv_scale_{index}",
+                    "source_page_index": 0,
+                    "artist_name": f"Scale Artist {index}",
+                    "title": f"Scale Work {index}",
+                    "tags": [f"Scale Character {index} (Scale Work {index})", "background"],
+                    "metadata_kind": "gallery_dl_pixiv_metadata_fixture",
+                    "data_type_label": DATA_TYPE_FIXTURE,
+                }
+            )
+        elif selector == 1:
+            rows.append(
+                {
+                    "provider": "saucenao",
+                    "provider_record_key": f"fixture:saucenao:scale:{index}",
+                    "creator": f"Scale Sauce Creator {index}",
+                    "work_or_copyright": [f"Scale Sauce Work {index}"],
+                    "characters": [f"Scale Sauce Character {index} (Scale Sauce Work {index})"],
+                    "similarity": 90.0 + (index % 10),
+                    "metadata_kind": "saucenao_style_metadata_fixture",
+                    "data_type_label": DATA_TYPE_FIXTURE,
+                }
+            )
+        elif selector == 2:
+            rows.append(
+                {
+                    "provider": "danbooru",
+                    "provider_record_key": f"fixture:danbooru:numeric:{index}",
+                    "tags": [
+                        {"name": f"Numeric Fixture Artist {index}", "category": 1},
+                        {"name": f"Numeric Fixture Work {index}", "category": 3},
+                        {"name": f"Numeric Fixture Character {index}", "category": 4},
+                        {"name": f"Numeric Fixture General {index}", "category": 0},
+                    ],
+                    "metadata_kind": "danbooru_numeric_category_fixture",
+                    "data_type_label": DATA_TYPE_FIXTURE,
+                }
+            )
+        elif selector == 3:
+            rows.append(
+                {
+                    "provider": "gelbooru",
+                    "provider_record_key": f"fixture:gelbooru:numeric:{index}",
+                    "tags": [
+                        {"name": f"Gel Fixture Artist {index}", "category": 1},
+                        {"name": f"Gel Fixture Work {index}", "category": 3},
+                        {"name": f"Gel Fixture Character {index}", "category": 4},
+                    ],
+                    "metadata_kind": "gelbooru_numeric_category_fixture",
+                    "data_type_label": DATA_TYPE_FIXTURE,
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "provider": "no_tag_provider",
+                    "provider_record_key": f"fixture:no-tag:scale:{index}",
+                    "metadata_kind": "no_tag_no_name_provider_fixture",
+                    "data_type_label": DATA_TYPE_FIXTURE,
+                }
+            )
+    return rows
+
+
 def install_source_registry_write_guard(engine) -> None:
     write_re = re.compile(r"^\s*(insert|update|delete|alter|drop|truncate|create)\b", re.IGNORECASE)
     destructive_re = re.compile(r"^\s*(delete|drop|truncate)\b", re.IGNORECASE)
@@ -425,6 +712,11 @@ def schema_summary() -> dict[str, Any]:
 
 def provider_shapes_summary(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     providers = Counter(canonical_source_key(row.get("provider") or "generic_provider") for row in records)
+    data_types = Counter(normalize_source_text(row.get("data_type_label")) or DATA_TYPE_FIXTURE for row in records)
+    provider_data_types = Counter(
+        f"{canonical_source_key(row.get('provider') or 'generic_provider')}:{normalize_source_text(row.get('data_type_label')) or DATA_TYPE_FIXTURE}"
+        for row in records
+    )
     shapes = {
         "pixiv": providers.get("pixiv", 0) > 0,
         "saucenao_style": providers.get("saucenao", 0) > 0,
@@ -434,6 +726,8 @@ def provider_shapes_summary(records: Sequence[Mapping[str, Any]]) -> dict[str, A
     }
     return {
         "provider_counts": dict(sorted(providers.items())),
+        "data_type_counts": dict(sorted(data_types.items())),
+        "provider_data_type_counts": dict(sorted(provider_data_types.items())),
         "required_shapes": shapes,
         "all_required_shapes_represented": all(shapes.values()),
     }
@@ -444,7 +738,16 @@ def search_validation_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, An
         "query_count": len(rows),
         "matched_count": sum(1 for row in rows if row.get("matched")),
         "unmatched_count": sum(1 for row in rows if not row.get("matched")),
-        "all_queries_matched": all(bool(row.get("matched")) for row in rows) if rows else True,
+        "positive_queries_matched": all(
+            bool(row.get("matched"))
+            for row in rows
+            if not str(row.get("query_key", "")).startswith("f5_no_match_control")
+        )
+        if rows
+        else True,
+        "no_match_control_present": any(
+            str(row.get("query_key", "")).startswith("f5_no_match_control") for row in rows
+        ),
     }
 
 
@@ -461,8 +764,30 @@ def alias_quality_summary(bundle: SourceRegistryBundle) -> dict[str, Any]:
         "parenthetical_medium_count": sum(
             1 for row in bundle.alias_candidates if row.relation_type == "parenthetical_character_of_work"
         ),
+        "weak_alias_count": sum(1 for row in bundle.alias_candidates if (row.confidence or 0) < 0.7),
         "weak_cooccurrence_affects_canonicalization": False,
     }
+
+
+def coverage_by_provider_and_data_type(bundle: SourceRegistryBundle) -> dict[str, Any]:
+    grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for record in bundle.metadata_records:
+        grouped[f"{record.provider}:{record.data_type_label}"].append(record)
+    names_by_record: dict[str, list[Any]] = defaultdict(list)
+    for name in bundle.name_observations:
+        names_by_record[f"{name.provider}::{name.provider_record_key}"].append(name)
+    result: dict[str, Any] = {}
+    for key, records in sorted(grouped.items()):
+        applicable = [row for row in records if row.applicability_status != "not_applicable_no_person_signal"]
+        covered = [row for row in applicable if names_by_record.get(f"{row.provider}::{row.provider_record_key}")]
+        result[key] = {
+            "record_count": len(records),
+            "applicable_name_signal_count": len(applicable),
+            "covered_name_signal_count": len(covered),
+            "not_applicable_no_person_signal_count": len(records) - len(applicable),
+            "coverage": round(len(covered) / len(applicable), 4) if applicable else None,
+        }
+    return result
 
 
 def no_tag_provider_summary(bundle: SourceRegistryBundle) -> dict[str, Any]:
@@ -501,6 +826,7 @@ def build_public_summary(
         "schema_summary": schema_summary(),
         "row_counts": counts,
         "coverage": coverage,
+        "coverage_by_provider_and_data_type": coverage_by_provider_and_data_type(bundle),
         "pixiv_applicable_name_coverage": pixiv.get("coverage"),
         "pixiv_coverage_target_met": (pixiv.get("coverage") or 0) >= 0.8,
         "saucenao_applicable_name_coverage": saucenao.get("coverage"),
@@ -520,7 +846,22 @@ def build_public_summary(
             "allowed_tables": sorted(ALLOWED_WRITE_TABLES),
             "forbidden_tables": sorted(FORBIDDEN_TABLES),
             "guard_installed_when_apply_db": bool(db_write_summary.get("guard_installed")),
-            "forbidden_truth_table_write_count": 0,
+            "forbidden_truth_table_write_count": db_write_summary.get("forbidden_truth_table_write_count", 0),
+            "forbidden_table_row_deltas": db_write_summary.get("forbidden_table_row_deltas", {}),
+        },
+        "f5_minimum_requirements": {
+            "source_metadata_record_candidates_at_least_50": counts["source_metadata_records"] >= MIN_RECORD_COUNT,
+            "source_metadata_record_candidates_preferred_75": counts["source_metadata_records"] >= TARGET_RECORD_COUNT_DEFAULT,
+            "source_metadata_record_candidates_hard_max_100": counts["source_metadata_records"] <= MAX_RECORD_COUNT,
+            "real_pixiv_source_prior_records_at_least_30": (
+                counts["metadata_records_by_provider_and_data_type"].get(f"pixiv:{DATA_TYPE_REAL}", 0)
+                >= REAL_PIXIV_SOURCE_PRIOR_MIN
+            ),
+            "apply_db_executed": bool(db_write_summary.get("apply")),
+            "apply_db_success": bool(db_write_summary.get("success")),
+            "forbidden_truth_table_write_count_zero": db_write_summary.get("forbidden_truth_table_write_count", 0) == 0,
+            "pixiv_applicable_coverage_at_least_80": (pixiv.get("coverage") or 0) >= 0.8,
+            "saucenao_applicable_coverage_at_least_90": (saucenao.get("coverage") or 0) >= 0.9,
         },
         "public_report_redaction": {
             "contains_exact_local_paths": False,
@@ -558,6 +899,7 @@ def build_public_summary(
             "next_route": "review_source_name_registry_then_design_bounded_entity_candidate_bridge",
             "entity_candidate_persistence": "deferred_until_source_name_registry_review",
             "local_source_hint_persistence": "deferred",
+            "merge_readiness": "ready_for_review_if_apply_db_and_minimums_pass",
         },
     }
 
@@ -571,6 +913,7 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- PR #91 merge confirmation: `{json.dumps(summary['pr91_merge_confirmation'], sort_keys=True)}`.",
         f"- Provider shapes covered: `{json.dumps(summary['provider_shapes_covered'], sort_keys=True)}`.",
         f"- Row counts: `{json.dumps(summary['row_counts'], sort_keys=True)}`.",
+        f"- F5 minimum requirements: `{json.dumps(summary['f5_minimum_requirements'], sort_keys=True)}`.",
         f"- Pixiv applicable name coverage: `{summary['pixiv_applicable_name_coverage']}`.",
         f"- SauceNAO applicable name coverage: `{summary['saucenao_applicable_name_coverage']}`.",
         f"- Not applicable no-person-signal count: `{summary['not_applicable_no_person_signal_count']}`.",
@@ -584,6 +927,7 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         "## Names / Aliases",
         "",
         f"- Coverage: `{json.dumps(summary['coverage'], sort_keys=True)}`.",
+        f"- Coverage by provider/data type: `{json.dumps(summary['coverage_by_provider_and_data_type'], sort_keys=True)}`.",
         f"- Alias candidate quality: `{json.dumps(summary['alias_candidate_quality'], sort_keys=True)}`.",
         f"- Search index validation: `{json.dumps(summary['name_search_index_validation'], sort_keys=True)}`.",
         f"- No-tag provider result: `{json.dumps(summary['no_tag_provider_result'], sort_keys=True)}`.",
@@ -639,10 +983,25 @@ def manual_review_guide() -> str:
 def private_markers(bundle: SourceRegistryBundle, records: Sequence[Mapping[str, Any]]) -> list[str]:
     markers: set[str] = set()
     for record in records:
-        for key in ("artist_name", "artist", "creator", "author", "title", "work", "material", "copyright"):
+        for key in (
+            "artist_name",
+            "artist",
+            "creator",
+            "author",
+            "title",
+            "work",
+            "material",
+            "copyright",
+            "work_or_copyright",
+            "characters",
+            "character",
+            "person",
+        ):
             value = record.get(key)
             if isinstance(value, str) and value:
                 markers.add(value)
+            elif isinstance(value, (list, tuple, set)):
+                markers.update(str(item) for item in value if item)
         for key in ("source_url", "post_url", "source_work_id", "work_id", "provider_record_key"):
             value = record.get(key)
             if isinstance(value, str) and value:
@@ -663,7 +1022,31 @@ def search_validation_queries(bundle: SourceRegistryBundle) -> list[str]:
         queries.append(name.raw_name)
     for alias in bundle.alias_candidates[:8]:
         queries.append(alias.source_display_name)
+    queries.append("f5_no_match_control_query_should_not_match")
     return queries
+
+
+def table_row_counts(session, table_names: Iterable[str]) -> dict[str, int | None]:
+    existing_tables = set(inspect(session.bind).get_table_names())
+    counts: dict[str, int | None] = {}
+    for table_name in sorted(table_names):
+        if table_name not in existing_tables:
+            counts[table_name] = None
+            continue
+        counts[table_name] = int(session.execute(text(f'SELECT COUNT(*) FROM "{table_name}"')).scalar() or 0)
+    return counts
+
+
+def table_row_deltas(before: Mapping[str, int | None], after: Mapping[str, int | None]) -> dict[str, int]:
+    deltas: dict[str, int] = {}
+    for table_name in sorted(set(before) | set(after)):
+        before_count = before.get(table_name)
+        after_count = after.get(table_name)
+        if before_count is None or after_count is None:
+            deltas[table_name] = 0
+        else:
+            deltas[table_name] = int(after_count) - int(before_count)
+    return deltas
 
 
 def db_apply_summary(args: argparse.Namespace, bundle: SourceRegistryBundle) -> tuple[dict[str, Any] | None, dict[str, Any]]:
@@ -684,8 +1067,23 @@ def db_apply_summary(args: argparse.Namespace, bundle: SourceRegistryBundle) -> 
     session = SessionLocal()
     try:
         db_identity = f1.prove_db_identity(session, config)
+        forbidden_before = table_row_counts(session, FORBIDDEN_TABLES)
+        allowed_before = table_row_counts(session, ALLOWED_WRITE_TABLES)
         write_summary = persist_source_registry_bundle(session, bundle, apply=True)
+        forbidden_after = table_row_counts(session, FORBIDDEN_TABLES)
+        allowed_after = table_row_counts(session, ALLOWED_WRITE_TABLES)
+        forbidden_deltas = table_row_deltas(forbidden_before, forbidden_after)
+        forbidden_delta_total = sum(abs(value) for value in forbidden_deltas.values())
+        write_summary["allowed_table_row_counts_before"] = allowed_before
+        write_summary["allowed_table_row_counts_after"] = allowed_after
+        write_summary["allowed_table_row_deltas"] = table_row_deltas(allowed_before, allowed_after)
+        write_summary["forbidden_table_row_counts_before"] = forbidden_before
+        write_summary["forbidden_table_row_counts_after"] = forbidden_after
+        write_summary["forbidden_table_row_deltas"] = forbidden_deltas
+        write_summary["forbidden_truth_table_write_count"] = forbidden_delta_total
         write_summary["guard_installed"] = True
+        if forbidden_delta_total:
+            raise Phase44P2RF5Error("forbidden_truth_table_row_count_changed")
         return db_identity, write_summary
     finally:
         session.close()
@@ -713,6 +1111,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--apply-db", action="store_true")
     parser.add_argument("--no-db", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--target-record-count", type=int, default=TARGET_RECORD_COUNT_DEFAULT)
+    parser.add_argument("--real-pixiv-source-prior-min", type=int, default=REAL_PIXIV_SOURCE_PRIOR_MIN)
+    parser.add_argument("--max-records", type=int, default=MAX_RECORD_COUNT)
+    parser.add_argument("--disable-scale-up", action="store_true")
     return parser
 
 
@@ -739,6 +1141,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     records, input_summary = load_provider_records(args.input_json or None)
+    records, scale_summary = scale_provider_records(records, args)
+    input_summary = {**dict(input_summary), "scale_up": scale_summary}
     curated_mappings = load_curated_mappings(args.curated_mapping_input or None)
     bundle = build_source_registry_bundle(records, curated_mappings=curated_mappings)
     search_rows = validate_search_queries(bundle, search_validation_queries(bundle))

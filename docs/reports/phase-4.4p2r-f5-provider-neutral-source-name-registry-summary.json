@@ -1,31 +1,32 @@
 {
   "alias_candidate_quality": {
-    "candidate_count": 3,
+    "candidate_count": 9,
     "evidence_source_counts": {
-      "pixiv_parenthetical_pattern": 2,
+      "pixiv_parenthetical_pattern": 8,
       "pixiv_provider_canonical": 1
     },
-    "parenthetical_medium_count": 2,
+    "parenthetical_medium_count": 8,
     "relation_type_counts": {
-      "parenthetical_character_of_work": 2,
+      "parenthetical_character_of_work": 8,
       "provider_canonical": 1
     },
     "strong_or_curated_count": 1,
+    "weak_alias_count": 0,
     "weak_cooccurrence_affects_canonicalization": false
   },
   "artifact_lifecycle": "phase_scoped_operational_runner",
   "coverage": {
     "providers": {
       "danbooru": {
-        "applicable_name_signal_count": 1,
+        "applicable_name_signal_count": 7,
         "coverage": 1.0,
-        "covered_name_signal_count": 1,
+        "covered_name_signal_count": 7,
         "not_applicable_no_person_signal_count": 0,
-        "record_count": 1,
+        "record_count": 7,
         "role_applicable_counts": {
-          "artist": 1,
-          "character": 1,
-          "work_title": 1
+          "artist": 7,
+          "character": 7,
+          "work_title": 7
         },
         "role_coverage": {
           "artist": 1.0,
@@ -33,9 +34,31 @@
           "work_title": 1.0
         },
         "role_covered_counts": {
-          "artist": 1,
-          "character": 1,
-          "work_title": 1
+          "artist": 7,
+          "character": 7,
+          "work_title": 7
+        }
+      },
+      "gelbooru": {
+        "applicable_name_signal_count": 6,
+        "coverage": 1.0,
+        "covered_name_signal_count": 6,
+        "not_applicable_no_person_signal_count": 0,
+        "record_count": 6,
+        "role_applicable_counts": {
+          "artist": 6,
+          "character": 6,
+          "work_title": 6
+        },
+        "role_coverage": {
+          "artist": 1.0,
+          "character": 1.0,
+          "work_title": 1.0
+        },
+        "role_covered_counts": {
+          "artist": 6,
+          "character": 6,
+          "work_title": 6
         }
       },
       "google_vision": {
@@ -52,22 +75,22 @@
         "applicable_name_signal_count": 0,
         "coverage": null,
         "covered_name_signal_count": 0,
-        "not_applicable_no_person_signal_count": 1,
-        "record_count": 1,
+        "not_applicable_no_person_signal_count": 7,
+        "record_count": 7,
         "role_applicable_counts": {},
         "role_coverage": {},
         "role_covered_counts": {}
       },
       "pixiv": {
-        "applicable_name_signal_count": 4,
+        "applicable_name_signal_count": 10,
         "coverage": 1.0,
-        "covered_name_signal_count": 4,
-        "not_applicable_no_person_signal_count": 1,
-        "record_count": 5,
+        "covered_name_signal_count": 10,
+        "not_applicable_no_person_signal_count": 31,
+        "record_count": 41,
         "role_applicable_counts": {
-          "artist": 4,
-          "character": 3,
-          "work_title": 4
+          "artist": 10,
+          "character": 9,
+          "work_title": 10
         },
         "role_coverage": {
           "artist": 1.0,
@@ -75,22 +98,22 @@
           "work_title": 1.0
         },
         "role_covered_counts": {
-          "artist": 4,
-          "character": 3,
-          "work_title": 4
+          "artist": 10,
+          "character": 9,
+          "work_title": 10
         }
       },
       "saucenao": {
-        "applicable_name_signal_count": 2,
+        "applicable_name_signal_count": 11,
         "coverage": 1.0,
-        "covered_name_signal_count": 2,
-        "not_applicable_no_person_signal_count": 0,
-        "record_count": 2,
+        "covered_name_signal_count": 11,
+        "not_applicable_no_person_signal_count": 2,
+        "record_count": 13,
         "role_applicable_counts": {
-          "artist": 1,
-          "character": 1,
-          "creator": 1,
-          "work_title": 2
+          "artist": 3,
+          "character": 10,
+          "creator": 8,
+          "work_title": 11
         },
         "role_coverage": {
           "artist": 1.0,
@@ -99,18 +122,76 @@
           "work_title": 1.0
         },
         "role_covered_counts": {
-          "artist": 1,
-          "character": 1,
-          "creator": 1,
-          "work_title": 2
+          "artist": 3,
+          "character": 10,
+          "creator": 8,
+          "work_title": 11
         }
       }
     },
     "record_status_counts": {
-      "applicable_name_signal_covered": 7,
-      "not_applicable_no_person_signal": 3
+      "applicable_name_signal_covered": 34,
+      "not_applicable_no_person_signal": 41
     },
-    "records_indexed": 10
+    "records_indexed": 75
+  },
+  "coverage_by_provider_and_data_type": {
+    "danbooru:fixture_or_mock": {
+      "applicable_name_signal_count": 7,
+      "coverage": 1.0,
+      "covered_name_signal_count": 7,
+      "not_applicable_no_person_signal_count": 0,
+      "record_count": 7
+    },
+    "gelbooru:fixture_or_mock": {
+      "applicable_name_signal_count": 6,
+      "coverage": 1.0,
+      "covered_name_signal_count": 6,
+      "not_applicable_no_person_signal_count": 0,
+      "record_count": 6
+    },
+    "google_vision:fixture_or_mock": {
+      "applicable_name_signal_count": 0,
+      "coverage": null,
+      "covered_name_signal_count": 0,
+      "not_applicable_no_person_signal_count": 1,
+      "record_count": 1
+    },
+    "no_tag_provider:fixture_or_mock": {
+      "applicable_name_signal_count": 0,
+      "coverage": null,
+      "covered_name_signal_count": 0,
+      "not_applicable_no_person_signal_count": 7,
+      "record_count": 7
+    },
+    "pixiv:fixture_or_mock": {
+      "applicable_name_signal_count": 10,
+      "coverage": 1.0,
+      "covered_name_signal_count": 10,
+      "not_applicable_no_person_signal_count": 1,
+      "record_count": 11
+    },
+    "pixiv:real_live_or_local_provider_data": {
+      "applicable_name_signal_count": 0,
+      "coverage": null,
+      "covered_name_signal_count": 0,
+      "not_applicable_no_person_signal_count": 30,
+      "record_count": 30
+    },
+    "saucenao:existing_artifact_or_report_derived": {
+      "applicable_name_signal_count": 2,
+      "coverage": 1.0,
+      "covered_name_signal_count": 2,
+      "not_applicable_no_person_signal_count": 2,
+      "record_count": 4
+    },
+    "saucenao:fixture_or_mock": {
+      "applicable_name_signal_count": 9,
+      "coverage": 1.0,
+      "covered_name_signal_count": 9,
+      "not_applicable_no_person_signal_count": 0,
+      "record_count": 9
+    }
   },
   "curated_mapping": {
     "input_mapping_count": 0,
@@ -118,68 +199,230 @@
     "template_private_artifact": "curated-name-mapping-template.csv"
   },
   "db_identity": {
-    "db_read": false
+    "actual_db_name": "blombooru",
+    "configured_db_host": "localhost",
+    "configured_db_name": "blombooru",
+    "configured_db_port": 5432,
+    "configured_db_user": "postgres",
+    "database_url_source": "settings_env_or_default",
+    "db_read_only_guard_installed": true,
+    "db_sensitive_value_included": false,
+    "local_paths_redacted": true,
+    "settings_file_exists": false,
+    "settings_source": "defaults_without_settings_file",
+    "storage_root_mode": "code_root_default",
+    "violet_env": "development"
   },
   "db_write_summary": {
-    "apply": false,
+    "allowed_table_row_counts_after": {
+      "blombooru_source_metadata_evidence": 185,
+      "blombooru_source_metadata_records": 75,
+      "blombooru_source_name_alias_candidates": 9,
+      "blombooru_source_name_observations": 110,
+      "blombooru_source_name_registry": 101,
+      "blombooru_source_tag_observations": 72,
+      "blombooru_source_tag_registry": 66
+    },
+    "allowed_table_row_counts_before": {
+      "blombooru_source_metadata_evidence": 0,
+      "blombooru_source_metadata_records": 0,
+      "blombooru_source_name_alias_candidates": 0,
+      "blombooru_source_name_observations": 0,
+      "blombooru_source_name_registry": 0,
+      "blombooru_source_tag_observations": 0,
+      "blombooru_source_tag_registry": 0
+    },
+    "allowed_table_row_deltas": {
+      "blombooru_source_metadata_evidence": 185,
+      "blombooru_source_metadata_records": 75,
+      "blombooru_source_name_alias_candidates": 9,
+      "blombooru_source_name_observations": 110,
+      "blombooru_source_name_registry": 101,
+      "blombooru_source_tag_observations": 72,
+      "blombooru_source_tag_registry": 66
+    },
+    "allowed_tables": [
+      "blombooru_source_metadata_records",
+      "blombooru_source_tag_observations",
+      "blombooru_source_tag_registry",
+      "blombooru_source_name_observations",
+      "blombooru_source_name_registry",
+      "blombooru_source_name_alias_candidates",
+      "blombooru_source_metadata_evidence"
+    ],
+    "apply": true,
+    "existing": {},
+    "forbidden_table_row_counts_after": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 2,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 7,
+      "blombooru_media_tags": 105699,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 2,
+      "blombooru_tag_translation_jobs": 17,
+      "blombooru_tag_translations": 3732
+    },
+    "forbidden_table_row_counts_before": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 2,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 7,
+      "blombooru_media_tags": 105699,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 2,
+      "blombooru_tag_translation_jobs": 17,
+      "blombooru_tag_translations": 3732
+    },
+    "forbidden_table_row_deltas": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 0,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 0,
+      "blombooru_media_tags": 0,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 0,
+      "blombooru_tag_translation_jobs": 0,
+      "blombooru_tag_translations": 0
+    },
     "forbidden_truth_table_write_count": 0,
-    "guard_installed": false,
+    "guard_installed": true,
+    "inserted": {
+      "SourceMetadataEvidence": 185,
+      "SourceMetadataRecord": 75,
+      "SourceNameAliasCandidate": 9,
+      "SourceNameObservation": 110,
+      "SourceNameRegistry": 101,
+      "SourceTagObservation": 72,
+      "SourceTagRegistry": 66
+    },
     "planned": {
       "alias_candidates_by_relation_type": {
-        "parenthetical_character_of_work": 2,
+        "parenthetical_character_of_work": 8,
         "provider_canonical": 1
       },
+      "metadata_records_by_data_type": {
+        "existing_artifact_or_report_derived": 4,
+        "fixture_or_mock": 41,
+        "real_live_or_local_provider_data": 30
+      },
       "metadata_records_by_provider": {
-        "danbooru": 1,
+        "danbooru": 7,
+        "gelbooru": 6,
         "google_vision": 1,
-        "no_tag_provider": 1,
-        "pixiv": 5,
-        "saucenao": 2
+        "no_tag_provider": 7,
+        "pixiv": 41,
+        "saucenao": 13
+      },
+      "metadata_records_by_provider_and_data_type": {
+        "danbooru:fixture_or_mock": 7,
+        "gelbooru:fixture_or_mock": 6,
+        "google_vision:fixture_or_mock": 1,
+        "no_tag_provider:fixture_or_mock": 7,
+        "pixiv:fixture_or_mock": 11,
+        "pixiv:real_live_or_local_provider_data": 30,
+        "saucenao:existing_artifact_or_report_derived": 4,
+        "saucenao:fixture_or_mock": 9
       },
       "name_observations_by_provider": {
-        "danbooru": 3,
-        "pixiv": 14,
-        "saucenao": 5
+        "danbooru": 21,
+        "gelbooru": 18,
+        "pixiv": 38,
+        "saucenao": 33
       },
       "search_key_collision_count": 0,
-      "source_metadata_evidence": 32,
-      "source_metadata_records": 10,
-      "source_name_alias_candidates": 3,
-      "source_name_observations": 22,
-      "source_name_registry": 19,
-      "source_tag_observations": 18,
-      "source_tag_registry": 18,
+      "source_metadata_evidence": 185,
+      "source_metadata_records": 75,
+      "source_name_alias_candidates": 9,
+      "source_name_observations": 110,
+      "source_name_registry": 101,
+      "source_tag_observations": 72,
+      "source_tag_registry": 66,
       "tag_observations_by_provider": {
-        "danbooru": 4,
+        "danbooru": 28,
+        "gelbooru": 18,
         "google_vision": 2,
-        "pixiv": 11,
+        "pixiv": 23,
         "saucenao": 1
       }
     },
-    "reason": "no_db_or_dry_run_or_apply_db_not_set"
+    "success": true,
+    "updated": {}
+  },
+  "f5_minimum_requirements": {
+    "apply_db_executed": true,
+    "apply_db_success": true,
+    "forbidden_truth_table_write_count_zero": true,
+    "pixiv_applicable_coverage_at_least_80": true,
+    "real_pixiv_source_prior_records_at_least_30": true,
+    "saucenao_applicable_coverage_at_least_90": true,
+    "source_metadata_record_candidates_at_least_50": true,
+    "source_metadata_record_candidates_hard_max_100": true,
+    "source_metadata_record_candidates_preferred_75": true
   },
   "input_summary": {
     "external_provider_requests": 0,
     "input_source": "built_in_public_safe_provider_shape_fixtures",
     "provider_uploads": 0,
-    "real_pixiv_raw_metadata_available": false
+    "real_pixiv_raw_metadata_available": false,
+    "scale_up": {
+      "actual_record_count": 75,
+      "data_type_counts": {
+        "existing_artifact_or_report_derived": 4,
+        "fixture_or_mock": 41,
+        "real_live_or_local_provider_data": 30
+      },
+      "existing_saucenao_artifact_record_count": 4,
+      "fixture_or_mock_record_count": 41,
+      "max_record_count": 100,
+      "meets_real_pixiv_source_prior_minimum": true,
+      "meets_scale_minimum": true,
+      "minimum_record_count_required": 50,
+      "preferred_record_count": 75,
+      "real_pixiv_source_prior_minimum": 30,
+      "real_pixiv_source_prior_summary": {
+        "attempted": true,
+        "db_identity": {
+          "actual_db_name": "blombooru",
+          "configured_db_host": "localhost",
+          "configured_db_name": "blombooru",
+          "configured_db_port": 5432,
+          "database_url_source": "settings_env_or_default",
+          "violet_env": "development"
+        },
+        "external_provider_requests": 0,
+        "filename_values_included": false,
+        "local_paths_included": false,
+        "record_count": 30,
+        "scanned_media_count": 30
+      },
+      "scale_up_enabled": true,
+      "target_record_count": 75
+    }
   },
   "name_search_index_validation": {
-    "all_queries_matched": true,
-    "matched_count": 11,
-    "query_count": 11,
-    "unmatched_count": 0
+    "matched_count": 16,
+    "no_match_control_present": true,
+    "positive_queries_matched": true,
+    "query_count": 17,
+    "unmatched_count": 1
   },
   "no_tag_provider_result": {
     "name_observation_count": 0,
-    "record_count": 1,
+    "record_count": 7,
     "represented_without_tags_or_names": true,
     "status_counts": {
-      "not_applicable_no_person_signal": 1
+      "not_applicable_no_person_signal": 7
     },
     "tag_observation_count": 0
   },
-  "not_applicable_no_person_signal_count": 3,
+  "not_applicable_no_person_signal_count": 41,
   "phase": "4.4-P2R-F5",
   "pixiv_applicable_name_coverage": 1.0,
   "pixiv_coverage_target_met": true,
@@ -188,18 +431,34 @@
     "merge_commit": "f6f02891aac5d7453e8dc3543209e6ff67c61815",
     "number": 91,
     "origin_main_sha_at_report_generation": "f6f02891aac5d7453e8dc3543209e6ff67c61815",
-    "report_generation_head_sha": "f6f02891aac5d7453e8dc3543209e6ff67c61815",
+    "report_generation_head_sha": "156aac44be77b629a37b8770398e140fa8c975fe",
     "state": "MERGED",
     "url": "https://github.com/kyloris0660/VIOLET/pull/91"
   },
   "provider_shapes_covered": {
     "all_required_shapes_represented": true,
+    "data_type_counts": {
+      "existing_artifact_or_report_derived": 4,
+      "fixture_or_mock": 41,
+      "real_live_or_local_provider_data": 30
+    },
     "provider_counts": {
-      "danbooru": 1,
+      "danbooru": 7,
+      "gelbooru": 6,
       "google_vision": 1,
-      "no_tag_provider": 1,
-      "pixiv": 5,
-      "saucenao": 2
+      "no_tag_provider": 7,
+      "pixiv": 41,
+      "saucenao": 13
+    },
+    "provider_data_type_counts": {
+      "danbooru:fixture_or_mock": 7,
+      "gelbooru:fixture_or_mock": 6,
+      "google_vision:fixture_or_mock": 1,
+      "no_tag_provider:fixture_or_mock": 7,
+      "pixiv:fixture_or_mock": 11,
+      "pixiv:real_live_or_local_provider_data": 30,
+      "saucenao:existing_artifact_or_report_derived": 4,
+      "saucenao:fixture_or_mock": 9
     },
     "required_shapes": {
       "danbooru_gelbooru_style": true,
@@ -221,37 +480,56 @@
   "recommendation": {
     "entity_candidate_persistence": "deferred_until_source_name_registry_review",
     "local_source_hint_persistence": "deferred",
+    "merge_readiness": "ready_for_review_if_apply_db_and_minimums_pass",
     "next_route": "review_source_name_registry_then_design_bounded_entity_candidate_bridge"
   },
   "row_counts": {
     "alias_candidates_by_relation_type": {
-      "parenthetical_character_of_work": 2,
+      "parenthetical_character_of_work": 8,
       "provider_canonical": 1
     },
+    "metadata_records_by_data_type": {
+      "existing_artifact_or_report_derived": 4,
+      "fixture_or_mock": 41,
+      "real_live_or_local_provider_data": 30
+    },
     "metadata_records_by_provider": {
-      "danbooru": 1,
+      "danbooru": 7,
+      "gelbooru": 6,
       "google_vision": 1,
-      "no_tag_provider": 1,
-      "pixiv": 5,
-      "saucenao": 2
+      "no_tag_provider": 7,
+      "pixiv": 41,
+      "saucenao": 13
+    },
+    "metadata_records_by_provider_and_data_type": {
+      "danbooru:fixture_or_mock": 7,
+      "gelbooru:fixture_or_mock": 6,
+      "google_vision:fixture_or_mock": 1,
+      "no_tag_provider:fixture_or_mock": 7,
+      "pixiv:fixture_or_mock": 11,
+      "pixiv:real_live_or_local_provider_data": 30,
+      "saucenao:existing_artifact_or_report_derived": 4,
+      "saucenao:fixture_or_mock": 9
     },
     "name_observations_by_provider": {
-      "danbooru": 3,
-      "pixiv": 14,
-      "saucenao": 5
+      "danbooru": 21,
+      "gelbooru": 18,
+      "pixiv": 38,
+      "saucenao": 33
     },
     "search_key_collision_count": 0,
-    "source_metadata_evidence": 32,
-    "source_metadata_records": 10,
-    "source_name_alias_candidates": 3,
-    "source_name_observations": 22,
-    "source_name_registry": 19,
-    "source_tag_observations": 18,
-    "source_tag_registry": 18,
+    "source_metadata_evidence": 185,
+    "source_metadata_records": 75,
+    "source_name_alias_candidates": 9,
+    "source_name_observations": 110,
+    "source_name_registry": 101,
+    "source_tag_observations": 72,
+    "source_tag_registry": 66,
     "tag_observations_by_provider": {
-      "danbooru": 4,
+      "danbooru": 28,
+      "gelbooru": 18,
       "google_vision": 2,
-      "pixiv": 11,
+      "pixiv": 23,
       "saucenao": 1
     }
   },
@@ -318,6 +596,19 @@
       "blombooru_source_tag_observations",
       "blombooru_source_tag_registry"
     ],
+    "forbidden_table_row_deltas": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 0,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 0,
+      "blombooru_media_tags": 0,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 0,
+      "blombooru_tag_translation_jobs": 0,
+      "blombooru_tag_translations": 0
+    },
     "forbidden_tables": [
       "blombooru_entities",
       "blombooru_entity_aliases",
@@ -332,6 +623,6 @@
       "blombooru_tag_translations"
     ],
     "forbidden_truth_table_write_count": 0,
-    "guard_installed_when_apply_db": false
+    "guard_installed_when_apply_db": true
   }
 }
