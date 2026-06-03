@@ -37,6 +37,31 @@ TAG_CATEGORIES_TO_NAME_ROLE = {
     "copyright": "work_title",
     "work": "work_title",
 }
+RAW_SIGNAL_FLAG_NAMES = (
+    "has_raw_artist_signal",
+    "has_raw_creator_signal",
+    "has_raw_character_signal",
+    "has_raw_person_signal",
+    "has_raw_work_title_signal",
+    "has_raw_parenthetical_character_work_signal",
+    "has_raw_booru_character_category_signal",
+    "has_raw_booru_artist_category_signal",
+    "has_raw_saucenao_work_or_copyright_signal",
+)
+SOURCE_FIELD_SPECS = (
+    ("artist_name", "artist", 0.95, False),
+    ("artist", "artist", 0.94, False),
+    ("creator", "creator", 0.94, False),
+    ("author", "creator", 0.92, False),
+    ("title", "work_title", 0.72, True),
+    ("work", "work_title", 0.84, True),
+    ("material", "work_title", 0.82, True),
+    ("copyright", "work_title", 0.84, True),
+    ("work_or_copyright", "work_title", 0.86, True),
+    ("characters", "character", 0.9, True),
+    ("character", "character", 0.9, True),
+    ("person", "person", 0.86, True),
+)
 POPULARITY_TAG_RE = re.compile(r"(?i)(users|bookmarks|views|入り|閲覧|收藏|users入り)")
 
 
@@ -101,6 +126,8 @@ class SourceMetadataDraft:
     retrieved_at: datetime | None = None
     signal_roles: tuple[str, ...] = ()
     applicability_status: str = "not_applicable_no_person_signal"
+    raw_name_signal_flags: dict[str, bool] = field(default_factory=dict)
+    no_applicable_name_signal_reason: str | None = "no_raw_name_signal"
 
 
 @dataclass(frozen=True)
@@ -321,6 +348,97 @@ def _source_field_name(provider: str, field_name: str) -> str:
     return f"{provider}_{field_name}"
 
 
+def raw_applicable_name_signal_summary(
+    payload: Mapping[str, Any],
+    *,
+    provider: str,
+    tag_rows: Sequence[Mapping[str, Any]] | None = None,
+    tag_category_map: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    flags = {name: False for name in RAW_SIGNAL_FLAG_NAMES}
+    roles: set[str] = set()
+    tag_rows = list(tag_rows if tag_rows is not None else _tag_rows(payload))
+    tag_category_map = dict(tag_category_map or {})
+
+    def mark(role: str, *flag_names: str) -> None:
+        if role in NAME_ROLES:
+            roles.add(role)
+        for flag_name in flag_names:
+            flags[flag_name] = True
+        if role in PERSON_LIKE_ROLES:
+            flags["has_raw_person_signal"] = True
+        if role == "work_title":
+            flags["has_raw_work_title_signal"] = True
+
+    for field_name, role, _confidence, _requires_review in SOURCE_FIELD_SPECS:
+        if not _as_text_list(payload.get(field_name)):
+            continue
+        if field_name in {"artist_name", "artist"}:
+            mark(role, "has_raw_artist_signal")
+        elif field_name in {"creator", "author"}:
+            mark(role, "has_raw_creator_signal")
+        elif field_name in {"characters", "character"}:
+            mark(role, "has_raw_character_signal")
+        elif field_name == "person":
+            mark(role, "has_raw_person_signal")
+        elif field_name == "work_or_copyright" and provider == "saucenao":
+            mark(role, "has_raw_saucenao_work_or_copyright_signal")
+        else:
+            mark(role)
+
+    for tag in tag_rows:
+        raw_tag = normalize_source_text(tag.get("raw_tag"))
+        key = canonical_source_key(raw_tag)
+        category = tag.get("source_category_raw") or tag_category_map.get(key)
+        mapped_role = TAG_CATEGORIES_TO_NAME_ROLE.get(str(category or "").casefold())
+        if mapped_role == "artist":
+            mark("artist", "has_raw_artist_signal", "has_raw_booru_artist_category_signal")
+        elif mapped_role == "character":
+            mark("character", "has_raw_character_signal", "has_raw_booru_character_category_signal")
+        elif mapped_role == "work_title":
+            mark("work_title")
+        if provider == "pixiv" and parse_parenthetical_name(raw_tag):
+            mark("character", "has_raw_character_signal", "has_raw_parenthetical_character_work_signal")
+            mark("work_title", "has_raw_parenthetical_character_work_signal")
+
+    if roles:
+        reason = None
+    elif tag_rows or any(_as_text_list(payload.get(key)) for key in ("labels", "keywords")):
+        reason = "no_applicable_name_signal_in_raw_tags_or_labels"
+    else:
+        reason = "no_raw_tags_or_name_fields"
+    return {
+        **flags,
+        "raw_signal_roles": tuple(sorted(roles)),
+        "no_applicable_name_signal_reason": reason,
+    }
+
+
+def _disabled_name_extraction_fields(payload: Mapping[str, Any]) -> set[str]:
+    return {
+        canonical_source_key(value)
+        for value in _as_text_list(
+            payload.get("disable_name_extraction_fields")
+            or payload.get("_disable_name_extraction_fields")
+        )
+        if canonical_source_key(value)
+    }
+
+
+def _extraction_field_disabled(
+    disabled_fields: set[str],
+    *,
+    provider: str,
+    field_name: str,
+    source_field_name: str | None = None,
+) -> bool:
+    source_name = source_field_name or _source_field_name(provider, field_name)
+    return (
+        canonical_source_key(field_name) in disabled_fields
+        or canonical_source_key(source_name) in disabled_fields
+    )
+
+
 def _name_draft(
     *,
     provider: str,
@@ -441,7 +559,18 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
         for key, value in _as_mapping(payload.get("tag_categories") or payload.get("pixiv_tag_category_map")).items()
         if canonical_source_key(key)
     }
-    for tag in _tag_rows(payload):
+    raw_tag_rows = _tag_rows(payload)
+    raw_signal = raw_applicable_name_signal_summary(
+        payload,
+        provider=provider,
+        tag_rows=raw_tag_rows,
+        tag_category_map=tag_category_map,
+    )
+    disabled_fields = _disabled_name_extraction_fields(payload)
+    disable_parenthetical = bool(payload.get("disable_parenthetical_name_extraction"))
+    disable_category_names = bool(payload.get("disable_category_name_extraction"))
+
+    for tag in raw_tag_rows:
         raw_tag = tag["raw_tag"]
         normalized = normalize_source_text(raw_tag)
         key = canonical_source_key(normalized)
@@ -466,7 +595,7 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
             )
         )
         mapped_role = TAG_CATEGORIES_TO_NAME_ROLE.get(str(category or "").casefold())
-        if mapped_role:
+        if mapped_role and not disable_category_names:
             field_name = f"{provider}_{mapped_role}_tag"
             _add_name_once(
                 names,
@@ -485,7 +614,7 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
                     suffix=str(tag["order_index"]),
                 ),
             )
-        if provider == "pixiv":
+        if provider == "pixiv" and not disable_parenthetical:
             parsed = parse_parenthetical_name(raw_tag)
             if parsed:
                 outer, inner = parsed
@@ -534,21 +663,9 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
                 if relation:
                     aliases.append(relation)
 
-    field_specs = [
-        ("artist_name", "artist", 0.95, False),
-        ("artist", "artist", 0.94, False),
-        ("creator", "creator", 0.94, False),
-        ("author", "creator", 0.92, False),
-        ("title", "work_title", 0.72, True),
-        ("work", "work_title", 0.84, True),
-        ("material", "work_title", 0.82, True),
-        ("copyright", "work_title", 0.84, True),
-        ("work_or_copyright", "work_title", 0.86, True),
-        ("characters", "character", 0.9, True),
-        ("character", "character", 0.9, True),
-        ("person", "person", 0.86, True),
-    ]
-    for field_name, role, confidence, requires_review in field_specs:
+    for field_name, role, confidence, requires_review in SOURCE_FIELD_SPECS:
+        if _extraction_field_disabled(disabled_fields, provider=provider, field_name=field_name):
+            continue
         for item_index, value in enumerate(_as_text_list(payload.get(field_name))):
             _add_name_once(
                 names,
@@ -583,8 +700,18 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
             if relation:
                 aliases.append(relation)
 
-    signal_roles = sorted({name.name_role for name in names if name.name_role in PERSON_LIKE_ROLES or name.name_role == "work_title"})
-    status = "applicable_name_signal_covered" if signal_roles and names else "not_applicable_no_person_signal"
+    signal_roles = tuple(raw_signal["raw_signal_roles"])
+    extracted_roles = {
+        name.name_role
+        for name in names
+        if name.name_role in PERSON_LIKE_ROLES or name.name_role == "work_title"
+    }
+    if not signal_roles:
+        status = "not_applicable_no_person_signal"
+    elif set(signal_roles).issubset(extracted_roles):
+        status = "applicable_name_signal_covered"
+    else:
+        status = "applicable_name_signal_uncovered"
     metadata = SourceMetadataDraft(
         provider=provider,
         provider_run_id=normalize_source_text(payload.get("provider_run_id")) or None,
@@ -608,6 +735,11 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
         retrieved_at=datetime.now(timezone.utc),
         signal_roles=tuple(signal_roles),
         applicability_status=status,
+        raw_name_signal_flags={
+            key: bool(raw_signal.get(key))
+            for key in RAW_SIGNAL_FLAG_NAMES
+        },
+        no_applicable_name_signal_reason=raw_signal["no_applicable_name_signal_reason"],
     )
     for name in names:
         evidence.append(
@@ -778,27 +910,48 @@ def provider_name_coverage(bundle: SourceRegistryBundle) -> dict[str, Any]:
     provider_summary: dict[str, Any] = {}
     for provider in providers:
         records = [row for row in bundle.metadata_records if row.provider == provider]
-        applicable = [row for row in records if row.applicability_status != "not_applicable_no_person_signal"]
-        covered = [
-            row
-            for row in applicable
-            if names_by_record.get(provider_record_lookup_key(row.provider, row.provider_record_key))
-        ]
+        applicable = [row for row in records if row.signal_roles]
+        covered = []
         role_applicable: Counter[str] = Counter()
         role_covered: Counter[str] = Counter()
+        role_extracted: Counter[str] = Counter()
+        raw_flag_counts: Counter[str] = Counter()
+        not_applicable_reasons: Counter[str] = Counter()
+        failed_applicable_records = 0
         for record in applicable:
             record_key = provider_record_lookup_key(record.provider, record.provider_record_key)
+            extracted_roles = {
+                name.name_role
+                for name in names_by_record.get(record_key, [])
+                if name.name_role in PERSON_LIKE_ROLES or name.name_role == "work_title"
+            }
             for role in record.signal_roles:
                 role_applicable[role] += 1
-                if any(name.name_role == role for name in names_by_record.get(record_key, [])):
+                if role in extracted_roles:
                     role_covered[role] += 1
+            for role in extracted_roles:
+                role_extracted[role] += 1
+            if set(record.signal_roles).issubset(extracted_roles):
+                covered.append(record)
+            else:
+                failed_applicable_records += 1
+        for record in records:
+            for flag_name, flag_value in record.raw_name_signal_flags.items():
+                if flag_value:
+                    raw_flag_counts[flag_name] += 1
+            if not record.signal_roles:
+                not_applicable_reasons[record.no_applicable_name_signal_reason or "no_raw_name_signal"] += 1
         provider_summary[provider] = {
             "record_count": len(records),
             "applicable_name_signal_count": len(applicable),
             "covered_name_signal_count": len(covered),
             "not_applicable_no_person_signal_count": len(records) - len(applicable),
+            "failed_applicable_name_signal_count": failed_applicable_records,
+            "not_applicable_no_person_signal_reason_counts": dict(sorted(not_applicable_reasons.items())),
+            "raw_signal_flag_counts": dict(sorted(raw_flag_counts.items())),
             "coverage": _ratio(len(covered), len(applicable)),
             "role_applicable_counts": dict(sorted(role_applicable.items())),
+            "role_extracted_counts": dict(sorted(role_extracted.items())),
             "role_covered_counts": dict(sorted(role_covered.items())),
             "role_coverage": {
                 role: _ratio(role_covered[role], role_applicable[role])
@@ -810,6 +963,41 @@ def provider_name_coverage(bundle: SourceRegistryBundle) -> dict[str, Any]:
         "record_status_counts": dict(sorted(Counter(bundle.record_statuses.values()).items())),
         "records_indexed": len(by_record),
     }
+
+
+def raw_applicable_signal_rows(bundle: SourceRegistryBundle) -> list[dict[str, Any]]:
+    names_by_record: dict[str, list[SourceNameDraft]] = defaultdict(list)
+    for name in bundle.name_observations:
+        names_by_record[provider_record_lookup_key(name.provider, name.provider_record_key)].append(name)
+
+    rows: list[dict[str, Any]] = []
+    for record in bundle.metadata_records:
+        record_key = provider_record_lookup_key(record.provider, record.provider_record_key)
+        extracted_roles = sorted(
+            {
+                name.name_role
+                for name in names_by_record.get(record_key, [])
+                if name.name_role in PERSON_LIKE_ROLES or name.name_role == "work_title"
+            }
+        )
+        raw_roles = tuple(record.signal_roles)
+        flags = {key: bool(record.raw_name_signal_flags.get(key)) for key in RAW_SIGNAL_FLAG_NAMES}
+        rows.append(
+            {
+                "provider": record.provider,
+                "provider_record_key": record.provider_record_key,
+                "data_type_label": record.data_type_label,
+                "applicability_status": record.applicability_status,
+                "raw_signal_roles": list(raw_roles),
+                "extracted_roles": extracted_roles,
+                "raw_role_count": len(raw_roles),
+                "extracted_role_count": len(extracted_roles),
+                "all_raw_roles_extracted": bool(raw_roles) and set(raw_roles).issubset(extracted_roles),
+                "no_applicable_name_signal_reason": record.no_applicable_name_signal_reason,
+                **flags,
+            }
+        )
+    return rows
 
 
 def _ratio(numerator: int, denominator: int) -> float | None:
@@ -921,6 +1109,7 @@ def persist_source_registry_bundle(
         "planned": bundle_public_counts(bundle),
         "inserted": Counter(),
         "updated": Counter(),
+        "retired": Counter(),
         "existing": Counter(),
         "allowed_tables": [
             "blombooru_source_metadata_records",
@@ -936,8 +1125,19 @@ def persist_source_registry_bundle(
     if not apply:
         summary["inserted"] = {}
         summary["updated"] = {}
+        summary["retired"] = {}
         summary["existing"] = {}
         return summary
+
+    tag_drafts_by_record: dict[str, list[SourceTagDraft]] = defaultdict(list)
+    for draft in bundle.tag_observations:
+        tag_drafts_by_record[provider_record_lookup_key(draft.provider, draft.provider_record_key)].append(draft)
+    name_drafts_by_record: dict[str, list[SourceNameDraft]] = defaultdict(list)
+    for draft in bundle.name_observations:
+        name_drafts_by_record[provider_record_lookup_key(draft.provider, draft.provider_record_key)].append(draft)
+    evidence_drafts_by_record: dict[str, list[SourceMetadataEvidenceDraft]] = defaultdict(list)
+    for draft in bundle.evidence:
+        evidence_drafts_by_record[provider_record_lookup_key(draft.provider, draft.provider_record_key)].append(draft)
 
     metadata_by_key: dict[str, SourceMetadataRecord] = {}
     for draft in bundle.metadata_records:
@@ -958,20 +1158,43 @@ def persist_source_registry_bundle(
         metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)] = row
     session.flush()
 
-    for draft in bundle.tag_registry:
-        row = (
-            session.query(SourceTagRegistry)
-            .filter_by(provider_scope=draft.provider_scope, canonical_tag_key=draft.canonical_tag_key)
-            .one_or_none()
-        )
-        fields = _tag_registry_fields(draft, metadata_by_key)
-        if row is None:
-            session.add(SourceTagRegistry(**fields))
-            summary["inserted"]["SourceTagRegistry"] += 1
-        else:
-            for key, value in fields.items():
-                setattr(row, key, value)
-            summary["updated"]["SourceTagRegistry"] += 1
+    retired_tag_keys: set[str] = set()
+    retired_name_keys: set[str] = set()
+    for record_key, metadata in metadata_by_key.items():
+        incoming_tag_keys = {draft.observation_key for draft in tag_drafts_by_record.get(record_key, [])}
+        for row in (
+            session.query(SourceTagObservation)
+            .filter_by(source_metadata_record_id=metadata.id, status="observed")
+            .all()
+        ):
+            if row.observation_key not in incoming_tag_keys:
+                row.status = "superseded"
+                retired_tag_keys.add(row.canonical_tag_key)
+                summary["retired"]["SourceTagObservation"] += 1
+
+        incoming_name_keys = {draft.observation_key for draft in name_drafts_by_record.get(record_key, [])}
+        for row in (
+            session.query(SourceNameObservation)
+            .filter_by(source_metadata_record_id=metadata.id, status="observed")
+            .all()
+        ):
+            if row.observation_key not in incoming_name_keys:
+                row.status = "superseded"
+                retired_name_keys.add(row.canonical_name_key)
+                summary["retired"]["SourceNameObservation"] += 1
+
+        incoming_evidence_keys = {draft.evidence_key for draft in evidence_drafts_by_record.get(record_key, [])}
+        for row in (
+            session.query(SourceMetadataEvidence)
+            .filter(
+                SourceMetadataEvidence.source_metadata_record_id == metadata.id,
+                SourceMetadataEvidence.status != "superseded",
+            )
+            .all()
+        ):
+            if row.evidence_key not in incoming_evidence_keys:
+                row.status = "superseded"
+                summary["retired"]["SourceMetadataEvidence"] += 1
 
     for draft in bundle.tag_observations:
         metadata = metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)]
@@ -988,6 +1211,26 @@ def persist_source_registry_bundle(
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceTagObservation"] += 1
+    session.flush()
+
+    tag_registry_by_key = {draft.canonical_tag_key: draft for draft in bundle.tag_registry}
+    for canonical_tag_key in sorted(set(tag_registry_by_key) | retired_tag_keys):
+        draft = tag_registry_by_key.get(canonical_tag_key)
+        row = (
+            session.query(SourceTagRegistry)
+            .filter_by(provider_scope="global", canonical_tag_key=canonical_tag_key)
+            .one_or_none()
+        )
+        if draft is None:
+            draft = _tag_registry_draft_for_key(canonical_tag_key, row)
+        fields = _merged_tag_registry_fields(session, draft, row, metadata_by_key)
+        if row is None:
+            session.add(SourceTagRegistry(**fields))
+            summary["inserted"]["SourceTagRegistry"] += 1
+        else:
+            for key, value in fields.items():
+                setattr(row, key, value)
+            summary["updated"]["SourceTagRegistry"] += 1
 
     name_by_observation_key: dict[str, SourceNameObservation] = {}
     for draft in bundle.name_observations:
@@ -1011,8 +1254,12 @@ def persist_source_registry_bundle(
         ] = row
     session.flush()
 
-    for draft in bundle.name_registry:
-        row = session.query(SourceNameRegistry).filter_by(canonical_name_key=draft.canonical_name_key).one_or_none()
+    name_registry_by_key = {draft.canonical_name_key: draft for draft in bundle.name_registry}
+    for canonical_name_key in sorted(set(name_registry_by_key) | retired_name_keys):
+        draft = name_registry_by_key.get(canonical_name_key)
+        row = session.query(SourceNameRegistry).filter_by(canonical_name_key=canonical_name_key).one_or_none()
+        if draft is None:
+            draft = _name_registry_draft_for_key(canonical_name_key, row)
         fields = _merged_name_registry_fields(session, draft, row)
         if row is None:
             session.add(SourceNameRegistry(**fields))
@@ -1074,6 +1321,7 @@ def persist_source_registry_bundle(
     session.commit()
     summary["inserted"] = dict(summary["inserted"])
     summary["updated"] = dict(summary["updated"])
+    summary["retired"] = dict(summary["retired"])
     summary["existing"] = dict(summary["existing"])
     return summary
 
@@ -1082,6 +1330,8 @@ def _metadata_fields(draft: SourceMetadataDraft) -> dict[str, Any]:
     fields = asdict(draft)
     fields.pop("signal_roles", None)
     fields.pop("applicability_status", None)
+    fields.pop("raw_name_signal_flags", None)
+    fields.pop("no_applicable_name_signal_reason", None)
     return fields
 
 
@@ -1109,6 +1359,75 @@ def _tag_registry_fields(
     return fields
 
 
+def _tag_registry_draft_for_key(
+    canonical_tag_key: str,
+    existing: SourceTagRegistry | None,
+) -> SourceTagRegistryDraft:
+    return SourceTagRegistryDraft(
+        provider_scope="global",
+        normalized_tag=normalize_source_text(existing.normalized_tag) if existing else canonical_tag_key,
+        canonical_tag_key=canonical_tag_key,
+        raw_variants_json=list(existing.raw_variants_json or []) if existing else [],
+        seen_count=0,
+        example_provider=None,
+        example_provider_record_key=None,
+        taxonomy_status=str(existing.taxonomy_status or "unclassified") if existing else "unclassified",
+        governance_status="retired",
+    )
+
+
+def _merged_tag_registry_fields(
+    session: Session,
+    draft: SourceTagRegistryDraft,
+    existing: SourceTagRegistry | None,
+    metadata_by_key: Mapping[str, SourceMetadataRecord],
+) -> dict[str, Any]:
+    fields = _tag_registry_fields(draft, metadata_by_key)
+    observations = (
+        session.query(SourceTagObservation)
+        .filter_by(canonical_tag_key=draft.canonical_tag_key, status="observed")
+        .all()
+    )
+    if observations:
+        variants = sorted({normalize_source_text(row.raw_tag) for row in observations if normalize_source_text(row.raw_tag)})
+        normalized = normalize_source_text(observations[0].normalized_tag) or draft.normalized_tag
+        fields.update(
+            {
+                "normalized_tag": normalized,
+                "raw_variants_json": variants,
+                "seen_count": len(observations),
+                "example_source_metadata_id": int(observations[0].source_metadata_record_id),
+                "taxonomy_status": str(existing.taxonomy_status or draft.taxonomy_status)
+                if existing is not None
+                else draft.taxonomy_status,
+                "governance_status": str(existing.governance_status or draft.governance_status)
+                if existing is not None and str(existing.governance_status or "candidate") != "retired"
+                else "candidate",
+            }
+        )
+    else:
+        variants = sorted(
+            {
+                normalize_source_text(value)
+                for value in list(draft.raw_variants_json or [])
+                + list(existing.raw_variants_json or [] if existing is not None else [])
+                if normalize_source_text(value)
+            }
+        )
+        fields.update(
+            {
+                "raw_variants_json": variants,
+                "seen_count": 0,
+                "example_source_metadata_id": None,
+                "taxonomy_status": str(existing.taxonomy_status or draft.taxonomy_status)
+                if existing is not None
+                else draft.taxonomy_status,
+                "governance_status": "retired",
+            }
+        )
+    return fields
+
+
 def _name_observation_fields(draft: SourceNameDraft, source_metadata_record_id: int) -> dict[str, Any]:
     fields = asdict(draft)
     fields.pop("provider_record_key", None)
@@ -1122,6 +1441,25 @@ def _name_registry_fields(draft: SourceNameRegistryDraft) -> dict[str, Any]:
     return fields
 
 
+def _name_registry_draft_for_key(
+    canonical_name_key: str,
+    existing: SourceNameRegistry | None,
+) -> SourceNameRegistryDraft:
+    primary = normalize_source_text(existing.primary_display_name) if existing else canonical_name_key
+    return SourceNameRegistryDraft(
+        canonical_name_key=canonical_name_key,
+        primary_display_name=primary or canonical_name_key,
+        normalized_display_name=normalize_source_text(primary or canonical_name_key),
+        raw_variants_json=list(existing.raw_variants_json or []) if existing else [],
+        provider_coverage_json={},
+        role_distribution_json={},
+        seen_count=0,
+        governance_status="retired",
+        manual_override_status=str(existing.manual_override_status or "none") if existing else "none",
+        notes=existing.notes if existing else None,
+    )
+
+
 def _merged_name_registry_fields(
     session: Session,
     draft: SourceNameRegistryDraft,
@@ -1130,10 +1468,22 @@ def _merged_name_registry_fields(
     fields = _name_registry_fields(draft)
     observations = (
         session.query(SourceNameObservation)
-        .filter_by(canonical_name_key=draft.canonical_name_key)
+        .filter_by(canonical_name_key=draft.canonical_name_key, status="observed")
         .all()
     )
     if not observations:
+        if existing is not None:
+            fields.update(
+                {
+                    "primary_display_name": existing.primary_display_name,
+                    "normalized_display_name": normalize_source_text(existing.primary_display_name),
+                    "raw_variants_json": list(existing.raw_variants_json or draft.raw_variants_json or []),
+                    "provider_coverage_json": {},
+                    "role_distribution_json": {},
+                    "seen_count": 0,
+                    "governance_status": draft.governance_status,
+                }
+            )
         return fields
 
     variants = sorted({normalize_source_text(row.raw_name) for row in observations if normalize_source_text(row.raw_name)})
@@ -1152,6 +1502,9 @@ def _merged_name_registry_fields(
             "provider_coverage_json": dict(sorted(provider_counts.items())),
             "role_distribution_json": dict(sorted(role_counts.items())),
             "seen_count": len(observations),
+            "governance_status": "candidate"
+            if draft.governance_status == "retired"
+            else draft.governance_status,
         }
     )
     return fields

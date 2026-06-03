@@ -30,6 +30,7 @@ from app.models import (  # noqa: E402
     SourceNameObservation,
     SourceNameRegistry,
     SourceTagObservation,
+    SourceTagRegistry,
     TagTranslation,
     blombooru_media_tags,
 )
@@ -297,6 +298,46 @@ def test_coverage_metric_excludes_not_applicable_no_person_signal():
     assert coverage["coverage"] == 1.0
 
 
+def test_raw_saucenao_signal_denominator_is_not_derived_from_extracted_names():
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "saucenao",
+            "provider_record_key": "sauce:raw-work-disabled",
+            "work_or_copyright": "Raw Sauce Work",
+            "disable_name_extraction_fields": ["work_or_copyright"],
+        }
+    ])
+
+    coverage = service.provider_name_coverage(bundle)["providers"]["saucenao"]
+    assert coverage["applicable_name_signal_count"] == 1
+    assert coverage["covered_name_signal_count"] == 0
+    assert coverage["failed_applicable_name_signal_count"] == 1
+    assert coverage["role_applicable_counts"] == {"work_title": 1}
+    assert coverage["role_covered_counts"] == {}
+    assert coverage["coverage"] == 0.0
+    assert bundle.metadata_records[0].applicability_status == "applicable_name_signal_uncovered"
+
+
+def test_raw_pixiv_parenthetical_signal_denominator_survives_disabled_extraction():
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:raw-parenthetical-disabled",
+            "tags": ["Raw Hero(Raw Work)"],
+            "disable_parenthetical_name_extraction": True,
+        }
+    ])
+
+    coverage = service.provider_name_coverage(bundle)["providers"]["pixiv"]
+    assert coverage["applicable_name_signal_count"] == 1
+    assert coverage["role_applicable_counts"] == {"character": 1, "work_title": 1}
+    assert coverage["role_covered_counts"] == {}
+    assert coverage["coverage"] == 0.0
+    raw_rows = service.raw_applicable_signal_rows(bundle)
+    assert raw_rows[0]["has_raw_parenthetical_character_work_signal"] is True
+    assert raw_rows[0]["all_raw_roles_extracted"] is False
+
+
 def test_no_forbidden_truth_table_writes_when_source_registry_is_persisted(db):
     bundle = service.build_source_registry_bundle(runner.default_provider_shape_records())
     summary = service.persist_source_registry_bundle(db, bundle, apply=True)
@@ -361,6 +402,56 @@ def test_source_name_registry_merges_across_apply_batches(db):
     assert row.role_distribution_json == {"artist": 1, "creator": 1}
 
 
+def test_refresh_retires_stale_name_tag_and_evidence_observations(db):
+    first = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "refresh:same",
+            "artist_name": "Retired Artist",
+            "tags": ["Retired Tag"],
+        }
+    ])
+    second = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "refresh:same",
+            "tags": [],
+        }
+    ])
+
+    service.persist_source_registry_bundle(db, first, apply=True)
+    summary = service.persist_source_registry_bundle(db, second, apply=True)
+
+    assert summary["retired"]["SourceNameObservation"] == 1
+    assert summary["retired"]["SourceTagObservation"] == 1
+    assert summary["retired"]["SourceMetadataEvidence"] >= 1
+    record = db.query(SourceMetadataRecord).filter_by(provider="pixiv", provider_record_key="refresh:same").one()
+    assert db.query(SourceNameObservation).filter_by(source_metadata_record_id=record.id, status="observed").count() == 0
+    assert db.query(SourceTagObservation).filter_by(source_metadata_record_id=record.id, status="observed").count() == 0
+    retired_name = db.query(SourceNameRegistry).filter_by(canonical_name_key="retired_artist").one()
+    assert retired_name.seen_count == 0
+    assert retired_name.governance_status == "retired"
+    retired_tag = db.query(SourceTagRegistry).filter_by(canonical_tag_key="retired_tag").one()
+    assert retired_tag.seen_count == 0
+    assert retired_tag.governance_status == "retired"
+
+
+def test_source_tag_registry_merges_across_apply_batches(db):
+    first = service.build_source_registry_bundle([
+        {"provider": "pixiv", "provider_record_key": "tag-batch:1", "tags": ["Shared Registry Tag"]}
+    ])
+    second = service.build_source_registry_bundle([
+        {"provider": "saucenao", "provider_record_key": "tag-batch:2", "tags": ["shared registry tag"]}
+    ])
+
+    service.persist_source_registry_bundle(db, first, apply=True)
+    service.persist_source_registry_bundle(db, second, apply=True)
+
+    row = db.query(SourceTagRegistry).filter_by(canonical_tag_key="shared_registry_tag").one()
+    assert row.seen_count == 2
+    assert set(row.raw_variants_json) == {"Shared Registry Tag", "shared registry tag"}
+
+
 def test_dry_run_no_db_writes(db):
     bundle = service.build_source_registry_bundle(runner.default_provider_shape_records())
     summary = service.persist_source_registry_bundle(db, bundle, apply=False)
@@ -393,6 +484,16 @@ def test_scale_up_labels_records_and_adds_no_match_control():
     assert search_summary["unmatched_count"] == 1
 
 
+def test_scale_minimums_are_reported_after_max_record_truncation():
+    args = runner.build_arg_parser().parse_args(["--no-db", "--max-records", "10"])
+    records, _input_summary = runner.load_provider_records(None)
+    scaled, scale_summary = runner.scale_provider_records(records, args)
+
+    assert len(scaled) == 10
+    assert scale_summary["actual_record_count"] == 10
+    assert scale_summary["meets_scale_minimum"] is False
+
+
 def test_write_guard_blocks_forbidden_truth_table_write():
     engine = create_engine("sqlite://")
     try:
@@ -416,6 +517,70 @@ def test_write_guard_blocks_forbidden_truth_table_write():
                 )
     finally:
         engine.dispose()
+
+
+def test_write_guard_blocks_merge_replace_copy_and_allows_source_update():
+    engine = create_engine("sqlite://")
+    try:
+        Base.metadata.create_all(engine)
+        runner.install_source_registry_write_guard(engine)
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO blombooru_source_metadata_records "
+                    "(provider, provider_record_key, metadata_kind, data_type_label, status) "
+                    "VALUES ('test', 'guard-key', 'provider_metadata', 'fixture_or_mock', 'observed')"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE blombooru_source_metadata_records "
+                    "SET status='observed' WHERE provider_record_key='guard-key'"
+                )
+            )
+            for statement in (
+                "MERGE INTO blombooru_entities AS target USING blombooru_entities AS source ON 1=0 WHEN NOT MATCHED THEN INSERT DEFAULT VALUES",
+                "REPLACE INTO blombooru_entity_evidence (source_type, evidence_type, privacy_redacted) VALUES ('x', 'y', 1)",
+                "COPY blombooru_entities FROM STDIN",
+            ):
+                with pytest.raises(runner.f1.ReadOnlyViolation):
+                    conn.execute(text(statement))
+    finally:
+        engine.dispose()
+
+
+def test_report_split_keeps_real_pixiv_applicable_rows_separate_from_fixtures():
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "real:pixiv:applicable",
+            "artist_name": "Real Split Artist",
+            "data_type_label": runner.DATA_TYPE_REAL,
+        },
+        {
+            "provider": "pixiv",
+            "provider_record_key": "fixture:pixiv:applicable",
+            "artist_name": "Fixture Split Artist",
+            "data_type_label": runner.DATA_TYPE_FIXTURE,
+        },
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    search_rows = service.validate_search_queries(bundle, runner.search_validation_queries(bundle))
+    summary = runner.build_public_summary(
+        records=records,
+        bundle=bundle,
+        input_summary={"input_source": "test"},
+        curated_mapping_count=0,
+        db_identity=None,
+        db_write_summary={"apply": False, "guard_installed": False, "success": False},
+        search_rows=search_rows,
+    )
+
+    assert summary["coverage_by_provider_and_data_type"][f"pixiv:{runner.DATA_TYPE_REAL}"]["applicable_name_signal_count"] == 1
+    assert summary["coverage_by_provider_and_data_type"][f"pixiv:{runner.DATA_TYPE_FIXTURE}"]["applicable_name_signal_count"] == 1
+    assert summary["expanded_real_data_validation"]["real_pixiv"]["applicable_name_signal_count"] == 1
+    assert summary["expanded_real_data_validation"]["fixture_coverage_satisfies_real_targets"] is False
+    assert summary["f5_minimum_requirements"]["f5_minimum_stage_goal_met"] is False
 
 
 def test_path_validation_before_side_effects_blocks_bad_output():
