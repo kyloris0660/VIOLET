@@ -862,6 +862,42 @@ class SourceMetadataEvidence(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceSearchableNameAssertion(Base):
+    __tablename__ = 'blombooru_source_searchable_name_assertions'
+    __table_args__ = (
+        UniqueConstraint('assertion_key', name='uq_source_searchable_name_assertion_key'),
+        Index('ix_source_searchable_name_assertion_provider_status', 'provider', 'status'),
+        Index('ix_source_searchable_name_assertion_canonical_status', 'canonical_name_key', 'status'),
+        Index('ix_source_searchable_name_assertion_role_status', 'asserted_role', 'status'),
+        Index('ix_source_searchable_name_assertion_tag_observation', 'source_tag_observation_id'),
+        Index('ix_source_searchable_name_assertion_name_observation', 'source_name_observation_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='CASCADE'), nullable=True, index=True)
+    source_tag_observation_id = Column(Integer, ForeignKey('blombooru_source_tag_observations.id', ondelete='SET NULL'), nullable=True, index=True)
+    source_name_observation_id = Column(Integer, ForeignKey('blombooru_source_name_observations.id', ondelete='SET NULL'), nullable=True, index=True)
+    assertion_key = Column(String(700), nullable=False, index=True)
+    raw_input = Column(String(500), nullable=False)
+    normalized_input = Column(String(500), nullable=False, index=True)
+    canonical_name_key = Column(String(500), nullable=False, index=True)
+    asserted_name = Column(String(500), nullable=True)
+    asserted_role = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    confidence = Column(String(50), nullable=False, default='low', server_default='low', index=True)
+    confidence_score = Column(Float, nullable=True)
+    evidence_sources_json = Column(JSON, nullable=True)
+    model_name = Column(String(255), nullable=True)
+    prompt_version = Column(String(100), nullable=True)
+    structured_output_schema_version = Column(String(100), nullable=False)
+    reasoning_summary_private = Column(Text, nullable=True)
+    provenance_summary = Column(JSON, nullable=True)
+    requires_review = Column(Boolean, nullable=False, default=True, server_default='true', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (

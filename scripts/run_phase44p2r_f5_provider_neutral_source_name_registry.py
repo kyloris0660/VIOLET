@@ -8,17 +8,21 @@ staging tables when `--apply-db` is explicitly used.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import csv
 import io
 import json
+import logging
 import os
 import re
+import socket
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
@@ -32,9 +36,18 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import migrate_add_source_metadata_name_registry  # noqa: E402
 from app.models import Media  # noqa: E402
+from app.config import settings  # noqa: E402
+from app.services.llm_translation_provider import (  # noqa: E402
+    BaseLLMProvider,
+    FallbackProvider,
+    LLMProviderError,
+    LLMResponseFormatError,
+    OpenAICompatibleProvider,
+)
 from app.services.source_metadata_registry_service import (  # noqa: E402
     CuratedNameMapping,
     SourceRegistryBundle,
+    SourceSearchableNameAssertionDraft,
     build_name_search_index,
     build_source_registry_bundle,
     bundle_public_counts,
@@ -47,6 +60,9 @@ from app.services.source_metadata_registry_service import (  # noqa: E402
     validate_search_queries,
 )
 from scripts import run_phase44p2r_f1_gallery_dl_json_import_pilot as f1  # noqa: E402
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 PHASE = "4.4-P2R-F5"
 PHASE_SLUG = "phase-4.4p2r-f5-provider-neutral-source-name-registry"
@@ -61,6 +77,40 @@ REAL_PIXIV_SOURCE_PRIOR_MIN = 50
 REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET = 20
 SAUCENAO_ARTIFACT_RECORD_TARGET = 10
 MAX_RECORD_COUNT = 150
+SOURCE_ASSERTION_PROMPT_VERSION = "phase44p2r_f5_source_searchable_name_assertion_v1"
+SOURCE_ASSERTION_SCHEMA_VERSION = "source_searchable_name_assertion_v1"
+SOURCE_ASSERTION_DEFAULT_MAX_CANDIDATES = 300
+SOURCE_ASSERTION_HARD_MAX_CANDIDATES = 1000
+ASSERTION_ROLES = frozenset(
+    {
+        "character",
+        "person",
+        "artist",
+        "creator",
+        "work_title",
+        "general_descriptor",
+        "popularity_marker",
+        "unknown",
+    }
+)
+ASSERTION_STATUSES = frozenset({"searchable_active", "unresolved", "rejected", "needs_review"})
+ASSERTION_CONFIDENCES = frozenset({"high", "medium", "low"})
+ASSERTION_REASON_CODES = frozenset(
+    {
+        "parenthetical_character_work",
+        "known_character_name",
+        "known_work_title",
+        "known_artist_creator",
+        "popularity_marker",
+        "descriptive_tag",
+        "generic_label",
+        "ambiguous_without_context",
+        "not_name_like",
+        "insufficient_evidence",
+        "model_output_invalid",
+    }
+)
+PARENTHETICAL_CANDIDATE_RE = re.compile(r"^(.+?)[(（]([^()（）]+)[)）]$")
 
 REPORT_MD = Path(f"docs/reports/{PHASE_SLUG}.md")
 REPORT_JSON = Path(f"docs/reports/{PHASE_SLUG}-summary.json")
@@ -72,6 +122,11 @@ PRIVATE_SOURCE_TAG_REGISTRY_CSV = PHASE_OUTPUT_DIR / "source-tag-registry.csv"
 PRIVATE_SOURCE_NAME_OBSERVATIONS_CSV = PHASE_OUTPUT_DIR / "source-name-observations.csv"
 PRIVATE_SOURCE_NAME_REGISTRY_CSV = PHASE_OUTPUT_DIR / "source-name-registry.csv"
 PRIVATE_SOURCE_NAME_ALIAS_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "source-name-alias-candidates.csv"
+PRIVATE_SOURCE_SEARCHABLE_NAME_ASSERTIONS_CSV = PHASE_OUTPUT_DIR / "source-searchable-name-assertions.csv"
+PRIVATE_MODEL_CLASSIFICATION_INPUTS_JSONL = PHASE_OUTPUT_DIR / "model-classification-inputs.jsonl"
+PRIVATE_MODEL_CLASSIFICATION_OUTPUTS_JSONL = PHASE_OUTPUT_DIR / "model-classification-outputs.jsonl"
+PRIVATE_MODEL_CLASSIFICATION_REVIEW_CSV = PHASE_OUTPUT_DIR / "model-classification-review.csv"
+PRIVATE_REAL_PIXIV_SEARCHABLE_CANDIDATES_CSV = PHASE_OUTPUT_DIR / "real-pixiv-searchable-candidates.csv"
 PRIVATE_PROVIDER_NAME_COVERAGE_CSV = PHASE_OUTPUT_DIR / "provider-name-coverage.csv"
 PRIVATE_RAW_APPLICABLE_NAME_SIGNALS_CSV = PHASE_OUTPUT_DIR / "raw-applicable-name-signals.csv"
 PRIVATE_SEARCH_VALIDATION_CSV = PHASE_OUTPUT_DIR / "name-search-index-validation.csv"
@@ -89,6 +144,7 @@ ALLOWED_WRITE_TABLES = {
     "blombooru_source_name_registry",
     "blombooru_source_name_alias_candidates",
     "blombooru_source_metadata_evidence",
+    "blombooru_source_searchable_name_assertions",
 }
 FORBIDDEN_TABLES = {
     "blombooru_entities",
@@ -115,6 +171,45 @@ class OutputPathError(Phase44P2RF5Error):
 
 class CuratedMappingError(Phase44P2RF5Error):
     pass
+
+
+@dataclass(frozen=True)
+class SearchableNameCandidate:
+    candidate_key: str
+    provider: str
+    provider_record_key: str
+    raw_input: str
+    normalized_input: str
+    data_type_label: str
+    source_kind: str
+    source_field: str | None = None
+    role_hint: str | None = None
+    source_tag_observation_key: str | None = None
+    source_name_observation_key: str | None = None
+    context: dict[str, Any] = field(default_factory=dict)
+    parenthetical_outer: str | None = None
+    parenthetical_inner: str | None = None
+    high_impact: bool = False
+    occurrence_count: int = 1
+
+
+@dataclass(frozen=True)
+class ValidatedModelAssertion:
+    input: str
+    normalized_input: str
+    is_name_like: bool
+    asserted_role: str
+    extracted_name: str | None
+    base_name: str | None
+    work_context: str | None
+    alias_candidates: tuple[str, ...]
+    is_searchable_identity: bool
+    searchable_status: str
+    confidence: str
+    reason_code: str
+    evidence_summary: str
+    requires_review: bool
+    should_not_be_entity_truth: bool
 
 
 def _rel(path: Path) -> str:
@@ -462,7 +557,7 @@ def scale_provider_records(
 
 
 def load_real_pixiv_source_prior_records_from_db(*, limit: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    config = f1.load_project_config(ROOT)
+    config = load_f5_project_config()
     engine = create_engine(config.database_url)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -899,6 +994,983 @@ def generated_scale_fixture_records(*, start_index: int, count: int) -> list[dic
     return rows
 
 
+def build_searchable_name_candidates(
+    bundle: SourceRegistryBundle,
+    records: Sequence[Mapping[str, Any]],
+    *,
+    max_candidates: int,
+) -> list[SearchableNameCandidate]:
+    limit = max(0, min(int(max_candidates), SOURCE_ASSERTION_HARD_MAX_CANDIDATES))
+    metadata_by_key = {
+        provider_record_lookup_key(row.provider, row.provider_record_key): row
+        for row in bundle.metadata_records
+    }
+    raw_record_by_key = {
+        provider_record_lookup_key(
+            canonical_source_key(row.get("provider") or "generic_provider"),
+            normalize_source_text(row.get("provider_record_key")),
+        ): row
+        for row in records
+    }
+    tags_by_record: dict[str, list[str]] = defaultdict(list)
+    for tag in bundle.tag_observations:
+        tags_by_record[provider_record_lookup_key(tag.provider, tag.provider_record_key)].append(tag.raw_tag)
+
+    candidates_by_key: dict[str, SearchableNameCandidate] = {}
+
+    def add_candidate(
+        *,
+        provider: str,
+        provider_record_key: str,
+        raw_input: Any,
+        data_type_label: str,
+        source_kind: str,
+        source_field: str | None = None,
+        role_hint: str | None = None,
+        source_tag_observation_key: str | None = None,
+        source_name_observation_key: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> None:
+        raw = normalize_source_text(raw_input)
+        if not raw:
+            return
+        normalized = normalize_source_text(raw)
+        parenthetical = PARENTHETICAL_CANDIDATE_RE.match(normalized)
+        outer = normalize_source_text(parenthetical.group(1)) if parenthetical else None
+        inner = normalize_source_text(parenthetical.group(2)) if parenthetical else None
+        canonical = canonical_source_key(f"{provider}:{source_kind}:{role_hint or 'unknown'}:{normalized}")[:600]
+        candidate_key = f"source-searchable-name-candidate:{canonical}"
+        existing = candidates_by_key.get(candidate_key)
+        high_impact = (
+            provider == "pixiv"
+            and data_type_label == DATA_TYPE_REAL
+            and (
+                source_kind == "source_name_observation"
+                or bool(parenthetical)
+                or bool(role_hint)
+                or len(normalized) >= 2
+            )
+        )
+        if existing is not None:
+            candidates_by_key[candidate_key] = SearchableNameCandidate(
+                **{
+                    **asdict(existing),
+                    "occurrence_count": existing.occurrence_count + 1,
+                    "high_impact": existing.high_impact or high_impact,
+                }
+            )
+            return
+        record_key = provider_record_lookup_key(provider, provider_record_key)
+        raw_record = raw_record_by_key.get(record_key, {})
+        candidate_context = {
+            "title": normalize_source_text(raw_record.get("title")) or None,
+            "artist_name_present": bool(normalize_source_text(raw_record.get("artist_name"))),
+            "sibling_tags": tags_by_record.get(record_key, [])[:12],
+            "parenthetical_outer": outer,
+            "parenthetical_inner": inner,
+            "source_field": source_field,
+            "role_hint": role_hint,
+            "data_type_label": data_type_label,
+        }
+        if context:
+            candidate_context.update(dict(context))
+        candidates_by_key[candidate_key] = SearchableNameCandidate(
+            candidate_key=candidate_key,
+            provider=provider,
+            provider_record_key=provider_record_key,
+            raw_input=raw,
+            normalized_input=normalized,
+            data_type_label=data_type_label,
+            source_kind=source_kind,
+            source_field=source_field,
+            role_hint=role_hint,
+            source_tag_observation_key=source_tag_observation_key,
+            source_name_observation_key=source_name_observation_key,
+            context=candidate_context,
+            parenthetical_outer=outer,
+            parenthetical_inner=inner,
+            high_impact=high_impact,
+        )
+
+    for tag in bundle.tag_observations:
+        metadata = metadata_by_key[provider_record_lookup_key(tag.provider, tag.provider_record_key)]
+        add_candidate(
+            provider=tag.provider,
+            provider_record_key=tag.provider_record_key,
+            raw_input=tag.raw_tag,
+            data_type_label=metadata.data_type_label,
+            source_kind="source_tag_observation",
+            source_field=tag.source_tag_kind,
+            role_hint=tag.source_category_raw,
+            source_tag_observation_key=tag.observation_key,
+            context={
+                "source_category_raw": tag.source_category_raw,
+                "language_hint": tag.language_hint,
+            },
+        )
+
+    for name in bundle.name_observations:
+        metadata = metadata_by_key[provider_record_lookup_key(name.provider, name.provider_record_key)]
+        add_candidate(
+            provider=name.provider,
+            provider_record_key=name.provider_record_key,
+            raw_input=name.raw_name,
+            data_type_label=metadata.data_type_label,
+            source_kind="source_name_observation",
+            source_field=name.source_field,
+            role_hint=name.name_role,
+            source_name_observation_key=name.observation_key,
+            context={
+                "source_work_id_present": bool(name.source_work_id),
+                "requires_review": name.requires_review,
+            },
+        )
+
+    def priority(candidate: SearchableNameCandidate) -> tuple[int, int, str]:
+        if candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_REAL and candidate.high_impact:
+            bucket = 0
+        elif candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_REAL:
+            bucket = 1
+        elif candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_ARTIFACT:
+            bucket = 2
+        elif candidate.provider == "saucenao" and candidate.data_type_label in {DATA_TYPE_REAL, DATA_TYPE_ARTIFACT}:
+            bucket = 3
+        elif candidate.parenthetical_outer:
+            bucket = 4
+        elif candidate.data_type_label == DATA_TYPE_FIXTURE:
+            bucket = 8
+        else:
+            bucket = 6
+        return bucket, -candidate.occurrence_count, candidate.candidate_key
+
+    return sorted(candidates_by_key.values(), key=priority)[:limit]
+
+
+def _safe_url_host(url: str) -> str | None:
+    try:
+        return urlparse(url).hostname or None
+    except Exception:
+        return None
+
+
+def source_assertion_provider_from_env() -> tuple[BaseLLMProvider | None, dict[str, Any]]:
+    fallback_enabled = bool(settings.TAG_TRANSLATION_LLM_FALLBACK_ENABLED)
+    fallback_provider_type = settings.TAG_TRANSLATION_LLM_FALLBACK_PROVIDER
+    fallback_key = settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
+    fallback_model = settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
+    fallback_url = settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+    summary = {
+        "provider": "fallback_only",
+        "llm_provider_label": "fallback",
+        "fallback_provider_type": fallback_provider_type,
+        "model_label": fallback_model if fallback_model else "unknown",
+        "fallback_enabled": fallback_enabled,
+        "llm_access_configured": bool(fallback_key and fallback_model and fallback_url),
+        "llm_access_stored": False,
+        "base_url_redacted": True,
+        "uses_primary_model": False,
+        "uses_fallback_provider": True,
+    }
+    if not fallback_enabled:
+        return None, {**summary, "unavailable_reason": "fallback_disabled"}
+    if fallback_provider_type not in {"openai_compatible", "deepseek"}:
+        return None, {**summary, "unavailable_reason": "fallback_provider_not_openai_compatible"}
+    if not (fallback_key and fallback_model and fallback_url):
+        return None, {**summary, "unavailable_reason": "fallback_config_incomplete"}
+    primary_disabled = OpenAICompatibleProvider(
+        api_key="",
+        model="",
+        base_url=fallback_url,
+        label="primary_disabled_for_f5_source_assertion",
+    )
+    fallback = OpenAICompatibleProvider(
+        api_key=fallback_key,
+        model=fallback_model,
+        base_url=fallback_url,
+        label="fallback",
+    )
+    provider = FallbackProvider(primary_disabled, fallback)
+    return provider if provider.is_available() else None, summary
+
+
+def _host_resolves(host: str) -> bool:
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except OSError:
+        return False
+
+
+def load_f5_project_config() -> f1.ProjectConfig:
+    config = f1.load_project_config(ROOT)
+    process_host = normalize_source_text(os.environ.get("POSTGRES_HOST"))
+    if config.db_host == "db" and process_host == "localhost" and not _host_resolves("db"):
+        return replace(
+            config,
+            db_host="localhost",
+            database_url=config.database_url.set(host="localhost"),
+            database_url_source=f"{config.database_url_source}+process_host_override",
+        )
+    return config
+
+
+def candidate_prompt_payload(candidate: SearchableNameCandidate) -> dict[str, Any]:
+    return {
+        "candidate_key": candidate.candidate_key,
+        "provider": candidate.provider,
+        "input": candidate.raw_input,
+        "normalized_input": candidate.normalized_input,
+        "source_kind": candidate.source_kind,
+        "source_field": candidate.source_field,
+        "role_hint": candidate.role_hint,
+        "data_type_label": candidate.data_type_label,
+        "parenthetical_outer": candidate.parenthetical_outer,
+        "parenthetical_inner": candidate.parenthetical_inner,
+        "context": candidate.context,
+        "must_not_create_entity_truth": True,
+    }
+
+
+def source_assertion_system_prompt() -> str:
+    return (
+        "You classify anime/illustration provider tags and provider name fields into searchable source-level "
+        "identity assertions. These assertions are NOT Entity truth, NOT EntityAlias, NOT confirmed assignments.\n"
+        "Return ONLY a valid JSON array. Each output object must include exactly the supplied candidate_key and these fields: "
+        "input, normalized_input, is_name_like, asserted_role, extracted_name, base_name, work_context, "
+        "alias_candidates, is_searchable_identity, searchable_status, confidence, reason_code, evidence_summary, "
+        "requires_review, should_not_be_entity_truth.\n"
+        f"Allowed asserted_role values: {sorted(ASSERTION_ROLES)}.\n"
+        f"Allowed searchable_status values: {sorted(ASSERTION_STATUSES)}.\n"
+        f"Allowed confidence values: {sorted(ASSERTION_CONFIDENCES)}.\n"
+        f"Allowed reason_code values: {sorted(ASSERTION_REASON_CODES)}.\n"
+        "Use searchable_active only when the tag/name is a plausible searchable source identity at source-search level. "
+        "Use rejected for clearly descriptive/generic/not-name-like/popularity markers. Use unresolved or needs_review for ambiguity. "
+        "For parenthetical character-work tags, extract the outer name and work_context when supported by the text. "
+        "Set should_not_be_entity_truth to true for every row. Do not include hidden reasoning; evidence_summary must be concise. "
+        "The response must start with '[' and end with ']'."
+    )
+
+
+def _classification_input_payload(candidates: Sequence[SearchableNameCandidate]) -> dict[str, Any]:
+    return {
+        "prompt_version": SOURCE_ASSERTION_PROMPT_VERSION,
+        "structured_output_schema_version": SOURCE_ASSERTION_SCHEMA_VERSION,
+        "candidate_count": len(candidates),
+        "candidates": [candidate_prompt_payload(candidate) for candidate in candidates],
+    }
+
+
+def _classification_messages(input_payload: Mapping[str, Any]) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": source_assertion_system_prompt()},
+        {
+            "role": "user",
+            "content": json.dumps(f1._coerce_json_safe(input_payload), ensure_ascii=False, sort_keys=True),
+        },
+    ]
+
+
+def _strip_json_fence(content: str) -> str:
+    text_value = content.strip()
+    if text_value.startswith("```"):
+        lines = text_value.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text_value = "\n".join(lines).strip()
+    return text_value
+
+
+def _extract_json_array_text(content: str) -> str:
+    text_value = _strip_json_fence(content)
+    if text_value.startswith("[") and text_value.endswith("]"):
+        return text_value
+    start = text_value.find("[")
+    end = text_value.rfind("]")
+    if start >= 0 and end > start:
+        return text_value[start : end + 1]
+    return text_value
+
+
+def _parse_llm_json_array(content: str) -> list[Any]:
+    text_value = _extract_json_array_text(content)
+    try:
+        payload = json.loads(text_value)
+    except json.JSONDecodeError as exc:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_invalid_json") from exc
+    if not isinstance(payload, list):
+        raise Phase44P2RF5Error("source_searchable_name_assertion_non_array_response")
+    return payload
+
+
+def _coerce_classification_response(parsed: Any, *, expected_count: int) -> tuple[list[Any], str | None]:
+    if isinstance(parsed, list):
+        return parsed, None
+    if isinstance(parsed, Mapping):
+        for key in ("assertions", "results", "items", "outputs", "candidates"):
+            value = parsed.get(key)
+            if isinstance(value, list):
+                return value, f"top_level_{key}_array"
+        if expected_count == 1 and "candidate_key" in parsed:
+            return [parsed], "single_object_wrapped"
+    raise Phase44P2RF5Error("source_searchable_name_assertion_non_array_response")
+
+
+async def _classify_candidate_chunk(
+    provider: BaseLLMProvider,
+    candidates: Sequence[SearchableNameCandidate],
+    *,
+    max_tokens: int = 6000,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    input_payload = _classification_input_payload(candidates)
+    messages = _classification_messages(input_payload)
+    output_payload: dict[str, Any] = {
+        "raw_response_stored": False,
+        "response_normalization": None,
+        "repair_strategy": "complete_json",
+    }
+    try:
+        parsed = await provider.complete_json(messages, temperature=0.0, max_tokens=max_tokens)
+        parsed_items, normalization = _coerce_classification_response(parsed, expected_count=len(candidates))
+    except LLMResponseFormatError:
+        repair_content = await provider.complete_chat(messages, temperature=0.0, max_tokens=max_tokens)
+        parsed_items = _parse_llm_json_array(repair_content)
+        normalization = "json_array_extracted_after_complete_json_failure"
+        output_payload["repair_strategy"] = "complete_chat_json_array_extract"
+    output_payload["parsed_response"] = parsed_items
+    output_payload["response_normalization"] = normalization
+    return parsed_items, input_payload, output_payload
+
+
+def validate_model_assertion_output(
+    item: Mapping[str, Any],
+    candidate: SearchableNameCandidate,
+) -> ValidatedModelAssertion:
+    if not isinstance(item, Mapping):
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:not_object")
+    candidate_key = normalize_source_text(item.get("candidate_key"))
+    if candidate_key and candidate_key != candidate.candidate_key:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:candidate_key_mismatch")
+    raw_input = normalize_source_text(item.get("input"))
+    normalized_input = normalize_source_text(item.get("normalized_input"))
+    if raw_input != candidate.raw_input:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:input_mismatch")
+    if normalized_input != candidate.normalized_input and canonical_source_key(normalized_input) != canonical_source_key(
+        candidate.normalized_input
+    ):
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:normalized_input_mismatch")
+    normalized_input = candidate.normalized_input
+
+    role = normalize_source_text(item.get("asserted_role"))
+    status = normalize_source_text(item.get("searchable_status"))
+    confidence = normalize_source_text(item.get("confidence"))
+    reason_code = normalize_source_text(item.get("reason_code"))
+    if role not in ASSERTION_ROLES:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:asserted_role")
+    if status not in ASSERTION_STATUSES:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:searchable_status")
+    if confidence not in ASSERTION_CONFIDENCES:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:confidence")
+    if reason_code not in ASSERTION_REASON_CODES:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:reason_code")
+    for bool_key in ("is_name_like", "is_searchable_identity", "requires_review", "should_not_be_entity_truth"):
+        if not isinstance(item.get(bool_key), bool):
+            raise Phase44P2RF5Error(f"source_searchable_name_assertion_schema_invalid:{bool_key}")
+    if item.get("should_not_be_entity_truth") is not True:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:entity_truth_flag")
+    aliases = item.get("alias_candidates")
+    if not isinstance(aliases, list) or not all(isinstance(value, str) for value in aliases):
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:alias_candidates")
+    if status == "searchable_active" and item.get("is_searchable_identity") is not True:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:active_not_searchable")
+    return ValidatedModelAssertion(
+        input=raw_input,
+        normalized_input=normalized_input,
+        is_name_like=bool(item["is_name_like"]),
+        asserted_role=role,
+        extracted_name=normalize_source_text(item.get("extracted_name")) or None,
+        base_name=normalize_source_text(item.get("base_name")) or None,
+        work_context=normalize_source_text(item.get("work_context")) or None,
+        alias_candidates=tuple(normalize_source_text(value) for value in aliases if normalize_source_text(value)),
+        is_searchable_identity=bool(item["is_searchable_identity"]),
+        searchable_status=status,
+        confidence=confidence,
+        reason_code=reason_code,
+        evidence_summary=normalize_source_text(item.get("evidence_summary"))[:1000],
+        requires_review=bool(item["requires_review"]),
+        should_not_be_entity_truth=True,
+    )
+
+
+def assertion_draft_from_model_output(
+    candidate: SearchableNameCandidate,
+    output: ValidatedModelAssertion,
+    *,
+    model_name: str,
+) -> SourceSearchableNameAssertionDraft:
+    asserted_name = output.extracted_name or output.base_name or candidate.parenthetical_outer or output.input
+    canonical_name_key = canonical_source_key(asserted_name or output.normalized_input) or canonical_source_key(output.input)
+    confidence_score = {"high": 0.92, "medium": 0.74, "low": 0.45}[output.confidence]
+    return SourceSearchableNameAssertionDraft(
+        provider=candidate.provider,
+        provider_record_key=candidate.provider_record_key,
+        assertion_key=f"source-searchable-name-assertion:{canonical_source_key(candidate.candidate_key)[:650]}",
+        raw_input=candidate.raw_input,
+        normalized_input=candidate.normalized_input,
+        canonical_name_key=canonical_name_key,
+        asserted_name=asserted_name,
+        asserted_role=output.asserted_role,
+        status=output.searchable_status,
+        confidence=output.confidence,
+        confidence_score=confidence_score,
+        evidence_sources_json={
+            "source_kind": candidate.source_kind,
+            "source_field": candidate.source_field,
+            "reason_code": output.reason_code,
+            "is_name_like": output.is_name_like,
+            "is_searchable_identity": output.is_searchable_identity,
+            "alias_candidates": list(output.alias_candidates),
+            "work_context": output.work_context,
+        },
+        model_name=model_name,
+        prompt_version=SOURCE_ASSERTION_PROMPT_VERSION,
+        structured_output_schema_version=SOURCE_ASSERTION_SCHEMA_VERSION,
+        reasoning_summary_private=output.evidence_summary,
+        provenance_summary={
+            "provider": candidate.provider,
+            "data_type_label": candidate.data_type_label,
+            "llm_structured_classification": True,
+            "should_not_be_entity_truth": True,
+            "image_uploaded": False,
+            "api_called_per_unique_candidate": True,
+        },
+        requires_review=output.requires_review,
+        source_tag_observation_key=candidate.source_tag_observation_key,
+        source_name_observation_key=candidate.source_name_observation_key,
+    )
+
+
+def _assertion_review_row(
+    candidate: SearchableNameCandidate,
+    output: ValidatedModelAssertion | None,
+    *,
+    error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "candidate_key": candidate.candidate_key,
+        "provider": candidate.provider,
+        "data_type_label": candidate.data_type_label,
+        "source_kind": candidate.source_kind,
+        "source_field": candidate.source_field,
+        "role_hint": candidate.role_hint,
+        "raw_input": candidate.raw_input,
+        "normalized_input": candidate.normalized_input,
+        "parenthetical_outer": candidate.parenthetical_outer,
+        "parenthetical_inner": candidate.parenthetical_inner,
+        "high_impact": candidate.high_impact,
+        "status": output.searchable_status if output else None,
+        "asserted_role": output.asserted_role if output else None,
+        "extracted_name": output.extracted_name if output else None,
+        "base_name": output.base_name if output else None,
+        "work_context": output.work_context if output else None,
+        "confidence": output.confidence if output else None,
+        "reason_code": output.reason_code if output else None,
+        "requires_review": output.requires_review if output else None,
+        "validation_error": error,
+    }
+
+
+def _error_bucket(exc: BaseException) -> str:
+    text_value = normalize_source_text(str(exc))
+    if text_value.startswith("source_searchable_name_assertion_schema_invalid:"):
+        return text_value
+    if text_value.startswith("source_searchable_name_assertion_"):
+        return text_value
+    return type(exc).__name__
+
+
+def unresolved_assertion_draft_from_model_failure(
+    candidate: SearchableNameCandidate,
+    *,
+    model_name: str,
+    error_bucket: str,
+    recovery_strategy: str,
+) -> SourceSearchableNameAssertionDraft:
+    asserted_name = candidate.parenthetical_outer or candidate.normalized_input or candidate.raw_input
+    canonical_name_key = canonical_source_key(asserted_name) or canonical_source_key(candidate.raw_input)
+    return SourceSearchableNameAssertionDraft(
+        provider=candidate.provider,
+        provider_record_key=candidate.provider_record_key,
+        assertion_key=f"source-searchable-name-assertion:{canonical_source_key(candidate.candidate_key)[:650]}",
+        raw_input=candidate.raw_input,
+        normalized_input=candidate.normalized_input,
+        canonical_name_key=canonical_name_key,
+        asserted_name=asserted_name,
+        asserted_role="unknown",
+        status="unresolved",
+        confidence="low",
+        confidence_score=0.0,
+        evidence_sources_json={
+            "source_kind": candidate.source_kind,
+            "source_field": candidate.source_field,
+            "reason_code": "model_output_invalid",
+            "model_output_invalid": True,
+            "error_bucket": error_bucket,
+            "recovery_strategy": recovery_strategy,
+            "is_searchable_identity": False,
+        },
+        model_name=model_name,
+        prompt_version=SOURCE_ASSERTION_PROMPT_VERSION,
+        structured_output_schema_version=SOURCE_ASSERTION_SCHEMA_VERSION,
+        reasoning_summary_private=f"Model output could not be validated safely: {error_bucket}",
+        provenance_summary={
+            "provider": candidate.provider,
+            "data_type_label": candidate.data_type_label,
+            "llm_structured_classification": True,
+            "llm_output_downgraded_to_unresolved": True,
+            "should_not_be_entity_truth": True,
+            "image_uploaded": False,
+            "api_called_per_unique_candidate": True,
+        },
+        requires_review=True,
+        source_tag_observation_key=candidate.source_tag_observation_key,
+        source_name_observation_key=candidate.source_name_observation_key,
+    )
+
+
+def classify_source_searchable_name_assertions(
+    args: argparse.Namespace,
+    bundle: SourceRegistryBundle,
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[list[SearchableNameCandidate], list[SourceSearchableNameAssertionDraft], dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    candidates = build_searchable_name_candidates(
+        bundle,
+        records,
+        max_candidates=int(args.source_assertion_max_candidates),
+    )
+    base_summary: dict[str, Any] = {
+        "prompt_version": SOURCE_ASSERTION_PROMPT_VERSION,
+        "structured_output_schema_version": SOURCE_ASSERTION_SCHEMA_VERSION,
+        "candidate_count": len(candidates),
+        "default_max_candidates": SOURCE_ASSERTION_DEFAULT_MAX_CANDIDATES,
+        "hard_max_candidates": SOURCE_ASSERTION_HARD_MAX_CANDIDATES,
+        "api_call_attempted": False,
+        "llm_access_stored": False,
+        "image_uploads": 0,
+        "per_image_api_calls": 0,
+        "mode": "no_api_preflight",
+        "outputs_valid": 0,
+        "invalid_outputs": 0,
+        "refusal_or_blocked": 0,
+        "searchable_active": 0,
+        "unresolved": 0,
+        "rejected": 0,
+        "needs_review": 0,
+        "api_call_attempts": 0,
+        "api_chunks_attempted": 0,
+        "chunk_retries": 0,
+        "chunk_split_recoveries": 0,
+        "single_candidate_failures_downgraded": 0,
+        "invalid_output_reason_counts": {},
+        "repair_strategies_attempted": [],
+    }
+    if not args.use_llm_api:
+        base_summary["mode"] = "api_not_requested"
+        return candidates, [], base_summary, [], [], []
+    if args.no_db or args.dry_run:
+        base_summary["mode"] = "api_skipped_no_db_or_dry_run"
+        return candidates, [], base_summary, [], [], []
+    if not candidates:
+        base_summary["mode"] = "api_not_called_no_candidates"
+        return candidates, [], base_summary, [], [], []
+
+    provider, provider_summary = source_assertion_provider_from_env()
+    base_summary.update(provider_summary)
+    if provider is None:
+        raise Phase44P2RF5Error("source_searchable_name_assertion_api_unavailable")
+
+    base_summary["api_call_attempted"] = True
+    base_summary["mode"] = "llm_api_structured_json_validation"
+    chunks = [
+        candidates[index : index + int(args.source_assertion_chunk_size)]
+        for index in range(0, len(candidates), int(args.source_assertion_chunk_size))
+    ]
+    inputs_private: list[dict[str, Any]] = []
+    outputs_private: list[dict[str, Any]] = []
+    review_rows: list[dict[str, Any]] = []
+    drafts: list[SourceSearchableNameAssertionDraft] = []
+    invalid_reasons: Counter[str] = Counter()
+    repair_strategies: set[str] = set()
+
+    def record_failed_attempt(
+        chunk: Sequence[SearchableNameCandidate],
+        exc: BaseException,
+        *,
+        strategy: str,
+    ) -> None:
+        repair_strategies.add(strategy)
+        bucket = _error_bucket(exc)
+        invalid_reasons[bucket] += len(chunk)
+        inputs_private.append({**_classification_input_payload(chunk), "repair_strategy": strategy})
+        outputs_private.append(
+            {
+                "candidate_count": len(chunk),
+                "parsed_response": None,
+                "raw_response_stored": False,
+                "error_bucket": bucket,
+                "error_type": type(exc).__name__,
+                "repair_strategy": strategy,
+            }
+        )
+
+    def downgrade_single_candidate(
+        candidate: SearchableNameCandidate,
+        exc: BaseException,
+        *,
+        strategy: str,
+    ) -> None:
+        bucket = _error_bucket(exc)
+        draft = unresolved_assertion_draft_from_model_failure(
+            candidate,
+            model_name=str(base_summary.get("model_label") or ""),
+            error_bucket=bucket,
+            recovery_strategy=strategy,
+        )
+        drafts.append(draft)
+        review_rows.append(_assertion_review_row(candidate, None, error=bucket))
+        base_summary["invalid_outputs"] += 1
+        base_summary["unresolved"] += 1
+        base_summary["single_candidate_failures_downgraded"] += 1
+
+    async def classify_chunk_with_repair(
+        chunk: Sequence[SearchableNameCandidate],
+        *,
+        strategy: str,
+    ) -> None:
+        base_summary["api_chunks_attempted"] += 1
+        last_error: BaseException | None = None
+        for attempt in range(int(args.source_assertion_api_retries) + 1):
+            try:
+                base_summary["api_call_attempts"] += 1
+                parsed, input_payload, output_payload = await _classify_candidate_chunk(
+                    provider,
+                    chunk,
+                    max_tokens=int(args.source_assertion_max_tokens),
+                )
+                if len(parsed) != len(chunk):
+                    raise Phase44P2RF5Error("source_searchable_name_assertion_schema_invalid:response_count_mismatch")
+                validated_rows: list[tuple[SearchableNameCandidate, ValidatedModelAssertion]] = []
+                for candidate, item in zip(chunk, parsed):
+                    validated_rows.append((candidate, validate_model_assertion_output(item, candidate)))
+                inputs_private.append({**input_payload, "repair_strategy": strategy})
+                outputs_private.append({**output_payload, "repair_strategy": strategy})
+                repair_strategies.add(strategy)
+                for candidate, validated in validated_rows:
+                    draft = assertion_draft_from_model_output(
+                        candidate,
+                        validated,
+                        model_name=str(base_summary.get("model_label") or ""),
+                    )
+                    drafts.append(draft)
+                    review_rows.append(_assertion_review_row(candidate, validated))
+                    base_summary["outputs_valid"] += 1
+                    base_summary[validated.searchable_status] += 1
+                return
+            except LLMProviderError as exc:
+                if not isinstance(exc, LLMResponseFormatError):
+                    raise
+                last_error = exc
+            except Phase44P2RF5Error as exc:
+                last_error = exc
+            if attempt < int(args.source_assertion_api_retries):
+                base_summary["chunk_retries"] += 1
+
+        if last_error is None:
+            last_error = Phase44P2RF5Error("source_searchable_name_assertion_api_retry_failed")
+        record_failed_attempt(chunk, last_error, strategy=strategy)
+        if len(chunk) > 1:
+            base_summary["chunk_split_recoveries"] += 1
+            midpoint = max(1, len(chunk) // 2)
+            await classify_chunk_with_repair(chunk[:midpoint], strategy="split_after_invalid_output")
+            await classify_chunk_with_repair(chunk[midpoint:], strategy="split_after_invalid_output")
+            return
+        downgrade_single_candidate(chunk[0], last_error, strategy="single_candidate_unresolved_after_retries")
+
+    async def classify_all() -> None:
+        for chunk in chunks:
+            await classify_chunk_with_repair(chunk, strategy="initial_chunk")
+
+    try:
+        asyncio.run(classify_all())
+    except LLMProviderError as exc:
+        raise Phase44P2RF5Error(f"source_searchable_name_assertion_api_failed:{type(exc).__name__}") from None
+
+    base_summary["invalid_output_reason_counts"] = dict(sorted(invalid_reasons.items()))
+    base_summary["repair_strategies_attempted"] = sorted(repair_strategies)
+
+    return candidates, drafts, base_summary, inputs_private, outputs_private, review_rows
+
+
+def source_assertion_llm_preflight(args: argparse.Namespace) -> dict[str, Any]:
+    provider, provider_summary = source_assertion_provider_from_env()
+    if provider is None:
+        raise Phase44P2RF5Error("llm_provider_not_configured")
+    candidate = SearchableNameCandidate(
+        candidate_key="preflight:source-searchable-name-assertion",
+        provider="pixiv",
+        provider_record_key="preflight:pixiv:source-name-assertion",
+        raw_input="Hero Name(Work Name)",
+        normalized_input="Hero Name(Work Name)",
+        data_type_label=DATA_TYPE_FIXTURE,
+        source_kind="source_tag_observation",
+        source_field="preflight",
+        role_hint=None,
+        context={
+            "title": "Work Name",
+            "sibling_tags": ["Hero Name(Work Name)", "blue hair"],
+            "preflight_only": True,
+        },
+        parenthetical_outer="Hero Name",
+        parenthetical_inner="Work Name",
+        high_impact=False,
+    )
+    try:
+        parsed, _input_payload, _output_payload = asyncio.run(
+            _classify_candidate_chunk(
+                provider,
+                [candidate],
+                max_tokens=min(int(args.source_assertion_max_tokens), 2000),
+            )
+        )
+    except LLMProviderError as exc:
+        raise Phase44P2RF5Error(f"source_assertion_preflight_failed:{type(exc).__name__}") from None
+    if len(parsed) != 1:
+        raise Phase44P2RF5Error("source_assertion_preflight_response_count_mismatch")
+    validated = validate_model_assertion_output(parsed[0], candidate)
+    return {
+        "mode": "llm_fallback_complete_json_preflight",
+        "success": True,
+        "provider": {
+            "llm_provider_label": provider_summary.get("llm_provider_label"),
+            "fallback_provider_type": provider_summary.get("fallback_provider_type"),
+            "model_label": provider_summary.get("model_label"),
+            "uses_primary_model": provider_summary.get("uses_primary_model"),
+            "uses_fallback_provider": provider_summary.get("uses_fallback_provider"),
+            "base_url_redacted": True,
+            "llm_access_configured": provider_summary.get("llm_access_configured"),
+            "llm_access_stored": False,
+        },
+        "schema": {
+            "prompt_version": SOURCE_ASSERTION_PROMPT_VERSION,
+            "structured_output_schema_version": SOURCE_ASSERTION_SCHEMA_VERSION,
+            "output_valid": True,
+            "status": validated.searchable_status,
+            "role": validated.asserted_role,
+            "should_not_be_entity_truth": validated.should_not_be_entity_truth,
+        },
+        "db_write": False,
+        "image_upload": False,
+    }
+
+
+def source_searchable_assertion_coverage_summary(
+    candidates: Sequence[SearchableNameCandidate],
+    assertions: Sequence[SourceSearchableNameAssertionDraft],
+) -> dict[str, Any]:
+    by_key = {
+        assertion.assertion_key.replace("source-searchable-name-assertion:", ""): assertion
+        for assertion in assertions
+    }
+    # The persisted assertion key is canonicalized; use raw tuple lookup for coverage instead.
+    assertion_by_input = {
+        (row.provider, row.normalized_input, row.raw_input): row
+        for row in assertions
+    }
+
+    def assertion_for(candidate: SearchableNameCandidate) -> SourceSearchableNameAssertionDraft | None:
+        return assertion_by_input.get((candidate.provider, candidate.normalized_input, candidate.raw_input))
+
+    def terminal(assertion: SourceSearchableNameAssertionDraft | None) -> bool:
+        if assertion is None:
+            return False
+        if assertion.status == "searchable_active":
+            return True
+        if assertion.status != "rejected":
+            return False
+        reason_code = (assertion.evidence_sources_json or {}).get("reason_code")
+        return reason_code in {
+            "descriptive_tag",
+            "generic_label",
+            "not_name_like",
+            "popularity_marker",
+            "known_work_title",
+            "known_artist_creator",
+            "known_character_name",
+            "parenthetical_character_work",
+        }
+
+    real_pixiv_high = [
+        candidate
+        for candidate in candidates
+        if candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_REAL and candidate.high_impact
+    ]
+    parenthetical = [
+        candidate
+        for candidate in real_pixiv_high
+        if candidate.parenthetical_outer and candidate.parenthetical_inner
+    ]
+    saucenao = [
+        candidate
+        for candidate in candidates
+        if candidate.provider == "saucenao"
+        and candidate.data_type_label in {DATA_TYPE_REAL, DATA_TYPE_ARTIFACT}
+        and (candidate.role_hint in {"artist", "creator", "work_title"} or candidate.source_field == "saucenao_work_or_copyright")
+    ]
+
+    def group_summary(rows: Sequence[SearchableNameCandidate]) -> dict[str, Any]:
+        active = 0
+        terminal_count = 0
+        unresolved_like = 0
+        missing = 0
+        for candidate in rows:
+            assertion = assertion_for(candidate)
+            if assertion is None:
+                missing += 1
+                unresolved_like += 1
+                continue
+            if assertion.status == "searchable_active":
+                active += 1
+            if terminal(assertion):
+                terminal_count += 1
+            if assertion.status in {"unresolved", "needs_review"}:
+                unresolved_like += 1
+        return {
+            "candidate_count": len(rows),
+            "searchable_active_count": active,
+            "terminal_active_or_valid_rejected_count": terminal_count,
+            "missing_assertion_count": missing,
+            "unresolved_or_needs_review_count": unresolved_like,
+            "coverage": round(terminal_count / len(rows), 4) if rows else None,
+            "unresolved_rate": round(unresolved_like / len(rows), 4) if rows else None,
+        }
+
+    real_summary = group_summary(real_pixiv_high)
+    parenthetical_summary = group_summary(parenthetical)
+    saucenao_summary = group_summary(saucenao)
+    real_pixiv_supply_sufficient = len(real_pixiv_high) >= REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET
+    real_pixiv_target_met = (
+        real_summary["coverage"] is not None
+        and real_summary["coverage"] >= 0.8
+        and (real_summary["unresolved_rate"] or 1.0) <= 0.2
+        and real_pixiv_supply_sufficient
+    )
+    parenthetical_target_met = (
+        not parenthetical
+        or (
+            parenthetical_summary["coverage"] is not None
+            and parenthetical_summary["coverage"] >= 0.9
+        )
+    )
+    saucenao_target_met = (
+        saucenao_summary["coverage"] is not None
+        and saucenao_summary["coverage"] >= 0.9
+        and len(saucenao) >= SAUCENAO_ARTIFACT_RECORD_TARGET
+    )
+    return {
+        "candidate_counts": {
+            "total": len(candidates),
+            "real_pixiv_high_impact_or_name_like": len(real_pixiv_high),
+            "real_pixiv_parenthetical": len(parenthetical),
+            "saucenao_real_or_artifact_artist_creator_work": len(saucenao),
+        },
+        "assertion_status_counts": dict(sorted(Counter(row.status for row in assertions).items())),
+        "assertion_role_counts": dict(sorted(Counter(row.asserted_role for row in assertions).items())),
+        "real_pixiv_high_impact": real_summary,
+        "real_pixiv_candidate_supply_sufficient": real_pixiv_supply_sufficient,
+        "real_pixiv_searchable_assertion_target_met": real_pixiv_target_met,
+        "real_pixiv_parenthetical": parenthetical_summary,
+        "real_pixiv_parenthetical_target_met": parenthetical_target_met,
+        "saucenao_real_or_artifact_artist_creator_work": saucenao_summary,
+        "saucenao_assertion_target_met": saucenao_target_met,
+        "fixture_coverage_satisfies_real_targets": False,
+        "f5_source_searchable_assertion_goal_met": all(
+            [real_pixiv_target_met, parenthetical_target_met, saucenao_target_met]
+        ),
+    }
+
+
+def searchable_assertion_search_rows(
+    assertions: Sequence[SourceSearchableNameAssertionDraft],
+    candidates: Sequence[SearchableNameCandidate],
+) -> list[dict[str, Any]]:
+    active = [row for row in assertions if row.status == "searchable_active"]
+    index: dict[str, list[SourceSearchableNameAssertionDraft]] = defaultdict(list)
+    for assertion in active:
+        for value in (assertion.raw_input, assertion.normalized_input, assertion.asserted_name, assertion.canonical_name_key):
+            key = canonical_source_key(value)
+            if key:
+                index[key].append(assertion)
+    queries: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def add(label: str, value: Any) -> None:
+        text_value = normalize_source_text(value)
+        if text_value and text_value not in seen:
+            seen.add(text_value)
+            queries.append((label, text_value))
+
+    for candidate in candidates:
+        if candidate.provider == "pixiv" and candidate.data_type_label == DATA_TYPE_REAL:
+            add("real_pixiv_raw_or_normalized", candidate.raw_input)
+            add("real_pixiv_normalized", candidate.normalized_input)
+            if candidate.parenthetical_outer:
+                add("real_pixiv_parenthetical_outer", candidate.parenthetical_outer)
+            if candidate.parenthetical_inner:
+                add("real_pixiv_parenthetical_work_context", candidate.parenthetical_inner)
+            break
+    for assertion in active:
+        if assertion.provider == "saucenao" and assertion.asserted_role in {"artist", "creator"}:
+            add("saucenao_artist_or_creator", assertion.asserted_name or assertion.raw_input)
+            break
+    for assertion in active:
+        if assertion.provider == "saucenao" and assertion.asserted_role == "work_title":
+            add("saucenao_work_or_copyright", assertion.asserted_name or assertion.raw_input)
+            break
+    for assertion in active:
+        if len(queries) >= 8:
+            break
+        add("searchable_active_assertion", assertion.asserted_name or assertion.raw_input)
+    add("negative_control", "f5_assertion_no_match_control_query_should_not_match")
+    rows = []
+    for label, query in queries:
+        matched = bool(index.get(canonical_source_key(query)))
+        rows.append(
+            {
+                "query_key": label,
+                "query": query,
+                "matched": matched,
+                "match_count": len(index.get(canonical_source_key(query), [])),
+            }
+        )
+    return rows
+
+
+def assertion_search_validation_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    positives = [row for row in rows if row.get("query_key") != "negative_control"]
+    negative = [row for row in rows if row.get("query_key") == "negative_control"]
+    false_positive_suspected = sum(1 for row in negative if row.get("matched"))
+    return {
+        "query_count": len(rows),
+        "matched_count": sum(1 for row in rows if row.get("matched")),
+        "unmatched_count": sum(1 for row in rows if not row.get("matched")),
+        "positive_query_count": len(positives),
+        "positive_matched_count": sum(1 for row in positives if row.get("matched")),
+        "false_positive_suspected_count": false_positive_suspected,
+        "negative_control_present": bool(negative),
+    }
+
+
 def install_source_registry_write_guard(engine) -> None:
     write_re = re.compile(r"^\s*(insert|update|delete|alter|drop|truncate|create|merge|replace|copy)\b", re.IGNORECASE)
     destructive_re = re.compile(r"^\s*(delete|drop|truncate|merge|replace|copy|alter|create)\b", re.IGNORECASE)
@@ -1137,11 +2209,15 @@ def build_public_summary(
     *,
     records: Sequence[Mapping[str, Any]],
     bundle: SourceRegistryBundle,
+    searchable_candidates: Sequence[SearchableNameCandidate],
+    searchable_name_assertions: Sequence[SourceSearchableNameAssertionDraft],
+    llm_classification_summary: Mapping[str, Any],
     input_summary: Mapping[str, Any],
     curated_mapping_count: int,
     db_identity: Mapping[str, Any] | None,
     db_write_summary: Mapping[str, Any],
     search_rows: Sequence[Mapping[str, Any]],
+    assertion_search_rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     coverage = provider_name_coverage(bundle)
     counts = bundle_public_counts(bundle)
@@ -1173,6 +2249,13 @@ def build_public_summary(
     scale_minimum_met = counts["source_metadata_records"] >= MIN_RECORD_COUNT
     hard_max_respected = counts["source_metadata_records"] <= MAX_RECORD_COUNT
     forbidden_delta_zero = db_write_summary.get("forbidden_truth_table_write_count", 0) == 0
+    searchable_assertion_coverage = source_searchable_assertion_coverage_summary(
+        searchable_candidates,
+        searchable_name_assertions,
+    )
+    searchable_assertion_goal_met = bool(
+        searchable_assertion_coverage.get("f5_source_searchable_assertion_goal_met")
+    )
     f5_minimum_stage_goal_met = all(
         [
             scale_minimum_met,
@@ -1180,6 +2263,7 @@ def build_public_summary(
             real_pixiv_sample_min_met,
             real_pixiv_coverage_met,
             saucenao_non_fixture_coverage_met,
+            searchable_assertion_goal_met,
             apply_db_success,
             forbidden_delta_zero,
         ]
@@ -1214,6 +2298,14 @@ def build_public_summary(
         "no_tag_provider_result": no_tag_provider_summary(bundle),
         "alias_candidate_quality": alias_quality_summary(bundle),
         "name_search_index_validation": search_validation_summary(search_rows),
+        "source_searchable_name_assertion_layer": {
+            "classification": dict(llm_classification_summary),
+            "coverage": searchable_assertion_coverage,
+            "search_validation": assertion_search_validation_summary(assertion_search_rows),
+            "assertion_table": "blombooru_source_searchable_name_assertions",
+            "entity_truth_created": False,
+            "confirmed_assignment_created": False,
+        },
         "curated_mapping": {
             "input_mapping_count": curated_mapping_count,
             "template_private_artifact": "curated-name-mapping-template.csv",
@@ -1239,6 +2331,7 @@ def build_public_summary(
             "forbidden_truth_table_write_count_zero": forbidden_delta_zero,
             "pixiv_real_applicable_coverage_at_least_80": real_pixiv_coverage_met,
             "saucenao_real_or_artifact_applicable_coverage_at_least_90": saucenao_non_fixture_coverage_met,
+            "source_searchable_name_assertion_goal_met": searchable_assertion_goal_met,
             "f5_minimum_stage_goal_met": f5_minimum_stage_goal_met,
         },
         "public_report_redaction": {
@@ -1265,8 +2358,10 @@ def build_public_summary(
             "media_tags_mutation": False,
             "tag_translation_mutation": False,
             "confirmed_assignment": False,
-            "llm_classification": False,
+            "llm_classification": bool(llm_classification_summary.get("api_call_attempted")),
+            "llm_classification_bounded_unique_candidates": True,
             "provider_upload": False,
+            "image_upload": False,
             "broad_provider_run": False,
             "source_or_icloud_mutation": False,
             "app_managed_storage_mutation": False,
@@ -1298,6 +2393,7 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- SauceNAO applicable name coverage: `{summary['saucenao_applicable_name_coverage']}`.",
         f"- Not applicable no-person-signal count: `{summary['not_applicable_no_person_signal_count']}`.",
         f"- Expanded real/artifact validation: `{json.dumps(summary['expanded_real_data_validation'], sort_keys=True)}`.",
+        f"- Source searchable name assertion layer: `{json.dumps(summary['source_searchable_name_assertion_layer'], sort_keys=True)}`.",
         f"- Reviewer fixes applied: `provider_scoped_metadata_key, registry_merge, numeric_booru_category, saucenao_work_or_copyright, stale_observation_retirement, source_tag_registry_merge, raw_denominator_coverage, complete_write_guard, post_truncation_scale_metrics`.",
         "",
         "## Schema / Storage",
@@ -1312,6 +2408,7 @@ def build_markdown_report(summary: Mapping[str, Any], *, private_markers: Iterab
         f"- Coverage by provider/data type: `{json.dumps(summary['coverage_by_provider_and_data_type'], sort_keys=True)}`.",
         f"- Alias candidate quality: `{json.dumps(summary['alias_candidate_quality'], sort_keys=True)}`.",
         f"- Search index validation: `{json.dumps(summary['name_search_index_validation'], sort_keys=True)}`.",
+        f"- Assertion search validation: `{json.dumps(summary['source_searchable_name_assertion_layer']['search_validation'], sort_keys=True)}`.",
         f"- No-tag provider result: `{json.dumps(summary['no_tag_provider_result'], sort_keys=True)}`.",
         f"- Curated mapping: `{json.dumps(summary['curated_mapping'], sort_keys=True)}`.",
         "",
@@ -1352,6 +2449,7 @@ def manual_review_guide() -> str:
             "# Phase 4.4-P2R-F5 manual review guide",
             "",
             "- SourceNameRegistry rows are searchable source observations, not Entities.",
+            "- SourceSearchableNameAssertion rows are source-search assertions, not Entity truth or confirmed assignments.",
             "- SourceNameAliasCandidate rows are candidate relations, not EntityAlias truth.",
             "- Strong aliases need provider canonical, curated, or trusted local/external provenance.",
             "- Parenthetical relations are useful medium evidence and should remain reviewable.",
@@ -1362,7 +2460,11 @@ def manual_review_guide() -> str:
     )
 
 
-def private_markers(bundle: SourceRegistryBundle, records: Sequence[Mapping[str, Any]]) -> list[str]:
+def private_markers(
+    bundle: SourceRegistryBundle,
+    records: Sequence[Mapping[str, Any]],
+    searchable_name_assertions: Sequence[SourceSearchableNameAssertionDraft] = (),
+) -> list[str]:
     markers: set[str] = set()
     for record in records:
         for key in (
@@ -1395,6 +2497,10 @@ def private_markers(bundle: SourceRegistryBundle, records: Sequence[Mapping[str,
     for row in bundle.alias_candidates:
         markers.add(row.source_display_name)
         markers.add(row.target_display_name)
+    for row in searchable_name_assertions:
+        markers.add(row.raw_input)
+        markers.add(row.asserted_name or "")
+        markers.add(row.reasoning_summary_private or "")
     return sorted({marker for marker in markers if marker and len(marker) > 2}, key=len, reverse=True)
 
 
@@ -1454,17 +2560,23 @@ def table_row_deltas(before: Mapping[str, int | None], after: Mapping[str, int |
     return deltas
 
 
-def db_apply_summary(args: argparse.Namespace, bundle: SourceRegistryBundle) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+def db_apply_summary(
+    args: argparse.Namespace,
+    bundle: SourceRegistryBundle,
+    searchable_name_assertions: Sequence[SourceSearchableNameAssertionDraft],
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     if args.no_db or args.dry_run or not args.apply_db:
+        planned = bundle_public_counts(bundle)
+        planned["source_searchable_name_assertions"] = len(searchable_name_assertions)
         return None, {
             "apply": False,
             "reason": "no_db_or_dry_run_or_apply_db_not_set",
             "guard_installed": False,
-            "planned": bundle_public_counts(bundle),
+            "planned": planned,
             "forbidden_truth_table_write_count": 0,
         }
 
-    config = f1.load_project_config(ROOT)
+    config = load_f5_project_config()
     engine = create_engine(config.database_url)
     migrate_add_source_metadata_name_registry(engine, inspect(engine))
     install_source_registry_write_guard(engine)
@@ -1474,7 +2586,12 @@ def db_apply_summary(args: argparse.Namespace, bundle: SourceRegistryBundle) -> 
         db_identity = f1.prove_db_identity(session, config)
         forbidden_before = table_row_counts(session, FORBIDDEN_TABLES)
         allowed_before = table_row_counts(session, ALLOWED_WRITE_TABLES)
-        write_summary = persist_source_registry_bundle(session, bundle, apply=True)
+        write_summary = persist_source_registry_bundle(
+            session,
+            bundle,
+            apply=True,
+            searchable_name_assertions=searchable_name_assertions,
+        )
         forbidden_after = table_row_counts(session, FORBIDDEN_TABLES)
         allowed_after = table_row_counts(session, ALLOWED_WRITE_TABLES)
         forbidden_deltas = table_row_deltas(forbidden_before, forbidden_after)
@@ -1509,6 +2626,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-name-observations-csv", default=str(PRIVATE_SOURCE_NAME_OBSERVATIONS_CSV))
     parser.add_argument("--source-name-registry-csv", default=str(PRIVATE_SOURCE_NAME_REGISTRY_CSV))
     parser.add_argument("--source-name-alias-candidates-csv", default=str(PRIVATE_SOURCE_NAME_ALIAS_CANDIDATES_CSV))
+    parser.add_argument("--source-searchable-name-assertions-csv", default=str(PRIVATE_SOURCE_SEARCHABLE_NAME_ASSERTIONS_CSV))
+    parser.add_argument("--model-classification-inputs-jsonl", default=str(PRIVATE_MODEL_CLASSIFICATION_INPUTS_JSONL))
+    parser.add_argument("--model-classification-outputs-jsonl", default=str(PRIVATE_MODEL_CLASSIFICATION_OUTPUTS_JSONL))
+    parser.add_argument("--model-classification-review-csv", default=str(PRIVATE_MODEL_CLASSIFICATION_REVIEW_CSV))
+    parser.add_argument("--real-pixiv-searchable-candidates-csv", default=str(PRIVATE_REAL_PIXIV_SEARCHABLE_CANDIDATES_CSV))
     parser.add_argument("--provider-name-coverage-csv", default=str(PRIVATE_PROVIDER_NAME_COVERAGE_CSV))
     parser.add_argument("--raw-applicable-name-signals-csv", default=str(PRIVATE_RAW_APPLICABLE_NAME_SIGNALS_CSV))
     parser.add_argument("--search-validation-csv", default=str(PRIVATE_SEARCH_VALIDATION_CSV))
@@ -1521,10 +2643,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--real-pixiv-source-prior-min", type=int, default=REAL_PIXIV_SOURCE_PRIOR_MIN)
     parser.add_argument("--max-records", type=int, default=MAX_RECORD_COUNT)
     parser.add_argument("--disable-scale-up", action="store_true")
+    parser.add_argument("--use-llm-api", action="store_true")
+    parser.add_argument("--llm-preflight-only", action="store_true")
+    parser.add_argument("--source-assertion-max-candidates", type=int, default=SOURCE_ASSERTION_DEFAULT_MAX_CANDIDATES)
+    parser.add_argument("--source-assertion-chunk-size", type=int, default=5)
+    parser.add_argument("--source-assertion-max-tokens", type=int, default=6000)
+    parser.add_argument("--source-assertion-api-retries", type=int, default=1)
     return parser
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.llm_preflight_only:
+        return source_assertion_llm_preflight(args)
+
     output_dir = resolve_repo_path(args.output_dir)
     private_paths = [
         resolve_repo_path(args.details_json),
@@ -1534,6 +2665,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolve_repo_path(args.source_name_observations_csv),
         resolve_repo_path(args.source_name_registry_csv),
         resolve_repo_path(args.source_name_alias_candidates_csv),
+        resolve_repo_path(args.source_searchable_name_assertions_csv),
+        resolve_repo_path(args.model_classification_inputs_jsonl),
+        resolve_repo_path(args.model_classification_outputs_jsonl),
+        resolve_repo_path(args.model_classification_review_csv),
+        resolve_repo_path(args.real_pixiv_searchable_candidates_csv),
         resolve_repo_path(args.provider_name_coverage_csv),
         resolve_repo_path(args.raw_applicable_name_signals_csv),
         resolve_repo_path(args.search_validation_csv),
@@ -1546,6 +2682,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         report_json=resolve_repo_path(args.report_json),
         report_md=resolve_repo_path(args.report_md),
     )
+    if int(args.source_assertion_max_candidates) > SOURCE_ASSERTION_HARD_MAX_CANDIDATES:
+        raise Phase44P2RF5Error("source_assertion_candidate_hard_max_exceeded")
+    if int(args.source_assertion_chunk_size) <= 0:
+        raise Phase44P2RF5Error("source_assertion_chunk_size_invalid")
+    if int(args.source_assertion_max_tokens) <= 0:
+        raise Phase44P2RF5Error("source_assertion_max_tokens_invalid")
+    if int(args.source_assertion_api_retries) < 0:
+        raise Phase44P2RF5Error("source_assertion_api_retries_invalid")
 
     records, input_summary = load_provider_records(args.input_json or None)
     records, scale_summary = scale_provider_records(records, args)
@@ -1553,17 +2697,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     curated_mappings = load_curated_mappings(args.curated_mapping_input or None)
     bundle = build_source_registry_bundle(records, curated_mappings=curated_mappings)
     search_rows = validate_search_queries(bundle, search_validation_queries(bundle))
-    db_identity, db_write_summary = db_apply_summary(args, bundle)
+    (
+        searchable_candidates,
+        searchable_name_assertions,
+        llm_classification_summary,
+        model_inputs_private,
+        model_outputs_private,
+        model_review_rows,
+    ) = classify_source_searchable_name_assertions(args, bundle, records)
+    assertion_search_rows = searchable_assertion_search_rows(searchable_name_assertions, searchable_candidates)
+    db_identity, db_write_summary = db_apply_summary(args, bundle, searchable_name_assertions)
     summary = build_public_summary(
         records=records,
         bundle=bundle,
+        searchable_candidates=searchable_candidates,
+        searchable_name_assertions=searchable_name_assertions,
+        llm_classification_summary=llm_classification_summary,
         input_summary=input_summary,
         curated_mapping_count=len(curated_mappings),
         db_identity=db_identity,
         db_write_summary=db_write_summary,
         search_rows=search_rows,
+        assertion_search_rows=assertion_search_rows,
     )
-    markers = private_markers(bundle, records)
+    markers = private_markers(bundle, records, searchable_name_assertions)
     f1.assert_public_payload_safe(summary, private_markers=markers)
     report = build_markdown_report(summary, private_markers=markers)
 
@@ -1581,8 +2738,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "source_name_registry": [asdict(row) for row in bundle.name_registry],
             "source_name_alias_candidates": [asdict(row) for row in bundle.alias_candidates],
             "source_metadata_evidence": [asdict(row) for row in bundle.evidence],
+            "source_searchable_name_candidates": [asdict(row) for row in searchable_candidates],
+            "source_searchable_name_assertions": [asdict(row) for row in searchable_name_assertions],
+            "model_classification_review": model_review_rows,
             "raw_applicable_name_signals": raw_applicable_signal_rows(bundle),
             "name_search_index": build_name_search_index(bundle),
+            "source_searchable_assertion_search_validation": assertion_search_rows,
             "summary_public": summary,
         },
     )
@@ -1592,9 +2753,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_private_text(resolve_repo_path(args.source_name_observations_csv), _csv(asdict(row) for row in bundle.name_observations))
     write_private_text(resolve_repo_path(args.source_name_registry_csv), _csv(asdict(row) for row in bundle.name_registry))
     write_private_text(resolve_repo_path(args.source_name_alias_candidates_csv), _csv(asdict(row) for row in bundle.alias_candidates))
+    write_private_text(resolve_repo_path(args.source_searchable_name_assertions_csv), _csv(asdict(row) for row in searchable_name_assertions))
+    write_private_text(resolve_repo_path(args.model_classification_inputs_jsonl), _jsonl(model_inputs_private))
+    write_private_text(resolve_repo_path(args.model_classification_outputs_jsonl), _jsonl(model_outputs_private))
+    write_private_text(resolve_repo_path(args.model_classification_review_csv), _csv(model_review_rows))
+    write_private_text(
+        resolve_repo_path(args.real_pixiv_searchable_candidates_csv),
+        _csv(
+            asdict(row)
+            for row in searchable_candidates
+            if row.provider == "pixiv" and row.data_type_label == DATA_TYPE_REAL
+        ),
+    )
     write_private_text(resolve_repo_path(args.provider_name_coverage_csv), _coverage_csv(provider_name_coverage(bundle)))
     write_private_text(resolve_repo_path(args.raw_applicable_name_signals_csv), _csv(raw_applicable_signal_rows(bundle)))
-    write_private_text(resolve_repo_path(args.search_validation_csv), _csv(search_rows))
+    write_private_text(resolve_repo_path(args.search_validation_csv), _csv(list(search_rows) + list(assertion_search_rows)))
     write_private_text(resolve_repo_path(args.curated_template_csv), curated_mapping_template_csv())
     write_private_text(resolve_repo_path(args.manual_review_guide), manual_review_guide())
 
@@ -1604,6 +2777,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "source_metadata_records": len(bundle.metadata_records),
         "source_name_registry": len(bundle.name_registry),
         "alias_candidates": len(bundle.alias_candidates),
+        "source_searchable_name_assertions": len(searchable_name_assertions),
+        "source_assertion_mode": llm_classification_summary.get("mode"),
         "pixiv_coverage": summary["pixiv_applicable_name_coverage"],
         "saucenao_coverage": summary["saucenao_applicable_name_coverage"],
     }
@@ -1624,6 +2799,13 @@ def _csv(rows_iter: Iterable[Mapping[str, Any]]) -> str:
     for row in rows:
         writer.writerow({key: _cell(row.get(key)) for key in fieldnames})
     return buffer.getvalue()
+
+
+def _jsonl(rows_iter: Iterable[Mapping[str, Any]]) -> str:
+    return "".join(
+        json.dumps(f1._coerce_json_safe(dict(row)), ensure_ascii=False, sort_keys=True, default=str) + "\n"
+        for row in rows_iter
+    )
 
 
 def _cell(value: Any) -> Any:

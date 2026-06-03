@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import csv
+import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +32,7 @@ from app.models import (  # noqa: E402
     SourceNameAliasCandidate,
     SourceNameObservation,
     SourceNameRegistry,
+    SourceSearchableNameAssertion,
     SourceTagObservation,
     SourceTagRegistry,
     TagTranslation,
@@ -60,6 +64,7 @@ def test_f5_migration_creates_additive_source_tables():
         assert runner.ALLOWED_WRITE_TABLES.issubset(tables)
         assert "blombooru_source_name_registry" in tables
         assert "blombooru_source_name_alias_candidates" in tables
+        assert "blombooru_source_searchable_name_assertions" in tables
     finally:
         engine.dispose()
 
@@ -346,6 +351,7 @@ def test_no_forbidden_truth_table_writes_when_source_registry_is_persisted(db):
     assert db.query(SourceMetadataRecord).count() == len(bundle.metadata_records)
     assert db.query(SourceNameRegistry).count() == len(bundle.name_registry)
     assert db.query(SourceNameAliasCandidate).count() == len(bundle.alias_candidates)
+    assert db.query(SourceSearchableNameAssertion).count() == 0
     assert db.query(Entity).count() == 0
     assert db.query(EntityAlias).count() == 0
     assert db.query(EntityEvidence).count() == 0
@@ -463,7 +469,7 @@ def test_dry_run_no_db_writes(db):
 def test_no_db_mode_no_db_writes():
     args = runner.build_arg_parser().parse_args(["--no-db"])
     bundle = service.build_source_registry_bundle(runner.default_provider_shape_records())
-    _identity, summary = runner.db_apply_summary(args, bundle)
+    _identity, summary = runner.db_apply_summary(args, bundle, [])
     assert summary["apply"] is False
     assert summary["guard_installed"] is False
 
@@ -569,11 +575,15 @@ def test_report_split_keeps_real_pixiv_applicable_rows_separate_from_fixtures():
     summary = runner.build_public_summary(
         records=records,
         bundle=bundle,
+        searchable_candidates=[],
+        searchable_name_assertions=[],
+        llm_classification_summary={"api_call_attempted": False, "mode": "test"},
         input_summary={"input_source": "test"},
         curated_mapping_count=0,
         db_identity=None,
         db_write_summary={"apply": False, "guard_installed": False, "success": False},
         search_rows=search_rows,
+        assertion_search_rows=[],
     )
 
     assert summary["coverage_by_provider_and_data_type"][f"pixiv:{runner.DATA_TYPE_REAL}"]["applicable_name_signal_count"] == 1
@@ -598,13 +608,454 @@ def test_public_report_redacts_private_names():
     summary = runner.build_public_summary(
         records=records,
         bundle=bundle,
+        searchable_candidates=[],
+        searchable_name_assertions=[],
+        llm_classification_summary={"api_call_attempted": False, "mode": "test"},
         input_summary={"input_source": "test"},
         curated_mapping_count=0,
         db_identity=None,
         db_write_summary={"apply": False, "guard_installed": False},
         search_rows=search_rows,
+        assertion_search_rows=[],
     )
-    report = runner.build_markdown_report(summary, private_markers=runner.private_markers(bundle, records))
+    report = runner.build_markdown_report(summary, private_markers=runner.private_markers(bundle, records, []))
     assert "Creator Alpha" not in report
     assert "Character Alpha" not in report
     assert summary["public_report_redaction"]["raw_names_and_aliases_private_only"] is True
+
+
+def _candidate(raw_input="Hero Name(Work Name)", *, provider="pixiv", role_hint=None, source_kind="source_tag_observation"):
+    return runner.SearchableNameCandidate(
+        candidate_key=f"test-candidate:{runner.canonical_source_key(provider + ':' + raw_input)}",
+        provider=provider,
+        provider_record_key=f"{provider}:test:assertion",
+        raw_input=raw_input,
+        normalized_input=runner.normalize_source_text(raw_input),
+        data_type_label=runner.DATA_TYPE_REAL,
+        source_kind=source_kind,
+        source_field="test_field",
+        role_hint=role_hint,
+        source_tag_observation_key="tag:test:1" if source_kind == "source_tag_observation" else None,
+        source_name_observation_key="name:test:1" if source_kind == "source_name_observation" else None,
+        parenthetical_outer="Hero Name" if "(" in raw_input else None,
+        parenthetical_inner="Work Name" if "(" in raw_input else None,
+        high_impact=True,
+    )
+
+
+def _valid_model_output(candidate, **overrides):
+    payload = {
+        "candidate_key": candidate.candidate_key,
+        "input": candidate.raw_input,
+        "normalized_input": candidate.normalized_input,
+        "is_name_like": True,
+        "asserted_role": "character",
+        "extracted_name": "Hero Name",
+        "base_name": "Hero Name",
+        "work_context": "Work Name",
+        "alias_candidates": [],
+        "is_searchable_identity": True,
+        "searchable_status": "searchable_active",
+        "confidence": "high",
+        "reason_code": "parenthetical_character_work",
+        "evidence_summary": "Parenthetical tag separates a candidate name and work context.",
+        "requires_review": True,
+        "should_not_be_entity_truth": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _valid_model_output_from_prompt_candidate(candidate_payload, **overrides):
+    raw_input = candidate_payload["input"]
+    normalized_input = candidate_payload["normalized_input"]
+    output = {
+        "candidate_key": candidate_payload["candidate_key"],
+        "input": raw_input,
+        "normalized_input": normalized_input,
+        "is_name_like": True,
+        "asserted_role": "character",
+        "extracted_name": raw_input.split("(")[0],
+        "base_name": raw_input.split("(")[0],
+        "work_context": "Work Name" if "(" in raw_input else None,
+        "alias_candidates": [],
+        "is_searchable_identity": True,
+        "searchable_status": "searchable_active",
+        "confidence": "high",
+        "reason_code": "parenthetical_character_work",
+        "evidence_summary": "Unit fake provider produced a valid searchable assertion.",
+        "requires_review": True,
+        "should_not_be_entity_truth": True,
+    }
+    output.update(overrides)
+    return output
+
+
+def _prompt_candidates(messages):
+    return json.loads(messages[-1]["content"])["candidates"]
+
+
+class _ChunkRepairFakeProvider(runner.BaseLLMProvider):
+    def is_available(self):
+        return True
+
+    def get_provider_name(self):
+        return "unit-fake"
+
+    async def complete_chat(self, messages, *, temperature=0.3, max_tokens=4096):
+        candidates = _prompt_candidates(messages)
+        if len(candidates) > 1:
+            return "not valid json"
+        return json.dumps([_valid_model_output_from_prompt_candidate(candidates[0])])
+
+    async def complete_json(self, messages, *, temperature=0.3, max_tokens=4096):
+        candidates = _prompt_candidates(messages)
+        if len(candidates) > 1:
+            raise runner.LLMResponseFormatError("unit format failure")
+        return [_valid_model_output_from_prompt_candidate(candidates[0])]
+
+    async def translate_tags(self, tags):
+        return []
+
+
+class _AlwaysInvalidFakeProvider(_ChunkRepairFakeProvider):
+    async def complete_chat(self, messages, *, temperature=0.3, max_tokens=4096):
+        return "not valid json"
+
+    async def complete_json(self, messages, *, temperature=0.3, max_tokens=4096):
+        candidates = _prompt_candidates(messages)
+        return [
+            _valid_model_output_from_prompt_candidate(
+                candidates[0],
+                searchable_status="searchable_active",
+                is_searchable_identity=False,
+            )
+        ]
+
+
+def test_structured_model_output_schema_validation():
+    candidate = _candidate()
+    validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+    assert validated.asserted_role == "character"
+    assert validated.searchable_status == "searchable_active"
+    assert validated.should_not_be_entity_truth is True
+
+
+def test_invalid_model_output_fails_closed():
+    candidate = _candidate()
+    payload = _valid_model_output(candidate, should_not_be_entity_truth=False)
+    with pytest.raises(runner.Phase44P2RF5Error):
+        runner.validate_model_assertion_output(payload, candidate)
+
+
+def test_parenthetical_tag_model_classification_to_assertion_draft():
+    candidate = _candidate()
+    validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+    draft = runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model")
+    assert draft.asserted_name == "Hero Name"
+    assert draft.asserted_role == "character"
+    assert draft.status == "searchable_active"
+    assert draft.evidence_sources_json["reason_code"] == "parenthetical_character_work"
+    assert draft.provenance_summary["should_not_be_entity_truth"] is True
+
+
+def test_popularity_marker_classification_is_not_person():
+    candidate = _candidate("Work1000users")
+    payload = _valid_model_output(
+        candidate,
+        is_name_like=False,
+        asserted_role="popularity_marker",
+        extracted_name=None,
+        base_name="Work",
+        work_context=None,
+        is_searchable_identity=False,
+        searchable_status="rejected",
+        confidence="high",
+        reason_code="popularity_marker",
+    )
+    validated = runner.validate_model_assertion_output(payload, candidate)
+    assert validated.asserted_role == "popularity_marker"
+    assert validated.searchable_status == "rejected"
+
+
+def test_general_descriptor_classification_is_not_person():
+    candidate = _candidate("blue hair")
+    payload = _valid_model_output(
+        candidate,
+        is_name_like=False,
+        asserted_role="general_descriptor",
+        extracted_name=None,
+        base_name=None,
+        work_context=None,
+        is_searchable_identity=False,
+        searchable_status="rejected",
+        confidence="high",
+        reason_code="descriptive_tag",
+    )
+    validated = runner.validate_model_assertion_output(payload, candidate)
+    assert validated.asserted_role == "general_descriptor"
+    assert validated.is_searchable_identity is False
+
+
+def test_saucenao_work_or_copyright_assertion_role():
+    candidate = _candidate(
+        "Sauce Work",
+        provider="saucenao",
+        role_hint="work_title",
+        source_kind="source_name_observation",
+    )
+    payload = _valid_model_output(
+        candidate,
+        asserted_role="work_title",
+        extracted_name="Sauce Work",
+        base_name="Sauce Work",
+        work_context=None,
+        reason_code="known_work_title",
+    )
+    validated = runner.validate_model_assertion_output(payload, candidate)
+    assert validated.asserted_role == "work_title"
+    assert validated.searchable_status == "searchable_active"
+
+
+def test_model_searchable_active_writes_only_assertion_table(db):
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:assertion",
+            "tags": ["Hero Name(Work Name)"],
+        }
+    ])
+    candidates = runner.build_searchable_name_candidates(bundle, [{"provider": "pixiv", "provider_record_key": "pixiv:test:assertion", "tags": ["Hero Name(Work Name)"], "data_type_label": runner.DATA_TYPE_REAL}], max_candidates=10)
+    candidate = next(row for row in candidates if row.source_kind == "source_tag_observation")
+    validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+    draft = runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model")
+
+    summary = service.persist_source_registry_bundle(
+        db,
+        bundle,
+        apply=True,
+        searchable_name_assertions=[draft],
+    )
+
+    assert summary["inserted"]["SourceSearchableNameAssertion"] == 1
+    row = db.query(SourceSearchableNameAssertion).one()
+    assert row.source_tag_observation_id is not None
+    assert row.status == "searchable_active"
+    assert db.query(Entity).count() == 0
+    assert db.query(EntityAlias).count() == 0
+    assert db.query(MediaEntityCandidate).count() == 0
+
+
+def test_refresh_retires_stale_searchable_name_assertions(db):
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:assertion-refresh",
+            "tags": ["Hero Name(Work Name)"],
+        }
+    ])
+    candidates = runner.build_searchable_name_candidates(
+        bundle,
+        [
+            {
+                "provider": "pixiv",
+                "provider_record_key": "pixiv:test:assertion-refresh",
+                "tags": ["Hero Name(Work Name)"],
+                "data_type_label": runner.DATA_TYPE_REAL,
+            }
+        ],
+        max_candidates=10,
+    )
+    candidate = next(row for row in candidates if row.source_kind == "source_tag_observation")
+    validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+    first = runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model")
+    second = replace(first, assertion_key=first.assertion_key + ":refresh", asserted_name="Hero Name Refreshed")
+
+    service.persist_source_registry_bundle(db, bundle, apply=True, searchable_name_assertions=[first])
+    summary = service.persist_source_registry_bundle(db, bundle, apply=True, searchable_name_assertions=[second])
+
+    assert summary["retired"]["SourceSearchableNameAssertion"] == 1
+    assert db.query(SourceSearchableNameAssertion).filter_by(status="superseded").count() == 1
+    assert db.query(SourceSearchableNameAssertion).filter_by(status="searchable_active").count() == 1
+
+
+def test_search_validation_from_assertions():
+    candidate = _candidate()
+    validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
+    draft = runner.assertion_draft_from_model_output(candidate, validated, model_name="unit-model")
+    rows = runner.searchable_assertion_search_rows([draft], [candidate])
+    summary = runner.assertion_search_validation_summary(rows)
+    assert summary["positive_matched_count"] >= 1
+    assert summary["false_positive_suspected_count"] == 0
+
+
+def test_no_db_llm_flag_does_not_call_api_or_write_db():
+    args = runner.build_arg_parser().parse_args(["--no-db", "--use-llm-api"])
+    bundle = service.build_source_registry_bundle(runner.default_provider_shape_records())
+    candidates, assertions, summary, inputs, outputs, review_rows = runner.classify_source_searchable_name_assertions(
+        args,
+        bundle,
+        runner.default_provider_shape_records(),
+    )
+    assert candidates
+    assert assertions == []
+    assert inputs == []
+    assert outputs == []
+    assert review_rows == []
+    assert summary["api_call_attempted"] is False
+    assert summary["mode"] == "api_skipped_no_db_or_dry_run"
+
+
+def test_llm_chunk_format_failure_splits_and_recovers(monkeypatch):
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:repair:1",
+            "tags": ["Hero One(Work Name)"],
+            "data_type_label": runner.DATA_TYPE_REAL,
+        },
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:repair:2",
+            "tags": ["Hero Two(Work Name)"],
+            "data_type_label": runner.DATA_TYPE_REAL,
+        },
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    args = runner.build_arg_parser().parse_args(
+        ["--use-llm-api", "--source-assertion-chunk-size", "2", "--source-assertion-api-retries", "0"]
+    )
+    monkeypatch.setattr(
+        runner,
+        "source_assertion_provider_from_env",
+        lambda: (
+            _ChunkRepairFakeProvider(),
+            {"model_label": "unit-fake", "llm_access_configured": True, "uses_fallback_provider": True},
+        ),
+    )
+
+    _candidates, assertions, summary, inputs, outputs, review_rows = runner.classify_source_searchable_name_assertions(
+        args,
+        bundle,
+        records,
+    )
+
+    assert assertions
+    assert all(row.status == "searchable_active" for row in assertions)
+    assert summary["chunk_split_recoveries"] >= 1
+    assert summary["outputs_valid"] == len(assertions)
+    assert summary["invalid_outputs"] == 0
+    assert "split_after_invalid_output" in summary["repair_strategies_attempted"]
+    assert inputs
+    assert outputs
+    assert all(row["validation_error"] is None for row in review_rows)
+
+
+def test_persistent_single_candidate_invalid_output_downgrades_to_unresolved(monkeypatch):
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:repair:invalid",
+            "tags": ["Hero Broken(Work Name)"],
+            "data_type_label": runner.DATA_TYPE_REAL,
+        }
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    args = runner.build_arg_parser().parse_args(
+        ["--use-llm-api", "--source-assertion-chunk-size", "1", "--source-assertion-api-retries", "0"]
+    )
+    monkeypatch.setattr(
+        runner,
+        "source_assertion_provider_from_env",
+        lambda: (
+            _AlwaysInvalidFakeProvider(),
+            {"model_label": "unit-fake", "llm_access_configured": True, "uses_fallback_provider": True},
+        ),
+    )
+
+    _candidates, assertions, summary, _inputs, _outputs, review_rows = runner.classify_source_searchable_name_assertions(
+        args,
+        bundle,
+        records,
+    )
+
+    assert assertions
+    assert all(row.status == "unresolved" for row in assertions)
+    assert all(row.asserted_role == "unknown" for row in assertions)
+    assert all(row.evidence_sources_json["reason_code"] == "model_output_invalid" for row in assertions)
+    assert summary["outputs_valid"] == 0
+    assert summary["invalid_outputs"] == len(assertions)
+    assert summary["single_candidate_failures_downgraded"] == len(assertions)
+    assert summary["unresolved"] == len(assertions)
+    assert all(row["validation_error"].startswith("source_searchable_name_assertion_schema_invalid:") for row in review_rows)
+
+
+def test_api_unavailable_reports_blocker(monkeypatch):
+    for key in (
+        "TAG_TRANSLATION_LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "TAG_TRANSLATION_LLM_BASE_URL",
+        "OPENAI_BASE_URL",
+        "TAG_TRANSLATION_LLM_FALLBACK_ENABLED",
+        "TAG_TRANSLATION_LLM_FALLBACK_PROVIDER",
+        "TAG_TRANSLATION_LLM_FALLBACK_API_KEY",
+        "TAG_TRANSLATION_LLM_FALLBACK_BASE_URL",
+        "TAG_TRANSLATION_LLM_FALLBACK_MODEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    args = runner.build_arg_parser().parse_args(["--use-llm-api", "--disable-scale-up"])
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:api-unavailable",
+            "tags": ["Hero Name(Work Name)"],
+            "data_type_label": runner.DATA_TYPE_REAL,
+        }
+    ])
+    with pytest.raises(runner.Phase44P2RF5Error, match="api_unavailable"):
+        runner.classify_source_searchable_name_assertions(
+            args,
+            bundle,
+            [
+                {
+                    "provider": "pixiv",
+                    "provider_record_key": "pixiv:test:api-unavailable",
+                    "tags": ["Hero Name(Work Name)"],
+                    "data_type_label": runner.DATA_TYPE_REAL,
+                }
+            ],
+        )
+
+
+def test_f5_project_config_uses_process_host_override_when_db_service_unresolvable(monkeypatch):
+    config = runner.f1.ProjectConfig(
+        project_root=ROOT,
+        violet_env="development",
+        database_url=URL.create(
+            drivername="postgresql",
+            username="postgres",
+            password="secret",
+            host="db",
+            port=5432,
+            database="blombooru",
+        ),
+        db_user="postgres",
+        db_password="secret",
+        db_host="db",
+        db_port=5432,
+        db_name="blombooru",
+        settings_source="settings_json",
+        storage_root_mode="code_root_default",
+        settings_file_exists=True,
+        database_url_source="settings_env_or_default",
+    )
+
+    monkeypatch.setenv("POSTGRES_HOST", "localhost")
+    monkeypatch.setattr(runner.f1, "load_project_config", lambda _root: config)
+    monkeypatch.setattr(runner, "_host_resolves", lambda host: False)
+
+    resolved = runner.load_f5_project_config()
+
+    assert resolved.db_host == "localhost"
+    assert resolved.database_url.host == "localhost"
+    assert resolved.database_url_source == "settings_env_or_default+process_host_override"

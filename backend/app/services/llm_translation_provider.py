@@ -483,8 +483,12 @@ def get_llm_provider() -> BaseLLMProvider:
     fallback_key = settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
     fallback_model = settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
     fallback_url = settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+    fallback_provider_type = settings.TAG_TRANSLATION_LLM_FALLBACK_PROVIDER
 
-    if fallback_key and fallback_model and fallback_url:
+    if settings.TAG_TRANSLATION_LLM_FALLBACK_ENABLED and fallback_key and fallback_model and fallback_url:
+        if fallback_provider_type not in {"openai_compatible", "deepseek"}:
+            logger.warning("Unknown LLM fallback provider: %s; fallback disabled", fallback_provider_type)
+            return primary
         fallback = OpenAICompatibleProvider(
             api_key=fallback_key,
             model=fallback_model,

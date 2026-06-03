@@ -22,6 +22,7 @@ from ..models import (
     SourceNameAliasCandidate,
     SourceNameObservation,
     SourceNameRegistry,
+    SourceSearchableNameAssertion,
     SourceTagObservation,
     SourceTagRegistry,
 )
@@ -155,6 +156,30 @@ class SourceMetadataEvidenceDraft:
     evidence_strength: str
     provenance: dict[str, Any] = field(default_factory=dict)
     status: str = "staged"
+
+
+@dataclass(frozen=True)
+class SourceSearchableNameAssertionDraft:
+    provider: str
+    provider_record_key: str
+    assertion_key: str
+    raw_input: str
+    normalized_input: str
+    canonical_name_key: str
+    asserted_name: str | None
+    asserted_role: str
+    status: str
+    confidence: str
+    structured_output_schema_version: str
+    source_tag_observation_key: str | None = None
+    source_name_observation_key: str | None = None
+    confidence_score: float | None = None
+    evidence_sources_json: dict[str, Any] = field(default_factory=dict)
+    model_name: str | None = None
+    prompt_version: str | None = None
+    reasoning_summary_private: str | None = None
+    provenance_summary: dict[str, Any] = field(default_factory=dict)
+    requires_review: bool = True
 
 
 @dataclass(frozen=True)
@@ -1102,7 +1127,10 @@ def persist_source_registry_bundle(
     bundle: SourceRegistryBundle,
     *,
     apply: bool,
+    searchable_name_assertions: Sequence[SourceSearchableNameAssertionDraft] = (),
 ) -> dict[str, Any]:
+    searchable_name_assertions = tuple(searchable_name_assertions)
+    assertion_count = len(searchable_name_assertions)
     summary: dict[str, Any] = {
         "apply": bool(apply),
         "success": True,
@@ -1119,9 +1147,11 @@ def persist_source_registry_bundle(
             "blombooru_source_name_registry",
             "blombooru_source_name_alias_candidates",
             "blombooru_source_metadata_evidence",
+            "blombooru_source_searchable_name_assertions",
         ],
         "forbidden_truth_table_write_count": 0,
     }
+    summary["planned"]["source_searchable_name_assertions"] = assertion_count
     if not apply:
         summary["inserted"] = {}
         summary["updated"] = {}
@@ -1138,6 +1168,9 @@ def persist_source_registry_bundle(
     evidence_drafts_by_record: dict[str, list[SourceMetadataEvidenceDraft]] = defaultdict(list)
     for draft in bundle.evidence:
         evidence_drafts_by_record[provider_record_lookup_key(draft.provider, draft.provider_record_key)].append(draft)
+    assertion_drafts_by_record: dict[str, list[SourceSearchableNameAssertionDraft]] = defaultdict(list)
+    for draft in searchable_name_assertions:
+        assertion_drafts_by_record[provider_record_lookup_key(draft.provider, draft.provider_record_key)].append(draft)
 
     metadata_by_key: dict[str, SourceMetadataRecord] = {}
     for draft in bundle.metadata_records:
@@ -1196,6 +1229,7 @@ def persist_source_registry_bundle(
                 row.status = "superseded"
                 summary["retired"]["SourceMetadataEvidence"] += 1
 
+    tag_by_observation_key: dict[str, SourceTagObservation] = {}
     for draft in bundle.tag_observations:
         metadata = metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)]
         row = (
@@ -1205,12 +1239,16 @@ def persist_source_registry_bundle(
         )
         fields = _tag_observation_fields(draft, int(metadata.id))
         if row is None:
-            session.add(SourceTagObservation(**fields))
+            row = SourceTagObservation(**fields)
+            session.add(row)
             summary["inserted"]["SourceTagObservation"] += 1
         else:
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceTagObservation"] += 1
+        tag_by_observation_key[
+            provider_record_lookup_key(draft.provider, draft.provider_record_key) + f"::{draft.observation_key}"
+        ] = row
     session.flush()
 
     tag_registry_by_key = {draft.canonical_tag_key: draft for draft in bundle.tag_registry}
@@ -1317,6 +1355,59 @@ def persist_source_registry_bundle(
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceMetadataEvidence"] += 1
+
+    for record_key, drafts in assertion_drafts_by_record.items():
+        metadata = metadata_by_key.get(record_key)
+        if metadata is None:
+            raise ValueError(f"source_searchable_name_assertion_metadata_missing:{record_key}")
+        incoming_assertion_keys = {draft.assertion_key for draft in drafts}
+        for row in (
+            session.query(SourceSearchableNameAssertion)
+            .filter(
+                SourceSearchableNameAssertion.source_metadata_record_id == metadata.id,
+                SourceSearchableNameAssertion.status != "superseded",
+            )
+            .all()
+        ):
+            if row.assertion_key not in incoming_assertion_keys:
+                row.status = "superseded"
+                row.requires_review = True
+                summary["retired"]["SourceSearchableNameAssertion"] += 1
+
+    for draft in searchable_name_assertions:
+        record_key = provider_record_lookup_key(draft.provider, draft.provider_record_key)
+        metadata = metadata_by_key.get(record_key)
+        if metadata is None:
+            raise ValueError(f"source_searchable_name_assertion_metadata_missing:{record_key}")
+        tag_observation_id = None
+        name_observation_id = None
+        if draft.source_tag_observation_key:
+            scoped_tag_key = record_key + f"::{draft.source_tag_observation_key}"
+            tag_row = tag_by_observation_key.get(scoped_tag_key)
+            tag_observation_id = int(tag_row.id) if tag_row is not None and tag_row.id else None
+        if draft.source_name_observation_key:
+            scoped_name_key = record_key + f"::{draft.source_name_observation_key}"
+            name_row = name_by_observation_key.get(scoped_name_key)
+            name_observation_id = int(name_row.id) if name_row is not None and name_row.id else None
+
+        row = (
+            session.query(SourceSearchableNameAssertion)
+            .filter_by(assertion_key=draft.assertion_key)
+            .one_or_none()
+        )
+        fields = _searchable_name_assertion_fields(
+            draft,
+            int(metadata.id),
+            tag_observation_id,
+            name_observation_id,
+        )
+        if row is None:
+            session.add(SourceSearchableNameAssertion(**fields))
+            summary["inserted"]["SourceSearchableNameAssertion"] += 1
+        else:
+            for key, value in fields.items():
+                setattr(row, key, value)
+            summary["updated"]["SourceSearchableNameAssertion"] += 1
 
     session.commit()
     summary["inserted"] = dict(summary["inserted"])
@@ -1525,4 +1616,20 @@ def _evidence_fields(
     fields.pop("observation_key", None)
     fields["source_metadata_record_id"] = source_metadata_record_id
     fields["observation_id"] = observation_id
+    return fields
+
+
+def _searchable_name_assertion_fields(
+    draft: SourceSearchableNameAssertionDraft,
+    source_metadata_record_id: int,
+    source_tag_observation_id: int | None,
+    source_name_observation_id: int | None,
+) -> dict[str, Any]:
+    fields = asdict(draft)
+    fields.pop("provider_record_key", None)
+    fields.pop("source_tag_observation_key", None)
+    fields.pop("source_name_observation_key", None)
+    fields["source_metadata_record_id"] = source_metadata_record_id
+    fields["source_tag_observation_id"] = source_tag_observation_id
+    fields["source_name_observation_id"] = source_name_observation_id
     return fields

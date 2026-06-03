@@ -466,12 +466,12 @@
     "configured_db_name": "blombooru",
     "configured_db_port": 5432,
     "configured_db_user": "postgres",
-    "database_url_source": "settings_env_or_default",
+    "database_url_source": "settings_env_or_default+process_host_override",
     "db_read_only_guard_installed": true,
     "db_sensitive_value_included": false,
     "local_paths_redacted": true,
-    "settings_file_exists": false,
-    "settings_source": "defaults_without_settings_file",
+    "settings_file_exists": true,
+    "settings_source": "settings_json",
     "storage_root_mode": "code_root_default",
     "violet_env": "development"
   },
@@ -482,24 +482,27 @@
       "blombooru_source_name_alias_candidates": 9,
       "blombooru_source_name_observations": 135,
       "blombooru_source_name_registry": 111,
+      "blombooru_source_searchable_name_assertions": 100,
       "blombooru_source_tag_observations": 76,
       "blombooru_source_tag_registry": 70
     },
     "allowed_table_row_counts_before": {
-      "blombooru_source_metadata_evidence": 228,
-      "blombooru_source_metadata_records": 106,
+      "blombooru_source_metadata_evidence": 247,
+      "blombooru_source_metadata_records": 112,
       "blombooru_source_name_alias_candidates": 9,
-      "blombooru_source_name_observations": 122,
-      "blombooru_source_name_registry": 107,
+      "blombooru_source_name_observations": 135,
+      "blombooru_source_name_registry": 111,
+      "blombooru_source_searchable_name_assertions": 100,
       "blombooru_source_tag_observations": 76,
       "blombooru_source_tag_registry": 70
     },
     "allowed_table_row_deltas": {
-      "blombooru_source_metadata_evidence": 19,
-      "blombooru_source_metadata_records": 6,
+      "blombooru_source_metadata_evidence": 0,
+      "blombooru_source_metadata_records": 0,
       "blombooru_source_name_alias_candidates": 0,
-      "blombooru_source_name_observations": 13,
-      "blombooru_source_name_registry": 4,
+      "blombooru_source_name_observations": 0,
+      "blombooru_source_name_registry": 0,
+      "blombooru_source_searchable_name_assertions": 0,
       "blombooru_source_tag_observations": 0,
       "blombooru_source_tag_registry": 0
     },
@@ -510,7 +513,8 @@
       "blombooru_source_name_observations",
       "blombooru_source_name_registry",
       "blombooru_source_name_alias_candidates",
-      "blombooru_source_metadata_evidence"
+      "blombooru_source_metadata_evidence",
+      "blombooru_source_searchable_name_assertions"
     ],
     "apply": true,
     "existing": {},
@@ -555,12 +559,7 @@
     },
     "forbidden_truth_table_write_count": 0,
     "guard_installed": true,
-    "inserted": {
-      "SourceMetadataEvidence": 19,
-      "SourceMetadataRecord": 6,
-      "SourceNameObservation": 13,
-      "SourceNameRegistry": 4
-    },
+    "inserted": {},
     "planned": {
       "alias_candidates_by_relation_type": {
         "parenthetical_character_of_work": 5,
@@ -602,6 +601,7 @@
       "source_name_alias_candidates": 6,
       "source_name_observations": 102,
       "source_name_registry": 81,
+      "source_searchable_name_assertions": 100,
       "source_tag_observations": 56,
       "source_tag_registry": 53,
       "tag_observations_by_provider": {
@@ -615,11 +615,12 @@
     "retired": {},
     "success": true,
     "updated": {
-      "SourceMetadataEvidence": 183,
-      "SourceMetadataRecord": 94,
+      "SourceMetadataEvidence": 202,
+      "SourceMetadataRecord": 100,
       "SourceNameAliasCandidate": 6,
-      "SourceNameObservation": 89,
-      "SourceNameRegistry": 77,
+      "SourceNameObservation": 102,
+      "SourceNameRegistry": 81,
+      "SourceSearchableNameAssertion": 100,
       "SourceTagObservation": 56,
       "SourceTagRegistry": 53
     }
@@ -697,7 +698,8 @@
     "saucenao_real_or_artifact_applicable_coverage_at_least_90": true,
     "source_metadata_record_candidates_at_least_75": true,
     "source_metadata_record_candidates_hard_max_150": true,
-    "source_metadata_record_candidates_preferred_100": true
+    "source_metadata_record_candidates_preferred_100": true,
+    "source_searchable_name_assertion_goal_met": false
   },
   "input_summary": {
     "external_provider_requests": 0,
@@ -756,7 +758,7 @@
           "configured_db_host": "localhost",
           "configured_db_name": "blombooru",
           "configured_db_port": 5432,
-          "database_url_source": "settings_env_or_default",
+          "database_url_source": "settings_env_or_default+process_host_override",
           "violet_env": "development"
         },
         "external_provider_requests": 0,
@@ -795,7 +797,7 @@
     "merge_commit": "f6f02891aac5d7453e8dc3543209e6ff67c61815",
     "number": 91,
     "origin_main_sha_at_report_generation": "f6f02891aac5d7453e8dc3543209e6ff67c61815",
-    "report_generation_head_sha": "83c77ac8aa261c838b12f1a7022d95f2c7037c13",
+    "report_generation_head_sha": "d373f2890824b00f924409a8e246a39b04cf1ad8",
     "state": "MERGED",
     "url": "https://github.com/kyloris0660/VIOLET/pull/91"
   },
@@ -909,7 +911,9 @@
     "entity_evidence_write": false,
     "entity_external_identity_write": false,
     "entity_write": false,
-    "llm_classification": false,
+    "image_upload": false,
+    "llm_classification": true,
+    "llm_classification_bounded_unique_candidates": true,
     "local_source_hint_write": false,
     "media_entity_assignment_write": false,
     "media_entity_candidate_write": false,
@@ -947,9 +951,113 @@
       "blombooru_source_name_alias_candidates",
       "blombooru_source_name_observations",
       "blombooru_source_name_registry",
+      "blombooru_source_searchable_name_assertions",
       "blombooru_source_tag_observations",
       "blombooru_source_tag_registry"
     ]
+  },
+  "source_searchable_name_assertion_layer": {
+    "assertion_table": "blombooru_source_searchable_name_assertions",
+    "classification": {
+      "api_call_attempted": true,
+      "api_call_attempts": 21,
+      "api_chunks_attempted": 20,
+      "base_url_redacted": true,
+      "candidate_count": 100,
+      "chunk_retries": 1,
+      "chunk_split_recoveries": 0,
+      "default_max_candidates": 300,
+      "fallback_enabled": true,
+      "fallback_provider_type": "deepseek",
+      "hard_max_candidates": 1000,
+      "image_uploads": 0,
+      "invalid_output_reason_counts": {},
+      "invalid_outputs": 0,
+      "llm_access_configured": true,
+      "llm_access_stored": false,
+      "llm_provider_label": "fallback",
+      "mode": "llm_api_structured_json_validation",
+      "model_label": "deepseek-v4-flash",
+      "needs_review": 0,
+      "outputs_valid": 100,
+      "per_image_api_calls": 0,
+      "prompt_version": "phase44p2r_f5_source_searchable_name_assertion_v1",
+      "provider": "fallback_only",
+      "refusal_or_blocked": 0,
+      "rejected": 40,
+      "repair_strategies_attempted": [
+        "initial_chunk"
+      ],
+      "searchable_active": 60,
+      "single_candidate_failures_downgraded": 0,
+      "structured_output_schema_version": "source_searchable_name_assertion_v1",
+      "unresolved": 0,
+      "uses_fallback_provider": true,
+      "uses_primary_model": false
+    },
+    "confirmed_assignment_created": false,
+    "coverage": {
+      "assertion_role_counts": {
+        "artist": 17,
+        "character": 31,
+        "creator": 4,
+        "general_descriptor": 15,
+        "work_title": 33
+      },
+      "assertion_status_counts": {
+        "rejected": 40,
+        "searchable_active": 60
+      },
+      "candidate_counts": {
+        "real_pixiv_high_impact_or_name_like": 6,
+        "real_pixiv_parenthetical": 0,
+        "saucenao_real_or_artifact_artist_creator_work": 11,
+        "total": 100
+      },
+      "f5_source_searchable_assertion_goal_met": false,
+      "fixture_coverage_satisfies_real_targets": false,
+      "real_pixiv_candidate_supply_sufficient": false,
+      "real_pixiv_high_impact": {
+        "candidate_count": 6,
+        "coverage": 1.0,
+        "missing_assertion_count": 0,
+        "searchable_active_count": 5,
+        "terminal_active_or_valid_rejected_count": 6,
+        "unresolved_or_needs_review_count": 0,
+        "unresolved_rate": 0.0
+      },
+      "real_pixiv_parenthetical": {
+        "candidate_count": 0,
+        "coverage": null,
+        "missing_assertion_count": 0,
+        "searchable_active_count": 0,
+        "terminal_active_or_valid_rejected_count": 0,
+        "unresolved_or_needs_review_count": 0,
+        "unresolved_rate": null
+      },
+      "real_pixiv_parenthetical_target_met": true,
+      "real_pixiv_searchable_assertion_target_met": false,
+      "saucenao_assertion_target_met": true,
+      "saucenao_real_or_artifact_artist_creator_work": {
+        "candidate_count": 11,
+        "coverage": 1.0,
+        "missing_assertion_count": 0,
+        "searchable_active_count": 9,
+        "terminal_active_or_valid_rejected_count": 11,
+        "unresolved_or_needs_review_count": 0,
+        "unresolved_rate": 0.0
+      }
+    },
+    "entity_truth_created": false,
+    "search_validation": {
+      "false_positive_suspected_count": 0,
+      "matched_count": 8,
+      "negative_control_present": true,
+      "positive_matched_count": 8,
+      "positive_query_count": 8,
+      "query_count": 9,
+      "unmatched_count": 1
+    }
   },
   "title": "Provider-Neutral Source Metadata + Source Name / Alias Registry Foundation",
   "write_guard_result": {
@@ -959,6 +1067,7 @@
       "blombooru_source_name_alias_candidates",
       "blombooru_source_name_observations",
       "blombooru_source_name_registry",
+      "blombooru_source_searchable_name_assertions",
       "blombooru_source_tag_observations",
       "blombooru_source_tag_registry"
     ],

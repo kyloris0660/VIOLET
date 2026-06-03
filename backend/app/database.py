@@ -1431,6 +1431,37 @@ def migrate_add_source_metadata_name_registry(engine, inspector):
                 )
             """))
 
+        if 'blombooru_source_searchable_name_assertions' not in tables:
+            logger.info("Creating blombooru_source_searchable_name_assertions table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_searchable_name_assertions (
+                    id {pk_type},
+                    provider VARCHAR(100) NOT NULL,
+                    source_metadata_record_id INTEGER REFERENCES blombooru_source_metadata_records(id) ON DELETE CASCADE,
+                    source_tag_observation_id INTEGER REFERENCES blombooru_source_tag_observations(id) ON DELETE SET NULL,
+                    source_name_observation_id INTEGER REFERENCES blombooru_source_name_observations(id) ON DELETE SET NULL,
+                    assertion_key VARCHAR(700) NOT NULL,
+                    raw_input VARCHAR(500) NOT NULL,
+                    normalized_input VARCHAR(500) NOT NULL,
+                    canonical_name_key VARCHAR(500) NOT NULL,
+                    asserted_name VARCHAR(500),
+                    asserted_role VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    confidence VARCHAR(50) NOT NULL DEFAULT 'low',
+                    confidence_score FLOAT,
+                    evidence_sources_json {json_type},
+                    model_name VARCHAR(255),
+                    prompt_version VARCHAR(100),
+                    structured_output_schema_version VARCHAR(100) NOT NULL,
+                    reasoning_summary_private TEXT,
+                    provenance_summary {json_type},
+                    requires_review BOOLEAN NOT NULL DEFAULT {bool_true},
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_searchable_name_assertion_key UNIQUE (assertion_key)
+                )
+            """))
+
         index_statements = [
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_provider_status ON blombooru_source_metadata_records(provider, status)",
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_media_provider ON blombooru_source_metadata_records(media_id, provider)",
@@ -1450,6 +1481,11 @@ def migrate_add_source_metadata_name_registry(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_source_name_alias_relation_status ON blombooru_source_name_alias_candidates(relation_type, status)",
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_evidence_kind_status ON blombooru_source_metadata_evidence(evidence_kind, status)",
             "CREATE INDEX IF NOT EXISTS ix_source_metadata_evidence_observation ON blombooru_source_metadata_evidence(observation_type, observation_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_provider_status ON blombooru_source_searchable_name_assertions(provider, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_canonical_status ON blombooru_source_searchable_name_assertions(canonical_name_key, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_role_status ON blombooru_source_searchable_name_assertions(asserted_role, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_tag_observation ON blombooru_source_searchable_name_assertions(source_tag_observation_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_name_observation ON blombooru_source_searchable_name_assertions(source_name_observation_id)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))
