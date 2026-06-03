@@ -311,6 +311,12 @@ def _as_text_list(value: Any) -> list[str]:
     return result
 
 
+def _split_provider_tag_string(value: Any) -> list[str]:
+    if not isinstance(value, str):
+        return []
+    return [item for item in re.split(r"\s+", value.strip()) if item]
+
+
 def _tag_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     values = payload.get("tags")
@@ -342,6 +348,28 @@ def _tag_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
                     "order_index": index,
                 }
             )
+    native_booru_fields = (
+        ("tag_string_artist", "artist"),
+        ("tag_string_copyright", "copyright"),
+        ("tag_string_character", "character"),
+        ("tag_string_general", "general"),
+        ("tag_string_meta", "meta"),
+    )
+    next_index = len(rows)
+    for field_name, category in native_booru_fields:
+        for raw in _split_provider_tag_string(payload.get(field_name)):
+            raw_text = normalize_source_text(raw)
+            if raw_text:
+                rows.append(
+                    {
+                        "raw_tag": raw_text,
+                        "source_category_raw": category,
+                        "source_tag_kind": field_name,
+                        "confidence": None,
+                        "order_index": next_index,
+                    }
+                )
+                next_index += 1
     return rows
 
 
@@ -1189,6 +1217,10 @@ def persist_source_registry_bundle(
     assertion_drafts_by_record: dict[str, list[SourceSearchableNameAssertionDraft]] = defaultdict(list)
     for draft in searchable_name_assertions:
         assertion_drafts_by_record[provider_record_lookup_key(draft.provider, draft.provider_record_key)].append(draft)
+    refreshed_provider_records = {
+        (draft.provider, draft.provider_record_key)
+        for draft in bundle.metadata_records
+    }
 
     metadata_by_key: dict[str, SourceMetadataRecord] = {}
     for draft in bundle.metadata_records:
@@ -1330,6 +1362,10 @@ def persist_source_registry_bundle(
                 setattr(row, key, value)
             summary["updated"]["SourceNameRegistry"] += 1
 
+    incoming_alias_keys = {
+        (draft.source_name_key, draft.target_name_key, draft.relation_type, draft.evidence_source)
+        for draft in bundle.alias_candidates
+    }
     for draft in bundle.alias_candidates:
         row = (
             session.query(SourceNameAliasCandidate)
@@ -1349,6 +1385,27 @@ def persist_source_registry_bundle(
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceNameAliasCandidate"] += 1
+    for row in (
+        session.query(SourceNameAliasCandidate)
+        .filter(SourceNameAliasCandidate.status != "superseded")
+        .all()
+    ):
+        key = (row.source_name_key, row.target_name_key, row.relation_type, row.evidence_source)
+        if key in incoming_alias_keys:
+            continue
+        payload = row.evidence_payload if isinstance(row.evidence_payload, Mapping) else {}
+        provider_record_key = normalize_source_text(payload.get("provider_record_key"))
+        if not provider_record_key:
+            continue
+        evidence_provider = None
+        evidence_source = str(row.evidence_source or "")
+        if evidence_source.endswith("_provider_canonical"):
+            evidence_provider = evidence_source.removesuffix("_provider_canonical")
+        elif evidence_source == "pixiv_parenthetical_pattern":
+            evidence_provider = "pixiv"
+        if evidence_provider and (evidence_provider, provider_record_key) in refreshed_provider_records:
+            row.status = "superseded"
+            summary["retired"]["SourceNameAliasCandidate"] += 1
 
     for draft in bundle.evidence:
         metadata = metadata_by_key[provider_record_lookup_key(draft.provider, draft.provider_record_key)]

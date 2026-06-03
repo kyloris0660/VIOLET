@@ -84,6 +84,7 @@ MIN_RECORD_COUNT = 75
 REAL_PIXIV_SOURCE_PRIOR_MIN = 50
 REAL_PIXIV_METADATA_RICH_MIN = 60
 REAL_PIXIV_APPLICABLE_NAME_SIGNAL_TARGET = 40
+APPROVED_PIXIV_SOURCE_PRIOR_CONTENT_CLASSES = frozenset({"anime"})
 SAUCENAO_ARTIFACT_RECORD_TARGET = 20
 REAL_PIXIV_GALLERY_DL_ATTEMPT_LIMIT_DEFAULT = 120
 MAX_RECORD_COUNT = 500
@@ -595,10 +596,12 @@ def pixiv_gallery_dl_record_to_source_record(
     if prior is None:
         return None
     tags = [tag for tag in [*record.tags, *record.translated_tags] if isinstance(tag, str) and normalize_source_text(tag)]
+    media_id = _safe_int(prior.get("media_id"), default=0) or None
+    stable_record_key = f"gallery-dl-real-pixiv:metadata:{work_id}:p{page_index}:m{media_id or 'none'}"
     row = {
         "provider": "pixiv",
-        "provider_record_key": f"gallery-dl-real-pixiv:metadata:{source_index}:p{page_index}",
-        "media_id": _safe_int(prior.get("media_id"), default=0) or None,
+        "provider_record_key": stable_record_key,
+        "media_id": media_id,
         "source_work_id": work_id,
         "source_page_index": page_index,
         "source_url": record.canonical_url,
@@ -614,6 +617,7 @@ def pixiv_gallery_dl_record_to_source_record(
         "raw_metadata_json": {
             "source_prior_kind": "pixiv_work_id_page_index",
             "metadata_acquisition_route": "bounded_gallery_dl_dump_json_no_download",
+            "source_index": source_index,
             "metadata_richness": record.metadata_richness,
             "record_shape": record.record_shape,
             "page_count_present": record.page_count is not None,
@@ -922,11 +926,18 @@ def load_real_pixiv_source_prior_records_from_db(*, limit: int) -> tuple[list[di
     session = SessionLocal()
     records: list[dict[str, Any]] = []
     scanned = 0
+    skipped_content_class_counts: Counter[str] = Counter()
     try:
         db_identity = f1.prove_db_identity(session, config)
-        for media_id, filename, source in session.query(Media.id, Media.filename, Media.source).order_by(Media.id.asc()):
+        for media_id, source, content_class in (
+            session.query(Media.id, Media.source, Media.content_class).order_by(Media.id.asc())
+        ):
             scanned += 1
-            prior = _pixiv_source_prior_from_values(filename=filename, source=source)
+            content_class_label = _content_class_label(content_class)
+            if not _content_class_allows_pixiv_external_source_prior(content_class):
+                skipped_content_class_counts[content_class_label or "unclassified"] += 1
+                continue
+            prior = _pixiv_source_prior_from_values(source=source)
             if prior is None:
                 continue
             work_id, page_index, source_url, matched_field = prior
@@ -945,11 +956,12 @@ def load_real_pixiv_source_prior_records_from_db(*, limit: int) -> tuple[list[di
                         "work_id": work_id,
                         "page_index": page_index,
                         "matched_field": matched_field,
+                        "content_class": content_class_label,
                         "local_path_included": False,
                         "filename_included": False,
                     },
                     "provenance": {
-                        "source": "local_db_media_source_or_filename_prior",
+                        "source": "local_db_media_source_prior",
                         "read_only": True,
                         "external_provider_request": False,
                     },
@@ -974,6 +986,9 @@ def load_real_pixiv_source_prior_records_from_db(*, limit: int) -> tuple[list[di
             },
             "local_paths_included": False,
             "filename_values_included": False,
+            "trusted_source_fields_used": ["source"],
+            "approved_content_classes": sorted(APPROVED_PIXIV_SOURCE_PRIOR_CONTENT_CLASSES),
+            "skipped_content_class_counts": dict(sorted(skipped_content_class_counts.items())),
             "external_provider_requests": 0,
         }
     finally:
@@ -981,18 +996,31 @@ def load_real_pixiv_source_prior_records_from_db(*, limit: int) -> tuple[list[di
         engine.dispose()
 
 
-def _pixiv_source_prior_from_values(*, filename: str | None, source: str | None) -> tuple[str, int, str | None, str] | None:
-    for field_name, value in (("source", source), ("filename", filename)):
-        text_value = normalize_source_text(value)
-        if not text_value:
-            continue
-        url_match = PIXIV_ARTWORK_RE.search(text_value)
-        if url_match:
-            page_match = PIXIV_FILE_RE.search(text_value)
-            return url_match.group(1), int(page_match.group(2)) if page_match else 0, text_value, field_name
-        file_match = PIXIV_FILE_RE.search(text_value)
-        if file_match:
-            return file_match.group(1), int(file_match.group(2)), None, field_name
+def _content_class_label(value: Any) -> str | None:
+    raw = getattr(value, "value", value)
+    return normalize_source_text(raw) or None
+
+
+def _content_class_allows_pixiv_external_source_prior(value: Any) -> bool:
+    return (_content_class_label(value) or "") in APPROVED_PIXIV_SOURCE_PRIOR_CONTENT_CLASSES
+
+
+def _pixiv_source_prior_from_values(
+    *,
+    source: str | None,
+    filename: str | None = None,
+) -> tuple[str, int, str | None, str] | None:
+    # Filename-derived IDs are local hints, not trusted source metadata for external lookups.
+    text_value = normalize_source_text(source)
+    if not text_value:
+        return None
+    url_match = PIXIV_ARTWORK_RE.search(text_value)
+    if url_match:
+        page_match = PIXIV_FILE_RE.search(text_value)
+        return url_match.group(1), int(page_match.group(2)) if page_match else 0, text_value, "source"
+    file_match = PIXIV_FILE_RE.search(text_value)
+    if file_match:
+        return file_match.group(1), int(file_match.group(2)), None, "source"
     return None
 
 
@@ -2353,14 +2381,9 @@ def source_searchable_assertion_coverage_summary(
         assertion.assertion_key.replace("source-searchable-name-assertion:", ""): assertion
         for assertion in assertions
     }
-    # The persisted assertion key is canonicalized; use raw tuple lookup for coverage instead.
-    assertion_by_input = {
-        (row.provider, row.normalized_input, row.raw_input): row
-        for row in assertions
-    }
 
     def assertion_for(candidate: SearchableNameCandidate) -> SourceSearchableNameAssertionDraft | None:
-        return assertion_by_input.get((candidate.provider, candidate.normalized_input, candidate.raw_input))
+        return by_key.get(canonical_source_key(candidate.candidate_key))
 
     def terminal(assertion: SourceSearchableNameAssertionDraft | None) -> bool:
         if assertion is None:

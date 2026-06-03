@@ -25,6 +25,7 @@ from app.models import (  # noqa: E402
     Entity,
     EntityAlias,
     EntityEvidence,
+    Media,
     MediaEntityAssignment,
     MediaEntityCandidate,
     ProviderCache,
@@ -38,6 +39,7 @@ from app.models import (  # noqa: E402
     TagTranslation,
     blombooru_media_tags,
 )
+from app.enums import ContentClassEnum, FileTypeEnum  # noqa: E402
 from app.services import source_metadata_registry_service as service  # noqa: E402
 from scripts import run_phase44p2r_f5_provider_neutral_source_name_registry as runner  # noqa: E402
 
@@ -174,6 +176,31 @@ def test_booru_numeric_categories_become_source_name_roles():
     assert by_name["Numeric Character"] == "character"
     assert "Numeric General" not in by_name
     assert "Numeric Meta" not in by_name
+
+
+def test_native_booru_tag_string_fields_become_source_name_roles():
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "danbooru",
+            "provider_record_key": "danbooru:test:native-tag-strings",
+            "tag_string_artist": "native_artist",
+            "tag_string_copyright": "native_work",
+            "tag_string_character": "native_character",
+            "tag_string_general": "blue_hair",
+        }
+    ])
+
+    by_name = {row.raw_name: row.name_role for row in bundle.name_observations}
+    assert by_name["native_artist"] == "artist"
+    assert by_name["native_work"] == "work_title"
+    assert by_name["native_character"] == "character"
+    assert "blue_hair" not in by_name
+    assert {row.raw_tag for row in bundle.tag_observations} >= {
+        "native_artist",
+        "native_work",
+        "native_character",
+        "blue_hair",
+    }
 
 
 def test_danbooru_copyright_tag_does_not_become_person():
@@ -380,6 +407,44 @@ def test_gallery_dl_pixiv_metadata_requires_exact_source_prior_page_match():
     assert row is None
 
 
+def test_gallery_dl_pixiv_metadata_key_is_stable_for_same_work_page_media():
+    metadata = runner.f1.PixivGalleryDlMetadataRecord(
+        work_id="100000005",
+        page_index=0,
+        page_count=1,
+        title="Metadata Title",
+        artist_name="Metadata Artist",
+        tags=("Hero Name(Work Name)",),
+        canonical_url="https://www.pixiv.net/artworks/100000005",
+        metadata_richness="rich_structured_metadata",
+        record_shape="gallery_dl_url_media_event",
+    )
+    prior = {
+        ("100000005", 0): {
+            "media_id": 77,
+            "source_work_id": "100000005",
+            "source_page_index": 0,
+        }
+    }
+
+    first = runner.pixiv_gallery_dl_record_to_source_record(
+        metadata,
+        source_prior_lookup=prior,
+        source_index=1,
+        stdout_path=Path("metadata-001.jsonl"),
+    )
+    second = runner.pixiv_gallery_dl_record_to_source_record(
+        metadata,
+        source_prior_lookup=prior,
+        source_index=99,
+        stdout_path=Path("metadata-099.jsonl"),
+    )
+
+    assert first is not None and second is not None
+    assert first["provider_record_key"] == second["provider_record_key"]
+    assert first["provider_record_key"] == "gallery-dl-real-pixiv:metadata:100000005:p0:m77"
+
+
 def test_gallery_dl_sparse_pixiv_metadata_is_not_metadata_rich_even_with_exact_match():
     metadata = runner.f1.PixivGalleryDlMetadataRecord(
         work_id="100000004",
@@ -402,6 +467,86 @@ def test_gallery_dl_sparse_pixiv_metadata_is_not_metadata_rich_even_with_exact_m
     )
 
     assert row is None
+
+
+def test_pixiv_source_prior_ignores_filename_and_requires_anime_content_class(monkeypatch, tmp_path):
+    db_path = tmp_path / "f5-source-prior.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        session.add_all(
+            [
+                Media(
+                    id=1,
+                    filename="100000101_p0.jpg",
+                    path="media/filename-only.jpg",
+                    hash="hash-filename",
+                    file_type=FileTypeEnum.image,
+                    source=None,
+                    content_class=ContentClassEnum.anime,
+                ),
+                Media(
+                    id=2,
+                    filename="non-anime.jpg",
+                    path="media/non-anime.jpg",
+                    hash="hash-non-anime",
+                    file_type=FileTypeEnum.image,
+                    source="https://www.pixiv.net/artworks/100000102",
+                    content_class=ContentClassEnum.non_anime,
+                ),
+                Media(
+                    id=3,
+                    filename="anime.jpg",
+                    path="media/anime.jpg",
+                    hash="hash-anime",
+                    file_type=FileTypeEnum.image,
+                    source="https://www.pixiv.net/artworks/100000103",
+                    content_class=ContentClassEnum.anime,
+                ),
+                Media(
+                    id=4,
+                    filename="unknown.jpg",
+                    path="media/unknown.jpg",
+                    hash="hash-unknown",
+                    file_type=FileTypeEnum.image,
+                    source="https://www.pixiv.net/artworks/100000104",
+                    content_class=ContentClassEnum.unknown,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
+
+    class _Config:
+        database_url = f"sqlite:///{db_path}"
+
+    monkeypatch.setattr(runner, "load_f5_project_config", lambda: _Config())
+    monkeypatch.setattr(
+        runner.f1,
+        "prove_db_identity",
+        lambda _session, _config: {
+            "violet_env": "development",
+            "actual_db_name": "sqlite-test",
+            "configured_db_name": "sqlite-test",
+            "configured_db_host": "local",
+            "configured_db_port": None,
+            "database_url_source": "unit-test",
+        },
+    )
+
+    records, summary = runner.load_real_pixiv_source_prior_records_from_db(limit=10)
+
+    assert [row["source_work_id"] for row in records] == ["100000103"]
+    assert records[0]["raw_metadata_json"]["matched_field"] == "source"
+    assert summary["filename_values_included"] is False
+    assert summary["trusted_source_fields_used"] == ["source"]
+    assert summary["approved_content_classes"] == ["anime"]
+    assert summary["skipped_content_class_counts"]["non_anime"] == 1
+    assert summary["skipped_content_class_counts"]["unknown"] == 1
 
 
 def test_pixiv_source_title_candidate_does_not_auto_create_work_title_identity():
@@ -872,11 +1017,19 @@ def test_public_report_redacts_private_names():
     assert summary["public_report_redaction"]["raw_names_and_aliases_private_only"] is True
 
 
-def _candidate(raw_input="Hero Name(Work Name)", *, provider="pixiv", role_hint=None, source_kind="source_tag_observation"):
+def _candidate(
+    raw_input="Hero Name(Work Name)",
+    *,
+    provider="pixiv",
+    role_hint=None,
+    source_kind="source_tag_observation",
+    candidate_key=None,
+    provider_record_key=None,
+):
     return runner.SearchableNameCandidate(
-        candidate_key=f"test-candidate:{runner.canonical_source_key(provider + ':' + raw_input)}",
+        candidate_key=candidate_key or f"test-candidate:{runner.canonical_source_key(provider + ':' + raw_input)}",
         provider=provider,
-        provider_record_key=f"{provider}:test:assertion",
+        provider_record_key=provider_record_key or f"{provider}:test:assertion",
         raw_input=raw_input,
         normalized_input=runner.normalize_source_text(raw_input),
         data_type_label=runner.DATA_TYPE_REAL,
@@ -1247,6 +1400,32 @@ def test_refresh_with_no_current_assertion_drafts_retires_stale_assertions(db):
     assert db.query(SourceSearchableNameAssertion).filter_by(status="searchable_active").count() == 0
 
 
+def test_refresh_retires_stale_alias_candidates(db):
+    original_bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:alias-refresh",
+            "tags": ["Alias Hero(Alias Work)"],
+        }
+    ])
+    service.persist_source_registry_bundle(db, original_bundle, apply=True)
+
+    assert db.query(SourceNameAliasCandidate).filter_by(status="candidate").count() == 1
+
+    refreshed_bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:alias-refresh",
+            "tags": [],
+        }
+    ])
+    summary = service.persist_source_registry_bundle(db, refreshed_bundle, apply=True)
+
+    assert summary["retired"]["SourceNameAliasCandidate"] == 1
+    assert db.query(SourceNameAliasCandidate).filter_by(status="superseded").count() == 1
+    assert db.query(SourceNameAliasCandidate).filter_by(status="candidate").count() == 0
+
+
 def test_search_validation_from_assertions():
     candidate = _candidate()
     validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
@@ -1269,6 +1448,50 @@ def test_zero_unresolved_rate_satisfies_real_pixiv_assertion_target():
     assert summary["real_pixiv_high_impact"]["coverage"] == 1.0
     assert summary["real_pixiv_high_impact"]["unresolved_rate"] == 0.0
     assert summary["real_pixiv_searchable_assertion_target_met"] is True
+
+
+def test_assertion_coverage_uses_candidate_key_not_raw_input_tuple():
+    tag_candidate = _candidate(
+        "Shared Name",
+        source_kind="source_tag_observation",
+        candidate_key="candidate:shared:tag",
+    )
+    name_candidate = _candidate(
+        "Shared Name",
+        source_kind="source_name_observation",
+        candidate_key="candidate:shared:name",
+    )
+    active = runner.assertion_draft_from_model_output(
+        tag_candidate,
+        runner.validate_model_assertion_output(_valid_model_output(tag_candidate), tag_candidate),
+        model_name="unit-model",
+    )
+    rejected = runner.assertion_draft_from_model_output(
+        name_candidate,
+        runner.validate_model_assertion_output(
+            _valid_model_output(
+                name_candidate,
+                is_searchable_identity=False,
+                searchable_status="rejected",
+                reason_code="known_character_name",
+                asserted_role="character",
+                extracted_name="Shared Name",
+                base_name="Shared Name",
+                work_context=None,
+            ),
+            name_candidate,
+        ),
+        model_name="unit-model",
+    )
+
+    summary = runner.source_searchable_assertion_coverage_summary(
+        [tag_candidate, name_candidate],
+        [active, rejected],
+    )
+
+    assert summary["real_pixiv_high_impact"]["candidate_count"] == 2
+    assert summary["real_pixiv_high_impact"]["terminal_active_or_valid_rejected_count"] == 1
+    assert summary["real_pixiv_high_impact"]["coverage"] == 0.5
 
 
 def test_rejected_known_name_like_reason_does_not_count_as_terminal_coverage():
