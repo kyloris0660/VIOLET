@@ -43,8 +43,12 @@ from app.config import settings  # noqa: E402
 from app.services.llm_translation_provider import (  # noqa: E402
     BaseLLMProvider,
     FallbackProvider,
+    LLMAllProvidersFailed,
+    LLMBatchAggregateError,
+    LLMHTTPStatusError,
     LLMProviderError,
     LLMResponseFormatError,
+    LLMTransportError,
     OpenAICompatibleProvider,
 )
 from app.services.source_metadata_registry_service import (  # noqa: E402
@@ -1663,6 +1667,29 @@ def source_assertion_provider_from_env() -> tuple[BaseLLMProvider | None, dict[s
     return provider if provider.is_available() else None, summary
 
 
+def is_retriable_source_assertion_llm_error(exc: LLMProviderError) -> bool:
+    if isinstance(exc, LLMTransportError):
+        return True
+    if isinstance(exc, LLMHTTPStatusError):
+        return bool(exc.should_fallback)
+    if isinstance(exc, LLMBatchAggregateError):
+        return bool(exc.all_fallback_eligible_errors)
+    if isinstance(exc, LLMAllProvidersFailed):
+        fallback_error = getattr(exc, "fallback_error", None)
+        primary_error = getattr(exc, "primary_error", None)
+        return any(
+            isinstance(error, (LLMTransportError, LLMBatchAggregateError))
+            and (
+                isinstance(error, LLMTransportError)
+                or (isinstance(error, LLMBatchAggregateError) and bool(error.all_fallback_eligible_errors))
+            )
+            or (isinstance(error, LLMHTTPStatusError) and bool(error.should_fallback))
+            for error in (primary_error, fallback_error)
+            if error is not None
+        )
+    return False
+
+
 def _host_resolves(host: str) -> bool:
     try:
         socket.getaddrinfo(host, None)
@@ -2219,9 +2246,10 @@ def classify_source_searchable_name_assertions(
                     base_summary[validated.searchable_status] += 1
                 return
             except LLMProviderError as exc:
-                if not isinstance(exc, LLMResponseFormatError):
+                if isinstance(exc, LLMResponseFormatError) or is_retriable_source_assertion_llm_error(exc):
+                    last_error = exc
+                else:
                     raise
-                last_error = exc
             except Phase44P2RF5Error as exc:
                 last_error = exc
             if attempt < int(args.source_assertion_api_retries):

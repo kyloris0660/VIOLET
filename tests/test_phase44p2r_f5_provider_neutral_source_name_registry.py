@@ -958,6 +958,18 @@ class _AlwaysInvalidFakeProvider(_ChunkRepairFakeProvider):
         ]
 
 
+class _TransientTransportFakeProvider(_ChunkRepairFakeProvider):
+    def __init__(self):
+        self.calls = 0
+
+    async def complete_json(self, messages, *, temperature=0.3, max_tokens=4096):
+        self.calls += 1
+        if self.calls == 1:
+            raise runner.LLMTransportError("unit transient timeout")
+        candidates = _prompt_candidates(messages)
+        return [_valid_model_output_from_prompt_candidate(candidate) for candidate in candidates]
+
+
 def test_structured_model_output_schema_validation():
     candidate = _candidate()
     validated = runner.validate_model_assertion_output(_valid_model_output(candidate), candidate)
@@ -1339,6 +1351,43 @@ def test_llm_chunk_format_failure_splits_and_recovers(monkeypatch):
     assert "split_after_invalid_output" in summary["repair_strategies_attempted"]
     assert inputs
     assert outputs
+    assert all(row["validation_error"] is None for row in review_rows)
+
+
+def test_llm_transient_transport_error_retries_without_aborting(monkeypatch):
+    records = [
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:transport-retry",
+            "tags": ["Hero Retry(Work Name)"],
+            "data_type_label": runner.DATA_TYPE_REAL,
+        }
+    ]
+    bundle = service.build_source_registry_bundle(records)
+    args = runner.build_arg_parser().parse_args(
+        ["--use-llm-api", "--source-assertion-chunk-size", "1", "--source-assertion-api-retries", "1"]
+    )
+    fake_provider = _TransientTransportFakeProvider()
+    monkeypatch.setattr(
+        runner,
+        "source_assertion_provider_from_env",
+        lambda: (
+            fake_provider,
+            {"model_label": "unit-fake", "llm_access_configured": True, "uses_fallback_provider": True},
+        ),
+    )
+
+    _candidates, assertions, summary, _inputs, _outputs, review_rows = runner.classify_source_searchable_name_assertions(
+        args,
+        bundle,
+        records,
+    )
+
+    assert fake_provider.calls >= 2
+    assert assertions
+    assert summary["chunk_retries"] == 1
+    assert summary["outputs_valid"] == len(assertions)
+    assert summary["invalid_outputs"] == 0
     assert all(row["validation_error"] is None for row in review_rows)
 
 
