@@ -1354,7 +1354,7 @@
   },
   "title": "Provider-Neutral Source Metadata + Source Name / Alias Registry Foundation",
   "validation_head_matches_current_pr_head": false,
-  "validation_head_relationship": "The clean apply-db/LLM validation run was generated at validation_head_sha. Reviewer-reviewed PR head 3ad1629f314f4cf5927407a3bca1c042d0bc7c31 was fixed by f40e423fe17e751cd60fa453bf51bc17892b378a; reviewer-reviewed PR head f40e423fe17e751cd60fa453bf51bc17892b378a then received the final bounded six-P2 fix in a descendant commit. The final review pack and PR body record the exact pushed PR head after this commit.",
+  "validation_head_relationship": "The clean apply-db/LLM validation run was generated at validation_head_sha. Reviewer-reviewed PR head 3ad1629f314f4cf5927407a3bca1c042d0bc7c31 was fixed by f40e423fe17e751cd60fa453bf51bc17892b378a; reviewer-reviewed PR head f40e423fe17e751cd60fa453bf51bc17892b378a then received the bounded six-P2 fix; reviewer-reviewed PR head 7902f851d1a60232ae844ad93dd47a99d270f4d6 then received the final bounded four-P2 fix in a descendant commit. The PR body records the exact pushed PR head after this commit.",
   "validation_head_sha": "cbaa3744ad17baaaa02791e5d766f225ea10bab7",
   "write_guard_result": {
     "allowed_tables": [
@@ -1396,13 +1396,22 @@
     "forbidden_truth_table_write_count": 0,
     "guard_installed_when_apply_db": true
   },
-  "latest_reviewer_current_head_reviewed_sha": "f40e423fe17e751cd60fa453bf51bc17892b378a",
-  "current_pr_head_sha_at_report_update_start": "f40e423fe17e751cd60fa453bf51bc17892b378a",
-  "current_pr_head_review_status_at_report_update": "reviewed_current_head_with_six_P2_findings_fixed_by_descendant_commit",
+  "latest_reviewer_current_head_reviewed_sha": "7902f851d1a60232ae844ad93dd47a99d270f4d6",
+  "current_pr_head_sha_at_report_update_start": "7902f851d1a60232ae844ad93dd47a99d270f4d6",
+  "current_pr_head_review_status_at_report_update": "reviewed_current_head_with_four_P2_findings_fixed_by_descendant_commit",
   "report_commit_sha_recording_mode": "tracked_report_records_the_latest_reviewed_head_and_update_base; final self-referential commit sha is recorded in the PR body and private review pack after push",
   "previous_reviewer_current_head_reviewed_sha": "3ad1629f314f4cf5927407a3bca1c042d0bc7c31",
   "reviewer_bounded_fix_heads": [
     "3ad1629f314f4cf5927407a3bca1c042d0bc7c31",
-    "f40e423fe17e751cd60fa453bf51bc17892b378a"
+    "f40e423fe17e751cd60fa453bf51bc17892b378a",
+    "7902f851d1a60232ae844ad93dd47a99d270f4d6"
+  ],
+  "cached_artifacts_reused_for_final_four_p2_fix": true,
+  "large_llm_validation_rerun_performed_for_final_four_p2_fix": false,
+  "final_four_p2_fixes": [
+    "explicit_empty_raw_metadata_preserved",
+    "run_scoped_f5_cleanup_requires_explicit_full_destructive_opt_in",
+    "source_tag_evidence_maps_to_source_tag_observation",
+    "stable_order_independent_tag_observation_keys"
   ]
 }

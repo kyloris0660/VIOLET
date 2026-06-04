@@ -608,7 +608,12 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
     media_id = _int_or_none(payload.get("media_id"))
     source_work_id = normalize_source_text(payload.get("source_work_id") or payload.get("work_id")) or None
     source_page_index = _int_or_none(payload.get("source_page_index", payload.get("page_index")))
-    raw_metadata = dict(_as_mapping(payload.get("raw_metadata_json") or payload.get("raw_metadata") or payload))
+    if "raw_metadata_json" in payload:
+        raw_metadata = dict(_as_mapping(payload.get("raw_metadata_json")))
+    elif "raw_metadata" in payload:
+        raw_metadata = dict(_as_mapping(payload.get("raw_metadata")))
+    else:
+        raw_metadata = dict(_as_mapping(payload))
     tags: list[SourceTagDraft] = []
     names: list[SourceNameDraft] = []
     aliases: list[SourceNameAliasDraft] = []
@@ -641,6 +646,8 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
     disable_parenthetical = bool(payload.get("disable_parenthetical_name_extraction"))
     disable_category_names = bool(payload.get("disable_category_name_extraction"))
 
+    enriched_tags: list[dict[str, Any]] = []
+    tag_identity_counts: Counter[tuple[str, str, str]] = Counter()
     for tag in raw_tag_rows:
         raw_tag = tag["raw_tag"]
         normalized = normalize_source_text(raw_tag)
@@ -649,12 +656,41 @@ def extract_source_record(payload: Mapping[str, Any], *, index: int = 0) -> tupl
         kind = tag["source_tag_kind"]
         if provider == "pixiv" and POPULARITY_TAG_RE.search(normalized):
             kind = "popularity_tag"
+        category_key = canonical_source_key(category) or "uncategorized"
+        identity = (key, kind, category_key)
+        enriched = dict(tag)
+        enriched.update(
+            {
+                "normalized": normalized,
+                "canonical_tag_key": key,
+                "source_category_raw": category,
+                "source_category_key": category_key,
+                "source_tag_kind": kind,
+                "identity": identity,
+            }
+        )
+        enriched_tags.append(enriched)
+        tag_identity_counts[identity] += 1
+
+    tag_identity_seen: Counter[tuple[str, str, str]] = Counter()
+    for tag in enriched_tags:
+        raw_tag = tag["raw_tag"]
+        normalized = tag["normalized"]
+        key = tag["canonical_tag_key"]
+        category = tag["source_category_raw"]
+        kind = tag["source_tag_kind"]
+        identity = tag["identity"]
+        tag_identity_seen[identity] += 1
+        duplicate_suffix = f":dup:{tag_identity_seen[identity]}" if tag_identity_counts[identity] > 1 else ""
+        observation_key = (
+            f"{provider_record_key}:tag:{kind}:{tag['source_category_key']}:{key}{duplicate_suffix}"
+        )
         language, _script = language_and_script_hint(normalized)
         tags.append(
             SourceTagDraft(
                 provider=provider,
                 provider_record_key=provider_record_key,
-                observation_key=f"{provider_record_key}:tag:{key}:{tag['order_index']}",
+                observation_key=observation_key,
                 raw_tag=raw_tag,
                 normalized_tag=normalized,
                 canonical_tag_key=key,
@@ -1415,8 +1451,12 @@ def persist_source_registry_bundle(
             if draft.observation_key
             else None
         )
-        if scoped_observation_key and scoped_observation_key in name_by_observation_key:
-            observation_id = int(name_by_observation_key[scoped_observation_key].id)
+        if scoped_observation_key and draft.observation_type == "source_tag_observation":
+            tag_row = tag_by_observation_key.get(scoped_observation_key)
+            observation_id = int(tag_row.id) if tag_row is not None and tag_row.id else None
+        elif scoped_observation_key and draft.observation_type == "source_name_observation":
+            name_row = name_by_observation_key.get(scoped_observation_key)
+            observation_id = int(name_row.id) if name_row is not None and name_row.id else None
         row = (
             session.query(SourceMetadataEvidence)
             .filter_by(source_metadata_record_id=metadata.id, evidence_key=draft.evidence_key)

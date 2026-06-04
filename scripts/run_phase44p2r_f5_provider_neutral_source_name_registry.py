@@ -38,7 +38,14 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.database import migrate_add_source_metadata_name_registry  # noqa: E402
-from app.models import Media  # noqa: E402
+from app.models import (  # noqa: E402
+    Media,
+    SourceMetadataEvidence,
+    SourceMetadataRecord,
+    SourceNameObservation,
+    SourceSearchableNameAssertion,
+    SourceTagObservation,
+)
 from app.config import settings  # noqa: E402
 from app.services.llm_translation_provider import (  # noqa: E402
     BaseLLMProvider,
@@ -3265,21 +3272,89 @@ def table_row_deltas(before: Mapping[str, int | None], after: Mapping[str, int |
     return deltas
 
 
-def cleanup_f5_source_tables(session) -> dict[str, Any]:
+def cleanup_f5_source_tables(
+    session,
+    *,
+    provider_run_ids: Iterable[str] = (),
+    provider_record_keys: Iterable[tuple[str, str]] = (),
+    allow_destructive_full_cleanup: bool = False,
+) -> dict[str, Any]:
     existing_tables = set(inspect(session.bind).get_table_names())
     before = table_row_counts(session, ALLOWED_WRITE_TABLES)
     deleted: dict[str, int] = {}
     skipped: list[str] = []
-    for table_name in F5_CLEANUP_TABLE_DELETE_ORDER:
-        if table_name not in existing_tables:
-            skipped.append(table_name)
-            continue
-        result = session.execute(text(f'DELETE FROM "{table_name}"'))
-        deleted[table_name] = int(result.rowcount or 0)
+    normalized_run_ids = sorted({normalize_source_text(run_id) for run_id in provider_run_ids if normalize_source_text(run_id)})
+    normalized_record_keys = sorted(
+        {
+            (canonical_source_key(provider), normalize_source_text(record_key))
+            for provider, record_key in provider_record_keys
+            if canonical_source_key(provider) and normalize_source_text(record_key)
+        }
+    )
+    cleanup_mode = "destructive_full_f5_cleanup" if allow_destructive_full_cleanup else "current_run_scope"
+    if allow_destructive_full_cleanup:
+        for table_name in F5_CLEANUP_TABLE_DELETE_ORDER:
+            if table_name not in existing_tables:
+                skipped.append(table_name)
+                continue
+            result = session.execute(text(f'DELETE FROM "{table_name}"'))
+            deleted[table_name] = int(result.rowcount or 0)
+    else:
+        if not normalized_run_ids and not normalized_record_keys:
+            raise Phase44P2RF5Error("clean_f5_state_requires_current_run_scope_or_explicit_full_cleanup")
+        metadata_ids: set[int] = set()
+        if normalized_run_ids and "blombooru_source_metadata_records" in existing_tables:
+            metadata_ids.update(
+                int(row_id)
+                for (row_id,) in session.query(SourceMetadataRecord.id)
+                .filter(SourceMetadataRecord.provider_run_id.in_(normalized_run_ids))
+                .all()
+                if row_id is not None
+            )
+        if normalized_record_keys and "blombooru_source_metadata_records" in existing_tables:
+            for provider, provider_record_key in normalized_record_keys:
+                row_id = (
+                    session.query(SourceMetadataRecord.id)
+                    .filter_by(provider=provider, provider_record_key=provider_record_key)
+                    .scalar()
+                )
+                if row_id is not None:
+                    metadata_ids.add(int(row_id))
+
+        scoped_delete_order = (
+            ("blombooru_source_searchable_name_assertions", SourceSearchableNameAssertion),
+            ("blombooru_source_metadata_evidence", SourceMetadataEvidence),
+            ("blombooru_source_name_observations", SourceNameObservation),
+            ("blombooru_source_tag_observations", SourceTagObservation),
+            ("blombooru_source_metadata_records", SourceMetadataRecord),
+        )
+        if metadata_ids:
+            for table_name, model in scoped_delete_order:
+                if table_name not in existing_tables:
+                    skipped.append(table_name)
+                    continue
+                result = (
+                    session.query(model)
+                    .filter(model.source_metadata_record_id.in_(metadata_ids))
+                    .delete(synchronize_session=False)
+                    if table_name != "blombooru_source_metadata_records"
+                    else session.query(model).filter(model.id.in_(metadata_ids)).delete(synchronize_session=False)
+                )
+                deleted[table_name] = int(result or 0)
+        else:
+            for table_name, _model in scoped_delete_order:
+                if table_name not in existing_tables:
+                    skipped.append(table_name)
+                else:
+                    deleted[table_name] = 0
     session.commit()
     after = table_row_counts(session, ALLOWED_WRITE_TABLES)
     return {
         "performed": True,
+        "cleanup_mode": cleanup_mode,
+        "destructive_full_cleanup": bool(allow_destructive_full_cleanup),
+        "scoped_provider_run_ids": normalized_run_ids,
+        "scoped_provider_record_count": len(normalized_record_keys),
         "delete_order": list(F5_CLEANUP_TABLE_DELETE_ORDER),
         "deleted_rows": deleted,
         "skipped_missing_tables": skipped,
@@ -3318,7 +3393,15 @@ def db_apply_summary(
         allowed_pre_cleanup = table_row_counts(session, ALLOWED_WRITE_TABLES)
         cleanup_summary: dict[str, Any] = {"performed": False}
         if bool(getattr(args, "clean_f5_state", False)):
-            cleanup_summary = cleanup_f5_source_tables(session)
+            cleanup_summary = cleanup_f5_source_tables(
+                session,
+                provider_run_ids=[record.provider_run_id for record in bundle.metadata_records if record.provider_run_id],
+                provider_record_keys=[
+                    (record.provider, record.provider_record_key)
+                    for record in bundle.metadata_records
+                ],
+                allow_destructive_full_cleanup=bool(getattr(args, "allow_destructive_full_f5_cleanup", False)),
+            )
         allowed_before = table_row_counts(session, ALLOWED_WRITE_TABLES)
         write_summary = persist_source_registry_bundle(
             session,
@@ -3381,6 +3464,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--clean-local-artifacts", action="store_true")
     parser.add_argument("--clean-f5-state", action="store_true")
+    parser.add_argument("--allow-destructive-full-f5-cleanup", action="store_true")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--run-label", default="final_closeout_validation")
     parser.add_argument("--target-record-count", type=int, default=TARGET_RECORD_COUNT_DEFAULT)

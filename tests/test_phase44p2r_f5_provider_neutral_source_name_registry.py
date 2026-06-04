@@ -30,6 +30,7 @@ from app.models import (  # noqa: E402
     MediaEntityCandidate,
     ProviderCache,
     SourceMetadataRecord,
+    SourceMetadataEvidence,
     SourceNameAliasCandidate,
     SourceNameObservation,
     SourceNameRegistry,
@@ -87,6 +88,26 @@ def test_pixiv_source_metadata_creates_metadata_tag_and_name_rows():
     roles = {row.name_role for row in bundle.name_observations}
     assert {"artist", "work_title", "character"}.issubset(roles)
     assert bundle.record_statuses[service.provider_record_lookup_key("pixiv", "pixiv:test:1")] == "applicable_name_signal_covered"
+
+
+def test_explicit_empty_raw_metadata_json_is_preserved_when_persisted(db):
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:explicit-empty-raw",
+            "raw_metadata_json": {},
+            "raw_metadata": {"excluded_provider_payload": "must_not_fallback"},
+            "title": "Visible Title",
+            "tags": ["Visible Hero(Visible Work)"],
+        }
+    ])
+
+    assert bundle.metadata_records[0].raw_metadata_json == {}
+
+    service.persist_source_registry_bundle(db, bundle, apply=True)
+
+    row = db.query(SourceMetadataRecord).one()
+    assert row.raw_metadata_json == {}
 
 
 def test_pixiv_parenthetical_character_extraction_and_relation():
@@ -693,6 +714,130 @@ def test_no_forbidden_truth_table_writes_when_source_registry_is_persisted(db):
     assert db.query(ProviderCache).count() == 0
     assert db.query(TagTranslation).count() == 0
     assert db.execute(text(f"SELECT COUNT(*) FROM {blombooru_media_tags.name}")).scalar() == 0
+
+
+def test_tag_metadata_evidence_observation_id_points_to_source_tag_observation(db):
+    bundle = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:test:tag-evidence",
+            "tags": ["Evidence Hero(Evidence Work)"],
+        }
+    ])
+    tag = bundle.tag_observations[0]
+    tag_evidence = service.SourceMetadataEvidenceDraft(
+        provider=tag.provider,
+        provider_record_key=tag.provider_record_key,
+        evidence_key=f"{tag.observation_key}:tag_evidence",
+        observation_type="source_tag_observation",
+        observation_key=tag.observation_key,
+        evidence_kind="source_tag_evidence",
+        evidence_strength="source_observation",
+        provenance={"unit_test": True},
+    )
+    bundle = replace(bundle, evidence=tuple(bundle.evidence) + (tag_evidence,))
+
+    service.persist_source_registry_bundle(db, bundle, apply=True)
+
+    tag_row = db.query(SourceTagObservation).filter_by(observation_key=tag.observation_key).one()
+    evidence_row = db.query(SourceMetadataEvidence).filter_by(evidence_key=tag_evidence.evidence_key).one()
+    assert evidence_row.observation_type == "source_tag_observation"
+    assert evidence_row.observation_id == tag_row.id
+
+
+def _with_tag_evidence(bundle):
+    tag_evidence = tuple(
+        service.SourceMetadataEvidenceDraft(
+            provider=tag.provider,
+            provider_record_key=tag.provider_record_key,
+            evidence_key=f"{tag.observation_key}:tag_evidence",
+            observation_type="source_tag_observation",
+            observation_key=tag.observation_key,
+            evidence_kind="source_tag_evidence",
+            evidence_strength="source_observation",
+            provenance={"unit_test": True},
+        )
+        for tag in bundle.tag_observations
+    )
+    return replace(bundle, evidence=tuple(bundle.evidence) + tag_evidence)
+
+
+def test_tag_observation_keys_are_stable_when_tag_order_changes(db):
+    first = _with_tag_evidence(
+        service.build_source_registry_bundle([
+            {
+                "provider": "pixiv",
+                "provider_record_key": "pixiv:test:tag-order",
+                "tags": ["Stable Alpha", "Stable Beta"],
+            }
+        ])
+    )
+    second = _with_tag_evidence(
+        service.build_source_registry_bundle([
+            {
+                "provider": "pixiv",
+                "provider_record_key": "pixiv:test:tag-order",
+                "tags": ["Stable Beta", "Stable Alpha"],
+            }
+        ])
+    )
+
+    first_keys = {row.observation_key for row in first.tag_observations}
+    second_keys = {row.observation_key for row in second.tag_observations}
+    assert first_keys == second_keys
+
+    service.persist_source_registry_bundle(db, first, apply=True)
+    summary = service.persist_source_registry_bundle(db, second, apply=True)
+
+    assert summary["retired"].get("SourceTagObservation", 0) == 0
+    assert summary["retired"].get("SourceMetadataEvidence", 0) == 0
+    assert db.query(SourceTagObservation).filter_by(status="observed").count() == 2
+    assert db.query(SourceMetadataEvidence).filter_by(status="superseded").count() == 0
+
+
+def test_clean_f5_state_scopes_to_current_run_and_full_cleanup_requires_opt_in(db):
+    prior = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_run_id": "prior-f5-run",
+            "provider_record_key": "pixiv:test:prior-run",
+            "tags": ["Prior Hero(Prior Work)"],
+        }
+    ])
+    current = service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_run_id": "current-f5-run",
+            "provider_record_key": "pixiv:test:current-run",
+            "tags": ["Current Hero(Current Work)"],
+        }
+    ])
+    service.persist_source_registry_bundle(db, prior, apply=True)
+    service.persist_source_registry_bundle(db, current, apply=True)
+
+    with pytest.raises(runner.Phase44P2RF5Error, match="requires_current_run_scope"):
+        runner.cleanup_f5_source_tables(db)
+
+    scoped = runner.cleanup_f5_source_tables(
+        db,
+        provider_run_ids=["current-f5-run"],
+        provider_record_keys=[("pixiv", "pixiv:test:current-run")],
+    )
+
+    assert scoped["cleanup_mode"] == "current_run_scope"
+    assert scoped["destructive_full_cleanup"] is False
+    assert db.query(SourceMetadataRecord).filter_by(provider_run_id="current-f5-run").count() == 0
+    assert db.query(SourceMetadataRecord).filter_by(provider_run_id="prior-f5-run").count() == 1
+    assert db.query(SourceTagObservation).join(SourceMetadataRecord).filter(
+        SourceMetadataRecord.provider_run_id == "prior-f5-run"
+    ).count() == 1
+
+    full = runner.cleanup_f5_source_tables(db, allow_destructive_full_cleanup=True)
+
+    assert full["cleanup_mode"] == "destructive_full_f5_cleanup"
+    assert full["destructive_full_cleanup"] is True
+    assert db.query(SourceMetadataRecord).count() == 0
+    assert db.query(SourceTagRegistry).count() == 0
 
 
 def test_metadata_lookup_key_includes_provider_when_provider_record_key_collides(db):
