@@ -252,6 +252,73 @@ def _source_tag_condition(keys: set[str], *, provider: str | None = None):
     return exists().where(and_(*conditions))
 
 
+def _source_layer_exact_text_condition(term: str, *, include_needs_review: bool = False):
+    normalized = normalize_source_text(term)
+    if not normalized:
+        return None
+
+    exact_values = {
+        normalized,
+        normalized.casefold(),
+        canonical_source_key(normalized),
+    }
+    exact_values = {value for value in exact_values if value}
+    if not exact_values:
+        return None
+
+    assertion = aliased(SourceSearchableNameAssertion)
+    assertion_record = aliased(SourceMetadataRecord)
+    assertion_condition = exists().where(
+        and_(
+            assertion.source_metadata_record_id == assertion_record.id,
+            assertion_record.media_id == Media.id,
+            assertion.status.in_(_assertion_statuses(include_needs_review)),
+            or_(
+                assertion.raw_input.in_(sorted(exact_values)),
+                assertion.normalized_input.in_(sorted(exact_values)),
+                assertion.canonical_name_key.in_(sorted(exact_values)),
+                assertion.asserted_name.in_(sorted(exact_values)),
+            ),
+        )
+    )
+
+    name = aliased(SourceNameObservation)
+    name_record = aliased(SourceMetadataRecord)
+    name_conditions = [
+        name.source_metadata_record_id == name_record.id,
+        name_record.media_id == Media.id,
+        name.status.in_(ACTIVE_NAME_OBSERVATION_STATUSES),
+        or_(
+            name.raw_name.in_(sorted(exact_values)),
+            name.normalized_name.in_(sorted(exact_values)),
+            name.canonical_name_key.in_(sorted(exact_values)),
+        ),
+    ]
+    if not include_needs_review:
+        name_conditions.append(name.requires_review == False)
+
+    source_tag = aliased(SourceTagObservation)
+    source_tag_record = aliased(SourceMetadataRecord)
+    source_tag_condition = exists().where(
+        and_(
+            source_tag.source_metadata_record_id == source_tag_record.id,
+            source_tag_record.media_id == Media.id,
+            source_tag.status.in_(ACTIVE_SOURCE_TAG_STATUSES),
+            or_(
+                source_tag.raw_tag.in_(sorted(exact_values)),
+                source_tag.normalized_tag.in_(sorted(exact_values)),
+                source_tag.canonical_tag_key.in_(sorted(exact_values)),
+            ),
+        )
+    )
+
+    return or_(
+        assertion_condition,
+        exists().where(and_(*name_conditions)),
+        source_tag_condition,
+    )
+
+
 def _or_non_empty(conditions: Iterable[Any]):
     present = [condition for condition in conditions if condition is not None]
     if not present:
@@ -597,13 +664,7 @@ def _apply_source_tag_filter(query: Query, criteria: SourceTagFilter, *, db: Ses
     if not tag_keys and criteria.observation_key:
         tag_keys.update(_source_concept_key_candidates(criteria.observation_key))
 
-    name_keys = _expand_source_name_keys(db, set(tag_keys))
-    condition = _or_non_empty(
-        (
-            _source_tag_condition(tag_keys, provider=criteria.provider),
-            _source_name_condition(name_keys, provider=criteria.provider, include_needs_review=False),
-        )
-    )
+    condition = _source_tag_condition(tag_keys, provider=criteria.provider)
     if condition is None:
         return query.filter(false())
 
@@ -668,6 +729,15 @@ def apply_source_soft_search(
             query = query.filter(condition)
 
     parsed["tags"]["include"] = remaining_include
+    remaining_exclude: list[str] = []
+    for term in parsed["tags"]["exclude"]:
+        condition = _soft_search_condition_for_term(db, term, include_needs_review=include_needs_review)
+        if condition is None:
+            remaining_exclude.append(term)
+        else:
+            query = query.filter(~condition)
+
+    parsed["tags"]["exclude"] = remaining_exclude
     return apply_search_criteria(query, parsed, db)
 
 
@@ -690,6 +760,7 @@ def _soft_search_condition_for_term(db: Session, term: str, *, include_needs_rev
     condition = _or_non_empty(
         (
             _media_has_tag_condition(exact_tag_names | linked_tag_names),
+            _source_layer_exact_text_condition(normalized, include_needs_review=include_needs_review),
             _source_name_condition(source_keys, include_needs_review=include_needs_review),
             _source_tag_condition(tag_keys),
         )

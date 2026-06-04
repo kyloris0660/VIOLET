@@ -315,10 +315,13 @@ def test_fallback_name_observation_chip_resolves_label_and_count(client, db):
 def test_source_tag_chip_search_uses_canonical_tag_across_media(client, db):
     m1 = create_media(db, "m1")
     m2 = create_media(db, "m2")
+    assertion_only = create_media(db, "assertion-only-ayaka")
     r1 = add_source_record(db, m1, "pixiv", "pixiv:m1")
     r2 = add_source_record(db, m2, "pixiv", "pixiv:m2")
+    r3 = add_source_record(db, assertion_only, "pixiv", "pixiv:assertion-ayaka")
     add_source_tag(db, r1, key="tag:ayaka:m1", raw_tag="神里綾華", canonical="神里綾華")
     add_source_tag(db, r2, key="tag:ayaka:m2", raw_tag="神里綾華", canonical="神里綾華")
+    add_assertion(db, r3, key="assert:ayaka:m3", name="神里綾華", canonical="神里綾華", role="character")
     db.commit()
 
     layer = client.get(f"/api/source-assertions/media/{m1.id}").json()
@@ -328,6 +331,15 @@ def test_source_tag_chip_search_uses_canonical_tag_across_media(client, db):
     response = client.get(f"/api/search?source_tag={chip['search_value']}")
     assert response.status_code == 200
     assert {item["id"] for item in response.json()["items"]} == {m1.id, m2.id}
+
+    text_response = client.get("/api/search", params={"q": "神里綾華"})
+    assert text_response.status_code == 200
+    assert {item["id"] for item in text_response.json()["items"]} == {m1.id, m2.id, assertion_only.id}
+
+    assertion_chip = client.get(f"/api/source-assertions/media/{assertion_only.id}").json()["source_assertions"][0]
+    assertion_response = client.get(f"/api/search?source_assertion={assertion_chip['search_value']}")
+    assert assertion_response.status_code == 200
+    assert {item["id"] for item in assertion_response.json()["items"]} == {assertion_only.id}
 
 
 def test_text_and_normal_tag_search_soft_link_to_source_name_concept(client, db):
@@ -344,6 +356,39 @@ def test_text_and_normal_tag_search_soft_link_to_source_name_concept(client, db)
     tag_response = client.get("/api/search?q=barbara_(genshin_impact)")
     assert tag_response.status_code == 200
     assert {item["id"] for item in tag_response.json()["items"]} == {normal_media.id, source_media.id}
+
+
+def test_negated_text_query_excludes_source_layer_matches(client, db):
+    normal_media = create_media(db, "normal-barbara-negated", [("barbara_(genshin_impact)", TagCategoryEnum.character)])
+    source_media = create_media(db, "source-barbara-negated")
+    keeper = create_media(db, "keeper", [("solo", TagCategoryEnum.general)])
+    record = add_source_record(db, source_media, "pixiv", "pixiv:source-barbara-negated")
+    add_assertion(db, record, key="assert:barbara:negated", name="Barbara", canonical="barbara", role="character")
+    db.commit()
+
+    positive = client.get("/api/search?q=Barbara")
+    assert positive.status_code == 200
+    assert {item["id"] for item in positive.json()["items"]} == {normal_media.id, source_media.id}
+
+    negated = client.get("/api/search?q=Barbara+-Barbara")
+    assert negated.status_code == 200
+    assert negated.json()["items"] == []
+
+    mixed = client.get("/api/search?q=solo+-Barbara")
+    assert mixed.status_code == 200
+    assert {item["id"] for item in mixed.json()["items"]} == {keeper.id}
+
+
+def test_text_query_without_source_exact_match_returns_normal_tag_only(client, db):
+    normal_media = create_media(db, "normal-only", [("plain_tag", TagCategoryEnum.general)])
+    unrelated_source = create_media(db, "unrelated-source")
+    record = add_source_record(db, unrelated_source, "pixiv", "pixiv:unrelated")
+    add_assertion(db, record, key="assert:unrelated", name="Unrelated", canonical="unrelated", role="character")
+    db.commit()
+
+    response = client.get("/api/search?q=plain_tag")
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {normal_media.id}
 
 
 def test_linked_parenthetical_tag_lookup_escapes_underscore_wildcards(client, db):

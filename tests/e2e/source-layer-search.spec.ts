@@ -135,6 +135,30 @@ test.describe('F6 source-layer media detail and search', () => {
     expect(apiResp.data.items.map((item: any) => item.id)).toContain(fixture!.mediaId);
   });
 
+  test('free text query finds exact source-layer assertions and negation excludes them', async ({ page }) => {
+    const fixture = await findSourceLayerFixture(page);
+    test.skip(!fixture, 'No media with enough source-layer chips in test DB');
+
+    const exactAssertion = fixture!.sourceAssertions.find((chip: any) =>
+      typeof chip.display_name === 'string' && /^[A-Za-z0-9_:-]+$/.test(chip.display_name)
+    );
+    test.skip(!exactAssertion, 'No single-token source assertion display name in test DB fixture');
+
+    const params = new URLSearchParams({ q: exactAssertion.display_name });
+    await page.goto(`/?${params.toString()}`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('#gallery')).toBeVisible();
+
+    const positiveResp = await apiCall(page, `/api/search?${params.toString()}`);
+    expect(positiveResp.status).toBe(200);
+    expect(positiveResp.data.items.map((item: any) => item.id)).toContain(fixture!.mediaId);
+
+    const negatedParams = new URLSearchParams({ q: `${exactAssertion.display_name} -${exactAssertion.display_name}` });
+    const negatedResp = await apiCall(page, `/api/search?${negatedParams.toString()}`);
+    expect(negatedResp.status).toBe(200);
+    expect(negatedResp.data.total).toBe(0);
+  });
+
   test('source-only gallery search sends the displayed default sort', async ({ page }) => {
     const fixture = await findSourceLayerFixture(page);
     test.skip(!fixture, 'No media with enough source-layer chips in test DB');
