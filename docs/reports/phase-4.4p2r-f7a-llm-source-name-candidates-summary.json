@@ -1,0 +1,253 @@
+{
+  "artifacts": {
+    "ambiguous_needs_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/ambiguous-needs-review.csv",
+    "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates",
+    "details_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/details.json",
+    "extraction_errors_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/extraction-errors.csv",
+    "llm_inputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-inputs.jsonl",
+    "llm_outputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-outputs.jsonl",
+    "manual_review_guide": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/manual-review-guide.md",
+    "name_candidates_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/name-candidates.csv",
+    "no_name_records_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/no-name-records.csv",
+    "popularity_prefix_extractions_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/popularity-prefix-extractions.csv",
+    "private_summary_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/summary.json",
+    "public_report_json": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates-summary.json",
+    "public_report_md": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md",
+    "record_verdicts_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/record-verdicts.csv",
+    "rejected_general_meta_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/rejected-general-meta.csv",
+    "validation_failures_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/validation-failures.jsonl"
+  },
+  "branch": "codex/phase44p2r-f7a-llm-source-name-candidates",
+  "db_identity": {
+    "current_database": "blombooru",
+    "database_url_redacted": true,
+    "db_name": "blombooru",
+    "violet_env": "development"
+  },
+  "db_write_summary": {
+    "allowed_table_row_counts_after": {
+      "blombooru_source_name_candidate_extraction_runs": 1,
+      "blombooru_source_name_candidate_record_verdicts": 12,
+      "blombooru_source_name_candidates": 173
+    },
+    "allowed_table_row_counts_before": {
+      "blombooru_source_name_candidate_extraction_runs": 0,
+      "blombooru_source_name_candidate_record_verdicts": 0,
+      "blombooru_source_name_candidates": 0
+    },
+    "allowed_table_row_deltas": {
+      "blombooru_source_name_candidate_extraction_runs": 1,
+      "blombooru_source_name_candidate_record_verdicts": 12,
+      "blombooru_source_name_candidates": 173
+    },
+    "allowed_tables": [
+      "blombooru_source_name_candidate_extraction_runs",
+      "blombooru_source_name_candidate_record_verdicts",
+      "blombooru_source_name_candidates"
+    ],
+    "apply": true,
+    "forbidden_table_row_counts_after": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 2,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 7,
+      "blombooru_media_tags": 105699,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 2,
+      "blombooru_tag_translation_jobs": 17,
+      "blombooru_tag_translations": 3732
+    },
+    "forbidden_table_row_counts_before": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 2,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 7,
+      "blombooru_media_tags": 105699,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 2,
+      "blombooru_tag_translation_jobs": 17,
+      "blombooru_tag_translations": 3732
+    },
+    "forbidden_table_row_deltas": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 0,
+      "blombooru_entity_external_identities": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 0,
+      "blombooru_media_tags": 0,
+      "blombooru_negative_lookup_cache": 0,
+      "blombooru_provider_cache": 0,
+      "blombooru_tag_translation_jobs": 0,
+      "blombooru_tag_translations": 0
+    },
+    "forbidden_tables": [
+      "blombooru_entities",
+      "blombooru_entity_aliases",
+      "blombooru_entity_evidence",
+      "blombooru_entity_external_identities",
+      "blombooru_media_entity_candidates",
+      "blombooru_media_entity_assignments",
+      "blombooru_media_tags",
+      "blombooru_tag_translations",
+      "blombooru_tag_translation_jobs",
+      "blombooru_provider_cache",
+      "blombooru_negative_lookup_cache"
+    ],
+    "forbidden_truth_table_write_count": 0,
+    "inserted": {
+      "SourceNameCandidate": 173
+    },
+    "record_verdicts": 12,
+    "run_db_id": 1,
+    "stale_candidates_superseded": 0,
+    "updated": {
+      "SourceNameCandidate": 0
+    }
+  },
+  "extraction_summary": {
+    "ambiguous_count": 5,
+    "candidate_counts": {
+      "by_action": {
+        "ai_model_character_tag": 16,
+        "direct_name": 66,
+        "normal_tag_candidate": 6,
+        "parenthetical_split": 18,
+        "popularity_suffix_stripped": 10,
+        "provider_structured_field": 57
+      },
+      "by_role": {
+        "artist_creator": 41,
+        "character": 75,
+        "source_title": 14,
+        "unknown_name_like": 5,
+        "work_title": 38
+      },
+      "by_status": {
+        "active_candidate": 154,
+        "needs_review": 19
+      },
+      "popularity_prefix_extractions": 10,
+      "total": 173
+    },
+    "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v1",
+    "input": {
+      "group_count": 12,
+      "groups_by_data_origin": {
+        "real_dev_db": 12
+      },
+      "groups_by_provider": {
+        "pixiv": 12
+      },
+      "unique_raw_string_count": 122
+    },
+    "llm": {
+      "api_call_attempts": 11,
+      "api_chunks_attempted": 11,
+      "cache_hits": 1,
+      "failed_records_downgraded": 5,
+      "valid_records": 7
+    },
+    "meta_counts": {
+      "by_role": {
+        "meta": 1,
+        "popularity_marker": 1,
+        "popularity_meta": 8
+      },
+      "total": 10
+    },
+    "phase": "4.4-P2R-F7a",
+    "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_v1",
+    "record_verdict_counts": {
+      "extraction_error_terminal": 5,
+      "multiple_candidates_found": 7
+    },
+    "rejected_counts": {
+      "by_reason": {
+        "descriptive_general": 24,
+        "duplicate": 1,
+        "explicit_r18_meta": 3,
+        "not_name_like": 7,
+        "popularity_meta": 9
+      },
+      "total": 44
+    },
+    "safety": {
+      "entity_alias_write": false,
+      "entity_write": false,
+      "image_upload": false,
+      "local_source_hint_write": false,
+      "media_entity_candidate_write": false,
+      "media_tags_mutation": false,
+      "source_concept_linking": false,
+      "source_layer_only": true,
+      "tag_translation_mutation": false
+    },
+    "structured_output_schema_version": "source_name_candidate_extraction_v1",
+    "validation_failure_count": 5
+  },
+  "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v1",
+  "head_sha": "fddedef0c835e511c26d5b65e83cb7b5f23b358e",
+  "input_summary": {
+    "fixture_supplement": true,
+    "groups_by_data_origin": {
+      "real_dev_db": 12
+    },
+    "groups_by_provider": {
+      "pixiv": 12
+    },
+    "groups_collected": 12,
+    "max_records": 12,
+    "max_unique_strings": 200,
+    "source_metadata_records_available": 200,
+    "unique_raw_string_count": 122
+  },
+  "llm_provider": {
+    "base_url_redacted": true,
+    "fallback_enabled": true,
+    "fallback_provider_type": "deepseek",
+    "llm_access_configured": true,
+    "llm_access_stored": false,
+    "model_label": "fallback_model_configured",
+    "model_name_redacted": true,
+    "provider_mode": "fallback_only",
+    "uses_fallback_provider": true,
+    "uses_primary_model": false
+  },
+  "operator_notes": {
+    "f7b_readiness": "candidate pack should be manually reviewed before SourceConcept linking; schema-valid LLM rate was 7/12 records in this bounded run",
+    "interrupted_large_run": "a 50-group / 500-unique-string run exceeded a 1800s tool timeout and was stopped before persistence",
+    "llm_schema_quality": "7 records produced valid normalized LLM extraction records; 5 records received explicit extraction_error_terminal verdicts after invalid JSON output",
+    "sample_scale_note": "completed persisted run used 12 real dev DB Pixiv/source groups and 122 unique raw strings because the larger recommended scale was too slow for the available execution window"
+  },
+  "phase": "4.4-P2R-F7a",
+  "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_v1",
+  "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260604T172539Z-e3a9fcfc",
+  "safety": {
+    "entity_alias_write": false,
+    "entity_write": false,
+    "image_upload": false,
+    "local_source_hint_write": false,
+    "media_entity_assignment_write": false,
+    "media_entity_candidate_write": false,
+    "media_tags_mutation": false,
+    "merge": false,
+    "provider_calls": false,
+    "push_main": false,
+    "source_concept_linking": false,
+    "source_layer_only": true,
+    "source_or_icloud_mutation": false,
+    "tag_translation_mutation": false
+  },
+  "structured_output_schema_version": "source_name_candidate_extraction_v1",
+  "timing": {
+    "api_call_attempts": 11,
+    "cost_estimate": "not_available_from_provider_response",
+    "elapsed_seconds": 682.254
+  },
+  "title": "LLM-backed source name candidate extraction"
+}

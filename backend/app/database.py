@@ -212,6 +212,7 @@ def check_and_migrate_schema(engine):
         migrate_add_external_tag_category_lookup_cache,
         migrate_add_pixiv_tag_taxonomy_alias_kb,
         migrate_add_source_metadata_name_registry,
+        migrate_add_source_name_candidate_extraction,
     ]
     
     for migration in migrations:
@@ -1487,6 +1488,144 @@ def migrate_add_source_metadata_name_registry(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_role_status ON blombooru_source_searchable_name_assertions(asserted_role, status)",
             "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_tag_observation ON blombooru_source_searchable_name_assertions(source_tag_observation_id)",
             "CREATE INDEX IF NOT EXISTS ix_source_searchable_name_assertion_name_observation ON blombooru_source_searchable_name_assertions(source_name_observation_id)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_source_name_candidate_extraction(engine, inspector):
+    """Create Phase 4.4-P2R-F7a source name candidate extraction tables.
+
+    This migration is additive only. It stores unconfirmed source-layer name
+    candidate extraction runs, record-level verdicts, and candidate rows. It
+    does not alter Entity, EntityAlias, EntityEvidence, MediaEntityCandidate,
+    MediaEntityAssignment, LocalSourceHint-style tables, media_tags,
+    TagTranslation, ProviderCache, NegativeLookupCache, or confirmed
+    assignments.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON' if not is_sqlite else 'JSON'
+
+    with engine.connect() as conn:
+        if 'blombooru_source_name_candidate_extraction_runs' not in tables:
+            logger.info("Creating blombooru_source_name_candidate_extraction_runs table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_name_candidate_extraction_runs (
+                    id {pk_type},
+                    run_id VARCHAR(255) NOT NULL,
+                    run_label VARCHAR(255),
+                    extractor_version VARCHAR(100) NOT NULL,
+                    prompt_version VARCHAR(100),
+                    structured_output_schema_version VARCHAR(100) NOT NULL,
+                    mode VARCHAR(100) NOT NULL DEFAULT 'dry_run',
+                    status VARCHAR(50) NOT NULL DEFAULT 'running',
+                    input_scope_json {json_type},
+                    summary_json {json_type},
+                    provider_summary_json {json_type},
+                    started_at TIMESTAMP WITH TIME ZONE,
+                    finished_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_name_candidate_run_id UNIQUE (run_id)
+                )
+            """))
+
+        if 'blombooru_source_name_candidate_record_verdicts' not in tables:
+            logger.info("Creating blombooru_source_name_candidate_record_verdicts table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_name_candidate_record_verdicts (
+                    id {pk_type},
+                    extraction_run_id INTEGER NOT NULL REFERENCES blombooru_source_name_candidate_extraction_runs(id) ON DELETE CASCADE,
+                    source_metadata_record_id INTEGER REFERENCES blombooru_source_metadata_records(id) ON DELETE SET NULL,
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    provider VARCHAR(100) NOT NULL,
+                    group_key VARCHAR(700) NOT NULL,
+                    extraction_verdict VARCHAR(100) NOT NULL,
+                    verdict_reason TEXT,
+                    no_name_reason VARCHAR(255),
+                    candidate_count INTEGER NOT NULL DEFAULT 0,
+                    rejected_count INTEGER NOT NULL DEFAULT 0,
+                    meta_count INTEGER NOT NULL DEFAULT 0,
+                    ambiguous_count INTEGER NOT NULL DEFAULT 0,
+                    confidence_summary {json_type},
+                    extraction_warnings_json {json_type},
+                    evidence_payload {json_type},
+                    status VARCHAR(50) NOT NULL DEFAULT 'observed',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_name_candidate_record_verdict_run_group UNIQUE (
+                        extraction_run_id,
+                        group_key
+                    )
+                )
+            """))
+
+        if 'blombooru_source_name_candidates' not in tables:
+            logger.info("Creating blombooru_source_name_candidates table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_name_candidates (
+                    id {pk_type},
+                    extraction_run_id INTEGER REFERENCES blombooru_source_name_candidate_extraction_runs(id) ON DELETE SET NULL,
+                    record_verdict_id INTEGER REFERENCES blombooru_source_name_candidate_record_verdicts(id) ON DELETE SET NULL,
+                    source_metadata_record_id INTEGER REFERENCES blombooru_source_metadata_records(id) ON DELETE SET NULL,
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    provider VARCHAR(100) NOT NULL,
+                    group_key VARCHAR(700) NOT NULL,
+                    candidate_key VARCHAR(900) NOT NULL,
+                    origin_type VARCHAR(100) NOT NULL,
+                    origin_id VARCHAR(500),
+                    raw_value VARCHAR(500) NOT NULL,
+                    display_name VARCHAR(500) NOT NULL,
+                    normalized_value VARCHAR(500) NOT NULL,
+                    canonical_key VARCHAR(500) NOT NULL,
+                    candidate_role VARCHAR(100) NOT NULL,
+                    candidate_status VARCHAR(50) NOT NULL DEFAULT 'active_candidate',
+                    extraction_verdict VARCHAR(100) NOT NULL,
+                    language_hint VARCHAR(50),
+                    script_hint VARCHAR(50),
+                    work_context VARCHAR(500),
+                    work_context_key VARCHAR(500),
+                    parenthetical_base VARCHAR(500),
+                    parenthetical_context VARCHAR(500),
+                    extraction_action VARCHAR(100) NOT NULL,
+                    confidence FLOAT,
+                    reason TEXT,
+                    rejection_reason VARCHAR(255),
+                    no_name_reason VARCHAR(255),
+                    evidence_payload {json_type},
+                    extractor_version VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL DEFAULT 'active',
+                    superseded_by_candidate_id INTEGER,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_name_candidate_key UNIQUE (candidate_key)
+                )
+            """))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_extraction_run_status ON blombooru_source_name_candidate_extraction_runs(status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_extraction_run_mode ON blombooru_source_name_candidate_extraction_runs(mode)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_record_verdict_provider ON blombooru_source_name_candidate_record_verdicts(provider)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_record_verdict_verdict ON blombooru_source_name_candidate_record_verdicts(extraction_verdict)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_record_verdict_source_record ON blombooru_source_name_candidate_record_verdicts(source_metadata_record_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_record_verdict_media ON blombooru_source_name_candidate_record_verdicts(media_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_run_candidate_status ON blombooru_source_name_candidates(extraction_run_id, candidate_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_provider_role ON blombooru_source_name_candidates(provider, candidate_role)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_canonical_status ON blombooru_source_name_candidates(canonical_key, candidate_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_origin ON blombooru_source_name_candidates(origin_type, origin_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_source_record ON blombooru_source_name_candidates(source_metadata_record_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_media ON blombooru_source_name_candidates(media_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_language ON blombooru_source_name_candidates(language_hint)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_script ON blombooru_source_name_candidates(script_hint)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_work_context ON blombooru_source_name_candidates(work_context_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_extraction_action ON blombooru_source_name_candidates(extraction_action)",
+            "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_rejection_reason ON blombooru_source_name_candidates(rejection_reason)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))
