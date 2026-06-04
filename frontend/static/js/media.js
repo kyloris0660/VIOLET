@@ -643,10 +643,10 @@ class MediaViewer extends MediaViewerBase {
             metaParts.push(chip.confidence);
         }
         const meta = metaParts.join(' / ');
-        const param = chip.search_param || (chip.type === 'source_tag' ? 'source_tag' : 'source_assertion');
-        const value = chip.search_value || '';
+        const param = 'q';
+        const value = label;
         const includeNeedsReview = Boolean(chip.include_source_needs_review);
-        const href = chip.search_url || `/?${param}=${encodeURIComponent(value)}${includeNeedsReview ? '&include_source_needs_review=1' : ''}`;
+        const href = this.buildGlobalTextSearchUrl(label, includeNeedsReview);
         const title = [
             chip.raw_input ? `raw: ${chip.raw_input}` : '',
             chip.canonical_name_key ? `key: ${chip.canonical_name_key}` : '',
@@ -667,10 +667,34 @@ class MediaViewer extends MediaViewerBase {
                 data-search-param="${this.escapeHtml(param)}"
                 data-search-value="${this.escapeHtml(value)}"
                 data-include-source-needs-review="${includeNeedsReview ? 'true' : 'false'}"
+                data-scoped-search-param="${this.escapeHtml(chip.search_param || (chip.type === 'source_tag' ? 'source_tag' : 'source_assertion'))}"
+                data-scoped-search-value="${this.escapeHtml(chip.search_value || '')}"
                 data-display-name="${this.escapeHtml(label)}">
                 <span class="source-chip-name">${this.escapeHtml(label)}</span>
             </a>
         `;
+    }
+
+    formatGlobalSearchToken(value) {
+        const text = String(value || '').trim();
+        if (!text) return '';
+        if (/\s/.test(text)) {
+            return `"${text.replace(/"/g, '')}"`;
+        }
+        return text;
+    }
+
+    buildGlobalTextSearchUrl(value, includeSourceNeedsReview = false) {
+        const token = this.formatGlobalSearchToken(value);
+        const params = new URLSearchParams();
+        if (token) {
+            params.set('q', token);
+        }
+        if (includeSourceNeedsReview) {
+            params.set('include_source_needs_review', '1');
+        }
+        const query = params.toString();
+        return query ? `/?${query}` : '/';
     }
 
     setupSourceLayerSelectionControls() {
@@ -767,7 +791,7 @@ class MediaViewer extends MediaViewerBase {
 
         selectedList.innerHTML = chips.map(chip => `
             <button type="button"
-                class="tag selected-search-chip ${chip.type === 'tag' ? 'normal-search-chip' : 'source-search-chip'}"
+                class="tag selected-search-chip ${chip.param === 'q' ? 'normal-search-chip' : 'source-search-chip'}"
                 data-remove-search-chip="${this.escapeHtml(chip.key)}"
                 title="${this.escapeHtml(this.t('media.source_layer.remove_selected', 'Remove selected chip'))}">
                 <span>${this.escapeHtml(chip.label)}</span>
@@ -792,6 +816,9 @@ class MediaViewer extends MediaViewerBase {
         Array.from(this.selectedSearchChips.values()).forEach(chip => {
             if (chip.param === 'q') {
                 normalTags.push(chip.value);
+                if (chip.includeSourceNeedsReview) {
+                    params.set('include_source_needs_review', '1');
+                }
             } else {
                 params.append(chip.param, chip.value);
                 if (chip.includeSourceNeedsReview) {
@@ -801,7 +828,7 @@ class MediaViewer extends MediaViewerBase {
         });
 
         if (normalTags.length) {
-            params.set('q', normalTags.join(' '));
+            params.set('q', normalTags.map(value => this.formatGlobalSearchToken(value)).join(' '));
         }
 
         window.location.href = `/?${params.toString()}`;

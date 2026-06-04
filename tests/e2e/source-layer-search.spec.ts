@@ -9,6 +9,10 @@ type SourceLayerFixture = {
   sourceTags: any[];
 };
 
+function expectedQToken(label: string): string {
+  return /\s/.test(label) ? `"${label.replace(/"/g, '')}"` : label;
+}
+
 async function findSourceLayerFixture(page: Page): Promise<SourceLayerFixture | null> {
   const mediaResp = await apiCall(page, '/api/media?page=1&limit=80');
   const items = Array.isArray(mediaResp.data) ? mediaResp.data : (mediaResp.data?.items || []);
@@ -68,10 +72,35 @@ test.describe('F6 source-layer media detail and search', () => {
       expect(chipText).not.toMatch(/PIXIV|DANBOORU|SAUCENAO|SEARCHABLE_ACTIVE|NEEDS_REVIEW|PROVIDER_TAG|OBSERVED|Source assertion|Source tag|来源断言|来源标签|\//i);
       await expect(firstSourceChip).toHaveAttribute('title', /provider:|key:/);
 
+      const chipSearchText = (await firstSourceChip.getAttribute('data-display-name')) || chipText;
       await page.locator('#source-layer-container .source-assertion-chip').first().click();
-      await page.waitForURL(/source_assertion=/);
+      await page.waitForURL(/q=/);
+      let url = new URL(page.url());
+      expect(url.searchParams.get('q')).toBe(expectedQToken(chipSearchText));
+      expect(url.searchParams.get('source_assertion')).toBeNull();
+      expect(url.searchParams.get('source_tag')).toBeNull();
+      const assertionResp = await apiCall(page, `/api/search?${url.searchParams.toString()}`);
+      expect(assertionResp.status).toBe(200);
+      expect(assertionResp.data.items.map((item: any) => item.id)).toContain(fixture!.mediaId);
       await expect(page.locator('#source-search-summary')).toBeVisible();
+      await expect(page.locator('#source-search-summary .normal-search-chip', { hasText: chipSearchText })).toBeVisible();
       await expect(page.locator('#source-search-summary .source-chip-marker')).toHaveCount(0);
+
+      await page.goto(`/media/${fixture!.mediaId}`);
+      await page.waitForLoadState('networkidle');
+      const firstSourceTag = page.locator('#source-layer-container .source-tag-chip').first();
+      const sourceTagText = (await firstSourceTag.innerText()).trim();
+      const sourceTagSearchText = (await firstSourceTag.getAttribute('data-display-name')) || sourceTagText;
+      await firstSourceTag.click();
+      await page.waitForURL(/q=/);
+      url = new URL(page.url());
+      expect(url.searchParams.get('q')).toBe(expectedQToken(sourceTagSearchText));
+      expect(url.searchParams.get('source_assertion')).toBeNull();
+      expect(url.searchParams.get('source_tag')).toBeNull();
+      const sourceTagResp = await apiCall(page, `/api/search?${url.searchParams.toString()}`);
+      expect(sourceTagResp.status).toBe(200);
+      expect(sourceTagResp.data.items.map((item: any) => item.id)).toContain(fixture!.mediaId);
+      await expect(page.locator('#source-search-summary .normal-search-chip', { hasText: sourceTagSearchText })).toBeVisible();
     });
 
     expect(errors).toEqual([]);
@@ -90,11 +119,12 @@ test.describe('F6 source-layer media detail and search', () => {
 
       const normalTags = page.locator('#tags-container [data-search-chip="true"][data-chip-type="tag"]');
       const sourceAssertions = page.locator('#source-layer-container [data-search-chip="true"][data-chip-type="source_assertion"]');
+      const sourceTags = page.locator('#source-layer-container [data-search-chip="true"][data-chip-type="source_tag"]');
 
       await normalTags.nth(0).click();
       await normalTags.nth(1).click();
       await sourceAssertions.nth(0).click();
-      await sourceAssertions.nth(1).click();
+      await sourceTags.nth(0).click();
 
       await expect(page.locator('#tag-select-selected-list .selected-search-chip')).toHaveCount(4);
       await page.locator('#tag-select-selected-list .selected-search-chip').first().click();
@@ -104,12 +134,20 @@ test.describe('F6 source-layer media detail and search', () => {
 
       await normalTags.nth(0).click();
       await sourceAssertions.nth(0).click();
+      const selectedNormalText = (await normalTags.nth(0).getAttribute('data-search-value')) || (await normalTags.nth(0).innerText()).trim();
+      const selectedSourceText = (await sourceAssertions.nth(0).getAttribute('data-display-name')) || (await sourceAssertions.nth(0).innerText()).trim();
       await expect(page.locator('#tag-select-search')).toBeEnabled();
       await page.locator('#tag-select-search').click();
 
-      await page.waitForURL(/source_assertion=/);
-      expect(page.url()).toContain('q=');
+      await page.waitForURL(/q=/);
+      const url = new URL(page.url());
+      expect(url.searchParams.getAll('source_assertion')).toEqual([]);
+      expect(url.searchParams.getAll('source_tag')).toEqual([]);
+      const q = url.searchParams.get('q') || '';
+      expect(q).toContain(selectedNormalText);
+      expect(q).toContain(selectedSourceText);
       await expect(page.locator('#source-search-summary')).toBeVisible();
+      await expect(page.locator('#source-search-summary .normal-search-chip', { hasText: selectedSourceText })).toBeVisible();
     });
 
     expect(errors).toEqual([]);

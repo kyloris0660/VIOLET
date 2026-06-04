@@ -135,11 +135,27 @@ class Gallery extends BaseGallery {
         return div.innerHTML;
     }
 
+    parseQueryChipTokens(query) {
+        const terms = [];
+        const pattern = /(-?)(?:([A-Za-z0-9_]+):)?("[^"]*"|[^\s"]+)/g;
+        let match;
+        while ((match = pattern.exec(query || '')) !== null) {
+            if (match[2]) continue;
+            const raw = match[0];
+            const value = match[3].replace(/^"|"$/g, '');
+            terms.push({
+                raw,
+                label: `${match[1] || ''}${value}`,
+            });
+        }
+        return terms;
+    }
+
     renderSourceSearchSummary(data, combinedQuery, sourceAssertions, sourceTags, includeSourceNeedsReview = false) {
         const panel = document.getElementById('source-search-summary');
         if (!panel) return;
 
-        const normalTags = (combinedQuery || '').split(/\s+/).map(v => v.trim()).filter(Boolean);
+        const normalTags = this.parseQueryChipTokens(combinedQuery || '');
         const sourceFilters = data?.source_filters || { source_assertions: [], source_tags: [] };
         const hasFilters = normalTags.length || sourceAssertions.length || sourceTags.length;
 
@@ -152,9 +168,9 @@ class Gallery extends BaseGallery {
         const chips = [];
         normalTags.forEach(tag => {
             chips.push({
-                label: tag,
+                label: tag.label,
                 param: 'q',
-                value: tag,
+                value: tag.raw,
                 className: 'normal-search-chip',
                 marker: window.i18n.t('common.tags')
             });
@@ -180,8 +196,8 @@ class Gallery extends BaseGallery {
         const removeUrl = (chip) => {
             const params = new URLSearchParams(window.location.search);
             if (chip.param === 'q') {
-                const nextTags = normalTags.filter(tag => tag !== chip.value);
-                if (nextTags.length) params.set('q', nextTags.join(' '));
+                const nextTags = normalTags.filter(tag => tag.raw !== chip.value);
+                if (nextTags.length) params.set('q', nextTags.map(tag => tag.raw).join(' '));
                 else params.delete('q');
             } else {
                 const values = params.getAll(chip.param).filter(value => value !== chip.value);
