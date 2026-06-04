@@ -128,6 +128,32 @@ test.describe('F6 source-layer media detail and search', () => {
     expect(apiResp.data.items.map((item: any) => item.id)).toContain(fixture!.mediaId);
   });
 
+  test('random search preserves needs-review source assertion flag', async ({ page }) => {
+    const fixture = await findSourceLayerFixture(page);
+    test.skip(!fixture, 'No media with enough source-layer chips in test DB');
+
+    const needsReviewAssertion = fixture!.sourceAssertions.find(
+      (chip: any) => chip.include_source_needs_review === true
+    );
+    test.skip(!needsReviewAssertion, 'No needs-review source assertion in test DB fixture');
+
+    const params = new URLSearchParams();
+    params.append('source_assertion', needsReviewAssertion.search_value);
+    params.set('include_source_needs_review', '1');
+
+    await page.goto(`/?${params.toString()}`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('#source-search-summary')).toBeVisible();
+
+    const requestPromise = page.waitForRequest(request => request.url().includes('/api/search/random'));
+    await page.locator('#search-random-btn').click();
+    const request = await requestPromise;
+    const randomUrl = new URL(request.url());
+
+    expect(randomUrl.searchParams.get('include_source_needs_review')).toBe('1');
+    expect(randomUrl.searchParams.getAll('source_assertion')).toContain(needsReviewAssertion.search_value);
+  });
+
   test('admin content left navigation switches visible sections', async ({ page }) => {
     await page.goto('/admin?tab=content#media-management');
     await page.waitForLoadState('networkidle');

@@ -373,6 +373,9 @@ class Blombooru {
             params.set('q', currentQuery);
             currentParams.getAll('source_assertion').forEach(value => params.append('source_assertion', value));
             currentParams.getAll('source_tag').forEach(value => params.append('source_tag', value));
+            if (currentParams.get('include_source_needs_review') === '1') {
+                params.set('include_source_needs_review', '1');
+            }
             if (rating) {
                 params.set('rating', rating);
             }

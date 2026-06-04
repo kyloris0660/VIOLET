@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -77,7 +78,14 @@ def client(db):
     return TestClient(app)
 
 
-def create_media(db, name: str, tags: list[tuple[str, TagCategoryEnum]] | None = None) -> Media:
+def create_media(
+    db,
+    name: str,
+    tags: list[tuple[str, TagCategoryEnum]] | None = None,
+    *,
+    file_size: int = 100,
+    uploaded_at: datetime | None = None,
+) -> Media:
     media = Media(
         filename=f"{name}.jpg",
         path=f"original/{name}.jpg",
@@ -85,10 +93,12 @@ def create_media(db, name: str, tags: list[tuple[str, TagCategoryEnum]] | None =
         hash=f"hash-{name}",
         file_type=FileTypeEnum.image,
         mime_type="image/jpeg",
-        file_size=100,
+        file_size=file_size,
         width=100,
         height=100,
     )
+    if uploaded_at is not None:
+        media.uploaded_at = uploaded_at
     db.add(media)
     db.flush()
 
@@ -290,6 +300,80 @@ def test_search_route_returns_source_filter_metadata(client, db):
     assert payload["source_layer"] == "unconfirmed_source_assertion"
     assert payload["source_filters"]["source_assertions"][0]["display_name"] == "Ganyu"
     assert payload["source_filters"]["source_assertions"][0]["is_entity_truth"] is False
+
+
+def test_search_route_source_filter_sort_overrides_parser_default_order(client, db):
+    media_specs = [
+        ("zeta", 200, datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        ("alpha", 300, datetime(2026, 1, 2, tzinfo=timezone.utc)),
+        ("middle", 100, datetime(2026, 1, 3, tzinfo=timezone.utc)),
+    ]
+    for name, size, uploaded_at in media_specs:
+        media = create_media(db, name, file_size=size, uploaded_at=uploaded_at)
+        record = add_source_record(db, media, "pixiv", f"pixiv:{name}")
+        add_assertion(db, record, key=f"assert:ganyu:{name}", name="Ganyu", canonical="ganyu", role="character")
+    db.commit()
+
+    source_value = encode_source_assertion_filter(
+        provider="pixiv",
+        canonical_name_key="ganyu",
+        asserted_role="character",
+    )
+
+    by_filename = client.get(f"/api/search?source_assertion={source_value}&sort=filename&order=asc")
+    assert by_filename.status_code == 200
+    assert [item["filename"] for item in by_filename.json()["items"]] == [
+        "alpha.jpg",
+        "middle.jpg",
+        "zeta.jpg",
+    ]
+
+    by_size = client.get(f"/api/search?source_assertion={source_value}&sort=file_size&order=desc")
+    assert by_size.status_code == 200
+    assert [item["filename"] for item in by_size.json()["items"]] == [
+        "alpha.jpg",
+        "zeta.jpg",
+        "middle.jpg",
+    ]
+
+    default_sort = client.get(f"/api/search?source_assertion={source_value}")
+    assert default_sort.status_code == 200
+    assert [item["filename"] for item in default_sort.json()["items"]] == [
+        "middle.jpg",
+        "alpha.jpg",
+        "zeta.jpg",
+    ]
+
+
+def test_random_search_preserves_active_only_default_and_needs_review_opt_in(client, db):
+    media = create_media(db, "needs-review")
+    record = add_source_record(db, media, "pixiv", "pixiv:needs-review")
+    add_assertion(
+        db,
+        record,
+        key="assert:needs-review",
+        name="Needs Review Character",
+        canonical="needs_review_character",
+        role="character",
+        status="needs_review",
+    )
+    db.commit()
+
+    source_value = encode_source_assertion_filter(
+        provider="pixiv",
+        canonical_name_key="needs_review_character",
+        asserted_role="character",
+    )
+
+    active_only = client.get(f"/api/search/random?source_assertion={source_value}")
+    assert active_only.status_code == 200
+    assert active_only.json() == {"id": None}
+
+    include_review = client.get(
+        f"/api/search/random?source_assertion={source_value}&include_source_needs_review=1"
+    )
+    assert include_review.status_code == 200
+    assert include_review.json() == {"id": media.id}
 
 
 def test_promotion_preview_does_not_write_truth_path(db):

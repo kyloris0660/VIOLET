@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 
 
 def _apply_search_sort(query, sort: Optional[str], order: Optional[str]):
+    query = query.order_by(None)
     sort_column = Media.uploaded_at
     if sort == "filename":
         sort_column = Media.filename
