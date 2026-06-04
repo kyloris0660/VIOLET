@@ -1006,7 +1006,7 @@ def migrate_add_external_tag_category_lookup_cache(engine, inspector):
     tag classification. It is intentionally separate from ProviderCache,
     EntityEvidence, MediaEntityCandidate, confirmed assignments, and media_tags.
     """
-    from sqlalchemy import text
+    from sqlalchemy import inspect, text
 
     tables = set(inspector.get_table_names())
     is_sqlite = engine.dialect.name == 'sqlite'
@@ -1053,6 +1053,7 @@ def migrate_add_external_tag_category_lookup_cache(engine, inspector):
                 "DROP CONSTRAINT IF EXISTS uq_external_tag_category_source_tag_id"
             ))
 
+        conn_inspector = inspect(conn)
         columns = (
             {
                 'canonical_lookup_key',
@@ -1064,7 +1065,7 @@ def migrate_add_external_tag_category_lookup_cache(engine, inspector):
             if created_table
             else {
                 column['name']
-                for column in inspector.get_columns('blombooru_external_tag_category_lookup_cache')
+                for column in conn_inspector.get_columns('blombooru_external_tag_category_lookup_cache')
             }
         )
         add_column_statements = {
