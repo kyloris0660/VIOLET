@@ -651,16 +651,17 @@ class MediaViewer extends MediaViewerBase {
             chip.raw_input ? `raw: ${chip.raw_input}` : '',
             chip.canonical_name_key ? `key: ${chip.canonical_name_key}` : '',
             chip.canonical_tag_key ? `tag: ${chip.canonical_tag_key}` : '',
+            chip.provider ? `provider: ${chip.provider}` : '',
+            chip.role ? `role: ${chip.role}` : '',
+            chip.status ? `status: ${chip.status}` : '',
             meta,
             'unconfirmed source layer'
         ].filter(Boolean).join(', ');
-        const marker = chip.type === 'source_tag'
-            ? this.t('media.source_layer.source_tag_marker', 'Source tag')
-            : this.t('media.source_layer.source_assertion_marker', 'Source assertion');
         return `
             <a href="${href}"
                 class="tag source-chip ${extraClass} status-${this.escapeHtml(String(chip.status || 'unknown')).replace(/[^a-z0-9_-]/gi, '-')}"
                 title="${this.escapeHtml(title)}"
+                aria-label="${this.escapeHtml(title)}"
                 data-search-chip="true"
                 data-chip-type="${this.escapeHtml(chip.type || 'source_assertion')}"
                 data-search-param="${this.escapeHtml(param)}"
@@ -668,8 +669,6 @@ class MediaViewer extends MediaViewerBase {
                 data-include-source-needs-review="${includeNeedsReview ? 'true' : 'false'}"
                 data-display-name="${this.escapeHtml(label)}">
                 <span class="source-chip-name">${this.escapeHtml(label)}</span>
-                <span class="source-chip-meta">${this.escapeHtml(meta)}</span>
-                <span class="source-chip-marker">${this.escapeHtml(marker)}</span>
             </a>
         `;
     }

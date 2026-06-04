@@ -26,6 +26,7 @@ from ..models import (
     SourceTagObservation,
     SourceTagRegistry,
 )
+from ..utils.cache import invalidate_cache
 
 NAME_ROLES = frozenset({"character", "person", "artist", "creator", "work_title", "unknown_name"})
 PERSON_LIKE_ROLES = frozenset({"character", "person", "artist", "creator"})
@@ -64,6 +65,16 @@ SOURCE_FIELD_SPECS = (
     ("person", "person", 0.86, True),
 )
 POPULARITY_TAG_RE = re.compile(r"(?i)(users|bookmarks|views|入り|閲覧|收藏|users入り)")
+SOURCE_SEARCH_CACHE_TABLES = {
+    "SourceMetadataRecord",
+    "SourceTagObservation",
+    "SourceTagRegistry",
+    "SourceNameObservation",
+    "SourceNameRegistry",
+    "SourceNameAliasCandidate",
+    "SourceMetadataEvidence",
+    "SourceSearchableNameAssertion",
+}
 
 
 @dataclass(frozen=True)
@@ -1527,11 +1538,24 @@ def persist_source_registry_bundle(
             summary["updated"]["SourceSearchableNameAssertion"] += 1
 
     session.commit()
+    if _source_search_cache_should_invalidate(summary):
+        invalidate_cache("search")
     summary["inserted"] = dict(summary["inserted"])
     summary["updated"] = dict(summary["updated"])
     summary["retired"] = dict(summary["retired"])
     summary["existing"] = dict(summary["existing"])
     return summary
+
+
+def _source_search_cache_should_invalidate(summary: Mapping[str, Any]) -> bool:
+    for bucket_name in ("inserted", "updated", "retired"):
+        bucket = summary.get(bucket_name)
+        if not isinstance(bucket, Mapping):
+            continue
+        for table_name in SOURCE_SEARCH_CACHE_TABLES:
+            if int(bucket.get(table_name) or 0) > 0:
+                return True
+    return False
 
 
 def _metadata_fields(draft: SourceMetadataDraft) -> dict[str, Any]:

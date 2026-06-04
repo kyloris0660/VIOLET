@@ -30,6 +30,7 @@ from app.models import (  # noqa: E402
     MediaEntityAssignment,
     MediaEntityCandidate,
     SourceMetadataRecord,
+    SourceNameAliasCandidate,
     SourceSearchableNameAssertion,
     SourceTagObservation,
     Tag,
@@ -43,8 +44,11 @@ from app.services.source_assertion_search_service import (  # noqa: E402
     encode_source_assertion_filter,
     encode_source_tag_filter,
     list_media_source_layer,
+    parse_source_assertion_filter,
+    parse_source_tag_filter,
     preview_source_assertion_promotion,
 )
+from app.services import source_metadata_registry_service as registry_service  # noqa: E402
 from app.utils.search_parser import apply_search_criteria, parse_search_query  # noqa: E402
 
 
@@ -225,6 +229,87 @@ def test_media_source_layer_api_returns_unconfirmed_chips(client, db):
     assert payload["counts"]["hidden_assertions"]["general_descriptor"] == 1
     assert payload["manual_promotion"]["preview_only"] is True
     assert payload["manual_promotion"]["truth_writes_allowed"] is False
+    assertion_filter = parse_source_assertion_filter(payload["source_assertions"][0]["search_value"])
+    source_tag_filter = parse_source_tag_filter(payload["source_tags"][0]["search_value"])
+    assert assertion_filter.assertion_key is None
+    assert assertion_filter.canonical_name_key == "ganyu"
+    assert source_tag_filter.observation_key is None
+    assert source_tag_filter.canonical_tag_key == "blue_hair"
+
+
+def test_source_assertion_chip_search_uses_canonical_key_across_media(client, db):
+    m1 = create_media(db, "m1")
+    m2 = create_media(db, "m2")
+    r1 = add_source_record(db, m1, "pixiv", "pixiv:m1")
+    r2 = add_source_record(db, m2, "pixiv", "pixiv:m2")
+    add_assertion(db, r1, key="assert:barbara:m1", name="Barbara", canonical="barbara", role="character")
+    add_assertion(db, r2, key="assert:barbara:m2", name="Barbara", canonical="barbara", role="character")
+    db.commit()
+
+    layer = client.get(f"/api/source-assertions/media/{m1.id}").json()
+    chip = layer["source_assertions"][0]
+    assert parse_source_assertion_filter(chip["search_value"]).assertion_key is None
+
+    response = client.get(f"/api/search?source_assertion={chip['search_value']}")
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {m1.id, m2.id}
+
+
+def test_source_tag_chip_search_uses_canonical_tag_across_media(client, db):
+    m1 = create_media(db, "m1")
+    m2 = create_media(db, "m2")
+    r1 = add_source_record(db, m1, "pixiv", "pixiv:m1")
+    r2 = add_source_record(db, m2, "pixiv", "pixiv:m2")
+    add_source_tag(db, r1, key="tag:ayaka:m1", raw_tag="神里綾華", canonical="神里綾華")
+    add_source_tag(db, r2, key="tag:ayaka:m2", raw_tag="神里綾華", canonical="神里綾華")
+    db.commit()
+
+    layer = client.get(f"/api/source-assertions/media/{m1.id}").json()
+    chip = layer["source_tags"][0]
+    assert parse_source_tag_filter(chip["search_value"]).observation_key is None
+
+    response = client.get(f"/api/search?source_tag={chip['search_value']}")
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {m1.id, m2.id}
+
+
+def test_text_and_normal_tag_search_soft_link_to_source_name_concept(client, db):
+    normal_media = create_media(db, "normal-barbara", [("barbara_(genshin_impact)", TagCategoryEnum.character)])
+    source_media = create_media(db, "source-barbara")
+    record = add_source_record(db, source_media, "pixiv", "pixiv:source-barbara")
+    add_assertion(db, record, key="assert:barbara:source", name="Barbara", canonical="barbara", role="character")
+    db.commit()
+
+    text_response = client.get("/api/search?q=Barbara")
+    assert text_response.status_code == 200
+    assert {item["id"] for item in text_response.json()["items"]} == {normal_media.id, source_media.id}
+
+    tag_response = client.get("/api/search?q=barbara_(genshin_impact)")
+    assert tag_response.status_code == 200
+    assert {item["id"] for item in tag_response.json()["items"]} == {normal_media.id, source_media.id}
+
+
+def test_source_name_alias_candidate_soft_links_search_terms(client, db):
+    alias_media = create_media(db, "alias-media")
+    record = add_source_record(db, alias_media, "pixiv", "pixiv:alias")
+    add_assertion(db, record, key="assert:barbara-ja", name="バーバラ", canonical="バーバラ", role="character")
+    db.add(
+        SourceNameAliasCandidate(
+            source_name_key="バーバラ",
+            target_name_key="barbara",
+            source_display_name="バーバラ",
+            target_display_name="Barbara",
+            relation_type="provider_canonical",
+            evidence_source="fixture",
+            status="candidate",
+            requires_review=True,
+        )
+    )
+    db.commit()
+
+    response = client.get("/api/search?q=Barbara")
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {alias_media.id}
 
 
 def test_mixed_normal_tag_and_source_assertion_search_is_and(db):
@@ -306,9 +391,9 @@ def test_search_route_returns_source_filter_metadata(client, db):
 
 def test_search_route_preserves_query_order_unless_external_sort_is_explicit(client, db):
     media_specs = [
-        ("zeta", 200, 100, 300, datetime(2026, 1, 1, tzinfo=timezone.utc)),
-        ("alpha", 300, 100, 100, datetime(2026, 1, 2, tzinfo=timezone.utc)),
-        ("middle", 100, 300, 100, datetime(2026, 1, 3, tzinfo=timezone.utc)),
+        ("zeta", 200, 100, 300, datetime(2026, 1, 3, tzinfo=timezone.utc)),
+        ("alpha", 300, 100, 100, datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        ("middle", 100, 300, 100, datetime(2026, 1, 2, tzinfo=timezone.utc)),
     ]
     for name, size, width, height, uploaded_at in media_specs:
         media = create_media(db, name, file_size=size, width=width, height=height, uploaded_at=uploaded_at)
@@ -362,6 +447,16 @@ def test_search_route_preserves_query_order_unless_external_sort_is_explicit(cli
         "middle.jpg",
         "alpha.jpg",
         "zeta.jpg",
+    ]
+
+    source_gallery_default_sort = client.get(
+        f"/api/search?source_assertion={source_value}&sort=uploaded_at&order=desc"
+    )
+    assert source_gallery_default_sort.status_code == 200
+    assert [item["filename"] for item in source_gallery_default_sort.json()["items"]] == [
+        "zeta.jpg",
+        "middle.jpg",
+        "alpha.jpg",
     ]
 
 
@@ -430,3 +525,23 @@ def test_list_media_source_layer_does_not_localize_or_mutate_translations(db):
 
     assert payload["source_assertions"][0]["display_name"] == "甘雨"
     assert after == before
+
+
+def test_source_registry_persist_invalidates_search_cache(monkeypatch, db):
+    calls = []
+    monkeypatch.setattr(registry_service, "invalidate_cache", lambda *prefixes: calls.append(prefixes))
+
+    media = create_media(db, "cache-media")
+    bundle = registry_service.build_source_registry_bundle([
+        {
+            "provider": "pixiv",
+            "provider_record_key": "pixiv:cache-media",
+            "media_id": media.id,
+            "tags": ["Barbara"],
+            "tag_categories": {"Barbara": "character"},
+        }
+    ])
+
+    registry_service.persist_source_registry_bundle(db, bundle, apply=True)
+
+    assert ("search",) in calls

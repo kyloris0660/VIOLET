@@ -11,12 +11,13 @@ from ..models import Media
 from ..schemas import MediaResponse
 from ..services.source_assertion_search_service import (
     apply_source_layer_filters,
+    apply_source_soft_search,
     has_source_layer_filters,
     resolve_source_filter_labels,
 )
 from ..utils.cache import cache_response
 from ..utils.media_helpers import VALID_CONTENT_CLASSES, apply_content_class_filter
-from ..utils.search_parser import apply_search_criteria, parse_search_query
+from ..utils.search_parser import parse_search_query
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -85,12 +86,18 @@ async def search_media(
         parsed['meta']['rating'].append({'value': rating_value, 'negated': False})
 
     # Apply all criteria
-    query = apply_search_criteria(query, parsed, db)
+    query = apply_source_soft_search(
+        query,
+        parsed,
+        db,
+        include_needs_review=include_source_needs_review,
+    )
     query = apply_source_layer_filters(
         query,
         source_assertions=source_assertion,
         source_tags=source_tag,
         include_needs_review=include_source_needs_review,
+        db=db,
     )
     query = apply_content_class_filter(query, content_class)
     if _should_apply_external_sort(request, parsed, sort, order):
@@ -142,12 +149,18 @@ async def get_random_media(
             parsed['meta']['rating'] = []
         parsed['meta']['rating'].append({'value': rating_value, 'negated': False})
 
-    query = apply_search_criteria(query, parsed, db)
+    query = apply_source_soft_search(
+        query,
+        parsed,
+        db,
+        include_needs_review=include_source_needs_review,
+    )
     query = apply_source_layer_filters(
         query,
         source_assertions=source_assertion,
         source_tags=source_tag,
         include_needs_review=include_source_needs_review,
+        db=db,
     )
     total = query.count()
     

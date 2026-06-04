@@ -83,7 +83,7 @@ class Gallery extends BaseGallery {
             const currentSort = this.getSortValue();
             const currentOrder = this.getOrderValue();
             const isDefaultSort = currentSort === this.options.defaultSort && currentOrder === this.options.defaultOrder;
-            if (endpoint !== '/api/search' || hasExplicitSortParams || !isDefaultSort) {
+            if (endpoint !== '/api/search' || hasExplicitSortParams || !isDefaultSort || hasSourceFilters) {
                 apiParams.set('sort', currentSort);
                 apiParams.set('order', currentOrder);
             }
@@ -165,7 +165,6 @@ class Gallery extends BaseGallery {
                 param: 'source_assertion',
                 value: chip.search_value,
                 className: 'source-search-chip',
-                marker: window.i18n.t('media.source_layer.source_assertion_marker'),
                 includeSourceNeedsReview: Boolean(chip.include_source_needs_review)
             });
         });
@@ -175,7 +174,6 @@ class Gallery extends BaseGallery {
                 param: 'source_tag',
                 value: chip.search_value,
                 className: 'source-search-chip',
-                marker: window.i18n.t('media.source_layer.source_tag_marker')
             });
         });
 
@@ -220,7 +218,6 @@ class Gallery extends BaseGallery {
                 ${chips.map(chip => `
                     <a href="${removeUrl(chip)}" class="tag selected-search-chip ${chip.className}" title="${this.escapeHtml(window.i18n.t('media.source_layer.remove_selected'))}">
                         <span>${this.escapeHtml(chip.label)}</span>
-                        <span class="source-chip-marker">${this.escapeHtml(chip.marker)}</span>
                         <span class="selected-search-chip-x">x</span>
                     </a>
                 `).join('')}

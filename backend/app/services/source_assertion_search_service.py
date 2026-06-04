@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
@@ -18,9 +19,14 @@ from sqlalchemy.orm import Query, Session, aliased
 from ..models import (
     Media,
     SourceMetadataRecord,
+    SourceNameAliasCandidate,
+    SourceNameObservation,
+    SourceNameRegistry,
     SourceSearchableNameAssertion,
     SourceTagObservation,
+    Tag,
 )
+from .source_metadata_registry_service import canonical_source_key, normalize_source_text
 
 ACTIVE_ASSERTION_STATUSES = ("searchable_active",)
 REVIEW_ASSERTION_STATUSES = ("needs_review",)
@@ -34,6 +40,15 @@ DEFAULT_ASSERTION_ROLES = (
 )
 EXCLUDED_DEFAULT_ASSERTION_ROLES = ("general_descriptor", "popularity_marker", "unknown")
 ACTIVE_SOURCE_TAG_STATUSES = ("observed",)
+ACTIVE_NAME_OBSERVATION_STATUSES = ("observed",)
+SOFT_ALIAS_RELATION_TYPES = (
+    "curated_alias",
+    "provider_canonical",
+    "same_as",
+    "alias",
+    "translation_alias",
+)
+INACTIVE_ALIAS_STATUSES = ("rejected", "superseded")
 FORBIDDEN_TRUTH_PATHS = (
     "Entity",
     "EntityAlias",
@@ -85,6 +100,158 @@ def _decode_filter_payload(value: str) -> dict[str, Any] | None:
         return None
 
 
+def _source_concept_key_candidates(value: str | None) -> set[str]:
+    normalized = normalize_source_text(value)
+    if not normalized:
+        return set()
+
+    variants = {
+        normalized,
+        normalized.replace("_", " "),
+        normalized.replace("_(", "("),
+    }
+    keys = {canonical_source_key(variant) for variant in variants if variant}
+
+    parenthetical = re.match(r"^(.+?)_?\(([^()]+)\)$", normalized.replace("（", "(").replace("）", ")"))
+    if parenthetical:
+        # Danbooru-style character tags such as barbara_(genshin_impact)
+        # should bridge to the character/person key, not to the work key.
+        keys.add(canonical_source_key(parenthetical.group(1)))
+
+    return {key for key in keys if key}
+
+
+def _expand_source_name_keys(db: Session | None, keys: set[str]) -> set[str]:
+    if not keys or db is None:
+        return keys
+
+    expanded = set(keys)
+    registry_rows = (
+        db.query(SourceNameRegistry)
+        .filter(SourceNameRegistry.canonical_name_key.in_(expanded))
+        .all()
+    )
+    expanded.update(row.canonical_name_key for row in registry_rows)
+
+    for _ in range(2):
+        alias_rows = (
+            db.query(SourceNameAliasCandidate)
+            .filter(
+                SourceNameAliasCandidate.relation_type.in_(SOFT_ALIAS_RELATION_TYPES),
+                ~SourceNameAliasCandidate.status.in_(INACTIVE_ALIAS_STATUSES),
+                or_(
+                    SourceNameAliasCandidate.source_name_key.in_(expanded),
+                    SourceNameAliasCandidate.target_name_key.in_(expanded),
+                ),
+            )
+            .all()
+        )
+        before = len(expanded)
+        for row in alias_rows:
+            expanded.add(row.source_name_key)
+            expanded.add(row.target_name_key)
+        if len(expanded) == before:
+            break
+
+    return {key for key in expanded if key}
+
+
+def _source_name_keys_for_text(db: Session | None, value: str | None) -> set[str]:
+    keys = _source_concept_key_candidates(value)
+    if not keys:
+        return set()
+    return _expand_source_name_keys(db, keys)
+
+
+def _tag_names_for_source_keys(db: Session | None, keys: set[str]) -> set[str]:
+    if not keys or db is None:
+        return set()
+
+    conditions = [Tag.name.in_(keys)]
+    for key in sorted(keys):
+        if key and re.match(r"^[a-z0-9_]+$", key):
+            conditions.append(Tag.name.like(f"{key}_(%"))
+
+    rows = db.query(Tag.name).filter(or_(*conditions)).all()
+    return {row[0] for row in rows}
+
+
+def _media_has_tag_condition(tag_names: set[str]):
+    if not tag_names:
+        return None
+    return Media.tags.any(Tag.name.in_(sorted(tag_names)))
+
+
+def _source_name_condition(
+    keys: set[str],
+    *,
+    provider: str | None = None,
+    role: str | None = None,
+    include_needs_review: bool = False,
+):
+    if not keys:
+        return None
+
+    assertion = aliased(SourceSearchableNameAssertion)
+    assertion_record = aliased(SourceMetadataRecord)
+    assertion_conditions = [
+        assertion.source_metadata_record_id == assertion_record.id,
+        assertion_record.media_id == Media.id,
+        assertion.status.in_(_assertion_statuses(include_needs_review)),
+        assertion.canonical_name_key.in_(sorted(keys)),
+    ]
+    if provider:
+        assertion_conditions.append(assertion.provider == provider)
+    if role:
+        assertion_conditions.append(assertion.asserted_role == role)
+
+    name = aliased(SourceNameObservation)
+    name_record = aliased(SourceMetadataRecord)
+    name_conditions = [
+        name.source_metadata_record_id == name_record.id,
+        name_record.media_id == Media.id,
+        name.status.in_(ACTIVE_NAME_OBSERVATION_STATUSES),
+        name.canonical_name_key.in_(sorted(keys)),
+    ]
+    if not include_needs_review:
+        name_conditions.append(name.requires_review == False)
+    if provider:
+        name_conditions.append(name.provider == provider)
+    if role:
+        name_conditions.append(name.name_role == role)
+
+    return or_(
+        exists().where(and_(*assertion_conditions)),
+        exists().where(and_(*name_conditions)),
+    )
+
+
+def _source_tag_condition(keys: set[str], *, provider: str | None = None):
+    if not keys:
+        return None
+
+    source_tag = aliased(SourceTagObservation)
+    record = aliased(SourceMetadataRecord)
+    conditions = [
+        source_tag.source_metadata_record_id == record.id,
+        record.media_id == Media.id,
+        source_tag.status.in_(ACTIVE_SOURCE_TAG_STATUSES),
+        source_tag.canonical_tag_key.in_(sorted(keys)),
+    ]
+    if provider:
+        conditions.append(source_tag.provider == provider)
+    return exists().where(and_(*conditions))
+
+
+def _or_non_empty(conditions: Iterable[Any]):
+    present = [condition for condition in conditions if condition is not None]
+    if not present:
+        return None
+    if len(present) == 1:
+        return present[0]
+    return or_(*present)
+
+
 def encode_source_assertion_filter(
     *,
     provider: str,
@@ -130,10 +297,10 @@ def parse_source_assertion_filter(value: str) -> SourceAssertionFilter:
             normalized_input=payload.get("normalized_input") or None,
         )
 
+    normalized = normalize_source_text(value)
     return SourceAssertionFilter(
-        assertion_key=value,
-        canonical_name_key=value,
-        normalized_input=value.lower(),
+        canonical_name_key=canonical_source_key(normalized),
+        normalized_input=normalized.casefold(),
     )
 
 
@@ -147,10 +314,10 @@ def parse_source_tag_filter(value: str) -> SourceTagFilter:
             normalized_tag=payload.get("normalized_tag") or None,
         )
 
+    normalized = normalize_source_text(value)
     return SourceTagFilter(
-        observation_key=value,
-        canonical_tag_key=value,
-        normalized_tag=value.lower(),
+        canonical_tag_key=canonical_source_key(normalized),
+        normalized_tag=normalized.casefold(),
     )
 
 
@@ -166,7 +333,6 @@ def _assertion_chip(row: SourceSearchableNameAssertion, record: SourceMetadataRe
         provider=row.provider,
         canonical_name_key=row.canonical_name_key,
         asserted_role=row.asserted_role,
-        assertion_key=row.assertion_key,
     )
     include_needs_review = row.status in REVIEW_ASSERTION_STATUSES
     search_url = f"/?source_assertion={search_value}"
@@ -207,7 +373,6 @@ def _source_tag_chip(row: SourceTagObservation, record: SourceMetadataRecord | N
     search_value = encode_source_tag_filter(
         provider=row.provider,
         canonical_tag_key=row.canonical_tag_key,
-        observation_key=row.observation_key,
     )
     return {
         "type": "source_tag",
@@ -231,6 +396,48 @@ def _source_tag_chip(row: SourceTagObservation, record: SourceMetadataRecord | N
         "status": row.status,
         "confidence": None,
         "confidence_score": row.confidence,
+        "source_metadata_record_id": row.source_metadata_record_id,
+        "source_url": record.source_url if record else None,
+        "source_title": record.title if record else None,
+        "source_artist_name": record.artist_name if record else None,
+    }
+
+
+def _name_observation_chip(row: SourceNameObservation, record: SourceMetadataRecord | None) -> dict[str, Any]:
+    display_name = row.raw_name
+    search_value = encode_source_assertion_filter(
+        provider=row.provider,
+        canonical_name_key=row.canonical_name_key,
+        asserted_role=row.name_role,
+    )
+    include_needs_review = bool(row.requires_review)
+    search_url = f"/?source_assertion={search_value}"
+    if include_needs_review:
+        search_url += "&include_source_needs_review=1"
+    return {
+        "type": "source_assertion",
+        "layer": "source_name_observation",
+        "marker": "source assertion",
+        "label_zh": "来源断言",
+        "unconfirmed_label_zh": "未确认实体",
+        "is_entity_truth": False,
+        "is_confirmed_entity": False,
+        "search_param": "source_assertion",
+        "search_value": search_value,
+        "search_url": search_url,
+        "include_source_needs_review": include_needs_review,
+        "id": row.id,
+        "assertion_key": None,
+        "display_name": display_name,
+        "raw_input": row.raw_name,
+        "normalized_input": row.normalized_name,
+        "canonical_name_key": row.canonical_name_key,
+        "role": row.name_role,
+        "provider": row.provider,
+        "status": "needs_review" if row.requires_review else row.status,
+        "confidence": None,
+        "confidence_score": row.confidence,
+        "requires_review": bool(row.requires_review),
         "source_metadata_record_id": row.source_metadata_record_id,
         "source_url": record.source_url if record else None,
         "source_title": record.title if record else None,
@@ -274,6 +481,22 @@ def list_media_source_layer(db: Session, media_id: int, source_tag_limit: int = 
         .all()
     )
 
+    name_rows = (
+        db.query(SourceNameObservation, SourceMetadataRecord)
+        .join(SourceMetadataRecord, SourceNameObservation.source_metadata_record_id == SourceMetadataRecord.id)
+        .filter(
+            SourceMetadataRecord.media_id == media_id,
+            SourceNameObservation.status.in_(ACTIVE_NAME_OBSERVATION_STATUSES),
+            SourceNameObservation.name_role.in_(DEFAULT_ASSERTION_ROLES),
+        )
+        .order_by(
+            SourceNameObservation.name_role.asc(),
+            SourceNameObservation.provider.asc(),
+            SourceNameObservation.raw_name.asc(),
+        )
+        .all()
+    )
+
     active_assertions: list[dict[str, Any]] = []
     needs_review_assertions: list[dict[str, Any]] = []
     hidden_assertion_counts: dict[str, int] = {}
@@ -291,6 +514,22 @@ def list_media_source_layer(db: Session, media_id: int, source_tag_limit: int = 
             needs_review_assertions.append(chip)
         else:
             hidden_assertion_counts[assertion.status] = hidden_assertion_counts.get(assertion.status, 0) + 1
+
+    represented_name_keys = {
+        (chip["provider"], chip["canonical_name_key"], chip["role"])
+        for chip in active_assertions + needs_review_assertions
+        if chip.get("canonical_name_key") and chip.get("role")
+    }
+    for name, record in name_rows:
+        key = (name.provider, name.canonical_name_key, name.name_role)
+        if key in represented_name_keys:
+            continue
+        chip = _name_observation_chip(name, record)
+        if name.requires_review:
+            needs_review_assertions.append(chip)
+        else:
+            active_assertions.append(chip)
+        represented_name_keys.add(key)
 
     source_tags = [_source_tag_chip(tag, record) for tag, record in source_tag_rows]
 
@@ -320,68 +559,46 @@ def _apply_assertion_filter(
     criteria: SourceAssertionFilter,
     *,
     include_needs_review: bool,
+    db: Session | None = None,
 ) -> Query:
-    assertion = aliased(SourceSearchableNameAssertion)
-    record = aliased(SourceMetadataRecord)
+    db = db or query.session
+    keys = set()
+    keys.update(_source_name_keys_for_text(db, criteria.canonical_name_key))
+    keys.update(_source_name_keys_for_text(db, criteria.normalized_input))
+    if not keys and criteria.assertion_key:
+        keys.update(_source_name_keys_for_text(db, criteria.assertion_key))
 
-    conditions = [
-        assertion.source_metadata_record_id == record.id,
-        record.media_id == Media.id,
-        assertion.status.in_(_assertion_statuses(include_needs_review)),
-    ]
-    if criteria.provider:
-        conditions.append(assertion.provider == criteria.provider)
-    if criteria.asserted_role:
-        conditions.append(assertion.asserted_role == criteria.asserted_role)
-    if criteria.assertion_key and not criteria.canonical_name_key:
-        conditions.append(assertion.assertion_key == criteria.assertion_key)
-    elif criteria.assertion_key and criteria.canonical_name_key == criteria.assertion_key:
-        conditions.append(
-            or_(
-                assertion.assertion_key == criteria.assertion_key,
-                assertion.canonical_name_key == criteria.canonical_name_key,
-                assertion.normalized_input == criteria.normalized_input,
-            )
-        )
-    elif criteria.canonical_name_key:
-        conditions.append(assertion.canonical_name_key == criteria.canonical_name_key)
-    elif criteria.normalized_input:
-        conditions.append(assertion.normalized_input == criteria.normalized_input)
-    else:
+    condition = _source_name_condition(
+        keys,
+        provider=criteria.provider,
+        role=criteria.asserted_role,
+        include_needs_review=include_needs_review,
+    )
+    if condition is None:
         return query.filter(false())
 
-    return query.filter(exists().where(and_(*conditions)))
+    return query.filter(condition)
 
 
-def _apply_source_tag_filter(query: Query, criteria: SourceTagFilter) -> Query:
-    source_tag = aliased(SourceTagObservation)
-    record = aliased(SourceMetadataRecord)
+def _apply_source_tag_filter(query: Query, criteria: SourceTagFilter, *, db: Session | None = None) -> Query:
+    db = db or query.session
+    tag_keys = set()
+    tag_keys.update(_source_concept_key_candidates(criteria.canonical_tag_key))
+    tag_keys.update(_source_concept_key_candidates(criteria.normalized_tag))
+    if not tag_keys and criteria.observation_key:
+        tag_keys.update(_source_concept_key_candidates(criteria.observation_key))
 
-    conditions = [
-        source_tag.source_metadata_record_id == record.id,
-        record.media_id == Media.id,
-        source_tag.status.in_(ACTIVE_SOURCE_TAG_STATUSES),
-    ]
-    if criteria.provider:
-        conditions.append(source_tag.provider == criteria.provider)
-    if criteria.observation_key and not criteria.canonical_tag_key:
-        conditions.append(source_tag.observation_key == criteria.observation_key)
-    elif criteria.observation_key and criteria.canonical_tag_key == criteria.observation_key:
-        conditions.append(
-            or_(
-                source_tag.observation_key == criteria.observation_key,
-                source_tag.canonical_tag_key == criteria.canonical_tag_key,
-                source_tag.normalized_tag == criteria.normalized_tag,
-            )
+    name_keys = _expand_source_name_keys(db, set(tag_keys))
+    condition = _or_non_empty(
+        (
+            _source_tag_condition(tag_keys, provider=criteria.provider),
+            _source_name_condition(name_keys, provider=criteria.provider, include_needs_review=False),
         )
-    elif criteria.canonical_tag_key:
-        conditions.append(source_tag.canonical_tag_key == criteria.canonical_tag_key)
-    elif criteria.normalized_tag:
-        conditions.append(source_tag.normalized_tag == criteria.normalized_tag)
-    else:
+    )
+    if condition is None:
         return query.filter(false())
 
-    return query.filter(exists().where(and_(*conditions)))
+    return query.filter(condition)
 
 
 def apply_source_layer_filters(
@@ -390,6 +607,7 @@ def apply_source_layer_filters(
     source_tags: Sequence[str] | None = None,
     *,
     include_needs_review: bool = False,
+    db: Session | None = None,
 ) -> Query:
     """Apply source-layer filters as AND/intersection constraints."""
 
@@ -398,12 +616,76 @@ def apply_source_layer_filters(
             query,
             parse_source_assertion_filter(value),
             include_needs_review=include_needs_review,
+            db=db,
         )
 
     for value in _clean_values(source_tags):
-        query = _apply_source_tag_filter(query, parse_source_tag_filter(value))
+        query = _apply_source_tag_filter(query, parse_source_tag_filter(value), db=db)
 
     return query
+
+
+def apply_source_soft_search(
+    query: Query,
+    parsed_query: dict[str, Any],
+    db: Session,
+    *,
+    include_needs_review: bool = False,
+):
+    """Apply ordinary query terms with read-time source concept expansion.
+
+    This keeps normal tag search behavior, but a name-like term may also match
+    source assertion/name/source-tag rows and compatible Danbooru-style tags.
+    It is read-only and does not create Entity, aliases, media_tags, or truth.
+    """
+
+    from ..utils.search_parser import apply_search_criteria
+
+    parsed = {
+        "tags": {
+            "include": list(parsed_query.get("tags", {}).get("include", [])),
+            "exclude": list(parsed_query.get("tags", {}).get("exclude", [])),
+            "wildcards": list(parsed_query.get("tags", {}).get("wildcards", [])),
+        },
+        "meta": {key: list(value) for key, value in (parsed_query.get("meta") or {}).items()},
+    }
+
+    remaining_include: list[str] = []
+    for term in parsed["tags"]["include"]:
+        condition = _soft_search_condition_for_term(db, term, include_needs_review=include_needs_review)
+        if condition is None:
+            remaining_include.append(term)
+        else:
+            query = query.filter(condition)
+
+    parsed["tags"]["include"] = remaining_include
+    return apply_search_criteria(query, parsed, db)
+
+
+def _soft_search_condition_for_term(db: Session, term: str, *, include_needs_review: bool = False):
+    normalized = normalize_source_text(term)
+    if not normalized:
+        return None
+
+    exact_tag_names = {
+        row[0]
+        for row in db.query(Tag.name)
+        .filter(Tag.name == normalized.casefold())
+        .all()
+    }
+    source_keys = _source_name_keys_for_text(db, normalized)
+    source_keys.update(_source_concept_key_candidates(normalized))
+    linked_tag_names = _tag_names_for_source_keys(db, source_keys)
+    tag_keys = _source_concept_key_candidates(normalized)
+
+    condition = _or_non_empty(
+        (
+            _media_has_tag_condition(exact_tag_names | linked_tag_names),
+            _source_name_condition(source_keys, include_needs_review=include_needs_review),
+            _source_tag_condition(tag_keys),
+        )
+    )
+    return condition
 
 
 def _clean_values(values: Sequence[str] | None) -> list[str]:

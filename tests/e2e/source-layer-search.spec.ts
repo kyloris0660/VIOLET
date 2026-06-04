@@ -60,11 +60,18 @@ test.describe('F6 source-layer media detail and search', () => {
       await expect(page.locator('#tags-container')).toBeVisible();
       await expect(page.locator('#source-layer-container')).toBeVisible();
       await expect(page.locator('#source-layer-container .source-assertion-chip').first()).toBeVisible();
-      await expect(page.locator('#source-layer-container .source-chip-marker').first()).toBeVisible();
+      await expect(page.locator('#source-layer-container .source-chip-marker')).toHaveCount(0);
+      await expect(page.locator('#source-layer-container .source-chip-meta')).toHaveCount(0);
+
+      const firstSourceChip = page.locator('#source-layer-container .source-assertion-chip').first();
+      const chipText = (await firstSourceChip.innerText()).trim();
+      expect(chipText).not.toMatch(/PIXIV|DANBOORU|SAUCENAO|SEARCHABLE_ACTIVE|NEEDS_REVIEW|PROVIDER_TAG|OBSERVED|Source assertion|Source tag|来源断言|来源标签|\//i);
+      await expect(firstSourceChip).toHaveAttribute('title', /provider:|key:/);
 
       await page.locator('#source-layer-container .source-assertion-chip').first().click();
       await page.waitForURL(/source_assertion=/);
       await expect(page.locator('#source-search-summary')).toBeVisible();
+      await expect(page.locator('#source-search-summary .source-chip-marker')).toHaveCount(0);
     });
 
     expect(errors).toEqual([]);
@@ -126,6 +133,24 @@ test.describe('F6 source-layer media detail and search', () => {
     expect(apiResp.status).toBe(200);
     expect(apiResp.data.total).toBeGreaterThanOrEqual(1);
     expect(apiResp.data.items.map((item: any) => item.id)).toContain(fixture!.mediaId);
+  });
+
+  test('source-only gallery search sends the displayed default sort', async ({ page }) => {
+    const fixture = await findSourceLayerFixture(page);
+    test.skip(!fixture, 'No media with enough source-layer chips in test DB');
+
+    const params = new URLSearchParams();
+    params.append('source_assertion', fixture!.sourceAssertions[0].search_value);
+
+    const requestPromise = page.waitForRequest(request =>
+      request.url().includes('/api/search') && request.url().includes('source_assertion=')
+    );
+    await page.goto(`/?${params.toString()}`);
+    const request = await requestPromise;
+    const url = new URL(request.url());
+
+    expect(url.searchParams.get('sort')).toBe('uploaded_at');
+    expect(url.searchParams.get('order')).toBe('desc');
   });
 
   test('random search preserves needs-review source assertion flag', async ({ page }) => {
