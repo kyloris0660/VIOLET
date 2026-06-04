@@ -1240,6 +1240,8 @@
             "active_search_note": "对已确认标签和未确认来源层 chip 执行 AND / 交集搜索。",
             "active_search_title": "当前来源层搜索",
             "clear_selected": "清空",
+            "empty_note": "当前数据库中没有与此媒体关联的 provider/source 来源断言。",
+            "empty_title": "此媒体暂无来源断言",
             "label": "来源断言",
             "needs_review": "需要复核",
             "no_selected": "尚未选择 chip。",

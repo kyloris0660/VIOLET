@@ -1240,6 +1240,8 @@
             "active_search_note": "AND search across confirmed tags and unconfirmed source-layer chips.",
             "active_search_title": "Active source-layer search",
             "clear_selected": "Clear",
+            "empty_note": "This media has no provider/source assertion rows in the current database.",
+            "empty_title": "No source assertions for this media",
             "label": "Source assertion",
             "needs_review": "Needs review",
             "no_selected": "No selected chips yet.",

@@ -295,6 +295,15 @@ span.checked:hover {
     margin-bottom: 0.75rem;
 }
 
+.source-layer-empty {
+    border: 1px dashed var(--border);
+    border-radius: 0.45rem;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
 .source-chip {
     display: inline-flex;
     align-items: center;

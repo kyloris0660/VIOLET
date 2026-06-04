@@ -569,12 +569,6 @@ class MediaViewer extends MediaViewerBase {
         const sourceTags = sourceLayer?.source_tags || [];
         const hasSourceLayer = assertions.length || reviewAssertions.length || sourceTags.length;
 
-        if (!hasSourceLayer) {
-            container.innerHTML = '';
-            container.style.display = 'none';
-            return;
-        }
-
         const sourceAssertionTitle = this.t('media.source_layer.source_assertions', 'Source assertions');
         const sourceTagTitle = this.t('media.source_layer.source_tags', 'Source tags');
         const unconfirmed = this.t('media.source_layer.unconfirmed_entity', 'Unconfirmed entity');
@@ -591,6 +585,18 @@ class MediaViewer extends MediaViewerBase {
             </div>
             <p class="source-layer-note">${this.escapeHtml(this.t('media.source_layer.note', 'Provider/source chips are searchable but are not confirmed Entity truth.'))}</p>
         `;
+
+        if (!hasSourceLayer) {
+            html += `
+                <div class="source-layer-empty">
+                    <div class="font-bold">${this.escapeHtml(this.t('media.source_layer.empty_title', 'No source assertions for this media'))}</div>
+                    <div class="text-secondary">${this.escapeHtml(this.t('media.source_layer.empty_note', 'This media has no provider/source assertion rows in the current database.'))}</div>
+                </div>
+            `;
+            container.innerHTML = html;
+            container.style.display = 'block';
+            return;
+        }
 
         if (assertions.length) {
             html += `<div class="tag-category source-layer-group"><h4>${this.escapeHtml(sourceAssertionTitle)}</h4><div class="tag-list">`;
