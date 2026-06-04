@@ -4,27 +4,36 @@ import { loginAsAdmin, switchToTab } from './helpers/auth';
 test.describe('Admin Content Tab', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
-    await switchToTab(page, '内容');
+    await switchToTab(page, 'content');
   });
 
-  test('all content sections are visible', async ({ page }) => {
+  async function openContentSection(page, id: string) {
+    await page.locator(`#content-section-nav a[href="#${id}"]`).click();
+    await expect(page.locator(`#${id}`)).toBeVisible();
+  }
+
+  test('content sections are reachable from left navigation', async ({ page }) => {
     const sections = [
-      '媒体管理',
-      '本地图库扫描',
-      'AI 标签审核',
-      'AI 打标任务',
-      '标签本地化',
-      '标签管理',
-      '内容分类',
+      'media-management',
+      'local-library-scan',
+      'ai-tag-review-section',
+      'entity-metadata-section',
+      'ai-tagging-jobs-section',
+      'tag-localization-section',
+      'tags-management-section',
+      'tag-implications-section',
+      'content-classification-section',
+      'albums-management-section',
     ];
-    for (const section of sections) {
-      await expect(
-        page.locator(`h2:has-text("${section}"), h3:has-text("${section}")`).first()
-      ).toBeVisible();
+
+    await expect(page.locator('#content-section-nav')).toBeVisible();
+    for (const id of sections) {
+      await openContentSection(page, id);
     }
   });
 
   test('thumbnail buttons have visible text', async ({ page }) => {
+    await openContentSection(page, 'media-management');
     const missingBtn = page.locator('#generate-missing-thumbnails-btn');
     const regenBtn = page.locator('#regenerate-all-thumbnails-btn');
 
@@ -38,14 +47,15 @@ test.describe('Admin Content Tab', () => {
   });
 
   test('upload area displays correctly', async ({ page }) => {
-    await expect(
-      page.locator('text=将媒体文件拖放到此处或点击浏览').first()
-    ).toBeVisible();
+    await openContentSection(page, 'media-management');
+    await expect(page.locator('#upload-area')).toBeVisible();
+    await expect(page.locator('#file-input')).toBeAttached();
   });
 
   test('booru import form is visible', async ({ page }) => {
-    await expect(page.locator('input[placeholder*="URL"]').first()).toBeVisible();
-    await expect(page.locator('button:has-text("获取")').first()).toBeVisible();
+    await openContentSection(page, 'media-management');
+    await expect(page.locator('#booru-url-input')).toBeVisible();
+    await expect(page.locator('#booru-fetch-btn')).toBeVisible();
   });
 
   test('no undefined or [object Object] in page content', async ({ page }) => {

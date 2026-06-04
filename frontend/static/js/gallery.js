@@ -35,8 +35,6 @@ class Gallery extends BaseGallery {
 
             // 1. Basic pagination and filters
             apiParams.set('page', this.currentPage);
-            apiParams.set('sort', this.getSortValue());
-            apiParams.set('order', this.getOrderValue());
 
             // 2. Content class filter
             const contentClassMap = {
@@ -55,6 +53,11 @@ class Gallery extends BaseGallery {
             // 3. Handle Search vs Browse
             const urlParams = new URLSearchParams(window.location.search);
             const searchQuery = urlParams.get('q');
+            const sourceAssertions = urlParams.getAll('source_assertion').filter(Boolean);
+            const sourceTags = urlParams.getAll('source_tag').filter(Boolean);
+            const includeSourceNeedsReview = urlParams.get('include_source_needs_review') === '1';
+            const hasSourceFilters = sourceAssertions.length > 0 || sourceTags.length > 0;
+            const hasExplicitSortParams = urlParams.has('sort') || urlParams.has('order');
 
             let endpoint = '/api/media/';
 
@@ -65,9 +68,24 @@ class Gallery extends BaseGallery {
                 combinedQuery = combinedQuery ? `${combinedQuery} ${this.currentCustomFilter}` : this.currentCustomFilter;
             }
 
-            if (combinedQuery) {
+            if (combinedQuery || hasSourceFilters) {
                 endpoint = '/api/search';
-                apiParams.set('q', combinedQuery);
+                if (combinedQuery) {
+                    apiParams.set('q', combinedQuery);
+                }
+                sourceAssertions.forEach(value => apiParams.append('source_assertion', value));
+                sourceTags.forEach(value => apiParams.append('source_tag', value));
+                if (includeSourceNeedsReview) {
+                    apiParams.set('include_source_needs_review', '1');
+                }
+            }
+
+            const currentSort = this.getSortValue();
+            const currentOrder = this.getOrderValue();
+            const isDefaultSort = currentSort === this.options.defaultSort && currentOrder === this.options.defaultOrder;
+            if (endpoint !== '/api/search' || hasExplicitSortParams || !isDefaultSort || hasSourceFilters) {
+                apiParams.set('sort', currentSort);
+                apiParams.set('order', currentOrder);
             }
 
             console.log('Loading gallery:', endpoint, apiParams.toString());
@@ -83,6 +101,7 @@ class Gallery extends BaseGallery {
 
             const data = await response.json();
             this.totalPages = data.pages || 1;
+            this.renderSourceSearchSummary(data, combinedQuery, sourceAssertions, sourceTags, includeSourceNeedsReview);
 
             if (data.items && data.items.length > 0) {
                 this.processTagCounts(data.items);
@@ -90,7 +109,7 @@ class Gallery extends BaseGallery {
                 await this.renderPopularTags();
                 this.renderPagination();
             } else if (this.currentPage === 1) {
-                this.showEmptyState(searchQuery ? window.i18n.t('gallery.no_results_found') : window.i18n.t('gallery.no_media_found'));
+                this.showEmptyState((searchQuery || hasSourceFilters) ? window.i18n.t('gallery.no_results_found') : window.i18n.t('gallery.no_media_found'));
             }
 
         } catch (error) {
@@ -107,6 +126,120 @@ class Gallery extends BaseGallery {
             const element = this.createGalleryItem(item);
             this.elements.grid.appendChild(element);
         });
+    }
+
+    escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
+    parseQueryChipTokens(query) {
+        const terms = [];
+        const pattern = /(-?)(?:([A-Za-z0-9_]+):)?("[^"]*"|[^\s"]+)/g;
+        let match;
+        while ((match = pattern.exec(query || '')) !== null) {
+            if (match[2]) continue;
+            const raw = match[0];
+            const value = match[3].replace(/^"|"$/g, '');
+            terms.push({
+                raw,
+                label: `${match[1] || ''}${value}`,
+            });
+        }
+        return terms;
+    }
+
+    renderSourceSearchSummary(data, combinedQuery, sourceAssertions, sourceTags, includeSourceNeedsReview = false) {
+        const panel = document.getElementById('source-search-summary');
+        if (!panel) return;
+
+        const normalTags = this.parseQueryChipTokens(combinedQuery || '');
+        const sourceFilters = data?.source_filters || { source_assertions: [], source_tags: [] };
+        const hasFilters = normalTags.length || sourceAssertions.length || sourceTags.length;
+
+        if (!hasFilters) {
+            panel.classList.add('hidden');
+            panel.innerHTML = '';
+            return;
+        }
+
+        const chips = [];
+        normalTags.forEach(tag => {
+            chips.push({
+                label: tag.label,
+                param: 'q',
+                value: tag.raw,
+                className: 'normal-search-chip',
+                marker: window.i18n.t('common.tags')
+            });
+        });
+        (sourceFilters.source_assertions || []).forEach(chip => {
+            chips.push({
+                label: chip.display_name || chip.search_value,
+                param: 'source_assertion',
+                value: chip.search_value,
+                className: 'source-search-chip',
+                includeSourceNeedsReview: Boolean(chip.include_source_needs_review)
+            });
+        });
+        (sourceFilters.source_tags || []).forEach(chip => {
+            chips.push({
+                label: chip.display_name || chip.search_value,
+                param: 'source_tag',
+                value: chip.search_value,
+                className: 'source-search-chip',
+            });
+        });
+
+        const removeUrl = (chip) => {
+            const params = new URLSearchParams(window.location.search);
+            if (chip.param === 'q') {
+                const nextTags = normalTags.filter(tag => tag.raw !== chip.value);
+                if (nextTags.length) params.set('q', nextTags.map(tag => tag.raw).join(' '));
+                else params.delete('q');
+            } else {
+                const values = params.getAll(chip.param).filter(value => value !== chip.value);
+                params.delete(chip.param);
+                values.forEach(value => params.append(chip.param, value));
+            }
+            const remainingSourceAssertions = params.getAll('source_assertion');
+            const needsReviewStillSelected = chips.some(candidate =>
+                candidate.param === 'source_assertion'
+                && candidate.includeSourceNeedsReview
+                && remainingSourceAssertions.includes(candidate.value)
+            );
+            if (needsReviewStillSelected) {
+                params.set('include_source_needs_review', '1');
+            } else {
+                params.delete('include_source_needs_review');
+            }
+            params.delete('page');
+            const query = params.toString();
+            return query ? `/?${query}` : '/';
+        };
+
+        const title = window.i18n.t('media.source_layer.active_search_title');
+        const note = window.i18n.t('media.source_layer.active_search_note');
+        panel.innerHTML = `
+            <div class="flex items-start justify-between gap-3 mb-2">
+                <div>
+                    <div class="source-layer-eyebrow">${this.escapeHtml(title)}</div>
+                    <div class="text-[11px] text-secondary">${this.escapeHtml(note)}</div>
+                </div>
+                <a href="/" class="text-[11px] text-secondary hover:text-primary">${this.escapeHtml(window.i18n.t('media.source_layer.clear_selected'))}</a>
+            </div>
+            <div class="tag-list">
+                ${chips.map(chip => `
+                    <a href="${removeUrl(chip)}" class="tag selected-search-chip ${chip.className}" title="${this.escapeHtml(window.i18n.t('media.source_layer.remove_selected'))}">
+                        <span>${this.escapeHtml(chip.label)}</span>
+                        <span class="selected-search-chip-x">x</span>
+                    </a>
+                `).join('')}
+            </div>
+        `;
+        panel.classList.remove('hidden');
     }
 }
 

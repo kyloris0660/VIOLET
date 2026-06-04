@@ -113,9 +113,10 @@ class MediaViewerBase {
                 const title = titleParts.join(', ');
                 const lockIcon = prov && prov.is_locked ? '<span class="text-[8px] opacity-60">🔒</span>' : '';
                 const tagContent = `${zhName}${lockIcon}`;
+                const chipAttrs = `data-search-chip="true" data-chip-type="tag" data-search-param="q" data-search-value="${this.escapeHtml(tag.name)}" data-display-name="${this.escapeHtml(zhName)}"`;
                 return clickable
-                    ? `<a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${category} tag-text" title="${title}">${tagContent}</a>`
-                    : `<span class="tag ${category} tag-text" title="${title}">${tagContent}</span>`;
+                    ? `<a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${category} tag-text" title="${title}" ${chipAttrs}>${tagContent}</a>`
+                    : `<span class="tag ${category} tag-text" title="${title}" ${chipAttrs}>${tagContent}</span>`;
             }).join('');
             html += '</div></div>';
         });

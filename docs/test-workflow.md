@@ -82,6 +82,7 @@ Phase 3.8d-I2 unifies this behind a Source Ingestion Gate. Tests must prove that
 | `tests/test_check_server_identity_script.py` | Identity script proxy bypass (`trust_env=False`), `normalize_path`, `normalize_executable_path` |
 | `tests/test_media_processor_mime_magic_cache.py` | python-magic availability caching, thread-local detectors, fallback chain, concurrent init safety |
 | `tests/test_config_precedence.py` | Config precedence: process env beats `.env`, `TEST_DATABASE_URL` override, translation flag overrides, code defaults |
+| `tests/test_phase44p2r_f6_source_layer_search.py` | F6 source-layer media chips, source assertion/source tag AND search with ordinary tags, promotion preview no-op, and no truth-path writes |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -99,6 +100,7 @@ Requires `VIOLET_RUN_REAL_E2E=1` and a running V.I.O.L.E.T. server. Some tests a
 |-----------|----------|----------|
 | `tests/e2e/config-diagnostics-e2e.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Config diagnostics API sections |
 | `tests/e2e/gallery-browse.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Gallery grid, media detail, thumbnails |
+| `tests/e2e/source-layer-search.spec.ts` | `VIOLET_RUN_REAL_E2E=1` + F6 source-layer rows in test DB | Media detail source assertions, visual multi-select source/tag search, admin Content section navigation |
 | `tests/e2e/fixture-import.spec.ts` | `VIOLET_RUN_REAL_E2E=1` + `VIOLET_TEST_FIXTURE_PATH` | Preflight, dry-run, import, idempotency |
 | `tests/e2e/entity-alias-resolver.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | Entity resolver API, trust policy, admin UI |
 | `tests/e2e/tag-localization.spec.ts` | `VIOLET_RUN_REAL_E2E=1` | LLM tag translation status, batch, auto-translate |

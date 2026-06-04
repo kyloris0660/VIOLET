@@ -367,10 +367,19 @@ class Blombooru {
         }
 
         try {
-            let url = '/api/search/random?q=';
-            if (rating) {
-                url += `&rating=${rating}`;
+            const params = new URLSearchParams();
+            const currentParams = new URLSearchParams(window.location.search);
+            const currentQuery = currentParams.get('q') || '';
+            params.set('q', currentQuery);
+            currentParams.getAll('source_assertion').forEach(value => params.append('source_assertion', value));
+            currentParams.getAll('source_tag').forEach(value => params.append('source_tag', value));
+            if (currentParams.get('include_source_needs_review') === '1') {
+                params.set('include_source_needs_review', '1');
             }
+            if (rating) {
+                params.set('rating', rating);
+            }
+            const url = `/api/search/random?${params.toString()}`;
 
             const response = await this.apiCall(url);
 

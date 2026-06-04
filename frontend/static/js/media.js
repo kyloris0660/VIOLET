@@ -8,6 +8,10 @@ class MediaViewer extends MediaViewerBase {
         this.tooltipHelper = null;
         this.ratingSelect = null;
         this.shareLanguageSelect = null;
+        this.sourceLayer = null;
+        this.tagMultiSelectMode = false;
+        this.selectedSearchChips = new Map();
+        this.sourceSelectControlsReady = false;
 
         // WD Tagger settings
         this.wdTaggerSettings = {
@@ -52,7 +56,8 @@ class MediaViewer extends MediaViewerBase {
             this.currentMedia = await res.json();
             this.renderMedia(this.currentMedia);
             this.renderInfo(this.currentMedia);
-            this.renderTags(this.currentMedia, { clickable: true });
+            await this.renderTags(this.currentMedia, { clickable: true });
+            await this.loadSourceLayer();
 
             // Hide AI metadata toggle by default
             const aiMetadataShareToggle = this.el('ai-metadata-share-toggle');
@@ -520,6 +525,313 @@ class MediaViewer extends MediaViewerBase {
         this.el('add-to-albums-btn')?.addEventListener('click', () => {
             this.addToAlbums();
         });
+
+        this.setupSourceLayerSelectionControls();
+    }
+
+    // ==================== Source Layer / Visual Multi-Select Search ====================
+
+    t(key, fallback) {
+        if (window.i18n) {
+            const translated = window.i18n.t(key);
+            if (translated && translated !== key) return translated;
+        }
+        return fallback;
+    }
+
+    async loadSourceLayer() {
+        const container = this.el('source-layer-container');
+        if (!container) return;
+
+        try {
+            const res = await fetch(`/api/source-assertions/media/${this.mediaId}`, {
+                credentials: 'include'
+            });
+            if (!res.ok) {
+                container.style.display = 'none';
+                return;
+            }
+            this.sourceLayer = await res.json();
+            this.renderSourceLayer(this.sourceLayer);
+            this.syncSelectedChipClasses();
+        } catch (e) {
+            console.error('source layer load error', e);
+            container.style.display = 'none';
+        }
+    }
+
+    renderSourceLayer(sourceLayer) {
+        const container = this.el('source-layer-container');
+        if (!container) return;
+
+        const assertions = sourceLayer?.source_assertions || [];
+        const reviewAssertions = sourceLayer?.needs_review_assertions || [];
+        const sourceTags = sourceLayer?.source_tags || [];
+        const hasSourceLayer = assertions.length || reviewAssertions.length || sourceTags.length;
+
+        const sourceAssertionTitle = this.t('media.source_layer.source_assertions', 'Source assertions');
+        const sourceTagTitle = this.t('media.source_layer.source_tags', 'Source tags');
+        const unconfirmed = this.t('media.source_layer.unconfirmed_entity', 'Unconfirmed entity');
+        const previewOnly = this.t('media.source_layer.preview_only', 'Preview only');
+        const needsReview = this.t('media.source_layer.needs_review', 'Needs review');
+
+        let html = `
+            <div class="source-layer-header">
+                <div>
+                    <div class="source-layer-eyebrow">${this.escapeHtml(this.t('media.source_layer.label', 'Source assertion'))}</div>
+                    <h4>${this.escapeHtml(this.t('media.source_layer.title', 'Source layer candidates'))}</h4>
+                </div>
+                <span class="source-layer-status">${this.escapeHtml(unconfirmed)}</span>
+            </div>
+            <p class="source-layer-note">${this.escapeHtml(this.t('media.source_layer.note', 'Provider/source chips are searchable but are not confirmed Entity truth.'))}</p>
+        `;
+
+        if (!hasSourceLayer) {
+            html += `
+                <div class="source-layer-empty">
+                    <div class="font-bold">${this.escapeHtml(this.t('media.source_layer.empty_title', 'No source assertions for this media'))}</div>
+                    <div class="text-secondary">${this.escapeHtml(this.t('media.source_layer.empty_note', 'This media has no provider/source assertion rows in the current database.'))}</div>
+                </div>
+            `;
+            container.innerHTML = html;
+            container.style.display = 'block';
+            return;
+        }
+
+        if (assertions.length) {
+            html += `<div class="tag-category source-layer-group"><h4>${this.escapeHtml(sourceAssertionTitle)}</h4><div class="tag-list">`;
+            html += assertions.map(chip => this.renderSourceChip(chip, 'source-assertion-chip')).join('');
+            html += '</div></div>';
+        }
+
+        if (sourceTags.length) {
+            html += `<div class="tag-category source-layer-group"><h4>${this.escapeHtml(sourceTagTitle)}</h4><div class="tag-list">`;
+            html += sourceTags.map(chip => this.renderSourceChip(chip, 'source-tag-chip')).join('');
+            html += '</div></div>';
+        }
+
+        if (reviewAssertions.length) {
+            html += `
+                <div class="tag-category source-layer-group source-layer-review">
+                    <h4>${this.escapeHtml(sourceAssertionTitle)} / ${this.escapeHtml(needsReview)}</h4>
+                    <div class="tag-list mt-2">
+                        ${reviewAssertions.map(chip => this.renderSourceChip(chip, 'source-assertion-chip source-chip-review')).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `
+            <div class="source-layer-promotion-preview">
+                <span>${this.escapeHtml(previewOnly)}</span>
+                <button type="button" class="btn px-2 py-1 text-[11px]" disabled>
+                    ${this.escapeHtml(this.t('media.source_layer.promotion_disabled', 'Promotion disabled in F6'))}
+                </button>
+            </div>
+        `;
+
+        container.innerHTML = html;
+        container.style.display = 'block';
+    }
+
+    renderSourceChip(chip, extraClass = '') {
+        const label = chip.display_name || chip.raw_input || chip.canonical_name_key || chip.canonical_tag_key || chip.search_value;
+        const metaParts = [chip.provider, chip.role, chip.status].filter(Boolean);
+        if (chip.confidence_score != null) {
+            metaParts.push(`${(chip.confidence_score * 100).toFixed(0)}%`);
+        } else if (chip.confidence) {
+            metaParts.push(chip.confidence);
+        }
+        const meta = metaParts.join(' / ');
+        const param = 'q';
+        const value = label;
+        const includeNeedsReview = Boolean(chip.include_source_needs_review);
+        const href = this.buildGlobalTextSearchUrl(label, includeNeedsReview);
+        const title = [
+            chip.raw_input ? `raw: ${chip.raw_input}` : '',
+            chip.canonical_name_key ? `key: ${chip.canonical_name_key}` : '',
+            chip.canonical_tag_key ? `tag: ${chip.canonical_tag_key}` : '',
+            chip.provider ? `provider: ${chip.provider}` : '',
+            chip.role ? `role: ${chip.role}` : '',
+            chip.status ? `status: ${chip.status}` : '',
+            meta,
+            'unconfirmed source layer'
+        ].filter(Boolean).join(', ');
+        return `
+            <a href="${href}"
+                class="tag source-chip ${extraClass} status-${this.escapeHtml(String(chip.status || 'unknown')).replace(/[^a-z0-9_-]/gi, '-')}"
+                title="${this.escapeHtml(title)}"
+                aria-label="${this.escapeHtml(title)}"
+                data-search-chip="true"
+                data-chip-type="${this.escapeHtml(chip.type || 'source_assertion')}"
+                data-search-param="${this.escapeHtml(param)}"
+                data-search-value="${this.escapeHtml(value)}"
+                data-include-source-needs-review="${includeNeedsReview ? 'true' : 'false'}"
+                data-scoped-search-param="${this.escapeHtml(chip.search_param || (chip.type === 'source_tag' ? 'source_tag' : 'source_assertion'))}"
+                data-scoped-search-value="${this.escapeHtml(chip.search_value || '')}"
+                data-display-name="${this.escapeHtml(label)}">
+                <span class="source-chip-name">${this.escapeHtml(label)}</span>
+            </a>
+        `;
+    }
+
+    formatGlobalSearchToken(value) {
+        const text = String(value || '').trim();
+        if (!text) return '';
+        if (/\s/.test(text)) {
+            return `"${text.replace(/"/g, '')}"`;
+        }
+        return text;
+    }
+
+    buildGlobalTextSearchUrl(value, includeSourceNeedsReview = false) {
+        const token = this.formatGlobalSearchToken(value);
+        const params = new URLSearchParams();
+        if (token) {
+            params.set('q', token);
+        }
+        if (includeSourceNeedsReview) {
+            params.set('include_source_needs_review', '1');
+        }
+        const query = params.toString();
+        return query ? `/?${query}` : '/';
+    }
+
+    setupSourceLayerSelectionControls() {
+        if (this.sourceSelectControlsReady) return;
+        this.sourceSelectControlsReady = true;
+
+        const toggle = this.el('tag-select-mode-toggle');
+        const clearBtn = this.el('tag-select-clear');
+        const searchBtn = this.el('tag-select-search');
+        const selectedList = this.el('tag-select-selected-list');
+        const tagCard = this.el('tags-container')?.closest('.surface');
+
+        toggle?.addEventListener('click', () => {
+            this.tagMultiSelectMode = !this.tagMultiSelectMode;
+            this.updateMultiSelectModeUI();
+        });
+
+        clearBtn?.addEventListener('click', () => {
+            this.selectedSearchChips.clear();
+            this.updateMultiSelectModeUI();
+        });
+
+        searchBtn?.addEventListener('click', () => {
+            this.searchSelectedChips();
+        });
+
+        selectedList?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-remove-search-chip]');
+            if (!btn) return;
+            this.selectedSearchChips.delete(btn.dataset.removeSearchChip);
+            this.updateMultiSelectModeUI();
+        });
+
+        tagCard?.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-search-chip="true"]');
+            if (!chip || !tagCard.contains(chip)) return;
+            if (!this.tagMultiSelectMode) return;
+            e.preventDefault();
+            this.toggleSelectedSearchChip(chip);
+        });
+    }
+
+    toggleSelectedSearchChip(chipEl) {
+        const param = chipEl.dataset.searchParam;
+        const value = chipEl.dataset.searchValue;
+        if (!param || !value) return;
+
+        const key = `${param}:${value}`;
+        if (this.selectedSearchChips.has(key)) {
+            this.selectedSearchChips.delete(key);
+        } else {
+            this.selectedSearchChips.set(key, {
+                key,
+                param,
+                value,
+                includeSourceNeedsReview: chipEl.dataset.includeSourceNeedsReview === 'true',
+                type: chipEl.dataset.chipType || 'tag',
+                label: chipEl.dataset.displayName || chipEl.textContent.trim()
+            });
+        }
+        this.updateMultiSelectModeUI();
+    }
+
+    updateMultiSelectModeUI() {
+        const toggle = this.el('tag-select-mode-toggle');
+        const tray = this.el('tag-select-tray');
+        const searchBtn = this.el('tag-select-search');
+        const hasSelected = this.selectedSearchChips.size > 0;
+
+        toggle?.classList.toggle('active', this.tagMultiSelectMode);
+        toggle?.classList.toggle('btn-primary', this.tagMultiSelectMode);
+        document.body.classList.toggle('tag-multiselect-active', this.tagMultiSelectMode);
+
+        if (tray) {
+            tray.classList.toggle('hidden', !this.tagMultiSelectMode && !hasSelected);
+        }
+        if (searchBtn) {
+            searchBtn.disabled = !hasSelected;
+        }
+
+        this.renderSelectedSearchTray();
+        this.syncSelectedChipClasses();
+    }
+
+    renderSelectedSearchTray() {
+        const selectedList = this.el('tag-select-selected-list');
+        if (!selectedList) return;
+
+        const chips = Array.from(this.selectedSearchChips.values());
+        if (!chips.length) {
+            selectedList.innerHTML = `<span class="text-[11px] text-secondary">${this.escapeHtml(this.t('media.source_layer.no_selected', 'No selected chips yet.'))}</span>`;
+            return;
+        }
+
+        selectedList.innerHTML = chips.map(chip => `
+            <button type="button"
+                class="tag selected-search-chip ${chip.param === 'q' ? 'normal-search-chip' : 'source-search-chip'}"
+                data-remove-search-chip="${this.escapeHtml(chip.key)}"
+                title="${this.escapeHtml(this.t('media.source_layer.remove_selected', 'Remove selected chip'))}">
+                <span>${this.escapeHtml(chip.label)}</span>
+                <span class="selected-search-chip-x">x</span>
+            </button>
+        `).join('');
+    }
+
+    syncSelectedChipClasses() {
+        document.querySelectorAll('[data-search-chip="true"]').forEach(chip => {
+            const key = `${chip.dataset.searchParam}:${chip.dataset.searchValue}`;
+            chip.classList.toggle('is-selectable', this.tagMultiSelectMode);
+            chip.classList.toggle('is-selected', this.selectedSearchChips.has(key));
+        });
+    }
+
+    searchSelectedChips() {
+        if (!this.selectedSearchChips.size) return;
+        const params = new URLSearchParams();
+        const normalTags = [];
+
+        Array.from(this.selectedSearchChips.values()).forEach(chip => {
+            if (chip.param === 'q') {
+                normalTags.push(chip.value);
+                if (chip.includeSourceNeedsReview) {
+                    params.set('include_source_needs_review', '1');
+                }
+            } else {
+                params.append(chip.param, chip.value);
+                if (chip.includeSourceNeedsReview) {
+                    params.set('include_source_needs_review', '1');
+                }
+            }
+        });
+
+        if (normalTags.length) {
+            params.set('q', normalTags.map(value => this.formatGlobalSearchToken(value)).join(' '));
+        }
+
+        window.location.href = `/?${params.toString()}`;
     }
 
     // ==================== WD Tagger Methods ====================

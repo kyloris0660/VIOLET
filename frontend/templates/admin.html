@@ -3,7 +3,7 @@
 {% block title %}Admin Panel - {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-4 max-w-4xl">
+<div class="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
     <div id="admin-panel">
         <!-- Header & Tab Navigation -->
         <div class="flex flex-col sm:flex-row sm:items-end justify-between border-b mb-6">
@@ -875,8 +875,9 @@
 
         <!-- Content Tab -->
         <div id="tab-content" class="tab-content hidden">
+            <div class="admin-content-layout">
             <!-- Content Tab Section Quick Nav -->
-            <div class="surface p-2 border mb-4 flex flex-wrap gap-1 text-xs" id="content-section-nav">
+            <div class="surface p-2 border text-xs admin-content-sidebar" id="content-section-nav">
                 <a href="#media-management" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.media_management.title">媒体管理</a>
                 <a href="#local-library-scan" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.local_library_scan.title">本地图库扫描</a>
                 <a href="#ai-tag-review-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tag_review.title">AI 标签审核</a>
@@ -888,6 +889,7 @@
                 <a href="#content-classification-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.content_classification.title">内容分类</a>
                 <a href="#albums-management-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.albums_management.title">相册管理</a>
             </div>
+            <div id="content-section-stage" class="admin-content-stage">
 
             <!-- Media Management Section -->
             <div class="surface p-2 sm:p-6 border mb-4" id="media-management">
@@ -2189,6 +2191,8 @@
                         <div id="album-search-results" class="max-h-96 overflow-y-auto empty:hidden"></div>
                     </div>
                 </div>
+            </div>
+            </div>
             </div>
         </div>
 

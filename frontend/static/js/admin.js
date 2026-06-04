@@ -649,15 +649,62 @@ class AdminPanel {
         }
         const sectionNav = document.getElementById('content-section-nav');
         if (sectionNav) {
-            sectionNav.addEventListener('click', (e) => {
-                const link = e.target.closest('a[href^="#"]');
-                if (!link) return;
-                e.preventDefault();
-                const target = document.getElementById(link.getAttribute('href').slice(1));
-                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
+            this.setupContentSectionNavigation();
         }
         this.loadDevConfigDiagnostics();
+    }
+
+    setupContentSectionNavigation() {
+        const sectionNav = document.getElementById('content-section-nav');
+        if (!sectionNav || sectionNav.dataset.initialized === 'true') return;
+        sectionNav.dataset.initialized = 'true';
+
+        const links = Array.from(sectionNav.querySelectorAll('a[href^="#"]'));
+        const sections = links
+            .map(link => document.getElementById(link.getAttribute('href').slice(1)))
+            .filter(Boolean);
+
+        sections.forEach(section => section.classList.add('admin-content-section'));
+
+        const showSection = (sectionId, updateUrl = true) => {
+            const target = document.getElementById(sectionId);
+            if (!target) return;
+
+            sections.forEach(section => {
+                section.hidden = section.id !== sectionId;
+            });
+
+            links.forEach(link => {
+                const isActive = link.getAttribute('href') === `#${sectionId}`;
+                link.classList.toggle('active', isActive);
+                link.setAttribute('aria-current', isActive ? 'page' : 'false');
+            });
+
+            localStorage.setItem('admin_content_section', sectionId);
+            if (updateUrl) {
+                const nextUrl = `${window.location.pathname}${window.location.search}#${sectionId}`;
+                window.history.replaceState({}, '', nextUrl);
+            }
+        };
+
+        this.showContentSection = showSection;
+
+        links.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                showSection(link.getAttribute('href').slice(1), true);
+            });
+        });
+
+        const hashSection = window.location.hash ? window.location.hash.substring(1) : '';
+        const savedSection = localStorage.getItem('admin_content_section');
+        const initialSection = sections.find(section => section.id === hashSection)
+            ? hashSection
+            : (sections.find(section => section.id === savedSection)?.id || sections[0]?.id);
+
+        if (initialSection) {
+            showSection(initialSection, false);
+        }
     }
 
     setupTabs() {
@@ -730,8 +777,12 @@ class AdminPanel {
         if (window.location.hash) {
             setTimeout(() => {
                 try {
-                    const targetElement = document.getElementById(window.location.hash.substring(1));
-                    if (targetElement) {
+                    const hashId = window.location.hash.substring(1);
+                    if (this.showContentSection && document.getElementById(hashId)?.classList.contains('admin-content-section')) {
+                        this.showContentSection(hashId, false);
+                    }
+                    const targetElement = document.getElementById(hashId);
+                    if (targetElement && !targetElement.hidden) {
                         targetElement.scrollIntoView();
                     }
                 } catch (e) {
