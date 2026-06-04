@@ -665,6 +665,239 @@ class PixivTagAliasKnowledgeBase(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceMetadataRecord(Base):
+    __tablename__ = 'blombooru_source_metadata_records'
+    __table_args__ = (
+        UniqueConstraint('provider', 'provider_record_key', name='uq_source_metadata_provider_record_key'),
+        Index('ix_source_metadata_provider_status', 'provider', 'status'),
+        Index('ix_source_metadata_media_provider', 'media_id', 'provider'),
+        Index('ix_source_metadata_work_page', 'source_work_id', 'source_page_index'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    provider_run_id = Column(String(255), nullable=True, index=True)
+    run_label = Column(String(255), nullable=True)
+    provider_record_key = Column(String(500), nullable=False, index=True)
+    media_id = Column(Integer, nullable=True, index=True)
+    source_work_id = Column(String(255), nullable=True, index=True)
+    source_page_index = Column(Integer, nullable=True)
+    source_url = Column(String(1000), nullable=True)
+    title = Column(String(1000), nullable=True)
+    artist_name = Column(String(500), nullable=True)
+    artist_id = Column(String(255), nullable=True)
+    confidence = Column(Float, nullable=True)
+    similarity = Column(Float, nullable=True)
+    metadata_kind = Column(String(100), nullable=False, default='provider_metadata', server_default='provider_metadata', index=True)
+    data_type_label = Column(String(100), nullable=False, default='fixture_or_mock', server_default='fixture_or_mock', index=True)
+    raw_metadata_json = Column(JSON, nullable=True)
+    provenance = Column(JSON, nullable=True)
+    status = Column(String(50), nullable=False, default='observed', server_default='observed', index=True)
+    retrieved_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceTagObservation(Base):
+    __tablename__ = 'blombooru_source_tag_observations'
+    __table_args__ = (
+        UniqueConstraint(
+            'source_metadata_record_id',
+            'observation_key',
+            name='uq_source_tag_observation_record_key',
+        ),
+        Index('ix_source_tag_observation_provider_kind', 'provider', 'source_tag_kind'),
+        Index('ix_source_tag_observation_canonical', 'canonical_tag_key'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='CASCADE'), nullable=False, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    observation_key = Column(String(500), nullable=False, index=True)
+    raw_tag = Column(String(500), nullable=False)
+    normalized_tag = Column(String(500), nullable=False, index=True)
+    canonical_tag_key = Column(String(500), nullable=False, index=True)
+    source_tag_kind = Column(String(100), nullable=False, default='provider_tag', server_default='provider_tag', index=True)
+    source_category_raw = Column(String(100), nullable=True)
+    language_hint = Column(String(50), nullable=True)
+    confidence = Column(Float, nullable=True)
+    order_index = Column(Integer, nullable=True)
+    taxonomy_kb_id = Column(Integer, nullable=True, index=True)
+    status = Column(String(50), nullable=False, default='observed', server_default='observed', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceTagRegistry(Base):
+    __tablename__ = 'blombooru_source_tag_registry'
+    __table_args__ = (
+        UniqueConstraint('provider_scope', 'canonical_tag_key', name='uq_source_tag_registry_scope_key'),
+        Index('ix_source_tag_registry_governance', 'governance_status'),
+        Index('ix_source_tag_registry_taxonomy', 'taxonomy_status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_scope = Column(String(100), nullable=False, default='global', server_default='global', index=True)
+    normalized_tag = Column(String(500), nullable=False)
+    canonical_tag_key = Column(String(500), nullable=False, index=True)
+    raw_variants_json = Column(JSON, nullable=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    seen_count = Column(Integer, nullable=False, default=0, server_default='0')
+    example_source_metadata_id = Column(Integer, nullable=True, index=True)
+    taxonomy_status = Column(String(50), nullable=False, default='unclassified', server_default='unclassified', index=True)
+    governance_status = Column(String(50), nullable=False, default='candidate', server_default='candidate', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceNameObservation(Base):
+    __tablename__ = 'blombooru_source_name_observations'
+    __table_args__ = (
+        UniqueConstraint(
+            'source_metadata_record_id',
+            'observation_key',
+            name='uq_source_name_observation_record_key',
+        ),
+        Index('ix_source_name_observation_provider_role', 'provider', 'name_role'),
+        Index('ix_source_name_observation_canonical', 'canonical_name_key'),
+        Index('ix_source_name_observation_media_role', 'media_id', 'name_role'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='CASCADE'), nullable=False, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    observation_key = Column(String(500), nullable=False, index=True)
+    media_id = Column(Integer, nullable=True, index=True)
+    source_work_id = Column(String(255), nullable=True, index=True)
+    source_page_index = Column(Integer, nullable=True)
+    raw_name = Column(String(500), nullable=False)
+    normalized_name = Column(String(500), nullable=False, index=True)
+    canonical_name_key = Column(String(500), nullable=False, index=True)
+    name_role = Column(String(100), nullable=False, index=True)
+    source_field = Column(String(100), nullable=False, index=True)
+    language_hint = Column(String(50), nullable=True)
+    script_hint = Column(String(50), nullable=True)
+    confidence = Column(Float, nullable=True)
+    provenance = Column(JSON, nullable=True)
+    requires_review = Column(Boolean, nullable=False, default=True, server_default='true', index=True)
+    status = Column(String(50), nullable=False, default='observed', server_default='observed', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceNameRegistry(Base):
+    __tablename__ = 'blombooru_source_name_registry'
+    __table_args__ = (
+        UniqueConstraint('canonical_name_key', name='uq_source_name_registry_key'),
+        Index('ix_source_name_registry_governance', 'governance_status'),
+        Index('ix_source_name_registry_manual_override', 'manual_override_status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    canonical_name_key = Column(String(500), nullable=False, index=True)
+    primary_display_name = Column(String(500), nullable=False)
+    normalized_display_name = Column(String(500), nullable=False, index=True)
+    raw_variants_json = Column(JSON, nullable=True)
+    provider_coverage_json = Column(JSON, nullable=True)
+    role_distribution_json = Column(JSON, nullable=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    seen_count = Column(Integer, nullable=False, default=0, server_default='0')
+    governance_status = Column(String(50), nullable=False, default='candidate', server_default='candidate', index=True)
+    manual_override_status = Column(String(50), nullable=False, default='none', server_default='none', index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceNameAliasCandidate(Base):
+    __tablename__ = 'blombooru_source_name_alias_candidates'
+    __table_args__ = (
+        UniqueConstraint(
+            'source_name_key',
+            'target_name_key',
+            'relation_type',
+            'evidence_source',
+            name='uq_source_name_alias_relation_evidence',
+        ),
+        Index('ix_source_name_alias_source_key', 'source_name_key'),
+        Index('ix_source_name_alias_target_key', 'target_name_key'),
+        Index('ix_source_name_alias_relation_status', 'relation_type', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_name_key = Column(String(500), nullable=False, index=True)
+    target_name_key = Column(String(500), nullable=False, index=True)
+    source_display_name = Column(String(500), nullable=False)
+    target_display_name = Column(String(500), nullable=False)
+    relation_type = Column(String(100), nullable=False, index=True)
+    evidence_source = Column(String(100), nullable=False, index=True)
+    evidence_payload = Column(JSON, nullable=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String(50), nullable=False, default='candidate', server_default='candidate', index=True)
+    requires_review = Column(Boolean, nullable=False, default=True, server_default='true', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceMetadataEvidence(Base):
+    __tablename__ = 'blombooru_source_metadata_evidence'
+    __table_args__ = (
+        UniqueConstraint('source_metadata_record_id', 'evidence_key', name='uq_source_metadata_evidence_record_key'),
+        Index('ix_source_metadata_evidence_kind_status', 'evidence_kind', 'status'),
+        Index('ix_source_metadata_evidence_observation', 'observation_type', 'observation_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='CASCADE'), nullable=False, index=True)
+    evidence_key = Column(String(500), nullable=False, index=True)
+    observation_type = Column(String(100), nullable=False, index=True)
+    observation_id = Column(Integer, nullable=True, index=True)
+    evidence_kind = Column(String(100), nullable=False, index=True)
+    evidence_strength = Column(String(50), nullable=False, default='unknown', server_default='unknown', index=True)
+    provenance = Column(JSON, nullable=True)
+    status = Column(String(50), nullable=False, default='staged', server_default='staged', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceSearchableNameAssertion(Base):
+    __tablename__ = 'blombooru_source_searchable_name_assertions'
+    __table_args__ = (
+        UniqueConstraint('assertion_key', name='uq_source_searchable_name_assertion_key'),
+        Index('ix_source_searchable_name_assertion_provider_status', 'provider', 'status'),
+        Index('ix_source_searchable_name_assertion_canonical_status', 'canonical_name_key', 'status'),
+        Index('ix_source_searchable_name_assertion_role_status', 'asserted_role', 'status'),
+        Index('ix_source_searchable_name_assertion_tag_observation', 'source_tag_observation_id'),
+        Index('ix_source_searchable_name_assertion_name_observation', 'source_name_observation_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='CASCADE'), nullable=True, index=True)
+    source_tag_observation_id = Column(Integer, ForeignKey('blombooru_source_tag_observations.id', ondelete='SET NULL'), nullable=True, index=True)
+    source_name_observation_id = Column(Integer, ForeignKey('blombooru_source_name_observations.id', ondelete='SET NULL'), nullable=True, index=True)
+    assertion_key = Column(String(700), nullable=False, index=True)
+    raw_input = Column(String(500), nullable=False)
+    normalized_input = Column(String(500), nullable=False, index=True)
+    canonical_name_key = Column(String(500), nullable=False, index=True)
+    asserted_name = Column(String(500), nullable=True)
+    asserted_role = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    confidence = Column(String(50), nullable=False, default='low', server_default='low', index=True)
+    confidence_score = Column(Float, nullable=True)
+    evidence_sources_json = Column(JSON, nullable=True)
+    model_name = Column(String(255), nullable=True)
+    prompt_version = Column(String(100), nullable=True)
+    structured_output_schema_version = Column(String(100), nullable=False)
+    reasoning_summary_private = Column(Text, nullable=True)
+    provenance_summary = Column(JSON, nullable=True)
+    requires_review = Column(Boolean, nullable=False, default=True, server_default='true', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (

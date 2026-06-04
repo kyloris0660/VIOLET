@@ -641,6 +641,21 @@ class Settings:
 
     # LLM Fallback Provider
     @property
+    def TAG_TRANSLATION_LLM_FALLBACK_ENABLED(self) -> bool:
+        val = os.getenv("TAG_TRANSLATION_LLM_FALLBACK_ENABLED", "").strip()
+        if val:
+            return val.lower() in ("true", "1", "yes", "on")
+        return bool(
+            os.getenv("TAG_TRANSLATION_LLM_FALLBACK_API_KEY", "").strip()
+            and os.getenv("TAG_TRANSLATION_LLM_FALLBACK_MODEL", "").strip()
+            and os.getenv("TAG_TRANSLATION_LLM_FALLBACK_BASE_URL", "").strip()
+        )
+
+    @property
+    def TAG_TRANSLATION_LLM_FALLBACK_PROVIDER(self) -> str:
+        return os.getenv("TAG_TRANSLATION_LLM_FALLBACK_PROVIDER", "openai_compatible")
+
+    @property
     def TAG_TRANSLATION_LLM_FALLBACK_API_KEY(self) -> str:
         return os.getenv("TAG_TRANSLATION_LLM_FALLBACK_API_KEY", "")
 
@@ -651,6 +666,14 @@ class Settings:
     @property
     def TAG_TRANSLATION_LLM_FALLBACK_BASE_URL(self) -> str:
         return os.getenv("TAG_TRANSLATION_LLM_FALLBACK_BASE_URL", "")
+
+    @property
+    def TAG_TRANSLATION_LLM_FALLBACK_TIMEOUT_SECONDS(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_LLM_FALLBACK_TIMEOUT_SECONDS", "60"))
+
+    @property
+    def TAG_TRANSLATION_LLM_FALLBACK_MAX_RETRIES(self) -> int:
+        return int(os.getenv("TAG_TRANSLATION_LLM_FALLBACK_MAX_RETRIES", "2"))
 
     # Entity Alias Resolver (Phase 2.3e)
     @property
