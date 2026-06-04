@@ -1236,6 +1236,27 @@
             "save_tags": "Save Tags",
             "tags_saved": "Tags saved successfully"
         },
+        "source_layer": {
+            "active_search_note": "AND search across confirmed tags and unconfirmed source-layer chips.",
+            "active_search_title": "Active source-layer search",
+            "clear_selected": "Clear",
+            "label": "Source assertion",
+            "needs_review": "Needs review",
+            "no_selected": "No selected chips yet.",
+            "note": "Provider/source chips are searchable but are not confirmed Entity truth.",
+            "preview_only": "Manual promotion is preview-only in F6.",
+            "promotion_disabled": "Promotion disabled in F6",
+            "remove_selected": "Remove selected chip",
+            "search_selected": "Search selected",
+            "select_mode": "Select tags",
+            "selected_title": "Selected search chips",
+            "source_assertion_marker": "Source assertion",
+            "source_assertions": "Source assertions",
+            "source_tag_marker": "Source tag",
+            "source_tags": "Source tags",
+            "title": "Source-layer candidates",
+            "unconfirmed_entity": "Unconfirmed entity"
+        },
         "ai_tags": {
             "appended_count": "Appended {count} tag(s) from AI prompt"
         },

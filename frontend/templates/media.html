@@ -193,8 +193,26 @@
 
             <!-- Tags -->
             <div class="surface p-3 border">
-                <h3 class="text-sm font-bold mb-3 pb-2 border-b">{{ t('common.tags') }}</h3>
+                <div class="flex items-center justify-between gap-2 mb-3 pb-2 border-b">
+                    <h3 class="text-sm font-bold">{{ t('common.tags') }}</h3>
+                    <button type="button" id="tag-select-mode-toggle" class="btn px-2 py-1 text-[11px]">
+                        {{ t('media.source_layer.select_mode') }}
+                    </button>
+                </div>
+                <div id="tag-select-tray" class="tag-select-tray hidden mb-3">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <span class="text-[11px] font-bold text-secondary">{{ t('media.source_layer.selected_title') }}</span>
+                        <button type="button" id="tag-select-clear" class="text-[11px] text-secondary hover:text-primary">
+                            {{ t('media.source_layer.clear_selected') }}
+                        </button>
+                    </div>
+                    <div id="tag-select-selected-list" class="tag-list mb-2"></div>
+                    <button type="button" id="tag-select-search" class="btn-primary w-full px-3 py-1 text-xs" disabled>
+                        {{ t('media.source_layer.search_selected') }}
+                    </button>
+                </div>
                 <div id="tags-container" class="mb-2"></div>
+                <div id="source-layer-container" class="source-layer-container mt-3 pt-3 border-t" style="display: none;"></div>
 
                 <!-- Edit Tags (Admin Mode Only) -->
                 <div id="edit-tags-section" style="display: none;" class="pt-2 border-t">

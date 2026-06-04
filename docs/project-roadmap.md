@@ -776,6 +776,15 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No DB write, DB migration, LocalSourceHint, ProviderCache, EntityEvidence, MediaEntityCandidate, NegativeLookupCache, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, Pixiv login/cookie/refresh-token use, authenticated request, gallery-dl credentialed run, image download, source/iCloud mutation, app-managed storage mutation, push to `main`, or merge occurred.
 - Public reports: `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design.md` and `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design-summary.json`.
 
+#### Phase 4.4-P2R-F5 / F6 update
+
+- PR #92 / F5 added the provider-neutral source metadata, source tag, source name, source name registry, alias candidate, evidence, and `SourceSearchableNameAssertion` foundation. This is a source-search layer, not Entity truth.
+- PR #93 fixed a local debug startup self-lock before F6. It did not implement source-search UI.
+- Phase 4.4-P2R-F6 makes F5 source-layer data usable in the normal media workflow: media detail tag area, visual multi-select search, mixed ordinary tag + source assertion/source tag AND search, and a clearer admin Content layout.
+- F6 is a layered migration for CHARACTER/name-like data. Existing ordinary tags and existing CHARACTER tag display/search remain intact; F6 adds separate source-layer character/person/artist/work/source_title chips clearly marked as source assertions / unconfirmed entities.
+- F6 does not run providers, gallery-dl, LLM classification, tag localization batches, background translation, source enrichment, broad scans, imports, or image uploads. It consumes existing F5 data and test fixtures only.
+- F6 does not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, `TagTranslation`, confirmed assignments, or `media_tags`. Manual promotion remains preview/design/disabled until a later explicit Entity bridge phase.
+
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
 **Goal:** Align active governance docs with the project-level decision that reliability remains high while workflow weight decreases.
@@ -789,23 +798,19 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-P2R:
+Current near-term options after Phase 4.4-P2R-F6:
 
-1. Preferred next Pixiv route: Phase 4.4-P2R-F1 manual gallery-dl JSON metadata import pilot. Use `5-10` private Pixiv work IDs, no Pixiv network inside V.I.O.L.E.T., no credentials in the app, no image downloads, no DB writes, and public/private artifact separation.
-2. If the JSON import validates metadata richness and page-index mapping, design an external gallery-dl adapter that invokes a user-installed gallery-dl boundary with explicit credential, no-download, rate-limit, cache/audit, and redaction policy.
+1. Finish and review F6 as a UI/search/admin-layout phase: source assertions/source tags appear in media detail, visual multi-select search works without manual AND input, mixed ordinary tag + source-layer AND search works, and admin Content is split into left navigation plus active sections.
+2. Keep Entity promotion out of F6. A later bridge phase must explicitly design preview, user confirmation, audit trail, rollback/supersede, and write guards before creating `Entity`, aliases, candidates, assignments, `LocalSourceHint`, or `media_tags` relations.
 3. Do not merge PR #86 as the durable Pixiv metadata route. Public-page preview probing is diagnostic/fallback only, not the source of reliable Pixiv tags/artist/page metadata.
-4. Internal V.I.O.L.E.T. Pixiv authenticated adapter or pixivpy-style adapter only if the gallery-dl JSON/import boundary is insufficient and the user approves local secret storage plus Pixiv policy risk.
-5. Google Vision manual validation / follow-up, if the priority is to validate whether the four source-like D1G Google results are exact source pages, reposts, or merely similar web references.
-6. Phase 4.4-B2 only when more sample evidence is needed: `20-30` explicit user-approved anime samples, one provider, quota-aware scheduling, no originals, no full-library selection, and no DB writes unless a separate persistence design approves them.
-7. TinEye remains rejected/deferred for this route due to cost and weaker task fit versus SauceNAO / Google Vision / Pixiv source-prior options.
-8. C1 follow-up only if reviewer/operator review finds a current-stage DB correctness, provenance, privacy, confirmed-assignment safety, or report-truthfulness issue.
-9. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-10. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
-11. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-12. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-13. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-14. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-15. Admin stats/settings UI rewrite, lower priority than ingestion and entity foundations.
+4. Any new provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/localization run after F6 requires a separate approved run policy and must not be smuggled into UI validation.
+5. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+6. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
+7. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+8. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+9. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+10. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+11. Admin stats/settings UI rewrite remains separate from the F6 Content layout cleanup.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 

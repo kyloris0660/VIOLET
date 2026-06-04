@@ -95,17 +95,19 @@ test.describe('B — Content Tab AI de-duplication', () => {
     await clickTab(page, '内容');
   });
 
-  test('Content Tab shows AI Tag Review and AI Tagging Jobs sections', async ({ page }) => {
+  test('Content Tab shows AI Tag Review and AI Tagging Jobs sections through section nav', async ({ page }) => {
     const contentPanel = page.locator('#tab-content');
     await expect(contentPanel).toBeVisible({ timeout: 5_000 });
 
-    // Must have AI Tag Review
+    await page.locator('#content-section-nav a[href="#ai-tag-review-section"]').click();
     await expect(contentPanel.locator('#ai-tag-review-section')).toBeVisible();
-    // Must have AI Tagging Jobs
+
+    await page.locator('#content-section-nav a[href="#ai-tagging-jobs-section"]').click();
     await expect(contentPanel.locator('#ai-tagging-jobs-section')).toBeVisible();
   });
 
   test('AI Tagging Jobs shows model status badge', async ({ page }) => {
+    await page.locator('#content-section-nav a[href="#ai-tagging-jobs-section"]').click();
     const badge = page.locator('#ai-jobs-model-status-badge');
     await expect(badge).toBeAttached();
   });
@@ -126,12 +128,13 @@ test.describe('B — Content Tab AI de-duplication', () => {
     await expect(standaloneControls).toHaveCount(0);
   });
 
-  test('all 9 expected Content Tab sections are present', async ({ page }) => {
+  test('all expected Content Tab sections are present', async ({ page }) => {
     const contentPanel = page.locator('#tab-content');
     const expectedIds = [
       'media-management',
       'local-library-scan',
       'ai-tag-review-section',
+      'entity-metadata-section',
       'ai-tagging-jobs-section',
       'tag-localization-section',
       'tags-management-section',
@@ -229,16 +232,16 @@ test.describe('D — Content quick-nav', () => {
     await clickTab(page, '内容');
   });
 
-  test('quick-nav bar exists with 9 links', async ({ page }) => {
+  test('section nav exists with 10 links', async ({ page }) => {
     const nav = page.locator('#content-section-nav');
     await expect(nav).toBeVisible({ timeout: 5_000 });
 
     const links = nav.locator('a[href^="#"]');
     const count = await links.count();
-    expect(count).toBe(9);
+    expect(count).toBe(10);
   });
 
-  test('quick-nav click scrolls target into view — 6 targets', async ({ page }) => {
+  test('section nav click shows active target - 6 targets', async ({ page }) => {
     const targets = [
       { href: '#media-management', id: 'media-management' },
       { href: '#local-library-scan', id: 'local-library-scan' },
@@ -254,25 +257,12 @@ test.describe('D — Content quick-nav', () => {
       await expect(link).toBeVisible();
       await link.click();
 
-      // Wait for smooth scroll to settle
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(200);
 
-      // Verify the target section exists and is scrolled into view
+      // Verify the target section exists and is the active visible section
       const section = page.locator(`#${id}`);
-      await expect(section).toBeAttached();
-
-      // Use evaluate to check if element is in or near the viewport
-      const isNearViewport = await page.evaluate((sectionId) => {
-        const el = document.getElementById(sectionId);
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        const vh = window.innerHeight;
-        // The element's top should be within 1.5x viewport height
-        // (accounts for smooth scroll still in progress, sticky headers, etc.)
-        return rect.top < vh * 1.5 && rect.bottom > 0;
-      }, id);
-
-      expect(isNearViewport, `Section ${id} should be near viewport after quick-nav click`).toBeTruthy();
+      await expect(section).toBeVisible();
+      await expect(link).toHaveClass(/active/);
     }
   });
 });
@@ -422,6 +412,7 @@ test.describe('E — i18n locale rendering', () => {
     await expect(contentPanel).toBeVisible({ timeout: 5_000 });
 
     // Check AI Tagging Jobs section
+    await page.locator('#content-section-nav a[href="#ai-tagging-jobs-section"]').click();
     const aiSection = contentPanel.locator('#ai-tagging-jobs-section');
     await expect(aiSection).toBeVisible();
     const aiText = (await aiSection.textContent()) || '';
@@ -429,6 +420,7 @@ test.describe('E — i18n locale rendering', () => {
     expect(/^(admin|ai_tagging_jobs)\.[a-z_]+/.test(aiText.trim())).toBeFalsy();
 
     // Check Content Classification section
+    await page.locator('#content-section-nav a[href="#content-classification-section"]').click();
     const clsSection = contentPanel.locator('#content-classification-section');
     await expect(clsSection).toBeVisible();
     const clsText = (await clsSection.textContent()) || '';

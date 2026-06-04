@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-P2R Pixiv authenticated metadata route design (2026-06-01), after PR #85 was merged into `main`; PR #86 remains open as diagnostic evidence and should not be merged as the durable Pixiv metadata route.
+> Last updated during Phase 4.4-P2R-F6 implementation (2026-06-04), after PR #92 and PR #93 were merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Historical repo name | `AnimeLocalBooru`; old links may redirect, but active references should use VIOLET |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Main branch status | `main` includes PR #85 (`12077ce`) as of 2026-06-01 |
+| Main branch status | `main` includes PR #92 (`325c51c`) and PR #93 (`b1103b2`) as of 2026-06-04 |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | Project venv at `.\venv\Scripts\python.exe` |
 | Dev DB | `blombooru` on `localhost:5432` |
@@ -36,6 +36,9 @@
 - Phase 4.4-D1G also ran a read-only Pixiv filename source-prior audit over development DB/app-managed metadata only. It found Pixiv-like filename tokens in `555` of `1989` media records (`27.9%`) and `551` distinct candidate work IDs. The approved five Google samples had `0` Pixiv-prior hits and are explicitly not representative for Pixiv-prior coverage. The current DB preserves filename/app-managed basenames enough to detect many priors, but there is no dedicated `original_basename` / source-prior ledger column, so absence of a token remains a metadata retention limitation. Public report: `docs/reports/phase-4.4d1g-google-vision-pixiv-source-prior.md`.
 - Phase 4.4-P0 designed the Pixiv filename source-prior automated correspondence gate and re-ran read-only extraction over development DB/app-managed metadata only. It confirmed `555` of `1989` media records (`27.9%`) with Pixiv-like tokens and `551` distinct candidate work IDs. The P0 runner selected a private 30-item feasibility sample from real extracted candidates, but live Pixiv reference lookup was `reference_lookup_policy_blocked` because no official, documented, unauthenticated metadata/preview route was accepted. The runner made `0` Pixiv/provider requests, wrote no DB rows, and kept exact mappings only in ignored `.local_manifests` artifacts. Public report: `docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md`.
 - Phase 4.4-P2R route scouting supersedes the public-page / preview route direction from PR #86. Bounded prior-art review of gallery-dl, pixivpy, PixivUtil2, and official Pixiv policy surfaces found no official public artwork metadata API and confirmed that mature reliable metadata routes are authenticated or tool-mediated. Recommended next pilot is a manual gallery-dl JSON metadata import pilot with no Pixiv network inside V.I.O.L.E.T.; if that succeeds, design an external gallery-dl adapter. Do not keep polishing PR #86 public HTML/preview probing as the main Pixiv metadata route. Public report: `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design.md`.
+- Phase 4.4-P2R-F5 is merged. PR #92 added provider-neutral source metadata/tag/name/name-registry/alias-candidate/evidence/searchable-name-assertion tables and service support. `SourceSearchableNameAssertion` is a source-search layer only: not `Entity`, not `EntityAlias`, not `MediaEntityCandidate`, not `LocalSourceHint`, not confirmed assignment, and not `media_tags`. Public report: `docs/reports/phase-4.4p2r-f5-provider-neutral-source-name-registry.md`.
+- Phase 4.4-P2R-F6 preflight hotfix is merged. PR #93 fixed the local debug startup self-lock in `migrate_add_external_tag_category_lookup_cache()` by using an inspector bound to the active migration connection. This was a narrow startup fix; it did not implement F6 UI/search.
+- Phase 4.4-P2R-F6 is the active implementation route: source assertions/source tags should appear in the media detail page's existing tag area as a clearly separate "source assertion / unconfirmed entity" layer, support visual multi-select AND search with normal tags, and refactor the crowded admin Content page into left navigation plus active sections. F6 must preserve the old ordinary tag/CHARACTER display and search behavior while adding a source-layer character/person/artist/work/source_title area.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -65,13 +68,13 @@ Workflow weight must decrease:
 
 ## Current Recommended Route
 
-Near-term route after Phase 4.4-P2R:
+Near-term route during Phase 4.4-P2R-F6:
 
-1. Do not merge or further polish PR #86 as the Pixiv metadata foundation. Treat it as diagnostic evidence that unauthenticated public-page previews are not durable enough for tags/artist/page metadata.
-2. Next recommended pilot: a tiny manual gallery-dl JSON metadata import pilot (`5-10` private work IDs), with no Pixiv network inside V.I.O.L.E.T., no credentials in the app, no image downloads, no DB writes, and public/private artifact separation.
-3. If the manual JSON import validates the metadata schema and page-index mapping, design an external gallery-dl adapter that invokes a user-installed gallery-dl boundary rather than copying GPL code or reimplementing Pixiv protocol logic.
-4. Internal V.I.O.L.E.T. Pixiv auth or pixivpy-style adapters remain fallback routes only if gallery-dl JSON/import boundaries cannot satisfy the metadata need.
-5. Any authenticated Pixiv route still requires explicit provider policy, credential storage/redaction design, rate limits, request budget, run ledger, metadata-only no-download proof, cache/audit plan, and separate run approval.
+1. Use the already-merged F5 source registry/assertion data as read-only input. Do not rerun gallery-dl, Pixiv/SauceNAO providers, LLM classification, tag localization batch, background translation, or source enrichment for F6.
+2. Make source assertions and source tags usable in the normal media workflow: media detail tag area, click search, and visual multi-select AND search with ordinary tags.
+3. Preserve the existing ordinary tag and CHARACTER tag display/search behavior. F6 is a layered migration: add source-layer character/person/artist/work/source_title chips, but do not delete or replace the old tag system.
+4. Refactor the admin Content page layout only: left navigation plus active section, while preserving existing sections, buttons, destructive semantics, and permission logic.
+5. Keep manual promotion as preview/design/disabled only. Entity bridge, alias canonicalization, candidate persistence, `LocalSourceHint`, confirmed assignment, and `media_tags` mutation require a later explicit phase with confirmation, audit trail, and rollback/supersede design.
 6. Phase 3.9 remains required before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import.
 
 Do not treat older "blocked until X" wording in historical reports as current unless this handoff or the roadmap repeats it as active.

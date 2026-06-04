@@ -1236,6 +1236,27 @@
             "save_tags": "保存标签",
             "tags_saved": "标签保存成功"
         },
+        "source_layer": {
+            "active_search_note": "对已确认标签和未确认来源层 chip 执行 AND / 交集搜索。",
+            "active_search_title": "当前来源层搜索",
+            "clear_selected": "清空",
+            "label": "来源断言",
+            "needs_review": "需要复核",
+            "no_selected": "尚未选择 chip。",
+            "note": "Provider/source chip 可搜索，但不是已确认 Entity truth。",
+            "preview_only": "F6 中手动 promotion 仅为预览。",
+            "promotion_disabled": "F6 禁用 promotion",
+            "remove_selected": "移除已选 chip",
+            "search_selected": "搜索已选",
+            "select_mode": "选择标签",
+            "selected_title": "已选搜索 chip",
+            "source_assertion_marker": "来源断言",
+            "source_assertions": "来源断言",
+            "source_tag_marker": "来源标签",
+            "source_tags": "来源标签",
+            "title": "来源层候选",
+            "unconfirmed_entity": "未确认实体"
+        },
         "ai_tags": {
             "appended_count": "已从 AI 提示词追加 {count} 个标签"
         },

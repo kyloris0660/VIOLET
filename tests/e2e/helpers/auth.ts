@@ -17,7 +17,12 @@ export async function loginAsAdmin(page: Page) {
 }
 
 export async function switchToTab(page: Page, tabName: string) {
-  await page.locator(`button:has-text("${tabName}")`).first().click();
+  const byId = page.locator(`button.tab-btn[data-tab="${tabName}"]`).first();
+  if (await byId.count()) {
+    await byId.click();
+  } else {
+    await page.locator(`button:has-text("${tabName}")`).first().click();
+  }
   await page.waitForTimeout(500);
 }
 
