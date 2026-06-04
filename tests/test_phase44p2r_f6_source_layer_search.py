@@ -31,6 +31,7 @@ from app.models import (  # noqa: E402
     MediaEntityCandidate,
     SourceMetadataRecord,
     SourceNameAliasCandidate,
+    SourceNameObservation,
     SourceSearchableNameAssertion,
     SourceTagObservation,
     Tag,
@@ -189,6 +190,35 @@ def add_source_tag(
     return row
 
 
+def add_name_observation(
+    db,
+    record: SourceMetadataRecord,
+    *,
+    key: str,
+    raw_name: str,
+    canonical: str,
+    role: str = "character",
+    requires_review: bool = True,
+) -> SourceNameObservation:
+    row = SourceNameObservation(
+        source_metadata_record_id=record.id,
+        provider=record.provider,
+        observation_key=key,
+        media_id=record.media_id,
+        raw_name=raw_name,
+        normalized_name=raw_name.lower(),
+        canonical_name_key=canonical,
+        name_role=role,
+        source_field=f"{record.provider}_{role}_fixture",
+        requires_review=requires_review,
+        status="observed",
+        confidence=0.82,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
 def truth_counts(db) -> dict[str, int]:
     return {
         "Entity": db.query(Entity).count(),
@@ -255,6 +285,33 @@ def test_source_assertion_chip_search_uses_canonical_key_across_media(client, db
     assert {item["id"] for item in response.json()["items"]} == {m1.id, m2.id}
 
 
+def test_fallback_name_observation_chip_resolves_label_and_count(client, db):
+    m1 = create_media(db, "name-observation-one")
+    m2 = create_media(db, "name-observation-two")
+    r1 = add_source_record(db, m1, "pixiv", "pixiv:name-one")
+    r2 = add_source_record(db, m2, "pixiv", "pixiv:name-two")
+    add_name_observation(db, r1, key="name:fallback:one", raw_name="Fallback Hero", canonical="fallback_hero")
+    add_name_observation(db, r2, key="name:fallback:two", raw_name="Fallback Hero", canonical="fallback_hero")
+    db.commit()
+
+    layer = client.get(f"/api/source-assertions/media/{m1.id}").json()
+    chip = layer["needs_review_assertions"][0]
+    assert chip["display_name"] == "Fallback Hero"
+    assert chip["layer"] == "source_name_observation"
+
+    response = client.get(
+        f"/api/search?source_assertion={chip['search_value']}&include_source_needs_review=1"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert {item["id"] for item in payload["items"]} == {m1.id, m2.id}
+    resolved = payload["source_filters"]["source_assertions"][0]
+    assert resolved["display_name"] == "Fallback Hero"
+    assert resolved["layer"] == "source_name_observation"
+    assert resolved["result_media_count"] == 2
+    assert resolved.get("missing") is None
+
+
 def test_source_tag_chip_search_uses_canonical_tag_across_media(client, db):
     m1 = create_media(db, "m1")
     m2 = create_media(db, "m2")
@@ -287,6 +344,22 @@ def test_text_and_normal_tag_search_soft_link_to_source_name_concept(client, db)
     tag_response = client.get("/api/search?q=barbara_(genshin_impact)")
     assert tag_response.status_code == 200
     assert {item["id"] for item in tag_response.json()["items"]} == {normal_media.id, source_media.id}
+
+
+def test_linked_parenthetical_tag_lookup_escapes_underscore_wildcards(client, db):
+    good_media = create_media(db, "blue-hair-good", [("blue_hair_(series)", TagCategoryEnum.character)])
+    bad_media = create_media(db, "blue-hair-bad", [("blueXhair_(series)", TagCategoryEnum.character)])
+    source_media = create_media(db, "blue-hair-source")
+    record = add_source_record(db, source_media, "pixiv", "pixiv:blue-hair")
+    add_assertion(db, record, key="assert:blue-hair", name="Blue Hair", canonical="blue_hair", role="character")
+    db.commit()
+
+    response = client.get("/api/search?q=blue_hair")
+    assert response.status_code == 200
+    result_ids = {item["id"] for item in response.json()["items"]}
+    assert good_media.id in result_ids
+    assert source_media.id in result_ids
+    assert bad_media.id not in result_ids
 
 
 def test_source_name_alias_candidate_soft_links_search_terms(client, db):

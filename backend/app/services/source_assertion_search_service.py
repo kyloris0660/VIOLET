@@ -49,6 +49,7 @@ SOFT_ALIAS_RELATION_TYPES = (
     "translation_alias",
 )
 INACTIVE_ALIAS_STATUSES = ("rejected", "superseded")
+LIKE_ESCAPE = "\\"
 FORBIDDEN_TRUTH_PATHS = (
     "Entity",
     "EntityAlias",
@@ -170,10 +171,18 @@ def _tag_names_for_source_keys(db: Session | None, keys: set[str]) -> set[str]:
     conditions = [Tag.name.in_(keys)]
     for key in sorted(keys):
         if key and re.match(r"^[a-z0-9_]+$", key):
-            conditions.append(Tag.name.like(f"{key}_(%"))
+            conditions.append(Tag.name.like(f"{_escape_like_pattern(key)}\\_(%", escape=LIKE_ESCAPE))
 
     rows = db.query(Tag.name).filter(or_(*conditions)).all()
     return {row[0] for row in rows}
+
+
+def _escape_like_pattern(value: str) -> str:
+    return (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE + LIKE_ESCAPE)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+    )
 
 
 def _media_has_tag_condition(tag_names: set[str]):
@@ -729,20 +738,46 @@ def _resolve_assertion_label(db: Session, value: str, *, include_needs_review: b
     query = _filter_assertion_lookup_query(query, criteria)
     row = query.order_by(SourceSearchableNameAssertion.asserted_name.asc(), SourceSearchableNameAssertion.raw_input.asc()).first()
     if not row:
-        return {
-            "type": "source_assertion",
-            "layer": "source_assertion",
-            "display_name": value,
-            "search_param": "source_assertion",
-            "search_value": value,
-            "is_entity_truth": False,
-            "missing": True,
-        }
+        name_row = _lookup_name_observation_label(db, criteria, include_needs_review=include_needs_review)
+        if not name_row:
+            return {
+                "type": "source_assertion",
+                "layer": "source_assertion",
+                "display_name": value,
+                "search_param": "source_assertion",
+                "search_value": value,
+                "is_entity_truth": False,
+                "missing": True,
+            }
+        chip = _name_observation_chip(name_row[0], name_row[1])
+        chip["search_value"] = value
+        chip["result_media_count"] = _count_assertion_media(db, criteria, include_needs_review=include_needs_review)
+        return chip
 
     chip = _assertion_chip(row[0], row[1])
     chip["search_value"] = value
     chip["result_media_count"] = _count_assertion_media(db, criteria, include_needs_review=include_needs_review)
     return chip
+
+
+def _lookup_name_observation_label(
+    db: Session,
+    criteria: SourceAssertionFilter,
+    *,
+    include_needs_review: bool,
+) -> tuple[SourceNameObservation, SourceMetadataRecord] | None:
+    query = (
+        db.query(SourceNameObservation, SourceMetadataRecord)
+        .join(SourceMetadataRecord, SourceNameObservation.source_metadata_record_id == SourceMetadataRecord.id)
+        .filter(SourceNameObservation.status.in_(ACTIVE_NAME_OBSERVATION_STATUSES))
+    )
+    query = _filter_name_observation_lookup_query(
+        db,
+        query,
+        criteria,
+        include_needs_review=include_needs_review,
+    )
+    return query.order_by(SourceNameObservation.raw_name.asc()).first()
 
 
 def _filter_assertion_lookup_query(query: Query, criteria: SourceAssertionFilter) -> Query:
@@ -764,6 +799,33 @@ def _filter_assertion_lookup_query(query: Query, criteria: SourceAssertionFilter
         query = query.filter(SourceSearchableNameAssertion.canonical_name_key == criteria.canonical_name_key)
     elif criteria.normalized_input:
         query = query.filter(SourceSearchableNameAssertion.normalized_input == criteria.normalized_input)
+    else:
+        query = query.filter(false())
+    return query
+
+
+def _filter_name_observation_lookup_query(
+    db: Session,
+    query: Query,
+    criteria: SourceAssertionFilter,
+    *,
+    include_needs_review: bool,
+) -> Query:
+    if criteria.provider:
+        query = query.filter(SourceNameObservation.provider == criteria.provider)
+    if criteria.asserted_role:
+        query = query.filter(SourceNameObservation.name_role == criteria.asserted_role)
+    if not include_needs_review:
+        query = query.filter(SourceNameObservation.requires_review == False)
+
+    keys = set()
+    keys.update(_source_name_keys_for_text(db, criteria.canonical_name_key))
+    keys.update(_source_name_keys_for_text(db, criteria.normalized_input))
+    if not keys and criteria.assertion_key:
+        keys.update(_source_name_keys_for_text(db, criteria.assertion_key))
+
+    if keys:
+        query = query.filter(SourceNameObservation.canonical_name_key.in_(sorted(keys)))
     else:
         query = query.filter(false())
     return query
@@ -818,19 +880,15 @@ def _filter_source_tag_lookup_query(query: Query, criteria: SourceTagFilter) -> 
 
 
 def _count_assertion_media(db: Session, criteria: SourceAssertionFilter, *, include_needs_review: bool) -> int:
-    query = (
-        db.query(func.count(func.distinct(SourceMetadataRecord.media_id)))
-        .select_from(SourceSearchableNameAssertion)
-        .join(
-            SourceMetadataRecord,
-            SourceSearchableNameAssertion.source_metadata_record_id == SourceMetadataRecord.id,
-        )
-        .filter(
-            SourceMetadataRecord.media_id.isnot(None),
-            SourceSearchableNameAssertion.status.in_(_assertion_statuses(include_needs_review)),
-        )
+    return int(
+        _apply_assertion_filter(
+            db.query(Media),
+            criteria,
+            include_needs_review=include_needs_review,
+            db=db,
+        ).count()
+        or 0
     )
-    return int(_filter_assertion_lookup_query(query, criteria).scalar() or 0)
 
 
 def _count_source_tag_media(db: Session, criteria: SourceTagFilter) -> int:
