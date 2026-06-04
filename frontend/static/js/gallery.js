@@ -35,8 +35,6 @@ class Gallery extends BaseGallery {
 
             // 1. Basic pagination and filters
             apiParams.set('page', this.currentPage);
-            apiParams.set('sort', this.getSortValue());
-            apiParams.set('order', this.getOrderValue());
 
             // 2. Content class filter
             const contentClassMap = {
@@ -59,6 +57,7 @@ class Gallery extends BaseGallery {
             const sourceTags = urlParams.getAll('source_tag').filter(Boolean);
             const includeSourceNeedsReview = urlParams.get('include_source_needs_review') === '1';
             const hasSourceFilters = sourceAssertions.length > 0 || sourceTags.length > 0;
+            const hasExplicitSortParams = urlParams.has('sort') || urlParams.has('order');
 
             let endpoint = '/api/media/';
 
@@ -79,6 +78,14 @@ class Gallery extends BaseGallery {
                 if (includeSourceNeedsReview) {
                     apiParams.set('include_source_needs_review', '1');
                 }
+            }
+
+            const currentSort = this.getSortValue();
+            const currentOrder = this.getOrderValue();
+            const isDefaultSort = currentSort === this.options.defaultSort && currentOrder === this.options.defaultOrder;
+            if (endpoint !== '/api/search' || hasExplicitSortParams || !isDefaultSort) {
+                apiParams.set('sort', currentSort);
+                apiParams.set('order', currentOrder);
             }
 
             console.log('Loading gallery:', endpoint, apiParams.toString());
@@ -158,7 +165,8 @@ class Gallery extends BaseGallery {
                 param: 'source_assertion',
                 value: chip.search_value,
                 className: 'source-search-chip',
-                marker: window.i18n.t('media.source_layer.source_assertion_marker')
+                marker: window.i18n.t('media.source_layer.source_assertion_marker'),
+                includeSourceNeedsReview: Boolean(chip.include_source_needs_review)
             });
         });
         (sourceFilters.source_tags || []).forEach(chip => {
@@ -181,11 +189,17 @@ class Gallery extends BaseGallery {
                 const values = params.getAll(chip.param).filter(value => value !== chip.value);
                 params.delete(chip.param);
                 values.forEach(value => params.append(chip.param, value));
-                if (!params.getAll('source_assertion').length) {
-                    params.delete('include_source_needs_review');
-                } else if (includeSourceNeedsReview) {
-                    params.set('include_source_needs_review', '1');
-                }
+            }
+            const remainingSourceAssertions = params.getAll('source_assertion');
+            const needsReviewStillSelected = chips.some(candidate =>
+                candidate.param === 'source_assertion'
+                && candidate.includeSourceNeedsReview
+                && remainingSourceAssertions.includes(candidate.value)
+            );
+            if (needsReviewStillSelected) {
+                params.set('include_source_needs_review', '1');
+            } else {
+                params.delete('include_source_needs_review');
             }
             params.delete('page');
             const query = params.toString();

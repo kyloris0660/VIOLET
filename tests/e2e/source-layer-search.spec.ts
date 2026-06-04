@@ -154,6 +154,54 @@ test.describe('F6 source-layer media detail and search', () => {
     expect(randomUrl.searchParams.getAll('source_assertion')).toContain(needsReviewAssertion.search_value);
   });
 
+  test('removing the only needs-review chip drops the review opt-in flag', async ({ page }) => {
+    await page.evaluate(() => {
+      history.replaceState(
+        null,
+        '',
+        '/?source_assertion=active-token&source_assertion=review-token&include_source_needs_review=1'
+      );
+      (window as any).gallery.renderSourceSearchSummary(
+        {
+          source_filters: {
+            source_assertions: [
+              {
+                display_name: 'Active Source',
+                search_value: 'active-token',
+                include_source_needs_review: false,
+              },
+              {
+                display_name: 'Review Source',
+                search_value: 'review-token',
+                include_source_needs_review: true,
+              },
+            ],
+            source_tags: [],
+          },
+        },
+        '',
+        ['active-token', 'review-token'],
+        [],
+        true
+      );
+    });
+
+    const activeHref = await page
+      .locator('#source-search-summary a.selected-search-chip', { hasText: 'Active Source' })
+      .getAttribute('href');
+    const reviewHref = await page
+      .locator('#source-search-summary a.selected-search-chip', { hasText: 'Review Source' })
+      .getAttribute('href');
+
+    const activeUrl = new URL(activeHref!, page.url());
+    expect(activeUrl.searchParams.getAll('source_assertion')).toEqual(['review-token']);
+    expect(activeUrl.searchParams.get('include_source_needs_review')).toBe('1');
+
+    const reviewUrl = new URL(reviewHref!, page.url());
+    expect(reviewUrl.searchParams.getAll('source_assertion')).toEqual(['active-token']);
+    expect(reviewUrl.searchParams.get('include_source_needs_review')).toBeNull();
+  });
+
   test('admin content left navigation switches visible sections', async ({ page }) => {
     await page.goto('/admin?tab=content#media-management');
     await page.waitForLoadState('networkidle');

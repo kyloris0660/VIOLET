@@ -84,6 +84,8 @@ def create_media(
     tags: list[tuple[str, TagCategoryEnum]] | None = None,
     *,
     file_size: int = 100,
+    width: int = 100,
+    height: int = 100,
     uploaded_at: datetime | None = None,
 ) -> Media:
     media = Media(
@@ -94,8 +96,8 @@ def create_media(
         file_type=FileTypeEnum.image,
         mime_type="image/jpeg",
         file_size=file_size,
-        width=100,
-        height=100,
+        width=width,
+        height=height,
     )
     if uploaded_at is not None:
         media.uploaded_at = uploaded_at
@@ -302,14 +304,14 @@ def test_search_route_returns_source_filter_metadata(client, db):
     assert payload["source_filters"]["source_assertions"][0]["is_entity_truth"] is False
 
 
-def test_search_route_source_filter_sort_overrides_parser_default_order(client, db):
+def test_search_route_preserves_query_order_unless_external_sort_is_explicit(client, db):
     media_specs = [
-        ("zeta", 200, datetime(2026, 1, 1, tzinfo=timezone.utc)),
-        ("alpha", 300, datetime(2026, 1, 2, tzinfo=timezone.utc)),
-        ("middle", 100, datetime(2026, 1, 3, tzinfo=timezone.utc)),
+        ("zeta", 200, 100, 300, datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        ("alpha", 300, 100, 100, datetime(2026, 1, 2, tzinfo=timezone.utc)),
+        ("middle", 100, 300, 100, datetime(2026, 1, 3, tzinfo=timezone.utc)),
     ]
-    for name, size, uploaded_at in media_specs:
-        media = create_media(db, name, file_size=size, uploaded_at=uploaded_at)
+    for name, size, width, height, uploaded_at in media_specs:
+        media = create_media(db, name, file_size=size, width=width, height=height, uploaded_at=uploaded_at)
         record = add_source_record(db, media, "pixiv", f"pixiv:{name}")
         add_assertion(db, record, key=f"assert:ganyu:{name}", name="Ganyu", canonical="ganyu", role="character")
     db.commit()
@@ -319,6 +321,24 @@ def test_search_route_source_filter_sort_overrides_parser_default_order(client, 
         canonical_name_key="ganyu",
         asserted_role="character",
     )
+
+    query_order = client.get(f"/api/search?q=order:landscape&source_assertion={source_value}")
+    assert query_order.status_code == 200
+    assert [item["filename"] for item in query_order.json()["items"]] == [
+        "middle.jpg",
+        "alpha.jpg",
+        "zeta.jpg",
+    ]
+
+    gallery_default_params = client.get(
+        f"/api/search?q=order:landscape&source_assertion={source_value}&sort=uploaded_at&order=desc"
+    )
+    assert gallery_default_params.status_code == 200
+    assert [item["filename"] for item in gallery_default_params.json()["items"]] == [
+        "middle.jpg",
+        "alpha.jpg",
+        "zeta.jpg",
+    ]
 
     by_filename = client.get(f"/api/search?source_assertion={source_value}&sort=filename&order=asc")
     assert by_filename.status_code == 200

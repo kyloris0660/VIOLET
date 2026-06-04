@@ -21,6 +21,24 @@ from ..utils.search_parser import apply_search_criteria, parse_search_query
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
+def _has_query_order(parsed: dict) -> bool:
+    meta = parsed.get("meta") or {}
+    return bool(meta.get("order") or meta.get("sort"))
+
+
+def _is_default_gallery_sort(sort: Optional[str], order: Optional[str]) -> bool:
+    return (sort in (None, "uploaded_at")) and (order in (None, "desc"))
+
+
+def _should_apply_external_sort(request: Request, parsed: dict, sort: Optional[str], order: Optional[str]) -> bool:
+    has_external_sort_param = "sort" in request.query_params or "order" in request.query_params
+    if not has_external_sort_param:
+        return False
+    if _has_query_order(parsed) and _is_default_gallery_sort(sort, order):
+        return False
+    return True
+
+
 def _apply_search_sort(query, sort: Optional[str], order: Optional[str]):
     query = query.order_by(None)
     sort_column = Media.uploaded_at
@@ -75,7 +93,8 @@ async def search_media(
         include_needs_review=include_source_needs_review,
     )
     query = apply_content_class_filter(query, content_class)
-    query = _apply_search_sort(query, sort, order)
+    if _should_apply_external_sort(request, parsed, sort, order):
+        query = _apply_search_sort(query, sort, order)
 
     # Pagination
     offset = (page - 1) * limit
