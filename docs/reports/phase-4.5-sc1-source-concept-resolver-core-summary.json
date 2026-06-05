@@ -1,24 +1,25 @@
 {
   "artifact_consistency": {
-    "checked_at": "2026-06-05T14:22:12.214759+00:00",
-    "concept_count": 1502,
+    "checked_at": "2026-06-05T17:33:55.311186+00:00",
+    "concept_count": 2649,
     "forbidden_truth_table_write_count": 0,
     "missing_alias_concepts": 0,
     "missing_evidence_concepts": 0,
     "missing_link_concepts": 0,
     "missing_link_signals": 0,
     "passed": true,
-    "signal_count": 4549
+    "signal_count": 4602
   },
   "f7a_final_pack_import": {
     "candidate_bundle_count": 730,
     "existing_db_candidate_count_for_run": 730,
-    "llm_or_provider_calls": false,
-    "needs_import": false,
+    "llm_or_provider_calls_for_backfill": false,
+    "needs_import": true,
     "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
   },
   "forbidden_truth_table_write_count": 0,
-  "generated_at": "2026-06-05T14:22:12.264910+00:00",
+  "generated_at": "2026-06-05T17:33:55.359145+00:00",
+  "image_uploads": false,
   "inventory_counts": {
     "f7a_source_name_candidate": 730,
     "media_tags": 105699,
@@ -29,41 +30,116 @@
     "source_searchable_name_assertion": 300,
     "source_tag_observation": 710
   },
-  "negative_case_summary": {
-    "passed": 13,
-    "total": 13
+  "llm_adjudication": {
+    "error_count": 0,
+    "judgment_count": 300,
+    "max_budget_usd": 50.0,
+    "max_calls": 300,
+    "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
+    "projected_cost_usd": 0.097032,
+    "used": true,
+    "uses_fallback_provider": false
   },
-  "no_llm_or_provider_calls": true,
+  "negative_case_summary": {
+    "failed": 0,
+    "passed": 4,
+    "total": 4
+  },
+  "no_llm_or_provider_calls": false,
   "phase": "phase-4.5-sc1-source-concept-resolver-core",
   "positive_case_summary": {
-    "matched": 6,
-    "total": 6
-  },
-  "public_redacted": true,
-  "resolver_summary": {
-    "alias_count": 2138,
-    "ambiguous_link_count": 796,
-    "concept_count": 1502,
-    "concept_counts_by_status": {
-      "active": 423,
-      "needs_review": 1079
+    "failed": 0,
+    "passed": 6,
+    "status_counts": {
+      "pass": 6
     },
-    "evidence_count": 4438,
-    "link_count": 4438,
+    "total": 6,
+    "unavailable": 0
+  },
+  "provider_or_enrichment_calls": false,
+  "public_redacted": true,
+  "readiness_check": {
+    "checked_at": "2026-06-05T17:33:56.202797+00:00",
+    "failure_count": 0,
+    "failures": [],
+    "passed": true
+  },
+  "resolver_summary": {
+    "ai_only_active_violation_count": 0,
+    "alias_count": 3209,
+    "ambiguous_link_count": 518,
+    "blocking_oversized_blocks": 21,
+    "concept_count": 2649,
+    "concept_counts_by_status": {
+      "active": 366,
+      "needs_review": 2283
+    },
+    "context_alias_count": 4,
+    "edge_graph": {
+      "blocking_block_count": 3472,
+      "edge_count": 26379,
+      "edge_counts_by_status": {
+        "active": 3199,
+        "needs_review": 18337,
+        "weak": 4843
+      },
+      "edge_counts_by_type": {
+        "context_only": 153,
+        "cooccurrence_context": 4689,
+        "exact_canonical_key": 1858,
+        "negative_guard": 2899,
+        "same_surface_context": 16780
+      },
+      "oversized_block_count": 21,
+      "processed_block_count": 1910
+    },
+    "evidence_count": 3968,
+    "general_source_tag_pollution_count": 0,
+    "link_count": 3968,
     "link_counts_by_status": {
-      "active": 1802,
-      "needs_review": 2636
+      "active": 1254,
+      "needs_review": 2714
     },
     "llm_usage": {
-      "policy": "disabled_for_sc1_deterministic_core",
-      "used": false
+      "cache_dir": ".local_manifests\\phase-4.5-sc1-llm-adjudication-cache",
+      "error_count": 0,
+      "judgment_count": 300,
+      "plan": {
+        "enabled": true,
+        "max_budget_usd": 50.0,
+        "max_calls": 300,
+        "projected_calls": 300,
+        "projected_cost_usd": 0.097032,
+        "projected_input_tokens": 24516,
+        "projected_output_tokens": 24000,
+        "reason": null,
+        "selected_block_count": 300,
+        "skipped_block_count": 5460,
+        "status": "ready"
+      },
+      "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
+      "provider": {
+        "base_url_redacted": true,
+        "llm_access_configured": true,
+        "llm_access_stored": false,
+        "llm_provider_label": "primary_openai",
+        "model_label": "primary_model_configured",
+        "model_name_redacted": true,
+        "primary_enabled": true,
+        "primary_provider_type": "openai_compatible",
+        "provider_mode": "primary_openai",
+        "uses_fallback_provider": false,
+        "uses_primary_model": true
+      },
+      "selected_pair_count": 300,
+      "used": true
     },
-    "rejected_signal_count": 111,
-    "resolver_version": "source_concept_resolver_core_v1",
-    "run_id": "phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b",
+    "rejected_signal_count": 634,
+    "resolver_version": "source_concept_resolver_core_v2_graph",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-rework",
     "schema_version": "source_concept_schema_v1",
-    "search_index_preview_count": 2138,
-    "signal_count": 4549,
+    "search_index_preview_count": 3209,
+    "signal_count": 4602,
     "signal_counts_by_origin": {
       "ai_model_tag": 2007,
       "f7a_candidate": 730,
@@ -71,9 +147,10 @@
       "source_alias_candidate": 90,
       "source_assertion": 300,
       "source_name_observation": 459,
-      "source_tag_observation": 657
-    }
+      "source_tag_observation": 710
+    },
+    "source_title_only_active_violation_count": 0
   },
-  "run_id": "phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b",
-  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b.zip"
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-rework",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-rework.zip"
 }

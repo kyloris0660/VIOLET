@@ -29,16 +29,62 @@ from app.models import (  # noqa: E402
     SourceNameCandidateExtractionRun,
     SourceNameObservation,
     SourceSearchableNameAssertion,
+    SourceTagObservation,
     Tag,
     blombooru_media_tags,
 )
 from app.services.source_concept_resolver_service import (  # noqa: E402
+    LLMAdjudicationConfig,
     SourceConceptSignalDraft,
+    canonical_key,
+    edges_from_llm_judgments,
     build_source_concept_signals,
+    llm_cache_fingerprint,
+    plan_llm_adjudication,
     import_f7a_final_pack_candidates,
     resolve_source_concepts,
     run_source_concept_resolution,
 )
+from scripts.run_phase45_sc1_source_concept_resolver import build_readiness_check, concept_case_review
+
+
+def _signal(
+    key: str,
+    raw: str,
+    *,
+    origin_type: str = "normal_media_tag",
+    role: str = "character",
+    trust: str = "strong",
+    status: str = "active",
+    media_id: int | None = None,
+    source_record_id: int | None = None,
+    work_context_key: str | None = None,
+    source_kind: str | None = "tag_category:character",
+    payload: dict | None = None,
+) -> SourceConceptSignalDraft:
+    return SourceConceptSignalDraft(
+        signal_key=key,
+        origin_type=origin_type,
+        origin_table="fixture",
+        origin_id=key,
+        provider="fixture",
+        media_id=media_id,
+        source_metadata_record_id=source_record_id,
+        source_record_id=str(source_record_id) if source_record_id is not None else None,
+        raw_value=raw,
+        display_value=raw,
+        normalized_key=raw.lower().replace(" ", "_"),
+        canonical_key=raw.lower().replace(" ", "_"),
+        role_hint=role,
+        work_context_key=work_context_key,
+        parenthetical_base=None,
+        parenthetical_context=None,
+        source_kind=source_kind,
+        trust_tier=trust,
+        confidence=0.9,
+        status=status,
+        evidence_payload=payload or {},
+    )
 
 
 def _db():
@@ -235,13 +281,15 @@ def test_alias_edge_links_multilingual_sources_without_entity_truth():
         apply=True,
     )
 
-    alias_edge_concepts = [concept for concept in result.concepts if concept.concept_key.startswith("alias_edge:")]
-    assert alias_edge_concepts
-    concept = alias_edge_concepts[0]
-    assert concept.status == "active"
-    assert {"f7a_candidate", "source_assertion", "normal_media_tag", "source_alias_candidate"}.issubset(
-        concept.evidence_summary["origin_counts"].keys()
+    concept = next(
+        concept
+        for concept in result.concepts
+        if {"f7a_candidate", "source_assertion", "normal_media_tag", "source_alias_candidate"}.issubset(
+            concept.evidence_summary["origin_counts"].keys()
+        )
     )
+    assert concept.status == "active"
+    assert concept.evidence_summary["work_context_key"] == "genshin_impact"
     assert persistence["forbidden_truth_table_write_count"] == 0
 
 
@@ -340,6 +388,289 @@ def test_source_title_only_signal_remains_needs_review_context():
     assert result.links[0].negative_reason_code == "source_title_only_guard"
 
 
+def test_general_source_tag_observation_is_excluded_from_concept_buckets():
+    _engine, session = _db()
+    media = _media(20)
+    metadata = SourceMetadataRecord(
+        id=20,
+        provider="pixiv",
+        provider_record_key="pixiv:general",
+        media_id=media.id,
+        metadata_kind="gallery_dl_real_pixiv_metadata",
+        data_type_label="real_live_or_local_provider_data",
+        status="observed",
+    )
+    tag_observation = SourceTagObservation(
+        source_metadata_record_id=metadata.id,
+        provider="pixiv",
+        observation_key="tag:blue_dress",
+        raw_tag="blue_dress",
+        normalized_tag="blue_dress",
+        canonical_tag_key="blue_dress",
+        source_tag_kind="provider_tag",
+        source_category_raw="0",
+        status="observed",
+    )
+    session.add_all([media, metadata, tag_observation])
+    session.commit()
+
+    signals = build_source_concept_signals(session, run_id="sc1-test")
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert any(signal.raw_value == "blue_dress" and signal.trust_tier == "rejected" for signal in result.signals)
+    assert all("blue_dress" not in {signal.raw_value for signal in concept.signals} for concept in result.concepts)
+    assert all(item.search_key != "blue_dress" for item in result.search_index)
+
+
+def test_medium_ai_f7a_candidates_remain_review_without_non_ai_corroboration():
+    signals = [
+        _signal(
+            "f7a-ai:1",
+            "Nilou",
+            origin_type="f7a_candidate",
+            trust="medium_ai",
+            status="needs_review",
+            work_context_key="genshin_impact",
+            source_kind="ai_model_tag",
+        ),
+        _signal(
+            "f7a-ai:2",
+            "Nilou",
+            origin_type="f7a_candidate",
+            trust="medium_ai",
+            status="needs_review",
+            work_context_key="genshin_impact",
+            source_kind="ai_model_tag",
+        ),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert result.concepts
+    assert all(concept.status == "needs_review" for concept in result.concepts)
+    assert result.summary["ai_only_active_violation_count"] == 0
+
+
+def test_ai_signal_can_activate_only_with_non_ai_corroboration():
+    signals = [
+        _signal(
+            "f7a-ai:1",
+            "nilou_(genshin_impact)",
+            origin_type="f7a_candidate",
+            trust="medium_ai",
+            status="needs_review",
+            source_kind="ai_model_tag",
+        ),
+        _signal(
+            "manual:1",
+            "nilou_(genshin_impact)",
+            origin_type="normal_media_tag",
+            trust="strong",
+            status="active",
+        ),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    concept = result.concepts[0]
+    assert concept.status == "active"
+    assert concept.evidence_summary["guards"]["medium_ai_present"] is True
+
+
+def test_alias_component_union_links_a_b_and_a_c_in_one_component():
+    alias_ab_source = _signal(
+        "alias:ab:source",
+        "A",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        source_kind="alias_edge_source",
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "b"},
+    )
+    alias_ab_target = _signal(
+        "alias:ab:target",
+        "B",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        source_kind="alias_edge_target",
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "b"},
+    )
+    alias_ac_source = _signal(
+        "alias:ac:source",
+        "A",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        source_kind="alias_edge_source",
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "c"},
+    )
+    alias_ac_target = _signal(
+        "alias:ac:target",
+        "C",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        source_kind="alias_edge_target",
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "c"},
+    )
+    signals = [
+        _signal("normal:a", "A", work_context_key="work"),
+        _signal("normal:b", "B", work_context_key="work"),
+        _signal("normal:c", "C", work_context_key="work"),
+        alias_ab_source,
+        alias_ab_target,
+        alias_ac_source,
+        alias_ac_target,
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    concepts_with_aliases = [
+        concept for concept in result.concepts
+        if {"a", "b", "c"}.issubset({signal.canonical_key for signal in concept.signals})
+    ]
+    assert len(concepts_with_aliases) == 1
+
+
+def test_context_equivalence_uses_record_scope_without_single_record_overmerge():
+    signals = [
+        _signal("work:1", "原神", role="work", media_id=1, source_record_id=10),
+        _signal("tag:1", "barbara_(genshin_impact)", trust="weak", status="needs_review", media_id=1, source_record_id=10),
+        _signal("work:2", "原神", role="work", media_id=2, source_record_id=11),
+        _signal("tag:2", "ganyu_(genshin_impact)", trust="weak", status="needs_review", media_id=2, source_record_id=11),
+        _signal("work:kaguya", "かぐや様は告らせたい", role="work", media_id=3, source_record_id=12),
+        _signal("tag:kaguya", "jean_(genshin_impact)", trust="weak", status="needs_review", media_id=3, source_record_id=12),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert result.summary["context_alias_count"] == 2
+    contexts = {concept.evidence_summary.get("work_context_key") for concept in result.concepts}
+    assert "genshin_impact" in contexts
+    kaguya_concepts = [
+        concept
+        for concept in result.concepts
+        if any(signal.canonical_key == "かぐや様は告らせたい" for signal in concept.signals)
+    ]
+    assert kaguya_concepts
+    assert all(concept.evidence_summary.get("work_context_key") != "genshin_impact" for concept in kaguya_concepts)
+
+
+def test_oversized_context_block_uses_star_edges_without_all_pairs():
+    signals = [
+        _signal(
+            f"sig:{idx}",
+            f"shared_{idx}_(genshin_impact)",
+            trust="weak",
+            status="needs_review",
+            media_id=idx,
+        )
+        for idx in range(65)
+    ]
+    signals.extend(
+        _signal(
+            f"nilou:{idx}",
+            "nilou_(genshin_impact)",
+            trust="weak",
+            status="needs_review",
+            media_id=1000 + idx,
+        )
+        for idx in range(65)
+    )
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert result.summary["blocking_oversized_blocks"] >= 1
+    nilou_concepts = [
+        concept
+        for concept in result.concepts
+        if {signal.canonical_key for signal in concept.signals} == {"nilou_(genshin_impact)"}
+    ]
+    assert any(len(concept.signals) > 1 for concept in nilou_concepts)
+
+
+def test_strict_positive_case_review_requires_same_concept():
+    split_payload = {
+        "concepts": [
+            {"concept_key": "c1", "status": "active", "evidence_summary": {"surface_key": "kamisato_ayaka"}},
+            {"concept_key": "c2", "status": "active", "evidence_summary": {"surface_key": "kamisato_ayaka"}},
+        ],
+        "aliases": [
+            {"concept_key": "c1", "alias_key": "kamisato_ayaka", "alias_role": "normal_media_tag"},
+            {"concept_key": "c2", "alias_key": canonical_key("\u795e\u91cc\u7dbe\u83ef"), "alias_role": "f7a_candidate"},
+        ],
+        "ai_signal_review": [],
+        "overmerge_review": [],
+    }
+    positive_rows, _negative_rows = concept_case_review(split_payload)
+    kamisato = next(row for row in positive_rows if row["case_id"] == "kamisato_ayaka_multi_origin")
+    assert kamisato["validation_status"] == "fail"
+
+    joined_payload = {
+        **split_payload,
+        "concepts": [{"concept_key": "c1", "status": "active", "evidence_summary": {"surface_key": "kamisato_ayaka"}}],
+        "aliases": [
+            {"concept_key": "c1", "alias_key": "kamisato_ayaka", "alias_role": "normal_media_tag"},
+            {"concept_key": "c1", "alias_key": canonical_key("\u795e\u91cc\u7dbe\u83ef"), "alias_role": "f7a_candidate"},
+        ],
+    }
+    positive_rows, _negative_rows = concept_case_review(joined_payload)
+    kamisato = next(row for row in positive_rows if row["case_id"] == "kamisato_ayaka_multi_origin")
+    assert kamisato["validation_status"] == "pass"
+
+
+def test_runner_readiness_fails_required_validation_failures():
+    readiness = build_readiness_check(
+        summary={"resolver_summary": {"ai_only_active_violation_count": 0, "general_source_tag_pollution_count": 0, "source_title_only_active_violation_count": 0}, "persistence": {"forbidden_truth_table_write_count": 0}},
+        positive_rows=[{"case_id": "kamisato_ayaka_multi_origin", "validation_status": "fail"}],
+        negative_rows=[],
+        consistency={"passed": True},
+        redaction={"passed": True},
+    )
+
+    assert readiness["passed"] is False
+    assert readiness["failures"][0]["check"] == "positive_same_concept"
+
+
+def test_guarded_merge_review_uses_surface_key_not_ambiguous_literal():
+    result = resolve_source_concepts(
+        [
+            _signal("mona:1", "Mona"),
+            _signal("mona:2", "Mona"),
+            _signal("nicole:1", "Nicole"),
+            _signal("nicole:2", "Nicole"),
+        ],
+        run_id="sc1-test",
+    )
+
+    surfaces = {row["surface_key"] for row in result.merge_candidates}
+    assert "ambiguous" not in surfaces
+    assert {"mona", "nicole"}.issubset(surfaces)
+
+
+def test_llm_budget_cache_and_judgment_edges_are_source_layer_only():
+    left = _signal("left", "A", trust="medium", status="needs_review")
+    right = _signal("right", "B", trust="medium", status="needs_review")
+    result = resolve_source_concepts([left, right], run_id="sc1-test", llm_config=LLMAdjudicationConfig(enabled=True, max_calls=5))
+    plan = result.summary["llm_usage"]["plan"]
+    assert plan["status"] in {"ready", "disabled"}
+    first = llm_cache_fingerprint(prompt_version="v1", model_label="primary", block_payload={"signals": ["a", "b"]})
+    second = llm_cache_fingerprint(prompt_version="v1", model_label="primary", block_payload={"signals": ["a", "b"]})
+    assert first == second
+
+    edges = edges_from_llm_judgments(
+        [{"left_signal_key": "left", "right_signal_key": "right", "decision": "must_link", "confidence": 0.9, "judgment_id": "j1"}],
+        signal_by_key={"left": left, "right": right},
+    )
+    assert edges[0].edge_type == "llm_same_concept"
+    assert edges[0].payload["source_layer_only"] is True
+
+
 def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tmp_path):
     _engine, session = _db()
     pack = tmp_path / "f7a-pack"
@@ -379,3 +710,33 @@ def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tm
     assert result["candidate_bundle_count"] == 1
     assert result["persistence"]["forbidden_truth_table_write_count"] == 0
     assert session.query(SourceNameCandidate).count() == 1
+
+    (pack / "candidate-bundle.jsonl").write_text(
+        json.dumps(
+            {
+                "group_key": "source_record:1",
+                "provider": "pixiv",
+                "source_metadata_record_id": None,
+                "media_id": None,
+                "origin_type": "pixiv_tag",
+                "origin_id": "tag:1",
+                "raw_value": "Different",
+                "display_name": "Different",
+                "normalized_value": "different",
+                "canonical_key": "different",
+                "candidate_role": "character",
+                "candidate_status": "active_candidate",
+                "extraction_verdict": "single_candidate_found",
+                "extraction_action": "accepted",
+                "confidence": 0.9,
+                "candidate_key": "different-logical-key",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    mismatch = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=False)
+    assert mismatch["candidate_bundle_count"] == mismatch["existing_db_candidate_count_for_run"] == 1
+    assert mismatch["needs_import"] is True
+    assert mismatch["stable_checksum_matches"] is False

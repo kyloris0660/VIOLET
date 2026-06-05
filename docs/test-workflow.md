@@ -220,7 +220,7 @@ Use focused tests plus the runner-generated validation pack:
 
 ```powershell
 & "$PY" -m pytest tests/test_phase45_sc1_source_concept_resolver.py -v
-& "$PY" scripts/run_phase45_sc1_source_concept_resolver.py --apply-db --apply-f7a-final-pack
+& "$PY" scripts/run_phase45_sc1_source_concept_resolver.py --apply-db --apply-f7a-final-pack --use-llm-adjudication --max-llm-calls 300 --max-llm-budget-usd 50
 ```
 
 Required checks:
@@ -230,7 +230,8 @@ Required checks:
 - `artifact-consistency-check.json` must pass.
 - `public-redaction-check.txt` must pass.
 - `forbidden_truth_table_write_count` must be `0` for both F7a local backfill and SC1 resolver persistence.
-- SC1 must not run LLM/API/provider calls and must not start full SC2 search/UI integration.
+- Bounded text-only LLM pair adjudication is allowed only when explicitly enabled by `--use-llm-adjudication`, capped by `--max-llm-calls` and `--max-llm-budget-usd`, cache-backed, primary-provider-only, and recorded in the validation pack. It must never upload images, run provider/gallery-dl/Pixiv/SauceNAO/Google enrichment, run localization batches, use fallback providers by default, or create Entity truth.
+- SC1 must not start full SC2 search/UI integration.
 
 ### Fixture Validation (Tier 2)
 

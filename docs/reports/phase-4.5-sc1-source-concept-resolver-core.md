@@ -2,23 +2,25 @@
 
 ## Summary
 
-Phase 4.5-SC1 implements the provider-neutral source-layer SourceConcept resolver core. It groups multi-source name, tag, assertion, observation, alias, and structured provider signals into unconfirmed concepts.
+Phase 4.5-SC1 implements the provider-neutral source-layer SourceConcept resolver core. It groups multi-source name, tag, assertion, observation, alias, and structured provider signals into unconfirmed concepts through a blocking + edge-graph resolver.
 
 This report is public/redacted: it contains counts and safety results only, not local raw names or private source values.
 
 ## Scope
 
-- Included: additive SourceConcept schema, SourceConceptSignal adapters, deterministic resolver, run ledger, evidence/link/search-preview tables, validation pack.
+- Included: additive SourceConcept schema, SourceConceptSignal adapters, blocking/edge graph resolver, run ledger, evidence/link/search-preview tables, validation pack.
 - Not included: Entity truth, EntityAlias truth, MediaEntityAssignment, media_tags mutation, full search/UI integration, manual promotion UI.
 
 ## Counts
 
-- Signals: 4549
-- Concepts: 1502 ({'active': 423, 'needs_review': 1079})
-- Links: 4438 ({'active': 1802, 'needs_review': 2636})
-- Aliases: 2138
-- Evidence rows: 4438
-- Search preview rows: 2138
+- Signals: 4602
+- Concepts: 2649 ({'active': 366, 'needs_review': 2283})
+- Links: 3968 ({'active': 1254, 'needs_review': 2714})
+- Aliases: 3209
+- Evidence rows: 3968
+- Search preview rows: 3209
+- Edge candidates: 26379
+- Readiness passed: True
 
 ## Source Signal Inventory
 
@@ -29,8 +31,21 @@ This report is public/redacted: it contains counts and safety results only, not 
 - Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057`
 - Candidate bundle count: 730
 - Existing DB count before scoped import: 730
-- Import needed: False
-- LLM/provider calls: false
+- Import needed: True
+- LLM/provider calls for F7a backfill: false
+
+## LLM Pair Adjudication
+
+- Used: True
+- Policy: `bounded_optional_primary_openai_only_after_deterministic_blocking`
+- Judgments: 300
+- Error count: 0
+- Max calls: 300
+- Budget cap USD: 50.0
+- Projected cost USD: 0.097032
+- Uses fallback provider: False
+- Provider/source enrichment calls: false
+- Image uploads: false
 
 ## Safety
 
@@ -42,5 +57,5 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Validation Pack
 
-- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b.zip`
+- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-rework.zip`
 - Primary validation format: JSON/JSONL.

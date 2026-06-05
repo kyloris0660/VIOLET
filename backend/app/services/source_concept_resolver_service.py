@@ -9,6 +9,7 @@ confirmed assignment state.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -50,10 +51,11 @@ from .source_name_candidate_extraction_service import (
     RecordVerdictDraft,
     SourceCandidateInputGroup,
     persist_extraction_bundle,
+    primary_openai_provider_from_settings,
     table_counts,
 )
 
-RESOLVER_VERSION = "source_concept_resolver_core_v1"
+RESOLVER_VERSION = "source_concept_resolver_core_v2_graph"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
 
 SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
@@ -72,6 +74,28 @@ MEDIUM_TRUST = {"medium", "medium_ai"}
 ACTIVE_INPUT_STATUSES = {"active", "searchable_active", "observed", "candidate"}
 REJECTED_INPUT_STATUSES = {"rejected", "superseded", "blocked"}
 AI_SOURCE_HINTS = ("ai", "wd", "model", "tagger", "llm")
+GENERIC_CONTEXT_STOP_KEYS = {
+    "animal",
+    "bunny",
+    "cheerleading",
+    "clothes",
+    "clothing",
+    "creature",
+    "cup",
+    "flower",
+    "food",
+    "medium",
+    "object",
+    "place",
+    "series",
+    "shape",
+    "sky",
+    "small",
+    "spring",
+    "swimsuit",
+    "symbol",
+    "track",
+}
 TRUST_WEIGHTS = {
     "strong": 1.0,
     "medium": 0.65,
@@ -84,6 +108,13 @@ POPULARITY_RE = re.compile(
     r"(?i)(users|bookmarks|views|fav|favorites|收藏|入り|users入り|bookmarks入り)"
 )
 PAREN_RE = re.compile(r"^\s*(?P<base>.+?)(?:_\(|\(|（)(?P<context>.+?)(?:\)|）)\s*$")
+
+
+POPULARITY_RE = re.compile(
+    r"(?i)(users|bookmarks|views|fav|favorites|"
+    r"\u6536\u85cf|\u5165\u308a|users\u5165\u308a|bookmarks\u5165\u308a)"
+)
+PAREN_RE = re.compile(r"^\s*(?P<base>.+?)(?:_\(|\(|\uff08)(?P<context>.+?)(?:\)|\uff09)\s*$")
 
 
 @dataclass(frozen=True)
@@ -178,9 +209,52 @@ class SourceConceptSearchIndexDraft:
 
 
 @dataclass(frozen=True)
+class SourceConceptEdgeDraft:
+    edge_key: str
+    left_signal_key: str
+    right_signal_key: str
+    edge_type: str
+    weight: float
+    evidence_source: str
+    status: str
+    resolution_reason_code: str
+    negative_reason_code: str | None
+    union_allowed: bool
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LLMAdjudicationConfig:
+    enabled: bool = False
+    max_calls: int = 0
+    max_budget_usd: float = 50.0
+    max_block_size: int = 12
+    prompt_version: str = "source_concept_llm_pair_adjudication_v1"
+    model_label: str = "primary_openai"
+    cache_dir: str | None = None
+    fail_if_unavailable: bool = False
+
+
+@dataclass(frozen=True)
+class LLMAdjudicationPlan:
+    enabled: bool
+    projected_calls: int
+    projected_input_tokens: int
+    projected_output_tokens: int
+    projected_cost_usd: float
+    max_calls: int
+    max_budget_usd: float
+    selected_block_count: int
+    skipped_block_count: int
+    status: str
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class SourceConceptResolutionResult:
     run_id: str
     signals: tuple[SourceConceptSignalDraft, ...]
+    edge_candidates: tuple[SourceConceptEdgeDraft, ...]
     concepts: tuple[SourceConceptDraft, ...]
     aliases: tuple[SourceConceptAliasDraft, ...]
     evidence: tuple[SourceConceptEvidenceDraft, ...]
@@ -189,6 +263,10 @@ class SourceConceptResolutionResult:
     rejected_signals: tuple[dict[str, Any], ...]
     ambiguous_links: tuple[dict[str, Any], ...]
     merge_candidates: tuple[dict[str, Any], ...]
+    overmerge_review: tuple[dict[str, Any], ...]
+    undermerge_review: tuple[dict[str, Any], ...]
+    ai_signal_review: tuple[dict[str, Any], ...]
+    llm_judgments: tuple[dict[str, Any], ...]
     summary: dict[str, Any]
 
 
@@ -933,40 +1011,45 @@ def build_source_concept_signals(
 
     for row in db.query(SourceTagObservation).all():
         role = role_from_source_tag_category(row.source_category_raw)
-        if role == "unknown" and parse_parenthetical(row.raw_tag)[0]:
+        parsed_base, parsed_context = parse_parenthetical(row.raw_tag)
+        if role == "unknown" and parsed_base:
             role = "character"
         trust = "medium" if role != "unknown" else "weak"
         status = source_status_to_concept_status(row.status, default="needs_review")
-        if row.source_category_raw in {None, "", "0", "general", "meta", "5"} and role == "unknown":
-            status = "needs_review"
+        category_raw = normalize_source_text(row.source_category_raw).lower()
+        if category_raw in {"", "0", "general", "meta", "5"} and role == "unknown" and not parsed_base:
+            trust = "rejected"
+            status = "rejected"
         if is_popularity_or_meta(row.raw_tag):
             trust = "rejected"
             status = "rejected"
-        if trust != "rejected":
-            signals.append(
-                _make_signal(
-                    origin_type="source_tag_observation",
-                    origin_table="blombooru_source_tag_observations",
-                    origin_id=row.id,
-                    provider=row.provider,
-                    media_id=None,
-                    source_metadata_record_id=row.source_metadata_record_id,
-                    source_record_id=str(row.source_metadata_record_id),
-                    raw_value=row.raw_tag,
-                    display_value=row.normalized_tag or row.raw_tag,
-                    canonical_value=row.canonical_tag_key,
-                    role_hint=role,
-                    source_kind=row.source_tag_kind,
-                    trust_tier=trust,
-                    confidence=row.confidence,
-                    status=status,
-                    evidence_payload={
-                        "observation_key": row.observation_key,
-                        "source_category_raw": row.source_category_raw,
-                    },
-                    created_by_run_id=run_id,
-                )
+        signals.append(
+            _make_signal(
+                origin_type="source_tag_observation",
+                origin_table="blombooru_source_tag_observations",
+                origin_id=row.id,
+                provider=row.provider,
+                media_id=None,
+                source_metadata_record_id=row.source_metadata_record_id,
+                source_record_id=str(row.source_metadata_record_id),
+                raw_value=row.raw_tag,
+                display_value=row.normalized_tag or row.raw_tag,
+                canonical_value=row.canonical_tag_key,
+                role_hint=role,
+                parenthetical_base=parsed_base,
+                parenthetical_context=parsed_context,
+                source_kind=row.source_tag_kind,
+                trust_tier=trust,
+                confidence=row.confidence,
+                status=status,
+                evidence_payload={
+                    "observation_key": row.observation_key,
+                    "source_category_raw": row.source_category_raw,
+                    "non_concept_reason": "general_source_tag_without_name_context" if trust == "rejected" else None,
+                },
+                created_by_run_id=run_id,
             )
+        )
 
     for row in db.query(SourceNameAliasCandidate).all():
         status = "needs_review" if row.requires_review else source_status_to_concept_status(row.status)
@@ -1133,158 +1216,1299 @@ def _structured_fields_from_provider_cache(row: ProviderCache) -> list[tuple[str
     return fields
 
 
-def _context_candidates_by_scope(signals: Sequence[SourceConceptSignalDraft]) -> dict[tuple[str, int], set[str]]:
+def _work_context_keys(signal: SourceConceptSignalDraft) -> set[str]:
+    contexts: set[str] = set()
+    if signal.role_hint == "work":
+        context = signal.work_context_key or signal.canonical_key
+        if context:
+            contexts.add(canonical_key(context))
+    contexts.discard("")
+    return contexts
+
+
+def _declared_context_keys(signal: SourceConceptSignalDraft) -> set[str]:
+    contexts: set[str] = set(_work_context_keys(signal))
+    if signal.role_hint in {"character", "person", "unknown"}:
+        for value in (signal.work_context_key, signal.parenthetical_context):
+            key = canonical_key(value)
+            if key:
+                contexts.add(key)
+        _parsed_base, parsed_context = parse_parenthetical(signal.raw_value)
+        parsed_key = canonical_key(parsed_context)
+        if parsed_key:
+            contexts.add(parsed_key)
+    contexts.discard("")
+    return contexts
+
+
+def _context_candidates_by_scope(
+    signals: Sequence[SourceConceptSignalDraft],
+    context_alias_by_key: Mapping[str, str] | None = None,
+    include_parenthetical_contexts: bool = False,
+) -> dict[tuple[str, int], set[str]]:
     contexts: dict[tuple[str, int], set[str]] = defaultdict(set)
     for signal in signals:
         if signal.status == "rejected" or signal.trust_tier == "rejected":
             continue
-        if signal.role_hint not in {"work", "source_title"}:
-            continue
-        context = signal.work_context_key or signal.canonical_key
-        if not context:
+        declared = _declared_context_keys(signal) if include_parenthetical_contexts else _work_context_keys(signal)
+        signal_contexts = {_context_alias_key(context, context_alias_by_key) for context in declared}
+        signal_contexts.discard(None)
+        if not signal_contexts:
             continue
         if signal.media_id is not None:
-            contexts[("media", signal.media_id)].add(context)
+            contexts[("media", signal.media_id)].update(str(context) for context in signal_contexts)
         if signal.source_metadata_record_id is not None:
-            contexts[("record", signal.source_metadata_record_id)].add(context)
+            contexts[("record", signal.source_metadata_record_id)].update(str(context) for context in signal_contexts)
     return contexts
 
 
-def _alias_group_lookup(signals: Sequence[SourceConceptSignalDraft]) -> dict[str, str]:
+class UnionFind:
+    def __init__(self) -> None:
+        self.parent: dict[str, str] = {}
+
+    def add(self, key: str) -> None:
+        self.parent.setdefault(key, key)
+
+    def find(self, key: str) -> str:
+        self.add(key)
+        parent = self.parent[key]
+        if parent != key:
+            self.parent[key] = self.find(parent)
+        return self.parent[key]
+
+    def union(self, left: str, right: str) -> None:
+        left_root = self.find(left)
+        right_root = self.find(right)
+        if left_root == right_root:
+            return
+        if right_root < left_root:
+            left_root, right_root = right_root, left_root
+        self.parent[right_root] = left_root
+
+    def groups(self) -> dict[str, list[str]]:
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for key in list(self.parent):
+            grouped[self.find(key)].append(key)
+        return {root: sorted(values) for root, values in grouped.items()}
+
+
+def _compact_context_key(value: str) -> str:
+    return re.sub(r"[\W_]+", "", value, flags=re.UNICODE).lower()
+
+
+def _is_context_alias_candidate(value: str) -> bool:
+    compact = _compact_context_key(value)
+    if not compact or compact in GENERIC_CONTEXT_STOP_KEYS:
+        return False
+    if any(ord(char) > 127 for char in value):
+        return True
+    return "_" in value or ":" in value or any(char.isdigit() for char in value) or len(compact) > 8
+
+
+def _context_equivalence_lookup(signals: Sequence[SourceConceptSignalDraft]) -> dict[str, str]:
+    work_contexts_by_scope = _context_candidates_by_scope(signals, include_parenthetical_contexts=False)
+    declared_contexts_by_scope = _context_candidates_by_scope(signals, include_parenthetical_contexts=True)
+    uf = UnionFind()
+    cooccurrence_counts: Counter[tuple[str, str]] = Counter()
+    for scope, work_contexts in work_contexts_by_scope.items():
+        if scope[0] != "record":
+            continue
+        work_scoped = sorted(context for context in work_contexts if context)
+        if len(work_scoped) != 1:
+            continue
+        declared_scoped = sorted(
+            context
+            for context in declared_contexts_by_scope.get(scope, set())
+            if context and context not in work_contexts and _is_context_alias_candidate(context)
+        )
+        if not work_scoped or not declared_scoped or len(declared_scoped) > 12:
+            continue
+        for work_context in work_scoped:
+            uf.add(work_context)
+            for declared_context in declared_scoped:
+                if (
+                    any(ord(char) > 127 for char in work_context)
+                    and any(ord(char) > 127 for char in declared_context)
+                    and _compact_context_key(work_context) != _compact_context_key(declared_context)
+                ):
+                    continue
+                uf.add(declared_context)
+                cooccurrence_counts[tuple(sorted((work_context, declared_context)))] += 1
+    for (left, right), count in cooccurrence_counts.items():
+        if count >= 2 or _compact_context_key(left) == _compact_context_key(right):
+            uf.union(left, right)
     lookup: dict[str, str] = {}
+    for members in uf.groups().values():
+        if len(members) < 2:
+            continue
+        root = sorted(members, key=lambda value: (not _has_latin(value), len(value), value))[0]
+        for member in members:
+            lookup[member] = root
+    return lookup
+
+
+def signal_is_ai_origin(signal: SourceConceptSignalDraft) -> bool:
+    payload = signal.evidence_payload or {}
+    text = " ".join(
+        str(value or "").lower()
+        for value in (
+            signal.origin_type,
+            signal.source_kind,
+            signal.provider,
+            signal.trust_tier,
+            payload.get("source"),
+            payload.get("source_kind"),
+            payload.get("unit_candidate_origin_type"),
+        )
+    )
+    return signal.trust_tier == "medium_ai" or signal.origin_type == "ai_model_tag" or any(hint in text for hint in AI_SOURCE_HINTS)
+
+
+def signal_surface_key(signal: SourceConceptSignalDraft) -> str | None:
+    if signal.role_hint in {"character", "person"}:
+        if signal.parenthetical_base:
+            return canonical_key(signal.parenthetical_base)
+        parsed_base, _parsed_context = parse_parenthetical(signal.raw_value)
+        if parsed_base:
+            return canonical_key(parsed_base)
+    return signal.canonical_key or signal.normalized_key
+
+
+def _context_alias_key(context: str | None, context_alias_by_key: Mapping[str, str] | None = None) -> str | None:
+    key = canonical_key(context)
+    if not key:
+        return None
+    if not context_alias_by_key:
+        return key
+    return context_alias_by_key.get(key, key)
+
+
+def signal_context_key(
+    signal: SourceConceptSignalDraft,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> tuple[str | None, str | None]:
+    if signal.work_context_key:
+        return _context_alias_key(signal.work_context_key, context_alias_by_key), "explicit_work_context"
+    if signal.parenthetical_context:
+        return _context_alias_key(signal.parenthetical_context, context_alias_by_key), "parenthetical_context"
+    _parsed_base, parsed_context = parse_parenthetical(signal.raw_value)
+    if parsed_context:
+        return _context_alias_key(parsed_context, context_alias_by_key), "parenthetical_context"
+    return _infer_unique_context(signal, context_by_scope, context_alias_by_key=context_alias_by_key)
+
+
+def signal_role_group(signal: SourceConceptSignalDraft) -> str:
+    role = signal.role_hint or "unknown"
+    if role in {"character", "person"}:
+        return "character_person"
+    return role
+
+
+def roles_compatible(left: SourceConceptSignalDraft, right: SourceConceptSignalDraft) -> bool:
+    left_role = left.role_hint or "unknown"
+    right_role = right.role_hint or "unknown"
+    if left_role == right_role:
+        return True
+    if "unknown" in {left_role, right_role}:
+        return True
+    if left_role in {"character", "person"} and right_role in {"character", "person"}:
+        return True
+    return False
+
+
+def _alias_relation_is_same_concept(signal: SourceConceptSignalDraft) -> bool:
+    relation = normalize_source_text((signal.evidence_payload or {}).get("relation_type")).lower()
+    if not relation:
+        return False
+    return relation in {
+        "same_source_concept",
+        "same_concept",
+        "same_character",
+        "same_name",
+        "alias",
+        "translation",
+        "translation_alias",
+        "same_as",
+    }
+
+
+def _alias_component_lookup(signals: Sequence[SourceConceptSignalDraft]) -> dict[str, str]:
+    uf = UnionFind()
     for signal in signals:
         if signal.origin_type != "source_alias_candidate":
             continue
-        source_key = signal.evidence_payload.get("source_name_key")
-        target_key = signal.evidence_payload.get("target_name_key")
-        if not source_key or not target_key:
+        if signal.status == "rejected" or signal.trust_tier == "rejected":
             continue
-        source_canonical = canonical_key(source_key)
-        target_canonical = canonical_key(target_key)
-        if not source_canonical or not target_canonical:
+        if not _alias_relation_is_same_concept(signal):
             continue
-        pair = tuple(sorted((source_canonical, target_canonical)))
-        group_key = f"{pair[0]}:{pair[1]}"
-        lookup[source_canonical] = group_key
-        lookup[target_canonical] = group_key
+        source_key = canonical_key((signal.evidence_payload or {}).get("source_name_key"))
+        target_key = canonical_key((signal.evidence_payload or {}).get("target_name_key"))
+        if not source_key or not target_key or source_key == target_key:
+            continue
+        uf.union(source_key, target_key)
+    lookup: dict[str, str] = {}
+    for members in uf.groups().values():
+        if len(members) < 2:
+            continue
+        component_key = "alias_component:" + value_hash(members, 16)
+        for member in members:
+            lookup[member] = component_key
     return lookup
+
+
+def _signal_alias_component(signal: SourceConceptSignalDraft, alias_component_by_key: Mapping[str, str]) -> str | None:
+    candidates = [signal.canonical_key, signal.normalized_key, signal_surface_key(signal)]
+    for key in candidates:
+        if key and key in alias_component_by_key:
+            return alias_component_by_key[key]
+    return None
+
+
+def _signal_blocking_keys(
+    signal: SourceConceptSignalDraft,
+    *,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    alias_component_by_key: Mapping[str, str],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> set[str]:
+    keys: set[str] = set()
+    if signal.status == "rejected" or signal.trust_tier == "rejected":
+        return keys
+    surface = signal_surface_key(signal)
+    canonical = signal.canonical_key or signal.normalized_key
+    role_group = signal_role_group(signal)
+    context, _context_reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
+    if canonical:
+        keys.add(f"exact:{role_group}:{canonical}")
+    if surface and surface != canonical:
+        keys.add(f"surface:{role_group}:{surface}")
+    if surface and context:
+        keys.add(f"context:{role_group}:{surface}:work:{context}")
+    alias_component = _signal_alias_component(signal, alias_component_by_key)
+    if alias_component:
+        keys.add(alias_component)
+    if signal.source_metadata_record_id is not None and signal.role_hint in {"character", "person", "unknown"}:
+        keys.add(f"record_context:{signal.source_metadata_record_id}")
+    if signal.media_id is not None and signal.role_hint in {"character", "person", "unknown"}:
+        keys.add(f"media_context:{signal.media_id}")
+    return keys
+
+
+def _edge_key(left: SourceConceptSignalDraft, right: SourceConceptSignalDraft, edge_type: str) -> str:
+    left_key, right_key = sorted((left.signal_key, right.signal_key))
+    return f"{edge_type}:{value_hash([left_key, right_key], 20)}"
+
+
+def _edge(
+    left: SourceConceptSignalDraft,
+    right: SourceConceptSignalDraft,
+    *,
+    edge_type: str,
+    weight: float,
+    evidence_source: str,
+    status: str,
+    reason_code: str,
+    union_allowed: bool,
+    negative_reason_code: str | None = None,
+    payload: Mapping[str, Any] | None = None,
+) -> SourceConceptEdgeDraft:
+    return SourceConceptEdgeDraft(
+        edge_key=_edge_key(left, right, edge_type),
+        left_signal_key=left.signal_key,
+        right_signal_key=right.signal_key,
+        edge_type=edge_type,
+        weight=round(weight, 4),
+        evidence_source=evidence_source,
+        status=status,
+        resolution_reason_code=reason_code,
+        negative_reason_code=negative_reason_code,
+        union_allowed=union_allowed,
+        payload=dict(payload or {}),
+    )
+
+
+def _pair_edge(
+    left: SourceConceptSignalDraft,
+    right: SourceConceptSignalDraft,
+    *,
+    block_key: str,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    alias_component_by_key: Mapping[str, str],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> SourceConceptEdgeDraft | None:
+    if left.signal_key == right.signal_key:
+        return None
+    left_surface = signal_surface_key(left)
+    right_surface = signal_surface_key(right)
+    left_context, left_context_reason = signal_context_key(left, context_by_scope, context_alias_by_key)
+    right_context, right_context_reason = signal_context_key(right, context_by_scope, context_alias_by_key)
+    same_context = bool(left_context and right_context and left_context == right_context)
+    same_canonical = bool((left.canonical_key or left.normalized_key) == (right.canonical_key or right.normalized_key))
+    same_surface = bool(left_surface and right_surface and left_surface == right_surface)
+    alias_component = _signal_alias_component(left, alias_component_by_key)
+    same_alias_component = bool(alias_component and alias_component == _signal_alias_component(right, alias_component_by_key))
+    left_ai = signal_is_ai_origin(left)
+    right_ai = signal_is_ai_origin(right)
+    has_non_ai = not (left_ai and right_ai)
+
+    if not roles_compatible(left, right):
+        return _edge(
+            left,
+            right,
+            edge_type="negative_guard",
+            weight=0.0,
+            evidence_source=block_key,
+            status="rejected",
+            reason_code="role_conflict_guard",
+            negative_reason_code="role_conflict",
+            union_allowed=False,
+            payload={
+                "left_role": left.role_hint,
+                "right_role": right.role_hint,
+                "left_surface_key": left_surface,
+                "right_surface_key": right_surface,
+            },
+        )
+
+    if left.role_hint == "source_title" or right.role_hint == "source_title":
+        return _edge(
+            left,
+            right,
+            edge_type="context_only",
+            weight=0.1,
+            evidence_source=block_key,
+            status="weak",
+            reason_code="source_title_context_only",
+            negative_reason_code="source_title_only_guard",
+            union_allowed=False,
+            payload={"left_role": left.role_hint, "right_role": right.role_hint},
+        )
+
+    surface_for_guard = left_surface if left_surface == right_surface else left_surface or right_surface
+    if (
+        same_surface
+        and not same_context
+        and {left.role_hint, right.role_hint} & {"character", "person", "unknown"}
+        and is_short_ambiguous_key(surface_for_guard)
+    ):
+        same_scope = (
+            (left.media_id is not None and left.media_id == right.media_id)
+            or (
+                left.source_metadata_record_id is not None
+                and left.source_metadata_record_id == right.source_metadata_record_id
+            )
+        )
+        return _edge(
+            left,
+            right,
+            edge_type="negative_guard",
+            weight=0.0,
+            evidence_source=block_key,
+            status="needs_review",
+            reason_code="ambiguous_short_guard",
+            negative_reason_code=None if same_scope else "ambiguous_short_without_work_context",
+            union_allowed=False,
+            payload={"surface_key": surface_for_guard, "left_context": left_context, "right_context": right_context},
+        )
+
+    if same_surface and same_context:
+        if left_ai and right_ai:
+            status = "needs_review"
+            union_allowed = True
+            reason = "medium_ai_same_context_review"
+            weight = 0.45
+        else:
+            status = "active"
+            union_allowed = True
+            reason = "same_surface_and_work_context"
+            weight = 0.92 if has_non_ai else 0.45
+        return _edge(
+            left,
+            right,
+            edge_type="same_surface_context",
+            weight=weight,
+            evidence_source=block_key,
+            status=status,
+            reason_code=reason,
+            union_allowed=union_allowed,
+            payload={
+                "surface_key": left_surface,
+                "work_context_key": left_context,
+                "left_context_reason": left_context_reason,
+                "right_context_reason": right_context_reason,
+            },
+        )
+
+    if same_alias_component:
+        non_alias_count = int(left.origin_type != "source_alias_candidate") + int(right.origin_type != "source_alias_candidate")
+        alias_only = non_alias_count == 0
+        status = "needs_review" if alias_only or (left_ai and right_ai) else "active"
+        return _edge(
+            left,
+            right,
+            edge_type="alias_candidate_edge",
+            weight=0.82 if status == "active" else 0.58,
+            evidence_source=block_key,
+            status=status,
+            reason_code="alias_candidate_component",
+            union_allowed=True,
+            payload={"alias_component_key": alias_component, "alias_only": alias_only},
+        )
+
+    if same_canonical:
+        if left_ai and right_ai:
+            status = "needs_review"
+            reason = "medium_ai_exact_key_review"
+            weight = 0.45
+        elif left.trust_tier == "weak" and right.trust_tier == "weak":
+            status = "weak"
+            reason = "weak_exact_key_context_needed"
+            weight = 0.25
+        else:
+            status = "active"
+            reason = "exact_canonical_key"
+            weight = 0.86
+        return _edge(
+            left,
+            right,
+            edge_type="exact_canonical_key",
+            weight=weight,
+            evidence_source=block_key,
+            status=status,
+            reason_code=reason,
+            union_allowed=status in {"active", "needs_review"},
+            payload={"canonical_key": left.canonical_key or left.normalized_key},
+        )
+
+    if block_key.startswith("record_context:") or block_key.startswith("media_context:"):
+        return _edge(
+            left,
+            right,
+            edge_type="cooccurrence_context",
+            weight=0.18,
+            evidence_source=block_key,
+            status="weak",
+            reason_code="cooccurrence_only_context",
+            union_allowed=False,
+            payload={
+                "left_surface_key": left_surface,
+                "right_surface_key": right_surface,
+                "left_context": left_context,
+                "right_context": right_context,
+            },
+        )
+    return None
+
+
+def _generate_edges(
+    signals: Sequence[SourceConceptSignalDraft],
+    *,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    alias_component_by_key: Mapping[str, str],
+    context_alias_by_key: Mapping[str, str] | None = None,
+    max_block_size: int = 60,
+) -> tuple[tuple[SourceConceptEdgeDraft, ...], list[dict[str, Any]], dict[str, Any]]:
+    blocks: dict[str, list[SourceConceptSignalDraft]] = defaultdict(list)
+    for signal in signals:
+        for key in _signal_blocking_keys(
+            signal,
+            context_by_scope=context_by_scope,
+            alias_component_by_key=alias_component_by_key,
+            context_alias_by_key=context_alias_by_key,
+        ):
+            blocks[key].append(signal)
+
+    edges: dict[str, SourceConceptEdgeDraft] = {}
+    oversized_blocks: list[dict[str, Any]] = []
+    processed_blocks = 0
+    for block_key, block_signals in sorted(blocks.items()):
+        unique_block_signals = list({signal.signal_key: signal for signal in block_signals}.values())
+        if len(unique_block_signals) < 2:
+            continue
+        if len(unique_block_signals) > max_block_size:
+            oversized_blocks.append(
+                {
+                    "block_key_hash": value_hash(block_key, 16),
+                    "block_kind": block_key.split(":", 1)[0],
+                    "signal_count": len(unique_block_signals),
+                    "max_block_size": max_block_size,
+                    "reason": "block_exceeded_pairwise_cap",
+                }
+            )
+            if not (block_key.startswith("exact:") or block_key.startswith("context:")):
+                continue
+            ranked_block_signals = sorted(
+                unique_block_signals,
+                key=lambda signal: (
+                    TRUST_WEIGHTS.get(signal.trust_tier, 0.0),
+                    0 if signal_is_ai_origin(signal) else 1,
+                    source_confidence_score(signal.confidence, 0.0) or 0.0,
+                    signal.signal_key,
+                ),
+                reverse=True,
+            )
+            anchor = ranked_block_signals[0]
+            processed_blocks += 1
+            for other in ranked_block_signals[1:]:
+                edge = _pair_edge(
+                    anchor,
+                    other,
+                    block_key=block_key,
+                    context_by_scope=context_by_scope,
+                    alias_component_by_key=alias_component_by_key,
+                    context_alias_by_key=context_alias_by_key,
+                )
+                if edge is None:
+                    continue
+                previous = edges.get(edge.edge_key)
+                if previous is None or edge.weight > previous.weight or (edge.status == "active" and previous.status != "active"):
+                    edges[edge.edge_key] = edge
+            continue
+        processed_blocks += 1
+        for index, left in enumerate(unique_block_signals):
+            for right in unique_block_signals[index + 1 :]:
+                edge = _pair_edge(
+                    left,
+                    right,
+                    block_key=block_key,
+                    context_by_scope=context_by_scope,
+                    alias_component_by_key=alias_component_by_key,
+                    context_alias_by_key=context_alias_by_key,
+                )
+                if edge is None:
+                    continue
+                previous = edges.get(edge.edge_key)
+                if previous is None or edge.weight > previous.weight or (edge.status == "active" and previous.status != "active"):
+                    edges[edge.edge_key] = edge
+    stats = {
+        "blocking_block_count": len(blocks),
+        "processed_block_count": processed_blocks,
+        "oversized_block_count": len(oversized_blocks),
+        "edge_count": len(edges),
+        "edge_counts_by_status": dict(Counter(edge.status for edge in edges.values())),
+        "edge_counts_by_type": dict(Counter(edge.edge_type for edge in edges.values())),
+    }
+    return tuple(edges.values()), oversized_blocks, stats
+
+
+def llm_cache_fingerprint(
+    *,
+    prompt_version: str,
+    model_label: str,
+    block_payload: Mapping[str, Any],
+) -> str:
+    return value_hash(
+        {
+            "prompt_version": prompt_version,
+            "model_label": model_label,
+            "block_payload": block_payload,
+        },
+        32,
+    )
+
+
+def plan_llm_adjudication(
+    edges: Sequence[SourceConceptEdgeDraft],
+    *,
+    signals: Sequence[SourceConceptSignalDraft],
+    config: LLMAdjudicationConfig,
+) -> LLMAdjudicationPlan:
+    if not config.enabled:
+        return LLMAdjudicationPlan(
+            enabled=False,
+            projected_calls=0,
+            projected_input_tokens=0,
+            projected_output_tokens=0,
+            projected_cost_usd=0.0,
+            max_calls=config.max_calls,
+            max_budget_usd=config.max_budget_usd,
+            selected_block_count=0,
+            skipped_block_count=0,
+            status="disabled",
+            reason="llm_adjudication_not_requested",
+        )
+    weak_edges = [
+        edge for edge in edges
+        if edge.status in {"weak", "needs_review"} and edge.edge_type in {"cooccurrence_context", "alias_candidate_edge", "exact_canonical_key"}
+    ]
+    candidate_pairs = min(len(weak_edges), max(config.max_calls, 0))
+    signal_lookup = {signal.signal_key: signal for signal in signals}
+    estimated_chars = 0
+    for edge in weak_edges[:candidate_pairs]:
+        left = signal_lookup.get(edge.left_signal_key)
+        right = signal_lookup.get(edge.right_signal_key)
+        if left and right:
+            estimated_chars += len(left.display_value) + len(right.display_value) + 300
+    projected_input_tokens = max(0, estimated_chars // 4)
+    projected_output_tokens = candidate_pairs * 80
+    projected_cost_usd = round(((projected_input_tokens + projected_output_tokens) / 1000.0) * 0.002, 6)
+    over_call_cap = candidate_pairs > config.max_calls
+    over_budget = projected_cost_usd > config.max_budget_usd
+    return LLMAdjudicationPlan(
+        enabled=True,
+        projected_calls=candidate_pairs,
+        projected_input_tokens=projected_input_tokens,
+        projected_output_tokens=projected_output_tokens,
+        projected_cost_usd=projected_cost_usd,
+        max_calls=config.max_calls,
+        max_budget_usd=config.max_budget_usd,
+        selected_block_count=candidate_pairs,
+        skipped_block_count=max(0, len(weak_edges) - candidate_pairs),
+        status="blocked" if over_call_cap or over_budget else "ready",
+        reason="llm_budget_or_call_cap_exceeded" if over_call_cap or over_budget else None,
+    )
+
+
+def edges_from_llm_judgments(
+    judgments: Sequence[Mapping[str, Any]],
+    *,
+    signal_by_key: Mapping[str, SourceConceptSignalDraft],
+) -> list[SourceConceptEdgeDraft]:
+    edges: list[SourceConceptEdgeDraft] = []
+    for row in judgments:
+        left = signal_by_key.get(str(row.get("left_signal_key") or ""))
+        right = signal_by_key.get(str(row.get("right_signal_key") or ""))
+        if left is None or right is None:
+            continue
+        decision = str(row.get("decision") or row.get("link_status") or "needs_review").lower()
+        confidence = source_confidence_score(row.get("confidence"), 0.5) or 0.5
+        if decision in {"must_link", "same_concept", "same"}:
+            status = "active" if confidence >= 0.75 and not (signal_is_ai_origin(left) and signal_is_ai_origin(right)) else "needs_review"
+            edges.append(
+                _edge(
+                    left,
+                    right,
+                    edge_type="llm_same_concept",
+                    weight=confidence,
+                    evidence_source="bounded_llm_adjudication",
+                    status=status,
+                    reason_code="llm_must_link_source_layer_evidence",
+                    union_allowed=True,
+                    payload={
+                        "source_layer_only": True,
+                        "llm_judgment_id": row.get("judgment_id"),
+                        "decision": decision,
+                    },
+                )
+            )
+        elif decision in {"cannot_link", "different", "not_same"}:
+            edges.append(
+                _edge(
+                    left,
+                    right,
+                    edge_type="llm_negative_guard",
+                    weight=confidence,
+                    evidence_source="bounded_llm_adjudication",
+                    status="rejected",
+                    reason_code="llm_cannot_link_source_layer_guard",
+                    negative_reason_code="llm_cannot_link",
+                    union_allowed=False,
+                    payload={
+                        "source_layer_only": True,
+                        "llm_judgment_id": row.get("judgment_id"),
+                        "decision": decision,
+                    },
+                )
+            )
+        else:
+            edges.append(
+                _edge(
+                    left,
+                    right,
+                    edge_type="llm_needs_review",
+                    weight=confidence,
+                    evidence_source="bounded_llm_adjudication",
+                    status="needs_review",
+                    reason_code="llm_needs_review_source_layer_evidence",
+                    union_allowed=False,
+                    payload={
+                        "source_layer_only": True,
+                        "llm_judgment_id": row.get("judgment_id"),
+                        "decision": decision,
+                    },
+                )
+            )
+    return edges
+
+
+def _has_latin(value: str | None) -> bool:
+    return bool(value and re.search(r"[A-Za-z]", value))
+
+
+def _has_non_ascii(value: str | None) -> bool:
+    return bool(value and any(ord(char) > 127 for char in value))
+
+
+def _looks_like_latin_canonical_name(value: str | None) -> bool:
+    return bool(value and _has_latin(value) and ("_" in value or len(value) > 8))
+
+
+def _is_high_value_cross_script_edge(
+    edge: SourceConceptEdgeDraft,
+    *,
+    signal_by_key: Mapping[str, SourceConceptSignalDraft],
+) -> bool:
+    if not (edge.evidence_source.startswith("record_context:") or edge.evidence_source.startswith("media_context:")):
+        return False
+    left = signal_by_key.get(edge.left_signal_key)
+    right = signal_by_key.get(edge.right_signal_key)
+    if left is None or right is None:
+        return False
+    if left.role_hint not in {"character", "person"} or right.role_hint not in {"character", "person"}:
+        return False
+    left_latin_canonical = _looks_like_latin_canonical_name(left.canonical_key or left.normalized_key)
+    right_latin_canonical = _looks_like_latin_canonical_name(right.canonical_key or right.normalized_key)
+    left_non_ascii = _has_non_ascii(left.display_value) or _has_non_ascii(left.canonical_key)
+    right_non_ascii = _has_non_ascii(right.display_value) or _has_non_ascii(right.canonical_key)
+    return bool((left_latin_canonical and right_non_ascii) or (right_latin_canonical and left_non_ascii))
+
+
+def _llm_pair_score(
+    edge: SourceConceptEdgeDraft,
+    *,
+    signal_by_key: Mapping[str, SourceConceptSignalDraft],
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> float:
+    left = signal_by_key.get(edge.left_signal_key)
+    right = signal_by_key.get(edge.right_signal_key)
+    if left is None or right is None:
+        return -1.0
+    if left.role_hint not in {"character", "person", "unknown"} or right.role_hint not in {"character", "person", "unknown"}:
+        return -1.0
+    if left.role_hint == "source_title" or right.role_hint == "source_title":
+        return -1.0
+    score = 0.0
+    left_surface = signal_surface_key(left)
+    right_surface = signal_surface_key(right)
+    left_context, _left_reason = signal_context_key(left, context_by_scope, context_alias_by_key)
+    right_context, _right_reason = signal_context_key(right, context_by_scope, context_alias_by_key)
+    same_scope = (
+        (left.media_id is not None and left.media_id == right.media_id)
+        or (
+            left.source_metadata_record_id is not None
+            and left.source_metadata_record_id == right.source_metadata_record_id
+        )
+    )
+    left_parenthetical = bool(left.parenthetical_base and left.parenthetical_context)
+    right_parenthetical = bool(right.parenthetical_base and right.parenthetical_context)
+    both_characterish = left.role_hint in {"character", "person"} and right.role_hint in {"character", "person"}
+    if left_context or right_context:
+        score += 2.0
+    if left_context and right_context and left_context == right_context:
+        score += 2.5
+    if same_scope:
+        score += 1.5
+    if left_parenthetical != right_parenthetical and left_context and right_context and left_context == right_context:
+        score += 4.0
+    if both_characterish:
+        score += 1.5
+    if "unknown" in {left.role_hint, right.role_hint}:
+        score -= 2.0
+    if same_scope and both_characterish:
+        left_latin_canonical = _looks_like_latin_canonical_name(left.canonical_key or left.normalized_key)
+        right_latin_canonical = _looks_like_latin_canonical_name(right.canonical_key or right.normalized_key)
+        left_non_ascii = _has_non_ascii(left.display_value) or _has_non_ascii(left.canonical_key)
+        right_non_ascii = _has_non_ascii(right.display_value) or _has_non_ascii(right.canonical_key)
+        if (left_latin_canonical and right_non_ascii) or (right_latin_canonical and left_non_ascii):
+            score += 8.0
+    if bool(_has_latin(left.display_value)) != bool(_has_latin(right.display_value)):
+        score += 1.0
+    if bool(_has_non_ascii(left.display_value)) != bool(_has_non_ascii(right.display_value)):
+        score += 2.0
+    if {left.origin_type, right.origin_type} & {"normal_media_tag", "ai_model_tag"} and {
+        left.origin_type,
+        right.origin_type,
+    } & {"f7a_candidate", "source_assertion", "source_name_observation", "source_tag_observation", "provider_structured_field"}:
+        score += 2.0
+    if not signal_is_ai_origin(left) and not signal_is_ai_origin(right):
+        score += 3.0
+    elif signal_is_ai_origin(left) and signal_is_ai_origin(right):
+        score -= 3.0
+    if edge.edge_type == "cooccurrence_context":
+        score += 1.0
+    if left_surface == right_surface:
+        score -= 1.0
+    if signal_is_ai_origin(left) and signal_is_ai_origin(right):
+        score -= 2.0
+    return score
+
+
+def select_llm_adjudication_edges(
+    edges: Sequence[SourceConceptEdgeDraft],
+    *,
+    signals: Sequence[SourceConceptSignalDraft],
+    config: LLMAdjudicationConfig,
+) -> list[SourceConceptEdgeDraft]:
+    if not config.enabled or config.max_calls <= 0:
+        return []
+    signal_by_key = {signal.signal_key: signal for signal in signals}
+    context_alias_by_key = _context_equivalence_lookup(signals)
+    context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
+    scored: list[tuple[float, SourceConceptEdgeDraft]] = []
+    for edge in edges:
+        if edge.status not in {"weak", "needs_review"}:
+            continue
+        if edge.edge_type not in {"cooccurrence_context", "alias_candidate_edge", "same_surface_context", "exact_canonical_key"}:
+            continue
+        score = _llm_pair_score(
+            edge,
+            signal_by_key=signal_by_key,
+            context_by_scope=context_by_scope,
+            context_alias_by_key=context_alias_by_key,
+        )
+        if score <= 0:
+            continue
+        scored.append((score, edge))
+    scored.sort(key=lambda item: (item[0], item[1].weight), reverse=True)
+    selected: list[SourceConceptEdgeDraft] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    signal_pair_counts: Counter[str] = Counter()
+
+    def add_edge(edge: SourceConceptEdgeDraft, *, per_signal_cap: int) -> bool:
+        pair = _pair_id(edge)
+        if pair in seen_pairs:
+            return False
+        if signal_pair_counts[pair[0]] >= per_signal_cap or signal_pair_counts[pair[1]] >= per_signal_cap:
+            return False
+        seen_pairs.add(pair)
+        signal_pair_counts[pair[0]] += 1
+        signal_pair_counts[pair[1]] += 1
+        selected.append(edge)
+        return True
+
+    coverage_by_scope: dict[str, tuple[float, SourceConceptEdgeDraft]] = {}
+    for score, edge in scored:
+        if score < 9.0 or not _is_high_value_cross_script_edge(edge, signal_by_key=signal_by_key):
+            continue
+        previous = coverage_by_scope.get(edge.evidence_source)
+        if previous is None or score > previous[0] or (score == previous[0] and edge.weight > previous[1].weight):
+            coverage_by_scope[edge.evidence_source] = (score, edge)
+    coverage_items = sorted(
+        coverage_by_scope.items(),
+        key=lambda item: (
+            item[0].startswith("record_context:"),
+            item[1][0],
+            item[1][1].weight,
+        ),
+        reverse=True,
+    )
+    for _scope, (_score, edge) in coverage_items:
+        add_edge(edge, per_signal_cap=6)
+        if len(selected) >= config.max_calls:
+            return selected
+
+    for _score, edge in scored:
+        add_edge(edge, per_signal_cap=4)
+        if len(selected) >= config.max_calls:
+            break
+    return selected
+
+
+def _llm_signal_payload(
+    signal: SourceConceptSignalDraft,
+    *,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    context, context_reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
+    return {
+        "signal_key": signal.signal_key,
+        "origin_type": signal.origin_type,
+        "provider": signal.provider,
+        "display_value": signal.display_value,
+        "canonical_key": signal.canonical_key,
+        "surface_key": signal_surface_key(signal),
+        "role_hint": signal.role_hint,
+        "work_context_key": context,
+        "context_reason": context_reason,
+        "trust_tier": signal.trust_tier,
+        "status": signal.status,
+        "source_kind": signal.source_kind,
+    }
+
+
+def _run_async_json(provider: Any, messages: list[dict[str, str]], *, max_tokens: int = 600) -> Any:
+    return asyncio.run(provider.complete_json(messages, temperature=0.0, max_tokens=max_tokens))
+
+
+def run_bounded_llm_adjudication(
+    edges: Sequence[SourceConceptEdgeDraft],
+    *,
+    signals: Sequence[SourceConceptSignalDraft],
+    config: LLMAdjudicationConfig,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    plan = plan_llm_adjudication(edges, signals=signals, config=config)
+    if not config.enabled:
+        return [], {"used": False, "plan": asdict(plan), "reason": "disabled"}
+    selected_edges = select_llm_adjudication_edges(edges, signals=signals, config=config)
+    if not selected_edges:
+        return [], {"used": False, "plan": asdict(plan), "reason": "no_eligible_pairs"}
+    provider, provider_summary = primary_openai_provider_from_settings()
+    if provider is None:
+        if config.fail_if_unavailable:
+            raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
+        return [], {"used": False, "plan": asdict(plan), "provider": provider_summary, "reason": "provider_unavailable"}
+
+    cache_dir = Path(config.cache_dir) if config.cache_dir else Path(".local_manifests") / "phase-4.5-sc1-llm-adjudication-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    signal_by_key = {signal.signal_key: signal for signal in signals}
+    context_alias_by_key = _context_equivalence_lookup(signals)
+    context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
+    judgments: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for edge in selected_edges:
+        left = signal_by_key.get(edge.left_signal_key)
+        right = signal_by_key.get(edge.right_signal_key)
+        if left is None or right is None:
+            continue
+        block_payload = {
+            "edge": asdict(edge),
+            "left": _llm_signal_payload(left, context_by_scope=context_by_scope, context_alias_by_key=context_alias_by_key),
+            "right": _llm_signal_payload(right, context_by_scope=context_by_scope, context_alias_by_key=context_alias_by_key),
+        }
+        fingerprint = llm_cache_fingerprint(
+            prompt_version=config.prompt_version,
+            model_label=config.model_label,
+            block_payload=block_payload,
+        )
+        cache_path = cache_dir / f"{fingerprint}.json"
+        if cache_path.exists():
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            judgments.append(cached)
+            continue
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are adjudicating unconfirmed source-layer name signals. "
+                    "Return JSON only with keys decision, confidence, and optional reason_code. "
+                    "decision must be must_link, cannot_link, or needs_review. "
+                    "Do not create Entity truth. Do not include chain-of-thought."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "task": "Decide whether the two source-layer signals refer to the same character/person/work concept.",
+                        "allowed_decisions": ["must_link", "cannot_link", "needs_review"],
+                        "signals": [block_payload["left"], block_payload["right"]],
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            },
+        ]
+        try:
+            response = _run_async_json(provider, messages)
+            if isinstance(response, list):
+                response = response[0] if response else {}
+            if not isinstance(response, Mapping):
+                response = {}
+            decision = str(response.get("decision") or "needs_review").lower()
+            if decision not in {"must_link", "cannot_link", "needs_review"}:
+                decision = "needs_review"
+            judgment = {
+                "judgment_id": fingerprint,
+                "left_signal_key": left.signal_key,
+                "right_signal_key": right.signal_key,
+                "decision": decision,
+                "confidence": source_confidence_score(response.get("confidence"), 0.5),
+                "reason_code": response.get("reason_code"),
+                "source_layer_only": True,
+                "provider_label": provider_summary.get("llm_provider_label"),
+                "model_label": config.model_label,
+                "cache_fingerprint": fingerprint,
+            }
+            cache_path.write_text(json.dumps(judgment, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            judgments.append(judgment)
+        except Exception as exc:  # pragma: no cover - provider failures are environment dependent
+            error = {
+                "judgment_id": fingerprint,
+                "left_signal_key": left.signal_key,
+                "right_signal_key": right.signal_key,
+                "decision": "needs_review",
+                "confidence": 0.0,
+                "source_layer_only": True,
+                "error_type": type(exc).__name__,
+            }
+            errors.append(error)
+            judgments.append(error)
+            if config.fail_if_unavailable:
+                raise
+    return judgments, {
+        "used": bool(judgments),
+        "plan": asdict(plan),
+        "provider": provider_summary,
+        "selected_pair_count": len(selected_edges),
+        "judgment_count": len(judgments),
+        "error_count": len(errors),
+        "cache_dir": str(cache_dir),
+    }
 
 
 def _infer_unique_context(
     signal: SourceConceptSignalDraft,
     context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
     if signal.work_context_key:
-        return signal.work_context_key, "explicit_work_context"
+        return _context_alias_key(signal.work_context_key, context_alias_by_key), "explicit_work_context"
     contexts: set[str] = set()
     if signal.source_metadata_record_id is not None:
         contexts.update(context_by_scope.get(("record", signal.source_metadata_record_id), set()))
     if signal.media_id is not None:
         contexts.update(context_by_scope.get(("media", signal.media_id), set()))
-    contexts.discard(signal.canonical_key or "")
+    contexts = {_context_alias_key(context, context_alias_by_key) or context for context in contexts}
+    contexts.discard(_context_alias_key(signal.canonical_key, context_alias_by_key) or "")
     if len(contexts) == 1:
         return next(iter(contexts)), "unique_source_or_media_work_context"
     return None, None
 
 
-def _concept_identity(
+def _signal_guard_reason(
     signal: SourceConceptSignalDraft,
+    *,
     context_by_scope: Mapping[tuple[str, int], set[str]],
-    alias_group_by_key: Mapping[str, str],
-) -> tuple[str | None, str, str | None, str]:
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> str | None:
     if signal.status == "rejected" or signal.trust_tier == "rejected":
-        return None, "rejected_signal", None, "rejected_signal"
-    key = signal.canonical_key or signal.normalized_key
-    if not key:
-        return None, "empty_key", None, "rejected_empty_key"
-    if key in alias_group_by_key:
-        return f"alias_edge:{alias_group_by_key[key]}", "active_or_review", None, "alias_candidate_edge"
-    role = signal.role_hint or "unknown"
-    base_key = canonical_key(signal.parenthetical_base) if signal.parenthetical_base else key
-    context, context_reason = _infer_unique_context(signal, context_by_scope)
-    if not context and signal.parenthetical_context:
-        context = canonical_key(signal.parenthetical_context)
-        context_reason = "parenthetical_context"
-    if role in {"character", "person"}:
-        if context:
-            return f"{role}:{base_key}:work:{context}", "active_or_review", None, context_reason or "role_name_context"
-        if is_short_ambiguous_key(base_key):
-            return (
-                f"{role}:ambiguous:{base_key}:signal:{value_hash(signal.signal_key, 12)}",
-                "needs_review",
-                "ambiguous_short_without_work_context",
-                "ambiguous_short_guard",
-            )
-        return f"{role}:{base_key}", "active_or_review", None, "role_name_exact"
-    if role == "source_title":
-        return (
-            f"source_title:{key}:signal:{value_hash(signal.signal_key, 12)}",
-            "needs_review",
-            "source_title_only_guard",
-            "source_title_context_only",
-        )
-    if role in {"work", "artist"}:
-        return f"{role}:{key}", "active_or_review", None, "role_name_exact"
-    return (
-        f"unknown:{key}:signal:{value_hash(signal.signal_key, 12)}",
-        "needs_review",
-        "unknown_role_guard",
-        "unknown_role_review",
+        return "rejected_signal"
+    if signal.origin_type == "source_alias_candidate":
+        return None
+    if signal.role_hint == "source_title":
+        return "source_title_only_guard"
+    if signal.role_hint == "unknown":
+        return "unknown_role_guard"
+    surface = signal_surface_key(signal)
+    context, _context_reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
+    if signal.role_hint in {"character", "person"} and is_short_ambiguous_key(surface) and not context:
+        return "ambiguous_short_without_work_context"
+    return None
+
+
+def _component_role(signals: Sequence[SourceConceptSignalDraft]) -> str:
+    role_counts = Counter(signal.role_hint for signal in signals if signal.role_hint != "unknown")
+    if not role_counts:
+        return "unknown"
+    return role_counts.most_common(1)[0][0]
+
+
+def _component_surface_and_context(
+    signals: Sequence[SourceConceptSignalDraft],
+    *,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> tuple[str, str | None]:
+    ranked = sorted(
+        signals,
+        key=lambda signal: (
+            TRUST_WEIGHTS.get(signal.trust_tier, 0.0),
+            0 if signal_is_ai_origin(signal) else 1,
+            source_confidence_score(signal.confidence, 0.0) or 0.0,
+            -len(signal.display_value),
+        ),
+        reverse=True,
     )
+    for signal in ranked:
+        surface = signal_surface_key(signal)
+        if surface:
+            context, _context_reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
+            return surface, context
+    fallback = ranked[0].signal_key if ranked else "empty"
+    return value_hash(fallback, 12), None
+
+
+def _component_concept_key(
+    signals: Sequence[SourceConceptSignalDraft],
+    *,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> str:
+    role = _component_role(signals)
+    surface, context = _component_surface_and_context(
+        signals,
+        context_by_scope=context_by_scope,
+        context_alias_by_key=context_alias_by_key,
+    )
+    component_hash = value_hash(sorted(signal.signal_key for signal in signals), 12)
+    guards = {
+        _signal_guard_reason(
+            signal,
+            context_by_scope=context_by_scope,
+            context_alias_by_key=context_alias_by_key,
+        )
+        for signal in signals
+    }
+    guards.discard(None)
+    if role in {"character", "person"} and context:
+        return f"{role}:{surface}:work:{context}:component:{component_hash}"
+    if role in {"character", "person"} and "ambiguous_short_without_work_context" in guards:
+        if len(signals) == 1:
+            return f"{role}:ambiguous:{surface}:signal:{component_hash}"
+        return f"{role}:ambiguous:{surface}:component:{component_hash}"
+    if role == "source_title":
+        return f"source_title:{surface}:signal:{component_hash}"
+    if role == "unknown":
+        return f"unknown:{surface}:signal:{component_hash}"
+    return f"{role}:{surface}:component:{component_hash}"
+
+
+def _pair_id(edge: SourceConceptEdgeDraft) -> tuple[str, str]:
+    return tuple(sorted((edge.left_signal_key, edge.right_signal_key)))
 
 
 def resolve_source_concepts(
     signals: Sequence[SourceConceptSignalDraft],
     *,
     run_id: str,
+    llm_config: LLMAdjudicationConfig | None = None,
+    llm_judgments: Sequence[Mapping[str, Any]] | None = None,
 ) -> SourceConceptResolutionResult:
-    context_by_scope = _context_candidates_by_scope(signals)
-    alias_group_by_key = _alias_group_lookup(signals)
-    buckets: dict[str, list[tuple[SourceConceptSignalDraft, str | None, str]]] = defaultdict(list)
+    context_alias_by_key = _context_equivalence_lookup(signals)
+    context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
+    alias_component_by_key = _alias_component_lookup(signals)
     rejected: list[dict[str, Any]] = []
-    ambiguous: list[dict[str, Any]] = []
-
+    eligible_signals: list[SourceConceptSignalDraft] = []
     for signal in signals:
-        concept_key, initial_status, negative_reason, reason_code = _concept_identity(
-            signal,
-            context_by_scope,
-            alias_group_by_key,
-        )
-        if concept_key is None:
+        if signal.status == "rejected" or signal.trust_tier == "rejected":
             rejected.append(
                 {
                     "signal_key": signal.signal_key,
                     "origin_type": signal.origin_type,
                     "role_hint": signal.role_hint,
-                    "negative_reason_code": negative_reason or reason_code,
+                    "negative_reason_code": (signal.evidence_payload or {}).get("non_concept_reason") or "rejected_signal",
                     "trust_tier": signal.trust_tier,
                     "status": signal.status,
                 }
             )
             continue
-        if negative_reason:
-            ambiguous.append(
-                {
-                    "signal_key": signal.signal_key,
-                    "concept_key": concept_key,
-                    "negative_reason_code": negative_reason,
-                    "origin_type": signal.origin_type,
-                    "role_hint": signal.role_hint,
-                }
-            )
-        buckets[concept_key].append((signal, negative_reason, reason_code))
+        eligible_signals.append(signal)
+
+    edge_candidates, oversized_blocks, edge_stats = _generate_edges(
+        eligible_signals,
+        context_by_scope=context_by_scope,
+        alias_component_by_key=alias_component_by_key,
+        context_alias_by_key=context_alias_by_key,
+    )
+
+    llm_plan = plan_llm_adjudication(
+        edge_candidates,
+        signals=eligible_signals,
+        config=llm_config or LLMAdjudicationConfig(),
+    )
+    llm_edges = tuple(edges_from_llm_judgments(llm_judgments or (), signal_by_key={signal.signal_key: signal for signal in eligible_signals}))
+    if llm_edges:
+        edge_candidates = tuple({edge.edge_key: edge for edge in (*edge_candidates, *llm_edges)}.values())
+
+    uf = UnionFind()
+    uf_members: dict[str, set[str]] = {}
+    for signal in eligible_signals:
+        uf.add(signal.signal_key)
+        uf_members[signal.signal_key] = {signal.signal_key}
+    blocked_pairs = {
+        _pair_id(edge)
+        for edge in edge_candidates
+        if edge.status == "rejected" or edge.negative_reason_code
+    }
+    union_edges = sorted(
+        (edge for edge in edge_candidates if edge.union_allowed and edge.status == "active"),
+        key=lambda edge: (edge.edge_type.startswith("llm_"), -edge.weight),
+    )
+    for edge in union_edges:
+        if not edge.union_allowed:
+            continue
+        if _pair_id(edge) in blocked_pairs:
+            continue
+        left_root = uf.find(edge.left_signal_key)
+        right_root = uf.find(edge.right_signal_key)
+        if left_root == right_root:
+            continue
+        merged_members = set(uf_members.get(left_root, {left_root})) | set(uf_members.get(right_root, {right_root}))
+        if any(left in merged_members and right in merged_members for left, right in blocked_pairs):
+            continue
+        uf.union(edge.left_signal_key, edge.right_signal_key)
+        merged_root = uf.find(edge.left_signal_key)
+        uf_members[merged_root] = merged_members
+        for old_root in (left_root, right_root):
+            if old_root != merged_root:
+                uf_members.pop(old_root, None)
+
+    signal_by_key = {signal.signal_key: signal for signal in eligible_signals}
+    component_signals: dict[str, list[SourceConceptSignalDraft]] = defaultdict(list)
+    for signal in eligible_signals:
+        component_signals[uf.find(signal.signal_key)].append(signal)
+    component_edges: dict[str, list[SourceConceptEdgeDraft]] = defaultdict(list)
+    for edge in edge_candidates:
+        if edge.left_signal_key not in signal_by_key or edge.right_signal_key not in signal_by_key:
+            continue
+        left_root = uf.find(edge.left_signal_key)
+        right_root = uf.find(edge.right_signal_key)
+        if left_root == right_root:
+            component_edges[left_root].append(edge)
+
+    concept_items: list[tuple[str, tuple[SourceConceptSignalDraft, ...], tuple[SourceConceptEdgeDraft, ...]]] = []
+    for root, grouped_signals in component_signals.items():
+        ordered_signals = tuple(sorted(grouped_signals, key=lambda signal: signal.signal_key))
+        concept_key = _component_concept_key(
+            ordered_signals,
+            context_by_scope=context_by_scope,
+            context_alias_by_key=context_alias_by_key,
+        )
+        concept_items.append((concept_key, ordered_signals, tuple(component_edges.get(root, []))))
 
     concepts: list[SourceConceptDraft] = []
     aliases: list[SourceConceptAliasDraft] = []
     evidence: list[SourceConceptEvidenceDraft] = []
     links: list[SourceConceptLinkDraft] = []
     search_index: list[SourceConceptSearchIndexDraft] = []
+    ambiguous: list[dict[str, Any]] = []
 
-    for concept_key, items in buckets.items():
-        bucket_signals = tuple(signal for signal, _, _ in items)
-        concept = _build_concept_draft(concept_key, bucket_signals, run_id=run_id)
+    edge_lookup_by_signal: dict[str, list[SourceConceptEdgeDraft]] = defaultdict(list)
+    for edge in edge_candidates:
+        edge_lookup_by_signal[edge.left_signal_key].append(edge)
+        edge_lookup_by_signal[edge.right_signal_key].append(edge)
+
+    for concept_key, bucket_signals, bucket_edges in concept_items:
+        concept = _build_concept_draft(
+            concept_key,
+            bucket_signals,
+            run_id=run_id,
+            component_edges=bucket_edges,
+            context_by_scope=context_by_scope,
+            context_alias_by_key=context_alias_by_key,
+        )
         concepts.append(concept)
-        for signal, negative_reason, reason_code in items:
+        for signal in bucket_signals:
+            signal_guard = _signal_guard_reason(
+                signal,
+                context_by_scope=context_by_scope,
+                context_alias_by_key=context_alias_by_key,
+            )
+            if signal_guard:
+                ambiguous.append(
+                    {
+                        "signal_key": signal.signal_key,
+                        "concept_key": concept_key,
+                        "negative_reason_code": signal_guard,
+                        "origin_type": signal.origin_type,
+                        "role_hint": signal.role_hint,
+                    }
+                )
+            signal_edges = edge_lookup_by_signal.get(signal.signal_key, [])
+            best_edge = sorted(
+                signal_edges,
+                key=lambda edge: (
+                    edge.status == "active",
+                    edge.weight,
+                    edge.status == "needs_review",
+                ),
+                reverse=True,
+            )[0] if signal_edges else None
+            reason_code = best_edge.resolution_reason_code if best_edge else "single_signal_component"
+            negative_reason = signal_guard or (best_edge.negative_reason_code if best_edge else None)
             link_status = concept.status
             if negative_reason:
                 link_status = "needs_review"
@@ -1301,6 +2525,8 @@ def resolve_source_concepts(
                         "origin_type": signal.origin_type,
                         "trust_tier": signal.trust_tier,
                         "status_guard": negative_reason,
+                        "component_edge_count": len(bucket_edges),
+                        "best_edge_key": best_edge.edge_key if best_edge else None,
                     },
                 )
             )
@@ -1356,6 +2582,9 @@ def resolve_source_concepts(
     signal_counts = Counter(signal.origin_type for signal in signals)
     concept_counts = Counter(concept.status for concept in concepts)
     link_counts = Counter(link.link_status for link in links)
+    ai_signal_review = tuple(_ai_signal_review(concepts))
+    overmerge_review = tuple(_overmerge_review(concepts, edge_candidates))
+    undermerge_review = tuple(_undermerge_review(edge_candidates, concepts))
     summary = {
         "run_id": run_id,
         "resolver_version": RESOLVER_VERSION,
@@ -1371,19 +2600,44 @@ def resolve_source_concepts(
         "search_index_preview_count": len(deduped_search_index),
         "rejected_signal_count": len(rejected),
         "ambiguous_link_count": len(ambiguous),
-        "llm_usage": {"used": False, "policy": "disabled_for_sc1_deterministic_core"},
+        "edge_graph": edge_stats,
+        "blocking_oversized_blocks": len(oversized_blocks),
+        "context_alias_count": len(context_alias_by_key),
+        "ai_only_active_violation_count": sum(1 for row in ai_signal_review if row.get("violation")),
+        "general_source_tag_pollution_count": sum(
+            1
+            for concept in concepts
+            for signal in concept.signals
+            if (signal.evidence_payload or {}).get("non_concept_reason") == "general_source_tag_without_name_context"
+        ),
+        "source_title_only_active_violation_count": sum(
+            1
+            for concept in concepts
+            if concept.status == "active" and all(signal.role_hint == "source_title" for signal in concept.signals)
+        ),
+        "llm_usage": {
+            "used": bool(llm_judgments),
+            "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
+            "plan": asdict(llm_plan),
+            "judgment_count": len(llm_judgments or ()),
+        },
     }
     return SourceConceptResolutionResult(
         run_id=run_id,
         signals=tuple(signals),
+        edge_candidates=edge_candidates,
         concepts=tuple(concepts),
         aliases=deduped_aliases,
         evidence=tuple(evidence),
         links=tuple(links),
         search_index=deduped_search_index,
-        rejected_signals=tuple(rejected),
+        rejected_signals=tuple([*rejected, *oversized_blocks]),
         ambiguous_links=tuple(ambiguous),
         merge_candidates=tuple(_merge_candidate_review(concepts)),
+        overmerge_review=overmerge_review,
+        undermerge_review=undermerge_review,
+        ai_signal_review=ai_signal_review,
+        llm_judgments=tuple(dict(row) for row in (llm_judgments or ())),
         summary=summary,
     )
 
@@ -1414,6 +2668,9 @@ def _build_concept_draft(
     signals: Sequence[SourceConceptSignalDraft],
     *,
     run_id: str,
+    component_edges: Sequence[SourceConceptEdgeDraft] = (),
+    context_by_scope: Mapping[tuple[str, int], set[str]] | None = None,
+    context_alias_by_key: Mapping[str, str] | None = None,
 ) -> SourceConceptDraft:
     trust_counts = Counter(signal.trust_tier for signal in signals)
     origin_counts = Counter(signal.origin_type for signal in signals)
@@ -1421,21 +2678,37 @@ def _build_concept_draft(
     providers = {signal.provider for signal in signals if signal.provider}
     medias = {signal.media_id for signal in signals if signal.media_id is not None}
     records = {signal.source_metadata_record_id for signal in signals if signal.source_metadata_record_id is not None}
-    non_ai_signals = [signal for signal in signals if signal.origin_type != "ai_model_tag"]
+    context_lookup = context_by_scope or {}
+    non_ai_signals = [signal for signal in signals if not signal_is_ai_origin(signal)]
     non_alias_signals = [signal for signal in signals if signal.origin_type != "source_alias_candidate"]
-    all_ai = bool(signals) and not non_ai_signals
+    non_ai_non_alias_signals = [signal for signal in non_ai_signals if signal.origin_type != "source_alias_candidate"]
+    all_ai = bool(non_alias_signals) and all(signal_is_ai_origin(signal) for signal in non_alias_signals)
     all_alias_candidate = bool(signals) and not non_alias_signals
     all_weak_or_title = all(signal.trust_tier in {"weak"} or signal.role_hint == "source_title" for signal in signals)
-    has_strong = any(signal.trust_tier == "strong" for signal in signals)
-    has_medium = any(signal.trust_tier in {"medium", "medium_ai"} for signal in signals)
-    has_guard = "ambiguous:" in concept_key or concept_key.startswith("source_title:") or concept_key.startswith("unknown:")
+    has_strong_non_ai = any(signal.trust_tier == "strong" and not signal_is_ai_origin(signal) for signal in signals)
+    has_medium_non_ai = any(signal.trust_tier == "medium" and not signal_is_ai_origin(signal) for signal in signals)
+    has_medium_ai = any(signal.trust_tier == "medium_ai" or signal_is_ai_origin(signal) for signal in signals)
+    signal_guards = {
+        _signal_guard_reason(
+            signal,
+            context_by_scope=context_lookup,
+            context_alias_by_key=context_alias_by_key,
+        )
+        for signal in signals
+    }
+    signal_guards.discard(None)
+    has_guard = bool(signal_guards) or "ambiguous:" in concept_key or concept_key.startswith("source_title:") or concept_key.startswith("unknown:")
     role_conflict = len({role for role in role_counts if role != "unknown"}) > 1
+    active_edge_count = sum(1 for edge in component_edges if edge.status == "active" and edge.union_allowed)
+    medium_needs_review_without_corroboration = has_medium_non_ai and not has_strong_non_ai and not active_edge_count and len(non_ai_non_alias_signals) < 2
 
     if role_conflict or has_guard or all_ai or all_alias_candidate or all_weak_or_title:
         status = "needs_review"
-    elif has_strong:
+    elif has_strong_non_ai:
         status = "active"
-    elif has_medium and (len(signals) >= 2 or len(providers) >= 2 or records):
+    elif has_medium_non_ai and not medium_needs_review_without_corroboration:
+        status = "active"
+    elif has_medium_ai and non_ai_non_alias_signals and active_edge_count:
         status = "active"
     else:
         status = "needs_review"
@@ -1460,7 +2733,12 @@ def _build_concept_draft(
         ),
         reverse=True,
     )[0]
-    max_tier = max(TRUST_WEIGHTS, key=lambda tier: max_weight if TRUST_WEIGHTS[tier] == max_weight else -1)
+    max_tier = max(trust_counts.keys(), key=lambda tier: TRUST_WEIGHTS.get(tier, 0.0), default="weak")
+    surface, context = _component_surface_and_context(
+        signals,
+        context_by_scope=context_lookup,
+        context_alias_by_key=context_alias_by_key,
+    )
     evidence_summary = {
         "trust_counts": dict(trust_counts),
         "origin_counts": dict(origin_counts),
@@ -1474,7 +2752,14 @@ def _build_concept_draft(
             "all_weak_or_title": all_weak_or_title,
             "role_conflict": role_conflict,
             "has_ambiguous_or_title_guard": has_guard,
+            "signal_guards": sorted(signal_guards),
+            "medium_ai_present": has_medium_ai,
+            "medium_needs_review_without_corroboration": medium_needs_review_without_corroboration,
         },
+        "surface_key": surface,
+        "work_context_key": context,
+        "component_edge_counts": dict(Counter(edge.status for edge in component_edges)),
+        "component_edge_type_counts": dict(Counter(edge.edge_type for edge in component_edges)),
         "max_trust_tier": max_tier,
         "created_by_run_id": run_id,
     }
@@ -1495,21 +2780,101 @@ def _build_concept_draft(
 def _merge_candidate_review(concepts: Sequence[SourceConceptDraft]) -> list[dict[str, Any]]:
     by_alias: dict[str, list[SourceConceptDraft]] = defaultdict(list)
     for concept in concepts:
-        parts = concept.concept_key.split(":")
-        if len(parts) >= 2:
-            by_alias[parts[1]].append(concept)
+        surface_key = (concept.evidence_summary or {}).get("surface_key")
+        if surface_key:
+            by_alias[str(surface_key)].append(concept)
     review: list[dict[str, Any]] = []
     for alias_key, grouped in by_alias.items():
         if len(grouped) < 2:
             continue
         review.append(
             {
-                "alias_key": alias_key,
+                "surface_key": alias_key,
                 "concept_keys": [concept.concept_key for concept in grouped],
                 "reason": "same_surface_key_multiple_contexts_review_only",
             }
         )
     return review
+
+
+def _ai_signal_review(concepts: Sequence[SourceConceptDraft]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for concept in concepts:
+        non_alias = [signal for signal in concept.signals if signal.origin_type != "source_alias_candidate"]
+        if not non_alias:
+            continue
+        ai_count = sum(1 for signal in non_alias if signal_is_ai_origin(signal))
+        if not ai_count:
+            continue
+        non_ai_count = len(non_alias) - ai_count
+        violation = concept.status == "active" and non_ai_count == 0
+        rows.append(
+            {
+                "concept_key": concept.concept_key,
+                "concept_status": concept.status,
+                "ai_signal_count": ai_count,
+                "non_ai_signal_count": non_ai_count,
+                "violation": violation,
+                "reason": "ai_only_concept_must_not_be_active" if violation else "ai_signal_review",
+            }
+        )
+    return rows
+
+
+def _overmerge_review(
+    concepts: Sequence[SourceConceptDraft],
+    edges: Sequence[SourceConceptEdgeDraft],
+) -> list[dict[str, Any]]:
+    negative_pairs = {_pair_id(edge): edge for edge in edges if edge.negative_reason_code}
+    concept_by_signal: dict[str, SourceConceptDraft] = {}
+    for concept in concepts:
+        for signal in concept.signals:
+            concept_by_signal[signal.signal_key] = concept
+    rows: list[dict[str, Any]] = []
+    for pair, edge in negative_pairs.items():
+        left_concept = concept_by_signal.get(pair[0])
+        right_concept = concept_by_signal.get(pair[1])
+        if left_concept and right_concept and left_concept.concept_key == right_concept.concept_key:
+            rows.append(
+                {
+                    "concept_key": left_concept.concept_key,
+                    "left_signal_key": pair[0],
+                    "right_signal_key": pair[1],
+                    "negative_reason_code": edge.negative_reason_code,
+                    "violation": True,
+                }
+            )
+    return rows
+
+
+def _undermerge_review(
+    edges: Sequence[SourceConceptEdgeDraft],
+    concepts: Sequence[SourceConceptDraft],
+) -> list[dict[str, Any]]:
+    concept_by_signal: dict[str, str] = {}
+    for concept in concepts:
+        for signal in concept.signals:
+            concept_by_signal[signal.signal_key] = concept.concept_key
+    rows: list[dict[str, Any]] = []
+    for edge in edges:
+        if edge.status != "active" or not edge.union_allowed:
+            continue
+        left_concept = concept_by_signal.get(edge.left_signal_key)
+        right_concept = concept_by_signal.get(edge.right_signal_key)
+        if left_concept and right_concept and left_concept != right_concept:
+            rows.append(
+                {
+                    "left_signal_key": edge.left_signal_key,
+                    "right_signal_key": edge.right_signal_key,
+                    "left_concept_key": left_concept,
+                    "right_concept_key": right_concept,
+                    "edge_key": edge.edge_key,
+                    "edge_type": edge.edge_type,
+                    "violation": True,
+                    "reason": "active_safe_edge_not_materialized_in_same_component",
+                }
+            )
+    return rows
 
 
 def persist_source_concept_resolution(
@@ -1769,10 +3134,24 @@ def run_source_concept_resolution(
     run_id: str,
     f7a_run_id: str | None = None,
     apply: bool,
+    llm_config: LLMAdjudicationConfig | None = None,
+    llm_judgments: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[SourceConceptResolutionResult, dict[str, Any], dict[str, Any]]:
     inventory = source_signal_inventory(db, f7a_run_id=f7a_run_id)
     signals = build_source_concept_signals(db, run_id=run_id, f7a_run_id=f7a_run_id)
-    result = resolve_source_concepts(signals, run_id=run_id)
+    effective_llm_config = llm_config or LLMAdjudicationConfig()
+    llm_summary: dict[str, Any] | None = None
+    if effective_llm_config.enabled and llm_judgments is None:
+        initial_result = resolve_source_concepts(signals, run_id=run_id, llm_config=effective_llm_config, llm_judgments=())
+        generated_judgments, llm_summary = run_bounded_llm_adjudication(
+            initial_result.edge_candidates,
+            signals=signals,
+            config=effective_llm_config,
+        )
+        llm_judgments = generated_judgments
+    result = resolve_source_concepts(signals, run_id=run_id, llm_config=effective_llm_config, llm_judgments=llm_judgments)
+    if llm_summary is not None:
+        result.summary["llm_usage"] = {**result.summary.get("llm_usage", {}), **llm_summary}
     persistence = persist_source_concept_resolution(db, result, apply=apply, inventory=inventory)
     return result, inventory, persistence
 
@@ -1786,6 +3165,58 @@ def _candidate_bundle_rows(candidate_bundle_path: Path) -> list[dict[str, Any]]:
                 continue
             rows.append(json.loads(line))
     return rows
+
+
+def _pack_candidate_stable_key(row: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(row.get("evidence_payload") or {})
+    return {
+        "logical_candidate_key": payload.get("logical_candidate_key") or row.get("candidate_key"),
+        "group_key": row.get("group_key"),
+        "provider": row.get("provider"),
+        "origin_type": row.get("origin_type"),
+        "origin_id": row.get("origin_id"),
+        "canonical_key": row.get("canonical_key"),
+        "candidate_role": row.get("candidate_role"),
+        "candidate_status": row.get("candidate_status"),
+        "source_metadata_record_id": row.get("source_metadata_record_id"),
+        "media_id": row.get("media_id"),
+    }
+
+
+def _candidate_rows_checksum(rows: Sequence[Mapping[str, Any]]) -> str:
+    stable_rows = sorted((_pack_candidate_stable_key(row) for row in rows), key=lambda row: json.dumps(row, sort_keys=True, default=str))
+    return value_hash(stable_rows, 32)
+
+
+def _db_candidates_checksum(db: Session, run_id: str) -> tuple[int, str]:
+    rows = (
+        db.query(SourceNameCandidate)
+        .join(
+            SourceNameCandidateExtractionRun,
+            SourceNameCandidate.extraction_run_id == SourceNameCandidateExtractionRun.id,
+        )
+        .filter(SourceNameCandidateExtractionRun.run_id == run_id)
+        .filter(SourceNameCandidate.status == "active")
+        .all()
+    )
+    stable_rows = []
+    for row in rows:
+        payload = dict(row.evidence_payload or {})
+        stable_rows.append(
+            {
+                "logical_candidate_key": payload.get("logical_candidate_key") or row.candidate_key,
+                "group_key": row.group_key,
+                "provider": row.provider,
+                "origin_type": row.origin_type,
+                "origin_id": row.origin_id,
+                "canonical_key": row.canonical_key,
+                "candidate_role": row.candidate_role,
+                "candidate_status": row.candidate_status,
+                "source_metadata_record_id": row.source_metadata_record_id,
+                "media_id": row.media_id,
+            }
+        )
+    return len(rows), _candidate_rows_checksum(stable_rows)
 
 
 def import_f7a_final_pack_candidates(
@@ -1803,26 +3234,21 @@ def import_f7a_final_pack_candidates(
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     run_id = str(summary["run_id"])
     rows = _candidate_bundle_rows(candidate_bundle_path)
-    existing_count = (
-        db.query(SourceNameCandidate)
-        .join(
-            SourceNameCandidateExtractionRun,
-            SourceNameCandidate.extraction_run_id == SourceNameCandidateExtractionRun.id,
-        )
-        .filter(SourceNameCandidateExtractionRun.run_id == run_id)
-        .filter(SourceNameCandidate.status == "active")
-        .count()
-    )
+    existing_count, existing_checksum = _db_candidates_checksum(db, run_id)
+    bundle_checksum = _candidate_rows_checksum(rows)
     audit = {
         "run_id": run_id,
         "pack_dir": str(pack_dir),
         "candidate_bundle_count": len(rows),
         "existing_db_candidate_count_for_run": existing_count,
-        "needs_import": existing_count != len(rows),
+        "candidate_bundle_stable_checksum": bundle_checksum,
+        "existing_db_stable_checksum_for_run": existing_checksum,
+        "stable_checksum_matches": existing_checksum == bundle_checksum,
+        "needs_import": existing_count != len(rows) or existing_checksum != bundle_checksum,
         "apply": apply,
     }
     if not audit["needs_import"]:
-        return {**audit, "persistence": {"skipped": True, "reason": "db_count_matches_candidate_bundle"}}
+        return {**audit, "persistence": {"skipped": True, "reason": "db_count_and_stable_checksum_match_candidate_bundle"}}
 
     candidates = tuple(_candidate_from_pack_row(row) for row in rows)
     verdicts = tuple(_verdicts_from_pack_rows(rows))
@@ -1956,6 +3382,7 @@ def result_to_artifact_payload(result: SourceConceptResolutionResult) -> dict[st
     return {
         "summary": result.summary,
         "signals": [asdict(item) for item in result.signals],
+        "edge_candidates": [asdict(item) for item in result.edge_candidates],
         "concepts": [
             {
                 **asdict(item),
@@ -1970,6 +3397,10 @@ def result_to_artifact_payload(result: SourceConceptResolutionResult) -> dict[st
         "rejected_signals": list(result.rejected_signals),
         "ambiguous_links": list(result.ambiguous_links),
         "merge_candidates": list(result.merge_candidates),
+        "overmerge_review": list(result.overmerge_review),
+        "undermerge_review": list(result.undermerge_review),
+        "ai_signal_review": list(result.ai_signal_review),
+        "llm_judgments": list(result.llm_judgments),
     }
 
 
