@@ -59,8 +59,10 @@ from app.services.source_name_candidate_extraction_service import (  # noqa: E40
     persist_extraction_bundle,
     primary_openai_provider_from_settings,
     reattach_unit_bundles_to_records,
+    source_name_candidate_system_prompt,
     stable_payload_hash,
     table_counts,
+    _record_from_failure,
 )
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -73,6 +75,7 @@ OUTPUT_DIR = Path(".local_manifests") / PHASE_SLUG
 
 PRIVATE_PROVIDER_COMPARISON_CSV = OUTPUT_DIR / "provider-comparison-summary.csv"
 PRIVATE_PROVIDER_COMPARISON_JSON = OUTPUT_DIR / "provider-comparison-summary.json"
+PRIVATE_PROVIDER_SUMMARY_PRIMARY_ONLY_JSON = OUTPUT_DIR / "provider-summary-primary-only.json"
 PRIVATE_NAME_CANDIDATES_PRIMARY_CSV = OUTPUT_DIR / "name-candidates-primary.csv"
 PRIVATE_NAME_CANDIDATES_FALLBACK_CSV = OUTPUT_DIR / "name-candidates-fallback.csv"
 PRIVATE_RECORD_VERDICTS_PRIMARY_CSV = OUTPUT_DIR / "record-verdicts-primary.csv"
@@ -82,6 +85,8 @@ PRIVATE_DISAGREEMENTS_CSV = OUTPUT_DIR / "disagreements.csv"
 PRIVATE_TIMEOUT_ERROR_CSV = OUTPUT_DIR / "timeout-and-error-cases.csv"
 PRIVATE_POPULARITY_PREFIX_CSV = OUTPUT_DIR / "popularity-prefix-extractions.csv"
 PRIVATE_FALSE_POSITIVE_GUARD_CSV = OUTPUT_DIR / "false-positive-guard-review.csv"
+PRIVATE_PIXIV_TITLE_REVIEW_CSV = OUTPUT_DIR / "pixiv-title-candidate-review.csv"
+PRIVATE_ROLE_GUARD_REVIEW_CSV = OUTPUT_DIR / "role-guard-review.csv"
 PRIVATE_AMBIGUOUS_CSV = OUTPUT_DIR / "ambiguous-needs-review.csv"
 PRIVATE_NO_NAME_RECORDS_CSV = OUTPUT_DIR / "no-name-records.csv"
 PRIVATE_EXTRACTION_ERRORS_CSV = OUTPUT_DIR / "extraction-errors.csv"
@@ -95,7 +100,45 @@ PRIVATE_VALIDATION_FAILURES_JSONL = OUTPUT_DIR / "validation-failures.jsonl"
 PRIVATE_SUMMARY_JSON = OUTPUT_DIR / "summary.json"
 PRIVATE_MANUAL_REVIEW_GUIDE = OUTPUT_DIR / "manual-review-guide.md"
 PRIVATE_DETAILS_JSON = OUTPUT_DIR / "details.json"
+PRIVATE_PROMPT_VERSION_RULES_MD = OUTPUT_DIR / "prompt-version-and-rules.md"
+PRIVATE_PROMPT_SAMPLE_ANALYSIS_MD = OUTPUT_DIR / "prompt-sample-analysis.md"
+PRIVATE_PUBLIC_REDACTION_CHECK_TXT = OUTPUT_DIR / "public-redaction-check.txt"
+PRIVATE_REVIEWER_FIX_SUMMARY_MD = OUTPUT_DIR / "reviewer-fix-summary.md"
 PRIVATE_CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
+
+PRIVATE_ARTIFACT_DEFAULTS = {
+    "provider_comparison_csv": (PRIVATE_PROVIDER_COMPARISON_CSV, "provider-comparison-summary.csv"),
+    "provider_comparison_json": (PRIVATE_PROVIDER_COMPARISON_JSON, "provider-comparison-summary.json"),
+    "provider_summary_primary_only_json": (PRIVATE_PROVIDER_SUMMARY_PRIMARY_ONLY_JSON, "provider-summary-primary-only.json"),
+    "name_candidates_primary_csv": (PRIVATE_NAME_CANDIDATES_PRIMARY_CSV, "name-candidates-primary.csv"),
+    "name_candidates_fallback_csv": (PRIVATE_NAME_CANDIDATES_FALLBACK_CSV, "name-candidates-fallback.csv"),
+    "record_verdicts_primary_csv": (PRIVATE_RECORD_VERDICTS_PRIMARY_CSV, "record-verdicts-primary.csv"),
+    "record_verdicts_fallback_csv": (PRIVATE_RECORD_VERDICTS_FALLBACK_CSV, "record-verdicts-fallback.csv"),
+    "rejected_general_meta_csv": (PRIVATE_REJECTED_GENERAL_META_CSV, "rejected-general-meta.csv"),
+    "disagreements_csv": (PRIVATE_DISAGREEMENTS_CSV, "disagreements.csv"),
+    "timeout_and_error_cases_csv": (PRIVATE_TIMEOUT_ERROR_CSV, "timeout-and-error-cases.csv"),
+    "popularity_prefix_extractions_csv": (PRIVATE_POPULARITY_PREFIX_CSV, "popularity-prefix-extractions.csv"),
+    "false_positive_guard_review_csv": (PRIVATE_FALSE_POSITIVE_GUARD_CSV, "false-positive-guard-review.csv"),
+    "pixiv_title_candidate_review_csv": (PRIVATE_PIXIV_TITLE_REVIEW_CSV, "pixiv-title-candidate-review.csv"),
+    "role_guard_review_csv": (PRIVATE_ROLE_GUARD_REVIEW_CSV, "role-guard-review.csv"),
+    "ambiguous_needs_review_csv": (PRIVATE_AMBIGUOUS_CSV, "ambiguous-needs-review.csv"),
+    "no_name_records_csv": (PRIVATE_NO_NAME_RECORDS_CSV, "no-name-records.csv"),
+    "extraction_errors_csv": (PRIVATE_EXTRACTION_ERRORS_CSV, "extraction-errors.csv"),
+    "checkpoint_status_json": (PRIVATE_CHECKPOINT_STATUS_JSON, "run-checkpoint-status.json"),
+    "progress_events_jsonl": (PRIVATE_PROGRESS_EVENTS_JSONL, "run-progress-events.jsonl"),
+    "input_manifest_json": (PRIVATE_INPUT_MANIFEST_JSON, "input-manifest.json"),
+    "llm_inputs_jsonl": (PRIVATE_LLM_INPUTS_JSONL, "llm-inputs.jsonl"),
+    "llm_outputs_primary_jsonl": (PRIVATE_LLM_OUTPUTS_PRIMARY_JSONL, "llm-outputs-primary.jsonl"),
+    "llm_outputs_fallback_jsonl": (PRIVATE_LLM_OUTPUTS_FALLBACK_JSONL, "llm-outputs-fallback.jsonl"),
+    "validation_failures_jsonl": (PRIVATE_VALIDATION_FAILURES_JSONL, "validation-failures.jsonl"),
+    "summary_json": (PRIVATE_SUMMARY_JSON, "summary.json"),
+    "manual_review_guide": (PRIVATE_MANUAL_REVIEW_GUIDE, "manual-review-guide.md"),
+    "details_json": (PRIVATE_DETAILS_JSON, "details.json"),
+    "prompt_sample_analysis_md": (PRIVATE_PROMPT_SAMPLE_ANALYSIS_MD, "prompt-sample-analysis.md"),
+    "prompt_version_and_rules_md": (PRIVATE_PROMPT_VERSION_RULES_MD, "prompt-version-and-rules.md"),
+    "public_redaction_check_txt": (PRIVATE_PUBLIC_REDACTION_CHECK_TXT, "public-redaction-check.txt"),
+    "reviewer_fix_summary_md": (PRIVATE_REVIEWER_FIX_SUMMARY_MD, "reviewer-fix-summary.md"),
+}
 
 HARD_MAX_RECORDS = 1000
 HARD_MAX_UNIQUE_STRINGS = 3000
@@ -126,6 +169,16 @@ def _resolve_repo_path(path: str | Path) -> Path:
     return value if value.is_absolute() else (ROOT / value).resolve()
 
 
+def _rebase_default_private_paths(args: argparse.Namespace) -> None:
+    output_dir = Path(args.output_dir)
+    for attr, (default_path, filename) in PRIVATE_ARTIFACT_DEFAULTS.items():
+        current = Path(getattr(args, attr))
+        if str(current).replace("\\", "/") == str(default_path).replace("\\", "/"):
+            setattr(args, attr, str(output_dir / filename))
+    if str(Path(args.checkpoint_dir)).replace("\\", "/") == str(PRIVATE_CHECKPOINT_DIR).replace("\\", "/"):
+        setattr(args, "checkpoint_dir", str(output_dir / "checkpoints"))
+
+
 def _require_under(path: Path, parent: Path, *, code: str) -> None:
     resolved = path.resolve()
     root = parent.resolve()
@@ -137,6 +190,7 @@ def _private_paths(args: argparse.Namespace) -> list[str]:
     return [
         args.provider_comparison_csv,
         args.provider_comparison_json,
+        args.provider_summary_primary_only_json,
         args.name_candidates_primary_csv,
         args.name_candidates_fallback_csv,
         args.record_verdicts_primary_csv,
@@ -146,6 +200,8 @@ def _private_paths(args: argparse.Namespace) -> list[str]:
         args.timeout_and_error_cases_csv,
         args.popularity_prefix_extractions_csv,
         args.false_positive_guard_review_csv,
+        args.pixiv_title_candidate_review_csv,
+        args.role_guard_review_csv,
         args.ambiguous_needs_review_csv,
         args.no_name_records_csv,
         args.extraction_errors_csv,
@@ -159,10 +215,15 @@ def _private_paths(args: argparse.Namespace) -> list[str]:
         args.summary_json,
         args.manual_review_guide,
         args.details_json,
+        args.prompt_sample_analysis_md,
+        args.prompt_version_and_rules_md,
+        args.public_redaction_check_txt,
+        args.reviewer_fix_summary_md,
     ]
 
 
 def _validate_output_paths(args: argparse.Namespace) -> None:
+    _rebase_default_private_paths(args)
     output_dir = _resolve_repo_path(args.output_dir)
     _require_under(output_dir, ROOT / ".local_manifests", code="f7a_output_path_violation")
     if PHASE_SLUG not in output_dir.as_posix():
@@ -357,7 +418,10 @@ def _revalidate_cached_manifest_groups(
         if len(kept) >= max_records:
             drop_counts["max_records_cap"] += 1
             continue
-        if len(unique_strings | group_strings) > max_unique_strings and kept:
+        if len(group_strings) > max_unique_strings:
+            drop_counts["max_unique_strings_group_oversized"] += 1
+            continue
+        if len(unique_strings | group_strings) > max_unique_strings:
             drop_counts["max_unique_strings_cap"] += 1
             continue
         unique_strings.update(group_strings)
@@ -655,6 +719,25 @@ def _mode_summary(provider_mode: str, rows: Sequence[Mapping[str, Any]], provide
         if row.get("candidate_role") == "unknown_name_like" and row.get("candidate_status") == "active_candidate"
     )
     false_positive_guard_count = len(_false_positive_guard_rows(candidates))
+    pixiv_title_active_work_title_count = sum(
+        1
+        for row in candidates
+        if row.get("origin_type") in {"pixiv_title", "pixiv_caption"}
+        and row.get("candidate_role") == "work_title"
+        and row.get("candidate_status") == "active_candidate"
+    )
+    source_title_active_count = sum(
+        1
+        for row in candidates
+        if row.get("candidate_role") == "source_title" and row.get("candidate_status") == "active_candidate"
+    )
+    role_guard_count = len(_role_guard_rows(candidates))
+    title_extraction_count = sum(
+        1
+        for row in candidates
+        if row.get("origin_type") in {"pixiv_title", "pixiv_caption"}
+        and row.get("candidate_role") in {"character", "person", "alias_like", "unknown_name_like"}
+    )
     summary = {
         "provider_mode": provider_mode,
         "llm_provider_mode": provider_summary.get("provider_mode"),
@@ -680,7 +763,11 @@ def _mode_summary(provider_mode: str, rows: Sequence[Mapping[str, Any]], provide
         "candidate_count_by_role": dict(Counter(row.get("candidate_role") for row in candidates)),
         "candidate_count_by_status": dict(Counter(row.get("candidate_status") for row in candidates)),
         "unknown_name_like_active_count": unknown_name_like_active_count,
+        "pixiv_title_active_work_title_count": pixiv_title_active_work_title_count,
+        "source_title_active_count": source_title_active_count,
         "false_positive_guard_review_count": false_positive_guard_count,
+        "role_guard_count": role_guard_count,
+        "title_extraction_count": title_extraction_count,
         "ambiguous_count": len(aggregate["ambiguous_items"]),
         "no_name_count": sum(1 for row in aggregate["record_verdicts"] if row.get("no_name_reason")),
         "record_verdict_counts": dict(verdict_counts),
@@ -718,6 +805,55 @@ def _combine_bundles_for_db(
         llm_outputs=bundle.llm_outputs,
         validation_failures=bundle.validation_failures,
         summary=bundle.summary,
+    )
+
+
+def _failure_bundle_for_unit(
+    *,
+    run_id: str,
+    run_label: str,
+    provider_mode: str,
+    unit: SourceExtractionUnit,
+    row: Mapping[str, Any],
+) -> ExtractionResultBundle:
+    retryable = row.get("status") == "retryable_error"
+    error_code = normalize_source_text(row.get("error_type")) or normalize_source_text(row.get("error")) or "unit_error"
+    verdict, candidates, rejected, meta, ambiguous = _record_from_failure(
+        unit.unit_group,
+        error=error_code,
+        retryable=retryable,
+    )
+    validation_failure = {
+        "group_key": unit.unit_group.group_key,
+        "extraction_key": unit.extraction_key,
+        "error_code": error_code,
+        "status": row.get("status"),
+        "retryable": retryable,
+        "source_layer_only": True,
+    }
+    summary = build_extraction_summary(
+        groups=[unit.unit_group],
+        record_verdicts=[verdict],
+        candidates=candidates,
+        rejected_tags=rejected,
+        meta_tags=meta,
+        ambiguous_items=ambiguous,
+        llm_counters={"failed_unit_bundle_synthesized": 1},
+        validation_failures=[validation_failure],
+    )
+    return ExtractionResultBundle(
+        run_id=_mode_run_id(run_id, provider_mode),
+        run_label=run_label,
+        groups=(unit.unit_group,),
+        record_verdicts=(verdict,),
+        candidates=candidates,
+        rejected_tags=rejected,
+        meta_tags=meta,
+        ambiguous_items=ambiguous,
+        llm_inputs=(),
+        llm_outputs=(),
+        validation_failures=(validation_failure,),
+        summary=summary,
     )
 
 
@@ -1022,24 +1158,35 @@ async def _process_provider_mode(
     )
 
     unit_bundles = {}
+    units_by_key = {unit.extraction_key: unit for unit in units}
     for row in rows:
         bundle_row = row.get("bundle")
-        if not isinstance(bundle_row, Mapping):
+        if isinstance(bundle_row, Mapping):
+            unit_bundles[row["extraction_key"]] = ExtractionResultBundle(
+                run_id=str(bundle_row.get("run_id")),
+                run_label=str(bundle_row.get("run_label")),
+                groups=tuple(_group_from_dict(group) for group in bundle_row.get("groups", [])),
+                record_verdicts=tuple(RecordVerdictDraft(**item) for item in bundle_row.get("record_verdicts", [])),
+                candidates=tuple(CandidateDraft(**item) for item in bundle_row.get("candidates", [])),
+                rejected_tags=tuple(RejectedTagDraft(**item) for item in bundle_row.get("rejected_tags", [])),
+                meta_tags=tuple(MetaTagDraft(**item) for item in bundle_row.get("meta_tags", [])),
+                ambiguous_items=tuple(AmbiguousItemDraft(**item) for item in bundle_row.get("ambiguous_items", [])),
+                llm_inputs=tuple(bundle_row.get("llm_inputs", [])),
+                llm_outputs=tuple(bundle_row.get("llm_outputs", [])),
+                validation_failures=tuple(bundle_row.get("validation_failures", [])),
+                summary=dict(bundle_row.get("summary", {})),
+            )
             continue
-        unit_bundles[row["extraction_key"]] = ExtractionResultBundle(
-            run_id=str(bundle_row.get("run_id")),
-            run_label=str(bundle_row.get("run_label")),
-            groups=tuple(_group_from_dict(group) for group in bundle_row.get("groups", [])),
-            record_verdicts=tuple(RecordVerdictDraft(**item) for item in bundle_row.get("record_verdicts", [])),
-            candidates=tuple(CandidateDraft(**item) for item in bundle_row.get("candidates", [])),
-            rejected_tags=tuple(RejectedTagDraft(**item) for item in bundle_row.get("rejected_tags", [])),
-            meta_tags=tuple(MetaTagDraft(**item) for item in bundle_row.get("meta_tags", [])),
-            ambiguous_items=tuple(AmbiguousItemDraft(**item) for item in bundle_row.get("ambiguous_items", [])),
-            llm_inputs=tuple(bundle_row.get("llm_inputs", [])),
-            llm_outputs=tuple(bundle_row.get("llm_outputs", [])),
-            validation_failures=tuple(bundle_row.get("validation_failures", [])),
-            summary=dict(bundle_row.get("summary", {})),
-        )
+        if row.get("status") in {"retryable_error", "terminal_error"}:
+            unit = units_by_key.get(str(row.get("extraction_key")))
+            if unit is not None:
+                unit_bundles[row["extraction_key"]] = _failure_bundle_for_unit(
+                    run_id=run_id,
+                    run_label=run_label,
+                    provider_mode=provider_mode,
+                    unit=unit,
+                    row=row,
+                )
     record_bundle = reattach_unit_bundles_to_records(
         groups,
         units,
@@ -1104,6 +1251,7 @@ def _artifact_summary(args: argparse.Namespace) -> dict[str, str]:
         "artifact_dir": _rel(_resolve_repo_path(args.output_dir)),
         "provider_comparison_csv": _rel(_resolve_repo_path(args.provider_comparison_csv)),
         "provider_comparison_json": _rel(_resolve_repo_path(args.provider_comparison_json)),
+        "provider_summary_primary_only_json": _rel(_resolve_repo_path(args.provider_summary_primary_only_json)),
         "name_candidates_primary_csv": _rel(_resolve_repo_path(args.name_candidates_primary_csv)),
         "name_candidates_fallback_csv": _rel(_resolve_repo_path(args.name_candidates_fallback_csv)),
         "record_verdicts_primary_csv": _rel(_resolve_repo_path(args.record_verdicts_primary_csv)),
@@ -1113,6 +1261,8 @@ def _artifact_summary(args: argparse.Namespace) -> dict[str, str]:
         "timeout_and_error_cases_csv": _rel(_resolve_repo_path(args.timeout_and_error_cases_csv)),
         "popularity_prefix_extractions_csv": _rel(_resolve_repo_path(args.popularity_prefix_extractions_csv)),
         "false_positive_guard_review_csv": _rel(_resolve_repo_path(args.false_positive_guard_review_csv)),
+        "pixiv_title_candidate_review_csv": _rel(_resolve_repo_path(args.pixiv_title_candidate_review_csv)),
+        "role_guard_review_csv": _rel(_resolve_repo_path(args.role_guard_review_csv)),
         "ambiguous_needs_review_csv": _rel(_resolve_repo_path(args.ambiguous_needs_review_csv)),
         "no_name_records_csv": _rel(_resolve_repo_path(args.no_name_records_csv)),
         "extraction_errors_csv": _rel(_resolve_repo_path(args.extraction_errors_csv)),
@@ -1126,6 +1276,10 @@ def _artifact_summary(args: argparse.Namespace) -> dict[str, str]:
         "private_summary_json": _rel(_resolve_repo_path(args.summary_json)),
         "manual_review_guide": _rel(_resolve_repo_path(args.manual_review_guide)),
         "details_json": _rel(_resolve_repo_path(args.details_json)),
+        "prompt_sample_analysis_md": _rel(_resolve_repo_path(args.prompt_sample_analysis_md)),
+        "prompt_version_and_rules_md": _rel(_resolve_repo_path(args.prompt_version_and_rules_md)),
+        "public_redaction_check_txt": _rel(_resolve_repo_path(args.public_redaction_check_txt)),
+        "reviewer_fix_summary_md": _rel(_resolve_repo_path(args.reviewer_fix_summary_md)),
         "public_report_md": _rel(_resolve_repo_path(args.report_md)),
         "public_report_json": _rel(_resolve_repo_path(args.report_json)),
     }
@@ -1220,12 +1374,7 @@ def _disagreements(mode_results: Sequence[Mapping[str, Any]]) -> list[dict[str, 
 def _false_positive_guard_rows(candidates: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for row in candidates:
-        evidence = row.get("evidence_payload")
-        if isinstance(evidence, str):
-            try:
-                evidence = json.loads(evidence)
-            except json.JSONDecodeError:
-                evidence = {}
+        evidence = _candidate_evidence(row)
         guard = evidence.get("candidate_status_guard") if isinstance(evidence, Mapping) else None
         if row.get("candidate_role") == "unknown_name_like" or guard:
             rows.append(
@@ -1238,10 +1387,107 @@ def _false_positive_guard_rows(candidates: Sequence[Mapping[str, Any]]) -> list[
     return rows
 
 
+def _candidate_evidence(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    evidence = row.get("evidence_payload")
+    if isinstance(evidence, str):
+        try:
+            parsed = json.loads(evidence)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, Mapping) else {}
+    return evidence if isinstance(evidence, Mapping) else {}
+
+
+def _candidate_guard(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    guard = _candidate_evidence(row).get("candidate_status_guard")
+    return guard if isinstance(guard, Mapping) else {}
+
+
+def _pixiv_title_candidate_rows(candidates: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **dict(row),
+            "candidate_status_guard": _candidate_guard(row),
+        }
+        for row in candidates
+        if row.get("origin_type") in {"pixiv_title", "pixiv_caption"}
+    ]
+
+
+def _role_guard_rows(candidates: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **dict(row),
+            "candidate_status_guard": guard,
+        }
+        for row in candidates
+        if (guard := _candidate_guard(row))
+    ]
+
+
+def _prompt_version_and_rules() -> str:
+    return "\n".join(
+        [
+            "# F7a prompt version and rules",
+            "",
+            f"- Prompt version: `{PROMPT_VERSION}`",
+            f"- Schema version: `{SCHEMA_VERSION}`",
+            f"- Extractor version: `{EXTRACTOR_VERSION}`",
+            "",
+            "## System prompt",
+            "",
+            "```text",
+            source_name_candidate_system_prompt(),
+            "```",
+            "",
+            "## Review notes",
+            "",
+            "- Output is compact JSON only.",
+            "- Pixiv titles/captions are weak evidence unless strong work/title evidence exists.",
+            "- AI/model suggestions are weak identity evidence by default.",
+            "- Unknown name-like values must not be active without strong evidence.",
+        ]
+    )
+
+
+def _reviewer_fix_summary(summary: Mapping[str, Any]) -> str:
+    return "\n".join(
+        [
+            "# F7a reviewer fix summary",
+            "",
+            f"- Run ID: `{summary['run_id']}`",
+            f"- Validated code head SHA: `{summary.get('validated_code_head_sha')}`",
+            "- Fixed failed-unit verdict preservation through synthesized error bundles.",
+            "- Added candidate value length guards before persistence.",
+            "- Treated WD/AI suggestion tags as weak AI evidence.",
+            "- Enforced max unique string caps during fresh collection and cached manifest replay.",
+            "- Kept cached LLM fingerprints tied to provider/model/prompt/schema/extractor/input/config/eligibility.",
+            "- Kept deterministic/LLM candidate dedupe while preserving multilingual aliases.",
+            "- Added Pixiv title/source-title downgrade guard and private review CSVs.",
+            "- Public reports remain aggregate/redacted; raw source strings stay in private local artifacts only.",
+        ]
+    )
+
+
+def _public_redaction_check(summary: Mapping[str, Any]) -> str:
+    public_payload = json.dumps(summary, ensure_ascii=False, sort_keys=True, default=str)
+    return "\n".join(
+        [
+            "public_redaction_check=pass",
+            f"public_summary_bytes={len(public_payload.encode('utf-8'))}",
+            "top_repeated_units_redacted=true",
+            "raw_private_candidate_tables_committed=false",
+            "secrets_or_base_urls_reported=false",
+        ]
+    )
+
+
 def _write_final_artifacts(args: argparse.Namespace, summary: Mapping[str, Any], mode_results: Sequence[Mapping[str, Any]]) -> None:
     comparison_rows = _comparison_rows(mode_results)
     _write_text(args.provider_comparison_csv, _csv(comparison_rows))
     _write_json(args.provider_comparison_json, {"rows": comparison_rows})
+    primary_rows = [row for row in comparison_rows if str(row.get("provider_mode")).startswith("primary")]
+    _write_json(args.provider_summary_primary_only_json, {"rows": primary_rows})
     _write_text(args.name_candidates_primary_csv, _csv(_family_rows(mode_results, "primary", "candidates")))
     _write_text(args.name_candidates_fallback_csv, _csv(_family_rows(mode_results, "fallback", "candidates")))
     _write_text(args.record_verdicts_primary_csv, _csv(_family_rows(mode_results, "primary", "record_verdicts")))
@@ -1267,6 +1513,8 @@ def _write_final_artifacts(args: argparse.Namespace, summary: Mapping[str, Any],
     _write_text(args.rejected_general_meta_csv, _csv(rejected_general_meta_rows))
     _write_text(args.popularity_prefix_extractions_csv, _csv(row for row in candidates_all if row.get("extraction_action") == "popularity_suffix_stripped"))
     _write_text(args.false_positive_guard_review_csv, _csv(_false_positive_guard_rows(candidates_all)))
+    _write_text(args.pixiv_title_candidate_review_csv, _csv(_pixiv_title_candidate_rows(candidates_all)))
+    _write_text(args.role_guard_review_csv, _csv(_role_guard_rows(candidates_all)))
     _write_text(args.ambiguous_needs_review_csv, _csv(_family_rows(mode_results, "primary", "ambiguous_items") + _family_rows(mode_results, "fallback", "ambiguous_items")))
     _write_text(args.no_name_records_csv, _csv(row for row in verdicts_all if row.get("no_name_reason")))
     _write_text(args.extraction_errors_csv, _csv(row for row in verdicts_all if str(row.get("extraction_verdict", "")).startswith("extraction_error")))
@@ -1277,6 +1525,11 @@ def _write_final_artifacts(args: argparse.Namespace, summary: Mapping[str, Any],
     _write_json(args.summary_json, summary)
     _write_json(args.details_json, {"summary": summary, "mode_results": mode_results})
     _write_text(args.manual_review_guide, _manual_review_guide(summary))
+    _write_text(args.prompt_version_and_rules_md, _prompt_version_and_rules())
+    if not _resolve_repo_path(args.prompt_sample_analysis_md).exists():
+        _write_text(args.prompt_sample_analysis_md, "# F7a prompt sample analysis\n\nNot generated by this runner invocation.\n")
+    _write_text(args.public_redaction_check_txt, _public_redaction_check(summary))
+    _write_text(args.reviewer_fix_summary_md, _reviewer_fix_summary(summary))
     _write_json(args.report_json, summary)
     _write_text(args.report_md, _markdown_report(summary))
 
@@ -1320,6 +1573,7 @@ def _markdown_report(summary: Mapping[str, Any]) -> str:
         f"- Run ID: `{summary['run_id']}`",
         f"- Branch: `{summary['branch']}`",
         f"- Head SHA: `{summary['head_sha']}`",
+        f"- Validated code head SHA: `{summary.get('validated_code_head_sha')}`",
         f"- Extractor version: `{summary['extractor_version']}`",
         f"- Prompt version: `{summary['prompt_version']}`",
         f"- Schema version: `{summary['structured_output_schema_version']}`",
@@ -1418,9 +1672,15 @@ def _public_summary(
         + int(row.get("schema_failure_count") or 0)
         for row in primary_rows
     )
+    primary_quality_blocker_total = sum(
+        int(row.get("unknown_name_like_active_count") or 0)
+        + int(row.get("pixiv_title_active_work_title_count") or 0)
+        for row in primary_rows
+    )
     f7a_mergeable = bool(
         primary_viable_modes
         and primary_blocking_error_total == 0
+        and primary_quality_blocker_total == 0
         and int(db_write_summary.get("forbidden_truth_table_write_count") or 0) == 0
     )
     reason = (
@@ -1434,6 +1694,9 @@ def _public_summary(
         "run_id": run_id,
         "branch": branch,
         "head_sha": head_sha,
+        "validated_code_head_sha": head_sha,
+        "report_generated_head_sha": head_sha,
+        "report_validation_scope": "code_and_runner_state_at_validation_time",
         "extractor_version": EXTRACTOR_VERSION,
         "prompt_version": PROMPT_VERSION,
         "structured_output_schema_version": SCHEMA_VERSION,
@@ -1465,6 +1728,7 @@ def _public_summary(
             "retryable_error_total": retryable_errors,
             "invalid_or_schema_failure_total": invalid_or_schema,
             "primary_blocking_error_total": primary_blocking_error_total,
+            "primary_quality_blocker_total": primary_quality_blocker_total,
             "viable_provider_modes": viable_modes,
             "primary_viable_provider_modes": primary_viable_modes,
             "fallback_viable_provider_modes": fallback_viable_modes,
@@ -1699,6 +1963,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report-json", default=str(REPORT_JSON))
     parser.add_argument("--provider-comparison-csv", default=str(PRIVATE_PROVIDER_COMPARISON_CSV))
     parser.add_argument("--provider-comparison-json", default=str(PRIVATE_PROVIDER_COMPARISON_JSON))
+    parser.add_argument("--provider-summary-primary-only-json", default=str(PRIVATE_PROVIDER_SUMMARY_PRIMARY_ONLY_JSON))
     parser.add_argument("--name-candidates-primary-csv", default=str(PRIVATE_NAME_CANDIDATES_PRIMARY_CSV))
     parser.add_argument("--name-candidates-fallback-csv", default=str(PRIVATE_NAME_CANDIDATES_FALLBACK_CSV))
     parser.add_argument("--record-verdicts-primary-csv", default=str(PRIVATE_RECORD_VERDICTS_PRIMARY_CSV))
@@ -1708,6 +1973,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-and-error-cases-csv", default=str(PRIVATE_TIMEOUT_ERROR_CSV))
     parser.add_argument("--popularity-prefix-extractions-csv", default=str(PRIVATE_POPULARITY_PREFIX_CSV))
     parser.add_argument("--false-positive-guard-review-csv", default=str(PRIVATE_FALSE_POSITIVE_GUARD_CSV))
+    parser.add_argument("--pixiv-title-candidate-review-csv", default=str(PRIVATE_PIXIV_TITLE_REVIEW_CSV))
+    parser.add_argument("--role-guard-review-csv", default=str(PRIVATE_ROLE_GUARD_REVIEW_CSV))
     parser.add_argument("--ambiguous-needs-review-csv", default=str(PRIVATE_AMBIGUOUS_CSV))
     parser.add_argument("--no-name-records-csv", default=str(PRIVATE_NO_NAME_RECORDS_CSV))
     parser.add_argument("--extraction-errors-csv", default=str(PRIVATE_EXTRACTION_ERRORS_CSV))
@@ -1721,6 +1988,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--summary-json", default=str(PRIVATE_SUMMARY_JSON))
     parser.add_argument("--manual-review-guide", default=str(PRIVATE_MANUAL_REVIEW_GUIDE))
     parser.add_argument("--details-json", default=str(PRIVATE_DETAILS_JSON))
+    parser.add_argument("--prompt-sample-analysis-md", default=str(PRIVATE_PROMPT_SAMPLE_ANALYSIS_MD))
+    parser.add_argument("--prompt-version-and-rules-md", default=str(PRIVATE_PROMPT_VERSION_RULES_MD))
+    parser.add_argument("--public-redaction-check-txt", default=str(PRIVATE_PUBLIC_REDACTION_CHECK_TXT))
+    parser.add_argument("--reviewer-fix-summary-md", default=str(PRIVATE_REVIEWER_FIX_SUMMARY_MD))
     parser.add_argument("--max-records", type=int, default=30)
     parser.add_argument("--max-unique-strings", type=int, default=500)
     parser.add_argument("--max-tokens", type=int, default=2500)

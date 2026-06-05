@@ -33,6 +33,8 @@ from app.models import (  # noqa: E402
 )
 from app.services.llm_translation_provider import BaseLLMProvider, LLMResponseFormatError  # noqa: E402
 from app.services.source_name_candidate_extraction_service import (  # noqa: E402
+    PROMPT_VERSION,
+    SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH,
     SourceCandidateInputGroup,
     SourceNameCandidateExtractionError,
     build_extraction_units,
@@ -49,6 +51,7 @@ from app.services.source_name_candidate_extraction_service import (  # noqa: E40
     table_counts,
     validate_extraction_record,
     reattach_unit_bundles_to_records,
+    source_name_candidate_system_prompt,
 )
 
 
@@ -403,6 +406,27 @@ def test_collect_groups_applies_source_record_scan_limit_before_materialization(
         engine.dispose()
 
 
+def test_first_group_cannot_bypass_unique_string_cap():
+    engine, db = _db()
+    try:
+        _media(db, 1, ContentClassEnum.anime)
+        _source_record(db, 1, 1, "oversized-first")
+        db.commit()
+
+        groups, summary = collect_source_candidate_input_groups(
+            db,
+            max_records=10,
+            max_unique_strings=1,
+            include_media_tag_only_groups=False,
+        )
+
+        assert groups == []
+        assert summary["excluded_counts"]["max_unique_strings_group_oversized"] == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_media_tag_only_groups_use_same_eligibility_gate():
     engine, db = _db()
     try:
@@ -547,6 +571,228 @@ def test_true_name_candidates_remain_active_after_false_positive_guard():
     )
 
 
+def test_pixiv_title_full_string_is_not_active_work_title_but_embedded_name_can_remain_active():
+    group = SourceCandidateInputGroup(
+        group_key="source_record:title",
+        provider="pixiv",
+        source_metadata_record_id=1,
+        media_id=10,
+        title="Yoimiya in bikini",
+        data_origin="real_dev_db",
+    )
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "multiple_candidates_found",
+        "candidates": [
+            {
+                "raw_value": "Yoimiya in bikini",
+                "display_name": "Yoimiya in bikini",
+                "normalized_value": "Yoimiya in bikini",
+                "role": "work_title",
+                "status": "active_candidate",
+                "source_field": "pixiv_title",
+                "extraction_action": "direct_name",
+                "confidence": 0.8,
+            },
+            {
+                "raw_value": "Yoimiya",
+                "display_name": "Yoimiya",
+                "normalized_value": "Yoimiya",
+                "role": "character",
+                "status": "active_candidate",
+                "source_field": "pixiv_title",
+                "extraction_action": "context_inferred",
+                "confidence": 0.55,
+            },
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+    full_title = next(candidate for candidate in candidates if candidate.raw_value == "Yoimiya in bikini")
+    embedded_name = next(candidate for candidate in candidates if candidate.raw_value == "Yoimiya")
+
+    assert full_title.candidate_role == "source_title"
+    assert full_title.candidate_status == "needs_review"
+    assert full_title.evidence_payload["candidate_status_guard"]["pixiv_title_work_title_role_downgraded"] is True
+    assert embedded_name.candidate_role == "character"
+    assert embedded_name.candidate_status == "active_candidate"
+
+
+def test_overlength_candidate_values_are_bounded_before_persistence():
+    long_value = "A" * (SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH + 50)
+    group = SourceCandidateInputGroup(
+        group_key="source_record:long-title",
+        provider="pixiv",
+        source_metadata_record_id=1,
+        media_id=10,
+        title=long_value,
+        data_origin="real_dev_db",
+    )
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "work_candidate_found",
+        "candidates": [
+            {
+                "raw_value": long_value,
+                "display_name": long_value,
+                "normalized_value": long_value,
+                "canonical_key": long_value.lower(),
+                "role": "work_title",
+                "status": "active_candidate",
+                "source_field": "pixiv_title",
+                "extraction_action": "direct_name",
+                "confidence": 0.8,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+    candidate = candidates[0]
+
+    assert len(candidate.raw_value) == SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH
+    assert len(candidate.display_name) == SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH
+    assert len(candidate.normalized_value) == SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH
+    assert len(candidate.canonical_key) <= SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH
+    assert candidate.candidate_status == "needs_review"
+    assert "candidate_value_length_guard" in candidate.evidence_payload["candidate_status_guard"]
+
+
+def test_context_inferred_high_confidence_is_downgraded_not_terminal():
+    group = SourceCandidateInputGroup(
+        group_key="source_record:title-context",
+        provider="pixiv",
+        source_metadata_record_id=1,
+        media_id=10,
+        title="Character portrait",
+        data_origin="real_dev_db",
+    )
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "name_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "Character",
+                "display_name": "Character",
+                "normalized_value": "Character",
+                "role": "unknown_name_like",
+                "status": "active_candidate",
+                "source_field": "pixiv_title",
+                "extraction_action": "context_inferred",
+                "confidence": 0.8,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert candidates[0].confidence == 0.55
+    assert candidates[0].candidate_status == "needs_review"
+    assert candidates[0].evidence_payload["candidate_status_guard"]["context_inferred_confidence_capped"] is True
+
+
+def test_deduped_unit_truncated_group_key_and_person_verdict_are_repaired():
+    group = SourceCandidateInputGroup(
+        group_key="extraction_unit:1234567890abcdef12345678",
+        provider="pixiv",
+        tags=({"raw_tag": "Name"},),
+        data_origin="deduped_extraction_unit",
+    )
+    row = {
+        "group_key": "extraction_unit:1234567890abcdef",
+        "provider": "pixiv",
+        "verdict": "person_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "Name",
+                "display_name": "Name",
+                "normalized_value": "Name",
+                "role": "person",
+                "status": "active_candidate",
+                "source_field": "pixiv_tag",
+                "extraction_action": "direct_name",
+                "confidence": 0.7,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert verdict.extraction_verdict == "name_candidate_found"
+    assert "deduped_extraction_unit_group_key_truncation_repaired" in verdict.extraction_warnings_json
+    assert candidates[0].candidate_role == "person"
+
+
+def test_role_value_used_as_verdict_is_safely_mapped():
+    group = SourceCandidateInputGroup(
+        group_key="extraction_unit:role-verdict",
+        provider="pixiv",
+        tags=({"raw_tag": "Maybe Name"},),
+        data_origin="deduped_extraction_unit",
+    )
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "unknown_name_like",
+        "candidates": [
+            {
+                "raw_value": "Maybe Name",
+                "display_name": "Maybe Name",
+                "normalized_value": "Maybe Name",
+                "role": "unknown_name_like",
+                "status": "needs_review",
+                "source_field": "pixiv_tag",
+                "extraction_action": "direct_name",
+                "confidence": 0.5,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert verdict.extraction_verdict == "ambiguous_needs_review"
+    assert candidates[0].candidate_status == "needs_review"
+
+
+def test_wd_tagger_suggestions_are_weak_ai_evidence_not_active_normal_tags():
+    group = SourceCandidateInputGroup(
+        group_key="media_tag_only:1",
+        provider="local_media_tags",
+        media_id=1,
+        media_tags=(
+            {
+                "tag_id": 7,
+                "name": "barbara_(genshin_impact)",
+                "category": TagCategoryEnum.character.value,
+                "source": "wd_tagger",
+                "is_suggestion": True,
+            },
+        ),
+        data_origin="real_dev_db",
+    )
+    row = {
+        "group_key": group.group_key,
+        "provider": "local_media_tags",
+        "verdict": "no_explicit_name",
+        "candidates": [],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert len(candidates) == 1
+    assert candidates[0].origin_type == "ai_model_tag"
+    assert candidates[0].extraction_action == "ai_model_character_tag"
+    assert candidates[0].candidate_status == "needs_review"
+
+
 def test_cache_fingerprint_changes_by_provider_and_prompt_payload():
     group = _pixiv_group()
     primary = {
@@ -574,12 +820,18 @@ def test_cache_fingerprint_changes_by_provider_and_prompt_payload():
     first = llm_cache_fingerprint(group, primary)
     second = llm_cache_fingerprint(group, fallback)
     changed_group = SourceCandidateInputGroup(**{**group.__dict__, "title": "Different"})
+    changed_eligibility_group = SourceCandidateInputGroup(**{**group.__dict__, "content_class": "non_anime", "eligibility_reason": "excluded_non_anime"})
 
+    assert PROMPT_VERSION.endswith("_v3")
     assert first != second
     assert first != llm_cache_fingerprint(group, primary_config_changed)
     assert first == llm_cache_fingerprint(group, primary_same_config_different_scheduler)
     assert first != llm_cache_fingerprint(changed_group, primary)
+    assert first != llm_cache_fingerprint(changed_eligibility_group, primary)
     assert group_input_payload_hash(group)
+    prompt = source_name_candidate_system_prompt()
+    assert "Pixiv titles and captions are weak title evidence" in prompt
+    assert "AI/model suggestion tags are weak identity evidence" in prompt
 
 
 def test_deterministic_and_llm_candidates_dedupe_by_canonical_role_action():
@@ -988,6 +1240,42 @@ def test_same_fingerprint_reuses_cache_across_serial_and_concurrent_modes(tmp_pa
     assert second_mode_state["cache_hits"] == 1
 
 
+def test_failed_extraction_units_preserve_error_record_verdicts():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_failed_unit_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    group = _simple_pixiv_tag_group(1)
+    unit = build_extraction_units([group])[0][0]
+    failure_bundle = runner._failure_bundle_for_unit(
+        run_id="failed-unit-run",
+        run_label="unit",
+        provider_mode="primary_concurrent",
+        unit=unit,
+        row={
+            "status": "retryable_error",
+            "error_type": "TimeoutError",
+            "error": "timeout",
+            "extraction_key": unit.extraction_key,
+        },
+    )
+    record_bundle = reattach_unit_bundles_to_records(
+        [group],
+        [unit],
+        {unit.extraction_key: failure_bundle},
+        run_id="record-run",
+        run_label="unit",
+    )
+
+    assert record_bundle.record_verdicts[0].extraction_verdict == "extraction_error_retryable"
+    assert record_bundle.record_verdicts[0].no_name_reason == "retryable_unit_error"
+    assert record_bundle.validation_failures[0]["error_code"] == "TimeoutError"
+
+
 def test_cached_manifest_revalidation_rechecks_current_media_eligibility():
     import importlib.util
 
@@ -1009,6 +1297,42 @@ def test_cached_manifest_revalidation_rechecks_current_media_eligibility():
         assert groups == []
         assert summary["cached_manifest_revalidated"] is True
         assert summary["cached_manifest_drop_counts"]["excluded_non_anime"] == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_cached_manifest_revalidation_rechecks_unique_string_cap_for_first_group():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_manifest_cap_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    engine, db = _db()
+    try:
+        _media(db, 101, ContentClassEnum.anime)
+        _source_record(db, 1, 101, "r1")
+        db.commit()
+        oversized = SourceCandidateInputGroup(
+            group_key="source_record:1",
+            provider="pixiv",
+            source_metadata_record_id=1,
+            media_id=101,
+            tags=(
+                {"raw_tag": "Kamisato Ayaka"},
+                {"raw_tag": "\u795e\u91cc\u7dbe\u83ef"},
+            ),
+            data_origin="real_dev_db",
+        )
+        args = argparse.Namespace(max_records=10, max_unique_strings=1)
+
+        groups, summary = runner._revalidate_cached_manifest_groups(db, [oversized], args)
+
+        assert groups == []
+        assert summary["cached_manifest_drop_counts"]["max_unique_strings_group_oversized"] == 1
     finally:
         db.close()
         engine.dispose()
@@ -1082,6 +1406,8 @@ def test_public_summary_redacts_repeated_units_counts_preflight_and_uses_primary
     assert summary["safety"]["llm_provider_calls"] is True
     assert summary["safety"]["llm_preflight_calls"] == 1
     assert summary["readiness"]["f7a_mergeable"] is True
+    assert summary["validated_code_head_sha"] == "abc123"
+    assert summary["report_validation_scope"] == "code_and_runner_state_at_validation_time"
     assert summary["readiness"]["fallback_provider_mode"] == "diagnostic_only"
     assert summary["readiness"]["fallback_blocks_readiness"] is False
     assert summary["readiness"]["recommended_default_provider"] == "primary_openai"
@@ -1123,6 +1449,46 @@ def test_public_summary_blocks_readiness_on_primary_retryable_failures():
 
     assert summary["readiness"]["f7a_mergeable"] is False
     assert summary["readiness"]["primary_blocking_error_total"] == 1
+
+
+def test_public_summary_blocks_readiness_on_primary_quality_guards():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_public_summary_quality_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    summary = runner._public_summary(
+        run_id="summary-run",
+        branch="codex/phase44p2r-f7a-llm-source-name-candidates",
+        head_sha="abc123",
+        db_identity={"database_url_redacted": True},
+        input_summary={},
+        mode_results=[
+            {
+                "summary": {
+                    "provider_mode": "primary_concurrent",
+                    "group_count": 5,
+                    "llm_calls_attempted": 1,
+                    "terminal_error_count": 0,
+                    "retryable_error_count": 0,
+                    "invalid_json_count": 0,
+                    "schema_failure_count": 0,
+                    "unknown_name_like_active_count": 0,
+                    "pixiv_title_active_work_title_count": 1,
+                }
+            }
+        ],
+        provider_preflight={"llm_preflight_calls": 1},
+        db_write_summary={"forbidden_truth_table_write_count": 0},
+        artifact_summary={},
+        timing={},
+    )
+
+    assert summary["readiness"]["f7a_mergeable"] is False
+    assert summary["readiness"]["primary_quality_blocker_total"] == 1
 
 
 def test_provider_json_preflight_retries_format_error():

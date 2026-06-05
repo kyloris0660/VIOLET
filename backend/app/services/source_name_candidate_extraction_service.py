@@ -54,8 +54,10 @@ from .source_metadata_registry_service import (
 
 PHASE = "4.4-P2R-F7a"
 EXTRACTOR_VERSION = "phase44p2r_f7a_source_name_candidate_extractor_v2"
-PROMPT_VERSION = "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v2"
+PROMPT_VERSION = "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3"
 SCHEMA_VERSION = "source_name_candidate_extraction_compact_v2"
+SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH = 500
+WEAK_AI_TAG_SOURCES = frozenset({"ai", "wd", "wd_tagger", "wdv3", "deepdanbooru", "model", "onnx"})
 
 ALLOWED_VERDICTS = frozenset(
     {
@@ -131,10 +133,22 @@ VERDICT_SYNONYMS = {
     "has_names": "multiple_candidates_found",
     "candidates_found": "multiple_candidates_found",
     "candidate_found": "name_candidate_found",
+    "character_candidate_found": "name_candidate_found",
+    "person_candidate_found": "name_candidate_found",
     "names_found": "multiple_candidates_found",
     "name_found": "name_candidate_found",
     "work_found": "work_candidate_found",
+    "work_title_candidate_found": "work_candidate_found",
+    "source_title_candidate_found": "work_candidate_found",
     "artist_found": "artist_candidate_found",
+    "artist_candidate_found": "artist_candidate_found",
+    "character": "name_candidate_found",
+    "person": "name_candidate_found",
+    "alias_like": "name_candidate_found",
+    "unknown_name_like": "ambiguous_needs_review",
+    "work_title": "work_candidate_found",
+    "source_title": "work_candidate_found",
+    "artist_creator": "artist_candidate_found",
     "error": "extraction_error",
     "failed": "extraction_error",
     "no_names": "no_explicit_name",
@@ -570,14 +584,26 @@ def llm_cache_fingerprint(group: SourceCandidateInputGroup, provider_summary: Ma
             "fallback_access_configured": provider_summary.get("fallback_access_configured"),
         }
     )
+    eligibility_fingerprint = stable_payload_hash(
+        {
+            "eligibility_status": group.eligibility_status,
+            "eligibility_reason": group.eligibility_reason,
+            "content_class": group.content_class,
+            "content_class_reviewed": group.content_class_reviewed,
+            "content_class_locked": group.content_class_locked,
+            "data_origin": group.data_origin,
+        }
+    )
     payload = {
         "provider_label": provider_summary.get("llm_provider_label") or provider_summary.get("provider_mode"),
         "model_label": provider_summary.get("model_label"),
         "prompt_version": PROMPT_VERSION,
         "schema_version": SCHEMA_VERSION,
+        "compact_schema_version": SCHEMA_VERSION,
         "input_payload_hash": group_input_payload_hash(group),
         "extractor_version": EXTRACTOR_VERSION,
         "relevant_config_fingerprint": config_fingerprint,
+        "eligibility_fingerprint": eligibility_fingerprint,
     }
     return stable_payload_hash(payload)
 
@@ -677,8 +703,7 @@ def extraction_unit_occurrences_for_group(group: SourceCandidateInputGroup) -> t
             role_hint=_candidate_role_from_source_role(assertion.get("asserted_role")),
         )
     for media_tag in group.media_tags:
-        action_source = normalize_source_text(media_tag.get("source"))
-        source_field = "ai_model_tag" if media_tag.get("is_suggestion") or action_source in {"ai", "wd", "wd_tagger"} else "normal_tag"
+        source_field = "ai_model_tag" if _is_weak_ai_media_tag(media_tag) else "normal_tag"
         _add_unit_occurrence(
             rows,
             group=group,
@@ -1213,7 +1238,7 @@ def deterministic_hints_for_group(group: SourceCandidateInputGroup) -> list[Dete
         role = ROLE_BY_TAG_CATEGORY.get(category)
         if not role:
             continue
-        action = "ai_model_character_tag" if normalize_source_text(media_tag.get("source")).startswith("ai") else "normal_tag_candidate"
+        action = "ai_model_character_tag" if _is_weak_ai_media_tag(media_tag) else "normal_tag_candidate"
         hints.append(
             DeterministicHint(
                 raw_value=raw,
@@ -1271,6 +1296,16 @@ def _candidate_role_from_source_role(role: Any) -> str:
     return "unknown_name_like"
 
 
+def _is_weak_ai_media_tag(media_tag: Mapping[str, Any]) -> bool:
+    source = canonical_source_key(media_tag.get("source"))
+    is_suggestion = bool(media_tag.get("is_suggestion"))
+    if source.startswith("ai") or source in WEAK_AI_TAG_SOURCES:
+        return True
+    if is_suggestion and source not in {"manual", "import", "source_import", "trusted_source"}:
+        return True
+    return False
+
+
 def _candidate_key(
     *,
     group_key: str,
@@ -1303,10 +1338,17 @@ def _candidate_from_hint(group: SourceCandidateInputGroup, hint: DeterministicHi
     role = hint.role_hint if hint.role_hint in ALLOWED_CANDIDATE_ROLES else "unknown_name_like"
     normalized = normalize_source_text(raw_value)
     canonical = canonical_source_key(normalized)
+    raw_value, display_name, normalized, canonical, value_length_guard = _bound_candidate_values(
+        raw=normalized,
+        display=normalized,
+        normalized=normalized,
+        canonical=canonical,
+    )
     language, script = language_and_script_hint(normalized)
     parenthetical_base = normalize_source_text(hint.evidence_payload.get("parenthetical_base")) or None
     parenthetical_context = normalize_source_text(hint.evidence_payload.get("parenthetical_context")) or None
     work_context = parenthetical_context if role != "work_title" else None
+    candidate_status = "needs_review" if role == "unknown_name_like" or hint.action == "ai_model_character_tag" or value_length_guard else "active_candidate"
     key = _candidate_key(
         group_key=group.group_key,
         raw_value=normalized,
@@ -1322,12 +1364,12 @@ def _candidate_from_hint(group: SourceCandidateInputGroup, hint: DeterministicHi
         media_id=group.media_id,
         origin_type=hint.origin_type,
         origin_id=hint.origin_id,
-        raw_value=normalized,
-        display_name=normalized,
+        raw_value=raw_value,
+        display_name=display_name,
         normalized_value=normalized,
         canonical_key=canonical,
         candidate_role=role,
-        candidate_status="needs_review" if role == "unknown_name_like" or hint.action == "ai_model_character_tag" else "active_candidate",
+        candidate_status=candidate_status,
         extraction_verdict=verdict,
         language_hint=language,
         script_hint=script,
@@ -1346,6 +1388,7 @@ def _candidate_from_hint(group: SourceCandidateInputGroup, hint: DeterministicHi
             "source_layer_only": True,
             "should_not_create_entity_truth": True,
             "full_popularity_tag_is_alias": False if hint.action == "popularity_suffix_stripped" else None,
+            "candidate_status_guard": value_length_guard or None,
         },
         candidate_key=key,
     )
@@ -1459,6 +1502,13 @@ def source_name_candidate_system_prompt() -> str:
         "with extraction_action=popularity_suffix_stripped and keep the full raw tag only as meta/evidence.\n"
         "Parenthetical tags such as name(work) should emit the base name candidate, work/context candidate, and preserve combined alias evidence.\n"
         "R-18, general visual descriptors, poses, body parts, clothing, popularity markers, URLs, and local paths are not character/person names. "
+        "Pixiv titles and captions are weak title evidence: do not emit the full title as active work_title by default. "
+        "If a Pixiv title looks like a caption or illustration title, keep the full title as source_title needs_review at most. "
+        "Extract embedded proper names from titles when clear, for example 'Name in outfit' should produce Name as a character/person candidate, "
+        "while the full phrase remains weak source_title evidence. "
+        "Only make work_title/source_title active when strong evidence exists: normal copyright/work tags, booru/SauceNAO structured fields, "
+        "provider role/category, parenthetical work context, or a source assertion explicitly marked as work/source title. "
+        "AI/model suggestion tags are weak identity evidence; keep them needs_review unless strong non-AI evidence also supports them. "
         "Do not over-promote Pixiv/source titles to source_title/work_title unless they clearly identify a work/source title. "
         "Source assertions are evidence but not truth; descriptive assertions can still be rejected or needs_review.\n"
         "If uncertain, use ambiguous_needs_review rather than silently rejecting.\n"
@@ -1527,6 +1577,86 @@ def _compact_rejected_summary(row: Mapping[str, Any]) -> dict[str, int]:
     return result
 
 
+def _bounded_candidate_value(value: str) -> tuple[str, bool]:
+    if len(value) <= SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH:
+        return value, False
+    return value[:SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH], True
+
+
+def _bound_candidate_values(
+    *,
+    raw: str,
+    display: str,
+    normalized: str,
+    canonical: str,
+) -> tuple[str, str, str, str, dict[str, Any]]:
+    values = {
+        "raw_value": raw,
+        "display_name": display,
+        "normalized_value": normalized,
+        "canonical_key": canonical,
+    }
+    bounded: dict[str, str] = {}
+    truncated: dict[str, dict[str, int]] = {}
+    for key, value in values.items():
+        bounded_value, was_truncated = _bounded_candidate_value(value)
+        bounded[key] = bounded_value
+        if was_truncated:
+            truncated[key] = {
+                "original_length": len(value),
+                "stored_length": len(bounded_value),
+                "max_length": SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH,
+            }
+    return (
+        bounded["raw_value"],
+        bounded["display_name"],
+        bounded["normalized_value"],
+        bounded["canonical_key"],
+        {"candidate_value_length_guard": truncated} if truncated else {},
+    )
+
+
+def _title_source_text(group: SourceCandidateInputGroup, origin: str) -> str | None:
+    if origin == "pixiv_title":
+        return normalize_source_text(group.title) or None
+    if origin == "pixiv_caption":
+        return normalize_source_text(group.caption) or None
+    return None
+
+
+def _has_strong_work_title_evidence(
+    *,
+    origin: str,
+    action: str,
+    role: str,
+    item: Mapping[str, Any],
+    group: SourceCandidateInputGroup,
+) -> bool:
+    if role not in {"work_title", "source_title"}:
+        return False
+    if origin in {"normal_tag", "booru_tag", "saucenao_field"}:
+        return True
+    if origin in {"source_assertion", "source_name_observation", "source_tag_observation"}:
+        return True
+    if action in {"parenthetical_split", "popularity_suffix_stripped", "provider_structured_field"}:
+        return origin not in {"pixiv_title", "pixiv_caption"}
+    source_text = _title_source_text(group, origin)
+    if not source_text:
+        return False
+    evidence_tags = item.get("evidence_tags") if isinstance(item.get("evidence_tags"), list) else []
+    sibling_context = item.get("sibling_context") if isinstance(item.get("sibling_context"), list) else []
+    context_values = [
+        *(normalize_source_text(value) for value in evidence_tags),
+        *(normalize_source_text(value) for value in sibling_context),
+        normalize_source_text(item.get("work_context")),
+        normalize_source_text(item.get("parenthetical_context")),
+    ]
+    return any(
+        value and canonical_source_key(value) != canonical_source_key(source_text)
+        for value in context_values
+    )
+
+
 def _validate_candidate(
     item: Mapping[str, Any],
     group: SourceCandidateInputGroup,
@@ -1573,10 +1703,28 @@ def _validate_candidate(
             normalized = prefix if canonical_source_key(normalized) == canonical_source_key(raw) else normalized
             canonical = canonical_source_key(normalized)
     if action == "context_inferred" and confidence > 0.55:
-        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:inferred_confidence_too_high")
+        confidence = 0.55
+        status = "needs_review"
+        candidate_status_guard["context_inferred_confidence_capped"] = True
     guard_rejection = None
     if not (popularity and action == "popularity_suffix_stripped"):
         guard_rejection = is_meta_or_descriptive_rejection(normalized) or is_meta_or_descriptive_rejection(raw)
+    source_text = _title_source_text(group, origin)
+    if source_text and role in {"work_title", "source_title"} and not _has_strong_work_title_evidence(
+        origin=origin,
+        action=action,
+        role=role,
+        item=item,
+        group=group,
+    ):
+        if role == "work_title":
+            role = "source_title"
+            candidate_status_guard["pixiv_title_work_title_role_downgraded"] = True
+        if status == "active_candidate":
+            status = "needs_review"
+            candidate_status_guard["weak_pixiv_title_source_title_downgraded"] = True
+        if canonical_source_key(raw) == canonical_source_key(source_text) or len(raw) > 80:
+            candidate_status_guard["full_pixiv_title_evidence_only"] = True
     if role == "unknown_name_like" and status == "active_candidate":
         status = "needs_review"
         candidate_status_guard["unknown_name_like_active_downgraded"] = True
@@ -1594,6 +1742,15 @@ def _validate_candidate(
     parenthetical_context = normalize_source_text(item.get("parenthetical_context")) or None
     evidence_tags = item.get("evidence_tags") if isinstance(item.get("evidence_tags"), list) else []
     sibling_context = item.get("sibling_context") if isinstance(item.get("sibling_context"), list) else []
+    raw, display, normalized, canonical, value_length_guard = _bound_candidate_values(
+        raw=raw,
+        display=display,
+        normalized=normalized,
+        canonical=canonical_source_key(canonical) or canonical_source_key(normalized),
+    )
+    if value_length_guard:
+        status = "needs_review"
+        candidate_status_guard.update(value_length_guard)
     key = _candidate_key(
         group_key=group.group_key,
         raw_value=normalized,
@@ -1649,7 +1806,12 @@ def validate_extraction_record(row: Mapping[str, Any], group: SourceCandidateInp
 ]:
     group_key = normalize_source_text(row.get("group_key"))
     if group_key != group.group_key:
-        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:group_key_mismatch")
+        if group.data_origin == "deduped_extraction_unit" and group_key and group.group_key.startswith(group_key):
+            group_key_warning = "deduped_extraction_unit_group_key_truncation_repaired"
+        else:
+            raise SourceNameCandidateExtractionError("llm_output_schema_invalid:group_key_mismatch")
+    else:
+        group_key_warning = None
     if row.get("should_not_create_entity_truth") is False:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:truth_flag")
     verdict = normalize_source_text(row.get("verdict")) or normalize_source_text(row.get("extraction_verdict"))
@@ -1658,6 +1820,8 @@ def validate_extraction_record(row: Mapping[str, Any], group: SourceCandidateInp
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extraction_verdict")
     verdict_reason = normalize_source_text(row.get("error_code")) or verdict
     warnings = [normalize_source_text(value) for value in row.get("extraction_warnings") or [] if normalize_source_text(value)]
+    if group_key_warning:
+        warnings.append(group_key_warning)
     no_name_reason = normalize_source_text(row.get("no_name_reason")) or None
     rejected_summary = _compact_rejected_summary(row)
     confidence_summary = {
@@ -2443,7 +2607,11 @@ def collect_source_candidate_input_groups(
         group_strings = {canonical_source_key(value) for value in _raw_strings_for_group(group) if canonical_source_key(value)}
         if not group_strings and not record.title and not record.artist_name:
             continue
-        if len(unique_strings | group_strings) > max_unique_strings and groups:
+        if len(group_strings) > max_unique_strings:
+            excluded_counts["max_unique_strings_group_oversized"] += 1
+            continue
+        if len(unique_strings | group_strings) > max_unique_strings:
+            excluded_counts["max_unique_strings_scope_cap"] += 1
             break
         unique_strings.update(group_strings)
         groups.append(group)
@@ -2456,7 +2624,11 @@ def collect_source_candidate_input_groups(
             group_strings = {canonical_source_key(value) for value in _raw_strings_for_group(group) if canonical_source_key(value)}
             if not group_strings:
                 continue
-            if len(unique_strings | group_strings) > max_unique_strings and groups:
+            if len(group_strings) > max_unique_strings:
+                excluded_counts["max_unique_strings_group_oversized"] += 1
+                continue
+            if len(unique_strings | group_strings) > max_unique_strings:
+                excluded_counts["max_unique_strings_scope_cap"] += 1
                 break
             unique_strings.update(group_strings)
             groups.append(group)
