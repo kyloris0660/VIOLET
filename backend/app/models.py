@@ -1021,6 +1021,201 @@ class SourceNameCandidate(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceConceptResolutionRun(Base):
+    __tablename__ = 'blombooru_source_concept_resolution_runs'
+    __table_args__ = (
+        UniqueConstraint('run_id', name='uq_source_concept_resolution_run_id'),
+        Index('ix_source_concept_resolution_run_status', 'status'),
+        Index('ix_source_concept_resolution_run_scope', 'scope'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(String(255), nullable=False, index=True)
+    run_label = Column(String(255), nullable=True)
+    scope = Column(String(100), nullable=False, default='source_concept_core', server_default='source_concept_core', index=True)
+    resolver_version = Column(String(100), nullable=False)
+    mode = Column(String(100), nullable=False, default='dry_run', server_default='dry_run', index=True)
+    status = Column(String(50), nullable=False, default='running', server_default='running', index=True)
+    input_signal_counts_json = Column(JSON, nullable=True)
+    linked_counts_json = Column(JSON, nullable=True)
+    concept_counts_json = Column(JSON, nullable=True)
+    review_counts_json = Column(JSON, nullable=True)
+    no_truth_write_proof_json = Column(JSON, nullable=True)
+    summary_json = Column(JSON, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    runtime_seconds = Column(Float, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConceptSignal(Base):
+    __tablename__ = 'blombooru_source_concept_signals'
+    __table_args__ = (
+        UniqueConstraint('signal_key', name='uq_source_concept_signal_key'),
+        Index('ix_source_concept_signal_origin', 'origin_type', 'origin_id'),
+        Index('ix_source_concept_signal_provider_role', 'provider', 'role_hint'),
+        Index('ix_source_concept_signal_status_trust', 'status', 'trust_tier'),
+        Index('ix_source_concept_signal_canonical', 'canonical_key'),
+        Index('ix_source_concept_signal_work_context', 'work_context_key'),
+        Index('ix_source_concept_signal_media', 'media_id'),
+        Index('ix_source_concept_signal_source_record', 'source_metadata_record_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    resolution_run_id = Column(
+        Integer,
+        ForeignKey('blombooru_source_concept_resolution_runs.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    signal_key = Column(String(900), nullable=False, index=True)
+    origin_type = Column(String(100), nullable=False, index=True)
+    origin_table = Column(String(255), nullable=True)
+    origin_id = Column(String(500), nullable=True, index=True)
+    provider = Column(String(100), nullable=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='SET NULL'), nullable=True, index=True)
+    source_record_id = Column(String(500), nullable=True, index=True)
+    raw_value = Column(String(1000), nullable=False)
+    display_value = Column(String(1000), nullable=False)
+    normalized_key = Column(String(500), nullable=False, index=True)
+    canonical_key = Column(String(500), nullable=True, index=True)
+    role_hint = Column(String(100), nullable=False, default='unknown', server_default='unknown', index=True)
+    work_context_key = Column(String(500), nullable=True, index=True)
+    parenthetical_base = Column(String(500), nullable=True)
+    parenthetical_context = Column(String(500), nullable=True)
+    source_kind = Column(String(100), nullable=True, index=True)
+    trust_tier = Column(String(50), nullable=False, default='weak', server_default='weak', index=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    evidence_payload = Column(JSON, nullable=True)
+    source_run_id = Column(String(255), nullable=True, index=True)
+    created_by_run_id = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConcept(Base):
+    __tablename__ = 'blombooru_source_concepts'
+    __table_args__ = (
+        UniqueConstraint('concept_key', name='uq_source_concept_key'),
+        Index('ix_source_concept_type_status', 'concept_type_hint', 'status'),
+        Index('ix_source_concept_status_confidence', 'status', 'confidence_score'),
+        Index('ix_source_concept_superseded_by', 'superseded_by_concept_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    concept_key = Column(String(900), nullable=False, index=True)
+    primary_display_name = Column(String(1000), nullable=False)
+    concept_type_hint = Column(String(100), nullable=False, default='unknown', server_default='unknown', index=True)
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    confidence_score = Column(Float, nullable=True)
+    evidence_score = Column(Float, nullable=True)
+    media_count = Column(Integer, nullable=False, default=0, server_default='0')
+    source_count = Column(Integer, nullable=False, default=0, server_default='0')
+    created_by_run_id = Column(String(255), nullable=True, index=True)
+    superseded_by_concept_id = Column(Integer, ForeignKey('blombooru_source_concepts.id', ondelete='SET NULL'), nullable=True, index=True)
+    evidence_summary_json = Column(JSON, nullable=True)
+    lifecycle_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConceptAlias(Base):
+    __tablename__ = 'blombooru_source_concept_aliases'
+    __table_args__ = (
+        UniqueConstraint('concept_id', 'alias_key', 'alias_role', name='uq_source_concept_alias_concept_key_role'),
+        Index('ix_source_concept_alias_lookup', 'alias_key', 'status'),
+        Index('ix_source_concept_alias_role_status', 'alias_role', 'status'),
+        Index('ix_source_concept_alias_signal', 'source_signal_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    concept_id = Column(Integer, ForeignKey('blombooru_source_concepts.id', ondelete='CASCADE'), nullable=False, index=True)
+    alias_value = Column(String(1000), nullable=False)
+    alias_key = Column(String(500), nullable=False, index=True)
+    display_name = Column(String(1000), nullable=False)
+    language_hint = Column(String(50), nullable=True, index=True)
+    script_hint = Column(String(50), nullable=True, index=True)
+    alias_role = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    confidence = Column(Float, nullable=True)
+    source_signal_id = Column(Integer, ForeignKey('blombooru_source_concept_signals.id', ondelete='SET NULL'), nullable=True, index=True)
+    evidence_payload = Column(JSON, nullable=True)
+    created_by_run_id = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConceptEvidence(Base):
+    __tablename__ = 'blombooru_source_concept_evidence'
+    __table_args__ = (
+        UniqueConstraint('concept_id', 'signal_id', 'evidence_type', name='uq_source_concept_evidence_concept_signal_type'),
+        Index('ix_source_concept_evidence_provider_type', 'provider', 'evidence_type'),
+        Index('ix_source_concept_evidence_status_strength', 'status', 'evidence_strength'),
+        Index('ix_source_concept_evidence_media', 'media_id'),
+        Index('ix_source_concept_evidence_source_record', 'source_metadata_record_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    concept_id = Column(Integer, ForeignKey('blombooru_source_concepts.id', ondelete='CASCADE'), nullable=False, index=True)
+    signal_id = Column(Integer, ForeignKey('blombooru_source_concept_signals.id', ondelete='SET NULL'), nullable=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='SET NULL'), nullable=True, index=True)
+    provider = Column(String(100), nullable=True, index=True)
+    evidence_type = Column(String(100), nullable=False, index=True)
+    evidence_strength = Column(String(50), nullable=False, default='weak', server_default='weak', index=True)
+    payload = Column(JSON, nullable=True)
+    run_id = Column(String(255), nullable=True, index=True)
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConceptSignalLink(Base):
+    __tablename__ = 'blombooru_source_concept_signal_links'
+    __table_args__ = (
+        UniqueConstraint('signal_id', 'concept_id', 'run_id', name='uq_source_concept_signal_link_run'),
+        Index('ix_source_concept_signal_link_status', 'link_status'),
+        Index('ix_source_concept_signal_link_reason', 'resolution_reason_code'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    signal_id = Column(Integer, ForeignKey('blombooru_source_concept_signals.id', ondelete='CASCADE'), nullable=False, index=True)
+    concept_id = Column(Integer, ForeignKey('blombooru_source_concepts.id', ondelete='CASCADE'), nullable=False, index=True)
+    link_status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    confidence = Column(Float, nullable=True)
+    resolution_reason_code = Column(String(100), nullable=True, index=True)
+    negative_reason_code = Column(String(100), nullable=True, index=True)
+    resolver_version = Column(String(100), nullable=False)
+    run_id = Column(String(255), nullable=False, index=True)
+    evidence_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConceptSearchIndex(Base):
+    __tablename__ = 'blombooru_source_concept_search_index'
+    __table_args__ = (
+        UniqueConstraint('concept_id', 'search_key', 'alias_role', name='uq_source_concept_search_index_key_role'),
+        Index('ix_source_concept_search_lookup', 'search_key', 'status'),
+        Index('ix_source_concept_search_weight', 'weight'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    concept_id = Column(Integer, ForeignKey('blombooru_source_concepts.id', ondelete='CASCADE'), nullable=False, index=True)
+    search_key = Column(String(500), nullable=False, index=True)
+    display_name = Column(String(1000), nullable=False)
+    alias_role = Column(String(100), nullable=False, index=True)
+    weight = Column(Float, nullable=False, default=0.0, server_default='0')
+    status = Column(String(50), nullable=False, default='needs_review', server_default='needs_review', index=True)
+    evidence_refs_json = Column(JSON, nullable=True)
+    run_id = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (

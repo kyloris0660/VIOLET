@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.4-P2R-F6 implementation (2026-06-04), after PR #92 and PR #93 were merged into `main`.
+> Last updated during Phase 4.5-SC1 implementation (2026-06-05), after PR #92, PR #93, PR #94, and PR #95 were merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Historical repo name | `AnimeLocalBooru`; old links may redirect, but active references should use VIOLET |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Main branch status | `main` includes PR #92 (`325c51c`) and PR #93 (`b1103b2`) as of 2026-06-04 |
+| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), and PR #95 (`5b0a6fa`) as of 2026-06-05 |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | Project venv at `.\venv\Scripts\python.exe` |
 | Dev DB | `blombooru` on `localhost:5432` |
@@ -38,7 +38,9 @@
 - Phase 4.4-P2R route scouting supersedes the public-page / preview route direction from PR #86. Bounded prior-art review of gallery-dl, pixivpy, PixivUtil2, and official Pixiv policy surfaces found no official public artwork metadata API and confirmed that mature reliable metadata routes are authenticated or tool-mediated. Recommended next pilot is a manual gallery-dl JSON metadata import pilot with no Pixiv network inside V.I.O.L.E.T.; if that succeeds, design an external gallery-dl adapter. Do not keep polishing PR #86 public HTML/preview probing as the main Pixiv metadata route. Public report: `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design.md`.
 - Phase 4.4-P2R-F5 is merged. PR #92 added provider-neutral source metadata/tag/name/name-registry/alias-candidate/evidence/searchable-name-assertion tables and service support. `SourceSearchableNameAssertion` is a source-search layer only: not `Entity`, not `EntityAlias`, not `MediaEntityCandidate`, not `LocalSourceHint`, not confirmed assignment, and not `media_tags`. Public report: `docs/reports/phase-4.4p2r-f5-provider-neutral-source-name-registry.md`.
 - Phase 4.4-P2R-F6 preflight hotfix is merged. PR #93 fixed the local debug startup self-lock in `migrate_add_external_tag_category_lookup_cache()` by using an inspector bound to the active migration connection. This was a narrow startup fix; it did not implement F6 UI/search.
-- Phase 4.4-P2R-F6 is the active implementation route: source assertions/source tags should appear in the media detail page's existing tag area as a clearly separate "source assertion / unconfirmed entity" layer, support visual multi-select AND search with normal tags, and refactor the crowded admin Content page into left navigation plus active sections. F6 must preserve the old ordinary tag/CHARACTER display and search behavior while adding a source-layer character/person/artist/work/source_title area.
+- Phase 4.4-P2R-F6 is merged. PR #94 made F5 source-layer data usable in the media workflow: source assertions/source tags appear separately from ordinary tags, source chips default to ordinary `q=` search behavior, scoped source filters remain available for advanced/debug use, and admin Content layout was cleaned up without starting Entity promotion.
+- Phase 4.4-P2R-F7a is merged. PR #95 produced the primary-provider-backed source-name candidate extraction path and final validation pack. F7a candidates are source-layer evidence only; they are not `Entity`, `EntityAlias`, `MediaEntityAssignment`, confirmed assignment, or `media_tags` truth. Public report: `docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md`.
+- Phase 4.5-SC1 is the active source-concept core route. It must aggregate F7a candidates, ordinary/AI tags, source assertions/observations/tags, alias candidates, provider structured fields/cache context, and future provider/manual signals into unconfirmed `SourceConcept` rows. It must remain source-layer only and must not implement full SC2 search/UI integration or Entity promotion.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -68,13 +70,13 @@ Workflow weight must decrease:
 
 ## Current Recommended Route
 
-Near-term route during Phase 4.4-P2R-F6:
+Near-term route during Phase 4.5-SC:
 
-1. Use the already-merged F5 source registry/assertion data as read-only input. Do not rerun gallery-dl, Pixiv/SauceNAO providers, LLM classification, tag localization batch, background translation, or source enrichment for F6.
-2. Make source assertions and source tags usable in the normal media workflow: media detail tag area, click search, and visual multi-select AND search with ordinary tags.
-3. Preserve the existing ordinary tag and CHARACTER tag display/search behavior. F6 is a layered migration: add source-layer character/person/artist/work/source_title chips, but do not delete or replace the old tag system.
-4. Refactor the admin Content page layout only: left navigation plus active section, while preserving existing sections, buttons, destructive semantics, and permission logic.
-5. Keep manual promotion as preview/design/disabled only. Entity bridge, alias canonicalization, candidate persistence, `LocalSourceHint`, confirmed assignment, and `media_tags` mutation require a later explicit phase with confirmation, audit trail, and rollback/supersede design.
+1. Treat PR #95/F7a as one input adapter, not the scope boundary. The SourceConcept resolver must aggregate all current source-layer name, tag, assertion, observation, alias, provider structured field, AI/model, and future manual/provider signals.
+2. Keep SC1 focused on additive schema, signal adapters, resolver core, run ledger, evidence/link/search-preview tables, documentation, and final validation pack.
+3. Keep SC2 separate: full search expansion, UI concept grouping/chips, evidence preview, and manual promotion preview belong after the core resolver is reviewed.
+4. Keep all SourceConcept rows unconfirmed. Do not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignment, `TagTranslation`, or `media_tags`.
+5. Do not run gallery-dl, Pixiv/SauceNAO/Google/provider calls, LLM extraction/classification, tag localization batches, background translation, broad scans, imports, or image uploads unless a later phase explicitly approves that run.
 6. Phase 3.9 remains required before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import.
 
 Do not treat older "blocked until X" wording in historical reports as current unless this handoff or the roadmap repeats it as active.

@@ -213,6 +213,7 @@ def check_and_migrate_schema(engine):
         migrate_add_pixiv_tag_taxonomy_alias_kb,
         migrate_add_source_metadata_name_registry,
         migrate_add_source_name_candidate_extraction,
+        migrate_add_source_concept_resolver_core,
     ]
     
     for migration in migrations:
@@ -994,6 +995,238 @@ def migrate_add_entity_metadata_tables(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_blombooru_provider_cache_error_class ON blombooru_provider_cache(error_class)",
             "CREATE INDEX IF NOT EXISTS ix_blombooru_negative_lookup_cache_expires_at ON blombooru_negative_lookup_cache(expires_at)",
             "CREATE INDEX IF NOT EXISTS ix_blombooru_negative_lookup_cache_provider ON blombooru_negative_lookup_cache(provider)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_source_concept_resolver_core(engine, inspector):
+    """Create Phase 4.5-SC1 source-layer SourceConcept resolver tables.
+
+    This migration is additive only. It stores unconfirmed source-layer
+    concepts, aliases, evidence, signal links, run ledger rows, and a search
+    preview index. It does not create or mutate Entity, EntityAlias,
+    EntityEvidence, MediaEntityCandidate, MediaEntityAssignment, media_tags,
+    TagTranslation, ProviderCache, NegativeLookupCache, or confirmed
+    assignments.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON' if not is_sqlite else 'JSON'
+
+    with engine.connect() as conn:
+        if 'blombooru_source_concept_resolution_runs' not in tables:
+            logger.info("Creating blombooru_source_concept_resolution_runs table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_resolution_runs (
+                    id {pk_type},
+                    run_id VARCHAR(255) NOT NULL,
+                    run_label VARCHAR(255),
+                    scope VARCHAR(100) NOT NULL DEFAULT 'source_concept_core',
+                    resolver_version VARCHAR(100) NOT NULL,
+                    mode VARCHAR(100) NOT NULL DEFAULT 'dry_run',
+                    status VARCHAR(50) NOT NULL DEFAULT 'running',
+                    input_signal_counts_json {json_type},
+                    linked_counts_json {json_type},
+                    concept_counts_json {json_type},
+                    review_counts_json {json_type},
+                    no_truth_write_proof_json {json_type},
+                    summary_json {json_type},
+                    started_at TIMESTAMP WITH TIME ZONE,
+                    finished_at TIMESTAMP WITH TIME ZONE,
+                    runtime_seconds FLOAT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_resolution_run_id UNIQUE (run_id)
+                )
+            """))
+
+        if 'blombooru_source_concept_signals' not in tables:
+            logger.info("Creating blombooru_source_concept_signals table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_signals (
+                    id {pk_type},
+                    resolution_run_id INTEGER REFERENCES blombooru_source_concept_resolution_runs(id) ON DELETE SET NULL,
+                    signal_key VARCHAR(900) NOT NULL,
+                    origin_type VARCHAR(100) NOT NULL,
+                    origin_table VARCHAR(255),
+                    origin_id VARCHAR(500),
+                    provider VARCHAR(100),
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    source_metadata_record_id INTEGER REFERENCES blombooru_source_metadata_records(id) ON DELETE SET NULL,
+                    source_record_id VARCHAR(500),
+                    raw_value VARCHAR(1000) NOT NULL,
+                    display_value VARCHAR(1000) NOT NULL,
+                    normalized_key VARCHAR(500) NOT NULL,
+                    canonical_key VARCHAR(500),
+                    role_hint VARCHAR(100) NOT NULL DEFAULT 'unknown',
+                    work_context_key VARCHAR(500),
+                    parenthetical_base VARCHAR(500),
+                    parenthetical_context VARCHAR(500),
+                    source_kind VARCHAR(100),
+                    trust_tier VARCHAR(50) NOT NULL DEFAULT 'weak',
+                    confidence FLOAT,
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    evidence_payload {json_type},
+                    source_run_id VARCHAR(255),
+                    created_by_run_id VARCHAR(255),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_signal_key UNIQUE (signal_key)
+                )
+            """))
+
+        if 'blombooru_source_concepts' not in tables:
+            logger.info("Creating blombooru_source_concepts table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concepts (
+                    id {pk_type},
+                    concept_key VARCHAR(900) NOT NULL,
+                    primary_display_name VARCHAR(1000) NOT NULL,
+                    concept_type_hint VARCHAR(100) NOT NULL DEFAULT 'unknown',
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    confidence_score FLOAT,
+                    evidence_score FLOAT,
+                    media_count INTEGER NOT NULL DEFAULT 0,
+                    source_count INTEGER NOT NULL DEFAULT 0,
+                    created_by_run_id VARCHAR(255),
+                    superseded_by_concept_id INTEGER REFERENCES blombooru_source_concepts(id) ON DELETE SET NULL,
+                    evidence_summary_json {json_type},
+                    lifecycle_payload {json_type},
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_key UNIQUE (concept_key)
+                )
+            """))
+
+        if 'blombooru_source_concept_aliases' not in tables:
+            logger.info("Creating blombooru_source_concept_aliases table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_aliases (
+                    id {pk_type},
+                    concept_id INTEGER NOT NULL REFERENCES blombooru_source_concepts(id) ON DELETE CASCADE,
+                    alias_value VARCHAR(1000) NOT NULL,
+                    alias_key VARCHAR(500) NOT NULL,
+                    display_name VARCHAR(1000) NOT NULL,
+                    language_hint VARCHAR(50),
+                    script_hint VARCHAR(50),
+                    alias_role VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    confidence FLOAT,
+                    source_signal_id INTEGER REFERENCES blombooru_source_concept_signals(id) ON DELETE SET NULL,
+                    evidence_payload {json_type},
+                    created_by_run_id VARCHAR(255),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_alias_concept_key_role UNIQUE (
+                        concept_id,
+                        alias_key,
+                        alias_role
+                    )
+                )
+            """))
+
+        if 'blombooru_source_concept_evidence' not in tables:
+            logger.info("Creating blombooru_source_concept_evidence table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_evidence (
+                    id {pk_type},
+                    concept_id INTEGER NOT NULL REFERENCES blombooru_source_concepts(id) ON DELETE CASCADE,
+                    signal_id INTEGER REFERENCES blombooru_source_concept_signals(id) ON DELETE SET NULL,
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    source_metadata_record_id INTEGER REFERENCES blombooru_source_metadata_records(id) ON DELETE SET NULL,
+                    provider VARCHAR(100),
+                    evidence_type VARCHAR(100) NOT NULL,
+                    evidence_strength VARCHAR(50) NOT NULL DEFAULT 'weak',
+                    payload {json_type},
+                    run_id VARCHAR(255),
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_evidence_concept_signal_type UNIQUE (
+                        concept_id,
+                        signal_id,
+                        evidence_type
+                    )
+                )
+            """))
+
+        if 'blombooru_source_concept_signal_links' not in tables:
+            logger.info("Creating blombooru_source_concept_signal_links table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_signal_links (
+                    id {pk_type},
+                    signal_id INTEGER NOT NULL REFERENCES blombooru_source_concept_signals(id) ON DELETE CASCADE,
+                    concept_id INTEGER NOT NULL REFERENCES blombooru_source_concepts(id) ON DELETE CASCADE,
+                    link_status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    confidence FLOAT,
+                    resolution_reason_code VARCHAR(100),
+                    negative_reason_code VARCHAR(100),
+                    resolver_version VARCHAR(100) NOT NULL,
+                    run_id VARCHAR(255) NOT NULL,
+                    evidence_payload {json_type},
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_signal_link_run UNIQUE (
+                        signal_id,
+                        concept_id,
+                        run_id
+                    )
+                )
+            """))
+
+        if 'blombooru_source_concept_search_index' not in tables:
+            logger.info("Creating blombooru_source_concept_search_index table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_search_index (
+                    id {pk_type},
+                    concept_id INTEGER NOT NULL REFERENCES blombooru_source_concepts(id) ON DELETE CASCADE,
+                    search_key VARCHAR(500) NOT NULL,
+                    display_name VARCHAR(1000) NOT NULL,
+                    alias_role VARCHAR(100) NOT NULL,
+                    weight FLOAT NOT NULL DEFAULT 0,
+                    status VARCHAR(50) NOT NULL DEFAULT 'needs_review',
+                    evidence_refs_json {json_type},
+                    run_id VARCHAR(255),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_search_index_key_role UNIQUE (
+                        concept_id,
+                        search_key,
+                        alias_role
+                    )
+                )
+            """))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_resolution_run_status ON blombooru_source_concept_resolution_runs(status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_resolution_run_scope ON blombooru_source_concept_resolution_runs(scope)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_origin ON blombooru_source_concept_signals(origin_type, origin_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_provider_role ON blombooru_source_concept_signals(provider, role_hint)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_status_trust ON blombooru_source_concept_signals(status, trust_tier)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_canonical ON blombooru_source_concept_signals(canonical_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_work_context ON blombooru_source_concept_signals(work_context_key)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_media ON blombooru_source_concept_signals(media_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_source_record ON blombooru_source_concept_signals(source_metadata_record_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_type_status ON blombooru_source_concepts(concept_type_hint, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_status_confidence ON blombooru_source_concepts(status, confidence_score)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_superseded_by ON blombooru_source_concepts(superseded_by_concept_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_alias_lookup ON blombooru_source_concept_aliases(alias_key, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_alias_role_status ON blombooru_source_concept_aliases(alias_role, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_alias_signal ON blombooru_source_concept_aliases(source_signal_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_evidence_provider_type ON blombooru_source_concept_evidence(provider, evidence_type)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_evidence_status_strength ON blombooru_source_concept_evidence(status, evidence_strength)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_evidence_media ON blombooru_source_concept_evidence(media_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_evidence_source_record ON blombooru_source_concept_evidence(source_metadata_record_id)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_link_status ON blombooru_source_concept_signal_links(link_status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_signal_link_reason ON blombooru_source_concept_signal_links(resolution_reason_code)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_search_lookup ON blombooru_source_concept_search_index(search_key, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_search_weight ON blombooru_source_concept_search_index(weight)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))

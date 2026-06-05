@@ -1,0 +1,79 @@
+{
+  "artifact_consistency": {
+    "checked_at": "2026-06-05T14:22:12.214759+00:00",
+    "concept_count": 1502,
+    "forbidden_truth_table_write_count": 0,
+    "missing_alias_concepts": 0,
+    "missing_evidence_concepts": 0,
+    "missing_link_concepts": 0,
+    "missing_link_signals": 0,
+    "passed": true,
+    "signal_count": 4549
+  },
+  "f7a_final_pack_import": {
+    "candidate_bundle_count": 730,
+    "existing_db_candidate_count_for_run": 730,
+    "llm_or_provider_calls": false,
+    "needs_import": false,
+    "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
+  },
+  "forbidden_truth_table_write_count": 0,
+  "generated_at": "2026-06-05T14:22:12.264910+00:00",
+  "inventory_counts": {
+    "f7a_source_name_candidate": 730,
+    "media_tags": 105699,
+    "provider_cache": 2,
+    "provider_structured_fields": 200,
+    "source_name_alias_candidate": 45,
+    "source_name_observation": 459,
+    "source_searchable_name_assertion": 300,
+    "source_tag_observation": 710
+  },
+  "negative_case_summary": {
+    "passed": 13,
+    "total": 13
+  },
+  "no_llm_or_provider_calls": true,
+  "phase": "phase-4.5-sc1-source-concept-resolver-core",
+  "positive_case_summary": {
+    "matched": 6,
+    "total": 6
+  },
+  "public_redacted": true,
+  "resolver_summary": {
+    "alias_count": 2138,
+    "ambiguous_link_count": 796,
+    "concept_count": 1502,
+    "concept_counts_by_status": {
+      "active": 423,
+      "needs_review": 1079
+    },
+    "evidence_count": 4438,
+    "link_count": 4438,
+    "link_counts_by_status": {
+      "active": 1802,
+      "needs_review": 2636
+    },
+    "llm_usage": {
+      "policy": "disabled_for_sc1_deterministic_core",
+      "used": false
+    },
+    "rejected_signal_count": 111,
+    "resolver_version": "source_concept_resolver_core_v1",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b",
+    "schema_version": "source_concept_schema_v1",
+    "search_index_preview_count": 2138,
+    "signal_count": 4549,
+    "signal_counts_by_origin": {
+      "ai_model_tag": 2007,
+      "f7a_candidate": 730,
+      "provider_structured_field": 306,
+      "source_alias_candidate": 90,
+      "source_assertion": 300,
+      "source_name_observation": 459,
+      "source_tag_observation": 657
+    }
+  },
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-phase-4.5-sc1-source-concept-resolver-core-20260605T142153Z-c733d62b.zip"
+}
