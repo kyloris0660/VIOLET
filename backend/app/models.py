@@ -898,6 +898,129 @@ class SourceSearchableNameAssertion(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceNameCandidateExtractionRun(Base):
+    __tablename__ = 'blombooru_source_name_candidate_extraction_runs'
+    __table_args__ = (
+        UniqueConstraint('run_id', name='uq_source_name_candidate_run_id'),
+        Index('ix_source_name_candidate_extraction_run_status', 'status'),
+        Index('ix_source_name_candidate_extraction_run_mode', 'mode'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(String(255), nullable=False, index=True)
+    run_label = Column(String(255), nullable=True)
+    extractor_version = Column(String(100), nullable=False)
+    prompt_version = Column(String(100), nullable=True)
+    structured_output_schema_version = Column(String(100), nullable=False)
+    mode = Column(String(100), nullable=False, default='dry_run', server_default='dry_run', index=True)
+    status = Column(String(50), nullable=False, default='running', server_default='running', index=True)
+    input_scope_json = Column(JSON, nullable=True)
+    summary_json = Column(JSON, nullable=True)
+    provider_summary_json = Column(JSON, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceNameCandidateRecordVerdict(Base):
+    __tablename__ = 'blombooru_source_name_candidate_record_verdicts'
+    __table_args__ = (
+        UniqueConstraint(
+            'extraction_run_id',
+            'group_key',
+            name='uq_source_name_candidate_record_verdict_run_group',
+        ),
+        Index('ix_source_name_candidate_record_verdict_provider', 'provider'),
+        Index('ix_source_name_candidate_record_verdict_verdict', 'extraction_verdict'),
+        Index('ix_source_name_candidate_record_verdict_source_record', 'source_metadata_record_id'),
+        Index('ix_source_name_candidate_record_verdict_media', 'media_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    extraction_run_id = Column(
+        Integer,
+        ForeignKey('blombooru_source_name_candidate_extraction_runs.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='SET NULL'), nullable=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    group_key = Column(String(700), nullable=False, index=True)
+    extraction_verdict = Column(String(100), nullable=False, index=True)
+    verdict_reason = Column(Text, nullable=True)
+    no_name_reason = Column(String(255), nullable=True, index=True)
+    candidate_count = Column(Integer, nullable=False, default=0, server_default='0')
+    rejected_count = Column(Integer, nullable=False, default=0, server_default='0')
+    meta_count = Column(Integer, nullable=False, default=0, server_default='0')
+    ambiguous_count = Column(Integer, nullable=False, default=0, server_default='0')
+    confidence_summary = Column(JSON, nullable=True)
+    extraction_warnings_json = Column(JSON, nullable=True)
+    evidence_payload = Column(JSON, nullable=True)
+    status = Column(String(50), nullable=False, default='observed', server_default='observed', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceNameCandidate(Base):
+    __tablename__ = 'blombooru_source_name_candidates'
+    __table_args__ = (
+        UniqueConstraint('candidate_key', name='uq_source_name_candidate_key'),
+        Index('ix_source_name_candidate_run_candidate_status', 'extraction_run_id', 'candidate_status'),
+        Index('ix_source_name_candidate_provider_role', 'provider', 'candidate_role'),
+        Index('ix_source_name_candidate_canonical_status', 'canonical_key', 'candidate_status'),
+        Index('ix_source_name_candidate_origin', 'origin_type', 'origin_id'),
+        Index('ix_source_name_candidate_source_record', 'source_metadata_record_id'),
+        Index('ix_source_name_candidate_media', 'media_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    extraction_run_id = Column(
+        Integer,
+        ForeignKey('blombooru_source_name_candidate_extraction_runs.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    record_verdict_id = Column(
+        Integer,
+        ForeignKey('blombooru_source_name_candidate_record_verdicts.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='SET NULL'), nullable=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    provider = Column(String(100), nullable=False, index=True)
+    group_key = Column(String(700), nullable=False, index=True)
+    candidate_key = Column(String(900), nullable=False, index=True)
+    origin_type = Column(String(100), nullable=False, index=True)
+    origin_id = Column(String(500), nullable=True, index=True)
+    raw_value = Column(String(500), nullable=False)
+    display_name = Column(String(500), nullable=False)
+    normalized_value = Column(String(500), nullable=False, index=True)
+    canonical_key = Column(String(500), nullable=False, index=True)
+    candidate_role = Column(String(100), nullable=False, index=True)
+    candidate_status = Column(String(50), nullable=False, default='active_candidate', server_default='active_candidate', index=True)
+    extraction_verdict = Column(String(100), nullable=False, index=True)
+    language_hint = Column(String(50), nullable=True, index=True)
+    script_hint = Column(String(50), nullable=True, index=True)
+    work_context = Column(String(500), nullable=True)
+    work_context_key = Column(String(500), nullable=True, index=True)
+    parenthetical_base = Column(String(500), nullable=True)
+    parenthetical_context = Column(String(500), nullable=True)
+    extraction_action = Column(String(100), nullable=False, index=True)
+    confidence = Column(Float, nullable=True)
+    reason = Column(Text, nullable=True)
+    rejection_reason = Column(String(255), nullable=True, index=True)
+    no_name_reason = Column(String(255), nullable=True, index=True)
+    evidence_payload = Column(JSON, nullable=True)
+    extractor_version = Column(String(100), nullable=False)
+    status = Column(String(50), nullable=False, default='active', server_default='active', index=True)
+    superseded_by_candidate_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (

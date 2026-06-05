@@ -255,6 +255,30 @@ class TestCompleteJson:
 
         assert result["stripped"] is True
 
+    def test_extracts_json_object_from_surrounding_text(self):
+        provider = _make_provider()
+        provider.complete_chat = AsyncMock(
+            return_value='Sure, here is the JSON:\n{"ok": true, "stage": "f7a_preflight"}\nDone.'
+        )
+
+        result = _run(provider.complete_json(
+            [{"role": "user", "content": "preflight"}]
+        ))
+
+        assert result == {"ok": True, "stage": "f7a_preflight"}
+
+    def test_extracts_json_array_from_surrounding_text(self):
+        provider = _make_provider()
+        provider.complete_chat = AsyncMock(
+            return_value='Result:\n[{"tag": "r-18", "status": "rejected_meta"}]\n'
+        )
+
+        result = _run(provider.complete_json(
+            [{"role": "user", "content": "preflight"}]
+        ))
+
+        assert result[0]["status"] == "rejected_meta"
+
     def test_invalid_json_raises_format_error(self):
         provider = _make_provider()
         provider.complete_chat = AsyncMock(
@@ -265,6 +289,21 @@ class TestCompleteJson:
             _run(provider.complete_json(
                 [{"role": "user", "content": "translate"}]
             ))
+
+    def test_invalid_json_error_redacts_key_like_text(self):
+        provider = _make_provider()
+        provider.complete_chat = AsyncMock(
+            return_value="not json sk-1234567890abcdef"
+        )
+
+        with pytest.raises(LLMResponseFormatError) as exc_info:
+            _run(provider.complete_json(
+                [{"role": "user", "content": "translate"}]
+            ))
+
+        message = str(exc_info.value)
+        assert "sk-***" in message
+        assert "sk-1234567890abcdef" not in message
 
     def test_format_error_no_fallback(self):
         exc = LLMResponseFormatError("bad json")

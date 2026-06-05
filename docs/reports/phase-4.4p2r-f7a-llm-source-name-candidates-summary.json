@@ -1,0 +1,661 @@
+{
+  "artifact_consistency_check": "pass",
+  "artifacts": {
+    "artifact_consistency_check_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/artifact-consistency-check.json",
+    "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58",
+    "candidate_bundle_jsonl": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/candidate-bundle.jsonl",
+    "checkpoint_status_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/run-checkpoint-status.json",
+    "final_validation_zip": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58.zip",
+    "progress_events_jsonl": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/run-progress-events.jsonl",
+    "provider_comparison_csv": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/provider-comparison-summary.csv",
+    "provider_comparison_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/provider-comparison-summary.json",
+    "public_report_json": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates-summary.json",
+    "public_report_md": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md",
+    "quality_counters_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/quality-counters.json",
+    "record_verdicts_jsonl": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/record-verdicts.jsonl"
+  },
+  "branch": "codex/phase44p2r-f7a-llm-source-name-candidates",
+  "db_identity": {
+    "current_database": "blombooru",
+    "database_url_redacted": true,
+    "db_name": "blombooru",
+    "violet_env": "development"
+  },
+  "db_write_summary": {
+    "apply": false,
+    "apply_db": false,
+    "db_rows_written_in_final_packaging": 0,
+    "forbidden_table_row_counts_after": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 2,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 7,
+      "blombooru_media_tags": 105699,
+      "blombooru_tag_translations": 3732
+    },
+    "forbidden_table_row_counts_before": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 2,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 7,
+      "blombooru_media_tags": 105699,
+      "blombooru_tag_translations": 3732
+    },
+    "forbidden_table_row_deltas": {
+      "blombooru_entities": 0,
+      "blombooru_entity_aliases": 0,
+      "blombooru_entity_evidence": 0,
+      "blombooru_media_entity_assignments": 0,
+      "blombooru_media_entity_candidates": 0,
+      "blombooru_media_tags": 0,
+      "blombooru_tag_translations": 0
+    },
+    "forbidden_truth_table_write_count": 0
+  },
+  "dedupe_metrics": {
+    "average_source_records_per_extraction_unit": 1.6177,
+    "deterministic_resolved_units": 292,
+    "llm_calls_attempted": 375,
+    "llm_calls_avoided_by_dedupe": 412,
+    "llm_preflight_calls": 1,
+    "llm_provider_call_attempts_total": 376,
+    "llm_required_units": 375,
+    "raw_string_occurrences_total": 1079,
+    "top_repeated_units_public_redacted": true,
+    "top_repeated_units_redacted": [
+      {
+        "llm_calls_avoided": 37,
+        "provider": null,
+        "source_count": 38,
+        "source_field": "pixiv_tag",
+        "unit_hash": "d967068cb01cc5a1"
+      },
+      {
+        "llm_calls_avoided": 37,
+        "provider": null,
+        "source_count": 38,
+        "source_field": "pixiv_tag",
+        "unit_hash": "d967068cb01cc5a1"
+      },
+      {
+        "llm_calls_avoided": 22,
+        "provider": null,
+        "source_count": 23,
+        "source_field": "source_name_observation",
+        "unit_hash": "da56d466ab3aa5ba"
+      },
+      {
+        "llm_calls_avoided": 21,
+        "provider": null,
+        "source_count": 22,
+        "source_field": "pixiv_tag",
+        "unit_hash": "1e8021e92173582e"
+      },
+      {
+        "llm_calls_avoided": 16,
+        "provider": null,
+        "source_count": 17,
+        "source_field": "pixiv_tag",
+        "unit_hash": "560b1a0ff44c57b5"
+      },
+      {
+        "llm_calls_avoided": 11,
+        "provider": null,
+        "source_count": 12,
+        "source_field": "pixiv_tag",
+        "unit_hash": "8a73046882aff65e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "pixiv_tag",
+        "unit_hash": "974687ecfcc79255"
+      },
+      {
+        "llm_calls_avoided": 8,
+        "provider": null,
+        "source_count": 9,
+        "source_field": "pixiv_tag",
+        "unit_hash": "dd60818247edf0fa"
+      },
+      {
+        "llm_calls_avoided": 8,
+        "provider": null,
+        "source_count": 9,
+        "source_field": "pixiv_tag",
+        "unit_hash": "3a4d0a04ca84b1b0"
+      },
+      {
+        "llm_calls_avoided": 7,
+        "provider": null,
+        "source_count": 8,
+        "source_field": "pixiv_tag",
+        "unit_hash": "9be724ca469144e5"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "pixiv_artist",
+        "unit_hash": "5af2b2a84c5ac69e"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "source_name_observation",
+        "unit_hash": "00e09ce620793161"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "pixiv_tag",
+        "unit_hash": "28df4c7c992ca3ab"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "pixiv_tag",
+        "unit_hash": "e085889ba2650a41"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "233fb0ec6a22fdec"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "84a1cdb407800008"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "4dc6dc221b04f429"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0f1093e43a01627f"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "pixiv_tag",
+        "unit_hash": "ae057d2572fc292c"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "pixiv_tag",
+        "unit_hash": "168c0558910f03e6"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "source_assertion",
+        "unit_hash": "6f5299a6e4622165"
+      }
+    ],
+    "unique_extraction_units_total": 667
+  },
+  "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+  "fallback_artifacts_included": false,
+  "final_pack_generated_at": "2026-06-05T11:55:19.296838+00:00",
+  "head_sha": "e8d487679b58cfacdea05b62ab156f6c76200a69",
+  "input_summary": {
+    "approved_content_classes": [
+      "anime",
+      "illustration"
+    ],
+    "approved_illustration_rule": "illustration requires content_class_reviewed or content_class_locked",
+    "average_source_records_per_extraction_unit": 1.6177,
+    "cached_manifest_drop_counts": {},
+    "cached_manifest_eligibility_counts": {
+      "eligible_anime": 100
+    },
+    "cached_manifest_groups_dropped": 0,
+    "cached_manifest_groups_input": 100,
+    "cached_manifest_groups_kept": 100,
+    "cached_manifest_revalidated": true,
+    "deterministic_resolved_units": 292,
+    "eligibility_counts": {
+      "eligible_anime": 100,
+      "excluded_unknown_or_unclassified": 3,
+      "media_missing_or_unlinked": 140
+    },
+    "eligible_groups_collected": 100,
+    "excluded_counts": {
+      "excluded_unknown_or_unclassified": 3,
+      "media_missing_or_unlinked": 140
+    },
+    "final_pack_manifest_revalidated": true,
+    "groups_by_data_origin": {
+      "real_dev_db": 100
+    },
+    "groups_by_provider": {
+      "local_media_tags": 43,
+      "pixiv": 57
+    },
+    "groups_collected": 100,
+    "llm_calls_avoided_by_dedupe": 412,
+    "llm_required_units": 375,
+    "manifest_hash": "03d0727bb8c9a856e02e17ba2d3d8490c289dfae2531a29811d7965946689819",
+    "max_records": 100,
+    "max_unique_strings": 1500,
+    "raw_string_occurrences_total": 1079,
+    "source_metadata_record_scan_limit": 2000,
+    "source_metadata_records_available": 200,
+    "source_metadata_records_scanned": 200,
+    "top_repeated_units_public_redacted": true,
+    "top_repeated_units_redacted": [
+      {
+        "llm_calls_avoided": 37,
+        "provider": null,
+        "source_count": 38,
+        "source_field": "pixiv_tag",
+        "unit_hash": "d967068cb01cc5a1"
+      },
+      {
+        "llm_calls_avoided": 37,
+        "provider": null,
+        "source_count": 38,
+        "source_field": "pixiv_tag",
+        "unit_hash": "d967068cb01cc5a1"
+      },
+      {
+        "llm_calls_avoided": 22,
+        "provider": null,
+        "source_count": 23,
+        "source_field": "source_name_observation",
+        "unit_hash": "da56d466ab3aa5ba"
+      },
+      {
+        "llm_calls_avoided": 21,
+        "provider": null,
+        "source_count": 22,
+        "source_field": "pixiv_tag",
+        "unit_hash": "1e8021e92173582e"
+      },
+      {
+        "llm_calls_avoided": 16,
+        "provider": null,
+        "source_count": 17,
+        "source_field": "pixiv_tag",
+        "unit_hash": "560b1a0ff44c57b5"
+      },
+      {
+        "llm_calls_avoided": 11,
+        "provider": null,
+        "source_count": 12,
+        "source_field": "pixiv_tag",
+        "unit_hash": "8a73046882aff65e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "pixiv_tag",
+        "unit_hash": "974687ecfcc79255"
+      },
+      {
+        "llm_calls_avoided": 8,
+        "provider": null,
+        "source_count": 9,
+        "source_field": "pixiv_tag",
+        "unit_hash": "dd60818247edf0fa"
+      },
+      {
+        "llm_calls_avoided": 8,
+        "provider": null,
+        "source_count": 9,
+        "source_field": "pixiv_tag",
+        "unit_hash": "3a4d0a04ca84b1b0"
+      },
+      {
+        "llm_calls_avoided": 7,
+        "provider": null,
+        "source_count": 8,
+        "source_field": "pixiv_tag",
+        "unit_hash": "9be724ca469144e5"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "pixiv_artist",
+        "unit_hash": "5af2b2a84c5ac69e"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "source_name_observation",
+        "unit_hash": "00e09ce620793161"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "pixiv_tag",
+        "unit_hash": "28df4c7c992ca3ab"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "pixiv_tag",
+        "unit_hash": "e085889ba2650a41"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "233fb0ec6a22fdec"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "84a1cdb407800008"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "4dc6dc221b04f429"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0f1093e43a01627f"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "pixiv_tag",
+        "unit_hash": "ae057d2572fc292c"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "pixiv_tag",
+        "unit_hash": "168c0558910f03e6"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "source_assertion",
+        "unit_hash": "6f5299a6e4622165"
+      }
+    ],
+    "unique_extraction_units_total": 667,
+    "unique_raw_string_count": 348,
+    "unique_raw_string_count_after_manifest_revalidation": 348
+  },
+  "llm_rerun": false,
+  "old_fallback_only_artifacts_excluded": true,
+  "phase": "4.4-P2R-F7a",
+  "prompt_changed": false,
+  "prompt_diff": "unchanged",
+  "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+  "provider_comparison": [
+    {
+      "ambiguous_count": 0,
+      "approximate_cost": "not_available_from_provider_response",
+      "average_seconds": 1.824,
+      "average_source_records_per_extraction_unit": 1.6177,
+      "cache_hits": 0,
+      "candidate_count_by_role": {
+        "artist_creator": 102,
+        "character": 232,
+        "person": 33,
+        "source_title": 50,
+        "unknown_name_like": 245,
+        "work_title": 68
+      },
+      "candidate_count_by_status": {
+        "active_candidate": 341,
+        "needs_review": 389
+      },
+      "candidate_count_total": 730,
+      "chunk_count": 667,
+      "completed_unit_count": 667,
+      "concurrency": 3,
+      "deterministic_resolved_units": 292,
+      "duplicate_candidate_count": 0,
+      "duplicate_candidate_rate": 0.0,
+      "false_positive_guard_review_count": 363,
+      "group_count": 100,
+      "inflight_dedupe_hits": 0,
+      "invalid_json_count": 0,
+      "llm_calls_attempted": 375,
+      "llm_calls_avoided_by_dedupe": 412,
+      "llm_provider_label": "primary_openai",
+      "llm_provider_mode": "primary_openai",
+      "llm_required_units": 375,
+      "llm_wall_time_seconds": 1216.302,
+      "model_label": "primary_model_configured",
+      "no_name_count": 0,
+      "p50_seconds": 2.369,
+      "p95_seconds": 4.314,
+      "pixiv_title_active_work_title_count": 0,
+      "popularity_prefix_count": 49,
+      "provider_mode": "primary_concurrent",
+      "raw_string_occurrences_total": 1079,
+      "record_retryable_error_count": 0,
+      "record_terminal_error_count": 0,
+      "record_verdict_counts": {
+        "multiple_candidates_found": 64,
+        "name_candidate_found": 36
+      },
+      "rejected_by_reason": {
+        "descriptive_general": 35,
+        "explicit_r18_meta": 18,
+        "popularity_meta": 49
+      },
+      "rejected_total": 102,
+      "retry_count": 0,
+      "retryable_error_count": 0,
+      "role_guard_count": 262,
+      "schema_failure_count": 0,
+      "source_title_active_count": 17,
+      "terminal_error_count": 0,
+      "timeout_count": 0,
+      "title_extraction_count": 18,
+      "token_usage": "not_available_from_provider_response",
+      "total_wall_time_seconds": 421.296,
+      "unguarded_source_title_active_count": 0,
+      "unique_extraction_units_total": 667,
+      "unique_string_count": 667,
+      "unit_status_counts": {
+        "completed": 667
+      },
+      "unknown_name_like_active_count": 0
+    }
+  ],
+  "provider_modes": [
+    "primary_concurrent"
+  ],
+  "quality_counters": {
+    "active_candidate_count": 341,
+    "ambiguous_item_count": 0,
+    "ambiguous_record_count": 0,
+    "candidate_count_by_role": {
+      "artist_creator": 102,
+      "character": 232,
+      "person": 33,
+      "source_title": 50,
+      "unknown_name_like": 245,
+      "work_title": 68
+    },
+    "candidate_count_by_role_status": {
+      "artist_creator|active_candidate": 102,
+      "character|active_candidate": 121,
+      "character|needs_review": 111,
+      "person|active_candidate": 33,
+      "source_title|active_candidate": 17,
+      "source_title|needs_review": 33,
+      "unknown_name_like|needs_review": 245,
+      "work_title|active_candidate": 68
+    },
+    "candidate_count_by_status": {
+      "active_candidate": 341,
+      "needs_review": 389
+    },
+    "duplicate_candidate_count": 0,
+    "duplicate_candidate_rate": 0.0,
+    "error_record_count": 0,
+    "needs_review_count": 389,
+    "no_name_count": 0,
+    "pixiv_title_active_work_title_count": 0,
+    "record_verdict_counts": {
+      "multiple_candidates_found": 64,
+      "name_candidate_found": 36
+    },
+    "rejected_general_meta_count": 151,
+    "source_title_active_count": 17,
+    "total_candidates": 730,
+    "unguarded_source_title_active_count": 0,
+    "unknown_name_like_active_count": 0,
+    "validation_failure_count": 0
+  },
+  "readiness": {
+    "f7a_mergeable": true,
+    "f7b_should_start": false,
+    "fallback_blocks_readiness": false,
+    "fallback_provider_mode": "not_run",
+    "fallback_viable_provider_modes": [],
+    "invalid_or_schema_failure_total": 0,
+    "primary_blocking_error_total": 0,
+    "primary_quality_blocker_total": 0,
+    "primary_viable_provider_modes": [
+      "primary_concurrent"
+    ],
+    "provider_mode_blockers": {
+      "primary_concurrent": false
+    },
+    "reason": "primary_default_provider_completed_without_retryable_terminal_or_schema_errors",
+    "recommended_default_provider": "primary_openai",
+    "retryable_error_total": 0,
+    "terminal_error_total": 0,
+    "viable_provider_modes": [
+      "primary_concurrent"
+    ]
+  },
+  "rematerialized_from_run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057",
+  "rematerialized_from_source_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z",
+  "report_generated_head_sha": "e8d487679b58cfacdea05b62ab156f6c76200a69",
+  "report_validation_scope": "code_and_runner_state_at_validation_time",
+  "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057",
+  "safety": {
+    "entity_alias_write": false,
+    "entity_write": false,
+    "image_upload": false,
+    "llm_extraction_calls_attempted": 375,
+    "llm_preflight_calls": 1,
+    "llm_provider_calls": true,
+    "llm_provider_modes": [
+      "primary_concurrent"
+    ],
+    "local_source_hint_write": false,
+    "media_entity_assignment_write": false,
+    "media_entity_candidate_write": false,
+    "media_tags_mutation": false,
+    "merge": false,
+    "push_main": false,
+    "secrets_or_base_urls_reported": false,
+    "source_concept_linking": false,
+    "source_layer_only": true,
+    "source_or_icloud_mutation": false,
+    "source_provider_calls": false,
+    "tag_translation_mutation": false
+  },
+  "structured_output_schema_version": "source_name_candidate_extraction_compact_v2",
+  "timing": {
+    "cost_estimate": "not_available_from_provider_response",
+    "elapsed_seconds": 423.825
+  },
+  "title": "LLM-backed source name candidate extraction rework",
+  "validated_code_head_sha": "e8d487679b58cfacdea05b62ab156f6c76200a69"
+}
