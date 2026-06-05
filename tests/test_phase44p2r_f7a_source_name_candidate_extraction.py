@@ -620,6 +620,97 @@ def test_pixiv_title_full_string_is_not_active_work_title_but_embedded_name_can_
     assert embedded_name.candidate_status == "active_candidate"
 
 
+def test_weak_pixiv_tag_source_title_is_not_active_candidate():
+    group = _simple_pixiv_tag_group(1, "Ambiguous Workish Tag")
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "work_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "Ambiguous Workish Tag",
+                "display_name": "Ambiguous Workish Tag",
+                "normalized_value": "Ambiguous Workish Tag",
+                "role": "source_title",
+                "status": "active_candidate",
+                "source_field": "pixiv_tag",
+                "extraction_action": "normal_tag_candidate",
+                "confidence": 0.8,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+    candidate = candidates[0]
+
+    assert candidate.candidate_role == "source_title"
+    assert candidate.candidate_status == "needs_review"
+    assert candidate.evidence_payload["candidate_status_guard"]["weak_work_or_source_title_active_downgraded"] is True
+
+
+def test_deduped_pixiv_unit_corrects_llm_source_field_before_source_title_guard():
+    group = SourceCandidateInputGroup(
+        group_key="extraction_unit:pixiv-source-title",
+        provider="pixiv",
+        tags=({"raw_tag": "Ambiguous Workish Tag", "source_tag_kind": "provider_tag"},),
+        data_origin="deduped_extraction_unit",
+    )
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "work_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "Ambiguous Workish Tag",
+                "display_name": "Ambiguous Workish Tag",
+                "normalized_value": "Ambiguous Workish Tag",
+                "role": "source_title",
+                "status": "active_candidate",
+                "source_field": "normal_tag",
+                "extraction_action": "normal_tag_candidate",
+                "confidence": 0.8,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+    guard = candidates[0].evidence_payload["candidate_status_guard"]
+
+    assert candidates[0].origin_type == "pixiv_tag"
+    assert candidates[0].candidate_status == "needs_review"
+    assert guard["deduped_unit_source_field_corrected"] is True
+    assert guard["weak_work_or_source_title_active_downgraded"] is True
+
+
+def test_strong_source_assertion_source_title_can_remain_active():
+    group = _simple_pixiv_tag_group(1, "Genshin Impact")
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "work_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "Genshin Impact",
+                "display_name": "Genshin Impact",
+                "normalized_value": "Genshin Impact",
+                "role": "source_title",
+                "status": "active_candidate",
+                "source_field": "source_assertion",
+                "extraction_action": "direct_name",
+                "confidence": 0.8,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert candidates[0].candidate_role == "source_title"
+    assert candidates[0].candidate_status == "active_candidate"
+
+
 def test_overlength_candidate_values_are_bounded_before_persistence():
     long_value = "A" * (SOURCE_NAME_CANDIDATE_VALUE_MAX_LENGTH + 50)
     group = SourceCandidateInputGroup(
@@ -1478,6 +1569,7 @@ def test_public_summary_blocks_readiness_on_primary_quality_guards():
                     "schema_failure_count": 0,
                     "unknown_name_like_active_count": 0,
                     "pixiv_title_active_work_title_count": 1,
+                    "unguarded_source_title_active_count": 0,
                 }
             }
         ],
@@ -1489,6 +1581,110 @@ def test_public_summary_blocks_readiness_on_primary_quality_guards():
 
     assert summary["readiness"]["f7a_mergeable"] is False
     assert summary["readiness"]["primary_quality_blocker_total"] == 1
+
+
+def test_public_summary_blocks_readiness_on_unguarded_source_title_active():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_public_summary_source_title_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    summary = runner._public_summary(
+        run_id="summary-run",
+        branch="codex/phase44p2r-f7a-llm-source-name-candidates",
+        head_sha="abc123",
+        db_identity={"database_url_redacted": True},
+        input_summary={},
+        mode_results=[
+            {
+                "summary": {
+                    "provider_mode": "primary_concurrent",
+                    "group_count": 5,
+                    "llm_calls_attempted": 1,
+                    "terminal_error_count": 0,
+                    "retryable_error_count": 0,
+                    "invalid_json_count": 0,
+                    "schema_failure_count": 0,
+                    "unknown_name_like_active_count": 0,
+                    "pixiv_title_active_work_title_count": 0,
+                    "unguarded_source_title_active_count": 1,
+                }
+            }
+        ],
+        provider_preflight={"llm_preflight_calls": 1},
+        db_write_summary={"forbidden_truth_table_write_count": 0},
+        artifact_summary={},
+        timing={},
+    )
+
+    assert summary["readiness"]["f7a_mergeable"] is False
+    assert summary["readiness"]["primary_quality_blocker_total"] == 1
+
+
+def test_final_artifact_consistency_check_uses_final_candidate_bundle():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_final_consistency_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    candidates = [
+        {
+            "group_key": "g1",
+            "canonical_key": "maybe_title",
+            "candidate_role": "source_title",
+            "candidate_status": "active_candidate",
+            "extraction_action": "normal_tag_candidate",
+            "origin_type": "pixiv_tag",
+        }
+    ]
+    quality = runner.final_quality_counters(
+        candidates=candidates,
+        record_verdicts=[{"extraction_verdict": "work_candidate_found"}],
+        rejected_general_meta_rows=[],
+        ambiguous_items=[],
+        validation_failures=[],
+    )
+    summary = {
+        "run_id": "run",
+        "validated_code_head_sha": "head",
+        "prompt_version": "prompt",
+        "input_summary": {"manifest_hash": "manifest"},
+        "provider_comparison": [
+            {
+                "provider_mode": "primary_concurrent",
+                "candidate_count_total": 1,
+                "candidate_count_by_status": {"active_candidate": 1},
+                "unknown_name_like_active_count": 0,
+                "pixiv_title_active_work_title_count": 0,
+                "source_title_active_count": 1,
+                "unguarded_source_title_active_count": 0,
+                "duplicate_candidate_rate": 0.0,
+                "rejected_total": 0,
+                "no_name_count": 0,
+                "ambiguous_count": 0,
+            }
+        ],
+    }
+
+    check = runner.final_artifact_consistency_check(
+        summary=summary,
+        quality_counters=quality,
+        run_id="run",
+        head_sha="head",
+        prompt_version="prompt",
+        manifest_hash="manifest",
+        public_redaction_status="pass",
+    )
+
+    assert check["status"] == "fail"
+    assert check["checks"]["unguarded_source_title_active_count"] is False
+    assert check["blocker_checks"]["unguarded_source_title_active_blocker"] is False
 
 
 def test_provider_json_preflight_retries_format_error():

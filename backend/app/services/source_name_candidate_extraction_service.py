@@ -915,6 +915,29 @@ def _copy_candidate_for_occurrence(
     unit: SourceExtractionUnit,
     occurrence: SourceExtractionUnitOccurrence,
 ) -> CandidateDraft:
+    candidate_status = candidate.candidate_status
+    evidence_payload = {
+        **candidate.evidence_payload,
+        "extraction_unit_key": unit.extraction_key,
+        "extraction_unit_normalized_value": unit.normalized_value,
+        "deduped_llm_extraction_unit": True,
+        "unit_candidate_origin_type": candidate.origin_type,
+        "unit_candidate_extraction_action": candidate.extraction_action,
+    }
+    if (
+        candidate.candidate_role == "source_title"
+        and candidate_status == "active_candidate"
+        and occurrence.source_field not in {"source_assertion", "source_name_observation", "source_tag_observation", "normal_tag", "booru_tag", "saucenao_field"}
+        and candidate.origin_type not in {"source_assertion", "source_name_observation", "source_tag_observation", "normal_tag", "booru_tag", "saucenao_field"}
+        and candidate.extraction_action not in {"parenthetical_split", "popularity_suffix_stripped", "provider_structured_field"}
+        and not candidate.parenthetical_context
+        and not candidate.work_context
+    ):
+        candidate_status = "needs_review"
+        guard = evidence_payload.get("candidate_status_guard")
+        guard_payload = dict(guard) if isinstance(guard, Mapping) else {}
+        guard_payload["weak_source_title_occurrence_active_downgraded"] = True
+        evidence_payload["candidate_status_guard"] = guard_payload
     logical_key = _candidate_key(
         group_key=occurrence.group_key,
         raw_value=candidate.normalized_value,
@@ -931,13 +954,9 @@ def _copy_candidate_for_occurrence(
         media_id=occurrence.media_id,
         origin_type=occurrence.source_field,
         origin_id=occurrence.origin_id,
+        candidate_status=candidate_status,
         candidate_key=logical_key,
-        evidence_payload={
-            **candidate.evidence_payload,
-            "extraction_unit_key": unit.extraction_key,
-            "extraction_unit_normalized_value": unit.normalized_value,
-            "deduped_llm_extraction_unit": True,
-        },
+        evidence_payload=evidence_payload,
     )
 
 
@@ -1624,6 +1643,31 @@ def _title_source_text(group: SourceCandidateInputGroup, origin: str) -> str | N
     return None
 
 
+def _deduped_unit_expected_origin(group: SourceCandidateInputGroup) -> str | None:
+    if group.data_origin != "deduped_extraction_unit":
+        return None
+    if group.source_assertions:
+        return "source_assertion"
+    if group.source_names:
+        return "source_name_observation"
+    if group.media_tags:
+        source = canonical_source_key(group.media_tags[0].get("source") if isinstance(group.media_tags[0], Mapping) else None)
+        return "ai_model_tag" if source == "ai_model_tag" else "normal_tag"
+    if group.tags:
+        if canonical_source_key(group.provider) == "pixiv":
+            return "pixiv_tag"
+        if canonical_source_key(group.provider) in {"danbooru", "gelbooru"}:
+            return "booru_tag"
+        return "source_tag_observation"
+    if group.title:
+        return "pixiv_title"
+    if group.caption:
+        return "pixiv_caption"
+    if group.artist_name:
+        return "pixiv_artist"
+    return None
+
+
 def _has_strong_work_title_evidence(
     *,
     origin: str,
@@ -1681,9 +1725,18 @@ def _validate_candidate(
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_status")
     if action not in ALLOWED_EXTRACTION_ACTIONS:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extraction_action")
+    source_field_guard: dict[str, Any] = {}
+    expected_origin = _deduped_unit_expected_origin(group)
+    if expected_origin and origin != expected_origin:
+        source_field_guard = {
+            "deduped_unit_source_field_corrected": True,
+            "llm_reported_source_field": origin,
+            "expected_source_field": expected_origin,
+        }
+        origin = expected_origin
     if origin not in ALLOWED_ORIGINS:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extracted_from")
-    candidate_status_guard: dict[str, Any] = {}
+    candidate_status_guard: dict[str, Any] = dict(source_field_guard)
     try:
         confidence = _coerce_confidence(item.get("confidence"))
     except SourceNameCandidateExtractionError as exc:
@@ -1710,20 +1763,25 @@ def _validate_candidate(
     if not (popularity and action == "popularity_suffix_stripped"):
         guard_rejection = is_meta_or_descriptive_rejection(normalized) or is_meta_or_descriptive_rejection(raw)
     source_text = _title_source_text(group, origin)
-    if source_text and role in {"work_title", "source_title"} and not _has_strong_work_title_evidence(
+    has_strong_work_title_evidence = _has_strong_work_title_evidence(
         origin=origin,
         action=action,
         role=role,
         item=item,
         group=group,
-    ):
+    )
+    if role in {"work_title", "source_title"} and not has_strong_work_title_evidence:
         if role == "work_title":
             role = "source_title"
-            candidate_status_guard["pixiv_title_work_title_role_downgraded"] = True
+            candidate_status_guard["weak_work_title_role_downgraded"] = True
+            if source_text:
+                candidate_status_guard["pixiv_title_work_title_role_downgraded"] = True
         if status == "active_candidate":
             status = "needs_review"
-            candidate_status_guard["weak_pixiv_title_source_title_downgraded"] = True
-        if canonical_source_key(raw) == canonical_source_key(source_text) or len(raw) > 80:
+            candidate_status_guard["weak_work_or_source_title_active_downgraded"] = True
+            if source_text:
+                candidate_status_guard["weak_pixiv_title_source_title_downgraded"] = True
+        if source_text and (canonical_source_key(raw) == canonical_source_key(source_text) or len(raw) > 80):
             candidate_status_guard["full_pixiv_title_evidence_only"] = True
     if role == "unknown_name_like" and status == "active_candidate":
         status = "needs_review"

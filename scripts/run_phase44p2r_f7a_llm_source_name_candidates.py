@@ -731,6 +731,7 @@ def _mode_summary(provider_mode: str, rows: Sequence[Mapping[str, Any]], provide
         for row in candidates
         if row.get("candidate_role") == "source_title" and row.get("candidate_status") == "active_candidate"
     )
+    unguarded_source_title_active_count = _unguarded_active_source_title_count(candidates)
     role_guard_count = len(_role_guard_rows(candidates))
     title_extraction_count = sum(
         1
@@ -765,6 +766,7 @@ def _mode_summary(provider_mode: str, rows: Sequence[Mapping[str, Any]], provide
         "unknown_name_like_active_count": unknown_name_like_active_count,
         "pixiv_title_active_work_title_count": pixiv_title_active_work_title_count,
         "source_title_active_count": source_title_active_count,
+        "unguarded_source_title_active_count": unguarded_source_title_active_count,
         "false_positive_guard_review_count": false_positive_guard_count,
         "role_guard_count": role_guard_count,
         "title_extraction_count": title_extraction_count,
@@ -1403,6 +1405,158 @@ def _candidate_guard(row: Mapping[str, Any]) -> Mapping[str, Any]:
     return guard if isinstance(guard, Mapping) else {}
 
 
+def _candidate_has_strong_title_evidence(row: Mapping[str, Any]) -> bool:
+    if row.get("candidate_role") not in {"work_title", "source_title"}:
+        return True
+    origin = str(row.get("origin_type") or "")
+    action = str(row.get("extraction_action") or "")
+    evidence = _candidate_evidence(row)
+    if origin in {"source_assertion", "source_name_observation", "source_tag_observation", "normal_tag", "booru_tag", "saucenao_field"}:
+        return True
+    if action in {"parenthetical_split", "popularity_suffix_stripped", "provider_structured_field"} and origin not in {"pixiv_title", "pixiv_caption"}:
+        return True
+    if evidence.get("parenthetical_context") or row.get("parenthetical_context") or row.get("work_context"):
+        return True
+    return False
+
+
+def _unguarded_active_source_title_count(candidates: Sequence[Mapping[str, Any]]) -> int:
+    return sum(
+        1
+        for row in candidates
+        if row.get("candidate_role") == "source_title"
+        and row.get("candidate_status") == "active_candidate"
+        and not _candidate_has_strong_title_evidence(row)
+    )
+
+
+def final_quality_counters(
+    *,
+    candidates: Sequence[Mapping[str, Any]],
+    record_verdicts: Sequence[Mapping[str, Any]],
+    rejected_general_meta_rows: Sequence[Mapping[str, Any]],
+    ambiguous_items: Sequence[Mapping[str, Any]],
+    validation_failures: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    candidate_keys = [
+        (
+            row.get("group_key"),
+            row.get("canonical_key"),
+            row.get("candidate_role"),
+            row.get("extraction_action"),
+            row.get("origin_type"),
+        )
+        for row in candidates
+    ]
+    duplicate_count = max(0, len(candidate_keys) - len(set(candidate_keys)))
+    active_count = sum(1 for row in candidates if row.get("candidate_status") == "active_candidate")
+    needs_review_count = sum(1 for row in candidates if row.get("candidate_status") == "needs_review")
+    unknown_name_like_active_count = sum(
+        1
+        for row in candidates
+        if row.get("candidate_role") == "unknown_name_like" and row.get("candidate_status") == "active_candidate"
+    )
+    pixiv_title_active_work_title_count = sum(
+        1
+        for row in candidates
+        if row.get("origin_type") in {"pixiv_title", "pixiv_caption"}
+        and row.get("candidate_role") == "work_title"
+        and row.get("candidate_status") == "active_candidate"
+    )
+    source_title_active_count = sum(
+        1
+        for row in candidates
+        if row.get("candidate_role") == "source_title" and row.get("candidate_status") == "active_candidate"
+    )
+    verdict_counts = Counter(row.get("extraction_verdict") for row in record_verdicts)
+    return {
+        "total_candidates": len(candidates),
+        "active_candidate_count": active_count,
+        "needs_review_count": needs_review_count,
+        "candidate_count_by_role": dict(Counter(row.get("candidate_role") for row in candidates)),
+        "candidate_count_by_status": dict(Counter(row.get("candidate_status") for row in candidates)),
+        "candidate_count_by_role_status": dict(
+            Counter(f"{row.get('candidate_role')}|{row.get('candidate_status')}" for row in candidates)
+        ),
+        "unknown_name_like_active_count": unknown_name_like_active_count,
+        "pixiv_title_active_work_title_count": pixiv_title_active_work_title_count,
+        "source_title_active_count": source_title_active_count,
+        "unguarded_source_title_active_count": _unguarded_active_source_title_count(candidates),
+        "duplicate_candidate_count": duplicate_count,
+        "duplicate_candidate_rate": round(duplicate_count / len(candidates), 4) if candidates else 0.0,
+        "rejected_general_meta_count": len(rejected_general_meta_rows),
+        "record_verdict_counts": dict(verdict_counts),
+        "no_name_count": sum(1 for row in record_verdicts if row.get("no_name_reason")),
+        "ambiguous_item_count": len(ambiguous_items),
+        "ambiguous_record_count": verdict_counts.get("ambiguous_needs_review", 0),
+        "error_record_count": sum(
+            count for verdict, count in verdict_counts.items() if str(verdict).startswith("extraction_error")
+        ),
+        "validation_failure_count": len(validation_failures),
+    }
+
+
+def final_artifact_consistency_check(
+    *,
+    summary: Mapping[str, Any],
+    quality_counters: Mapping[str, Any],
+    run_id: str,
+    head_sha: str,
+    prompt_version: str,
+    manifest_hash: str,
+    public_redaction_status: str,
+) -> dict[str, Any]:
+    provider_rows = [
+        row
+        for row in summary.get("provider_comparison", [])
+        if str(row.get("provider_mode")).startswith("primary")
+    ]
+    primary = provider_rows[0] if provider_rows else {}
+    checks = {
+        "total_candidates": primary.get("candidate_count_total") == quality_counters.get("total_candidates"),
+        "active_candidate_count": primary.get("candidate_count_by_status", {}).get("active_candidate")
+        == quality_counters.get("active_candidate_count"),
+        "needs_review_count": primary.get("candidate_count_by_status", {}).get("needs_review")
+        == quality_counters.get("needs_review_count"),
+        "unknown_name_like_active_count": primary.get("unknown_name_like_active_count")
+        == quality_counters.get("unknown_name_like_active_count"),
+        "pixiv_title_active_work_title_count": primary.get("pixiv_title_active_work_title_count")
+        == quality_counters.get("pixiv_title_active_work_title_count"),
+        "source_title_active_count": primary.get("source_title_active_count")
+        == quality_counters.get("source_title_active_count"),
+        "unguarded_source_title_active_count": primary.get("unguarded_source_title_active_count")
+        == quality_counters.get("unguarded_source_title_active_count"),
+        "duplicate_candidate_rate": primary.get("duplicate_candidate_rate") == quality_counters.get("duplicate_candidate_rate"),
+        "rejected_meta_count": (
+            int(primary.get("rejected_total") or 0)
+            + int(primary.get("popularity_prefix_count") or 0)
+        )
+        == quality_counters.get("rejected_general_meta_count"),
+        "no_name_count": primary.get("no_name_count") == quality_counters.get("no_name_count"),
+        "ambiguous_count": primary.get("ambiguous_count") == quality_counters.get("ambiguous_item_count"),
+        "error_count": quality_counters.get("error_record_count") == 0 and quality_counters.get("validation_failure_count") == 0,
+        "run_id_consistent": summary.get("run_id") == run_id,
+        "head_sha_consistent": summary.get("validated_code_head_sha") == head_sha,
+        "prompt_version_consistent": summary.get("prompt_version") == prompt_version,
+        "manifest_hash_consistent": summary.get("input_summary", {}).get("manifest_hash") == manifest_hash,
+        "public_redaction_status": public_redaction_status == "pass",
+    }
+    blocker_checks = {
+        "unknown_name_like_active_blocker": quality_counters.get("unknown_name_like_active_count") == 0,
+        "pixiv_title_active_work_title_blocker": quality_counters.get("pixiv_title_active_work_title_count") == 0,
+        "unguarded_source_title_active_blocker": quality_counters.get("unguarded_source_title_active_count") == 0,
+        "error_blocker": quality_counters.get("error_record_count") == 0 and quality_counters.get("validation_failure_count") == 0,
+    }
+    status = "pass" if all(checks.values()) and all(blocker_checks.values()) else "fail"
+    return {
+        "status": status,
+        "artifact_consistency_check": status,
+        "checks": checks,
+        "blocker_checks": blocker_checks,
+        "quality_counters": dict(quality_counters),
+    }
+
+
 def _pixiv_title_candidate_rows(candidates: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
@@ -1419,9 +1573,20 @@ def _role_guard_rows(candidates: Sequence[Mapping[str, Any]]) -> list[dict[str, 
         {
             **dict(row),
             "candidate_status_guard": guard,
+            "strong_title_evidence": _candidate_has_strong_title_evidence(row),
+            "unguarded_active_source_title": bool(
+                row.get("candidate_role") == "source_title"
+                and row.get("candidate_status") == "active_candidate"
+                and not _candidate_has_strong_title_evidence(row)
+            ),
         }
         for row in candidates
         if (guard := _candidate_guard(row))
+        or (
+            row.get("candidate_role") == "source_title"
+            and row.get("candidate_status") == "active_candidate"
+            and not _candidate_has_strong_title_evidence(row)
+        )
     ]
 
 
@@ -1675,6 +1840,7 @@ def _public_summary(
     primary_quality_blocker_total = sum(
         int(row.get("unknown_name_like_active_count") or 0)
         + int(row.get("pixiv_title_active_work_title_count") or 0)
+        + int(row.get("unguarded_source_title_active_count") or 0)
         for row in primary_rows
     )
     f7a_mergeable = bool(
