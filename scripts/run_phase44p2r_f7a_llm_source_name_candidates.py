@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -36,7 +36,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.config import settings  # noqa: E402
 from app.database import check_and_migrate_schema  # noqa: E402
-from app.services.source_metadata_registry_service import normalize_source_text  # noqa: E402
+from app.models import Media, SourceMetadataRecord  # noqa: E402
+from app.services.source_metadata_registry_service import canonical_source_key, normalize_source_text  # noqa: E402
 from app.services.source_name_candidate_extraction_service import (  # noqa: E402
     EXTRACTOR_VERSION,
     PHASE,
@@ -54,6 +55,7 @@ from app.services.source_name_candidate_extraction_service import (  # noqa: E40
     fallback_openai_provider_from_settings,
     group_input_payload_hash,
     llm_cache_fingerprint,
+    media_llm_eligibility,
     persist_extraction_bundle,
     primary_openai_provider_from_settings,
     reattach_unit_bundles_to_records,
@@ -75,9 +77,11 @@ PRIVATE_NAME_CANDIDATES_PRIMARY_CSV = OUTPUT_DIR / "name-candidates-primary.csv"
 PRIVATE_NAME_CANDIDATES_FALLBACK_CSV = OUTPUT_DIR / "name-candidates-fallback.csv"
 PRIVATE_RECORD_VERDICTS_PRIMARY_CSV = OUTPUT_DIR / "record-verdicts-primary.csv"
 PRIVATE_RECORD_VERDICTS_FALLBACK_CSV = OUTPUT_DIR / "record-verdicts-fallback.csv"
+PRIVATE_REJECTED_GENERAL_META_CSV = OUTPUT_DIR / "rejected-general-meta.csv"
 PRIVATE_DISAGREEMENTS_CSV = OUTPUT_DIR / "disagreements.csv"
 PRIVATE_TIMEOUT_ERROR_CSV = OUTPUT_DIR / "timeout-and-error-cases.csv"
 PRIVATE_POPULARITY_PREFIX_CSV = OUTPUT_DIR / "popularity-prefix-extractions.csv"
+PRIVATE_FALSE_POSITIVE_GUARD_CSV = OUTPUT_DIR / "false-positive-guard-review.csv"
 PRIVATE_AMBIGUOUS_CSV = OUTPUT_DIR / "ambiguous-needs-review.csv"
 PRIVATE_NO_NAME_RECORDS_CSV = OUTPUT_DIR / "no-name-records.csv"
 PRIVATE_EXTRACTION_ERRORS_CSV = OUTPUT_DIR / "extraction-errors.csv"
@@ -137,9 +141,11 @@ def _private_paths(args: argparse.Namespace) -> list[str]:
         args.name_candidates_fallback_csv,
         args.record_verdicts_primary_csv,
         args.record_verdicts_fallback_csv,
+        args.rejected_general_meta_csv,
         args.disagreements_csv,
         args.timeout_and_error_cases_csv,
         args.popularity_prefix_extractions_csv,
+        args.false_positive_guard_review_csv,
         args.ambiguous_needs_review_csv,
         args.no_name_records_csv,
         args.extraction_errors_csv,
@@ -293,6 +299,94 @@ def _load_manifest(args: argparse.Namespace) -> tuple[list[SourceCandidateInputG
     return groups, dict(payload)
 
 
+def _manifest_group_string_keys(group: SourceCandidateInputGroup) -> set[str]:
+    values: list[Any] = [group.title, group.caption, group.artist_name]
+    for row in group.tags:
+        if isinstance(row, Mapping):
+            values.extend([row.get("raw_tag"), row.get("normalized_tag"), row.get("canonical_tag_key")])
+    for row in group.source_names:
+        if isinstance(row, Mapping):
+            values.extend([row.get("raw_name"), row.get("normalized_name"), row.get("canonical_name_key")])
+    for row in group.source_assertions:
+        if isinstance(row, Mapping):
+            values.extend([row.get("raw_input"), row.get("normalized_input"), row.get("asserted_name"), row.get("canonical_name_key")])
+    for row in group.alias_candidates:
+        if isinstance(row, Mapping):
+            values.extend([row.get("raw_left"), row.get("raw_right"), row.get("canonical_left_key"), row.get("canonical_right_key")])
+    for row in group.media_tags:
+        if isinstance(row, Mapping):
+            values.append(row.get("name"))
+    return {canonical_source_key(value) for value in values if canonical_source_key(value)}
+
+
+def _revalidate_cached_manifest_groups(
+    db,
+    groups: Sequence[SourceCandidateInputGroup],
+    args: argparse.Namespace,
+) -> tuple[list[SourceCandidateInputGroup], dict[str, Any]]:
+    kept: list[SourceCandidateInputGroup] = []
+    unique_strings: set[str] = set()
+    drop_counts: Counter[str] = Counter()
+    eligibility_counts: Counter[str] = Counter()
+    max_records = int(args.max_records)
+    max_unique_strings = int(args.max_unique_strings)
+    for group in groups:
+        source_record = None
+        media = None
+        if group.source_metadata_record_id:
+            source_record = db.get(SourceMetadataRecord, group.source_metadata_record_id)
+            if source_record is None:
+                drop_counts["source_metadata_record_missing"] += 1
+                continue
+            if source_record.status != "observed":
+                drop_counts["source_metadata_record_not_observed"] += 1
+                continue
+            if source_record.media_id:
+                media = db.get(Media, source_record.media_id)
+        if media is None and group.media_id:
+            media = db.get(Media, group.media_id)
+        eligible, eligibility_reason, eligibility_payload = media_llm_eligibility(media)
+        eligibility_counts[eligibility_reason] += 1
+        if not eligible:
+            drop_counts[eligibility_reason] += 1
+            continue
+        group_strings = _manifest_group_string_keys(group)
+        if not group_strings:
+            drop_counts["no_raw_strings_after_revalidation"] += 1
+            continue
+        if len(kept) >= max_records:
+            drop_counts["max_records_cap"] += 1
+            continue
+        if len(unique_strings | group_strings) > max_unique_strings and kept:
+            drop_counts["max_unique_strings_cap"] += 1
+            continue
+        unique_strings.update(group_strings)
+        kept.append(
+            replace(
+                group,
+                media_id=getattr(media, "id", group.media_id),
+                content_class=eligibility_payload["content_class"],
+                content_class_reviewed=bool(eligibility_payload["content_class_reviewed"]),
+                content_class_locked=bool(eligibility_payload["content_class_locked"]),
+                eligibility_status="eligible",
+                eligibility_reason=eligibility_reason,
+            )
+        )
+    return kept, {
+        "cached_manifest_revalidated": True,
+        "cached_manifest_groups_input": len(groups),
+        "cached_manifest_groups_kept": len(kept),
+        "cached_manifest_groups_dropped": sum(drop_counts.values()),
+        "cached_manifest_drop_counts": dict(drop_counts),
+        "cached_manifest_eligibility_counts": dict(eligibility_counts),
+        "groups_collected": len(kept),
+        "eligible_groups_collected": len(kept),
+        "unique_raw_string_count_after_manifest_revalidation": len(unique_strings),
+        "max_records": max_records,
+        "max_unique_strings": max_unique_strings,
+    }
+
+
 def _checkpoint_path(args: argparse.Namespace) -> Path:
     return _resolve_repo_path(args.checkpoint_status_json)
 
@@ -326,7 +420,7 @@ def _safe_group_ref(group_key: str) -> str:
 
 
 def _unit_result_path(args: argparse.Namespace, provider_mode: str, fingerprint: str) -> Path:
-    return _resolve_repo_path(args.checkpoint_dir) / provider_mode / f"{fingerprint[:32]}.json"
+    return _resolve_repo_path(args.checkpoint_dir) / _mode_output_family(provider_mode) / f"{fingerprint[:32]}.json"
 
 
 def _bundle_to_json(bundle: ExtractionResultBundle) -> dict[str, Any]:
@@ -406,6 +500,7 @@ async def _provider_json_preflight(
                     "provider_mode": provider_mode,
                     "preflight": "pass",
                     "attempts": attempt_index,
+                    "external_call_attempts": attempt_index,
                     "json_object": True,
                     "error_type": None,
                 }
@@ -428,6 +523,7 @@ async def _provider_json_preflight(
         "provider_mode": provider_mode,
         "preflight": "fail",
         "attempts": len(attempts),
+        "external_call_attempts": len(attempts),
         "json_object": False,
         "error_type": attempts[-1].get("error_type") if attempts else "unknown_preflight_error",
         "attempt_errors": attempts,
@@ -447,6 +543,7 @@ async def _preflight_provider_modes(args: argparse.Namespace, checkpoint: dict[s
             result = {
                 "provider_mode": provider_mode,
                 "preflight": "fail",
+                "external_call_attempts": 0,
                 "error_type": provider_summary.get("unavailable_reason") or "provider_unavailable",
             }
         elif provider_key in seen:
@@ -454,6 +551,7 @@ async def _preflight_provider_modes(args: argparse.Namespace, checkpoint: dict[s
                 **seen[provider_key],
                 "provider_mode": provider_mode,
                 "preflight_reused_from": seen[provider_key].get("provider_mode"),
+                "external_call_attempts": 0,
             }
         else:
             result = await _provider_json_preflight(
@@ -466,6 +564,7 @@ async def _preflight_provider_modes(args: argparse.Namespace, checkpoint: dict[s
     summary = {
         "status": "pass" if all(row.get("preflight") == "pass" for row in results) else "fail",
         "results": results,
+        "llm_preflight_calls": sum(int(row.get("external_call_attempts") or 0) for row in results),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     checkpoint["provider_preflight"] = summary
@@ -550,6 +649,12 @@ def _mode_summary(provider_mode: str, rows: Sequence[Mapping[str, Any]], provide
     timeout_count = sum(1 for row in failure_sources if _error_code_from_failure(row) == "timeout")
     invalid_json_count = sum(1 for row in failure_sources if _error_code_from_failure(row) == "invalid_json")
     schema_failure_count = sum(1 for row in failure_sources if _error_code_from_failure(row) == "schema_validation_failed")
+    unknown_name_like_active_count = sum(
+        1
+        for row in candidates
+        if row.get("candidate_role") == "unknown_name_like" and row.get("candidate_status") == "active_candidate"
+    )
+    false_positive_guard_count = len(_false_positive_guard_rows(candidates))
     summary = {
         "provider_mode": provider_mode,
         "llm_provider_mode": provider_summary.get("provider_mode"),
@@ -574,6 +679,8 @@ def _mode_summary(provider_mode: str, rows: Sequence[Mapping[str, Any]], provide
         "candidate_count_total": len(candidates),
         "candidate_count_by_role": dict(Counter(row.get("candidate_role") for row in candidates)),
         "candidate_count_by_status": dict(Counter(row.get("candidate_status") for row in candidates)),
+        "unknown_name_like_active_count": unknown_name_like_active_count,
+        "false_positive_guard_review_count": false_positive_guard_count,
         "ambiguous_count": len(aggregate["ambiguous_items"]),
         "no_name_count": sum(1 for row in aggregate["record_verdicts"] if row.get("no_name_reason")),
         "record_verdict_counts": dict(verdict_counts),
@@ -629,17 +736,23 @@ async def _process_unit(
 ) -> dict[str, Any]:
     fingerprint = llm_cache_fingerprint(unit.unit_group, provider_summary)
     result_path = _unit_result_path(args, provider_mode, fingerprint)
-    unit_status = mode_state.setdefault("units", {}).get(unit.extraction_key, {})
+    mode_state.setdefault("units", {})
     if (
         args.reuse_checkpoint
-        and unit_status.get("cache_fingerprint") == fingerprint
-        and unit_status.get("status") in {"completed", "terminal_error"}
         and result_path.exists()
     ):
         payload = _read_json(result_path)
-        if isinstance(payload, Mapping):
+        if (
+            isinstance(payload, Mapping)
+            and payload.get("cache_fingerprint") == fingerprint
+            and payload.get("status") in {"completed", "terminal_error"}
+        ):
             mode_state["cache_hits"] = int(mode_state.get("cache_hits", 0)) + 1
-            return {**dict(payload), "from_checkpoint_cache": True}
+            cached = dict(payload)
+            cached["cached_api_call_attempts"] = cached.get("api_call_attempts", 0)
+            cached["api_call_attempts"] = 0
+            cached["from_checkpoint_cache"] = True
+            return cached
     if fingerprint in in_flight:
         mode_state["inflight_dedupe_hits"] = int(mode_state.get("inflight_dedupe_hits", 0)) + 1
         return await in_flight[fingerprint]
@@ -994,9 +1107,11 @@ def _artifact_summary(args: argparse.Namespace) -> dict[str, str]:
         "name_candidates_fallback_csv": _rel(_resolve_repo_path(args.name_candidates_fallback_csv)),
         "record_verdicts_primary_csv": _rel(_resolve_repo_path(args.record_verdicts_primary_csv)),
         "record_verdicts_fallback_csv": _rel(_resolve_repo_path(args.record_verdicts_fallback_csv)),
+        "rejected_general_meta_csv": _rel(_resolve_repo_path(args.rejected_general_meta_csv)),
         "disagreements_csv": _rel(_resolve_repo_path(args.disagreements_csv)),
         "timeout_and_error_cases_csv": _rel(_resolve_repo_path(args.timeout_and_error_cases_csv)),
         "popularity_prefix_extractions_csv": _rel(_resolve_repo_path(args.popularity_prefix_extractions_csv)),
+        "false_positive_guard_review_csv": _rel(_resolve_repo_path(args.false_positive_guard_review_csv)),
         "ambiguous_needs_review_csv": _rel(_resolve_repo_path(args.ambiguous_needs_review_csv)),
         "no_name_records_csv": _rel(_resolve_repo_path(args.no_name_records_csv)),
         "extraction_errors_csv": _rel(_resolve_repo_path(args.extraction_errors_csv)),
@@ -1030,6 +1145,41 @@ def _family_rows(mode_results: Sequence[Mapping[str, Any]], family: str, key: st
 
 def _comparison_rows(mode_results: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return [dict(result.get("summary") or {}) for result in mode_results]
+
+
+def _redacted_repeated_units(input_summary: Mapping[str, Any]) -> list[dict[str, Any]]:
+    rows = input_summary.get("top_repeated_units")
+    if not isinstance(rows, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        result.append(
+            {
+                "unit_hash": stable_payload_hash(
+                    {
+                        "normalized_value": row.get("normalized_value"),
+                        "source_field": row.get("source_field"),
+                        "provider": row.get("provider"),
+                    }
+                )[:16],
+                "source_field": row.get("source_field"),
+                "provider": row.get("provider"),
+                "source_count": row.get("source_count"),
+                "llm_calls_avoided": row.get("llm_calls_avoided"),
+            }
+        )
+    return result
+
+
+def _public_input_summary(input_summary: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(input_summary)
+    if "top_repeated_units" in result:
+        result.pop("top_repeated_units", None)
+        result["top_repeated_units_public_redacted"] = True
+        result["top_repeated_units_redacted"] = _redacted_repeated_units(input_summary)
+    return result
 
 
 def _candidate_set(rows: Sequence[Mapping[str, Any]]) -> dict[str, set[tuple[str, str, str]]]:
@@ -1066,6 +1216,27 @@ def _disagreements(mode_results: Sequence[Mapping[str, Any]]) -> list[dict[str, 
     return rows
 
 
+def _false_positive_guard_rows(candidates: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in candidates:
+        evidence = row.get("evidence_payload")
+        if isinstance(evidence, str):
+            try:
+                evidence = json.loads(evidence)
+            except json.JSONDecodeError:
+                evidence = {}
+        guard = evidence.get("candidate_status_guard") if isinstance(evidence, Mapping) else None
+        if row.get("candidate_role") == "unknown_name_like" or guard:
+            rows.append(
+                {
+                    **dict(row),
+                    "false_positive_guard_applied": bool(guard),
+                    "candidate_status_guard": guard,
+                }
+            )
+    return rows
+
+
 def _write_final_artifacts(args: argparse.Namespace, summary: Mapping[str, Any], mode_results: Sequence[Mapping[str, Any]]) -> None:
     comparison_rows = _comparison_rows(mode_results)
     _write_text(args.provider_comparison_csv, _csv(comparison_rows))
@@ -1084,7 +1255,17 @@ def _write_final_artifacts(args: argparse.Namespace, summary: Mapping[str, Any],
     _write_text(args.timeout_and_error_cases_csv, _csv(errors))
     candidates_all = _family_rows(mode_results, "primary", "candidates") + _family_rows(mode_results, "fallback", "candidates")
     verdicts_all = _family_rows(mode_results, "primary", "record_verdicts") + _family_rows(mode_results, "fallback", "record_verdicts")
+    rejected_general_meta_rows = [
+        {"artifact_row_type": "rejected_tag", **row}
+        for row in (_family_rows(mode_results, "primary", "rejected_tags") + _family_rows(mode_results, "fallback", "rejected_tags"))
+    ]
+    rejected_general_meta_rows.extend(
+        {"artifact_row_type": "meta_tag", **row}
+        for row in (_family_rows(mode_results, "primary", "meta_tags") + _family_rows(mode_results, "fallback", "meta_tags"))
+    )
+    _write_text(args.rejected_general_meta_csv, _csv(rejected_general_meta_rows))
     _write_text(args.popularity_prefix_extractions_csv, _csv(row for row in candidates_all if row.get("extraction_action") == "popularity_suffix_stripped"))
+    _write_text(args.false_positive_guard_review_csv, _csv(_false_positive_guard_rows(candidates_all)))
     _write_text(args.ambiguous_needs_review_csv, _csv(_family_rows(mode_results, "primary", "ambiguous_items") + _family_rows(mode_results, "fallback", "ambiguous_items")))
     _write_text(args.no_name_records_csv, _csv(row for row in verdicts_all if row.get("no_name_reason")))
     _write_text(args.extraction_errors_csv, _csv(row for row in verdicts_all if str(row.get("extraction_verdict", "")).startswith("extraction_error")))
@@ -1109,9 +1290,10 @@ def _manual_review_guide(summary: Mapping[str, Any]) -> str:
             "1. `provider-comparison-summary.csv` for speed/stability/provider choice.",
             "2. `record-verdicts-primary.csv` and `record-verdicts-fallback.csv` for compact no-silent-failure verdicts.",
             "3. `name-candidates-primary.csv` and `name-candidates-fallback.csv` for recall, multilingual preservation, and duplicate pressure.",
-            "4. `disagreements.csv` for provider quality differences.",
-            "5. `timeout-and-error-cases.csv` and `validation-failures.jsonl` for stability blockers.",
-            "6. `run-checkpoint-status.json` and `run-progress-events.jsonl` for resume/progress audit.",
+            "4. `rejected-general-meta.csv` and `false-positive-guard-review.csv` for descriptive/meta rejection and unknown_name_like guard review.",
+            "5. `disagreements.csv` for provider quality differences.",
+            "6. `timeout-and-error-cases.csv` and `validation-failures.jsonl` for stability blockers.",
+            "7. `run-checkpoint-status.json` and `run-progress-events.jsonl` for resume/progress audit.",
             "",
             "Do not treat any row as Entity truth. F7a candidates are source-layer evidence only.",
             "",
@@ -1140,6 +1322,8 @@ def _markdown_report(summary: Mapping[str, Any]) -> str:
         f"- Extractor version: `{summary['extractor_version']}`",
         f"- Prompt version: `{summary['prompt_version']}`",
         f"- Schema version: `{summary['structured_output_schema_version']}`",
+        f"- Recommended default provider: `{summary['readiness'].get('recommended_default_provider')}`",
+        f"- Fallback provider mode: `{summary['readiness'].get('fallback_provider_mode')}`",
         "",
         "## Eligibility Gate",
         "",
@@ -1166,6 +1350,8 @@ def _markdown_report(summary: Mapping[str, Any]) -> str:
             "",
             f"- Source provider calls: `{summary['safety']['source_provider_calls']}`",
             f"- LLM provider calls: `{summary['safety']['llm_provider_calls']}`",
+            f"- LLM preflight calls: `{summary['safety'].get('llm_preflight_calls')}`",
+            f"- LLM extraction calls attempted: `{summary['safety'].get('llm_extraction_calls_attempted')}`",
             f"- LLM provider modes: `{json.dumps(summary['safety']['llm_provider_modes'], ensure_ascii=False)}`",
             f"- Forbidden truth table write count: `{summary['db_write_summary'].get('forbidden_truth_table_write_count')}`",
             "",
@@ -1195,31 +1381,51 @@ def _public_summary(
     db_identity: Mapping[str, Any],
     input_summary: Mapping[str, Any],
     mode_results: Sequence[Mapping[str, Any]],
+    provider_preflight: Mapping[str, Any],
     db_write_summary: Mapping[str, Any],
     artifact_summary: Mapping[str, Any],
     timing: Mapping[str, Any],
 ) -> dict[str, Any]:
     provider_comparison = _comparison_rows(mode_results)
+    llm_preflight_calls = int(provider_preflight.get("llm_preflight_calls") or 0)
     llm_calls_attempted = sum(int(row.get("llm_calls_attempted") or 0) for row in provider_comparison)
     terminal_errors = sum(int(row.get("terminal_error_count") or 0) for row in provider_comparison)
+    retryable_errors = sum(int(row.get("retryable_error_count") or 0) for row in provider_comparison)
     invalid_or_schema = sum(int(row.get("invalid_json_count") or 0) + int(row.get("schema_failure_count") or 0) for row in provider_comparison)
+    provider_mode_has_blockers = {
+        str(row.get("provider_mode")): bool(
+            int(row.get("terminal_error_count") or 0)
+            or int(row.get("retryable_error_count") or 0)
+            or int(row.get("invalid_json_count") or 0)
+            or int(row.get("schema_failure_count") or 0)
+        )
+        for row in provider_comparison
+    }
     viable_modes = [
         row.get("provider_mode")
         for row in provider_comparison
-        if row.get("group_count", 0) and int(row.get("terminal_error_count") or 0) == 0
+        if row.get("group_count", 0) and not provider_mode_has_blockers.get(str(row.get("provider_mode")))
     ]
     primary_viable_modes = [mode for mode in viable_modes if str(mode).startswith("primary")]
     fallback_viable_modes = [mode for mode in viable_modes if str(mode).startswith("fallback")]
+    primary_rows = [row for row in provider_comparison if str(row.get("provider_mode")).startswith("primary")]
+    fallback_rows = [row for row in provider_comparison if str(row.get("provider_mode")).startswith("fallback")]
+    primary_blocking_error_total = sum(
+        int(row.get("terminal_error_count") or 0)
+        + int(row.get("retryable_error_count") or 0)
+        + int(row.get("invalid_json_count") or 0)
+        + int(row.get("schema_failure_count") or 0)
+        for row in primary_rows
+    )
     f7a_mergeable = bool(
         primary_viable_modes
-        and terminal_errors == 0
-        and invalid_or_schema == 0
+        and primary_blocking_error_total == 0
         and int(db_write_summary.get("forbidden_truth_table_write_count") or 0) == 0
     )
     reason = (
-        "all_compared_provider_modes_completed_without_unit_or_schema_errors"
+        "primary_default_provider_completed_without_retryable_terminal_or_schema_errors"
         if f7a_mergeable
-        else "primary_viable_but_fallback_or_schema_failures_still_need_hardening_or_review"
+        else "primary_default_provider_still_has_blocking_failures_or_no_primary_run"
     )
     return {
         "phase": PHASE,
@@ -1231,7 +1437,7 @@ def _public_summary(
         "prompt_version": PROMPT_VERSION,
         "structured_output_schema_version": SCHEMA_VERSION,
         "db_identity": dict(db_identity),
-        "input_summary": dict(input_summary),
+        "input_summary": _public_input_summary(input_summary),
         "provider_modes": [result.get("provider_mode") for result in mode_results],
         "provider_comparison": provider_comparison,
         "dedupe_metrics": {
@@ -1240,9 +1446,12 @@ def _public_summary(
             "deterministic_resolved_units": input_summary.get("deterministic_resolved_units"),
             "llm_required_units": input_summary.get("llm_required_units"),
             "llm_calls_attempted": llm_calls_attempted,
+            "llm_preflight_calls": llm_preflight_calls,
+            "llm_provider_call_attempts_total": llm_calls_attempted + llm_preflight_calls,
             "llm_calls_avoided_by_dedupe": input_summary.get("llm_calls_avoided_by_dedupe"),
             "average_source_records_per_extraction_unit": input_summary.get("average_source_records_per_extraction_unit"),
-            "top_repeated_units": input_summary.get("top_repeated_units", []),
+            "top_repeated_units_public_redacted": True,
+            "top_repeated_units_redacted": _redacted_repeated_units(input_summary),
         },
         "timing": dict(timing),
         "db_write_summary": dict(db_write_summary),
@@ -1252,16 +1461,23 @@ def _public_summary(
             "f7b_should_start": False,
             "reason": reason,
             "terminal_error_total": terminal_errors,
+            "retryable_error_total": retryable_errors,
             "invalid_or_schema_failure_total": invalid_or_schema,
+            "primary_blocking_error_total": primary_blocking_error_total,
             "viable_provider_modes": viable_modes,
             "primary_viable_provider_modes": primary_viable_modes,
             "fallback_viable_provider_modes": fallback_viable_modes,
-            "recommended_default_provider": "primary_openai" if primary_viable_modes else None,
+            "provider_mode_blockers": provider_mode_has_blockers,
+            "recommended_default_provider": "primary_openai" if primary_rows else None,
+            "fallback_provider_mode": "diagnostic_only" if fallback_rows else "not_run",
+            "fallback_blocks_readiness": False,
         },
         "safety": {
             "source_layer_only": True,
             "source_provider_calls": False,
-            "llm_provider_calls": llm_calls_attempted > 0,
+            "llm_provider_calls": (llm_calls_attempted + llm_preflight_calls) > 0,
+            "llm_preflight_calls": llm_preflight_calls,
+            "llm_extraction_calls_attempted": llm_calls_attempted,
             "llm_provider_modes": [row.get("provider_mode") for row in provider_comparison],
             "source_concept_linking": False,
             "entity_write": False,
@@ -1309,7 +1525,14 @@ async def _run_async(args: argparse.Namespace) -> dict[str, Any]:
         manifest = _load_manifest(args) if args.reuse_checkpoint else None
         if manifest:
             groups, manifest_payload = manifest
-            input_summary = dict(manifest_payload.get("input_summary") or {})
+            groups, revalidation_summary = _revalidate_cached_manifest_groups(db, groups, args)
+            if not groups:
+                raise F7aRunnerError("no_eligible_candidate_input_groups_after_manifest_revalidation")
+            input_summary = {
+                **dict(manifest_payload.get("input_summary") or {}),
+                **revalidation_summary,
+                "cached_manifest_hash_before_revalidation": manifest_payload.get("manifest_hash"),
+            }
         else:
             groups, input_summary = collect_source_candidate_input_groups(
                 db,
@@ -1420,6 +1643,7 @@ async def _run_async(args: argparse.Namespace) -> dict[str, Any]:
             db_identity=db_identity,
             input_summary=input_summary,
             mode_results=mode_results,
+            provider_preflight=provider_preflight,
             db_write_summary=db_write_summary,
             artifact_summary=artifacts,
             timing=timing,
@@ -1478,9 +1702,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name-candidates-fallback-csv", default=str(PRIVATE_NAME_CANDIDATES_FALLBACK_CSV))
     parser.add_argument("--record-verdicts-primary-csv", default=str(PRIVATE_RECORD_VERDICTS_PRIMARY_CSV))
     parser.add_argument("--record-verdicts-fallback-csv", default=str(PRIVATE_RECORD_VERDICTS_FALLBACK_CSV))
+    parser.add_argument("--rejected-general-meta-csv", default=str(PRIVATE_REJECTED_GENERAL_META_CSV))
     parser.add_argument("--disagreements-csv", default=str(PRIVATE_DISAGREEMENTS_CSV))
     parser.add_argument("--timeout-and-error-cases-csv", default=str(PRIVATE_TIMEOUT_ERROR_CSV))
     parser.add_argument("--popularity-prefix-extractions-csv", default=str(PRIVATE_POPULARITY_PREFIX_CSV))
+    parser.add_argument("--false-positive-guard-review-csv", default=str(PRIVATE_FALSE_POSITIVE_GUARD_CSV))
     parser.add_argument("--ambiguous-needs-review-csv", default=str(PRIVATE_AMBIGUOUS_CSV))
     parser.add_argument("--no-name-records-csv", default=str(PRIVATE_NO_NAME_RECORDS_CSV))
     parser.add_argument("--extraction-errors-csv", default=str(PRIVATE_EXTRACTION_ERRORS_CSV))

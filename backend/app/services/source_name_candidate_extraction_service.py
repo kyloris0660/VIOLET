@@ -208,6 +208,15 @@ GENERAL_DESCRIPTIVE_KEYS = frozenset(
         canonical_source_key("\u6c34\u7740"),
         canonical_source_key("\u80f8\u90e8"),
         canonical_source_key("\u5de8\u4e73"),
+        canonical_source_key("\u306f\u3044\u3066\u306a\u3044"),
+        canonical_source_key("\u304a\u5c3b"),
+        canonical_source_key("\u30ac\u30fc\u30bf\u30fc\u30d9\u30eb\u30c8"),
+        canonical_source_key("\u30e1\u30a4\u30c9"),
+        canonical_source_key("\u30a6\u30a3\u30f3\u30af"),
+        canonical_source_key("\u5c11\u5973"),
+        canonical_source_key("\u3071\u3093\u3064"),
+        canonical_source_key("\u30b9\u30af\u6c34"),
+        canonical_source_key("\u88f8\u8db3"),
     }
 )
 ORIGINAL_KEYS = frozenset(
@@ -548,6 +557,19 @@ def group_input_payload_hash(group: SourceCandidateInputGroup) -> str:
 
 
 def llm_cache_fingerprint(group: SourceCandidateInputGroup, provider_summary: Mapping[str, Any]) -> str:
+    config_fingerprint = stable_payload_hash(
+        {
+            "llm_provider_label": provider_summary.get("llm_provider_label"),
+            "model_label": provider_summary.get("model_label"),
+            "provider_type": provider_summary.get("provider_type"),
+            "primary_provider_type": provider_summary.get("primary_provider_type"),
+            "uses_primary_model": provider_summary.get("uses_primary_model"),
+            "uses_fallback_provider": provider_summary.get("uses_fallback_provider"),
+            "fallback_provider_type": provider_summary.get("fallback_provider_type"),
+            "llm_access_configured": provider_summary.get("llm_access_configured"),
+            "fallback_access_configured": provider_summary.get("fallback_access_configured"),
+        }
+    )
     payload = {
         "provider_label": provider_summary.get("llm_provider_label") or provider_summary.get("provider_mode"),
         "model_label": provider_summary.get("model_label"),
@@ -555,6 +577,7 @@ def llm_cache_fingerprint(group: SourceCandidateInputGroup, provider_summary: Ma
         "schema_version": SCHEMA_VERSION,
         "input_payload_hash": group_input_payload_hash(group),
         "extractor_version": EXTRACTOR_VERSION,
+        "relevant_config_fingerprint": config_fingerprint,
     }
     return stable_payload_hash(payload)
 
@@ -1416,6 +1439,8 @@ def source_name_candidate_system_prompt() -> str:
         "Optional compact fields: work_context, parenthetical_base, parenthetical_context.\n"
         "Allowed role values: character, person, work_title, artist_creator, source_title, alias_like, unknown_name_like.\n"
         "Allowed status values: active_candidate, needs_review.\n"
+        "unknown_name_like must default to needs_review unless there is strong structured source evidence. "
+        "Obvious body, clothing, pose, age/appearance, R-18/meta, and general descriptive tags must be rejected or needs_review, never active unknown_name_like.\n"
         "Allowed extraction_action values: direct_name, parenthetical_split, popularity_suffix_stripped, "
         "provider_structured_field, normal_tag_candidate, ai_model_character_tag, context_inferred.\n"
         f"Allowed source_field values: {sorted(ALLOWED_ORIGINS)}.\n"
@@ -1433,7 +1458,9 @@ def source_name_candidate_system_prompt() -> str:
         "Do not make the full popularity tag a concept/name alias. If a prefix exists, emit the prefix as a candidate "
         "with extraction_action=popularity_suffix_stripped and keep the full raw tag only as meta/evidence.\n"
         "Parenthetical tags such as name(work) should emit the base name candidate, work/context candidate, and preserve combined alias evidence.\n"
-        "R-18, general visual descriptors, poses, body parts, clothing, popularity markers, URLs, and local paths are not character/person names.\n"
+        "R-18, general visual descriptors, poses, body parts, clothing, popularity markers, URLs, and local paths are not character/person names. "
+        "Do not over-promote Pixiv/source titles to source_title/work_title unless they clearly identify a work/source title. "
+        "Source assertions are evidence but not truth; descriptive assertions can still be rejected or needs_review.\n"
         "If uncertain, use ambiguous_needs_review rather than silently rejecting.\n"
         "Do not output verbose reasons, prose explanations, chain-of-thought, or per-tag rationale text."
     )
@@ -1526,7 +1553,15 @@ def _validate_candidate(
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extraction_action")
     if origin not in ALLOWED_ORIGINS:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extracted_from")
-    confidence = _coerce_confidence(item.get("confidence"))
+    candidate_status_guard: dict[str, Any] = {}
+    try:
+        confidence = _coerce_confidence(item.get("confidence"))
+    except SourceNameCandidateExtractionError as exc:
+        if "candidate_confidence_invalid" not in str(exc):
+            raise
+        confidence = 0.0
+        status = "needs_review"
+        candidate_status_guard["candidate_confidence_invalid_downgraded"] = True
     popularity = popularity_suffix_prefix(raw)
     rejection_reason = None
     if popularity and action != "popularity_suffix_stripped":
@@ -1539,6 +1574,17 @@ def _validate_candidate(
             canonical = canonical_source_key(normalized)
     if action == "context_inferred" and confidence > 0.55:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:inferred_confidence_too_high")
+    guard_rejection = None
+    if not (popularity and action == "popularity_suffix_stripped"):
+        guard_rejection = is_meta_or_descriptive_rejection(normalized) or is_meta_or_descriptive_rejection(raw)
+    if role == "unknown_name_like" and status == "active_candidate":
+        status = "needs_review"
+        candidate_status_guard["unknown_name_like_active_downgraded"] = True
+    if guard_rejection and status == "active_candidate":
+        status = "needs_review"
+        rejection_reason = guard_rejection[0]
+        candidate_status_guard["descriptive_or_meta_active_downgraded"] = True
+        candidate_status_guard["guard_rejection_reason"] = guard_rejection[0]
     language = normalize_source_text(item.get("language_hint")) or None
     script = normalize_source_text(item.get("script_hint")) or None
     if not language or not script:
@@ -1588,6 +1634,7 @@ def _validate_candidate(
             "source_layer_only": True,
             "should_not_create_entity_truth": True,
             "full_popularity_tag_is_alias": False if popularity else None,
+            "candidate_status_guard": candidate_status_guard or None,
         },
         candidate_key=key,
     )
@@ -1760,10 +1807,13 @@ def validate_extraction_record(row: Mapping[str, Any], group: SourceCandidateInp
 def _dedupe_candidates(items: Sequence[CandidateDraft]) -> tuple[CandidateDraft, ...]:
     by_key: dict[str, CandidateDraft] = {}
     for item in items:
+        canonical_value = canonical_source_key(item.canonical_key or item.normalized_value or item.raw_value)
+        raw_variant = canonical_source_key(item.raw_value or item.display_name or item.normalized_value)
         dedupe_key = ":".join(
             [
                 canonical_source_key(item.group_key),
-                canonical_source_key(item.normalized_value or item.raw_value),
+                canonical_value,
+                raw_variant,
                 canonical_source_key(item.candidate_role),
                 canonical_source_key(item.extraction_action),
             ]
@@ -1771,7 +1821,10 @@ def _dedupe_candidates(items: Sequence[CandidateDraft]) -> tuple[CandidateDraft,
         existing = by_key.get(dedupe_key)
         if existing is None:
             by_key[dedupe_key] = item
-        elif (existing.confidence or 0.0) < (item.confidence or 0.0):
+            continue
+        existing_score = (existing.confidence or 0.0) + (0.05 if existing.candidate_status == "active_candidate" else 0.0)
+        item_score = (item.confidence or 0.0) + (0.05 if item.candidate_status == "active_candidate" else 0.0)
+        if existing_score < item_score:
             by_key[dedupe_key] = item
     return tuple(by_key.values())
 
@@ -2012,7 +2065,7 @@ async def extract_groups_with_llm(
             await classify_with_repair(chunk[:midpoint], strategy="split_after_invalid_output")
             await classify_with_repair(chunk[midpoint:], strategy="split_after_invalid_output")
             return
-        retryable = isinstance(last_error, LLMProviderError) and _is_retryable_llm_error(last_error)
+        retryable = _is_retryable_llm_error(last_error)
         verdict, group_candidates, group_rejected, group_meta, group_ambiguous = _record_from_failure(
             chunk[0],
             error=f"{type(last_error).__name__}:{str(last_error)[:500]}",
@@ -2258,6 +2311,12 @@ def fallback_openai_provider_from_settings() -> tuple[BaseLLMProvider | None, di
     return (provider if provider.is_available() else None), summary
 
 
+def _source_record_scan_limit(*, max_records: int, max_unique_strings: int) -> int:
+    # Bounded over-read lets eligibility/cap filters work without materializing the whole table.
+    soft_limit = max(max_records * 20, max_records + 100, max_unique_strings)
+    return max(max_records, min(soft_limit, 5000))
+
+
 def collect_source_candidate_input_groups(
     db: Session,
     *,
@@ -2270,6 +2329,10 @@ def collect_source_candidate_input_groups(
     if max_unique_strings <= 0:
         raise SourceNameCandidateExtractionError("max_unique_strings_invalid")
 
+    source_record_scan_limit = _source_record_scan_limit(
+        max_records=max_records,
+        max_unique_strings=max_unique_strings,
+    )
     record_rows = (
         db.query(SourceMetadataRecord, Media)
         .outerjoin(Media, SourceMetadataRecord.media_id == Media.id)
@@ -2279,14 +2342,17 @@ def collect_source_candidate_input_groups(
             SourceMetadataRecord.provider.asc(),
             SourceMetadataRecord.id.asc(),
         )
-        .all()
+        .limit(source_record_scan_limit)
+        .yield_per(100)
     )
     groups: list[SourceCandidateInputGroup] = []
     unique_strings: set[str] = set()
     eligibility_counts: Counter[str] = Counter()
     excluded_counts: Counter[str] = Counter()
+    source_metadata_records_scanned = 0
 
     for record, media in record_rows:
+        source_metadata_records_scanned += 1
         eligible, eligibility_reason, eligibility_payload = media_llm_eligibility(media)
         eligibility_counts[eligibility_reason] += 1
         if not eligible:
@@ -2397,6 +2463,8 @@ def collect_source_candidate_input_groups(
 
     return groups, {
         "source_metadata_records_available": db.query(func.count(SourceMetadataRecord.id)).scalar() or 0,
+        "source_metadata_record_scan_limit": source_record_scan_limit,
+        "source_metadata_records_scanned": source_metadata_records_scanned,
         "groups_collected": len(groups),
         "eligible_groups_collected": len(groups),
         "eligibility_counts": dict(eligibility_counts),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import asyncio
 import argparse
+import json
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -240,6 +241,29 @@ def test_invalid_llm_output_downgrades_with_explicit_verdict():
     assert bundle.candidates
 
 
+def test_timeout_failure_is_retryable_not_terminal():
+    class TimeoutProvider(FakeProvider):
+        async def complete_json(self, messages, *, temperature=0.3, max_tokens=4096):
+            self.complete_json_calls += 1
+            raise asyncio.TimeoutError("timed out")
+
+    group = _pixiv_group()
+    provider = TimeoutProvider()
+
+    bundle = run_extraction_sync(
+        provider,
+        [group],
+        run_id="test-run-timeout",
+        run_label="unit",
+        chunk_size=1,
+        retries=0,
+        max_tokens=1000,
+    )
+
+    assert bundle.record_verdicts[0].extraction_verdict == "extraction_error_retryable"
+    assert bundle.summary["llm"]["failed_records_downgraded"] == 1
+
+
 def test_persist_extraction_bundle_writes_only_f7a_tables():
     engine, db = _db()
     try:
@@ -347,6 +371,38 @@ def test_eligibility_gate_allows_anime_and_approved_illustration_only():
         engine.dispose()
 
 
+def test_collect_groups_applies_source_record_scan_limit_before_materialization():
+    engine, db = _db()
+    try:
+        for record_id in range(1, 151):
+            db.add(
+                SourceMetadataRecord(
+                    id=record_id,
+                    provider="pixiv",
+                    provider_record_key=f"r{record_id}",
+                    metadata_kind="gallery_dl_real_pixiv_metadata",
+                    data_type_label="real_live_or_local_provider_data",
+                    status="observed",
+                )
+            )
+        db.commit()
+
+        groups, summary = collect_source_candidate_input_groups(
+            db,
+            max_records=1,
+            max_unique_strings=2,
+            include_media_tag_only_groups=False,
+        )
+
+        assert groups == []
+        assert summary["source_metadata_records_available"] == 150
+        assert summary["source_metadata_record_scan_limit"] < summary["source_metadata_records_available"]
+        assert summary["source_metadata_records_scanned"] == summary["source_metadata_record_scan_limit"]
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_media_tag_only_groups_use_same_eligibility_gate():
     engine, db = _db()
     try:
@@ -368,8 +424,8 @@ def test_media_tag_only_groups_use_same_eligibility_gate():
         engine.dispose()
 
 
-def test_non_numeric_confidence_becomes_schema_failure():
-    group = _pixiv_group()
+def test_non_numeric_confidence_downgrades_candidate_without_crashing():
+    group = _simple_pixiv_tag_group(1, "Kamisato Ayaka")
     row = {
         "group_key": group.group_key,
         "provider": "pixiv",
@@ -389,12 +445,11 @@ def test_non_numeric_confidence_becomes_schema_failure():
         "rejected_summary": {},
     }
 
-    try:
-        validate_extraction_record(row, group)
-    except SourceNameCandidateExtractionError as exc:
-        assert "candidate_confidence_invalid" in str(exc)
-    else:
-        raise AssertionError("invalid confidence must fail validation")
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert candidates[0].candidate_status == "needs_review"
+    assert candidates[0].confidence == 0.0
+    assert candidates[0].evidence_payload["candidate_status_guard"]["candidate_confidence_invalid_downgraded"] is True
 
 
 def test_malformed_candidate_array_fails_when_verdict_claims_candidates():
@@ -415,17 +470,150 @@ def test_malformed_candidate_array_fails_when_verdict_claims_candidates():
         raise AssertionError("malformed candidate array must fail validation")
 
 
+def test_descriptive_unknown_name_like_candidates_are_not_active():
+    false_positive_terms = (
+        "\u306f\u3044\u3066\u306a\u3044",
+        "\u304a\u5c3b",
+        "\u30ac\u30fc\u30bf\u30fc\u30d9\u30eb\u30c8",
+        "\u30e1\u30a4\u30c9",
+        "\u30a6\u30a3\u30f3\u30af",
+        "\u5c11\u5973",
+        "\u3071\u3093\u3064",
+        "\u30b9\u30af\u6c34",
+        "\u88f8\u8db3",
+    )
+    for index, term in enumerate(false_positive_terms, start=1):
+        group = _simple_pixiv_tag_group(index, term)
+        row = {
+            "group_key": group.group_key,
+            "provider": "pixiv",
+            "verdict": "name_candidate_found",
+            "candidates": [
+                {
+                    "raw_value": term,
+                    "display_name": term,
+                    "normalized_value": term,
+                    "role": "unknown_name_like",
+                    "status": "active_candidate",
+                    "source_field": "pixiv_tag",
+                    "extraction_action": "direct_name",
+                    "confidence": 0.8,
+                }
+            ],
+            "rejected_summary": {},
+        }
+
+        _verdict, candidates, rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+        assert any(item.raw_value == term for item in rejected)
+        assert all(
+            not (
+                candidate.raw_value == term
+                and candidate.candidate_role == "unknown_name_like"
+                and candidate.candidate_status == "active_candidate"
+            )
+            for candidate in candidates
+        )
+
+
+def test_true_name_candidates_remain_active_after_false_positive_guard():
+    group = _simple_pixiv_tag_group(1, "\u30d0\u30fc\u30d0\u30e9")
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "name_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "\u30d0\u30fc\u30d0\u30e9",
+                "display_name": "\u30d0\u30fc\u30d0\u30e9",
+                "normalized_value": "\u30d0\u30fc\u30d0\u30e9",
+                "role": "character",
+                "status": "active_candidate",
+                "source_field": "pixiv_tag",
+                "extraction_action": "direct_name",
+                "confidence": 0.9,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+
+    assert any(
+        candidate.raw_value == "\u30d0\u30fc\u30d0\u30e9"
+        and candidate.candidate_role == "character"
+        and candidate.candidate_status == "active_candidate"
+        for candidate in candidates
+    )
+
+
 def test_cache_fingerprint_changes_by_provider_and_prompt_payload():
     group = _pixiv_group()
-    primary = {"llm_provider_label": "primary_openai", "model_label": "primary_model_configured"}
+    primary = {
+        "provider_mode": "primary_serial",
+        "llm_provider_label": "primary_openai",
+        "model_label": "primary_model_configured",
+        "primary_provider_type": "openai_compatible",
+        "llm_access_configured": True,
+    }
+    primary_config_changed = {
+        "provider_mode": "primary_concurrent",
+        "llm_provider_label": "primary_openai",
+        "model_label": "primary_model_configured",
+        "primary_provider_type": "other_compatible",
+        "llm_access_configured": True,
+    }
+    primary_same_config_different_scheduler = {
+        "provider_mode": "primary_concurrent",
+        "llm_provider_label": "primary_openai",
+        "model_label": "primary_model_configured",
+        "primary_provider_type": "openai_compatible",
+        "llm_access_configured": True,
+    }
     fallback = {"llm_provider_label": "fallback", "model_label": "fallback_model_configured"}
     first = llm_cache_fingerprint(group, primary)
     second = llm_cache_fingerprint(group, fallback)
     changed_group = SourceCandidateInputGroup(**{**group.__dict__, "title": "Different"})
 
     assert first != second
+    assert first != llm_cache_fingerprint(group, primary_config_changed)
+    assert first == llm_cache_fingerprint(group, primary_same_config_different_scheduler)
     assert first != llm_cache_fingerprint(changed_group, primary)
     assert group_input_payload_hash(group)
+
+
+def test_deterministic_and_llm_candidates_dedupe_by_canonical_role_action():
+    group = _pixiv_group()
+    row = {
+        "group_key": group.group_key,
+        "provider": "pixiv",
+        "verdict": "name_candidate_found",
+        "candidates": [
+            {
+                "raw_value": "Kamisato Ayaka",
+                "display_name": "Kamisato Ayaka",
+                "normalized_value": "kamisato ayaka",
+                "canonical_key": "kamisato_ayaka",
+                "role": "character",
+                "status": "active_candidate",
+                "source_field": "source_assertion",
+                "extraction_action": "direct_name",
+                "confidence": 0.8,
+            }
+        ],
+        "rejected_summary": {},
+    }
+
+    _verdict, candidates, _rejected, _meta, _ambiguous = validate_extraction_record(row, group)
+    matching = [
+        candidate
+        for candidate in candidates
+        if candidate.canonical_key == "kamisato_ayaka"
+        and candidate.candidate_role == "character"
+        and candidate.extraction_action == "direct_name"
+    ]
+
+    assert len(matching) == 1
 
 
 def test_run_scoped_candidates_do_not_move_between_runs():
@@ -710,6 +898,231 @@ def test_inflight_duplicate_guard_prevents_concurrent_duplicate_llm_calls(tmp_pa
     assert provider.complete_json_calls == 1
     assert mode_state["inflight_dedupe_hits"] == 1
     assert first["cache_fingerprint"] == second["cache_fingerprint"]
+
+
+def test_same_fingerprint_reuses_cache_across_serial_and_concurrent_modes(tmp_path):
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_cross_mode_cache_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    unit = build_extraction_units([_simple_pixiv_tag_group(1)])[0][0]
+    provider = FakeProvider(
+        {
+            "records": [
+                {
+                    "group_key": unit.unit_group.group_key,
+                    "provider": "pixiv",
+                    "verdict": "name_candidate_found",
+                    "candidates": [
+                        {
+                            "raw_value": "\u795e\u91cc\u7dbe\u83ef",
+                            "display_name": "\u795e\u91cc\u7dbe\u83ef",
+                            "canonical_key": "kamisato_ayaka",
+                            "role": "character",
+                            "status": "active_candidate",
+                            "source_field": "pixiv_tag",
+                            "extraction_action": "direct_name",
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "rejected_summary": {},
+                }
+            ]
+        }
+    )
+    args = argparse.Namespace(
+        reuse_checkpoint=True,
+        checkpoint_dir=str(tmp_path / "checkpoints"),
+        checkpoint_status_json=str(tmp_path / "run-checkpoint-status.json"),
+        llm_retries=0,
+        max_tokens=1000,
+        llm_timeout_seconds=5.0,
+        apply_db=False,
+    )
+    checkpoint = {"runs": {}}
+    provider_summary = {
+        "llm_provider_label": "primary_openai",
+        "model_label": "primary_model_configured",
+        "primary_provider_type": "openai_compatible",
+    }
+
+    first = asyncio.run(
+        runner._process_unit(
+            args=args,
+            provider=provider,
+            provider_summary=provider_summary,
+            provider_mode="primary_serial",
+            run_id="cross-mode-run",
+            run_label="unit",
+            unit=unit,
+            checkpoint=checkpoint,
+            mode_state={"units": {}},
+            in_flight={},
+        )
+    )
+    second_mode_state = {"units": {}}
+    second = asyncio.run(
+        runner._process_unit(
+            args=args,
+            provider=provider,
+            provider_summary={**provider_summary, "provider_mode": "primary_concurrent"},
+            provider_mode="primary_concurrent",
+            run_id="cross-mode-run",
+            run_label="unit",
+            unit=unit,
+            checkpoint=checkpoint,
+            mode_state=second_mode_state,
+            in_flight={},
+        )
+    )
+
+    assert first["status"] == "completed"
+    assert second["from_checkpoint_cache"] is True
+    assert second["api_call_attempts"] == 0
+    assert second["cached_api_call_attempts"] == first["api_call_attempts"]
+    assert provider.complete_json_calls == 1
+    assert second_mode_state["cache_hits"] == 1
+
+
+def test_cached_manifest_revalidation_rechecks_current_media_eligibility():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_manifest_revalidation_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    engine, db = _db()
+    try:
+        _media(db, 101, ContentClassEnum.non_anime)
+        _source_record(db, 1, 101, "r1")
+        db.commit()
+        args = argparse.Namespace(max_records=10, max_unique_strings=100)
+
+        groups, summary = runner._revalidate_cached_manifest_groups(db, [_simple_pixiv_tag_group(1)], args)
+
+        assert groups == []
+        assert summary["cached_manifest_revalidated"] is True
+        assert summary["cached_manifest_drop_counts"]["excluded_non_anime"] == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_public_summary_redacts_repeated_units_counts_preflight_and_uses_primary_readiness():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_public_summary_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    summary = runner._public_summary(
+        run_id="summary-run",
+        branch="codex/phase44p2r-f7a-llm-source-name-candidates",
+        head_sha="abc123",
+        db_identity={"database_url_redacted": True},
+        input_summary={
+            "raw_string_occurrences_total": 10,
+            "unique_extraction_units_total": 2,
+            "deterministic_resolved_units": 1,
+            "llm_required_units": 1,
+            "llm_calls_avoided_by_dedupe": 8,
+            "average_source_records_per_extraction_unit": 5,
+            "top_repeated_units": [
+                {
+                    "normalized_value": "\u795e\u91cc\u7dbe\u83ef",
+                    "source_field": "pixiv_tag",
+                    "provider": "pixiv",
+                    "source_count": 9,
+                    "llm_calls_avoided": 8,
+                }
+            ],
+        },
+        mode_results=[
+            {
+                "summary": {
+                    "provider_mode": "primary_concurrent",
+                    "group_count": 5,
+                    "llm_calls_attempted": 1,
+                    "terminal_error_count": 0,
+                    "retryable_error_count": 0,
+                    "invalid_json_count": 0,
+                    "schema_failure_count": 0,
+                }
+            },
+            {
+                "summary": {
+                    "provider_mode": "fallback_serial",
+                    "group_count": 5,
+                    "llm_calls_attempted": 1,
+                    "terminal_error_count": 2,
+                    "retryable_error_count": 1,
+                    "invalid_json_count": 1,
+                    "schema_failure_count": 1,
+                }
+            },
+        ],
+        provider_preflight={"llm_preflight_calls": 1},
+        db_write_summary={"forbidden_truth_table_write_count": 0},
+        artifact_summary={},
+        timing={},
+    )
+
+    public_json = json.dumps(summary, ensure_ascii=False)
+    assert "\u795e\u91cc\u7dbe\u83ef" not in public_json
+    assert "top_repeated_units" not in summary["dedupe_metrics"]
+    assert summary["dedupe_metrics"]["top_repeated_units_public_redacted"] is True
+    assert summary["safety"]["llm_provider_calls"] is True
+    assert summary["safety"]["llm_preflight_calls"] == 1
+    assert summary["readiness"]["f7a_mergeable"] is True
+    assert summary["readiness"]["fallback_provider_mode"] == "diagnostic_only"
+    assert summary["readiness"]["fallback_blocks_readiness"] is False
+    assert summary["readiness"]["recommended_default_provider"] == "primary_openai"
+
+
+def test_public_summary_blocks_readiness_on_primary_retryable_failures():
+    import importlib.util
+
+    script_path = ROOT / "scripts" / "run_phase44p2r_f7a_llm_source_name_candidates.py"
+    spec = importlib.util.spec_from_file_location("f7a_runner_public_summary_retryable_test", script_path)
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    summary = runner._public_summary(
+        run_id="summary-run",
+        branch="codex/phase44p2r-f7a-llm-source-name-candidates",
+        head_sha="abc123",
+        db_identity={"database_url_redacted": True},
+        input_summary={},
+        mode_results=[
+            {
+                "summary": {
+                    "provider_mode": "primary_concurrent",
+                    "group_count": 5,
+                    "llm_calls_attempted": 1,
+                    "terminal_error_count": 0,
+                    "retryable_error_count": 1,
+                    "invalid_json_count": 0,
+                    "schema_failure_count": 0,
+                }
+            }
+        ],
+        provider_preflight={"llm_preflight_calls": 1},
+        db_write_summary={"forbidden_truth_table_write_count": 0},
+        artifact_summary={},
+        timing={},
+    )
+
+    assert summary["readiness"]["f7a_mergeable"] is False
+    assert summary["readiness"]["primary_blocking_error_total"] == 1
 
 
 def test_provider_json_preflight_retries_format_error():
