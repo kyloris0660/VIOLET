@@ -8,42 +8,43 @@
 
 ## Run
 
-- Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260605T082610Z-0eebe915`
+- Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057`
 - Branch: `codex/phase44p2r-f7a-llm-source-name-candidates`
-- Head SHA: `ec0b71584d410ed36eef38381457b8c2e5c6dea0`
+- Head SHA: `a9fed8542ee62b187650904bbad1bf932bb90532`
+- Validated code head SHA: `a9fed8542ee62b187650904bbad1bf932bb90532`
 - Extractor version: `phase44p2r_f7a_source_name_candidate_extractor_v2`
-- Prompt version: `phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v2`
+- Prompt version: `phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3`
 - Schema version: `source_name_candidate_extraction_compact_v2`
 - Recommended default provider: `primary_openai`
 - Fallback provider mode: `not_run`
 
 ## Eligibility Gate
 
-- Eligible groups collected: `50`
-- Excluded counts: `{"excluded_unknown_or_unclassified": 3}`
-- Eligibility counts: `{"eligible_anime": 50, "excluded_unknown_or_unclassified": 3}`
+- Eligible groups collected: `100`
+- Excluded counts: `{"excluded_unknown_or_unclassified": 3, "media_missing_or_unlinked": 140}`
+- Eligibility counts: `{"eligible_anime": 100, "excluded_unknown_or_unclassified": 3, "media_missing_or_unlinked": 140}`
 
 ## Provider Comparison
 
 | provider_mode | records | units | raw_occ | llm_calls | avoided | wall_s | avg_s | p95_s | candidates | terminal | invalid_json | schema_fail | popularity | duplicate_rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| primary_concurrent | 50 | 581 | 915 | 337 | 334 | 401.686 | 2.017 | 4.409 | 663 | 0 | 0 | 0 | 45 | 0.0 |
+| primary_concurrent | 100 | 667 | 1079 | 375 | 412 | 421.296 | 1.824 | 4.314 | 732 | 0 | 0 | 0 | 49 | 0.0 |
 
 ## Safety
 
 - Source provider calls: `False`
 - LLM provider calls: `True`
 - LLM preflight calls: `1`
-- LLM extraction calls attempted: `337`
+- LLM extraction calls attempted: `375`
 - LLM provider modes: `["primary_concurrent"]`
 - Forbidden truth table write count: `0`
 
 ## Review Pack
 
-- Artifact directory: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628`
-- Provider comparison: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/provider-comparison-summary.csv`
-- Checkpoint status: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/run-checkpoint-status.json`
-- Progress events: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/run-progress-events.jsonl`
+- Artifact directory: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z`
+- Provider comparison: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-comparison-summary.csv`
+- Checkpoint status: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-checkpoint-status.json`
+- Progress events: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-progress-events.jsonl`
 
 ## Readiness
 

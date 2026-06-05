@@ -1,32 +1,39 @@
 {
   "artifacts": {
-    "ambiguous_needs_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/ambiguous-needs-review.csv",
-    "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628",
-    "checkpoint_status_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/run-checkpoint-status.json",
-    "details_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/details.json",
-    "disagreements_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/disagreements.csv",
-    "extraction_errors_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/extraction-errors.csv",
-    "false_positive_guard_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/false-positive-guard-review.csv",
-    "input_manifest_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/input-manifest.json",
-    "llm_inputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/llm-inputs.jsonl",
-    "llm_outputs_fallback_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/llm-outputs-fallback.jsonl",
-    "llm_outputs_primary_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/llm-outputs-primary.jsonl",
-    "manual_review_guide": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/manual-review-guide.md",
-    "name_candidates_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/name-candidates-fallback.csv",
-    "name_candidates_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/name-candidates-primary.csv",
-    "no_name_records_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/no-name-records.csv",
-    "popularity_prefix_extractions_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/popularity-prefix-extractions.csv",
-    "private_summary_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/summary.json",
-    "progress_events_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/run-progress-events.jsonl",
-    "provider_comparison_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/provider-comparison-summary.csv",
-    "provider_comparison_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/provider-comparison-summary.json",
+    "ambiguous_needs_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/ambiguous-needs-review.csv",
+    "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z",
+    "checkpoint_status_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-checkpoint-status.json",
+    "details_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/details.json",
+    "disagreements_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/disagreements.csv",
+    "extraction_errors_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/extraction-errors.csv",
+    "false_positive_guard_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/false-positive-guard-review.csv",
+    "input_manifest_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/input-manifest.json",
+    "llm_inputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/llm-inputs.jsonl",
+    "llm_outputs_fallback_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/llm-outputs-fallback.jsonl",
+    "llm_outputs_primary_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/llm-outputs-primary.jsonl",
+    "manual_review_guide": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/manual-review-guide.md",
+    "name_candidates_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/name-candidates-fallback.csv",
+    "name_candidates_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/name-candidates-primary.csv",
+    "no_name_records_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/no-name-records.csv",
+    "pixiv_title_candidate_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/pixiv-title-candidate-review.csv",
+    "popularity_prefix_extractions_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/popularity-prefix-extractions.csv",
+    "private_summary_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/summary.json",
+    "progress_events_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-progress-events.jsonl",
+    "prompt_sample_analysis_md": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/prompt-sample-analysis.md",
+    "prompt_version_and_rules_md": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/prompt-version-and-rules.md",
+    "provider_comparison_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-comparison-summary.csv",
+    "provider_comparison_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-comparison-summary.json",
+    "provider_summary_primary_only_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-summary-primary-only.json",
+    "public_redaction_check_txt": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/public-redaction-check.txt",
     "public_report_json": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates-summary.json",
     "public_report_md": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md",
-    "record_verdicts_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/record-verdicts-fallback.csv",
-    "record_verdicts_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/record-verdicts-primary.csv",
-    "rejected_general_meta_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/rejected-general-meta.csv",
-    "timeout_and_error_cases_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/timeout-and-error-cases.csv",
-    "validation_failures_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-primary-only-50groups-fresh-20260605T1628/validation-failures.jsonl"
+    "record_verdicts_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/record-verdicts-fallback.csv",
+    "record_verdicts_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/record-verdicts-primary.csv",
+    "rejected_general_meta_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/rejected-general-meta.csv",
+    "reviewer_fix_summary_md": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/reviewer-fix-summary.md",
+    "role_guard_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/role-guard-review.csv",
+    "timeout_and_error_cases_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/timeout-and-error-cases.csv",
+    "validation_failures_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/validation-failures.jsonl"
   },
   "branch": "codex/phase44p2r-f7a-llm-source-name-candidates",
   "db_identity": {
@@ -67,57 +74,71 @@
     "forbidden_truth_table_write_count": 0
   },
   "dedupe_metrics": {
-    "average_source_records_per_extraction_unit": 1.5749,
-    "deterministic_resolved_units": 245,
-    "llm_calls_attempted": 337,
-    "llm_calls_avoided_by_dedupe": 334,
+    "average_source_records_per_extraction_unit": 1.6177,
+    "deterministic_resolved_units": 292,
+    "llm_calls_attempted": 375,
+    "llm_calls_avoided_by_dedupe": 412,
     "llm_preflight_calls": 1,
-    "llm_provider_call_attempts_total": 338,
-    "llm_required_units": 336,
-    "raw_string_occurrences_total": 915,
+    "llm_provider_call_attempts_total": 376,
+    "llm_required_units": 375,
+    "raw_string_occurrences_total": 1079,
     "top_repeated_units_public_redacted": true,
     "top_repeated_units_redacted": [
       {
-        "llm_calls_avoided": 35,
+        "llm_calls_avoided": 37,
         "provider": null,
-        "source_count": 36,
+        "source_count": 38,
         "source_field": "pixiv_tag",
         "unit_hash": "d967068cb01cc5a1"
       },
       {
-        "llm_calls_avoided": 32,
+        "llm_calls_avoided": 37,
         "provider": null,
-        "source_count": 33,
+        "source_count": 38,
         "source_field": "pixiv_tag",
         "unit_hash": "d967068cb01cc5a1"
       },
       {
-        "llm_calls_avoided": 19,
+        "llm_calls_avoided": 22,
         "provider": null,
-        "source_count": 20,
-        "source_field": "pixiv_tag",
-        "unit_hash": "1e8021e92173582e"
-      },
-      {
-        "llm_calls_avoided": 19,
-        "provider": null,
-        "source_count": 20,
+        "source_count": 23,
         "source_field": "source_name_observation",
         "unit_hash": "da56d466ab3aa5ba"
       },
       {
-        "llm_calls_avoided": 14,
+        "llm_calls_avoided": 21,
         "provider": null,
-        "source_count": 15,
+        "source_count": 22,
+        "source_field": "pixiv_tag",
+        "unit_hash": "1e8021e92173582e"
+      },
+      {
+        "llm_calls_avoided": 16,
+        "provider": null,
+        "source_count": 17,
         "source_field": "pixiv_tag",
         "unit_hash": "560b1a0ff44c57b5"
       },
       {
-        "llm_calls_avoided": 10,
+        "llm_calls_avoided": 11,
         "provider": null,
-        "source_count": 11,
+        "source_count": 12,
         "source_field": "pixiv_tag",
         "unit_hash": "8a73046882aff65e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "pixiv_tag",
+        "unit_hash": "974687ecfcc79255"
       },
       {
         "llm_calls_avoided": 8,
@@ -127,23 +148,16 @@
         "unit_hash": "dd60818247edf0fa"
       },
       {
-        "llm_calls_avoided": 7,
+        "llm_calls_avoided": 8,
         "provider": null,
-        "source_count": 8,
+        "source_count": 9,
         "source_field": "pixiv_tag",
         "unit_hash": "3a4d0a04ca84b1b0"
       },
       {
-        "llm_calls_avoided": 6,
+        "llm_calls_avoided": 7,
         "provider": null,
-        "source_count": 7,
-        "source_field": "normal_tag",
-        "unit_hash": "839ad2bafe5bb60c"
-      },
-      {
-        "llm_calls_avoided": 6,
-        "provider": null,
-        "source_count": 7,
+        "source_count": 8,
         "source_field": "pixiv_tag",
         "unit_hash": "9be724ca469144e5"
       },
@@ -151,8 +165,22 @@
         "llm_calls_avoided": 6,
         "provider": null,
         "source_count": 7,
+        "source_field": "pixiv_artist",
+        "unit_hash": "5af2b2a84c5ac69e"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "source_name_observation",
+        "unit_hash": "00e09ce620793161"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
         "source_field": "pixiv_tag",
-        "unit_hash": "974687ecfcc79255"
+        "unit_hash": "28df4c7c992ca3ab"
       },
       {
         "llm_calls_avoided": 6,
@@ -165,15 +193,29 @@
         "llm_calls_avoided": 5,
         "provider": null,
         "source_count": 6,
-        "source_field": "source_name_observation",
-        "unit_hash": "00e09ce620793161"
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
       },
       {
         "llm_calls_avoided": 5,
         "provider": null,
         "source_count": 6,
-        "source_field": "pixiv_artist",
-        "unit_hash": "5af2b2a84c5ac69e"
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "233fb0ec6a22fdec"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "84a1cdb407800008"
       },
       {
         "llm_calls_avoided": 5,
@@ -183,25 +225,25 @@
         "unit_hash": "4dc6dc221b04f429"
       },
       {
-        "llm_calls_avoided": 5,
+        "llm_calls_avoided": 4,
         "provider": null,
-        "source_count": 6,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0f1093e43a01627f"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
         "source_field": "pixiv_tag",
-        "unit_hash": "28df4c7c992ca3ab"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "normal_tag",
-        "unit_hash": "1156e11bbe2c3e22"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "normal_tag",
-        "unit_hash": "34bc3939e308d26a"
+        "unit_hash": "ae057d2572fc292c"
       },
       {
         "llm_calls_avoided": 4,
@@ -216,122 +258,104 @@
         "source_count": 5,
         "source_field": "source_assertion",
         "unit_hash": "6f5299a6e4622165"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "source_name_observation",
-        "unit_hash": "4f67e8d08a18a0db"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "pixiv_tag",
-        "unit_hash": "44b0b9d367ea5a5a"
-      },
-      {
-        "llm_calls_avoided": 3,
-        "provider": null,
-        "source_count": 4,
-        "source_field": "pixiv_tag",
-        "unit_hash": "9c44c019a33ae5c3"
-      },
-      {
-        "llm_calls_avoided": 3,
-        "provider": null,
-        "source_count": 4,
-        "source_field": "pixiv_tag",
-        "unit_hash": "233fb0ec6a22fdec"
-      },
-      {
-        "llm_calls_avoided": 3,
-        "provider": null,
-        "source_count": 4,
-        "source_field": "pixiv_tag",
-        "unit_hash": "ae057d2572fc292c"
       }
     ],
-    "unique_extraction_units_total": 581
+    "unique_extraction_units_total": 667
   },
   "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v2",
-  "head_sha": "ec0b71584d410ed36eef38381457b8c2e5c6dea0",
+  "head_sha": "a9fed8542ee62b187650904bbad1bf932bb90532",
   "input_summary": {
     "approved_content_classes": [
       "anime",
       "illustration"
     ],
     "approved_illustration_rule": "illustration requires content_class_reviewed or content_class_locked",
-    "average_source_records_per_extraction_unit": 1.5749,
-    "deterministic_resolved_units": 245,
+    "average_source_records_per_extraction_unit": 1.6177,
+    "deterministic_resolved_units": 292,
     "eligibility_counts": {
-      "eligible_anime": 50,
-      "excluded_unknown_or_unclassified": 3
+      "eligible_anime": 100,
+      "excluded_unknown_or_unclassified": 3,
+      "media_missing_or_unlinked": 140
     },
-    "eligible_groups_collected": 50,
+    "eligible_groups_collected": 100,
     "excluded_counts": {
-      "excluded_unknown_or_unclassified": 3
+      "excluded_unknown_or_unclassified": 3,
+      "media_missing_or_unlinked": 140
     },
     "groups_by_data_origin": {
-      "real_dev_db": 50
+      "real_dev_db": 100
     },
     "groups_by_provider": {
-      "pixiv": 50
+      "local_media_tags": 43,
+      "pixiv": 57
     },
-    "groups_collected": 50,
-    "llm_calls_avoided_by_dedupe": 334,
-    "llm_required_units": 336,
-    "manifest_hash": "6ca28fc94504e755c88e832f6b17587caef9c201e20bdda97bffc41cfae4da7d",
-    "max_records": 50,
-    "max_unique_strings": 1000,
-    "raw_string_occurrences_total": 915,
-    "source_metadata_record_scan_limit": 1000,
+    "groups_collected": 100,
+    "llm_calls_avoided_by_dedupe": 412,
+    "llm_required_units": 375,
+    "manifest_hash": "03d0727bb8c9a856e02e17ba2d3d8490c289dfae2531a29811d7965946689819",
+    "max_records": 100,
+    "max_unique_strings": 1500,
+    "raw_string_occurrences_total": 1079,
+    "source_metadata_record_scan_limit": 2000,
     "source_metadata_records_available": 200,
-    "source_metadata_records_scanned": 53,
+    "source_metadata_records_scanned": 200,
     "top_repeated_units_public_redacted": true,
     "top_repeated_units_redacted": [
       {
-        "llm_calls_avoided": 35,
+        "llm_calls_avoided": 37,
         "provider": null,
-        "source_count": 36,
+        "source_count": 38,
         "source_field": "pixiv_tag",
         "unit_hash": "d967068cb01cc5a1"
       },
       {
-        "llm_calls_avoided": 32,
+        "llm_calls_avoided": 37,
         "provider": null,
-        "source_count": 33,
+        "source_count": 38,
         "source_field": "pixiv_tag",
         "unit_hash": "d967068cb01cc5a1"
       },
       {
-        "llm_calls_avoided": 19,
+        "llm_calls_avoided": 22,
         "provider": null,
-        "source_count": 20,
-        "source_field": "pixiv_tag",
-        "unit_hash": "1e8021e92173582e"
-      },
-      {
-        "llm_calls_avoided": 19,
-        "provider": null,
-        "source_count": 20,
+        "source_count": 23,
         "source_field": "source_name_observation",
         "unit_hash": "da56d466ab3aa5ba"
       },
       {
-        "llm_calls_avoided": 14,
+        "llm_calls_avoided": 21,
         "provider": null,
-        "source_count": 15,
+        "source_count": 22,
+        "source_field": "pixiv_tag",
+        "unit_hash": "1e8021e92173582e"
+      },
+      {
+        "llm_calls_avoided": 16,
+        "provider": null,
+        "source_count": 17,
         "source_field": "pixiv_tag",
         "unit_hash": "560b1a0ff44c57b5"
       },
       {
-        "llm_calls_avoided": 10,
+        "llm_calls_avoided": 11,
         "provider": null,
-        "source_count": 11,
+        "source_count": 12,
         "source_field": "pixiv_tag",
         "unit_hash": "8a73046882aff65e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 9,
+        "provider": null,
+        "source_count": 10,
+        "source_field": "pixiv_tag",
+        "unit_hash": "974687ecfcc79255"
       },
       {
         "llm_calls_avoided": 8,
@@ -341,23 +365,16 @@
         "unit_hash": "dd60818247edf0fa"
       },
       {
-        "llm_calls_avoided": 7,
+        "llm_calls_avoided": 8,
         "provider": null,
-        "source_count": 8,
+        "source_count": 9,
         "source_field": "pixiv_tag",
         "unit_hash": "3a4d0a04ca84b1b0"
       },
       {
-        "llm_calls_avoided": 6,
+        "llm_calls_avoided": 7,
         "provider": null,
-        "source_count": 7,
-        "source_field": "normal_tag",
-        "unit_hash": "839ad2bafe5bb60c"
-      },
-      {
-        "llm_calls_avoided": 6,
-        "provider": null,
-        "source_count": 7,
+        "source_count": 8,
         "source_field": "pixiv_tag",
         "unit_hash": "9be724ca469144e5"
       },
@@ -365,8 +382,22 @@
         "llm_calls_avoided": 6,
         "provider": null,
         "source_count": 7,
+        "source_field": "pixiv_artist",
+        "unit_hash": "5af2b2a84c5ac69e"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
+        "source_field": "source_name_observation",
+        "unit_hash": "00e09ce620793161"
+      },
+      {
+        "llm_calls_avoided": 6,
+        "provider": null,
+        "source_count": 7,
         "source_field": "pixiv_tag",
-        "unit_hash": "974687ecfcc79255"
+        "unit_hash": "28df4c7c992ca3ab"
       },
       {
         "llm_calls_avoided": 6,
@@ -379,15 +410,29 @@
         "llm_calls_avoided": 5,
         "provider": null,
         "source_count": 6,
-        "source_field": "source_name_observation",
-        "unit_hash": "00e09ce620793161"
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
       },
       {
         "llm_calls_avoided": 5,
         "provider": null,
         "source_count": 6,
-        "source_field": "pixiv_artist",
-        "unit_hash": "5af2b2a84c5ac69e"
+        "source_field": "ai_model_tag",
+        "unit_hash": "fae5f8ba97e6689e"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "233fb0ec6a22fdec"
+      },
+      {
+        "llm_calls_avoided": 5,
+        "provider": null,
+        "source_count": 6,
+        "source_field": "pixiv_tag",
+        "unit_hash": "84a1cdb407800008"
       },
       {
         "llm_calls_avoided": 5,
@@ -397,25 +442,25 @@
         "unit_hash": "4dc6dc221b04f429"
       },
       {
-        "llm_calls_avoided": 5,
+        "llm_calls_avoided": 4,
         "provider": null,
-        "source_count": 6,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0f1093e43a01627f"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
+        "source_field": "ai_model_tag",
+        "unit_hash": "0273d3a35661f041"
+      },
+      {
+        "llm_calls_avoided": 4,
+        "provider": null,
+        "source_count": 5,
         "source_field": "pixiv_tag",
-        "unit_hash": "28df4c7c992ca3ab"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "normal_tag",
-        "unit_hash": "1156e11bbe2c3e22"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "normal_tag",
-        "unit_hash": "34bc3939e308d26a"
+        "unit_hash": "ae057d2572fc292c"
       },
       {
         "llm_calls_avoided": 4,
@@ -430,112 +475,82 @@
         "source_count": 5,
         "source_field": "source_assertion",
         "unit_hash": "6f5299a6e4622165"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "source_name_observation",
-        "unit_hash": "4f67e8d08a18a0db"
-      },
-      {
-        "llm_calls_avoided": 4,
-        "provider": null,
-        "source_count": 5,
-        "source_field": "pixiv_tag",
-        "unit_hash": "44b0b9d367ea5a5a"
-      },
-      {
-        "llm_calls_avoided": 3,
-        "provider": null,
-        "source_count": 4,
-        "source_field": "pixiv_tag",
-        "unit_hash": "9c44c019a33ae5c3"
-      },
-      {
-        "llm_calls_avoided": 3,
-        "provider": null,
-        "source_count": 4,
-        "source_field": "pixiv_tag",
-        "unit_hash": "233fb0ec6a22fdec"
-      },
-      {
-        "llm_calls_avoided": 3,
-        "provider": null,
-        "source_count": 4,
-        "source_field": "pixiv_tag",
-        "unit_hash": "ae057d2572fc292c"
       }
     ],
-    "unique_extraction_units_total": 581,
-    "unique_raw_string_count": 315
+    "unique_extraction_units_total": 667,
+    "unique_raw_string_count": 348
   },
   "phase": "4.4-P2R-F7a",
-  "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v2",
+  "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
   "provider_comparison": [
     {
       "ambiguous_count": 0,
       "approximate_cost": "not_available_from_provider_response",
-      "average_seconds": 2.017,
+      "average_seconds": 1.824,
       "cache_hits": 0,
       "candidate_count_by_role": {
-        "artist_creator": 90,
-        "character": 172,
-        "person": 10,
-        "source_title": 24,
-        "unknown_name_like": 217,
-        "work_title": 150
+        "artist_creator": 102,
+        "character": 232,
+        "person": 33,
+        "source_title": 30,
+        "unknown_name_like": 245,
+        "work_title": 90
       },
       "candidate_count_by_status": {
-        "active_candidate": 440,
-        "needs_review": 223
+        "active_candidate": 372,
+        "needs_review": 360
       },
-      "candidate_count_total": 663,
-      "chunk_count": 581,
-      "completed_unit_count": 581,
+      "candidate_count_total": 732,
+      "chunk_count": 667,
+      "completed_unit_count": 667,
       "concurrency": 3,
-      "deterministic_resolved_units": 245,
+      "deterministic_resolved_units": 292,
       "duplicate_candidate_count": 0,
       "duplicate_candidate_rate": 0.0,
-      "false_positive_guard_review_count": 217,
-      "group_count": 50,
+      "false_positive_guard_review_count": 251,
+      "group_count": 100,
       "inflight_dedupe_hits": 0,
       "invalid_json_count": 0,
-      "llm_calls_attempted": 337,
-      "llm_calls_avoided_by_dedupe": 334,
+      "llm_calls_attempted": 375,
+      "llm_calls_avoided_by_dedupe": 412,
       "llm_provider_label": "primary_openai",
       "llm_provider_mode": "primary_openai",
-      "llm_required_units": 336,
-      "llm_wall_time_seconds": 1171.913,
+      "llm_required_units": 375,
+      "llm_wall_time_seconds": 1216.302,
       "model_label": "primary_model_configured",
       "no_name_count": 0,
-      "p50_seconds": 2.69,
-      "p95_seconds": 4.409,
-      "popularity_prefix_count": 45,
+      "p50_seconds": 2.369,
+      "p95_seconds": 4.314,
+      "pixiv_title_active_work_title_count": 0,
+      "popularity_prefix_count": 49,
       "provider_mode": "primary_concurrent",
-      "raw_string_occurrences_total": 915,
+      "raw_string_occurrences_total": 1079,
       "record_retryable_error_count": 0,
       "record_terminal_error_count": 0,
       "record_verdict_counts": {
-        "multiple_candidates_found": 50
+        "multiple_candidates_found": 64,
+        "name_candidate_found": 36
       },
       "rejected_by_reason": {
-        "descriptive_general": 34,
-        "explicit_r18_meta": 16,
-        "popularity_meta": 46
+        "descriptive_general": 35,
+        "explicit_r18_meta": 18,
+        "popularity_meta": 49
       },
-      "rejected_total": 96,
-      "retry_count": 1,
+      "rejected_total": 102,
+      "retry_count": 0,
       "retryable_error_count": 0,
+      "role_guard_count": 80,
       "schema_failure_count": 0,
+      "source_title_active_count": 26,
       "terminal_error_count": 0,
       "timeout_count": 0,
+      "title_extraction_count": 18,
       "token_usage": "not_available_from_provider_response",
-      "total_wall_time_seconds": 401.686,
-      "unique_extraction_units_total": 581,
-      "unique_string_count": 581,
+      "total_wall_time_seconds": 421.296,
+      "unique_extraction_units_total": 667,
+      "unique_string_count": 667,
       "unit_status_counts": {
-        "completed": 581
+        "completed": 667
       },
       "unknown_name_like_active_count": 0
     }
@@ -551,6 +566,7 @@
     "fallback_viable_provider_modes": [],
     "invalid_or_schema_failure_total": 0,
     "primary_blocking_error_total": 0,
+    "primary_quality_blocker_total": 0,
     "primary_viable_provider_modes": [
       "primary_concurrent"
     ],
@@ -565,12 +581,14 @@
       "primary_concurrent"
     ]
   },
-  "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T082610Z-0eebe915",
+  "report_generated_head_sha": "a9fed8542ee62b187650904bbad1bf932bb90532",
+  "report_validation_scope": "code_and_runner_state_at_validation_time",
+  "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057",
   "safety": {
     "entity_alias_write": false,
     "entity_write": false,
     "image_upload": false,
-    "llm_extraction_calls_attempted": 337,
+    "llm_extraction_calls_attempted": 375,
     "llm_preflight_calls": 1,
     "llm_provider_calls": true,
     "llm_provider_modes": [
@@ -592,7 +610,8 @@
   "structured_output_schema_version": "source_name_candidate_extraction_compact_v2",
   "timing": {
     "cost_estimate": "not_available_from_provider_response",
-    "elapsed_seconds": 404.96
+    "elapsed_seconds": 423.825
   },
-  "title": "LLM-backed source name candidate extraction rework"
+  "title": "LLM-backed source name candidate extraction rework",
+  "validated_code_head_sha": "a9fed8542ee62b187650904bbad1bf932bb90532"
 }
