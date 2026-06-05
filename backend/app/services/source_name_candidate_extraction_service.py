@@ -9,6 +9,7 @@ media_tags rows.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
@@ -19,7 +20,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
-from ..enums import TagCategoryEnum
+from ..enums import ContentClassEnum, TagCategoryEnum
 from ..models import (
     Media,
     SourceMetadataRecord,
@@ -52,9 +53,9 @@ from .source_metadata_registry_service import (
 )
 
 PHASE = "4.4-P2R-F7a"
-EXTRACTOR_VERSION = "phase44p2r_f7a_source_name_candidate_extractor_v1"
-PROMPT_VERSION = "phase44p2r_f7a_llm_source_name_candidate_extraction_v1"
-SCHEMA_VERSION = "source_name_candidate_extraction_v1"
+EXTRACTOR_VERSION = "phase44p2r_f7a_source_name_candidate_extractor_v2"
+PROMPT_VERSION = "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v2"
+SCHEMA_VERSION = "source_name_candidate_extraction_compact_v2"
 
 ALLOWED_VERDICTS = frozenset(
     {
@@ -69,6 +70,7 @@ ALLOWED_VERDICTS = frozenset(
         "provider_not_applicable",
         "rejected_general_only",
         "rejected_popularity_or_meta_only",
+        "extraction_error",
         "extraction_error_retryable",
         "extraction_error_terminal",
     }
@@ -93,6 +95,7 @@ ALLOWED_EXTRACTION_ACTIONS = frozenset(
         "provider_structured_field",
         "normal_tag_candidate",
         "ai_model_character_tag",
+        "context_inferred",
         "llm_inferred_from_context",
     }
 )
@@ -132,6 +135,8 @@ VERDICT_SYNONYMS = {
     "name_found": "name_candidate_found",
     "work_found": "work_candidate_found",
     "artist_found": "artist_candidate_found",
+    "error": "extraction_error",
+    "failed": "extraction_error",
     "no_names": "no_explicit_name",
     "no_name": "no_explicit_name",
 }
@@ -148,6 +153,28 @@ ORIGIN_SYNONYMS = {
     "tag": "source_tag_observation",
     "title": "pixiv_title",
 }
+ACTION_SYNONYMS = {
+    "llm_inferred_from_context": "context_inferred",
+    "inferred_from_context": "context_inferred",
+    "structured_field": "provider_structured_field",
+}
+LLM_CANDIDATE_FOUND_VERDICTS = frozenset(
+    {
+        "name_candidate_found",
+        "work_candidate_found",
+        "artist_candidate_found",
+        "multiple_candidates_found",
+    }
+)
+COMPACT_REJECTED_SUMMARY_KEYS = (
+    "descriptive_general_count",
+    "popularity_meta_count",
+    "explicit_r18_meta_count",
+    "invalid_or_empty_count",
+    "duplicate_count",
+    "other_rejected_count",
+)
+APPROVED_LLM_CONTENT_CLASSES = frozenset({ContentClassEnum.anime.value})
 
 POPULARITY_SUFFIX_RE = re.compile(
     r"^(?P<prefix>.+?)(?P<count>[0-9\uff10-\uff19]+)\s*"
@@ -234,6 +261,11 @@ class SourceCandidateInputGroup:
     media_id: int | None = None
     data_type_label: str | None = None
     metadata_kind: str | None = None
+    content_class: str | None = None
+    content_class_reviewed: bool = False
+    content_class_locked: bool = False
+    eligibility_status: str = "not_checked"
+    eligibility_reason: str | None = None
     title: str | None = None
     caption: str | None = None
     artist_name: str | None = None
@@ -245,6 +277,37 @@ class SourceCandidateInputGroup:
     alias_candidates: tuple[dict[str, Any], ...] = ()
     media_tags: tuple[dict[str, Any], ...] = ()
     data_origin: str = "real_dev_db"
+
+
+@dataclass(frozen=True)
+class SourceExtractionUnitOccurrence:
+    group_key: str
+    provider: str
+    source_metadata_record_id: int | None
+    media_id: int | None
+    source_field: str
+    origin_id: str | None
+    raw_value: str
+    role_hint: str | None = None
+    context_key: str | None = None
+
+
+@dataclass(frozen=True)
+class SourceExtractionUnit:
+    extraction_key: str
+    normalized_value: str
+    canonical_key: str
+    raw_values: tuple[str, ...]
+    provider: str
+    source_field: str
+    role_hint: str | None
+    context_key: str | None
+    language_hint: str | None
+    script_hint: str | None
+    occurrences: tuple[SourceExtractionUnitOccurrence, ...]
+    llm_required: bool
+    deterministic_resolution: str
+    unit_group: SourceCandidateInputGroup
 
 
 @dataclass(frozen=True)
@@ -432,6 +495,567 @@ def _raw_strings_for_group(group: SourceCandidateInputGroup) -> set[str]:
         if normalized:
             values.add(normalized)
     return values
+
+
+def _enum_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "value"):
+        return normalize_source_text(value.value) or None
+    return normalize_source_text(value) or None
+
+
+def media_llm_eligibility(media: Media | None) -> tuple[bool, str, dict[str, Any]]:
+    """Return whether metadata for this media may be sent to an external LLM."""
+
+    if media is None:
+        return False, "media_missing_or_unlinked", {
+            "content_class": None,
+            "content_class_reviewed": False,
+            "content_class_locked": False,
+        }
+    content_class = _enum_value(media.content_class)
+    reviewed = bool(getattr(media, "content_class_reviewed", False))
+    locked = bool(getattr(media, "content_class_locked", False))
+    payload = {
+        "content_class": content_class,
+        "content_class_reviewed": reviewed,
+        "content_class_locked": locked,
+    }
+    if content_class in APPROVED_LLM_CONTENT_CLASSES:
+        return True, "eligible_anime", payload
+    if content_class == ContentClassEnum.illustration.value and (reviewed or locked):
+        return True, "eligible_approved_illustration", payload
+    if content_class == ContentClassEnum.illustration.value:
+        return False, "excluded_unapproved_illustration", payload
+    if content_class == ContentClassEnum.non_anime.value:
+        return False, "excluded_non_anime", payload
+    if content_class == ContentClassEnum.unknown.value or not content_class:
+        return False, "excluded_unknown_or_unclassified", payload
+    return False, "excluded_unsupported_content_class", payload
+
+
+def _stable_json_dumps(payload: Any) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def stable_payload_hash(payload: Any) -> str:
+    return hashlib.sha256(_stable_json_dumps(payload).encode("utf-8")).hexdigest()
+
+
+def group_input_payload_hash(group: SourceCandidateInputGroup) -> str:
+    return stable_payload_hash(group_prompt_payload(group))
+
+
+def llm_cache_fingerprint(group: SourceCandidateInputGroup, provider_summary: Mapping[str, Any]) -> str:
+    payload = {
+        "provider_label": provider_summary.get("llm_provider_label") or provider_summary.get("provider_mode"),
+        "model_label": provider_summary.get("model_label"),
+        "prompt_version": PROMPT_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "input_payload_hash": group_input_payload_hash(group),
+        "extractor_version": EXTRACTOR_VERSION,
+    }
+    return stable_payload_hash(payload)
+
+
+def _source_field_for_provider_tag(group: SourceCandidateInputGroup) -> str:
+    provider = normalize_source_text(group.provider)
+    if provider == "pixiv":
+        return "pixiv_tag"
+    if provider in {"danbooru", "gelbooru"}:
+        return "booru_tag"
+    return "source_tag_observation"
+
+
+def _unit_key(
+    *,
+    normalized_value: str,
+    provider: str,
+    source_field: str,
+    role_hint: str | None,
+    context_key: str | None,
+) -> str:
+    payload = {
+        "normalized_value": canonical_source_key(normalized_value),
+        "provider": canonical_source_key(provider),
+        "source_field": canonical_source_key(source_field),
+        "role_hint": canonical_source_key(role_hint),
+        "context_key": canonical_source_key(context_key),
+        "prompt_version": PROMPT_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "extractor_version": EXTRACTOR_VERSION,
+    }
+    return f"source-extraction-unit:{stable_payload_hash(payload)}"
+
+
+def _add_unit_occurrence(
+    rows: list[SourceExtractionUnitOccurrence],
+    *,
+    group: SourceCandidateInputGroup,
+    source_field: str,
+    raw_value: Any,
+    origin_id: str | None = None,
+    role_hint: str | None = None,
+    context_key: str | None = None,
+) -> None:
+    raw = normalize_source_text(raw_value)
+    if not raw:
+        return
+    popularity = popularity_suffix_prefix(raw)
+    if popularity and normalize_source_text(popularity.get("extracted_prefix")):
+        context_key = "popularity_suffix_stripped"
+    rows.append(
+        SourceExtractionUnitOccurrence(
+            group_key=group.group_key,
+            provider=group.provider,
+            source_metadata_record_id=group.source_metadata_record_id,
+            media_id=group.media_id,
+            source_field=source_field,
+            origin_id=origin_id,
+            raw_value=normalize_source_text(raw),
+            role_hint=role_hint,
+            context_key=context_key,
+        )
+    )
+
+
+def extraction_unit_occurrences_for_group(group: SourceCandidateInputGroup) -> tuple[SourceExtractionUnitOccurrence, ...]:
+    rows: list[SourceExtractionUnitOccurrence] = []
+    tag_source_field = _source_field_for_provider_tag(group)
+    for tag in group.tags:
+        role_hint = _candidate_role_from_source_role(tag.get("source_category_raw"))
+        if role_hint == "unknown_name_like":
+            role_hint = None
+        _add_unit_occurrence(
+            rows,
+            group=group,
+            source_field=tag_source_field,
+            raw_value=tag.get("raw_tag") or tag.get("normalized_tag"),
+            origin_id=normalize_source_text(tag.get("observation_key")) or None,
+            role_hint=role_hint,
+        )
+    for name in group.source_names:
+        _add_unit_occurrence(
+            rows,
+            group=group,
+            source_field="source_name_observation",
+            raw_value=name.get("raw_name") or name.get("normalized_name"),
+            origin_id=normalize_source_text(name.get("observation_key")) or None,
+            role_hint=_candidate_role_from_source_role(name.get("name_role")),
+        )
+    for assertion in group.source_assertions:
+        _add_unit_occurrence(
+            rows,
+            group=group,
+            source_field="source_assertion",
+            raw_value=assertion.get("asserted_name") or assertion.get("raw_input"),
+            origin_id=normalize_source_text(assertion.get("assertion_key")) or None,
+            role_hint=_candidate_role_from_source_role(assertion.get("asserted_role")),
+        )
+    for media_tag in group.media_tags:
+        action_source = normalize_source_text(media_tag.get("source"))
+        source_field = "ai_model_tag" if media_tag.get("is_suggestion") or action_source in {"ai", "wd", "wd_tagger"} else "normal_tag"
+        _add_unit_occurrence(
+            rows,
+            group=group,
+            source_field=source_field,
+            raw_value=media_tag.get("name"),
+            origin_id=normalize_source_text(media_tag.get("tag_id")) or None,
+            role_hint=_candidate_role_from_source_role(media_tag.get("category")),
+        )
+    if group.title:
+        _add_unit_occurrence(rows, group=group, source_field="pixiv_title", raw_value=group.title)
+    if group.caption:
+        _add_unit_occurrence(rows, group=group, source_field="pixiv_caption", raw_value=group.caption)
+    if group.artist_name:
+        _add_unit_occurrence(rows, group=group, source_field="pixiv_artist", raw_value=group.artist_name, role_hint="artist_creator")
+    return tuple(rows)
+
+
+def _unit_group_from_occurrences(
+    extraction_key: str,
+    normalized_value: str,
+    provider: str,
+    source_field: str,
+    role_hint: str | None,
+    occurrences: Sequence[SourceExtractionUnitOccurrence],
+) -> SourceCandidateInputGroup:
+    first = occurrences[0]
+    base = {
+        "unit_extraction_key": extraction_key,
+        "source_count": len(occurrences),
+        "source_field": source_field,
+    }
+    if source_field in {"pixiv_tag", "booru_tag", "source_tag_observation"}:
+        tag_value = first.raw_value if first.context_key == "popularity_suffix_stripped" else normalized_value
+        return SourceCandidateInputGroup(
+            group_key=f"extraction_unit:{stable_payload_hash(base)[:24]}",
+            provider=provider,
+            tags=({"raw_tag": tag_value, "source_tag_kind": "provider_tag", "source_category_raw": role_hint},),
+            data_origin="deduped_extraction_unit",
+        )
+    if source_field == "source_assertion":
+        return SourceCandidateInputGroup(
+            group_key=f"extraction_unit:{stable_payload_hash(base)[:24]}",
+            provider=provider,
+            source_assertions=({"asserted_name": normalized_value, "asserted_role": role_hint, "assertion_key": first.origin_id},),
+            data_origin="deduped_extraction_unit",
+        )
+    if source_field == "source_name_observation":
+        return SourceCandidateInputGroup(
+            group_key=f"extraction_unit:{stable_payload_hash(base)[:24]}",
+            provider=provider,
+            source_names=({"raw_name": normalized_value, "name_role": role_hint, "observation_key": first.origin_id},),
+            data_origin="deduped_extraction_unit",
+        )
+    if source_field in {"normal_tag", "ai_model_tag"}:
+        return SourceCandidateInputGroup(
+            group_key=f"extraction_unit:{stable_payload_hash(base)[:24]}",
+            provider="local_media_tags",
+            media_tags=({"name": normalized_value, "category": role_hint, "source": source_field, "is_suggestion": source_field == "ai_model_tag"},),
+            data_origin="deduped_extraction_unit",
+        )
+    kwargs: dict[str, Any] = {}
+    if source_field == "pixiv_title":
+        kwargs["title"] = normalized_value
+    elif source_field == "pixiv_caption":
+        kwargs["caption"] = normalized_value
+    elif source_field == "pixiv_artist":
+        kwargs["artist_name"] = normalized_value
+    return SourceCandidateInputGroup(
+        group_key=f"extraction_unit:{stable_payload_hash(base)[:24]}",
+        provider=provider,
+        data_origin="deduped_extraction_unit",
+        **kwargs,
+    )
+
+
+def build_extraction_units(groups: Sequence[SourceCandidateInputGroup]) -> tuple[list[SourceExtractionUnit], dict[str, Any]]:
+    occurrences: list[SourceExtractionUnitOccurrence] = []
+    for group in groups:
+        occurrences.extend(extraction_unit_occurrences_for_group(group))
+    by_key: dict[str, list[SourceExtractionUnitOccurrence]] = defaultdict(list)
+    normalized_by_key: dict[str, str] = {}
+    for occurrence in occurrences:
+        normalized = normalize_source_text(occurrence.raw_value)
+        if not normalized:
+            continue
+        popularity = popularity_suffix_prefix(normalized)
+        if popularity and normalize_source_text(popularity.get("extracted_prefix")):
+            normalized = normalize_source_text(popularity["extracted_prefix"])
+        key = _unit_key(
+            normalized_value=normalized,
+            provider=occurrence.provider,
+            source_field=occurrence.source_field,
+            role_hint=occurrence.role_hint,
+            context_key=occurrence.context_key,
+        )
+        by_key[key].append(occurrence)
+        normalized_by_key[key] = normalized
+
+    units: list[SourceExtractionUnit] = []
+    deterministic_resolved = 0
+    llm_required = 0
+    for key, unit_occurrences in sorted(by_key.items(), key=lambda item: item[0]):
+        first = unit_occurrences[0]
+        normalized = normalized_by_key[key]
+        language, script = language_and_script_hint(normalized)
+        unit_group = _unit_group_from_occurrences(
+            key,
+            normalized,
+            first.provider,
+            first.source_field,
+            first.role_hint,
+            unit_occurrences,
+        )
+        hints = deterministic_hints_for_group(unit_group)
+        has_deterministic_resolution = bool(hints)
+        needs_llm = not has_deterministic_resolution
+        if needs_llm:
+            llm_required += 1
+        else:
+            deterministic_resolved += 1
+        units.append(
+            SourceExtractionUnit(
+                extraction_key=key,
+                normalized_value=normalized,
+                canonical_key=canonical_source_key(normalized),
+                raw_values=tuple(sorted({item.raw_value for item in unit_occurrences})),
+                provider=first.provider,
+                source_field=first.source_field,
+                role_hint=first.role_hint,
+                context_key=first.context_key,
+                language_hint=language,
+                script_hint=script,
+                occurrences=tuple(unit_occurrences),
+                llm_required=needs_llm,
+                deterministic_resolution="unresolved_needs_llm" if needs_llm else "deterministic_resolved",
+                unit_group=unit_group,
+            )
+        )
+    repeat_counts = sorted(
+        (
+            {
+                "normalized_value": unit.normalized_value,
+                "source_field": unit.source_field,
+                "source_count": len(unit.occurrences),
+                "llm_calls_avoided": max(0, len(unit.occurrences) - 1),
+            }
+            for unit in units
+            if len(unit.occurrences) > 1
+        ),
+        key=lambda row: (-int(row["source_count"]), str(row["normalized_value"])),
+    )
+    raw_occurrences = len(occurrences)
+    unique_units = len(units)
+    return units, {
+        "raw_string_occurrences_total": raw_occurrences,
+        "unique_extraction_units_total": unique_units,
+        "deterministic_resolved_units": deterministic_resolved,
+        "llm_required_units": llm_required,
+        "llm_calls_avoided_by_dedupe": max(0, raw_occurrences - unique_units),
+        "average_source_records_per_extraction_unit": round(raw_occurrences / unique_units, 4) if unique_units else 0.0,
+        "top_repeated_units": repeat_counts[:25],
+    }
+
+
+def deterministic_bundle_for_unit(
+    unit: SourceExtractionUnit,
+    *,
+    run_id: str,
+    run_label: str,
+) -> ExtractionResultBundle:
+    verdict_seed = "rejected_popularity_or_meta_only" if unit.context_key == "popularity_suffix_stripped" else "no_explicit_name"
+    row = {
+        "group_key": unit.unit_group.group_key,
+        "provider": unit.unit_group.provider,
+        "verdict": verdict_seed,
+        "candidates": [],
+        "rejected_summary": {},
+        "no_name_reason": verdict_seed,
+    }
+    verdict, candidates, rejected, meta, ambiguous = validate_extraction_record(row, unit.unit_group)
+    summary = build_extraction_summary(
+        groups=[unit.unit_group],
+        record_verdicts=[verdict],
+        candidates=candidates,
+        rejected_tags=rejected,
+        meta_tags=meta,
+        ambiguous_items=ambiguous,
+        llm_counters={"deterministic_unit_resolution": 1},
+        validation_failures=[],
+    )
+    return ExtractionResultBundle(
+        run_id=run_id,
+        run_label=run_label,
+        groups=(unit.unit_group,),
+        record_verdicts=(verdict,),
+        candidates=candidates,
+        rejected_tags=rejected,
+        meta_tags=meta,
+        ambiguous_items=ambiguous,
+        llm_inputs=(),
+        llm_outputs=(),
+        validation_failures=(),
+        summary=summary,
+    )
+
+
+def _copy_candidate_for_occurrence(
+    candidate: CandidateDraft,
+    unit: SourceExtractionUnit,
+    occurrence: SourceExtractionUnitOccurrence,
+) -> CandidateDraft:
+    logical_key = _candidate_key(
+        group_key=occurrence.group_key,
+        raw_value=candidate.normalized_value,
+        candidate_role=candidate.candidate_role,
+        extraction_action=candidate.extraction_action,
+        origin_type=occurrence.source_field,
+        origin_id=occurrence.origin_id or unit.extraction_key,
+    )
+    return replace(
+        candidate,
+        group_key=occurrence.group_key,
+        provider=occurrence.provider,
+        source_metadata_record_id=occurrence.source_metadata_record_id,
+        media_id=occurrence.media_id,
+        origin_type=occurrence.source_field,
+        origin_id=occurrence.origin_id,
+        candidate_key=logical_key,
+        evidence_payload={
+            **candidate.evidence_payload,
+            "extraction_unit_key": unit.extraction_key,
+            "extraction_unit_normalized_value": unit.normalized_value,
+            "deduped_llm_extraction_unit": True,
+        },
+    )
+
+
+def reattach_unit_bundles_to_records(
+    groups: Sequence[SourceCandidateInputGroup],
+    units: Sequence[SourceExtractionUnit],
+    bundles_by_unit_key: Mapping[str, ExtractionResultBundle],
+    *,
+    run_id: str,
+    run_label: str,
+) -> ExtractionResultBundle:
+    groups_by_key = {group.group_key: group for group in groups}
+    candidates_by_group: dict[str, list[CandidateDraft]] = defaultdict(list)
+    rejected_by_group: dict[str, list[RejectedTagDraft]] = defaultdict(list)
+    meta_by_group: dict[str, list[MetaTagDraft]] = defaultdict(list)
+    ambiguous_by_group: dict[str, list[AmbiguousItemDraft]] = defaultdict(list)
+    unit_verdicts_by_group: dict[str, list[str]] = defaultdict(list)
+    llm_inputs: list[dict[str, Any]] = []
+    llm_outputs: list[dict[str, Any]] = []
+    validation_failures: list[dict[str, Any]] = []
+
+    for unit in units:
+        bundle = bundles_by_unit_key.get(unit.extraction_key)
+        if bundle is None:
+            continue
+        llm_inputs.extend(bundle.llm_inputs)
+        llm_outputs.extend(bundle.llm_outputs)
+        validation_failures.extend(bundle.validation_failures)
+        unit_verdict = bundle.record_verdicts[0].extraction_verdict if bundle.record_verdicts else "extraction_error_terminal"
+        for occurrence in unit.occurrences:
+            unit_verdicts_by_group[occurrence.group_key].append(unit_verdict)
+            for candidate in bundle.candidates:
+                candidates_by_group[occurrence.group_key].append(_copy_candidate_for_occurrence(candidate, unit, occurrence))
+            for item in bundle.rejected_tags:
+                rejected_by_group[occurrence.group_key].append(
+                    RejectedTagDraft(
+                        group_key=occurrence.group_key,
+                        provider=occurrence.provider,
+                        raw_value=occurrence.raw_value if unit.context_key == "popularity_suffix_stripped" else item.raw_value,
+                        normalized_value=unit.normalized_value,
+                        rejection_reason=item.rejection_reason,
+                        reason=item.reason,
+                        origin_type=occurrence.source_field,
+                        origin_id=occurrence.origin_id,
+                    )
+                )
+            for item in bundle.meta_tags:
+                meta_by_group[occurrence.group_key].append(
+                    MetaTagDraft(
+                        group_key=occurrence.group_key,
+                        provider=occurrence.provider,
+                        raw_value=occurrence.raw_value if unit.context_key == "popularity_suffix_stripped" else item.raw_value,
+                        normalized_value=unit.normalized_value,
+                        meta_role=item.meta_role,
+                        reason=item.reason,
+                        extracted_prefix=item.extracted_prefix or (unit.normalized_value if unit.context_key == "popularity_suffix_stripped" else None),
+                        origin_type=occurrence.source_field,
+                        origin_id=occurrence.origin_id,
+                    )
+                )
+            for item in bundle.ambiguous_items:
+                ambiguous_by_group[occurrence.group_key].append(
+                    AmbiguousItemDraft(
+                        group_key=occurrence.group_key,
+                        provider=occurrence.provider,
+                        raw_value=unit.normalized_value,
+                        reason=item.reason,
+                        origin_type=occurrence.source_field,
+                        origin_id=occurrence.origin_id,
+                    )
+                )
+
+    record_verdicts: list[RecordVerdictDraft] = []
+    all_candidates: list[CandidateDraft] = []
+    all_rejected: list[RejectedTagDraft] = []
+    all_meta: list[MetaTagDraft] = []
+    all_ambiguous: list[AmbiguousItemDraft] = []
+    for group in groups:
+        group_candidates = list(_dedupe_candidates(candidates_by_group.get(group.group_key, [])))
+        group_rejected = list(_dedupe_rejected(rejected_by_group.get(group.group_key, [])))
+        group_meta = list(_dedupe_meta(meta_by_group.get(group.group_key, [])))
+        group_ambiguous = ambiguous_by_group.get(group.group_key, [])
+        unit_verdicts = unit_verdicts_by_group.get(group.group_key, [])
+        if group_candidates:
+            roles = {candidate.candidate_role for candidate in group_candidates}
+            if len(group_candidates) > 1:
+                verdict = "multiple_candidates_found"
+            elif roles & {"character", "person", "alias_like", "unknown_name_like"}:
+                verdict = "name_candidate_found"
+            elif roles & {"work_title", "source_title"}:
+                verdict = "work_candidate_found"
+            elif "artist_creator" in roles:
+                verdict = "artist_candidate_found"
+            else:
+                verdict = "ambiguous_needs_review"
+            no_name_reason = None
+        elif any(value == "extraction_error_retryable" for value in unit_verdicts):
+            verdict = "extraction_error_retryable"
+            no_name_reason = "retryable_unit_error"
+        elif any(value in {"extraction_error_terminal", "extraction_error"} for value in unit_verdicts):
+            verdict = "extraction_error_terminal"
+            no_name_reason = "terminal_unit_error"
+        elif group_ambiguous:
+            verdict = "ambiguous_needs_review"
+            no_name_reason = None
+        elif group_meta and not group_rejected:
+            verdict = "rejected_popularity_or_meta_only"
+            no_name_reason = "all_units_popularity_or_meta"
+        elif group_rejected:
+            verdict = "rejected_general_only"
+            no_name_reason = "all_units_rejected_general_or_meta"
+        else:
+            verdict = "no_explicit_name"
+            no_name_reason = "no_extraction_units"
+        group_candidates = [replace(candidate, extraction_verdict=verdict) for candidate in group_candidates]
+        all_candidates.extend(group_candidates)
+        all_rejected.extend(group_rejected)
+        all_meta.extend(group_meta)
+        all_ambiguous.extend(group_ambiguous)
+        record_verdicts.append(
+            RecordVerdictDraft(
+                group_key=group.group_key,
+                provider=group.provider,
+                source_metadata_record_id=group.source_metadata_record_id,
+                media_id=group.media_id,
+                extraction_verdict=verdict,
+                verdict_reason="derived_from_deduped_extraction_units",
+                no_name_reason=no_name_reason,
+                candidate_count=len(group_candidates),
+                rejected_count=len(group_rejected),
+                meta_count=len(group_meta),
+                ambiguous_count=len(group_ambiguous),
+                confidence_summary={"deduped_extraction_units": True, "unit_verdicts": dict(Counter(unit_verdicts))},
+                extraction_warnings_json=["record_verdict_derived_from_unit_cache"],
+                evidence_payload={
+                    "source_layer_only": True,
+                    "should_not_create_entity_truth": True,
+                    "data_origin": group.data_origin,
+                    "deduped_extraction_units": True,
+                },
+            )
+        )
+    summary = build_extraction_summary(
+        groups=groups,
+        record_verdicts=record_verdicts,
+        candidates=all_candidates,
+        rejected_tags=all_rejected,
+        meta_tags=all_meta,
+        ambiguous_items=all_ambiguous,
+        llm_counters={"record_verdicts_derived_from_extraction_units": 1},
+        validation_failures=validation_failures,
+    )
+    return ExtractionResultBundle(
+        run_id=run_id,
+        run_label=run_label,
+        groups=tuple(groups_by_key.values()),
+        record_verdicts=tuple(record_verdicts),
+        candidates=tuple(_dedupe_candidates(all_candidates)),
+        rejected_tags=tuple(_dedupe_rejected(all_rejected)),
+        meta_tags=tuple(_dedupe_meta(all_meta)),
+        ambiguous_items=tuple(all_ambiguous),
+        llm_inputs=tuple(llm_inputs),
+        llm_outputs=tuple(llm_outputs),
+        validation_failures=tuple(validation_failures),
+        summary=summary,
+    )
 
 
 def deterministic_hints_for_group(group: SourceCandidateInputGroup) -> list[DeterministicHint]:
@@ -639,6 +1263,14 @@ def _candidate_key(
     return f"source-name-candidate:{base[:860]}"
 
 
+def _run_scoped_candidate_key(run_id: str, logical_candidate_key: str) -> str:
+    run_key = stable_payload_hash({"run_id": run_id})[:24]
+    logical_key = canonical_source_key(logical_candidate_key)
+    logical_hash = stable_payload_hash({"candidate_key": logical_candidate_key})[:24]
+    compact_logical = logical_key[:780]
+    return f"source-name-candidate-run:{run_key}:{compact_logical}:{logical_hash}"[:900]
+
+
 def _candidate_from_hint(group: SourceCandidateInputGroup, hint: DeterministicHint, *, verdict: str) -> CandidateDraft | None:
     raw_value = normalize_source_text(hint.extracted_value or hint.raw_value)
     if not raw_value:
@@ -746,6 +1378,13 @@ def group_prompt_payload(group: SourceCandidateInputGroup) -> dict[str, Any]:
         "data_origin": group.data_origin,
         "data_type_label": group.data_type_label,
         "metadata_kind": group.metadata_kind,
+        "content_eligibility": {
+            "status": group.eligibility_status,
+            "reason": group.eligibility_reason,
+            "content_class": group.content_class,
+            "content_class_reviewed": group.content_class_reviewed,
+            "content_class_locked": group.content_class_locked,
+        },
         "title": group.title,
         "caption": group.caption,
         "artist_name": group.artist_name,
@@ -766,36 +1405,37 @@ def source_name_candidate_system_prompt() -> str:
     return (
         "You extract unconfirmed source-layer name candidates from anime/illustration metadata groups. "
         "This is NOT Entity truth, NOT EntityAlias, NOT MediaEntityCandidate, NOT a confirmed assignment.\n"
-        "Return ONLY valid JSON with a top-level object: {\"records\": [...]}.\n"
+        "Return ONLY compact valid JSON with a top-level object: {\"records\": [...]}.\n"
         "For every input group, return exactly one record with the same group_key.\n"
-        "Each record must include: group_key, provider, extraction_verdict, verdict_reason, candidates, "
-        "rejected_tags, meta_tags, ambiguous_items, no_name_reason, extraction_warnings, confidence_summary, "
-        "should_not_create_entity_truth.\n"
-        f"Allowed extraction_verdict values: {sorted(ALLOWED_VERDICTS)}.\n"
-        "confidence_summary must be an object, for example {\"overall\": 0.82, \"notes\": \"...\"}.\n"
-        "Candidate fields: raw_value, display_name, normalized_value, canonical_key, candidate_role, "
-        "candidate_status, language_hint, script_hint, work_context, parenthetical_base, parenthetical_context, "
-        "extracted_from, extraction_action, evidence_tags, sibling_context, confidence, reason.\n"
-        "Allowed candidate_role values: character, person, work_title, artist_creator, alias_like, source_title, unknown_name_like.\n"
-        "Allowed candidate_status values: active_candidate, needs_review, rejected.\n"
+        "Each record must include: group_key, provider, verdict, candidates, rejected_summary. "
+        "Only include ambiguous_items or error_code when needed. You may include should_not_create_entity_truth=true.\n"
+        "Allowed verdict values: name_candidate_found, work_candidate_found, artist_candidate_found, "
+        "multiple_candidates_found, ambiguous_needs_review, original_without_explicit_name, no_explicit_name, "
+        "metadata_insufficient, provider_not_applicable, rejected_general_only, rejected_popularity_or_meta_only, extraction_error.\n"
+        "Candidate fields only: raw_value, display_name, normalized_value or canonical_key, role, status, confidence, source_field, extraction_action. "
+        "Optional compact fields: work_context, parenthetical_base, parenthetical_context.\n"
+        "Allowed role values: character, person, work_title, artist_creator, source_title, alias_like, unknown_name_like.\n"
+        "Allowed status values: active_candidate, needs_review.\n"
         "Allowed extraction_action values: direct_name, parenthetical_split, popularity_suffix_stripped, "
-        "provider_structured_field, normal_tag_candidate, ai_model_character_tag, llm_inferred_from_context.\n"
-        f"Allowed extracted_from values: {sorted(ALLOWED_ORIGINS)}.\n"
-        "Each rejected_tags item must include raw_value, normalized_value, rejection_reason, and reason. "
-        f"Allowed rejection_reason values: {sorted(ALLOWED_REJECTION_REASONS)}.\n"
-        "Each meta_tags item should include raw_value, normalized_value, meta_role, reason, and extracted_prefix when applicable.\n"
+        "provider_structured_field, normal_tag_candidate, ai_model_character_tag, context_inferred.\n"
+        f"Allowed source_field values: {sorted(ALLOWED_ORIGINS)}.\n"
+        "rejected_summary must be an object with integer counts: descriptive_general_count, popularity_meta_count, "
+        "explicit_r18_meta_count, invalid_or_empty_count, duplicate_count, other_rejected_count.\n"
+        "Use compact error_code values when needed: invalid_json, schema_validation_failed, no_candidates_after_validation, "
+        "timeout, provider_error, unsupported_payload, candidate_confidence_invalid, malformed_candidate_array, "
+        "eligibility_excluded, cache_fingerprint_mismatch.\n"
         "Preserve all plausible multilingual spellings and aliases; do not choose only one best name. "
         "Use group context: all tags, title, caption, artist, source assertions, source name observations, normal tags, and AI tags.\n"
         "Pixiv tags must not all be generic provider tags. Identify likely character/person/work/artist/name-like strings.\n"
         "Original/original-work tags do not automatically mean no name; if an explicit OC/name-like tag exists, extract it. "
-        "If no explicit name-like tag exists, give a no-name verdict and reason.\n"
+        "If no explicit name-like tag exists, give a compact no-name verdict.\n"
         f"Popularity tags ending with a count plus users{iri} or similar are meta tags as a whole. "
         "Do not make the full popularity tag a concept/name alias. If a prefix exists, emit the prefix as a candidate "
         "with extraction_action=popularity_suffix_stripped and keep the full raw tag only as meta/evidence.\n"
         "Parenthetical tags such as name(work) should emit the base name candidate, work/context candidate, and preserve combined alias evidence.\n"
         "R-18, general visual descriptors, poses, body parts, clothing, popularity markers, URLs, and local paths are not character/person names.\n"
-        "If uncertain, use ambiguous_needs_review rather than silently rejecting. If no candidates are found, explain why.\n"
-        "Set should_not_create_entity_truth=true on every record. Do not include hidden chain-of-thought."
+        "If uncertain, use ambiguous_needs_review rather than silently rejecting.\n"
+        "Do not output verbose reasons, prose explanations, chain-of-thought, or per-tag rationale text."
     )
 
 
@@ -826,6 +1466,40 @@ def _coerce_record_array(payload: Any, *, expected_count: int) -> list[Mapping[s
     return rows
 
 
+def _coerce_confidence(value: Any) -> float:
+    if isinstance(value, bool):
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_confidence_invalid")
+    if isinstance(value, (int, float)):
+        confidence = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not re.fullmatch(r"(0(?:\.\d+)?|1(?:\.0+)?)", stripped):
+            raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_confidence_invalid")
+        confidence = float(stripped)
+    else:
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_confidence_invalid")
+    if confidence < 0.0 or confidence > 1.0:
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_confidence_invalid")
+    return confidence
+
+
+def _compact_rejected_summary(row: Mapping[str, Any]) -> dict[str, int]:
+    raw = row.get("rejected_summary")
+    if raw is None:
+        return {key: 0 for key in COMPACT_REJECTED_SUMMARY_KEYS}
+    if not isinstance(raw, Mapping):
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:rejected_summary")
+    result: dict[str, int] = {}
+    for key in COMPACT_REJECTED_SUMMARY_KEYS:
+        value = raw.get(key, 0)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise SourceNameCandidateExtractionError("llm_output_schema_invalid:rejected_summary")
+        if int(value) < 0:
+            raise SourceNameCandidateExtractionError("llm_output_schema_invalid:rejected_summary")
+        result[key] = int(value)
+    return result
+
+
 def _validate_candidate(
     item: Mapping[str, Any],
     group: SourceCandidateInputGroup,
@@ -838,25 +1512,32 @@ def _validate_candidate(
     canonical = normalize_source_text(item.get("canonical_key")) or canonical_source_key(normalized)
     if not raw or not normalized or not canonical:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_value_missing")
-    role = normalize_source_text(item.get("candidate_role"))
-    status = normalize_source_text(item.get("candidate_status"))
+    role = normalize_source_text(item.get("role")) or normalize_source_text(item.get("candidate_role"))
+    status = normalize_source_text(item.get("status")) or normalize_source_text(item.get("candidate_status"))
     action = normalize_source_text(item.get("extraction_action"))
-    origin = normalize_source_text(item.get("extracted_from"))
+    action = ACTION_SYNONYMS.get(action, action)
+    origin = normalize_source_text(item.get("source_field")) or normalize_source_text(item.get("extracted_from"))
     origin = ORIGIN_SYNONYMS.get(origin, origin)
     if role not in ALLOWED_CANDIDATE_ROLES:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_role")
-    if status not in ALLOWED_CANDIDATE_STATUSES:
+    if status not in {"active_candidate", "needs_review"}:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:candidate_status")
     if action not in ALLOWED_EXTRACTION_ACTIONS:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extraction_action")
     if origin not in ALLOWED_ORIGINS:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extracted_from")
+    confidence = _coerce_confidence(item.get("confidence"))
     popularity = popularity_suffix_prefix(raw)
     rejection_reason = None
     if popularity and action != "popularity_suffix_stripped":
-        status = "rejected"
-        rejection_reason = "popularity_meta"
-    if action == "llm_inferred_from_context" and float(item.get("confidence") or 0.0) > 0.55:
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:full_popularity_tag_candidate")
+    if popularity and action == "popularity_suffix_stripped":
+        prefix = normalize_source_text(popularity.get("extracted_prefix"))
+        if prefix:
+            display = prefix if canonical_source_key(display) == canonical_source_key(raw) else display
+            normalized = prefix if canonical_source_key(normalized) == canonical_source_key(raw) else normalized
+            canonical = canonical_source_key(normalized)
+    if action == "context_inferred" and confidence > 0.55:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:inferred_confidence_too_high")
     language = normalize_source_text(item.get("language_hint")) or None
     script = normalize_source_text(item.get("script_hint")) or None
@@ -896,8 +1577,8 @@ def _validate_candidate(
         parenthetical_base=parenthetical_base,
         parenthetical_context=parenthetical_context,
         extraction_action=action,
-        confidence=float(item.get("confidence")) if item.get("confidence") is not None else None,
-        reason=normalize_source_text(item.get("reason")) or None,
+        confidence=confidence,
+        reason=None,
         rejection_reason=rejection_reason,
         no_name_reason=None,
         evidence_payload={
@@ -922,24 +1603,31 @@ def validate_extraction_record(row: Mapping[str, Any], group: SourceCandidateInp
     group_key = normalize_source_text(row.get("group_key"))
     if group_key != group.group_key:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:group_key_mismatch")
-    if row.get("should_not_create_entity_truth") is not True:
+    if row.get("should_not_create_entity_truth") is False:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:truth_flag")
-    verdict = normalize_source_text(row.get("extraction_verdict"))
+    verdict = normalize_source_text(row.get("verdict")) or normalize_source_text(row.get("extraction_verdict"))
     verdict = VERDICT_SYNONYMS.get(verdict, verdict)
     if verdict not in ALLOWED_VERDICTS:
         raise SourceNameCandidateExtractionError("llm_output_schema_invalid:extraction_verdict")
-    verdict_reason = normalize_source_text(row.get("verdict_reason"))
-    if not verdict_reason:
-        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:verdict_reason_missing")
+    verdict_reason = normalize_source_text(row.get("error_code")) or verdict
     warnings = [normalize_source_text(value) for value in row.get("extraction_warnings") or [] if normalize_source_text(value)]
     no_name_reason = normalize_source_text(row.get("no_name_reason")) or None
-    confidence_summary = row.get("confidence_summary") if isinstance(row.get("confidence_summary"), Mapping) else {}
+    rejected_summary = _compact_rejected_summary(row)
+    confidence_summary = {
+        "rejected_summary": rejected_summary,
+        "compact_schema": True,
+    }
 
-    candidates = tuple(
-        _validate_candidate(item, group, verdict=verdict)
-        for item in (row.get("candidates") or [])
-        if isinstance(item, Mapping)
-    )
+    candidates_raw = row.get("candidates")
+    if candidates_raw is None:
+        candidates_raw = []
+    if not isinstance(candidates_raw, list):
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:malformed_candidate_array")
+    if any(not isinstance(item, Mapping) for item in candidates_raw):
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:malformed_candidate_array")
+    candidates = tuple(_validate_candidate(item, group, verdict=verdict) for item in candidates_raw)
+    if verdict in LLM_CANDIDATE_FOUND_VERDICTS and not candidates:
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:no_candidates_after_validation")
     rejected: list[RejectedTagDraft] = []
     for item in row.get("rejected_tags") or []:
         if not isinstance(item, Mapping):
@@ -1039,8 +1727,10 @@ def validate_extraction_record(row: Mapping[str, Any], group: SourceCandidateInp
         warnings.append("verdict_promoted_by_candidate_recovery")
         no_name_reason = None
         candidates = tuple(replace(candidate, extraction_verdict=verdict) for candidate in candidates)
+    if not candidates and verdict in LLM_CANDIDATE_FOUND_VERDICTS:
+        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:no_candidates_after_validation")
     if not candidates and not no_name_reason and verdict in {"no_explicit_name", "original_without_explicit_name", "metadata_insufficient", "provider_not_applicable"}:
-        raise SourceNameCandidateExtractionError("llm_output_schema_invalid:no_name_reason_missing")
+        no_name_reason = verdict
 
     verdict_draft = RecordVerdictDraft(
         group_key=group.group_key,
@@ -1070,11 +1760,19 @@ def validate_extraction_record(row: Mapping[str, Any], group: SourceCandidateInp
 def _dedupe_candidates(items: Sequence[CandidateDraft]) -> tuple[CandidateDraft, ...]:
     by_key: dict[str, CandidateDraft] = {}
     for item in items:
-        existing = by_key.get(item.candidate_key)
+        dedupe_key = ":".join(
+            [
+                canonical_source_key(item.group_key),
+                canonical_source_key(item.normalized_value or item.raw_value),
+                canonical_source_key(item.candidate_role),
+                canonical_source_key(item.extraction_action),
+            ]
+        )
+        existing = by_key.get(dedupe_key)
         if existing is None:
-            by_key[item.candidate_key] = item
+            by_key[dedupe_key] = item
         elif (existing.confidence or 0.0) < (item.confidence or 0.0):
-            by_key[item.candidate_key] = item
+            by_key[dedupe_key] = item
     return tuple(by_key.values())
 
 
@@ -1138,6 +1836,8 @@ def _record_from_failure(group: SourceCandidateInputGroup, *, error: str, retrya
 
 
 def _is_retryable_llm_error(exc: BaseException) -> bool:
+    if isinstance(exc, asyncio.TimeoutError):
+        return True
     if isinstance(exc, LLMTransportError):
         return True
     if isinstance(exc, LLMHTTPStatusError):
@@ -1154,15 +1854,18 @@ async def _classify_group_chunk(
     groups: Sequence[SourceCandidateInputGroup],
     *,
     max_tokens: int,
+    timeout_seconds: float | None = None,
 ) -> tuple[list[Mapping[str, Any]], dict[str, Any], dict[str, Any]]:
     messages = extraction_messages(groups)
     input_payload = json.loads(messages[1]["content"])
     try:
-        payload = await provider.complete_json(messages, temperature=0.0, max_tokens=max_tokens)
+        call = provider.complete_json(messages, temperature=0.0, max_tokens=max_tokens)
+        payload = await asyncio.wait_for(call, timeout=timeout_seconds) if timeout_seconds else await call
         records = _coerce_record_array(payload, expected_count=len(groups))
         return records, input_payload, {"parsed_response": payload, "repair_strategy": "complete_json"}
     except LLMResponseFormatError:
-        content = await provider.complete_chat(messages, temperature=0.0, max_tokens=max_tokens)
+        call = provider.complete_chat(messages, temperature=0.0, max_tokens=max_tokens)
+        content = await asyncio.wait_for(call, timeout=timeout_seconds) if timeout_seconds else await call
         stripped = _extract_json_object(content)
         payload = json.loads(stripped)
         records = _coerce_record_array(payload, expected_count=len(groups))
@@ -1196,7 +1899,9 @@ async def extract_groups_with_llm(
     chunk_size: int = 5,
     retries: int = 1,
     max_tokens: int = 6000,
-    cached_records_by_group_key: Mapping[str, Mapping[str, Any]] | None = None,
+    timeout_seconds: float | None = None,
+    provider_summary: Mapping[str, Any] | None = None,
+    cached_records_by_fingerprint: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ExtractionResultBundle:
     if chunk_size <= 0:
         raise SourceNameCandidateExtractionError("chunk_size_invalid")
@@ -1209,11 +1914,13 @@ async def extract_groups_with_llm(
     llm_outputs: list[dict[str, Any]] = []
     validation_failures: list[dict[str, Any]] = []
     counters: Counter[str] = Counter()
-    cached_records_by_group_key = dict(cached_records_by_group_key or {})
+    provider_summary = dict(provider_summary or {})
+    cached_records_by_fingerprint = dict(cached_records_by_fingerprint or {})
     uncached_groups: list[SourceCandidateInputGroup] = []
 
     for group in groups:
-        cached = cached_records_by_group_key.get(group.group_key)
+        fingerprint = llm_cache_fingerprint(group, provider_summary)
+        cached = cached_records_by_fingerprint.get(fingerprint)
         if cached is None:
             uncached_groups.append(group)
             continue
@@ -1224,7 +1931,14 @@ async def extract_groups_with_llm(
             rejected_tags.extend(group_rejected)
             meta_tags.extend(group_meta)
             ambiguous_items.extend(group_ambiguous)
-            llm_outputs.append({"group_key": group.group_key, "parsed_response": cached, "repair_strategy": "cache_hit"})
+            llm_outputs.append(
+                {
+                    "group_key": group.group_key,
+                    "cache_fingerprint": fingerprint,
+                    "parsed_response": cached,
+                    "repair_strategy": "cache_hit",
+                }
+            )
             counters["cache_hits"] += 1
             counters["valid_records"] += 1
         except SourceNameCandidateExtractionError as exc:
@@ -1245,9 +1959,30 @@ async def extract_groups_with_llm(
         for attempt in range(retries + 1):
             counters["api_call_attempts"] += 1
             try:
-                rows, input_payload, output_payload = await _classify_group_chunk(provider, chunk, max_tokens=max_tokens)
-                llm_inputs.append({**input_payload, "repair_strategy": strategy})
-                llm_outputs.append({**output_payload, "repair_strategy": strategy})
+                rows, input_payload, output_payload = await _classify_group_chunk(
+                    provider,
+                    chunk,
+                    max_tokens=max_tokens,
+                    timeout_seconds=timeout_seconds,
+                )
+                fingerprints = {
+                    group.group_key: llm_cache_fingerprint(group, provider_summary)
+                    for group in chunk
+                }
+                llm_inputs.append(
+                    {
+                        **input_payload,
+                        "repair_strategy": strategy,
+                        "cache_fingerprints": fingerprints,
+                    }
+                )
+                llm_outputs.append(
+                    {
+                        **output_payload,
+                        "repair_strategy": strategy,
+                        "cache_fingerprints": fingerprints,
+                    }
+                )
                 for group, row in zip(chunk, rows):
                     verdict, group_candidates, group_rejected, group_meta, group_ambiguous = validate_extraction_record(row, group)
                     record_verdicts.append(verdict)
@@ -1257,7 +1992,7 @@ async def extract_groups_with_llm(
                     ambiguous_items.extend(group_ambiguous)
                     counters["valid_records"] += 1
                 return
-            except (LLMProviderError, SourceNameCandidateExtractionError, json.JSONDecodeError) as exc:
+            except (LLMProviderError, SourceNameCandidateExtractionError, json.JSONDecodeError, asyncio.TimeoutError) as exc:
                 last_error = exc
                 if attempt < retries:
                     counters["chunk_retries"] += 1
@@ -1330,7 +2065,9 @@ def run_extraction_sync(
     chunk_size: int = 5,
     retries: int = 1,
     max_tokens: int = 6000,
-    cached_records_by_group_key: Mapping[str, Mapping[str, Any]] | None = None,
+    timeout_seconds: float | None = None,
+    provider_summary: Mapping[str, Any] | None = None,
+    cached_records_by_fingerprint: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ExtractionResultBundle:
     return asyncio.run(
         extract_groups_with_llm(
@@ -1341,7 +2078,9 @@ def run_extraction_sync(
             chunk_size=chunk_size,
             retries=retries,
             max_tokens=max_tokens,
-            cached_records_by_group_key=cached_records_by_group_key,
+            timeout_seconds=timeout_seconds,
+            provider_summary=provider_summary,
+            cached_records_by_fingerprint=cached_records_by_fingerprint,
         )
     )
 
@@ -1415,6 +2154,7 @@ def fallback_only_provider_from_settings() -> tuple[BaseLLMProvider | None, dict
     fallback_provider_type = settings.TAG_TRANSLATION_LLM_FALLBACK_PROVIDER
     summary = {
         "provider_mode": "fallback_only",
+        "llm_provider_label": "fallback",
         "uses_primary_model": False,
         "uses_fallback_provider": True,
         "fallback_enabled": fallback_enabled,
@@ -1447,6 +2187,77 @@ def fallback_only_provider_from_settings() -> tuple[BaseLLMProvider | None, dict
     return (provider if provider.is_available() else None), summary
 
 
+def primary_openai_provider_from_settings() -> tuple[BaseLLMProvider | None, dict[str, Any]]:
+    from ..config import settings
+
+    provider_type = settings.TAG_TRANSLATION_LLM_PROVIDER
+    primary_key = settings.TAG_TRANSLATION_LLM_API_KEY
+    primary_model = settings.TAG_TRANSLATION_LLM_MODEL
+    primary_url = settings.TAG_TRANSLATION_LLM_BASE_URL
+    summary = {
+        "provider_mode": "primary_openai",
+        "llm_provider_label": "primary_openai",
+        "uses_primary_model": True,
+        "uses_fallback_provider": False,
+        "primary_enabled": bool(settings.TAG_TRANSLATION_LLM_ENABLED),
+        "primary_provider_type": provider_type,
+        "llm_access_configured": bool(primary_key and primary_model and primary_url and settings.TAG_TRANSLATION_LLM_ENABLED),
+        "model_label": "primary_model_configured" if primary_model else "unknown",
+        "model_name_redacted": bool(primary_model),
+        "base_url_redacted": True,
+        "llm_access_stored": False,
+    }
+    if not settings.TAG_TRANSLATION_LLM_ENABLED:
+        return None, {**summary, "unavailable_reason": "primary_disabled"}
+    if provider_type != "openai_compatible":
+        return None, {**summary, "unavailable_reason": "primary_provider_not_openai_compatible"}
+    if not (primary_key and primary_model and primary_url):
+        return None, {**summary, "unavailable_reason": "primary_config_incomplete"}
+    provider = OpenAICompatibleProvider(
+        api_key=primary_key,
+        model=primary_model,
+        base_url=primary_url,
+        label="primary_openai",
+    )
+    return (provider if provider.is_available() else None), summary
+
+
+def fallback_openai_provider_from_settings() -> tuple[BaseLLMProvider | None, dict[str, Any]]:
+    from ..config import settings
+
+    fallback_enabled = bool(settings.TAG_TRANSLATION_LLM_FALLBACK_ENABLED)
+    fallback_key = settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
+    fallback_model = settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
+    fallback_url = settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+    fallback_provider_type = settings.TAG_TRANSLATION_LLM_FALLBACK_PROVIDER
+    summary = {
+        "provider_mode": "fallback",
+        "llm_provider_label": "fallback",
+        "uses_primary_model": False,
+        "uses_fallback_provider": True,
+        "fallback_enabled": fallback_enabled,
+        "fallback_provider_type": fallback_provider_type,
+        "llm_access_configured": bool(fallback_key and fallback_model and fallback_url),
+        "model_label": "fallback_model_configured" if fallback_model else "unknown",
+        "model_name_redacted": bool(fallback_model),
+        "base_url_redacted": True,
+        "llm_access_stored": False,
+    }
+    if not fallback_enabled:
+        return None, {**summary, "unavailable_reason": "fallback_disabled"}
+    if fallback_provider_type not in {"openai_compatible", "deepseek"}:
+        return None, {**summary, "unavailable_reason": "fallback_provider_not_openai_compatible"}
+    if not (fallback_key and fallback_model and fallback_url):
+        return None, {**summary, "unavailable_reason": "fallback_config_incomplete"}
+    provider = OpenAICompatibleProvider(
+        api_key=fallback_key,
+        model=fallback_model,
+        base_url=fallback_url,
+        label="fallback",
+    )
+    return (provider if provider.is_available() else None), summary
+
+
 def collect_source_candidate_input_groups(
     db: Session,
     *,
@@ -1459,21 +2270,28 @@ def collect_source_candidate_input_groups(
     if max_unique_strings <= 0:
         raise SourceNameCandidateExtractionError("max_unique_strings_invalid")
 
-    records = (
-        db.query(SourceMetadataRecord)
+    record_rows = (
+        db.query(SourceMetadataRecord, Media)
+        .outerjoin(Media, SourceMetadataRecord.media_id == Media.id)
         .filter(SourceMetadataRecord.status == "observed")
         .order_by(
             SourceMetadataRecord.data_type_label.desc(),
             SourceMetadataRecord.provider.asc(),
             SourceMetadataRecord.id.asc(),
         )
-        .limit(max_records)
         .all()
     )
     groups: list[SourceCandidateInputGroup] = []
     unique_strings: set[str] = set()
+    eligibility_counts: Counter[str] = Counter()
+    excluded_counts: Counter[str] = Counter()
 
-    for record in records:
+    for record, media in record_rows:
+        eligible, eligibility_reason, eligibility_payload = media_llm_eligibility(media)
+        eligibility_counts[eligibility_reason] += 1
+        if not eligible:
+            excluded_counts[eligibility_reason] += 1
+            continue
         tags = [
             {
                 "id": row.id,
@@ -1539,6 +2357,11 @@ def collect_source_candidate_input_groups(
             media_id=record.media_id,
             data_type_label=record.data_type_label,
             metadata_kind=record.metadata_kind,
+            content_class=eligibility_payload["content_class"],
+            content_class_reviewed=bool(eligibility_payload["content_class_reviewed"]),
+            content_class_locked=bool(eligibility_payload["content_class_locked"]),
+            eligibility_status="eligible",
+            eligibility_reason=eligibility_reason,
             title=record.title,
             caption=_caption_from_raw_metadata(record.raw_metadata_json),
             artist_name=record.artist_name,
@@ -1558,9 +2381,12 @@ def collect_source_candidate_input_groups(
             break
         unique_strings.update(group_strings)
         groups.append(group)
+        if len(groups) >= max_records:
+            break
 
     if include_media_tag_only_groups and len(groups) < max_records and len(unique_strings) < max_unique_strings:
-        for group in _media_tag_only_groups(db, limit=max_records - len(groups)):
+        for group, eligibility_reason in _media_tag_only_groups(db, limit=max_records - len(groups)):
+            eligibility_counts[eligibility_reason] += 1
             group_strings = {canonical_source_key(value) for value in _raw_strings_for_group(group) if canonical_source_key(value)}
             if not group_strings:
                 continue
@@ -1572,6 +2398,11 @@ def collect_source_candidate_input_groups(
     return groups, {
         "source_metadata_records_available": db.query(func.count(SourceMetadataRecord.id)).scalar() or 0,
         "groups_collected": len(groups),
+        "eligible_groups_collected": len(groups),
+        "eligibility_counts": dict(eligibility_counts),
+        "excluded_counts": dict(excluded_counts),
+        "approved_content_classes": sorted(APPROVED_LLM_CONTENT_CLASSES | {ContentClassEnum.illustration.value}),
+        "approved_illustration_rule": "illustration requires content_class_reviewed or content_class_locked",
         "unique_raw_string_count": len(unique_strings),
         "groups_by_provider": dict(Counter(group.provider for group in groups)),
         "groups_by_data_origin": dict(Counter(group.data_origin for group in groups)),
@@ -1624,33 +2455,45 @@ def _media_tag_rows(db: Session, media_id: int | None) -> list[dict[str, Any]]:
     ]
 
 
-def _media_tag_only_groups(db: Session, *, limit: int) -> list[SourceCandidateInputGroup]:
-    media_ids = [
-        row[0]
-        for row in (
-            db.query(blombooru_media_tags.c.media_id)
-            .join(Tag, Tag.id == blombooru_media_tags.c.tag_id)
-            .filter(Tag.category.in_([TagCategoryEnum.character, TagCategoryEnum.copyright, TagCategoryEnum.artist]))
-            .group_by(blombooru_media_tags.c.media_id)
-            .order_by(blombooru_media_tags.c.media_id.asc())
-            .limit(limit)
-            .all()
-        )
-    ]
-    groups: list[SourceCandidateInputGroup] = []
-    for media_id in media_ids:
+def _media_tag_only_groups(db: Session, *, limit: int) -> list[tuple[SourceCandidateInputGroup, str]]:
+    rows = (
+        db.query(Media)
+        .join(blombooru_media_tags, blombooru_media_tags.c.media_id == Media.id)
+        .join(Tag, Tag.id == blombooru_media_tags.c.tag_id)
+        .filter(Tag.category.in_([TagCategoryEnum.character, TagCategoryEnum.copyright, TagCategoryEnum.artist]))
+        .group_by(Media.id)
+        .order_by(Media.id.asc())
+        .limit(limit * 10 if limit > 0 else 0)
+        .all()
+    )
+    groups: list[tuple[SourceCandidateInputGroup, str]] = []
+    for media in rows:
+        eligible, eligibility_reason, eligibility_payload = media_llm_eligibility(media)
+        if not eligible:
+            continue
+        media_id = media.id
         media_tags = _media_tag_rows(db, media_id)
         if not media_tags:
             continue
         groups.append(
-            SourceCandidateInputGroup(
-                group_key=f"media_tags:{media_id}",
-                provider="local_media_tags",
-                media_id=media_id,
-                media_tags=tuple(media_tags),
-                data_origin="real_dev_db",
+            (
+                SourceCandidateInputGroup(
+                    group_key=f"media_tags:{media_id}",
+                    provider="local_media_tags",
+                    media_id=media_id,
+                    content_class=eligibility_payload["content_class"],
+                    content_class_reviewed=bool(eligibility_payload["content_class_reviewed"]),
+                    content_class_locked=bool(eligibility_payload["content_class_locked"]),
+                    eligibility_status="eligible",
+                    eligibility_reason=eligibility_reason,
+                    media_tags=tuple(media_tags),
+                    data_origin="real_dev_db",
+                ),
+                eligibility_reason,
             )
         )
+        if len(groups) >= limit:
+            break
     return groups
 
 
@@ -1787,9 +2630,15 @@ def persist_extraction_bundle(
     inserted = 0
     updated = 0
     active_keys: set[str] = set()
+    processed_group_keys = {verdict.group_key for verdict in bundle.record_verdicts}
     for candidate in bundle.candidates:
-        active_keys.add(candidate.candidate_key)
-        row = db.query(SourceNameCandidate).filter_by(candidate_key=candidate.candidate_key).one_or_none()
+        persisted_candidate_key = _run_scoped_candidate_key(bundle.run_id, candidate.candidate_key)
+        active_keys.add(persisted_candidate_key)
+        row = (
+            db.query(SourceNameCandidate)
+            .filter_by(extraction_run_id=run_row.id, candidate_key=persisted_candidate_key)
+            .one_or_none()
+        )
         values = {
             "extraction_run_id": run_row.id,
             "record_verdict_id": verdict_by_group.get(candidate.group_key).id if candidate.group_key in verdict_by_group else None,
@@ -1817,12 +2666,16 @@ def persist_extraction_bundle(
             "reason": candidate.reason,
             "rejection_reason": candidate.rejection_reason,
             "no_name_reason": candidate.no_name_reason,
-            "evidence_payload": candidate.evidence_payload,
+            "evidence_payload": {
+                **candidate.evidence_payload,
+                "logical_candidate_key": candidate.candidate_key,
+                "run_scoped_candidate_key": True,
+            },
             "extractor_version": EXTRACTOR_VERSION,
             "status": "active",
         }
         if row is None:
-            row = SourceNameCandidate(candidate_key=candidate.candidate_key, **values)
+            row = SourceNameCandidate(candidate_key=persisted_candidate_key, **values)
             db.add(row)
             inserted += 1
         else:
@@ -1831,14 +2684,14 @@ def persist_extraction_bundle(
             updated += 1
     db.flush()
 
-    stale_rows = (
+    stale_query = (
         db.query(SourceNameCandidate)
         .filter(SourceNameCandidate.extraction_run_id == run_row.id)
-        .filter(~SourceNameCandidate.candidate_key.in_(active_keys))
-        .all()
-        if active_keys
-        else []
+        .filter(SourceNameCandidate.group_key.in_(processed_group_keys))
     )
+    if active_keys:
+        stale_query = stale_query.filter(~SourceNameCandidate.candidate_key.in_(active_keys))
+    stale_rows = stale_query.all()
     for stale in stale_rows:
         stale.status = "superseded"
         stale.candidate_status = "rejected"

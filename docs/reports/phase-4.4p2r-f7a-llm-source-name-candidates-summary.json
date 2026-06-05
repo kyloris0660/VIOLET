@@ -2,19 +2,28 @@
   "artifacts": {
     "ambiguous_needs_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/ambiguous-needs-review.csv",
     "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates",
+    "checkpoint_status_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/run-checkpoint-status.json",
     "details_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/details.json",
+    "disagreements_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/disagreements.csv",
     "extraction_errors_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/extraction-errors.csv",
+    "input_manifest_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/input-manifest.json",
     "llm_inputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-inputs.jsonl",
-    "llm_outputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-outputs.jsonl",
+    "llm_outputs_fallback_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-outputs-fallback.jsonl",
+    "llm_outputs_primary_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-outputs-primary.jsonl",
     "manual_review_guide": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/manual-review-guide.md",
-    "name_candidates_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/name-candidates.csv",
+    "name_candidates_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/name-candidates-fallback.csv",
+    "name_candidates_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/name-candidates-primary.csv",
     "no_name_records_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/no-name-records.csv",
     "popularity_prefix_extractions_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/popularity-prefix-extractions.csv",
     "private_summary_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/summary.json",
+    "progress_events_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/run-progress-events.jsonl",
+    "provider_comparison_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/provider-comparison-summary.csv",
+    "provider_comparison_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/provider-comparison-summary.json",
     "public_report_json": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates-summary.json",
     "public_report_md": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md",
-    "record_verdicts_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/record-verdicts.csv",
-    "rejected_general_meta_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/rejected-general-meta.csv",
+    "record_verdicts_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/record-verdicts-fallback.csv",
+    "record_verdicts_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/record-verdicts-primary.csv",
+    "timeout_and_error_cases_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/timeout-and-error-cases.csv",
     "validation_failures_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/validation-failures.jsonl"
   },
   "branch": "codex/phase44p2r-f7a-llm-source-name-candidates",
@@ -25,229 +34,645 @@
     "violet_env": "development"
   },
   "db_write_summary": {
-    "allowed_table_row_counts_after": {
-      "blombooru_source_name_candidate_extraction_runs": 1,
-      "blombooru_source_name_candidate_record_verdicts": 12,
-      "blombooru_source_name_candidates": 173
-    },
-    "allowed_table_row_counts_before": {
-      "blombooru_source_name_candidate_extraction_runs": 0,
-      "blombooru_source_name_candidate_record_verdicts": 0,
-      "blombooru_source_name_candidates": 0
-    },
-    "allowed_table_row_deltas": {
-      "blombooru_source_name_candidate_extraction_runs": 1,
-      "blombooru_source_name_candidate_record_verdicts": 12,
-      "blombooru_source_name_candidates": 173
-    },
-    "allowed_tables": [
-      "blombooru_source_name_candidate_extraction_runs",
-      "blombooru_source_name_candidate_record_verdicts",
-      "blombooru_source_name_candidates"
-    ],
-    "apply": true,
+    "apply": false,
     "forbidden_table_row_counts_after": {
       "blombooru_entities": 0,
       "blombooru_entity_aliases": 0,
       "blombooru_entity_evidence": 2,
-      "blombooru_entity_external_identities": 0,
       "blombooru_media_entity_assignments": 0,
       "blombooru_media_entity_candidates": 7,
       "blombooru_media_tags": 105699,
-      "blombooru_negative_lookup_cache": 0,
-      "blombooru_provider_cache": 2,
-      "blombooru_tag_translation_jobs": 17,
       "blombooru_tag_translations": 3732
     },
     "forbidden_table_row_counts_before": {
       "blombooru_entities": 0,
       "blombooru_entity_aliases": 0,
       "blombooru_entity_evidence": 2,
-      "blombooru_entity_external_identities": 0,
       "blombooru_media_entity_assignments": 0,
       "blombooru_media_entity_candidates": 7,
       "blombooru_media_tags": 105699,
-      "blombooru_negative_lookup_cache": 0,
-      "blombooru_provider_cache": 2,
-      "blombooru_tag_translation_jobs": 17,
       "blombooru_tag_translations": 3732
     },
     "forbidden_table_row_deltas": {
       "blombooru_entities": 0,
       "blombooru_entity_aliases": 0,
       "blombooru_entity_evidence": 0,
-      "blombooru_entity_external_identities": 0,
       "blombooru_media_entity_assignments": 0,
       "blombooru_media_entity_candidates": 0,
       "blombooru_media_tags": 0,
-      "blombooru_negative_lookup_cache": 0,
-      "blombooru_provider_cache": 0,
-      "blombooru_tag_translation_jobs": 0,
       "blombooru_tag_translations": 0
     },
-    "forbidden_tables": [
-      "blombooru_entities",
-      "blombooru_entity_aliases",
-      "blombooru_entity_evidence",
-      "blombooru_entity_external_identities",
-      "blombooru_media_entity_candidates",
-      "blombooru_media_entity_assignments",
-      "blombooru_media_tags",
-      "blombooru_tag_translations",
-      "blombooru_tag_translation_jobs",
-      "blombooru_provider_cache",
-      "blombooru_negative_lookup_cache"
+    "forbidden_truth_table_write_count": 0
+  },
+  "dedupe_metrics": {
+    "average_source_records_per_extraction_unit": 1.2907,
+    "deterministic_resolved_units": 35,
+    "llm_calls_attempted": 240,
+    "llm_calls_avoided_by_dedupe": 25,
+    "llm_required_units": 51,
+    "raw_string_occurrences_total": 111,
+    "top_repeated_units": [
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "GenshinImpact",
+        "source_count": 3,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "原神",
+        "source_count": 3,
+        "source_field": "source_name_observation"
+      },
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "原神",
+        "source_count": 3,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "原神",
+        "source_count": 3,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "Barbara",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "R-18",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "barbara_(genshin_impact)",
+        "source_count": 2,
+        "source_field": "normal_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "アルレッキーノ",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "ウィンク",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "サマータイムスパークル",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "スク水",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "バーバラ",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "バーバラ",
+        "source_count": 2,
+        "source_field": "source_name_observation"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "バーバラ(原神)",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "七茂やど@お仕事募集中",
+        "source_count": 2,
+        "source_field": "source_name_observation"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "七茂やど@お仕事募集中",
+        "source_count": 2,
+        "source_field": "pixiv_artist"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "原神",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "原神",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "少女",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "水着",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "水着バーバラちゃん🏝",
+        "source_count": 2,
+        "source_field": "pixiv_title"
+      }
     ],
-    "forbidden_truth_table_write_count": 0,
-    "inserted": {
-      "SourceNameCandidate": 173
-    },
-    "record_verdicts": 12,
-    "run_db_id": 1,
-    "stale_candidates_superseded": 0,
-    "updated": {
-      "SourceNameCandidate": 0
-    }
+    "unique_extraction_units_total": 86
   },
-  "extraction_summary": {
-    "ambiguous_count": 5,
-    "candidate_counts": {
-      "by_action": {
-        "ai_model_character_tag": 16,
-        "direct_name": 66,
-        "normal_tag_candidate": 6,
-        "parenthetical_split": 18,
-        "popularity_suffix_stripped": 10,
-        "provider_structured_field": 57
-      },
-      "by_role": {
-        "artist_creator": 41,
-        "character": 75,
-        "source_title": 14,
-        "unknown_name_like": 5,
-        "work_title": 38
-      },
-      "by_status": {
-        "active_candidate": 154,
-        "needs_review": 19
-      },
-      "popularity_prefix_extractions": 10,
-      "total": 173
-    },
-    "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v1",
-    "input": {
-      "group_count": 12,
-      "groups_by_data_origin": {
-        "real_dev_db": 12
-      },
-      "groups_by_provider": {
-        "pixiv": 12
-      },
-      "unique_raw_string_count": 122
-    },
-    "llm": {
-      "api_call_attempts": 11,
-      "api_chunks_attempted": 11,
-      "cache_hits": 1,
-      "failed_records_downgraded": 5,
-      "valid_records": 7
-    },
-    "meta_counts": {
-      "by_role": {
-        "meta": 1,
-        "popularity_marker": 1,
-        "popularity_meta": 8
-      },
-      "total": 10
-    },
-    "phase": "4.4-P2R-F7a",
-    "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_v1",
-    "record_verdict_counts": {
-      "extraction_error_terminal": 5,
-      "multiple_candidates_found": 7
-    },
-    "rejected_counts": {
-      "by_reason": {
-        "descriptive_general": 24,
-        "duplicate": 1,
-        "explicit_r18_meta": 3,
-        "not_name_like": 7,
-        "popularity_meta": 9
-      },
-      "total": 44
-    },
-    "safety": {
-      "entity_alias_write": false,
-      "entity_write": false,
-      "image_upload": false,
-      "local_source_hint_write": false,
-      "media_entity_candidate_write": false,
-      "media_tags_mutation": false,
-      "source_concept_linking": false,
-      "source_layer_only": true,
-      "tag_translation_mutation": false
-    },
-    "structured_output_schema_version": "source_name_candidate_extraction_v1",
-    "validation_failure_count": 5
-  },
-  "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v1",
-  "head_sha": "fddedef0c835e511c26d5b65e83cb7b5f23b358e",
+  "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+  "head_sha": "40d247b3afccec792846986c67afb2518f620a6b",
   "input_summary": {
-    "fixture_supplement": true,
+    "approved_content_classes": [
+      "anime",
+      "illustration"
+    ],
+    "approved_illustration_rule": "illustration requires content_class_reviewed or content_class_locked",
+    "average_source_records_per_extraction_unit": 1.2907,
+    "deterministic_resolved_units": 35,
+    "eligibility_counts": {
+      "eligible_anime": 5
+    },
+    "eligible_groups_collected": 5,
+    "excluded_counts": {},
     "groups_by_data_origin": {
-      "real_dev_db": 12
+      "real_dev_db": 5
     },
     "groups_by_provider": {
-      "pixiv": 12
+      "pixiv": 5
     },
-    "groups_collected": 12,
-    "max_records": 12,
-    "max_unique_strings": 200,
+    "groups_collected": 5,
+    "llm_calls_avoided_by_dedupe": 25,
+    "llm_required_units": 51,
+    "manifest_hash": "f6df5ec1dac79c9859bbb5a4b952d9e349935d32cdc076c81cc7317b861a6b4a",
+    "max_records": 5,
+    "max_unique_strings": 120,
+    "raw_string_occurrences_total": 111,
     "source_metadata_records_available": 200,
-    "unique_raw_string_count": 122
-  },
-  "llm_provider": {
-    "base_url_redacted": true,
-    "fallback_enabled": true,
-    "fallback_provider_type": "deepseek",
-    "llm_access_configured": true,
-    "llm_access_stored": false,
-    "model_label": "fallback_model_configured",
-    "model_name_redacted": true,
-    "provider_mode": "fallback_only",
-    "uses_fallback_provider": true,
-    "uses_primary_model": false
-  },
-  "operator_notes": {
-    "f7b_readiness": "candidate pack should be manually reviewed before SourceConcept linking; schema-valid LLM rate was 7/12 records in this bounded run",
-    "interrupted_large_run": "a 50-group / 500-unique-string run exceeded a 1800s tool timeout and was stopped before persistence",
-    "llm_schema_quality": "7 records produced valid normalized LLM extraction records; 5 records received explicit extraction_error_terminal verdicts after invalid JSON output",
-    "sample_scale_note": "completed persisted run used 12 real dev DB Pixiv/source groups and 122 unique raw strings because the larger recommended scale was too slow for the available execution window"
+    "top_repeated_units": [
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "GenshinImpact",
+        "source_count": 3,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "原神",
+        "source_count": 3,
+        "source_field": "source_name_observation"
+      },
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "原神",
+        "source_count": 3,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 2,
+        "normalized_value": "原神",
+        "source_count": 3,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "Barbara",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "R-18",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "barbara_(genshin_impact)",
+        "source_count": 2,
+        "source_field": "normal_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "アルレッキーノ",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "ウィンク",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "サマータイムスパークル",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "スク水",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "バーバラ",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "バーバラ",
+        "source_count": 2,
+        "source_field": "source_name_observation"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "バーバラ(原神)",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "七茂やど@お仕事募集中",
+        "source_count": 2,
+        "source_field": "source_name_observation"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "七茂やど@お仕事募集中",
+        "source_count": 2,
+        "source_field": "pixiv_artist"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "原神",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "原神",
+        "source_count": 2,
+        "source_field": "source_assertion"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "少女",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "水着",
+        "source_count": 2,
+        "source_field": "pixiv_tag"
+      },
+      {
+        "llm_calls_avoided": 1,
+        "normalized_value": "水着バーバラちゃん🏝",
+        "source_count": 2,
+        "source_field": "pixiv_title"
+      }
+    ],
+    "unique_extraction_units_total": 86,
+    "unique_raw_string_count": 57
   },
   "phase": "4.4-P2R-F7a",
-  "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_v1",
-  "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260604T172539Z-e3a9fcfc",
+  "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v2",
+  "provider_comparison": [
+    {
+      "ambiguous_count": 0,
+      "approximate_cost": "not_available_from_provider_response",
+      "average_seconds": 1.465,
+      "cache_hits": 86,
+      "candidate_count_by_role": {
+        "artist_creator": 9,
+        "character": 18,
+        "person": 2,
+        "source_title": 6,
+        "unknown_name_like": 21,
+        "work_title": 20
+      },
+      "candidate_count_by_status": {
+        "active_candidate": 66,
+        "needs_review": 10
+      },
+      "candidate_count_total": 76,
+      "chunk_count": 86,
+      "completed_unit_count": 86,
+      "concurrency": 1,
+      "deterministic_resolved_units": 35,
+      "duplicate_candidate_count": 0,
+      "duplicate_candidate_rate": 0.0,
+      "group_count": 5,
+      "inflight_dedupe_hits": 0,
+      "invalid_json_count": 0,
+      "llm_calls_attempted": 51,
+      "llm_calls_avoided_by_dedupe": 25,
+      "llm_provider_label": "primary_openai",
+      "llm_provider_mode": "primary_openai",
+      "llm_required_units": 51,
+      "llm_wall_time_seconds": 125.974,
+      "model_label": "primary_model_configured",
+      "no_name_count": 0,
+      "p50_seconds": 1.89,
+      "p95_seconds": 2.69,
+      "popularity_prefix_count": 4,
+      "provider_mode": "primary_serial",
+      "raw_string_occurrences_total": 111,
+      "record_retryable_error_count": 0,
+      "record_terminal_error_count": 0,
+      "record_verdict_counts": {
+        "multiple_candidates_found": 5
+      },
+      "rejected_by_reason": {
+        "descriptive_general": 2,
+        "explicit_r18_meta": 2,
+        "popularity_meta": 4
+      },
+      "rejected_total": 8,
+      "retry_count": 0,
+      "retryable_error_count": 0,
+      "schema_failure_count": 0,
+      "terminal_error_count": 0,
+      "timeout_count": 0,
+      "token_usage": "not_available_from_provider_response",
+      "total_wall_time_seconds": 126.65,
+      "unique_extraction_units_total": 86,
+      "unique_string_count": 86,
+      "unit_status_counts": {
+        "completed": 86
+      }
+    },
+    {
+      "ambiguous_count": 20,
+      "approximate_cost": "not_available_from_provider_response",
+      "average_seconds": 7.108,
+      "cache_hits": 86,
+      "candidate_count_by_role": {
+        "artist_creator": 5,
+        "character": 19,
+        "source_title": 6,
+        "unknown_name_like": 12,
+        "work_title": 11
+      },
+      "candidate_count_by_status": {
+        "active_candidate": 43,
+        "needs_review": 10
+      },
+      "candidate_count_total": 53,
+      "chunk_count": 86,
+      "completed_unit_count": 72,
+      "concurrency": 1,
+      "deterministic_resolved_units": 35,
+      "duplicate_candidate_count": 0,
+      "duplicate_candidate_rate": 0.0,
+      "group_count": 5,
+      "inflight_dedupe_hits": 0,
+      "invalid_json_count": 0,
+      "llm_calls_attempted": 73,
+      "llm_calls_avoided_by_dedupe": 25,
+      "llm_provider_label": "fallback",
+      "llm_provider_mode": "fallback",
+      "llm_required_units": 51,
+      "llm_wall_time_seconds": 611.308,
+      "model_label": "fallback_model_configured",
+      "no_name_count": 0,
+      "p50_seconds": 5.612,
+      "p95_seconds": 22.857,
+      "popularity_prefix_count": 7,
+      "provider_mode": "fallback_serial",
+      "raw_string_occurrences_total": 111,
+      "record_retryable_error_count": 0,
+      "record_terminal_error_count": 0,
+      "record_verdict_counts": {
+        "multiple_candidates_found": 5
+      },
+      "rejected_by_reason": {
+        "descriptive_general": 2,
+        "explicit_r18_meta": 2,
+        "popularity_meta": 4
+      },
+      "rejected_total": 8,
+      "retry_count": 0,
+      "retryable_error_count": 0,
+      "schema_failure_count": 1,
+      "terminal_error_count": 14,
+      "timeout_count": 0,
+      "token_usage": "not_available_from_provider_response",
+      "total_wall_time_seconds": 612.116,
+      "unique_extraction_units_total": 86,
+      "unique_string_count": 86,
+      "unit_status_counts": {
+        "completed": 72,
+        "terminal_error": 14
+      }
+    },
+    {
+      "ambiguous_count": 0,
+      "approximate_cost": "not_available_from_provider_response",
+      "average_seconds": 1.887,
+      "cache_hits": 86,
+      "candidate_count_by_role": {
+        "artist_creator": 9,
+        "character": 20,
+        "source_title": 6,
+        "unknown_name_like": 21,
+        "work_title": 21
+      },
+      "candidate_count_by_status": {
+        "active_candidate": 66,
+        "needs_review": 11
+      },
+      "candidate_count_total": 77,
+      "chunk_count": 86,
+      "completed_unit_count": 86,
+      "concurrency": 3,
+      "deterministic_resolved_units": 35,
+      "duplicate_candidate_count": 0,
+      "duplicate_candidate_rate": 0.0,
+      "group_count": 5,
+      "inflight_dedupe_hits": 0,
+      "invalid_json_count": 0,
+      "llm_calls_attempted": 51,
+      "llm_calls_avoided_by_dedupe": 25,
+      "llm_provider_label": "primary_openai",
+      "llm_provider_mode": "primary_openai",
+      "llm_required_units": 51,
+      "llm_wall_time_seconds": 162.276,
+      "model_label": "primary_model_configured",
+      "no_name_count": 0,
+      "p50_seconds": 2.646,
+      "p95_seconds": 4.043,
+      "popularity_prefix_count": 6,
+      "provider_mode": "primary_concurrent",
+      "raw_string_occurrences_total": 111,
+      "record_retryable_error_count": 0,
+      "record_terminal_error_count": 0,
+      "record_verdict_counts": {
+        "multiple_candidates_found": 5
+      },
+      "rejected_by_reason": {
+        "descriptive_general": 2,
+        "explicit_r18_meta": 2,
+        "popularity_meta": 4
+      },
+      "rejected_total": 8,
+      "retry_count": 0,
+      "retryable_error_count": 0,
+      "schema_failure_count": 0,
+      "terminal_error_count": 0,
+      "timeout_count": 0,
+      "token_usage": "not_available_from_provider_response",
+      "total_wall_time_seconds": 57.613,
+      "unique_extraction_units_total": 86,
+      "unique_string_count": 86,
+      "unit_status_counts": {
+        "completed": 86
+      }
+    },
+    {
+      "ambiguous_count": 13,
+      "approximate_cost": "not_available_from_provider_response",
+      "average_seconds": 6.428,
+      "cache_hits": 86,
+      "candidate_count_by_role": {
+        "artist_creator": 5,
+        "character": 19,
+        "person": 1,
+        "source_title": 6,
+        "unknown_name_like": 10,
+        "work_title": 16
+      },
+      "candidate_count_by_status": {
+        "active_candidate": 46,
+        "needs_review": 11
+      },
+      "candidate_count_total": 57,
+      "chunk_count": 86,
+      "completed_unit_count": 77,
+      "concurrency": 3,
+      "deterministic_resolved_units": 35,
+      "duplicate_candidate_count": 0,
+      "duplicate_candidate_rate": 0.0,
+      "group_count": 5,
+      "inflight_dedupe_hits": 0,
+      "invalid_json_count": 0,
+      "llm_calls_attempted": 65,
+      "llm_calls_avoided_by_dedupe": 25,
+      "llm_provider_label": "fallback",
+      "llm_provider_mode": "fallback",
+      "llm_required_units": 51,
+      "llm_wall_time_seconds": 552.775,
+      "model_label": "fallback_model_configured",
+      "no_name_count": 0,
+      "p50_seconds": 5.514,
+      "p95_seconds": 21.411,
+      "popularity_prefix_count": 6,
+      "provider_mode": "fallback_concurrent",
+      "raw_string_occurrences_total": 111,
+      "record_retryable_error_count": 0,
+      "record_terminal_error_count": 0,
+      "record_verdict_counts": {
+        "multiple_candidates_found": 5
+      },
+      "rejected_by_reason": {
+        "descriptive_general": 2,
+        "explicit_r18_meta": 2,
+        "popularity_meta": 4
+      },
+      "rejected_total": 8,
+      "retry_count": 0,
+      "retryable_error_count": 0,
+      "schema_failure_count": 1,
+      "terminal_error_count": 9,
+      "timeout_count": 0,
+      "token_usage": "not_available_from_provider_response",
+      "total_wall_time_seconds": 188.814,
+      "unique_extraction_units_total": 86,
+      "unique_string_count": 86,
+      "unit_status_counts": {
+        "completed": 77,
+        "terminal_error": 9
+      }
+    }
+  ],
+  "provider_modes": [
+    "primary_serial",
+    "fallback_serial",
+    "primary_concurrent",
+    "fallback_concurrent"
+  ],
+  "readiness": {
+    "f7a_mergeable": false,
+    "f7b_should_start": false,
+    "fallback_viable_provider_modes": [],
+    "invalid_or_schema_failure_total": 2,
+    "primary_viable_provider_modes": [
+      "primary_serial",
+      "primary_concurrent"
+    ],
+    "reason": "primary_viable_but_fallback_or_schema_failures_still_need_hardening_or_review",
+    "recommended_default_provider": "primary_openai",
+    "terminal_error_total": 23,
+    "viable_provider_modes": [
+      "primary_serial",
+      "primary_concurrent"
+    ]
+  },
+  "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T054406Z-e7763999",
   "safety": {
     "entity_alias_write": false,
     "entity_write": false,
     "image_upload": false,
+    "llm_provider_calls": true,
+    "llm_provider_modes": [
+      "primary_serial",
+      "fallback_serial",
+      "primary_concurrent",
+      "fallback_concurrent"
+    ],
     "local_source_hint_write": false,
     "media_entity_assignment_write": false,
     "media_entity_candidate_write": false,
     "media_tags_mutation": false,
     "merge": false,
-    "provider_calls": false,
     "push_main": false,
+    "secrets_or_base_urls_reported": false,
     "source_concept_linking": false,
     "source_layer_only": true,
     "source_or_icloud_mutation": false,
+    "source_provider_calls": false,
     "tag_translation_mutation": false
   },
-  "structured_output_schema_version": "source_name_candidate_extraction_v1",
+  "structured_output_schema_version": "source_name_candidate_extraction_compact_v2",
   "timing": {
-    "api_call_attempts": 11,
     "cost_estimate": "not_available_from_provider_response",
-    "elapsed_seconds": 682.254
+    "elapsed_seconds": 5.168
   },
-  "title": "LLM-backed source name candidate extraction"
+  "title": "LLM-backed source name candidate extraction rework"
 }

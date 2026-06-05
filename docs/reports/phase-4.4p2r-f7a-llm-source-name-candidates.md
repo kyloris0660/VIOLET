@@ -1,81 +1,51 @@
-# Phase 4.4-P2R-F7a: LLM-backed source name candidate extraction
+# Phase 4.4-P2R-F7a: LLM-backed source name candidate extraction rework
 
 ## Summary
 
-- Built a bounded source-layer name candidate extraction run over existing DB/source-layer metadata.
-- Output is an unconfirmed candidate pool only; no SourceConcept, Entity, media_tags, TagTranslation, or assignment truth paths are written.
-- Private review pack is stored under `.local_manifests` and is intentionally not committed.
+- Reworked F7a around content eligibility, compact LLM schema, provider comparison, progress events, checkpoint/resume, and run-scoped persistence.
+- Output remains an unconfirmed source-layer candidate pool only.
+- No SourceConcept, Entity, media_tags, TagTranslation, assignment, provider/source enrichment, image upload, or source/iCloud mutation occurred.
 
 ## Run
 
-- Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260604T172539Z-e3a9fcfc`
+- Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260605T054406Z-e7763999`
 - Branch: `codex/phase44p2r-f7a-llm-source-name-candidates`
-- Head SHA: `fddedef0c835e511c26d5b65e83cb7b5f23b358e`
-- Extractor version: `phase44p2r_f7a_source_name_candidate_extractor_v1`
-- Prompt version: `phase44p2r_f7a_llm_source_name_candidate_extraction_v1`
+- Head SHA: `40d247b3afccec792846986c67afb2518f620a6b`
+- Extractor version: `phase44p2r_f7a_source_name_candidate_extractor_v2`
+- Prompt version: `phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v2`
+- Schema version: `source_name_candidate_extraction_compact_v2`
 
-## Data Sample
+## Eligibility Gate
 
-- Groups processed: `12`
-- Unique raw strings: `122`
-- Groups by provider: `{"pixiv": 12}`
-- Groups by data origin: `{"real_dev_db": 12}`
+- Eligible groups collected: `5`
+- Excluded counts: `{}`
+- Eligibility counts: `{"eligible_anime": 5}`
 
-## Scale / Known Limitations
+## Provider Comparison
 
-- A larger `50`-group / `500`-unique-string run was attempted first, but it exceeded a `1800s` tool timeout and was stopped before persistence. No F7a candidate rows were written by that interrupted run.
-- The completed persisted run was reduced to `12` real dev DB Pixiv/source groups and `122` unique raw strings so the phase could produce a reviewable LLM-backed extraction pack within the available runtime.
-- `7` records produced valid normalized LLM extraction records; `5` records received explicit `extraction_error_terminal` verdicts after invalid JSON output and retained deterministic guardrail candidates where possible.
-- Candidate quality is sufficient to audit the F7a pipeline and artifacts, but not yet sufficient to start F7b SourceConcept linking without manual review and prompt/schema hardening.
+| provider_mode | records | units | raw_occ | llm_calls | avoided | wall_s | avg_s | p95_s | candidates | terminal | invalid_json | schema_fail | popularity | duplicate_rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| primary_serial | 5 | 86 | 111 | 51 | 25 | 126.65 | 1.465 | 2.69 | 76 | 0 | 0 | 0 | 4 | 0.0 |
+| fallback_serial | 5 | 86 | 111 | 73 | 25 | 612.116 | 7.108 | 22.857 | 53 | 14 | 0 | 1 | 7 | 0.0 |
+| primary_concurrent | 5 | 86 | 111 | 51 | 25 | 57.613 | 1.887 | 4.043 | 77 | 0 | 0 | 0 | 6 | 0.0 |
+| fallback_concurrent | 5 | 86 | 111 | 65 | 25 | 188.814 | 6.428 | 21.411 | 57 | 9 | 0 | 1 | 6 | 0.0 |
 
-## LLM
+## Safety
 
-- Provider mode: `fallback_only`
-- Uses fallback provider: `True`
-- Uses primary model: `False`
-- API call attempts: `11`
-- Chunks attempted: `11`
-- Cache hits: `1`
-- Elapsed seconds: `682.254`
-- Cost estimate: `not_available_from_provider_response`
-
-## Extraction Results
-
-- Record verdict counts: `{"extraction_error_terminal": 5, "multiple_candidates_found": 7}`
-- Candidate total: `173`
-- Candidate by role: `{"artist_creator": 41, "character": 75, "source_title": 14, "unknown_name_like": 5, "work_title": 38}`
-- Candidate by status: `{"active_candidate": 154, "needs_review": 19}`
-- Candidate by action: `{"ai_model_character_tag": 16, "direct_name": 66, "normal_tag_candidate": 6, "parenthetical_split": 18, "popularity_suffix_stripped": 10, "provider_structured_field": 57}`
-- Popularity prefix extractions: `10`
-- Rejected tags: `44`
-- Rejected by reason: `{"descriptive_general": 24, "duplicate": 1, "explicit_r18_meta": 3, "not_name_like": 7, "popularity_meta": 9}`
-- Meta tags: `10`
-- Ambiguous items: `5`
-- Validation failures: `5`
-
-## DB Write Summary
-
-- Apply DB: `True`
+- Source provider calls: `False`
+- LLM provider calls: `True`
+- LLM provider modes: `["primary_serial", "fallback_serial", "primary_concurrent", "fallback_concurrent"]`
 - Forbidden truth table write count: `0`
-- Allowed table deltas: `{"blombooru_source_name_candidate_extraction_runs": 1, "blombooru_source_name_candidate_record_verdicts": 12, "blombooru_source_name_candidates": 173}`
 
 ## Review Pack
 
 - Artifact directory: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates`
-- Manual review guide: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/manual-review-guide.md`
-- Name candidates CSV: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/name-candidates.csv`
-- Record verdicts CSV: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/record-verdicts.csv`
-- LLM inputs JSONL: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-inputs.jsonl`
-- LLM outputs JSONL: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/llm-outputs.jsonl`
+- Provider comparison: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/provider-comparison-summary.csv`
+- Checkpoint status: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/run-checkpoint-status.json`
+- Progress events: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates/run-progress-events.jsonl`
 
-## Safety Confirmation
+## Readiness
 
-- No SourceConcept linking.
-- No Entity, EntityAlias, EntityEvidence, MediaEntityCandidate, MediaEntityAssignment, LocalSourceHint, confirmed assignment, media_tags, or TagTranslation writes.
-- No provider/gallery-dl/source enrichment run.
-- No image upload and no source/iCloud/app-managed storage mutation.
-- No push to main and no merge.
-
-## Next Step
-
-Review the private candidate pack before deciding whether F7b SourceConcept linking is ready.
+- F7a mergeability judgment: `False`
+- F7b should start: `False`
+- Reason: `primary_viable_but_fallback_or_schema_failures_still_need_hardening_or_review`

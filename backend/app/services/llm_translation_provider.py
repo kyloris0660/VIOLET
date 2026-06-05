@@ -75,6 +75,75 @@ def _sanitize_error_message(msg: str) -> str:
     return re.sub(r'(sk-|key-)[a-zA-Z0-9]{8,}', r'\1***', msg)
 
 
+def _strip_json_code_fence(content: str) -> str:
+    stripped = content.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    if not lines:
+        return stripped
+    if lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return "\n".join(lines[1:]).strip()
+
+
+def _first_balanced_json_slice(content: str) -> Optional[str]:
+    """Return the first balanced JSON object/array substring in model text."""
+
+    for start, char in enumerate(content):
+        if char not in "{[":
+            continue
+        stack = [char]
+        in_string = False
+        escaped = False
+        for index in range(start + 1, len(content)):
+            current = content[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif current == "\\":
+                    escaped = True
+                elif current == '"':
+                    in_string = False
+                continue
+            if current == '"':
+                in_string = True
+            elif current in "{[":
+                stack.append(current)
+            elif current in "}]":
+                if not stack:
+                    break
+                opener = stack[-1]
+                if (opener == "{" and current != "}") or (opener == "[" and current != "]"):
+                    break
+                stack.pop()
+                if not stack:
+                    return content[start:index + 1]
+    return None
+
+
+def _loads_json_from_model_text(content: str) -> Any:
+    """Parse common OpenAI-compatible JSON response shapes."""
+
+    candidates = [content.strip(), _strip_json_code_fence(content)]
+    balanced = _first_balanced_json_slice(content)
+    if balanced:
+        candidates.append(balanced)
+    seen: set[str] = set()
+    last_error: Exception | None = None
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return json.loads(candidate)
+        except (json.JSONDecodeError, ValueError) as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise ValueError("empty LLM JSON response")
+
+
 # ── Structured error hierarchy ──────────────────────────────────
 
 
@@ -227,16 +296,12 @@ class BaseLLMProvider(ABC):
         content = await self.complete_chat(
             messages, temperature=temperature, max_tokens=max_tokens,
         )
-        if content.startswith("```"):
-            lines = content.split("\n")
-            content = "\n".join(
-                lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-            )
         try:
-            return json.loads(content)
+            return _loads_json_from_model_text(content)
         except (json.JSONDecodeError, ValueError) as e:
+            sample = _sanitize_error_message(content[:200]).replace("\n", "\\n")
             raise LLMResponseFormatError(
-                f"Failed to parse LLM response as JSON: {e} — content[:200]: {content[:200]}"
+                f"Failed to parse LLM response as JSON: {e} - content[:200]: {sample}"
             ) from e
 
     @abstractmethod
