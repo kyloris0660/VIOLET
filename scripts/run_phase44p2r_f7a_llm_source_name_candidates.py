@@ -1062,6 +1062,7 @@ async def _process_provider_mode(
             "p50_seconds": timing_stats["p50_seconds"],
             "p95_seconds": timing_stats["p95_seconds"],
             "chunk_count": len(rows),
+            "retry_count": sum(int(item.get("chunk_retries") or 0) for item in rows),
             "raw_string_occurrences_total": sum(len(unit.occurrences) for unit in units),
             "unique_extraction_units_total": len(units),
             "llm_calls_attempted": sum(int(item.get("api_call_attempts") or 0) for item in rows),

@@ -525,7 +525,7 @@
         "popularity_meta": 46
       },
       "rejected_total": 96,
-      "retry_count": 0,
+      "retry_count": 1,
       "retryable_error_count": 0,
       "schema_failure_count": 0,
       "terminal_error_count": 0,
