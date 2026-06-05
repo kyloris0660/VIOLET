@@ -1,39 +1,18 @@
 {
+  "artifact_consistency_check": "pass",
   "artifacts": {
-    "ambiguous_needs_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/ambiguous-needs-review.csv",
-    "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z",
-    "checkpoint_status_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-checkpoint-status.json",
-    "details_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/details.json",
-    "disagreements_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/disagreements.csv",
-    "extraction_errors_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/extraction-errors.csv",
-    "false_positive_guard_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/false-positive-guard-review.csv",
-    "input_manifest_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/input-manifest.json",
-    "llm_inputs_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/llm-inputs.jsonl",
-    "llm_outputs_fallback_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/llm-outputs-fallback.jsonl",
-    "llm_outputs_primary_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/llm-outputs-primary.jsonl",
-    "manual_review_guide": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/manual-review-guide.md",
-    "name_candidates_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/name-candidates-fallback.csv",
-    "name_candidates_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/name-candidates-primary.csv",
-    "no_name_records_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/no-name-records.csv",
-    "pixiv_title_candidate_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/pixiv-title-candidate-review.csv",
-    "popularity_prefix_extractions_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/popularity-prefix-extractions.csv",
-    "private_summary_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/summary.json",
-    "progress_events_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-progress-events.jsonl",
-    "prompt_sample_analysis_md": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/prompt-sample-analysis.md",
-    "prompt_version_and_rules_md": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/prompt-version-and-rules.md",
-    "provider_comparison_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-comparison-summary.csv",
-    "provider_comparison_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-comparison-summary.json",
-    "provider_summary_primary_only_json": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-summary-primary-only.json",
-    "public_redaction_check_txt": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/public-redaction-check.txt",
+    "artifact_consistency_check_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/artifact-consistency-check.json",
+    "artifact_dir": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58",
+    "candidate_bundle_jsonl": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/candidate-bundle.jsonl",
+    "checkpoint_status_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/run-checkpoint-status.json",
+    "final_validation_zip": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58.zip",
+    "progress_events_jsonl": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/run-progress-events.jsonl",
+    "provider_comparison_csv": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/provider-comparison-summary.csv",
+    "provider_comparison_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/provider-comparison-summary.json",
     "public_report_json": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates-summary.json",
     "public_report_md": "docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md",
-    "record_verdicts_fallback_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/record-verdicts-fallback.csv",
-    "record_verdicts_primary_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/record-verdicts-primary.csv",
-    "rejected_general_meta_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/rejected-general-meta.csv",
-    "reviewer_fix_summary_md": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/reviewer-fix-summary.md",
-    "role_guard_review_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/role-guard-review.csv",
-    "timeout_and_error_cases_csv": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/timeout-and-error-cases.csv",
-    "validation_failures_jsonl": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/validation-failures.jsonl"
+    "quality_counters_json": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/quality-counters.json",
+    "record_verdicts_jsonl": ".local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/record-verdicts.jsonl"
   },
   "branch": "codex/phase44p2r-f7a-llm-source-name-candidates",
   "db_identity": {
@@ -44,6 +23,8 @@
   },
   "db_write_summary": {
     "apply": false,
+    "apply_db": false,
+    "db_rows_written_in_final_packaging": 0,
     "forbidden_table_row_counts_after": {
       "blombooru_entities": 0,
       "blombooru_entity_aliases": 0,
@@ -263,7 +244,9 @@
     "unique_extraction_units_total": 667
   },
   "extractor_version": "phase44p2r_f7a_source_name_candidate_extractor_v2",
-  "head_sha": "a9fed8542ee62b187650904bbad1bf932bb90532",
+  "fallback_artifacts_included": false,
+  "final_pack_generated_at": "2026-06-05T11:55:19.296838+00:00",
+  "head_sha": "e8d487679b58cfacdea05b62ab156f6c76200a69",
   "input_summary": {
     "approved_content_classes": [
       "anime",
@@ -271,6 +254,14 @@
     ],
     "approved_illustration_rule": "illustration requires content_class_reviewed or content_class_locked",
     "average_source_records_per_extraction_unit": 1.6177,
+    "cached_manifest_drop_counts": {},
+    "cached_manifest_eligibility_counts": {
+      "eligible_anime": 100
+    },
+    "cached_manifest_groups_dropped": 0,
+    "cached_manifest_groups_input": 100,
+    "cached_manifest_groups_kept": 100,
+    "cached_manifest_revalidated": true,
     "deterministic_resolved_units": 292,
     "eligibility_counts": {
       "eligible_anime": 100,
@@ -282,6 +273,7 @@
       "excluded_unknown_or_unclassified": 3,
       "media_missing_or_unlinked": 140
     },
+    "final_pack_manifest_revalidated": true,
     "groups_by_data_origin": {
       "real_dev_db": 100
     },
@@ -478,36 +470,42 @@
       }
     ],
     "unique_extraction_units_total": 667,
-    "unique_raw_string_count": 348
+    "unique_raw_string_count": 348,
+    "unique_raw_string_count_after_manifest_revalidation": 348
   },
+  "llm_rerun": false,
+  "old_fallback_only_artifacts_excluded": true,
   "phase": "4.4-P2R-F7a",
+  "prompt_changed": false,
+  "prompt_diff": "unchanged",
   "prompt_version": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
   "provider_comparison": [
     {
       "ambiguous_count": 0,
       "approximate_cost": "not_available_from_provider_response",
       "average_seconds": 1.824,
+      "average_source_records_per_extraction_unit": 1.6177,
       "cache_hits": 0,
       "candidate_count_by_role": {
         "artist_creator": 102,
         "character": 232,
         "person": 33,
-        "source_title": 30,
+        "source_title": 50,
         "unknown_name_like": 245,
-        "work_title": 90
+        "work_title": 68
       },
       "candidate_count_by_status": {
-        "active_candidate": 372,
-        "needs_review": 360
+        "active_candidate": 341,
+        "needs_review": 389
       },
-      "candidate_count_total": 732,
+      "candidate_count_total": 730,
       "chunk_count": 667,
       "completed_unit_count": 667,
       "concurrency": 3,
       "deterministic_resolved_units": 292,
       "duplicate_candidate_count": 0,
       "duplicate_candidate_rate": 0.0,
-      "false_positive_guard_review_count": 251,
+      "false_positive_guard_review_count": 363,
       "group_count": 100,
       "inflight_dedupe_hits": 0,
       "invalid_json_count": 0,
@@ -539,14 +537,15 @@
       "rejected_total": 102,
       "retry_count": 0,
       "retryable_error_count": 0,
-      "role_guard_count": 80,
+      "role_guard_count": 262,
       "schema_failure_count": 0,
-      "source_title_active_count": 26,
+      "source_title_active_count": 17,
       "terminal_error_count": 0,
       "timeout_count": 0,
       "title_extraction_count": 18,
       "token_usage": "not_available_from_provider_response",
       "total_wall_time_seconds": 421.296,
+      "unguarded_source_title_active_count": 0,
       "unique_extraction_units_total": 667,
       "unique_string_count": 667,
       "unit_status_counts": {
@@ -558,6 +557,49 @@
   "provider_modes": [
     "primary_concurrent"
   ],
+  "quality_counters": {
+    "active_candidate_count": 341,
+    "ambiguous_item_count": 0,
+    "ambiguous_record_count": 0,
+    "candidate_count_by_role": {
+      "artist_creator": 102,
+      "character": 232,
+      "person": 33,
+      "source_title": 50,
+      "unknown_name_like": 245,
+      "work_title": 68
+    },
+    "candidate_count_by_role_status": {
+      "artist_creator|active_candidate": 102,
+      "character|active_candidate": 121,
+      "character|needs_review": 111,
+      "person|active_candidate": 33,
+      "source_title|active_candidate": 17,
+      "source_title|needs_review": 33,
+      "unknown_name_like|needs_review": 245,
+      "work_title|active_candidate": 68
+    },
+    "candidate_count_by_status": {
+      "active_candidate": 341,
+      "needs_review": 389
+    },
+    "duplicate_candidate_count": 0,
+    "duplicate_candidate_rate": 0.0,
+    "error_record_count": 0,
+    "needs_review_count": 389,
+    "no_name_count": 0,
+    "pixiv_title_active_work_title_count": 0,
+    "record_verdict_counts": {
+      "multiple_candidates_found": 64,
+      "name_candidate_found": 36
+    },
+    "rejected_general_meta_count": 151,
+    "source_title_active_count": 17,
+    "total_candidates": 730,
+    "unguarded_source_title_active_count": 0,
+    "unknown_name_like_active_count": 0,
+    "validation_failure_count": 0
+  },
   "readiness": {
     "f7a_mergeable": true,
     "f7b_should_start": false,
@@ -581,7 +623,9 @@
       "primary_concurrent"
     ]
   },
-  "report_generated_head_sha": "a9fed8542ee62b187650904bbad1bf932bb90532",
+  "rematerialized_from_run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057",
+  "rematerialized_from_source_dir": ".local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z",
+  "report_generated_head_sha": "e8d487679b58cfacdea05b62ab156f6c76200a69",
   "report_validation_scope": "code_and_runner_state_at_validation_time",
   "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057",
   "safety": {
@@ -613,5 +657,5 @@
     "elapsed_seconds": 423.825
   },
   "title": "LLM-backed source name candidate extraction rework",
-  "validated_code_head_sha": "a9fed8542ee62b187650904bbad1bf932bb90532"
+  "validated_code_head_sha": "e8d487679b58cfacdea05b62ab156f6c76200a69"
 }

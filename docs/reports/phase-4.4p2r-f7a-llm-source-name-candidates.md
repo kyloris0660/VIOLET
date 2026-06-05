@@ -10,8 +10,8 @@
 
 - Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057`
 - Branch: `codex/phase44p2r-f7a-llm-source-name-candidates`
-- Head SHA: `a9fed8542ee62b187650904bbad1bf932bb90532`
-- Validated code head SHA: `a9fed8542ee62b187650904bbad1bf932bb90532`
+- Head SHA: `e8d487679b58cfacdea05b62ab156f6c76200a69`
+- Validated code head SHA: `e8d487679b58cfacdea05b62ab156f6c76200a69`
 - Extractor version: `phase44p2r_f7a_source_name_candidate_extractor_v2`
 - Prompt version: `phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3`
 - Schema version: `source_name_candidate_extraction_compact_v2`
@@ -28,7 +28,7 @@
 
 | provider_mode | records | units | raw_occ | llm_calls | avoided | wall_s | avg_s | p95_s | candidates | terminal | invalid_json | schema_fail | popularity | duplicate_rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| primary_concurrent | 100 | 667 | 1079 | 375 | 412 | 421.296 | 1.824 | 4.314 | 732 | 0 | 0 | 0 | 49 | 0.0 |
+| primary_concurrent | 100 | 667 | 1079 | 375 | 412 | 421.296 | 1.824 | 4.314 | 730 | 0 | 0 | 0 | 49 | 0.0 |
 
 ## Safety
 
@@ -41,10 +41,10 @@
 
 ## Review Pack
 
-- Artifact directory: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z`
-- Provider comparison: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/provider-comparison-summary.csv`
-- Checkpoint status: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-checkpoint-status.json`
-- Progress events: `.local_manifests/phase-4.4p2r-f7a-llm-source-name-candidates-final-validation-pack-20260605T103334Z/run-progress-events.jsonl`
+- Artifact directory: `.local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58`
+- Provider comparison: `.local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/provider-comparison-summary.csv`
+- Checkpoint status: `.local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/run-checkpoint-status.json`
+- Progress events: `.local_manifests/phase-4.4p2r-f7a-final-validation-pack-phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057-e8d487679b58/run-progress-events.jsonl`
 
 ## Readiness
 
