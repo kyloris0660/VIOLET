@@ -36,6 +36,7 @@ from app.models import (  # noqa: E402
 from app.services.source_concept_resolver_service import (  # noqa: E402
     LLMAdjudicationConfig,
     SourceConceptSignalDraft,
+    build_artifact_consistency_check,
     canonical_key,
     edges_from_llm_judgments,
     build_source_concept_signals,
@@ -43,6 +44,7 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
     plan_llm_adjudication,
     import_f7a_final_pack_candidates,
     resolve_source_concepts,
+    run_bounded_llm_adjudication,
     run_source_concept_resolution,
 )
 from scripts.run_phase45_sc1_source_concept_resolver import build_readiness_check, concept_case_review
@@ -477,6 +479,66 @@ def test_ai_signal_can_activate_only_with_non_ai_corroboration():
     assert concept.evidence_summary["guards"]["medium_ai_present"] is True
 
 
+def test_repeated_exact_identity_anchor_materializes_one_concept():
+    signals = [
+        _signal(
+            f"kamisato:{idx}",
+            "kamisato_ayaka",
+            media_id=idx,
+            work_context_key="genshin_impact",
+        )
+        for idx in (1, 2, 3)
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].concept_key == "character:kamisato_ayaka:work:genshin_impact"
+    assert result.summary["undermerge_violation_count"] == 0
+    assert result.summary["fragmentation_violation_count"] == 0
+
+
+def test_repeated_danbooru_style_tags_materialize_one_context_concept():
+    signals = [
+        _signal(
+            f"mona:{idx}",
+            "mona_(genshin_impact)",
+            media_id=idx,
+            work_context_key=None,
+        )
+        for idx in (1, 2, 3)
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].concept_key == "character:mona:work:genshin_impact"
+    assert result.summary["fragmentation_violation_count"] == 0
+
+
+def test_ai_only_same_identity_anchor_groups_as_needs_review_not_active():
+    signals = [
+        _signal(
+            f"ai:nilou:{idx}",
+            "nilou_(genshin_impact)",
+            origin_type="ai_model_tag",
+            trust="medium_ai",
+            status="needs_review",
+            source_kind="wd_tagger",
+            media_id=idx,
+        )
+        for idx in (1, 2)
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].status == "needs_review"
+    assert result.concepts[0].confidence_score <= 0.59
+    assert result.summary["ai_only_active_violation_count"] == 0
+    assert result.summary["fragmentation_violation_count"] == 0
+
+
 def test_alias_component_union_links_a_b_and_a_c_in_one_component():
     alias_ab_source = _signal(
         "alias:ab:source",
@@ -637,6 +699,40 @@ def test_runner_readiness_fails_required_validation_failures():
     assert readiness["failures"][0]["check"] == "positive_same_concept"
 
 
+def test_undermerge_violation_fails_artifact_consistency_and_readiness():
+    payload = {
+        "signals": [{"signal_key": "left"}, {"signal_key": "right"}],
+        "concepts": [{"concept_key": "c1"}, {"concept_key": "c2"}],
+        "links": [{"signal_key": "left", "concept_key": "c1"}, {"signal_key": "right", "concept_key": "c2"}],
+        "aliases": [],
+        "evidence": [],
+        "undermerge_review": [{"edge_key": "e1", "violation": True}],
+        "overmerge_review": [],
+        "fragmentation_review": [],
+        "summary": {
+            "undermerge_violation_count": 1,
+            "overmerge_violation_count": 0,
+            "fragmentation_violation_count": 0,
+            "ai_only_active_violation_count": 0,
+            "general_source_tag_pollution_count": 0,
+            "source_title_only_active_violation_count": 0,
+        },
+    }
+    consistency = build_artifact_consistency_check(payload, {"forbidden_truth_table_write_count": 0})
+    readiness = build_readiness_check(
+        summary={"resolver_summary": payload["summary"], "persistence": {"forbidden_truth_table_write_count": 0}},
+        positive_rows=[],
+        negative_rows=[],
+        consistency=consistency,
+        redaction={"passed": True},
+    )
+
+    assert consistency["passed"] is False
+    assert consistency["undermerge_violation_count"] == 1
+    assert readiness["passed"] is False
+    assert any(failure["check"] == "undermerge_violation_count" for failure in readiness["failures"])
+
+
 def test_guarded_merge_review_uses_surface_key_not_ambiguous_literal():
     result = resolve_source_concepts(
         [
@@ -653,9 +749,23 @@ def test_guarded_merge_review_uses_surface_key_not_ambiguous_literal():
     assert {"mona", "nicole"}.issubset(surfaces)
 
 
+def test_same_scope_duplicate_short_name_groups_for_review_only():
+    result = resolve_source_concepts(
+        [
+            _signal("mona:1", "Mona", trust="medium", status="needs_review", media_id=1),
+            _signal("mona:2", "Mona", trust="medium", status="needs_review", media_id=1),
+        ],
+        run_id="sc1-test",
+    )
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].status == "needs_review"
+    assert any(edge.edge_type == "same_scope_duplicate_review" for edge in result.edge_candidates)
+
+
 def test_llm_budget_cache_and_judgment_edges_are_source_layer_only():
-    left = _signal("left", "A", trust="medium", status="needs_review")
-    right = _signal("right", "B", trust="medium", status="needs_review")
+    left = _signal("left", "kamisato_ayaka", trust="medium", status="needs_review", work_context_key="genshin_impact")
+    right = _signal("right", "Kamisato Ayaka", trust="medium", status="needs_review", work_context_key="genshin_impact")
     result = resolve_source_concepts([left, right], run_id="sc1-test", llm_config=LLMAdjudicationConfig(enabled=True, max_calls=5))
     plan = result.summary["llm_usage"]["plan"]
     assert plan["status"] in {"ready", "disabled"}
@@ -669,6 +779,100 @@ def test_llm_budget_cache_and_judgment_edges_are_source_layer_only():
     )
     assert edges[0].edge_type == "llm_same_concept"
     assert edges[0].payload["source_layer_only"] is True
+
+
+def test_llm_must_link_materializes_after_deterministic_guard():
+    left = _signal("left", "Kamisato Ayaka", trust="medium", status="needs_review", work_context_key="genshin_impact")
+    right = _signal("right", "\u795e\u91cc\u7dbe\u83ef", trust="medium", status="needs_review", work_context_key="genshin_impact")
+    judgments = [
+        {"left_signal_key": "left", "right_signal_key": "right", "decision": "must_link", "confidence": 0.93, "judgment_id": "j1"}
+    ]
+
+    result = resolve_source_concepts([left, right], run_id="sc1-test", llm_judgments=judgments)
+
+    assert len(result.concepts) == 1
+    assert any(edge.edge_type == "llm_same_concept" for edge in result.edge_candidates)
+    assert result.summary["undermerge_violation_count"] == 0
+
+
+def test_llm_must_link_blocked_by_short_name_guard_is_not_undermerge():
+    left = _signal("left", "Mona", trust="medium", status="needs_review")
+    right = _signal("right", "Nicole", trust="medium", status="needs_review")
+    judgments = [
+        {"left_signal_key": "left", "right_signal_key": "right", "decision": "must_link", "confidence": 0.95, "judgment_id": "j1"}
+    ]
+
+    result = resolve_source_concepts([left, right], run_id="sc1-test", llm_judgments=judgments)
+
+    assert len(result.concepts) == 2
+    blocked_edges = [edge for edge in result.edge_candidates if edge.edge_type == "llm_blocked_guard"]
+    assert blocked_edges
+    assert blocked_edges[0].negative_reason_code == "ambiguous_short_without_work_context"
+    assert result.summary["undermerge_violation_count"] == 0
+
+
+def test_llm_same_scope_cross_script_canonical_bridge_groups_for_review():
+    left = _signal("left", "\u795e\u91cc\u7dbe\u83ef", trust="medium", status="needs_review", media_id=1)
+    right = _signal("right", "kamisato_ayaka", trust="medium", status="needs_review", media_id=1)
+    judgments = [
+        {"left_signal_key": "left", "right_signal_key": "right", "decision": "must_link", "confidence": 0.9, "judgment_id": "j1"}
+    ]
+
+    result = resolve_source_concepts([left, right], run_id="sc1-test", llm_judgments=judgments)
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].status == "needs_review"
+    llm_edges = [edge for edge in result.edge_candidates if edge.edge_type == "llm_same_concept"]
+    assert llm_edges
+    assert llm_edges[0].status == "needs_review"
+    assert llm_edges[0].payload["review_reason"] == "same_scope_cross_script_canonical_bridge"
+    assert result.summary["undermerge_violation_count"] == 0
+
+
+def test_llm_cannot_link_does_not_fragment_stable_identity_anchor():
+    left = _signal("left", "sangonomiya_kokomi", trust="medium", status="needs_review", work_context_key="genshin_impact")
+    right = _signal("right", "sangonomiya_kokomi", trust="medium", status="needs_review", work_context_key="genshin_impact")
+    judgments = [
+        {"left_signal_key": "left", "right_signal_key": "right", "decision": "cannot_link", "confidence": 0.9, "judgment_id": "j1"}
+    ]
+
+    result = resolve_source_concepts([left, right], run_id="sc1-test", llm_judgments=judgments)
+
+    assert len(result.concepts) == 1
+    assert any(edge.negative_reason_code == "llm_cannot_link" for edge in result.edge_candidates)
+    assert result.summary["undermerge_violation_count"] == 0
+    assert result.summary["overmerge_violation_count"] == 0
+
+
+def test_llm_budget_block_returns_before_provider_initialization():
+    left = _signal("left", "Kamisato Ayaka", trust="weak", status="needs_review", media_id=1, source_record_id=1)
+    right = _signal("right", "\u795e\u91cc\u7dbe\u83ef", trust="weak", status="needs_review", media_id=1, source_record_id=1)
+    initial = resolve_source_concepts([left, right], run_id="sc1-test")
+
+    judgments, summary = run_bounded_llm_adjudication(
+        initial.edge_candidates,
+        signals=[left, right],
+        config=LLMAdjudicationConfig(enabled=True, max_calls=10, max_budget_usd=0.0),
+    )
+
+    assert judgments == []
+    assert summary["used"] is False
+    assert summary["reason"] == "llm_budget_or_call_cap_exceeded"
+    assert summary["provider"]["provider_mode"] == "not_initialized_budget_blocked"
+
+
+def test_long_identity_anchor_concept_key_is_bounded():
+    long_name = "character_" + ("x" * 520)
+    long_context = "work_" + ("y" * 520)
+    signals = [
+        _signal("long:1", long_name, work_context_key=long_context),
+        _signal("long:2", long_name, work_context_key=long_context),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert result.concepts
+    assert all(len(concept.concept_key) <= 900 for concept in result.concepts)
 
 
 def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tmp_path):

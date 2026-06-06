@@ -1,24 +1,28 @@
 {
   "artifact_consistency": {
-    "checked_at": "2026-06-05T17:33:55.311186+00:00",
-    "concept_count": 2649,
+    "checked_at": "2026-06-06T05:43:55.969628+00:00",
+    "concept_count": 1151,
     "forbidden_truth_table_write_count": 0,
+    "fragmentation_violation_count": 0,
     "missing_alias_concepts": 0,
     "missing_evidence_concepts": 0,
     "missing_link_concepts": 0,
     "missing_link_signals": 0,
+    "overmerge_violation_count": 0,
     "passed": true,
-    "signal_count": 4602
+    "semantic_metric_violations": {},
+    "signal_count": 4602,
+    "undermerge_violation_count": 0
   },
   "f7a_final_pack_import": {
     "candidate_bundle_count": 730,
     "existing_db_candidate_count_for_run": 730,
     "llm_or_provider_calls_for_backfill": false,
-    "needs_import": true,
+    "needs_import": false,
     "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
   },
   "forbidden_truth_table_write_count": 0,
-  "generated_at": "2026-06-05T17:33:55.359145+00:00",
+  "generated_at": "2026-06-06T05:43:56.025605+00:00",
   "image_uploads": false,
   "inventory_counts": {
     "f7a_source_name_candidate": 730,
@@ -36,7 +40,7 @@
     "max_budget_usd": 50.0,
     "max_calls": 300,
     "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
-    "projected_cost_usd": 0.097032,
+    "projected_cost_usd": 0.097544,
     "used": true,
     "uses_fallback_provider": false
   },
@@ -59,46 +63,50 @@
   "provider_or_enrichment_calls": false,
   "public_redacted": true,
   "readiness_check": {
-    "checked_at": "2026-06-05T17:33:56.202797+00:00",
+    "checked_at": "2026-06-06T05:43:56.923516+00:00",
     "failure_count": 0,
     "failures": [],
     "passed": true
   },
   "resolver_summary": {
     "ai_only_active_violation_count": 0,
-    "alias_count": 3209,
+    "alias_count": 1737,
     "ambiguous_link_count": 518,
-    "blocking_oversized_blocks": 21,
-    "concept_count": 2649,
+    "blocking_oversized_blocks": 28,
+    "concept_count": 1151,
     "concept_counts_by_status": {
-      "active": 366,
-      "needs_review": 2283
+      "active": 362,
+      "needs_review": 789
     },
     "context_alias_count": 4,
     "edge_graph": {
-      "blocking_block_count": 3472,
+      "blocking_block_count": 4150,
       "edge_count": 26379,
       "edge_counts_by_status": {
         "active": 3199,
-        "needs_review": 18337,
+        "needs_review": 16923,
+        "rejected": 1414,
         "weak": 4843
       },
       "edge_counts_by_type": {
         "context_only": 153,
         "cooccurrence_context": 4689,
-        "exact_canonical_key": 1858,
-        "negative_guard": 2899,
-        "same_surface_context": 16780
+        "exact_canonical_key": 100,
+        "negative_guard": 2693,
+        "same_scope_duplicate_review": 109,
+        "same_surface_context": 335,
+        "stable_identity_anchor": 18300
       },
-      "oversized_block_count": 21,
-      "processed_block_count": 1910
+      "oversized_block_count": 28,
+      "processed_block_count": 2460
     },
     "evidence_count": 3968,
+    "fragmentation_violation_count": 0,
     "general_source_tag_pollution_count": 0,
     "link_count": 3968,
     "link_counts_by_status": {
-      "active": 1254,
-      "needs_review": 2714
+      "active": 1237,
+      "needs_review": 2731
     },
     "llm_usage": {
       "cache_dir": ".local_manifests\\phase-4.5-sc1-llm-adjudication-cache",
@@ -109,12 +117,12 @@
         "max_budget_usd": 50.0,
         "max_calls": 300,
         "projected_calls": 300,
-        "projected_cost_usd": 0.097032,
-        "projected_input_tokens": 24516,
+        "projected_cost_usd": 0.097544,
+        "projected_input_tokens": 24772,
         "projected_output_tokens": 24000,
         "reason": null,
         "selected_block_count": 300,
-        "skipped_block_count": 5460,
+        "skipped_block_count": 4661,
         "status": "ready"
       },
       "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
@@ -134,11 +142,12 @@
       "selected_pair_count": 300,
       "used": true
     },
+    "overmerge_violation_count": 0,
     "rejected_signal_count": 634,
     "resolver_version": "source_concept_resolver_core_v2_graph",
-    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-rework",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-semantic",
     "schema_version": "source_concept_schema_v1",
-    "search_index_preview_count": 3209,
+    "search_index_preview_count": 1737,
     "signal_count": 4602,
     "signal_counts_by_origin": {
       "ai_model_tag": 2007,
@@ -149,8 +158,9 @@
       "source_name_observation": 459,
       "source_tag_observation": 710
     },
-    "source_title_only_active_violation_count": 0
+    "source_title_only_active_violation_count": 0,
+    "undermerge_violation_count": 0
   },
-  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-rework",
-  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-rework.zip"
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-semantic",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-semantic.zip"
 }

@@ -14,12 +14,15 @@ This report is public/redacted: it contains counts and safety results only, not 
 ## Counts
 
 - Signals: 4602
-- Concepts: 2649 ({'active': 366, 'needs_review': 2283})
-- Links: 3968 ({'active': 1254, 'needs_review': 2714})
-- Aliases: 3209
+- Concepts: 1151 ({'active': 362, 'needs_review': 789})
+- Links: 3968 ({'active': 1237, 'needs_review': 2731})
+- Aliases: 1737
 - Evidence rows: 3968
-- Search preview rows: 3209
+- Search preview rows: 1737
 - Edge candidates: 26379
+- Undermerge violations: 0
+- Overmerge violations: 0
+- Fragmentation violations: 0
 - Readiness passed: True
 
 ## Source Signal Inventory
@@ -31,7 +34,7 @@ This report is public/redacted: it contains counts and safety results only, not 
 - Run ID: `phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057`
 - Candidate bundle count: 730
 - Existing DB count before scoped import: 730
-- Import needed: True
+- Import needed: False
 - LLM/provider calls for F7a backfill: false
 
 ## LLM Pair Adjudication
@@ -42,7 +45,7 @@ This report is public/redacted: it contains counts and safety results only, not 
 - Error count: 0
 - Max calls: 300
 - Budget cap USD: 50.0
-- Projected cost USD: 0.097032
+- Projected cost USD: 0.097544
 - Uses fallback provider: False
 - Provider/source enrichment calls: false
 - Image uploads: false
@@ -57,5 +60,5 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Validation Pack
 
-- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-rework.zip`
+- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-semantic.zip`
 - Primary validation format: JSON/JSONL.

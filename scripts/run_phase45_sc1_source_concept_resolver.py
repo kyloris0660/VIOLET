@@ -340,10 +340,18 @@ def concept_case_review(payload: Mapping[str, Any]) -> tuple[list[dict[str, Any]
             )
             continue
         required_keys = set(case["required_keys"])
-        present_keys = sorted(key for key in required_keys if key in concepts_by_alias_key)
+        eligible_concepts_by_alias_key: dict[str, set[str]] = {}
+        for key in required_keys:
+            for concept_key in concepts_by_alias_key.get(key, set()):
+                concept = concept_by_key.get(concept_key) or {}
+                concept_type = concept.get("concept_type_hint")
+                if concept_type and concept_type not in {"character", "person"}:
+                    continue
+                eligible_concepts_by_alias_key.setdefault(key, set()).add(concept_key)
+        present_keys = sorted(key for key in required_keys if eligible_concepts_by_alias_key.get(key))
         candidate_concepts: dict[str, set[str]] = {}
         for key in present_keys:
-            for concept_key in concepts_by_alias_key.get(key, set()):
+            for concept_key in eligible_concepts_by_alias_key.get(key, set()):
                 candidate_concepts.setdefault(concept_key, set()).add(key)
         matches = sorted(
             (
@@ -362,16 +370,24 @@ def concept_case_review(payload: Mapping[str, Any]) -> tuple[list[dict[str, Any]
         )
         present_count = len(present_keys)
         best_count = matches[0]["matched_required_count"] if matches else 0
-        same_concept = present_count >= 2 and best_count == present_count
+        best_concept_key = matches[0]["concept_key"] if matches else None
+        split_concepts = [row for row in matches if row["concept_key"] != best_concept_key]
+        same_concept = present_count >= 2 and best_count == present_count and not split_concepts
+        validation_status = "pass" if same_concept else ("unavailable" if present_count < 2 else "fail")
         positive_rows.append(
             {
                 **case,
+                "required_aliases": sorted(required_keys),
                 "required_present_count": present_count,
                 "required_total": len(required_keys),
-                "present_keys": present_keys,
+                "present_required_aliases": present_keys,
+                "best_concept_key": best_concept_key,
+                "best_concept_coverage": best_count,
+                "split_concepts": split_concepts[:20],
+                "fragmentation_count": len(matches),
                 "same_concept": same_concept,
                 "matched": same_concept,
-                "validation_status": "pass" if same_concept else ("unavailable" if present_count < 2 else "fail"),
+                "validation_status": validation_status,
                 "matches": matches[:10],
             }
         )
@@ -437,6 +453,9 @@ def build_readiness_check(
             failures.append({"check": "negative_guard", "case_id": row.get("case_id"), "reason": row.get("violation") or row.get("expected")})
     resolver_summary = summary.get("resolver_summary", {})
     required_zero_metrics = [
+        "undermerge_violation_count",
+        "overmerge_violation_count",
+        "fragmentation_violation_count",
         "ai_only_active_violation_count",
         "general_source_tag_pollution_count",
         "source_title_only_active_violation_count",
@@ -544,6 +563,7 @@ def write_artifacts(
     write_jsonl(output_dir / "merge-candidate-review.jsonl", payload["merge_candidates"])
     write_jsonl(output_dir / "overmerge-review.jsonl", payload["overmerge_review"])
     write_jsonl(output_dir / "undermerge-review.jsonl", payload["undermerge_review"])
+    write_jsonl(output_dir / "fragmentation-review.jsonl", payload["fragmentation_review"])
     write_jsonl(output_dir / "ai-signal-review.jsonl", payload["ai_signal_review"])
     write_jsonl(output_dir / "llm-judgments.jsonl", payload["llm_judgments"])
     write_json(output_dir / "resolver-run-summary.json", {**payload["summary"], "persistence": persistence})
@@ -609,6 +629,9 @@ def write_public_report(summary: Mapping[str, Any], inventory: Mapping[str, Any]
             f"- Evidence rows: {resolver_summary.get('evidence_count')}",
             f"- Search preview rows: {resolver_summary.get('search_index_preview_count')}",
             f"- Edge candidates: {resolver_summary.get('edge_graph', {}).get('edge_count')}",
+            f"- Undermerge violations: {resolver_summary.get('undermerge_violation_count')}",
+            f"- Overmerge violations: {resolver_summary.get('overmerge_violation_count')}",
+            f"- Fragmentation violations: {resolver_summary.get('fragmentation_violation_count')}",
             f"- Readiness passed: {summary.get('readiness_check', {}).get('passed')}",
             "",
             "## Source Signal Inventory",
