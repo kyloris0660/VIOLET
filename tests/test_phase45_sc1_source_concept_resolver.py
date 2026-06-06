@@ -23,6 +23,10 @@ from app.models import (  # noqa: E402
     Media,
     SourceConcept,
     SourceConceptAlias,
+    SourceConceptEvidence,
+    SourceConceptSearchIndex,
+    SourceConceptSignal,
+    SourceConceptSignalLink,
     SourceMetadataRecord,
     SourceNameAliasCandidate,
     SourceNameCandidate,
@@ -46,8 +50,13 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
     resolve_source_concepts,
     run_bounded_llm_adjudication,
     run_source_concept_resolution,
+    persist_source_concept_resolution,
 )
-from scripts.run_phase45_sc1_source_concept_resolver import build_readiness_check, concept_case_review
+from scripts.run_phase45_sc1_source_concept_resolver import (
+    build_readiness_check,
+    concept_case_review,
+    random_holdout_review,
+)
 
 
 def _signal(
@@ -63,6 +72,7 @@ def _signal(
     work_context_key: str | None = None,
     source_kind: str | None = "tag_category:character",
     payload: dict | None = None,
+    source_run_id: str | None = None,
 ) -> SourceConceptSignalDraft:
     return SourceConceptSignalDraft(
         signal_key=key,
@@ -86,6 +96,7 @@ def _signal(
         confidence=0.9,
         status=status,
         evidence_payload=payload or {},
+        source_run_id=source_run_id,
     )
 
 
@@ -99,6 +110,25 @@ def _db():
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
     return engine, session
+
+
+def _source_concept_signal_row(signal_key: str, *, source_run_id: str, status: str = "active") -> SourceConceptSignal:
+    return SourceConceptSignal(
+        signal_key=signal_key,
+        origin_type="f7a_candidate",
+        origin_table="fixture",
+        origin_id=signal_key,
+        provider="fixture",
+        raw_value=signal_key,
+        display_value=signal_key,
+        normalized_key=signal_key,
+        canonical_key=signal_key,
+        role_hint="character",
+        trust_tier="medium",
+        status=status,
+        source_run_id=source_run_id,
+        created_by_run_id="old-run",
+    )
 
 
 def _media(media_id: int = 1) -> Media:
@@ -293,6 +323,124 @@ def test_alias_edge_links_multilingual_sources_without_entity_truth():
     assert concept.status == "active"
     assert concept.evidence_summary["work_context_key"] == "genshin_impact"
     assert persistence["forbidden_truth_table_write_count"] == 0
+
+
+def test_scoped_stale_supersede_leaves_unrelated_runs_untouched():
+    _engine, session = _db()
+    stale_signal = _source_concept_signal_row("stale-scope-signal", source_run_id="scope-a")
+    other_signal = _source_concept_signal_row("other-scope-signal", source_run_id="scope-b")
+    stale_concept = SourceConcept(
+        concept_key="character:stale_scope",
+        primary_display_name="stale",
+        concept_type_hint="character",
+        status="active",
+        created_by_run_id="old-run",
+    )
+    other_concept = SourceConcept(
+        concept_key="character:other_scope",
+        primary_display_name="other",
+        concept_type_hint="character",
+        status="active",
+        created_by_run_id="old-run",
+    )
+    session.add_all([stale_signal, other_signal, stale_concept, other_concept])
+    session.flush()
+    stale_alias = SourceConceptAlias(
+        concept_id=stale_concept.id,
+        alias_value="stale",
+        alias_key="stale",
+        display_name="stale",
+        alias_role="f7a_candidate",
+        status="active",
+        source_signal_id=stale_signal.id,
+        created_by_run_id="old-run",
+    )
+    other_alias = SourceConceptAlias(
+        concept_id=other_concept.id,
+        alias_value="other",
+        alias_key="other",
+        display_name="other",
+        alias_role="f7a_candidate",
+        status="active",
+        source_signal_id=other_signal.id,
+        created_by_run_id="old-run",
+    )
+    stale_evidence = SourceConceptEvidence(
+        concept_id=stale_concept.id,
+        signal_id=stale_signal.id,
+        evidence_type="f7a_candidate",
+        evidence_strength="medium",
+        status="active",
+        run_id="old-run",
+    )
+    other_evidence = SourceConceptEvidence(
+        concept_id=other_concept.id,
+        signal_id=other_signal.id,
+        evidence_type="f7a_candidate",
+        evidence_strength="medium",
+        status="active",
+        run_id="old-run",
+    )
+    stale_link = SourceConceptSignalLink(
+        signal_id=stale_signal.id,
+        concept_id=stale_concept.id,
+        link_status="active",
+        resolver_version="old",
+        run_id="old-run",
+    )
+    other_link = SourceConceptSignalLink(
+        signal_id=other_signal.id,
+        concept_id=other_concept.id,
+        link_status="active",
+        resolver_version="old",
+        run_id="old-run",
+    )
+    stale_search = SourceConceptSearchIndex(
+        concept_id=stale_concept.id,
+        search_key="stale",
+        display_name="stale",
+        alias_role="f7a_candidate",
+        weight=0.5,
+        status="active",
+        run_id="old-run",
+    )
+    other_search = SourceConceptSearchIndex(
+        concept_id=other_concept.id,
+        search_key="other",
+        display_name="other",
+        alias_role="f7a_candidate",
+        weight=0.5,
+        status="active",
+        run_id="old-run",
+    )
+    session.add_all([stale_alias, other_alias, stale_evidence, other_evidence, stale_link, other_link, stale_search, other_search])
+    session.commit()
+
+    result = resolve_source_concepts(
+        [_signal("fresh-scope-signal", "fresh_scope", source_run_id="scope-a")],
+        run_id="new-run",
+    )
+    persistence = persist_source_concept_resolution(session, result, apply=True)
+
+    for row in (stale_signal, stale_concept, stale_alias, stale_evidence, stale_link, stale_search):
+        session.refresh(row)
+    for row in (other_signal, other_concept, other_alias, other_evidence, other_link, other_search):
+        session.refresh(row)
+
+    assert stale_signal.status == "superseded"
+    assert stale_concept.status == "superseded"
+    assert stale_alias.status == "superseded"
+    assert stale_evidence.status == "superseded"
+    assert stale_link.link_status == "superseded"
+    assert stale_search.status == "superseded"
+    assert other_signal.status == "active"
+    assert other_concept.status == "active"
+    assert other_alias.status == "active"
+    assert other_evidence.status == "active"
+    assert other_link.link_status == "active"
+    assert other_search.status == "active"
+    assert persistence["stale_supersede_scope"]["source_run_ids"] == ["scope-a"]
+    assert persistence["stale_supersede_scope_violation_count"] == 0
 
 
 def test_ai_only_signal_creates_needs_review_not_active_truth():
@@ -498,6 +646,50 @@ def test_repeated_exact_identity_anchor_materializes_one_concept():
     assert result.summary["fragmentation_violation_count"] == 0
 
 
+def test_exact_same_canonical_different_work_contexts_do_not_active_merge():
+    signals = [
+        _signal("left", "alexandria", work_context_key="work_a"),
+        _signal("right", "alexandria", work_context_key="work_b"),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert len(result.concepts) == 2
+    conflict_edges = [edge for edge in result.edge_candidates if edge.negative_reason_code == "work_context_conflict"]
+    assert conflict_edges
+    assert all(edge.status == "rejected" for edge in conflict_edges)
+    assert result.summary["context_conflict_active_merge_count"] == 0
+    assert result.summary["overmerge_violation_count"] == 0
+
+
+def test_exact_same_canonical_same_work_context_can_merge():
+    signals = [
+        _signal("left", "alexandria", work_context_key="work_a"),
+        _signal("right", "alexandria", work_context_key="work_a"),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].status == "active"
+    assert result.summary["context_conflict_active_merge_count"] == 0
+
+
+def test_exact_same_canonical_partial_context_is_review_not_active():
+    signals = [
+        _signal("left", "alexandria", work_context_key="work_a"),
+        _signal("right", "alexandria"),
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].status == "needs_review"
+    exact_edges = [edge for edge in result.edge_candidates if edge.edge_type == "exact_canonical_key"]
+    assert exact_edges
+    assert exact_edges[0].status == "needs_review"
+
+
 def test_repeated_danbooru_style_tags_materialize_one_context_concept():
     signals = [
         _signal(
@@ -597,6 +789,94 @@ def test_alias_component_union_links_a_b_and_a_c_in_one_component():
         if {"a", "b", "c"}.issubset({signal.canonical_key for signal in concept.signals})
     ]
     assert len(concepts_with_aliases) == 1
+
+
+def test_alias_edge_same_context_can_link():
+    alias = _signal(
+        "alias:edge",
+        "Alex alias",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex"},
+    )
+    signals = [
+        _signal("left", "alexandria", work_context_key="work_a"),
+        _signal("right", "alex", work_context_key="work_a"),
+        alias,
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    linked = [
+        concept
+        for concept in result.concepts
+        if {"alexandria", "alex"}.issubset({signal.canonical_key for signal in concept.signals})
+    ]
+    assert len(linked) == 1
+    assert any(edge.edge_type == "alias_candidate_edge" and edge.status == "active" for edge in result.edge_candidates)
+
+
+def test_alias_edge_conflicting_contexts_is_blocked():
+    alias = _signal(
+        "alias:edge",
+        "Alex alias",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex"},
+    )
+    signals = [
+        _signal("left", "alexandria", work_context_key="work_a"),
+        _signal("right", "alex", work_context_key="work_b"),
+        alias,
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert not any(
+        {"alexandria", "alex"}.issubset({signal.canonical_key for signal in concept.signals})
+        for concept in result.concepts
+    )
+    assert any(edge.negative_reason_code == "alias_work_context_conflict" for edge in result.edge_candidates)
+    assert result.summary["alias_context_conflict_active_merge_count"] == 0
+    assert result.summary["overmerge_violation_count"] == 0
+
+
+def test_broad_alias_reused_across_works_does_not_overmerge():
+    alias = _signal(
+        "alias:edge",
+        "Alex alias",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex"},
+    )
+    signals = [
+        _signal("a:1", "alexandria", work_context_key="work_a"),
+        _signal("a:2", "alex", work_context_key="work_a"),
+        _signal("b:1", "alexandria", work_context_key="work_b"),
+        _signal("b:2", "alex", work_context_key="work_b"),
+        alias,
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert result.summary["overmerge_violation_count"] == 0
+    assert result.summary["alias_context_conflict_active_merge_count"] == 0
+    assert not any(
+        {"work_a", "work_b"}.issubset(
+            {
+                signal.work_context_key
+                for signal in concept.signals
+                if signal.role_hint in {"character", "person"}
+            }
+        )
+        for concept in result.concepts
+    )
 
 
 def test_context_equivalence_uses_record_scope_without_single_record_overmerge():
@@ -731,6 +1011,91 @@ def test_undermerge_violation_fails_artifact_consistency_and_readiness():
     assert consistency["undermerge_violation_count"] == 1
     assert readiness["passed"] is False
     assert any(failure["check"] == "undermerge_violation_count" for failure in readiness["failures"])
+
+
+def test_context_conflict_violation_fails_artifact_consistency_and_readiness():
+    payload = {
+        "signals": [{"signal_key": "s1"}, {"signal_key": "s2"}],
+        "concepts": [{"concept_key": "c1"}],
+        "links": [{"signal_key": "s1", "concept_key": "c1"}, {"signal_key": "s2", "concept_key": "c1"}],
+        "aliases": [],
+        "evidence": [],
+        "undermerge_review": [],
+        "overmerge_review": [],
+        "fragmentation_review": [],
+        "context_conflict_review": [{"edge_key": "e1", "alias_edge": True, "violation": True}],
+        "summary": {
+            "undermerge_violation_count": 0,
+            "overmerge_violation_count": 0,
+            "fragmentation_violation_count": 0,
+            "context_conflict_active_merge_count": 1,
+            "alias_context_conflict_active_merge_count": 1,
+            "ai_only_active_violation_count": 0,
+            "general_source_tag_pollution_count": 0,
+            "source_title_only_active_violation_count": 0,
+            "llm_budget_violation_count": 0,
+        },
+    }
+
+    consistency = build_artifact_consistency_check(payload, {"forbidden_truth_table_write_count": 0})
+    readiness = build_readiness_check(
+        summary={"resolver_summary": {**payload["summary"], "random_holdout_severe_violation_count": 0}, "persistence": {"forbidden_truth_table_write_count": 0}},
+        positive_rows=[],
+        negative_rows=[],
+        consistency=consistency,
+        redaction={"passed": True},
+    )
+
+    assert consistency["passed"] is False
+    assert consistency["context_conflict_active_merge_count"] == 1
+    assert readiness["passed"] is False
+    assert any(failure["check"] == "context_conflict_active_merge_count" for failure in readiness["failures"])
+
+
+def test_random_holdout_review_generates_rows_and_flags_severe_pollution():
+    payload = {
+        "signals": [
+            {
+                "signal_key": "bad-general",
+                "origin_type": "source_tag_observation",
+                "role_hint": "unknown",
+                "trust_tier": "rejected",
+                "status": "rejected",
+                "source_kind": "provider_tag",
+                "evidence_payload": {"non_concept_reason": "general_source_tag_without_name_context"},
+            }
+        ],
+        "concepts": [{"concept_key": "c1", "status": "needs_review", "evidence_summary": {}, "signals": ["bad-general"]}],
+        "links": [{"signal_key": "bad-general", "concept_key": "c1"}],
+    }
+
+    rows = random_holdout_review(payload, sample_size=10)
+    readiness = build_readiness_check(
+        summary={
+            "resolver_summary": {
+                "undermerge_violation_count": 0,
+                "overmerge_violation_count": 0,
+                "fragmentation_violation_count": 0,
+                "context_conflict_active_merge_count": 0,
+                "alias_context_conflict_active_merge_count": 0,
+                "ai_only_active_violation_count": 0,
+                "general_source_tag_pollution_count": 0,
+                "source_title_only_active_violation_count": 0,
+                "llm_budget_violation_count": 0,
+                "random_holdout_severe_violation_count": sum(1 for row in rows if row["severe_violation"]),
+            },
+            "persistence": {"forbidden_truth_table_write_count": 0},
+        },
+        positive_rows=[],
+        negative_rows=[],
+        consistency={"passed": True},
+        redaction={"passed": True},
+    )
+
+    assert rows
+    assert rows[0]["severe_violation"] is True
+    assert readiness["passed"] is False
+    assert any(failure["check"] == "random_holdout_severe_violation_count" for failure in readiness["failures"])
 
 
 def test_guarded_merge_review_uses_surface_key_not_ambiguous_literal():
@@ -914,6 +1279,9 @@ def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tm
     assert result["candidate_bundle_count"] == 1
     assert result["persistence"]["forbidden_truth_table_write_count"] == 0
     assert session.query(SourceNameCandidate).count() == 1
+    repeat = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=False)
+    assert repeat["needs_import"] is False
+    assert repeat["stable_checksum_matches"] is True
 
     (pack / "candidate-bundle.jsonl").write_text(
         json.dumps(

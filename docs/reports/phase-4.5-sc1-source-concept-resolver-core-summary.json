@@ -1,7 +1,9 @@
 {
   "artifact_consistency": {
-    "checked_at": "2026-06-06T05:43:55.969628+00:00",
+    "alias_context_conflict_active_merge_count": 0,
+    "checked_at": "2026-06-06T13:09:15.720874+00:00",
     "concept_count": 1151,
+    "context_conflict_active_merge_count": 0,
     "forbidden_truth_table_write_count": 0,
     "fragmentation_violation_count": 0,
     "missing_alias_concepts": 0,
@@ -14,6 +16,32 @@
     "signal_count": 4602,
     "undermerge_violation_count": 0
   },
+  "expanded_validation_summary": {
+    "active_concepts": 355,
+    "ai_only_concept_count": 260,
+    "context_conflict_active_merge_count": 0,
+    "context_conflict_candidate_count": 1707,
+    "general_source_tag_pollution_count": 0,
+    "largest_concept_signal_counts": [
+      124,
+      121,
+      97,
+      85,
+      79,
+      68,
+      68,
+      67,
+      63,
+      61
+    ],
+    "needs_review_concepts": 796,
+    "random_holdout_sample_size": 200,
+    "random_holdout_severe_violation_count": 0,
+    "repeated_canonical_fragmentation_violations": 0,
+    "source_title_only_concept_count": 207,
+    "total_concepts": 1151,
+    "total_signals": 4602
+  },
   "f7a_final_pack_import": {
     "candidate_bundle_count": 730,
     "existing_db_candidate_count_for_run": 730,
@@ -22,7 +50,7 @@
     "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
   },
   "forbidden_truth_table_write_count": 0,
-  "generated_at": "2026-06-06T05:43:56.025605+00:00",
+  "generated_at": "2026-06-06T13:09:15.776169+00:00",
   "image_uploads": false,
   "inventory_counts": {
     "f7a_source_name_candidate": 730,
@@ -40,7 +68,7 @@
     "max_budget_usd": 50.0,
     "max_calls": 300,
     "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
-    "projected_cost_usd": 0.097544,
+    "projected_cost_usd": 0.097532,
     "used": true,
     "uses_fallback_provider": false
   },
@@ -63,36 +91,38 @@
   "provider_or_enrichment_calls": false,
   "public_redacted": true,
   "readiness_check": {
-    "checked_at": "2026-06-06T05:43:56.923516+00:00",
+    "checked_at": "2026-06-06T13:09:16.949996+00:00",
     "failure_count": 0,
     "failures": [],
     "passed": true
   },
   "resolver_summary": {
     "ai_only_active_violation_count": 0,
+    "alias_context_conflict_active_merge_count": 0,
     "alias_count": 1737,
     "ambiguous_link_count": 518,
     "blocking_oversized_blocks": 28,
     "concept_count": 1151,
     "concept_counts_by_status": {
-      "active": 362,
-      "needs_review": 789
+      "active": 355,
+      "needs_review": 796
     },
     "context_alias_count": 4,
+    "context_conflict_active_merge_count": 0,
     "edge_graph": {
       "blocking_block_count": 4150,
-      "edge_count": 26379,
+      "edge_count": 26664,
       "edge_counts_by_status": {
         "active": 3199,
         "needs_review": 16923,
-        "rejected": 1414,
-        "weak": 4843
+        "rejected": 1707,
+        "weak": 4835
       },
       "edge_counts_by_type": {
         "context_only": 153,
-        "cooccurrence_context": 4689,
+        "cooccurrence_context": 4681,
         "exact_canonical_key": 100,
-        "negative_guard": 2693,
+        "negative_guard": 2986,
         "same_scope_duplicate_review": 109,
         "same_surface_context": 335,
         "stable_identity_anchor": 18300
@@ -105,11 +135,11 @@
     "general_source_tag_pollution_count": 0,
     "link_count": 3968,
     "link_counts_by_status": {
-      "active": 1237,
-      "needs_review": 2731
+      "active": 1103,
+      "needs_review": 2865
     },
+    "llm_budget_violation_count": 0,
     "llm_usage": {
-      "cache_dir": ".local_manifests\\phase-4.5-sc1-llm-adjudication-cache",
       "error_count": 0,
       "judgment_count": 300,
       "plan": {
@@ -117,12 +147,12 @@
         "max_budget_usd": 50.0,
         "max_calls": 300,
         "projected_calls": 300,
-        "projected_cost_usd": 0.097544,
-        "projected_input_tokens": 24772,
+        "projected_cost_usd": 0.097532,
+        "projected_input_tokens": 24766,
         "projected_output_tokens": 24000,
         "reason": null,
         "selected_block_count": 300,
-        "skipped_block_count": 4661,
+        "skipped_block_count": 4653,
         "status": "ready"
       },
       "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
@@ -143,9 +173,10 @@
       "used": true
     },
     "overmerge_violation_count": 0,
+    "random_holdout_severe_violation_count": 0,
     "rejected_signal_count": 634,
     "resolver_version": "source_concept_resolver_core_v2_graph",
-    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-semantic",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-context-guarded-v2",
     "schema_version": "source_concept_schema_v1",
     "search_index_preview_count": 1737,
     "signal_count": 4602,
@@ -161,6 +192,6 @@
     "source_title_only_active_violation_count": 0,
     "undermerge_violation_count": 0
   },
-  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-semantic",
-  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-semantic.zip"
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-context-guarded-v2",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-context-guarded-v2.zip"
 }

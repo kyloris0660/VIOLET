@@ -165,6 +165,7 @@ def public_redaction_check(public_paths: Sequence[Path]) -> dict[str, Any]:
         "source-signals.jsonl",
         "raw_value",
         "candidate-bundle.jsonl",
+        ".local_manifests",
     ]
     findings: list[dict[str, str]] = []
     for path in public_paths:
@@ -432,6 +433,106 @@ def concept_case_review(payload: Mapping[str, Any]) -> tuple[list[dict[str, Any]
     return positive_rows, negative_rows
 
 
+def random_holdout_review(payload: Mapping[str, Any], *, sample_size: int = 200) -> list[dict[str, Any]]:
+    signals = list(payload.get("signals", []))
+    concepts = {row["concept_key"]: row for row in payload.get("concepts", [])}
+    links_by_signal: dict[str, list[Mapping[str, Any]]] = {}
+    for link in payload.get("links", []):
+        links_by_signal.setdefault(str(link.get("signal_key")), []).append(link)
+
+    def risk_score(signal: Mapping[str, Any]) -> int:
+        score = 0
+        if signal.get("origin_type") in {"f7a_candidate", "source_assertion", "source_name_observation", "source_tag_observation"}:
+            score += 4
+        if signal.get("origin_type") == "ai_model_tag" or signal.get("trust_tier") == "medium_ai":
+            score += 3
+        if signal.get("role_hint") in {"character", "person", "source_title", "unknown"}:
+            score += 2
+        if signal.get("work_context_key") or signal.get("parenthetical_context"):
+            score += 2
+        if (signal.get("evidence_payload") or {}).get("non_concept_reason"):
+            score += 5
+        return score
+
+    ranked = sorted(
+        signals,
+        key=lambda row: (
+            -risk_score(row),
+            hashlib.sha256(json.dumps(row, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
+        ),
+    )
+    rows: list[dict[str, Any]] = []
+    for signal in ranked[:sample_size]:
+        signal_key = str(signal.get("signal_key"))
+        linked = links_by_signal.get(signal_key, [])
+        linked_concepts = [concepts.get(str(link.get("concept_key")), {}) for link in linked]
+        linked_statuses = sorted({str(concept.get("status")) for concept in linked_concepts if concept})
+        non_concept_reason = (signal.get("evidence_payload") or {}).get("non_concept_reason")
+        source_title_active = bool(signal.get("role_hint") == "source_title" and "active" in linked_statuses)
+        general_pollution = bool(non_concept_reason == "general_source_tag_without_name_context" and linked)
+        ai_active = bool(
+            (signal.get("origin_type") == "ai_model_tag" or signal.get("trust_tier") == "medium_ai")
+            and "active" in linked_statuses
+            and all((concept.get("evidence_summary") or {}).get("guards", {}).get("all_ai") for concept in linked_concepts if concept)
+        )
+        severe_violation = source_title_active or general_pollution or ai_active
+        rows.append(
+            {
+                "sample_key": hashlib.sha256(signal_key.encode("utf-8")).hexdigest()[:16],
+                "signal_key": signal_key,
+                "origin_type": signal.get("origin_type"),
+                "role_hint": signal.get("role_hint"),
+                "trust_tier": signal.get("trust_tier"),
+                "status": signal.get("status"),
+                "source_kind": signal.get("source_kind"),
+                "has_work_context": bool(signal.get("work_context_key") or signal.get("parenthetical_context")),
+                "linked_concept_count": len(linked),
+                "linked_concept_statuses": linked_statuses,
+                "non_concept_reason": non_concept_reason,
+                "risk_score": risk_score(signal),
+                "severe_violation": severe_violation,
+                "violation_reasons": [
+                    reason
+                    for reason, present in {
+                        "source_title_active": source_title_active,
+                        "general_source_tag_pollution": general_pollution,
+                        "ai_only_active": ai_active,
+                    }.items()
+                    if present
+                ],
+            }
+        )
+    return rows
+
+
+def expanded_validation_summary(payload: Mapping[str, Any], random_holdout_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    concepts = list(payload.get("concepts", []))
+    signals_by_key = {row.get("signal_key"): row for row in payload.get("signals", [])}
+    ai_review = list(payload.get("ai_signal_review", []))
+    context_conflicts = list(payload.get("context_conflict_review", []))
+    largest_sizes = sorted((len(row.get("signals") or []) for row in concepts), reverse=True)[:10]
+    return {
+        "total_signals": len(payload.get("signals", [])),
+        "total_concepts": len(concepts),
+        "active_concepts": sum(1 for row in concepts if row.get("status") == "active"),
+        "needs_review_concepts": sum(1 for row in concepts if row.get("status") == "needs_review"),
+        "largest_concept_signal_counts": largest_sizes,
+        "repeated_canonical_fragmentation_violations": int(payload.get("summary", {}).get("fragmentation_violation_count", 0) or 0),
+        "context_conflict_candidate_count": len(context_conflicts),
+        "context_conflict_active_merge_count": sum(1 for row in context_conflicts if row.get("violation")),
+        "ai_only_concept_count": sum(1 for row in ai_review if int(row.get("ai_signal_count", 0) or 0) > 0 and int(row.get("non_ai_signal_count", 0) or 0) == 0),
+        "source_title_only_concept_count": sum(
+            1
+            for row in concepts
+            if row.get("signals")
+            and all((signals_by_key.get(signal_key) or {}).get("role_hint") == "source_title" for signal_key in row.get("signals", []))
+        ),
+        "general_source_tag_pollution_count": int(payload.get("summary", {}).get("general_source_tag_pollution_count", 0) or 0),
+        "random_holdout_sample_size": len(random_holdout_rows),
+        "random_holdout_severe_violation_count": sum(1 for row in random_holdout_rows if row.get("severe_violation")),
+    }
+
+
 def build_readiness_check(
     *,
     summary: Mapping[str, Any],
@@ -456,15 +557,21 @@ def build_readiness_check(
         "undermerge_violation_count",
         "overmerge_violation_count",
         "fragmentation_violation_count",
+        "context_conflict_active_merge_count",
+        "alias_context_conflict_active_merge_count",
         "ai_only_active_violation_count",
         "general_source_tag_pollution_count",
         "source_title_only_active_violation_count",
+        "llm_budget_violation_count",
+        "random_holdout_severe_violation_count",
     ]
     for metric in required_zero_metrics:
         if int(resolver_summary.get(metric, 0) or 0) != 0:
             failures.append({"check": metric, "reason": "required_zero_metric_nonzero", "value": resolver_summary.get(metric)})
     if int(summary.get("persistence", {}).get("forbidden_truth_table_write_count", 0) or 0) != 0:
         failures.append({"check": "no_truth_writes", "reason": "forbidden_truth_table_write_count_nonzero"})
+    if int(summary.get("persistence", {}).get("stale_supersede_scope_violation_count", 0) or 0) != 0:
+        failures.append({"check": "stale_supersede_scope", "reason": "stale_supersede_scope_violation_count_nonzero"})
     return {
         "checked_at": utc_now_iso(),
         "passed": not failures,
@@ -485,9 +592,16 @@ def write_artifacts(
 ) -> tuple[dict[str, Any], Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     positive_rows, negative_rows = concept_case_review(payload)
-    consistency = build_artifact_consistency_check(payload, persistence)
+    random_holdout_rows = random_holdout_review(payload)
+    expanded_summary = expanded_validation_summary(payload, random_holdout_rows)
+    resolver_summary = {
+        **payload["summary"],
+        "random_holdout_severe_violation_count": expanded_summary["random_holdout_severe_violation_count"],
+    }
+    payload_for_checks = {**payload, "summary": resolver_summary}
+    consistency = build_artifact_consistency_check(payload_for_checks, persistence)
     readiness = build_readiness_check(
-        summary={"resolver_summary": payload["summary"], "persistence": persistence},
+        summary={"resolver_summary": resolver_summary, "persistence": persistence},
         positive_rows=positive_rows,
         negative_rows=negative_rows,
         consistency=consistency,
@@ -507,7 +621,8 @@ def write_artifacts(
         "apply_db": apply_db,
         "git": {"branch": git_branch, "head": git_head},
         "f7a_final_pack_import": f7a_import,
-        "resolver_summary": payload["summary"],
+        "resolver_summary": resolver_summary,
+        "expanded_validation_summary": expanded_summary,
         "persistence": persistence,
         "artifact_consistency": consistency,
         "readiness_check": readiness,
@@ -564,6 +679,8 @@ def write_artifacts(
     write_jsonl(output_dir / "overmerge-review.jsonl", payload["overmerge_review"])
     write_jsonl(output_dir / "undermerge-review.jsonl", payload["undermerge_review"])
     write_jsonl(output_dir / "fragmentation-review.jsonl", payload["fragmentation_review"])
+    write_jsonl(output_dir / "context-conflict-review.jsonl", payload.get("context_conflict_review", []))
+    write_jsonl(output_dir / "random-holdout-review.jsonl", random_holdout_rows)
     write_jsonl(output_dir / "ai-signal-review.jsonl", payload["ai_signal_review"])
     write_jsonl(output_dir / "llm-judgments.jsonl", payload["llm_judgments"])
     write_json(output_dir / "resolver-run-summary.json", {**payload["summary"], "persistence": persistence})
@@ -595,6 +712,7 @@ def write_artifacts(
 
 def write_public_report(summary: Mapping[str, Any], inventory: Mapping[str, Any], zip_path: Path) -> None:
     resolver_summary = summary["resolver_summary"]
+    expanded_summary = summary.get("expanded_validation_summary") or {}
     f7a_import = summary.get("f7a_final_pack_import") or {}
     llm_usage = resolver_summary.get("llm_usage", {})
     llm_plan = llm_usage.get("plan", {}) if isinstance(llm_usage.get("plan"), Mapping) else {}
@@ -632,7 +750,14 @@ def write_public_report(summary: Mapping[str, Any], inventory: Mapping[str, Any]
             f"- Undermerge violations: {resolver_summary.get('undermerge_violation_count')}",
             f"- Overmerge violations: {resolver_summary.get('overmerge_violation_count')}",
             f"- Fragmentation violations: {resolver_summary.get('fragmentation_violation_count')}",
+            f"- Context conflict active merges: {resolver_summary.get('context_conflict_active_merge_count')}",
+            f"- Alias context conflict active merges: {resolver_summary.get('alias_context_conflict_active_merge_count')}",
+            f"- Random holdout severe violations: {resolver_summary.get('random_holdout_severe_violation_count')}",
             f"- Readiness passed: {summary.get('readiness_check', {}).get('passed')}",
+            "",
+            "## Expanded Validation",
+            "",
+            json.dumps(expanded_summary, ensure_ascii=True, sort_keys=True),
             "",
             "## Source Signal Inventory",
             "",
@@ -675,13 +800,17 @@ def write_public_report(summary: Mapping[str, Any], inventory: Mapping[str, Any]
         ]
     )
     write_text(PUBLIC_REPORT_MD, report)
+    public_resolver_summary = json.loads(json.dumps(resolver_summary))
+    if isinstance(public_resolver_summary.get("llm_usage"), dict):
+        public_resolver_summary["llm_usage"].pop("cache_dir", None)
     public_summary = {
         "phase": PHASE_SLUG,
         "run_id": summary["run_id"],
         "generated_at": summary["generated_at"],
-        "resolver_summary": resolver_summary,
+        "resolver_summary": public_resolver_summary,
         "inventory_counts": inventory_counts,
         "artifact_consistency": summary["artifact_consistency"],
+        "expanded_validation_summary": expanded_summary,
         "readiness_check": summary.get("readiness_check"),
         "positive_case_summary": summary["positive_case_summary"],
         "negative_case_summary": summary["negative_case_summary"],

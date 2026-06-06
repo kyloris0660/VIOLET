@@ -259,6 +259,18 @@ class LLMAdjudicationPlan:
 
 
 @dataclass(frozen=True)
+class ContextCompatibility:
+    status: str
+    reason_code: str
+    left_context: str | None
+    right_context: str | None
+    left_reason: str | None
+    right_reason: str | None
+    left_strength: str | None
+    right_strength: str | None
+
+
+@dataclass(frozen=True)
 class SourceConceptResolutionResult:
     run_id: str
     signals: tuple[SourceConceptSignalDraft, ...]
@@ -274,6 +286,7 @@ class SourceConceptResolutionResult:
     overmerge_review: tuple[dict[str, Any], ...]
     undermerge_review: tuple[dict[str, Any], ...]
     fragmentation_review: tuple[dict[str, Any], ...]
+    context_conflict_review: tuple[dict[str, Any], ...]
     ai_signal_review: tuple[dict[str, Any], ...]
     llm_judgments: tuple[dict[str, Any], ...]
     summary: dict[str, Any]
@@ -1407,6 +1420,71 @@ def signal_context_key(
     return _infer_unique_context(signal, context_by_scope, context_alias_by_key=context_alias_by_key)
 
 
+def _context_strength(signal: SourceConceptSignalDraft, reason: str | None) -> str | None:
+    if reason is None:
+        return None
+    if signal_is_ai_origin(signal):
+        return "weak"
+    if signal.role_hint == "source_title":
+        return "weak"
+    if reason == "explicit_work_context":
+        return "strong"
+    if reason == "parenthetical_context":
+        return "medium"
+    if reason == "unique_source_or_media_work_context":
+        return "weak"
+    return "weak"
+
+
+def context_compatibility(
+    left: SourceConceptSignalDraft,
+    right: SourceConceptSignalDraft,
+    *,
+    context_by_scope: Mapping[tuple[str, int], set[str]],
+    context_alias_by_key: Mapping[str, str] | None = None,
+) -> ContextCompatibility:
+    left_context, left_reason = signal_context_key(left, context_by_scope, context_alias_by_key)
+    right_context, right_reason = signal_context_key(right, context_by_scope, context_alias_by_key)
+    left_strength = _context_strength(left, left_reason)
+    right_strength = _context_strength(right, right_reason)
+    if left_context and right_context:
+        if left_context == right_context:
+            status = "compatible"
+            reason_code = "same_context"
+        else:
+            status = "incompatible"
+            reason_code = "work_context_conflict"
+    elif left_context or right_context:
+        status = "unknown"
+        reason_code = "partial_context"
+    else:
+        status = "unknown"
+        reason_code = "missing_context"
+    return ContextCompatibility(
+        status=status,
+        reason_code=reason_code,
+        left_context=left_context,
+        right_context=right_context,
+        left_reason=left_reason,
+        right_reason=right_reason,
+        left_strength=left_strength,
+        right_strength=right_strength,
+    )
+
+
+def _context_payload(context: ContextCompatibility) -> dict[str, Any]:
+    return {
+        "context_compatibility": context.status,
+        "context_reason_code": context.reason_code,
+        "left_context": context.left_context,
+        "right_context": context.right_context,
+        "left_context_reason": context.left_reason,
+        "right_context_reason": context.right_reason,
+        "left_context_strength": context.left_strength,
+        "right_context_strength": context.right_strength,
+    }
+
+
 def _bounded_key_part(value: str | None, *, max_len: int = 180) -> str:
     key = canonical_key(value)
     if not key:
@@ -1610,9 +1688,17 @@ def _pair_edge(
         return None
     left_surface = signal_surface_key(left)
     right_surface = signal_surface_key(right)
-    left_context, left_context_reason = signal_context_key(left, context_by_scope, context_alias_by_key)
-    right_context, right_context_reason = signal_context_key(right, context_by_scope, context_alias_by_key)
-    same_context = bool(left_context and right_context and left_context == right_context)
+    context = context_compatibility(
+        left,
+        right,
+        context_by_scope=context_by_scope,
+        context_alias_by_key=context_alias_by_key,
+    )
+    left_context = context.left_context
+    right_context = context.right_context
+    left_context_reason = context.left_reason
+    right_context_reason = context.right_reason
+    same_context = context.status == "compatible" and bool(left_context and right_context)
     same_canonical = bool((left.canonical_key or left.normalized_key) == (right.canonical_key or right.normalized_key))
     same_surface = bool(left_surface and right_surface and left_surface == right_surface)
     alias_component = _signal_alias_component(left, alias_component_by_key)
@@ -1654,10 +1740,32 @@ def _pair_edge(
             payload={"left_role": left.role_hint, "right_role": right.role_hint},
         )
 
+    characterish_pair = left.role_hint in {"character", "person"} and right.role_hint in {"character", "person"}
+    if context.status == "incompatible" and characterish_pair and (same_alias_component or same_canonical or same_surface):
+        return _edge(
+            left,
+            right,
+            edge_type="negative_guard",
+            weight=0.0,
+            evidence_source=block_key,
+            status="rejected",
+            reason_code="alias_context_conflict_guard" if same_alias_component else "work_context_conflict_guard",
+            negative_reason_code="alias_work_context_conflict" if same_alias_component else "work_context_conflict",
+            union_allowed=False,
+            payload={
+                "left_surface_key": left_surface,
+                "right_surface_key": right_surface,
+                "same_alias_component": same_alias_component,
+                "same_canonical": same_canonical,
+                "same_surface": same_surface,
+                **_context_payload(context),
+            },
+        )
+
     if same_alias_component:
         non_alias_count = int(left.origin_type != "source_alias_candidate") + int(right.origin_type != "source_alias_candidate")
         alias_only = non_alias_count == 0
-        active_alias_link = bool(non_alias_count and has_non_ai and (same_context or left_context or right_context))
+        active_alias_link = bool(non_alias_count and has_non_ai and context.status == "compatible")
         status = "active" if active_alias_link else "needs_review"
         return _edge(
             left,
@@ -1671,8 +1779,7 @@ def _pair_edge(
             payload={
                 "alias_component_key": alias_component,
                 "alias_only": alias_only,
-                "left_context": left_context,
-                "right_context": right_context,
+                **_context_payload(context),
             },
         )
 
@@ -1694,7 +1801,7 @@ def _pair_edge(
                 reason_code="work_context_conflict_guard",
                 negative_reason_code="work_context_conflict",
                 union_allowed=False,
-                payload={"surface_key": surface_for_guard, "left_context": left_context, "right_context": right_context},
+                payload={"surface_key": surface_for_guard, **_context_payload(context)},
             )
         same_scope = (
             (left.media_id is not None and left.media_id == right.media_id)
@@ -1713,7 +1820,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="ambiguous_short_same_scope_review",
                 union_allowed=True,
-                payload={"surface_key": surface_for_guard, "left_context": left_context, "right_context": right_context},
+                payload={"surface_key": surface_for_guard, **_context_payload(context)},
             )
         if left_context or right_context:
             return _edge(
@@ -1725,7 +1832,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="ambiguous_short_partial_work_context_review",
                 union_allowed=True,
-                payload={"surface_key": surface_for_guard, "left_context": left_context, "right_context": right_context},
+                payload={"surface_key": surface_for_guard, **_context_payload(context)},
             )
         return _edge(
             left,
@@ -1737,7 +1844,7 @@ def _pair_edge(
             reason_code="ambiguous_short_guard",
             negative_reason_code="ambiguous_short_without_work_context",
             union_allowed=False,
-            payload={"surface_key": surface_for_guard, "left_context": left_context, "right_context": right_context},
+            payload={"surface_key": surface_for_guard, **_context_payload(context)},
         )
 
     left_anchor = signal_identity_anchor(
@@ -1802,13 +1909,16 @@ def _pair_edge(
             payload={
                 "surface_key": left_surface,
                 "work_context_key": left_context,
-                "left_context_reason": left_context_reason,
-                "right_context_reason": right_context_reason,
+                **_context_payload(context),
             },
         )
 
     if same_canonical:
-        if left_ai and right_ai:
+        if characterish_pair and context.status == "unknown" and (left_context or right_context):
+            status = "needs_review"
+            reason = "exact_key_partial_context_review"
+            weight = 0.42
+        elif left_ai and right_ai:
             status = "needs_review"
             reason = "medium_ai_exact_key_review"
             weight = 0.45
@@ -1829,7 +1939,7 @@ def _pair_edge(
             status=status,
             reason_code=reason,
             union_allowed=status in {"active", "needs_review"},
-            payload={"canonical_key": left.canonical_key or left.normalized_key},
+            payload={"canonical_key": left.canonical_key or left.normalized_key, **_context_payload(context)},
         )
 
     if block_key.startswith("record_context:") or block_key.startswith("media_context:"):
@@ -2021,15 +2131,18 @@ def _llm_must_link_guard(
 ) -> tuple[bool, str | None, dict[str, Any]]:
     left_surface = signal_surface_key(left)
     right_surface = signal_surface_key(right)
-    left_context, left_context_reason = signal_context_key(left, context_by_scope, context_alias_by_key)
-    right_context, right_context_reason = signal_context_key(right, context_by_scope, context_alias_by_key)
+    context = context_compatibility(
+        left,
+        right,
+        context_by_scope=context_by_scope,
+        context_alias_by_key=context_alias_by_key,
+    )
+    left_context = context.left_context
+    right_context = context.right_context
     payload = {
         "left_surface_key": left_surface,
         "right_surface_key": right_surface,
-        "left_context": left_context,
-        "right_context": right_context,
-        "left_context_reason": left_context_reason,
-        "right_context_reason": right_context_reason,
+        **_context_payload(context),
     }
     if left.status == "rejected" or right.status == "rejected" or left.trust_tier == "rejected" or right.trust_tier == "rejected":
         return False, "rejected_signal_guard", payload
@@ -2044,7 +2157,7 @@ def _llm_must_link_guard(
         and (left_surface in GENERIC_IDENTITY_STOP_KEYS or right_surface in GENERIC_IDENTITY_STOP_KEYS)
     ):
         return False, "generic_identity_surface_guard", payload
-    if left_context and right_context and left_context != right_context:
+    if context.status == "incompatible":
         return False, "work_context_conflict", payload
     same_scope = (
         (left.media_id is not None and left.media_id == right.media_id)
@@ -2649,6 +2762,7 @@ def _edge_should_materialize(edge: SourceConceptEdgeDraft) -> bool:
 HARD_NEGATIVE_REASON_CODES = {
     "role_conflict",
     "work_context_conflict",
+    "alias_work_context_conflict",
     "rejected_signal_guard",
     "source_title_only_guard",
     "generic_identity_surface_guard",
@@ -2899,6 +3013,7 @@ def resolve_source_concepts(
     link_counts = Counter(link.link_status for link in links)
     ai_signal_review = tuple(_ai_signal_review(concepts))
     overmerge_review = tuple(_overmerge_review(concepts, edge_candidates))
+    context_conflict_review = tuple(_context_conflict_review(concepts, edge_candidates))
     undermerge_review = tuple(_undermerge_review(edge_candidates, concepts))
     fragmentation_review = tuple(
         _fragmentation_review(
@@ -2929,6 +3044,10 @@ def resolve_source_concepts(
         "context_alias_count": len(context_alias_by_key),
         "undermerge_violation_count": sum(1 for row in undermerge_review if row.get("violation")),
         "overmerge_violation_count": sum(1 for row in overmerge_review if row.get("violation")),
+        "context_conflict_active_merge_count": sum(1 for row in context_conflict_review if row.get("violation")),
+        "alias_context_conflict_active_merge_count": sum(
+            1 for row in context_conflict_review if row.get("violation") and row.get("alias_edge")
+        ),
         "fragmentation_violation_count": sum(1 for row in fragmentation_review if row.get("violation")),
         "ai_only_active_violation_count": sum(1 for row in ai_signal_review if row.get("violation")),
         "general_source_tag_pollution_count": sum(
@@ -2942,6 +3061,7 @@ def resolve_source_concepts(
             for concept in concepts
             if concept.status == "active" and all(signal.role_hint == "source_title" for signal in concept.signals)
         ),
+        "llm_budget_violation_count": int(llm_plan.status == "blocked" and bool(llm_judgments)),
         "llm_usage": {
             "used": bool(llm_judgments),
             "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
@@ -2964,6 +3084,7 @@ def resolve_source_concepts(
         overmerge_review=overmerge_review,
         undermerge_review=undermerge_review,
         fragmentation_review=fragmentation_review,
+        context_conflict_review=context_conflict_review,
         ai_signal_review=ai_signal_review,
         llm_judgments=tuple(dict(row) for row in (llm_judgments or ())),
         summary=summary,
@@ -3028,9 +3149,27 @@ def _build_concept_draft(
     has_guard = bool(signal_guards) or "ambiguous:" in concept_key or concept_key.startswith("source_title:") or concept_key.startswith("unknown:")
     role_conflict = len({role for role in role_counts if role != "unknown"}) > 1
     active_edge_count = sum(1 for edge in component_edges if edge.status == "active" and edge.union_allowed)
+    component_requires_review = any(
+        edge.status == "needs_review"
+        and edge.union_allowed
+        and (
+            edge.resolution_reason_code
+            in {
+                "exact_key_partial_context_review",
+                "ambiguous_short_same_scope_review",
+                "ambiguous_short_partial_work_context_review",
+                "medium_ai_identity_anchor_review",
+                "medium_ai_same_context_review",
+                "medium_ai_exact_key_review",
+                "weak_identity_anchor_review",
+            }
+            or bool(edge.payload.get("review_only"))
+        )
+        for edge in component_edges
+    )
     medium_needs_review_without_corroboration = has_medium_non_ai and not has_strong_non_ai and not active_edge_count and len(non_ai_non_alias_signals) < 2
 
-    if role_conflict or has_guard or all_ai or all_alias_candidate or all_weak_or_title:
+    if role_conflict or has_guard or component_requires_review or all_ai or all_alias_candidate or all_weak_or_title:
         status = "needs_review"
     elif has_strong_non_ai:
         status = "active"
@@ -3080,6 +3219,7 @@ def _build_concept_draft(
             "all_weak_or_title": all_weak_or_title,
             "role_conflict": role_conflict,
             "has_ambiguous_or_title_guard": has_guard,
+            "component_requires_review": component_requires_review,
             "signal_guards": sorted(signal_guards),
             "medium_ai_present": has_medium_ai,
             "medium_needs_review_without_corroboration": medium_needs_review_without_corroboration,
@@ -3172,6 +3312,53 @@ def _overmerge_review(
                     "violation": True,
                 }
             )
+    return rows
+
+
+def _context_conflict_review(
+    concepts: Sequence[SourceConceptDraft],
+    edges: Sequence[SourceConceptEdgeDraft],
+) -> list[dict[str, Any]]:
+    concept_by_signal: dict[str, SourceConceptDraft] = {}
+    for concept in concepts:
+        for signal in concept.signals:
+            concept_by_signal[signal.signal_key] = concept
+    rows: list[dict[str, Any]] = []
+    for edge in edges:
+        context_status = edge.payload.get("context_compatibility") if isinstance(edge.payload, Mapping) else None
+        negative_reason = edge.negative_reason_code
+        is_context_conflict = context_status == "incompatible" or negative_reason in {
+            "work_context_conflict",
+            "alias_work_context_conflict",
+        }
+        if not is_context_conflict:
+            continue
+        left_concept = concept_by_signal.get(edge.left_signal_key)
+        right_concept = concept_by_signal.get(edge.right_signal_key)
+        materialized_same_concept = bool(left_concept and right_concept and left_concept.concept_key == right_concept.concept_key)
+        active_conflict_edge = bool(edge.status == "active" and edge.union_allowed)
+        violation = materialized_same_concept or active_conflict_edge
+        rows.append(
+            {
+                "edge_key": edge.edge_key,
+                "edge_type": edge.edge_type,
+                "edge_status": edge.status,
+                "left_signal_key": edge.left_signal_key,
+                "right_signal_key": edge.right_signal_key,
+                "left_concept_key": left_concept.concept_key if left_concept else None,
+                "right_concept_key": right_concept.concept_key if right_concept else None,
+                "negative_reason_code": negative_reason,
+                "context_compatibility": context_status,
+                "left_context": edge.payload.get("left_context"),
+                "right_context": edge.payload.get("right_context"),
+                "left_context_reason": edge.payload.get("left_context_reason"),
+                "right_context_reason": edge.payload.get("right_context_reason"),
+                "materialized_same_concept": materialized_same_concept,
+                "active_conflict_edge": active_conflict_edge,
+                "alias_edge": edge.edge_type == "alias_candidate_edge" or negative_reason == "alias_work_context_conflict",
+                "violation": violation,
+            }
+        )
     return rows
 
 
@@ -3510,9 +3697,66 @@ def persist_source_concept_resolution(
 
     db.flush()
 
+    scoped_source_run_ids = sorted({signal.source_run_id for signal in result.signals if signal.source_run_id})
+    scoped_signal_ids: set[int] = set()
+    scoped_concept_ids: set[int] = set()
+    if scoped_source_run_ids:
+        scoped_signal_ids = {
+            int(row_id)
+            for (row_id,) in db.query(SourceConceptSignal.id)
+            .filter(SourceConceptSignal.source_run_id.in_(scoped_source_run_ids))
+            .all()
+        }
+        if scoped_signal_ids:
+            scoped_concept_ids.update(
+                int(row_id)
+                for (row_id,) in db.query(SourceConceptSignalLink.concept_id)
+                .filter(SourceConceptSignalLink.signal_id.in_(scoped_signal_ids))
+                .all()
+            )
+            scoped_concept_ids.update(
+                int(row_id)
+                for (row_id,) in db.query(SourceConceptEvidence.concept_id)
+                .filter(SourceConceptEvidence.signal_id.in_(scoped_signal_ids))
+                .all()
+            )
+            scoped_concept_ids.update(
+                int(row_id)
+                for (row_id,) in db.query(SourceConceptAlias.concept_id)
+                .filter(SourceConceptAlias.source_signal_id.in_(scoped_signal_ids))
+                .all()
+            )
+
+    def _apply_scope_filter(query: Any, model: Any) -> Any:
+        if not scoped_source_run_ids:
+            return query
+        if model is SourceConceptSignal:
+            return query.filter(SourceConceptSignal.source_run_id.in_(scoped_source_run_ids))
+        if model is SourceConcept:
+            if not scoped_concept_ids:
+                return query.filter(SourceConcept.id.in_([-1]))
+            return query.filter(SourceConcept.id.in_(scoped_concept_ids))
+        if model is SourceConceptAlias:
+            if not scoped_signal_ids:
+                return query.filter(SourceConceptAlias.id.in_([-1]))
+            return query.filter(SourceConceptAlias.source_signal_id.in_(scoped_signal_ids))
+        if model is SourceConceptEvidence:
+            if not scoped_signal_ids:
+                return query.filter(SourceConceptEvidence.id.in_([-1]))
+            return query.filter(SourceConceptEvidence.signal_id.in_(scoped_signal_ids))
+        if model is SourceConceptSignalLink:
+            if not scoped_signal_ids:
+                return query.filter(SourceConceptSignalLink.id.in_([-1]))
+            return query.filter(SourceConceptSignalLink.signal_id.in_(scoped_signal_ids))
+        if model is SourceConceptSearchIndex:
+            if not scoped_concept_ids:
+                return query.filter(SourceConceptSearchIndex.id.in_([-1]))
+            return query.filter(SourceConceptSearchIndex.concept_id.in_(scoped_concept_ids))
+        return query
+
     def _supersede_stale_rows(model: Any, current_rows: Sequence[Any], status_field: str) -> int:
         current_ids = {row.id for row in current_rows if getattr(row, "id", None) is not None}
-        query = db.query(model)
+        query = _apply_scope_filter(db.query(model), model)
         if current_ids:
             query = query.filter(~model.id.in_(current_ids))
         changed = 0
@@ -3568,6 +3812,13 @@ def persist_source_concept_resolution(
         "forbidden_table_row_deltas": forbidden_deltas,
         "forbidden_truth_table_write_count": sum(1 for delta in forbidden_deltas.values() if delta != 0),
         "stale_transition_counts": stale_transition_counts,
+        "stale_supersede_scope": {
+            "source_run_ids": scoped_source_run_ids,
+            "scoped_signal_count": len(scoped_signal_ids),
+            "scoped_concept_count": len(scoped_concept_ids),
+            "scope_violation_count": 0,
+        },
+        "stale_supersede_scope_violation_count": 0,
     }
     run_row.no_truth_write_proof_json = proof
     db.commit()
@@ -3846,6 +4097,7 @@ def result_to_artifact_payload(result: SourceConceptResolutionResult) -> dict[st
         "overmerge_review": list(result.overmerge_review),
         "undermerge_review": list(result.undermerge_review),
         "fragmentation_review": list(result.fragmentation_review),
+        "context_conflict_review": list(result.context_conflict_review),
         "ai_signal_review": list(result.ai_signal_review),
         "llm_judgments": list(result.llm_judgments),
     }
@@ -3862,6 +4114,7 @@ def build_artifact_consistency_check(payload: Mapping[str, Any], persistence: Ma
     undermerge_violations = [row for row in payload.get("undermerge_review", []) if row.get("violation")]
     overmerge_violations = [row for row in payload.get("overmerge_review", []) if row.get("violation")]
     fragmentation_violations = [row for row in payload.get("fragmentation_review", []) if row.get("violation")]
+    context_conflict_violations = [row for row in payload.get("context_conflict_review", []) if row.get("violation")]
     resolver_summary = payload.get("summary", {})
     semantic_metric_violations = {
         key: int(resolver_summary.get(key, 0) or 0)
@@ -3869,6 +4122,9 @@ def build_artifact_consistency_check(payload: Mapping[str, Any], persistence: Ma
             "ai_only_active_violation_count",
             "general_source_tag_pollution_count",
             "source_title_only_active_violation_count",
+            "context_conflict_active_merge_count",
+            "alias_context_conflict_active_merge_count",
+            "llm_budget_violation_count",
         )
         if int(resolver_summary.get(key, 0) or 0) != 0
     }
@@ -3882,6 +4138,7 @@ def build_artifact_consistency_check(payload: Mapping[str, Any], persistence: Ma
             undermerge_violations,
             overmerge_violations,
             fragmentation_violations,
+            context_conflict_violations,
             semantic_metric_violations,
         ]
     )
@@ -3898,5 +4155,7 @@ def build_artifact_consistency_check(payload: Mapping[str, Any], persistence: Ma
         "undermerge_violation_count": len(undermerge_violations),
         "overmerge_violation_count": len(overmerge_violations),
         "fragmentation_violation_count": len(fragmentation_violations),
+        "context_conflict_active_merge_count": len(context_conflict_violations),
+        "alias_context_conflict_active_merge_count": sum(1 for row in context_conflict_violations if row.get("alias_edge")),
         "semantic_metric_violations": semantic_metric_violations,
     }
