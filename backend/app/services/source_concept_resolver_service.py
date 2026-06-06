@@ -764,6 +764,8 @@ def _make_signal(
     raw_text = display_text(raw_value)
     if not raw_text:
         return None
+    if _looks_like_metadata_non_name(raw_text):
+        return None
     display = display_text(display_value if display_value is not None else raw_text)
     normalized = canonical_key(raw_text)
     canonical = canonical_key(canonical_value if canonical_value is not None else raw_text)
@@ -826,6 +828,45 @@ def _dedupe_signals(signals: Iterable[SourceConceptSignalDraft | None]) -> tuple
             continue
         by_key[signal.signal_key] = signal
     return tuple(by_key.values())
+
+
+def _origin_container_scope_key_from_values(
+    *,
+    source_run_id: str | None,
+    origin_type: str | None,
+    origin_table: str | None,
+    provider: str | None,
+    media_id: int | None,
+    source_metadata_record_id: int | None,
+    source_record_id: str | None,
+) -> str | None:
+    if source_run_id:
+        return None
+    if not origin_type:
+        return None
+    payload = {
+        "origin_type": origin_type,
+        "origin_table": origin_table,
+        "provider": provider,
+        "media_id": media_id,
+        "source_metadata_record_id": source_metadata_record_id,
+        "source_record_id": source_record_id,
+    }
+    if not any(payload.get(key) is not None for key in ("media_id", "source_metadata_record_id", "source_record_id")):
+        return None
+    return value_hash(payload, 32)
+
+
+def _origin_container_scope_key(signal: SourceConceptSignalDraft | SourceConceptSignal) -> str | None:
+    return _origin_container_scope_key_from_values(
+        source_run_id=getattr(signal, "source_run_id", None),
+        origin_type=getattr(signal, "origin_type", None),
+        origin_table=getattr(signal, "origin_table", None),
+        provider=getattr(signal, "provider", None),
+        media_id=getattr(signal, "media_id", None),
+        source_metadata_record_id=getattr(signal, "source_metadata_record_id", None),
+        source_record_id=getattr(signal, "source_record_id", None),
+    )
 
 
 def _trust_for_f7a_candidate(row: SourceNameCandidate) -> tuple[str, str]:
@@ -1202,13 +1243,22 @@ def _looks_like_metadata_non_name(value: str) -> bool:
     lowered = normalized.lower()
     if not lowered:
         return True
-    if lowered.startswith(("http://", "https://", "file://")):
+    if "://" in lowered:
+        return True
+    if lowered.startswith(("~/", "./", "../")):
+        return True
+    if lowered.startswith(("\\\\", "//")):
+        return True
+    if lowered.startswith("/"):
+        return True
+    if re.match(r"^[a-z]:[\\/]", normalized, flags=re.IGNORECASE):
+        return True
+    if len(normalized) >= 3 and normalized[1] == ":":
         return True
     if "\\" in normalized:
         return True
-    if "/" in normalized and lowered.rsplit(".", 1)[-1] in {"jpg", "jpeg", "png", "gif", "webp", "avif", "zip", "json"}:
-        return True
-    if len(normalized) >= 3 and normalized[1] == ":":
+    slash_count = normalized.count("/")
+    if slash_count >= 2 and not re.search(r"\s", normalized):
         return True
     if len(normalized) >= 16 and all(ch in "0123456789abcdefABCDEF" for ch in normalized):
         return True
@@ -3752,41 +3802,65 @@ def persist_source_concept_resolution(
     db.flush()
 
     scoped_source_run_ids = sorted({signal.source_run_id for signal in result.signals if signal.source_run_id})
+    unscoped_origin_scope_keys = sorted(
+        {
+            scope_key
+            for signal in result.signals
+            for scope_key in [_origin_container_scope_key(signal)]
+            if scope_key
+        }
+    )
+    source_run_scoped_signal_ids: set[int] = set()
+    origin_scoped_signal_ids: set[int] = set()
     scoped_signal_ids: set[int] = set()
     scoped_concept_ids: set[int] = set()
-    stale_supersede_mode = "scoped_source_run" if scoped_source_run_ids else "skipped_empty_source_run_scope"
     if scoped_source_run_ids:
-        scoped_signal_ids = {
+        source_run_scoped_signal_ids = {
             int(row_id)
             for (row_id,) in db.query(SourceConceptSignal.id)
             .filter(SourceConceptSignal.source_run_id.in_(scoped_source_run_ids))
             .all()
         }
-        if scoped_signal_ids:
-            scoped_concept_ids.update(
-                int(row_id)
-                for (row_id,) in db.query(SourceConceptSignalLink.concept_id)
-                .filter(SourceConceptSignalLink.signal_id.in_(scoped_signal_ids))
-                .all()
-            )
-            scoped_concept_ids.update(
-                int(row_id)
-                for (row_id,) in db.query(SourceConceptEvidence.concept_id)
-                .filter(SourceConceptEvidence.signal_id.in_(scoped_signal_ids))
-                .all()
-            )
-            scoped_concept_ids.update(
-                int(row_id)
-                for (row_id,) in db.query(SourceConceptAlias.concept_id)
-                .filter(SourceConceptAlias.source_signal_id.in_(scoped_signal_ids))
-                .all()
-            )
+    if unscoped_origin_scope_keys:
+        scope_key_set = set(unscoped_origin_scope_keys)
+        for row in db.query(SourceConceptSignal).filter(SourceConceptSignal.source_run_id.is_(None)).all():
+            scope_key = _origin_container_scope_key(row)
+            if scope_key and scope_key in scope_key_set:
+                origin_scoped_signal_ids.add(int(row.id))
+    scoped_signal_ids = source_run_scoped_signal_ids | origin_scoped_signal_ids
+    if scoped_source_run_ids and unscoped_origin_scope_keys:
+        stale_supersede_mode = "source_run_and_origin_manifest_scope"
+    elif scoped_source_run_ids:
+        stale_supersede_mode = "scoped_source_run"
+    elif unscoped_origin_scope_keys:
+        stale_supersede_mode = "origin_manifest_scope"
+    else:
+        stale_supersede_mode = "skipped_empty_scope"
+    if scoped_signal_ids:
+        scoped_concept_ids.update(
+            int(row_id)
+            for (row_id,) in db.query(SourceConceptSignalLink.concept_id)
+            .filter(SourceConceptSignalLink.signal_id.in_(scoped_signal_ids))
+            .all()
+        )
+        scoped_concept_ids.update(
+            int(row_id)
+            for (row_id,) in db.query(SourceConceptEvidence.concept_id)
+            .filter(SourceConceptEvidence.signal_id.in_(scoped_signal_ids))
+            .all()
+        )
+        scoped_concept_ids.update(
+            int(row_id)
+            for (row_id,) in db.query(SourceConceptAlias.concept_id)
+            .filter(SourceConceptAlias.source_signal_id.in_(scoped_signal_ids))
+            .all()
+        )
 
     def _apply_scope_filter(query: Any, model: Any) -> Any:
-        if not scoped_source_run_ids:
+        if not scoped_signal_ids:
             return query.filter(model.id.in_([-1]))
         if model is SourceConceptSignal:
-            return query.filter(SourceConceptSignal.source_run_id.in_(scoped_source_run_ids))
+            return query.filter(SourceConceptSignal.id.in_(scoped_signal_ids))
         if model is SourceConcept:
             if not scoped_concept_ids:
                 return query.filter(SourceConcept.id.in_([-1]))
@@ -3827,7 +3901,7 @@ def persist_source_concept_resolution(
             changed += 1
         return changed
 
-    if scoped_source_run_ids:
+    if scoped_signal_ids:
         stale_transition_counts = {
             "signals": _supersede_stale_rows(SourceConceptSignal, current_signal_rows, "status"),
             "concepts": _supersede_stale_rows(SourceConcept, current_concept_rows, "status"),
@@ -3880,6 +3954,10 @@ def persist_source_concept_resolution(
         "stale_supersede_scope": {
             "mode": stale_supersede_mode,
             "source_run_ids": scoped_source_run_ids,
+            "origin_scope_count": len(unscoped_origin_scope_keys),
+            "origin_scope_manifest_hash": value_hash(unscoped_origin_scope_keys, 32) if unscoped_origin_scope_keys else None,
+            "source_run_scoped_signal_count": len(source_run_scoped_signal_ids),
+            "origin_scoped_signal_count": len(origin_scoped_signal_ids),
             "scoped_signal_count": len(scoped_signal_ids),
             "scoped_concept_count": len(scoped_concept_ids),
             "scope_violation_count": 0,
@@ -4024,6 +4102,30 @@ def _db_candidates_checksum(db: Session, run_id: str) -> tuple[int, str]:
     return len(rows), value_hash(stable_rows, 32)
 
 
+def _supersede_removed_f7a_candidates(db: Session, *, run_id: str, incoming_logical_keys: set[str]) -> int:
+    run_row = db.query(SourceNameCandidateExtractionRun).filter_by(run_id=run_id).one_or_none()
+    if run_row is None:
+        return 0
+    rows = (
+        db.query(SourceNameCandidate)
+        .filter(SourceNameCandidate.extraction_run_id == run_row.id)
+        .filter(SourceNameCandidate.status == "active")
+        .all()
+    )
+    changed = 0
+    for row in rows:
+        payload = dict(row.evidence_payload or {})
+        logical_key = str(payload.get("logical_candidate_key") or row.candidate_key)
+        if logical_key in incoming_logical_keys:
+            continue
+        row.status = "superseded"
+        row.candidate_status = "rejected"
+        changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
 def import_f7a_final_pack_candidates(
     db: Session,
     *,
@@ -4056,6 +4158,7 @@ def import_f7a_final_pack_candidates(
         return {**audit, "persistence": {"skipped": True, "reason": "db_count_and_stable_checksum_match_candidate_bundle"}}
 
     candidates = tuple(_candidate_from_pack_row(row) for row in rows)
+    incoming_logical_keys = {candidate.candidate_key for candidate in candidates}
     verdicts = tuple(_verdicts_from_pack_rows(rows))
     groups = tuple(_groups_from_pack_rows(rows))
     bundle = ExtractionResultBundle(
@@ -4097,6 +4200,15 @@ def import_f7a_final_pack_candidates(
             "summary": str(summary_path),
         },
     )
+    removed_count = _supersede_removed_f7a_candidates(db, run_id=run_id, incoming_logical_keys=incoming_logical_keys) if apply else 0
+    post_count, post_checksum = _db_candidates_checksum(db, run_id)
+    persistence = {
+        **persistence,
+        "removed_group_superseded_candidates": removed_count,
+        "post_import_existing_db_candidate_count_for_run": post_count,
+        "post_import_existing_db_stable_checksum_for_run": post_checksum,
+        "post_import_stable_checksum_matches": post_count == len(rows) and post_checksum == bundle_checksum,
+    }
     return {**audit, "persistence": persistence}
 
 

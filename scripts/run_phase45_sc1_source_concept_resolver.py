@@ -43,6 +43,7 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
     SOURCE_CONCEPT_SCHEMA_VERSION,
     build_artifact_consistency_check,
     canonical_key,
+    _looks_like_metadata_non_name,
     import_f7a_final_pack_candidates,
     result_to_artifact_payload,
     run_source_concept_resolution,
@@ -505,6 +506,53 @@ def random_holdout_review(payload: Mapping[str, Any], *, sample_size: int = 200)
     return rows
 
 
+def path_like_rejection_review(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    checks = [
+        ("signals", payload.get("signals", []), ("signal_key",), ("raw_value", "display_value", "normalized_key", "canonical_key")),
+        ("aliases", payload.get("aliases", []), ("concept_key", "alias_role"), ("alias_value", "display_name", "alias_key")),
+        ("search_index", payload.get("search_index", []), ("concept_key", "alias_role"), ("search_key", "display_name")),
+    ]
+    for collection_name, collection, key_fields, value_fields in checks:
+        for row in collection:
+            for field in value_fields:
+                value = row.get(field)
+                if not isinstance(value, str) or not _looks_like_metadata_non_name(value):
+                    continue
+                rows.append(
+                    {
+                        "collection": collection_name,
+                        "field": field,
+                        "row_key_hash": hashlib.sha256(
+                            json.dumps({key: row.get(key) for key in key_fields}, sort_keys=True, default=str).encode("utf-8")
+                        ).hexdigest()[:16],
+                        "value_hash": hashlib.sha256(value.encode("utf-8")).hexdigest()[:16],
+                        "violation": True,
+                        "review_note": "Path-like or metadata-like value survived into resolver output; raw value intentionally redacted.",
+                    }
+                )
+    return rows
+
+
+def stale_supersede_scope_review(persistence: Mapping[str, Any]) -> list[dict[str, Any]]:
+    scope = persistence.get("stale_supersede_scope") if isinstance(persistence.get("stale_supersede_scope"), Mapping) else {}
+    return [
+        {
+            "mode": scope.get("mode"),
+            "source_run_id_count": len(scope.get("source_run_ids") or []),
+            "origin_scope_count": scope.get("origin_scope_count", 0),
+            "origin_scope_manifest_hash": scope.get("origin_scope_manifest_hash"),
+            "source_run_scoped_signal_count": scope.get("source_run_scoped_signal_count", 0),
+            "origin_scoped_signal_count": scope.get("origin_scoped_signal_count", 0),
+            "scoped_signal_count": scope.get("scoped_signal_count", 0),
+            "scoped_concept_count": scope.get("scoped_concept_count", 0),
+            "scope_violation_count": scope.get("scope_violation_count", 0),
+            "stale_transition_counts": persistence.get("stale_transition_counts") or {},
+            "global_supersede": False,
+        }
+    ]
+
+
 def expanded_validation_summary(payload: Mapping[str, Any], random_holdout_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     concepts = list(payload.get("concepts", []))
     signals_by_key = {row.get("signal_key"): row for row in payload.get("signals", [])}
@@ -530,6 +578,7 @@ def expanded_validation_summary(payload: Mapping[str, Any], random_holdout_rows:
         "general_source_tag_pollution_count": int(payload.get("summary", {}).get("general_source_tag_pollution_count", 0) or 0),
         "random_holdout_sample_size": len(random_holdout_rows),
         "random_holdout_severe_violation_count": sum(1 for row in random_holdout_rows if row.get("severe_violation")),
+        "path_like_output_violation_count": int(payload.get("summary", {}).get("path_like_output_violation_count", 0) or 0),
     }
 
 
@@ -564,6 +613,7 @@ def build_readiness_check(
         "source_title_only_active_violation_count",
         "llm_budget_violation_count",
         "random_holdout_severe_violation_count",
+        "path_like_output_violation_count",
     ]
     for metric in required_zero_metrics:
         if int(resolver_summary.get(metric, 0) or 0) != 0:
@@ -593,10 +643,14 @@ def write_artifacts(
     output_dir.mkdir(parents=True, exist_ok=True)
     positive_rows, negative_rows = concept_case_review(payload)
     random_holdout_rows = random_holdout_review(payload)
+    path_like_rows = path_like_rejection_review(payload)
+    stale_scope_rows = stale_supersede_scope_review(persistence)
     expanded_summary = expanded_validation_summary(payload, random_holdout_rows)
+    expanded_summary["path_like_output_violation_count"] = sum(1 for row in path_like_rows if row.get("violation"))
     resolver_summary = {
         **payload["summary"],
         "random_holdout_severe_violation_count": expanded_summary["random_holdout_severe_violation_count"],
+        "path_like_output_violation_count": expanded_summary["path_like_output_violation_count"],
     }
     payload_for_checks = {**payload, "summary": resolver_summary}
     consistency = build_artifact_consistency_check(payload_for_checks, persistence)
@@ -681,6 +735,8 @@ def write_artifacts(
     write_jsonl(output_dir / "fragmentation-review.jsonl", payload["fragmentation_review"])
     write_jsonl(output_dir / "context-conflict-review.jsonl", payload.get("context_conflict_review", []))
     write_jsonl(output_dir / "random-holdout-review.jsonl", random_holdout_rows)
+    write_jsonl(output_dir / "path-like-rejection-review.jsonl", path_like_rows)
+    write_jsonl(output_dir / "stale-supersede-scope-review.jsonl", stale_scope_rows)
     write_jsonl(output_dir / "ai-signal-review.jsonl", payload["ai_signal_review"])
     write_jsonl(output_dir / "llm-judgments.jsonl", payload["llm_judgments"])
     write_json(output_dir / "resolver-run-summary.json", {**payload["summary"], "persistence": persistence})

@@ -13,12 +13,12 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Counts
 
-- Signals: 4217
-- Concepts: 1105 ({'active': 355, 'needs_review': 750})
-- Links: 3583 ({'active': 1103, 'needs_review': 2480})
-- Aliases: 1692
-- Evidence rows: 3583
-- Search preview rows: 1692
+- Signals: 4216
+- Concepts: 1104 ({'active': 355, 'needs_review': 749})
+- Links: 3582 ({'active': 1103, 'needs_review': 2479})
+- Aliases: 1691
+- Evidence rows: 3582
+- Search preview rows: 1691
 - Edge candidates: 23529
 - Undermerge violations: 0
 - Overmerge violations: 0
@@ -30,7 +30,7 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Expanded Validation
 
-{"active_concepts": 355, "ai_only_concept_count": 215, "context_conflict_active_merge_count": 0, "context_conflict_candidate_count": 1303, "general_source_tag_pollution_count": 0, "largest_concept_signal_counts": [124, 121, 85, 79, 68, 67, 63, 61, 60, 53], "needs_review_concepts": 750, "random_holdout_sample_size": 200, "random_holdout_severe_violation_count": 0, "repeated_canonical_fragmentation_violations": 0, "source_title_only_concept_count": 207, "total_concepts": 1105, "total_signals": 4217}
+{"active_concepts": 355, "ai_only_concept_count": 215, "context_conflict_active_merge_count": 0, "context_conflict_candidate_count": 1303, "general_source_tag_pollution_count": 0, "largest_concept_signal_counts": [124, 121, 85, 79, 68, 67, 63, 61, 60, 53], "needs_review_concepts": 749, "path_like_output_violation_count": 0, "random_holdout_sample_size": 200, "random_holdout_severe_violation_count": 0, "repeated_canonical_fragmentation_violations": 0, "source_title_only_concept_count": 206, "total_concepts": 1104, "total_signals": 4216}
 
 ## Source Signal Inventory
 
@@ -67,5 +67,5 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Validation Pack
 
-- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-p2-cleanup-v3.zip`
+- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4.zip`
 - Primary validation format: JSON/JSONL.

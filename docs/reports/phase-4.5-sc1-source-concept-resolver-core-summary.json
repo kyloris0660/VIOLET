@@ -1,8 +1,8 @@
 {
   "artifact_consistency": {
     "alias_context_conflict_active_merge_count": 0,
-    "checked_at": "2026-06-06T13:48:56.822061+00:00",
-    "concept_count": 1105,
+    "checked_at": "2026-06-06T14:27:36.448681+00:00",
+    "concept_count": 1104,
     "context_conflict_active_merge_count": 0,
     "forbidden_truth_table_write_count": 0,
     "fragmentation_violation_count": 0,
@@ -13,7 +13,7 @@
     "overmerge_violation_count": 0,
     "passed": true,
     "semantic_metric_violations": {},
-    "signal_count": 4217,
+    "signal_count": 4216,
     "undermerge_violation_count": 0
   },
   "expanded_validation_summary": {
@@ -34,13 +34,14 @@
       60,
       53
     ],
-    "needs_review_concepts": 750,
+    "needs_review_concepts": 749,
+    "path_like_output_violation_count": 0,
     "random_holdout_sample_size": 200,
     "random_holdout_severe_violation_count": 0,
     "repeated_canonical_fragmentation_violations": 0,
-    "source_title_only_concept_count": 207,
-    "total_concepts": 1105,
-    "total_signals": 4217
+    "source_title_only_concept_count": 206,
+    "total_concepts": 1104,
+    "total_signals": 4216
   },
   "f7a_final_pack_import": {
     "candidate_bundle_count": 730,
@@ -50,7 +51,7 @@
     "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
   },
   "forbidden_truth_table_write_count": 0,
-  "generated_at": "2026-06-06T13:48:56.868373+00:00",
+  "generated_at": "2026-06-06T14:27:36.496682+00:00",
   "image_uploads": false,
   "inventory_counts": {
     "f7a_source_name_candidate": 730,
@@ -91,7 +92,7 @@
   "provider_or_enrichment_calls": false,
   "public_redacted": true,
   "readiness_check": {
-    "checked_at": "2026-06-06T13:48:57.810253+00:00",
+    "checked_at": "2026-06-06T14:27:37.291973+00:00",
     "failure_count": 0,
     "failures": [],
     "passed": true
@@ -99,18 +100,18 @@
   "resolver_summary": {
     "ai_only_active_violation_count": 0,
     "alias_context_conflict_active_merge_count": 0,
-    "alias_count": 1692,
-    "ambiguous_link_count": 518,
+    "alias_count": 1691,
+    "ambiguous_link_count": 517,
     "blocking_oversized_blocks": 21,
-    "concept_count": 1105,
+    "concept_count": 1104,
     "concept_counts_by_status": {
       "active": 355,
-      "needs_review": 750
+      "needs_review": 749
     },
     "context_alias_count": 4,
     "context_conflict_active_merge_count": 0,
     "edge_graph": {
-      "blocking_block_count": 3892,
+      "blocking_block_count": 3890,
       "edge_count": 23529,
       "edge_counts_by_status": {
         "active": 3199,
@@ -130,13 +131,13 @@
       "oversized_block_count": 21,
       "processed_block_count": 2165
     },
-    "evidence_count": 3583,
+    "evidence_count": 3582,
     "fragmentation_violation_count": 0,
     "general_source_tag_pollution_count": 0,
-    "link_count": 3583,
+    "link_count": 3582,
     "link_counts_by_status": {
       "active": 1103,
-      "needs_review": 2480
+      "needs_review": 2479
     },
     "llm_budget_violation_count": 0,
     "llm_usage": {
@@ -173,17 +174,18 @@
       "used": true
     },
     "overmerge_violation_count": 0,
+    "path_like_output_violation_count": 0,
     "random_holdout_severe_violation_count": 0,
     "rejected_signal_count": 634,
     "resolver_version": "source_concept_resolver_core_v2_graph",
-    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-p2-cleanup-v3",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4",
     "schema_version": "source_concept_schema_v1",
-    "search_index_preview_count": 1692,
-    "signal_count": 4217,
+    "search_index_preview_count": 1691,
+    "signal_count": 4216,
     "signal_counts_by_origin": {
       "ai_model_tag": 1622,
       "f7a_candidate": 730,
-      "provider_structured_field": 306,
+      "provider_structured_field": 305,
       "source_alias_candidate": 90,
       "source_assertion": 300,
       "source_name_observation": 459,
@@ -192,6 +194,6 @@
     "source_title_only_active_violation_count": 0,
     "undermerge_violation_count": 0
   },
-  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-p2-cleanup-v3",
-  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-p2-cleanup-v3.zip"
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4.zip"
 }

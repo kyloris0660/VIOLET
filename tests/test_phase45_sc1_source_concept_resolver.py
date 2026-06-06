@@ -65,6 +65,8 @@ def _signal(
     raw: str,
     *,
     origin_type: str = "normal_media_tag",
+    origin_table: str = "fixture",
+    provider: str = "fixture",
     role: str = "character",
     trust: str = "strong",
     status: str = "active",
@@ -78,9 +80,9 @@ def _signal(
     return SourceConceptSignalDraft(
         signal_key=key,
         origin_type=origin_type,
-        origin_table="fixture",
+        origin_table=origin_table,
         origin_id=key,
-        provider="fixture",
+        provider=provider,
         media_id=media_id,
         source_metadata_record_id=source_record_id,
         source_record_id=str(source_record_id) if source_record_id is not None else None,
@@ -130,6 +132,88 @@ def _source_concept_signal_row(signal_key: str, *, source_run_id: str | None, st
         source_run_id=source_run_id,
         created_by_run_id="old-run",
     )
+
+
+def _scoped_source_concept_signal_row(
+    signal_key: str,
+    *,
+    source_run_id: str | None = None,
+    origin_type: str = "normal_media_tag",
+    origin_table: str = "fixture",
+    provider: str = "fixture",
+    media_id: int | None = None,
+    source_metadata_record_id: int | None = None,
+    source_record_id: str | None = None,
+    status: str = "active",
+) -> SourceConceptSignal:
+    return SourceConceptSignal(
+        signal_key=signal_key,
+        origin_type=origin_type,
+        origin_table=origin_table,
+        origin_id=signal_key,
+        provider=provider,
+        media_id=media_id,
+        source_metadata_record_id=source_metadata_record_id,
+        source_record_id=source_record_id,
+        raw_value=signal_key,
+        display_value=signal_key,
+        normalized_key=signal_key,
+        canonical_key=signal_key,
+        role_hint="character",
+        trust_tier="medium",
+        status=status,
+        source_run_id=source_run_id,
+        created_by_run_id="old-run",
+    )
+
+
+def _seed_persisted_concept_for_signal(session, signal: SourceConceptSignal, concept_key: str):
+    concept = SourceConcept(
+        concept_key=concept_key,
+        primary_display_name=signal.display_value,
+        concept_type_hint=signal.role_hint,
+        status="active",
+        created_by_run_id="old-run",
+    )
+    session.add_all([signal, concept])
+    session.flush()
+    alias = SourceConceptAlias(
+        concept_id=concept.id,
+        alias_value=signal.display_value,
+        alias_key=signal.canonical_key,
+        display_name=signal.display_value,
+        alias_role=signal.origin_type,
+        status="active",
+        source_signal_id=signal.id,
+        created_by_run_id="old-run",
+    )
+    evidence = SourceConceptEvidence(
+        concept_id=concept.id,
+        signal_id=signal.id,
+        evidence_type=signal.origin_type,
+        evidence_strength=signal.trust_tier,
+        status="active",
+        run_id="old-run",
+    )
+    link = SourceConceptSignalLink(
+        signal_id=signal.id,
+        concept_id=concept.id,
+        link_status="active",
+        resolver_version="old",
+        run_id="old-run",
+    )
+    search = SourceConceptSearchIndex(
+        concept_id=concept.id,
+        search_key=signal.canonical_key,
+        display_name=signal.display_value,
+        alias_role=signal.origin_type,
+        weight=0.5,
+        status="active",
+        run_id="old-run",
+    )
+    session.add_all([alias, evidence, link, search])
+    session.flush()
+    return concept, alias, evidence, link, search
 
 
 def _media(media_id: int = 1) -> Media:
@@ -352,6 +436,52 @@ def test_nested_provider_metadata_extraction_uses_name_title_allowlist():
     assert "metadata label" not in values
     assert not any(str(value).startswith("https://") for value in values)
     assert not any(str(value).endswith((".jpg", ".png")) for value in values)
+
+
+def test_path_like_provider_values_are_rejected_before_signals_and_llm():
+    _engine, session = _db()
+    media = _media(23)
+    metadata = SourceMetadataRecord(
+        id=23,
+        provider="pixiv",
+        provider_record_key="pixiv:pathlike",
+        media_id=media.id,
+        title="file:///Users/name/Pictures/private/foo",
+        artist_name=r"C:\Users\name\Pictures\artist",
+        metadata_kind="provider_metadata",
+        data_type_label="fixture",
+        status="observed",
+        raw_metadata_json={
+            "characters": [
+                {"name": "/home/user/Pictures/private/foo.mp4"},
+                {"name": "/mnt/library/item"},
+                {"name": "/Users/name/Pictures/foo"},
+                {"name": r"\\server\share\foo"},
+                {"name": "Fate/Grand Order"},
+            ],
+            "work": {"title": "Normal Work/Side Story"},
+        },
+    )
+    session.add_all([media, metadata])
+    session.commit()
+
+    signals = build_source_concept_signals(session, run_id="sc1-test")
+    values = {signal.raw_value for signal in signals}
+
+    assert "/home/user/Pictures/private/foo.mp4" not in values
+    assert "/mnt/library/item" not in values
+    assert "/Users/name/Pictures/foo" not in values
+    assert r"C:\Users\name\Pictures\artist" not in values
+    assert r"\\server\share\foo" not in values
+    assert "file:///Users/name/Pictures/private/foo" not in values
+    assert "Fate/Grand Order" in values
+    assert "Normal Work/Side Story" in values
+    assert not any(value.startswith(("/", "file://")) or "\\" in value for value in values)
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+    llm_edges = result.edge_candidates
+    assert all("/home/user" not in edge.payload.get("left_display", "") for edge in llm_edges)
+    assert all("/home/user" not in edge.payload.get("right_display", "") for edge in llm_edges)
 
 
 def test_general_parenthetical_media_tag_does_not_promote_to_active_character():
@@ -607,9 +737,132 @@ def test_empty_source_run_scope_does_not_globally_supersede_previous_rows():
     assert old_evidence.status == "active"
     assert old_link.link_status == "active"
     assert old_search.status == "active"
-    assert persistence["stale_supersede_scope"]["mode"] == "skipped_empty_source_run_scope"
+    assert persistence["stale_supersede_scope"]["mode"] == "skipped_empty_scope"
     assert persistence["stale_supersede_scope"]["source_run_ids"] == []
     assert all(count == 0 for count in persistence["stale_transition_counts"].values())
+
+
+def test_unscoped_media_tag_scope_supersedes_deleted_signal_only():
+    _engine, session = _db()
+    deleted_signal = _scoped_source_concept_signal_row(
+        "deleted-media-tag",
+        origin_type="normal_media_tag",
+        origin_table="blombooru_media_tags",
+        provider="manual",
+        media_id=1,
+    )
+    unrelated_signal = _scoped_source_concept_signal_row(
+        "unrelated-media-tag",
+        origin_type="normal_media_tag",
+        origin_table="blombooru_media_tags",
+        provider="manual",
+        media_id=2,
+    )
+    deleted_rows = _seed_persisted_concept_for_signal(session, deleted_signal, "character:deleted_media_tag")
+    unrelated_rows = _seed_persisted_concept_for_signal(session, unrelated_signal, "character:unrelated_media_tag")
+    session.commit()
+
+    result = resolve_source_concepts(
+        [
+            _signal(
+                "current-media-tag",
+                "current_media_tag",
+                origin_type="normal_media_tag",
+                origin_table="blombooru_media_tags",
+                provider="manual",
+                media_id=1,
+                source_run_id=None,
+            )
+        ],
+        run_id="new-run",
+    )
+    persistence = persist_source_concept_resolution(session, result, apply=True)
+
+    for row in (deleted_signal, *deleted_rows, unrelated_signal, *unrelated_rows):
+        session.refresh(row)
+
+    assert deleted_signal.status == "superseded"
+    assert deleted_rows[0].status == "superseded"
+    assert deleted_rows[1].status == "superseded"
+    assert deleted_rows[2].status == "superseded"
+    assert deleted_rows[3].link_status == "superseded"
+    assert deleted_rows[4].status == "superseded"
+    assert unrelated_signal.status == "active"
+    assert all(getattr(row, "status", getattr(row, "link_status", None)) == "active" for row in unrelated_rows[:3])
+    assert unrelated_rows[3].link_status == "active"
+    assert unrelated_rows[4].status == "active"
+    assert persistence["stale_supersede_scope"]["mode"] == "origin_manifest_scope"
+    assert persistence["stale_supersede_scope"]["origin_scope_count"] == 1
+    assert persistence["stale_supersede_scope"]["origin_scoped_signal_count"] >= 2
+
+
+def test_unscoped_source_assertion_and_provider_scope_supersede_deleted_signals_only():
+    _engine, session = _db()
+    deleted_assertion = _scoped_source_concept_signal_row(
+        "deleted-assertion",
+        origin_type="source_assertion",
+        origin_table="blombooru_source_searchable_name_assertions",
+        provider="pixiv",
+        source_metadata_record_id=10,
+        source_record_id="10",
+    )
+    deleted_provider = _scoped_source_concept_signal_row(
+        "deleted-provider-field",
+        origin_type="provider_structured_field",
+        origin_table="blombooru_source_metadata_records",
+        provider="pixiv",
+        source_metadata_record_id=20,
+        source_record_id="20",
+    )
+    unrelated_assertion = _scoped_source_concept_signal_row(
+        "unrelated-assertion",
+        origin_type="source_assertion",
+        origin_table="blombooru_source_searchable_name_assertions",
+        provider="pixiv",
+        source_metadata_record_id=99,
+        source_record_id="99",
+    )
+    deleted_assertion_rows = _seed_persisted_concept_for_signal(session, deleted_assertion, "character:deleted_assertion")
+    deleted_provider_rows = _seed_persisted_concept_for_signal(session, deleted_provider, "character:deleted_provider")
+    unrelated_rows = _seed_persisted_concept_for_signal(session, unrelated_assertion, "character:unrelated_assertion")
+    session.commit()
+
+    result = resolve_source_concepts(
+        [
+            _signal(
+                "current-assertion",
+                "current_assertion",
+                origin_type="source_assertion",
+                origin_table="blombooru_source_searchable_name_assertions",
+                provider="pixiv",
+                source_record_id=10,
+                source_run_id=None,
+            ),
+            _signal(
+                "current-provider",
+                "current_provider",
+                origin_type="provider_structured_field",
+                origin_table="blombooru_source_metadata_records",
+                provider="pixiv",
+                source_record_id=20,
+                source_run_id=None,
+            ),
+        ],
+        run_id="new-run",
+    )
+    persistence = persist_source_concept_resolution(session, result, apply=True)
+
+    for row in (deleted_assertion, *deleted_assertion_rows, deleted_provider, *deleted_provider_rows, unrelated_assertion, *unrelated_rows):
+        session.refresh(row)
+
+    assert deleted_assertion.status == "superseded"
+    assert deleted_assertion_rows[0].status == "superseded"
+    assert deleted_provider.status == "superseded"
+    assert deleted_provider_rows[0].status == "superseded"
+    assert unrelated_assertion.status == "active"
+    assert unrelated_rows[0].status == "active"
+    assert persistence["stale_supersede_scope"]["mode"] == "origin_manifest_scope"
+    assert persistence["stale_supersede_scope"]["origin_scope_count"] == 2
 
 
 def test_ai_only_signal_creates_needs_review_not_active_truth():
@@ -1480,3 +1733,72 @@ def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tm
     assert mismatch["candidate_bundle_count"] == mismatch["existing_db_candidate_count_for_run"] == 1
     assert mismatch["needs_import"] is True
     assert mismatch["stable_checksum_matches"] is False
+
+
+def test_f7a_final_pack_backfill_supersedes_removed_groups_only_within_same_run(tmp_path):
+    _engine, session = _db()
+
+    def write_pack(pack: Path, run_id: str, rows: list[dict]) -> None:
+        pack.mkdir(exist_ok=True)
+        (pack / "summary.json").write_text(
+            json.dumps({"run_id": run_id, "validated_head": "abc", "candidate_summary": {"total": len(rows)}}),
+            encoding="utf-8",
+        )
+        (pack / "candidate-bundle.jsonl").write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+    def candidate(group: str, key: str, value: str) -> dict:
+        return {
+            "group_key": group,
+            "provider": "pixiv",
+            "source_metadata_record_id": None,
+            "media_id": None,
+            "origin_type": "pixiv_tag",
+            "origin_id": key,
+            "raw_value": value,
+            "display_name": value,
+            "normalized_value": value.lower(),
+            "canonical_key": canonical_key(value),
+            "candidate_role": "character",
+            "candidate_status": "active_candidate",
+            "extraction_verdict": "single_candidate_found",
+            "extraction_action": "accepted",
+            "confidence": 0.9,
+            "candidate_key": key,
+        }
+
+    pack = tmp_path / "f7a-pack"
+    other_pack = tmp_path / "other-pack"
+    group_a = candidate("source_record:A", "logical-a", "Kamisato Ayaka")
+    group_b = candidate("source_record:B", "logical-b", "Barbara")
+    other_row = candidate("source_record:B", "other-logical-b", "Barbara Other Run")
+    write_pack(pack, "f7a-pack-run", [group_a, group_b])
+    write_pack(other_pack, "other-run", [other_row])
+
+    first = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=True)
+    other = import_f7a_final_pack_candidates(session, pack_dir=other_pack, apply=True)
+    assert first["persistence"]["forbidden_truth_table_write_count"] == 0
+    assert other["persistence"]["forbidden_truth_table_write_count"] == 0
+
+    write_pack(pack, "f7a-pack-run", [group_a])
+    second = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=True)
+
+    same_run = (
+        session.query(SourceNameCandidate, SourceNameCandidateExtractionRun.run_id)
+        .join(SourceNameCandidateExtractionRun, SourceNameCandidate.extraction_run_id == SourceNameCandidateExtractionRun.id)
+        .all()
+    )
+    by_logical = {
+        (dict(row.evidence_payload or {}).get("logical_candidate_key"), run_id): row
+        for row, run_id in same_run
+    }
+
+    assert by_logical[("logical-a", "f7a-pack-run")].status == "active"
+    assert by_logical[("logical-b", "f7a-pack-run")].status == "superseded"
+    assert by_logical[("logical-b", "f7a-pack-run")].candidate_status == "rejected"
+    assert by_logical[("other-logical-b", "other-run")].status == "active"
+    assert second["persistence"]["removed_group_superseded_candidates"] == 1
+    assert second["persistence"]["post_import_existing_db_candidate_count_for_run"] == 1
+    assert second["persistence"]["post_import_stable_checksum_matches"] is True
