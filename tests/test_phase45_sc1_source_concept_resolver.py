@@ -742,6 +742,172 @@ def test_empty_source_run_scope_does_not_globally_supersede_previous_rows():
     assert all(count == 0 for count in persistence["stale_transition_counts"].values())
 
 
+def test_known_scope_cleanup_runs_when_last_signal_disappears():
+    _engine, session = _db()
+    scope_a_signal = _source_concept_signal_row("scope-a-old-signal", source_run_id="scope-a")
+    scope_b_signal = _source_concept_signal_row("scope-b-old-signal", source_run_id="scope-b")
+    scope_a_rows = _seed_persisted_concept_for_signal(session, scope_a_signal, "character:scope_a_old")
+    scope_b_rows = _seed_persisted_concept_for_signal(session, scope_b_signal, "character:scope_b_old")
+    session.commit()
+
+    result = resolve_source_concepts([], run_id="new-run")
+    persistence = persist_source_concept_resolution(
+        session,
+        result,
+        apply=True,
+        input_scope={"source_run_ids": ["scope-a"]},
+    )
+
+    for row in (scope_a_signal, *scope_a_rows, scope_b_signal, *scope_b_rows):
+        session.refresh(row)
+
+    assert scope_a_signal.status == "superseded"
+    assert scope_a_rows[0].status == "superseded"
+    assert scope_a_rows[1].status == "superseded"
+    assert scope_a_rows[2].status == "superseded"
+    assert scope_a_rows[3].link_status == "superseded"
+    assert scope_a_rows[4].status == "superseded"
+    assert scope_b_signal.status == "active"
+    assert scope_b_rows[0].status == "active"
+    assert scope_b_rows[1].status == "active"
+    assert scope_b_rows[2].status == "active"
+    assert scope_b_rows[3].link_status == "active"
+    assert scope_b_rows[4].status == "active"
+    assert persistence["stale_supersede_scope"]["mode"] == "scoped_source_run"
+    assert persistence["stale_supersede_scope"]["source_run_ids"] == ["scope-a"]
+    assert persistence["stale_transition_counts"]["signals"] == 1
+    assert persistence["stale_transition_counts"]["concepts"] == 1
+
+
+def test_scoped_signal_cleanup_does_not_hide_shared_out_of_scope_concept():
+    _engine, session = _db()
+    signal_a = _source_concept_signal_row("shared-scope-a", source_run_id="scope-a")
+    signal_b = _source_concept_signal_row("shared-scope-b", source_run_id="scope-b")
+    concept = SourceConcept(
+        concept_key="character:shared_scope",
+        primary_display_name="shared",
+        concept_type_hint="character",
+        status="active",
+        created_by_run_id="old-run",
+    )
+    session.add_all([signal_a, signal_b, concept])
+    session.flush()
+    alias_a = SourceConceptAlias(
+        concept_id=concept.id,
+        alias_value="alias-a",
+        alias_key="alias_a",
+        display_name="alias-a",
+        alias_role="f7a_candidate",
+        status="active",
+        source_signal_id=signal_a.id,
+        created_by_run_id="old-run",
+    )
+    alias_b = SourceConceptAlias(
+        concept_id=concept.id,
+        alias_value="alias-b",
+        alias_key="alias_b",
+        display_name="alias-b",
+        alias_role="f7a_candidate",
+        status="active",
+        source_signal_id=signal_b.id,
+        created_by_run_id="old-run",
+    )
+    evidence_a = SourceConceptEvidence(
+        concept_id=concept.id,
+        signal_id=signal_a.id,
+        evidence_type="f7a_candidate",
+        evidence_strength="medium",
+        status="active",
+        run_id="old-run",
+    )
+    evidence_b = SourceConceptEvidence(
+        concept_id=concept.id,
+        signal_id=signal_b.id,
+        evidence_type="f7a_candidate",
+        evidence_strength="medium",
+        status="active",
+        run_id="old-run",
+    )
+    link_a = SourceConceptSignalLink(
+        signal_id=signal_a.id,
+        concept_id=concept.id,
+        link_status="active",
+        resolver_version="old",
+        run_id="old-run",
+    )
+    link_b = SourceConceptSignalLink(
+        signal_id=signal_b.id,
+        concept_id=concept.id,
+        link_status="active",
+        resolver_version="old",
+        run_id="old-run",
+    )
+    search_a = SourceConceptSearchIndex(
+        concept_id=concept.id,
+        search_key="alias_a",
+        display_name="alias-a",
+        alias_role="f7a_candidate",
+        weight=0.5,
+        status="active",
+        run_id="old-run",
+    )
+    search_b = SourceConceptSearchIndex(
+        concept_id=concept.id,
+        search_key="alias_b",
+        display_name="alias-b",
+        alias_role="f7a_candidate",
+        weight=0.5,
+        status="active",
+        run_id="old-run",
+    )
+    session.add_all([alias_a, alias_b, evidence_a, evidence_b, link_a, link_b, search_a, search_b])
+    session.commit()
+
+    result = resolve_source_concepts([], run_id="remove-scope-a")
+    persistence = persist_source_concept_resolution(
+        session,
+        result,
+        apply=True,
+        input_scope={"source_run_ids": ["scope-a"]},
+    )
+
+    for row in (signal_a, signal_b, concept, alias_a, alias_b, evidence_a, evidence_b, link_a, link_b, search_a, search_b):
+        session.refresh(row)
+
+    assert signal_a.status == "superseded"
+    assert alias_a.status == "superseded"
+    assert evidence_a.status == "superseded"
+    assert link_a.link_status == "superseded"
+    assert search_a.status == "superseded"
+    assert concept.status == "active"
+    assert signal_b.status == "active"
+    assert alias_b.status == "active"
+    assert evidence_b.status == "active"
+    assert link_b.link_status == "active"
+    assert search_b.status == "active"
+    assert persistence["stale_transition_counts"]["concepts"] == 0
+    assert persistence["stale_transition_counts"]["search_index"] == 1
+
+    result = resolve_source_concepts([], run_id="remove-both-scopes")
+    persistence = persist_source_concept_resolution(
+        session,
+        result,
+        apply=True,
+        input_scope={"source_run_ids": ["scope-a", "scope-b"]},
+    )
+
+    for row in (signal_b, concept, alias_b, evidence_b, link_b, search_b):
+        session.refresh(row)
+
+    assert signal_b.status == "superseded"
+    assert alias_b.status == "superseded"
+    assert evidence_b.status == "superseded"
+    assert link_b.link_status == "superseded"
+    assert search_b.status == "superseded"
+    assert concept.status == "superseded"
+    assert persistence["stale_transition_counts"]["concepts"] == 1
+
+
 def test_unscoped_media_tag_scope_supersedes_deleted_signal_only():
     _engine, session = _db()
     deleted_signal = _scoped_source_concept_signal_row(

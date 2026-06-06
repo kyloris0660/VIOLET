@@ -540,6 +540,7 @@ def stale_supersede_scope_review(persistence: Mapping[str, Any]) -> list[dict[st
         {
             "mode": scope.get("mode"),
             "source_run_id_count": len(scope.get("source_run_ids") or []),
+            "source_run_manifest_hash": scope.get("source_run_manifest_hash"),
             "origin_scope_count": scope.get("origin_scope_count", 0),
             "origin_scope_manifest_hash": scope.get("origin_scope_manifest_hash"),
             "source_run_scoped_signal_count": scope.get("source_run_scoped_signal_count", 0),

@@ -1,7 +1,7 @@
 {
   "artifact_consistency": {
     "alias_context_conflict_active_merge_count": 0,
-    "checked_at": "2026-06-06T14:27:36.448681+00:00",
+    "checked_at": "2026-06-06T14:58:55.010808+00:00",
     "concept_count": 1104,
     "context_conflict_active_merge_count": 0,
     "forbidden_truth_table_write_count": 0,
@@ -51,7 +51,7 @@
     "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
   },
   "forbidden_truth_table_write_count": 0,
-  "generated_at": "2026-06-06T14:27:36.496682+00:00",
+  "generated_at": "2026-06-06T14:58:55.059096+00:00",
   "image_uploads": false,
   "inventory_counts": {
     "f7a_source_name_candidate": 730,
@@ -92,7 +92,7 @@
   "provider_or_enrichment_calls": false,
   "public_redacted": true,
   "readiness_check": {
-    "checked_at": "2026-06-06T14:27:37.291973+00:00",
+    "checked_at": "2026-06-06T14:58:55.942086+00:00",
     "failure_count": 0,
     "failures": [],
     "passed": true
@@ -178,7 +178,7 @@
     "random_holdout_severe_violation_count": 0,
     "rejected_signal_count": 634,
     "resolver_version": "source_concept_resolver_core_v2_graph",
-    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5",
     "schema_version": "source_concept_schema_v1",
     "search_index_preview_count": 1691,
     "signal_count": 4216,
@@ -194,6 +194,6 @@
     "source_title_only_active_violation_count": 0,
     "undermerge_violation_count": 0
   },
-  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4",
-  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4.zip"
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5.zip"
 }

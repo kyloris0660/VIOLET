@@ -869,6 +869,28 @@ def _origin_container_scope_key(signal: SourceConceptSignalDraft | SourceConcept
     )
 
 
+def build_source_concept_input_scope(
+    signals: Sequence[SourceConceptSignalDraft],
+    *,
+    source_run_ids: Sequence[str] | None = None,
+    origin_scope_keys: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    run_ids = {str(value) for value in (source_run_ids or []) if value}
+    origin_keys = {str(value) for value in (origin_scope_keys or []) if value}
+    for signal in signals:
+        if signal.source_run_id:
+            run_ids.add(signal.source_run_id)
+        scope_key = _origin_container_scope_key(signal)
+        if scope_key:
+            origin_keys.add(scope_key)
+    return {
+        "source_run_ids": sorted(run_ids),
+        "origin_scope_keys": sorted(origin_keys),
+        "source_run_manifest_hash": value_hash(sorted(run_ids), 32) if run_ids else None,
+        "origin_scope_manifest_hash": value_hash(sorted(origin_keys), 32) if origin_keys else None,
+    }
+
+
 def _trust_for_f7a_candidate(row: SourceNameCandidate) -> tuple[str, str]:
     role = role_from_source_role(row.candidate_role)
     status = source_status_to_concept_status(row.candidate_status)
@@ -3577,6 +3599,7 @@ def persist_source_concept_resolution(
     *,
     apply: bool,
     inventory: Mapping[str, Any] | None = None,
+    input_scope: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     before_allowed = table_counts(db, SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
     before_forbidden = table_counts(db, FORBIDDEN_TRUTH_TABLES)
@@ -3801,15 +3824,35 @@ def persist_source_concept_resolution(
 
     db.flush()
 
-    scoped_source_run_ids = sorted({signal.source_run_id for signal in result.signals if signal.source_run_id})
-    unscoped_origin_scope_keys = sorted(
-        {
-            scope_key
-            for signal in result.signals
-            for scope_key in [_origin_container_scope_key(signal)]
-            if scope_key
+    scope_descriptor = build_source_concept_input_scope(result.signals)
+    if input_scope:
+        scope_source_run_ids = {
+            str(value)
+            for value in scope_descriptor.get("source_run_ids", [])
+            if value
         }
-    )
+        scope_source_run_ids.update(
+            str(value)
+            for value in input_scope.get("source_run_ids", [])
+            if value
+        )
+        scope_origin_keys = {
+            str(value)
+            for value in scope_descriptor.get("origin_scope_keys", [])
+            if value
+        }
+        scope_origin_keys.update(
+            str(value)
+            for value in input_scope.get("origin_scope_keys", [])
+            if value
+        )
+        scope_descriptor = build_source_concept_input_scope(
+            (),
+            source_run_ids=sorted(scope_source_run_ids),
+            origin_scope_keys=sorted(scope_origin_keys),
+        )
+    scoped_source_run_ids = list(scope_descriptor.get("source_run_ids") or [])
+    unscoped_origin_scope_keys = list(scope_descriptor.get("origin_scope_keys") or [])
     source_run_scoped_signal_ids: set[int] = set()
     origin_scoped_signal_ids: set[int] = set()
     scoped_signal_ids: set[int] = set()
@@ -3901,15 +3944,82 @@ def persist_source_concept_resolution(
             changed += 1
         return changed
 
+    valid_link_statuses = {"active", "needs_review"}
+
+    def _concept_has_valid_signal_link(concept_id: int) -> bool:
+        return (
+            db.query(SourceConceptSignalLink.id)
+            .join(SourceConceptSignal, SourceConceptSignal.id == SourceConceptSignalLink.signal_id)
+            .filter(SourceConceptSignalLink.concept_id == concept_id)
+            .filter(SourceConceptSignalLink.link_status.in_(valid_link_statuses))
+            .filter(SourceConceptSignal.status.in_(valid_link_statuses))
+            .first()
+            is not None
+        )
+
+    def _search_row_has_valid_alias_support(row: SourceConceptSearchIndex) -> bool:
+        alias_query = (
+            db.query(SourceConceptAlias)
+            .filter(SourceConceptAlias.concept_id == row.concept_id)
+            .filter(SourceConceptAlias.alias_key == row.search_key)
+            .filter(SourceConceptAlias.alias_role == row.alias_role)
+            .filter(SourceConceptAlias.status.in_(valid_link_statuses))
+        )
+        for alias in alias_query.all():
+            if alias.source_signal_id is None:
+                return _concept_has_valid_signal_link(int(row.concept_id))
+            signal = db.query(SourceConceptSignal).filter(SourceConceptSignal.id == alias.source_signal_id).one_or_none()
+            if signal is not None and signal.status in valid_link_statuses:
+                return True
+        return False
+
+    def _supersede_stale_concepts(current_rows: Sequence[SourceConcept]) -> int:
+        current_ids = {row.id for row in current_rows if getattr(row, "id", None) is not None}
+        query = _apply_scope_filter(db.query(SourceConcept), SourceConcept)
+        if current_ids:
+            query = query.filter(~SourceConcept.id.in_(current_ids))
+        changed = 0
+        for row in query.all():
+            if row.status == "superseded":
+                continue
+            if row.status not in {"active", "needs_review", "ambiguous", "rejected", "weak"}:
+                continue
+            if _concept_has_valid_signal_link(int(row.id)):
+                continue
+            row.status = "superseded"
+            row.created_by_run_id = result.run_id
+            changed += 1
+        return changed
+
+    def _supersede_stale_search_index(current_rows: Sequence[SourceConceptSearchIndex]) -> int:
+        current_ids = {row.id for row in current_rows if getattr(row, "id", None) is not None}
+        query = _apply_scope_filter(db.query(SourceConceptSearchIndex), SourceConceptSearchIndex)
+        if current_ids:
+            query = query.filter(~SourceConceptSearchIndex.id.in_(current_ids))
+        changed = 0
+        for row in query.all():
+            if row.status == "superseded":
+                continue
+            if row.status not in {"active", "needs_review", "ambiguous", "rejected", "weak"}:
+                continue
+            if _search_row_has_valid_alias_support(row):
+                continue
+            row.status = "superseded"
+            changed += 1
+        return changed
+
     if scoped_signal_ids:
         stale_transition_counts = {
             "signals": _supersede_stale_rows(SourceConceptSignal, current_signal_rows, "status"),
-            "concepts": _supersede_stale_rows(SourceConcept, current_concept_rows, "status"),
+            "concepts": 0,
             "aliases": _supersede_stale_rows(SourceConceptAlias, current_alias_rows, "status"),
             "evidence": _supersede_stale_rows(SourceConceptEvidence, current_evidence_rows, "status"),
             "links": _supersede_stale_rows(SourceConceptSignalLink, current_link_rows, "link_status"),
-            "search_index": _supersede_stale_rows(SourceConceptSearchIndex, current_search_rows, "status"),
+            "search_index": 0,
         }
+        db.flush()
+        stale_transition_counts["concepts"] = _supersede_stale_concepts(current_concept_rows)
+        stale_transition_counts["search_index"] = _supersede_stale_search_index(current_search_rows)
     else:
         stale_transition_counts = {
             "signals": 0,
@@ -3954,8 +4064,9 @@ def persist_source_concept_resolution(
         "stale_supersede_scope": {
             "mode": stale_supersede_mode,
             "source_run_ids": scoped_source_run_ids,
+            "source_run_manifest_hash": scope_descriptor.get("source_run_manifest_hash"),
             "origin_scope_count": len(unscoped_origin_scope_keys),
-            "origin_scope_manifest_hash": value_hash(unscoped_origin_scope_keys, 32) if unscoped_origin_scope_keys else None,
+            "origin_scope_manifest_hash": scope_descriptor.get("origin_scope_manifest_hash"),
             "source_run_scoped_signal_count": len(source_run_scoped_signal_ids),
             "origin_scoped_signal_count": len(origin_scoped_signal_ids),
             "scoped_signal_count": len(scoped_signal_ids),
@@ -3980,6 +4091,10 @@ def run_source_concept_resolution(
 ) -> tuple[SourceConceptResolutionResult, dict[str, Any], dict[str, Any]]:
     inventory = source_signal_inventory(db, f7a_run_id=f7a_run_id)
     signals = build_source_concept_signals(db, run_id=run_id, f7a_run_id=f7a_run_id)
+    input_scope = build_source_concept_input_scope(
+        signals,
+        source_run_ids=[f7a_run_id] if f7a_run_id else None,
+    )
     effective_llm_config = llm_config or LLMAdjudicationConfig()
     llm_summary: dict[str, Any] | None = None
     if effective_llm_config.enabled and llm_judgments is None:
@@ -3993,7 +4108,7 @@ def run_source_concept_resolution(
     result = resolve_source_concepts(signals, run_id=run_id, llm_config=effective_llm_config, llm_judgments=llm_judgments)
     if llm_summary is not None:
         result.summary["llm_usage"] = {**result.summary.get("llm_usage", {}), **llm_summary}
-    persistence = persist_source_concept_resolution(db, result, apply=apply, inventory=inventory)
+    persistence = persist_source_concept_resolution(db, result, apply=apply, inventory=inventory, input_scope=input_scope)
     return result, inventory, persistence
 
 

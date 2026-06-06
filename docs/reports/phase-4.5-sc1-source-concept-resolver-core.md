@@ -67,5 +67,5 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Validation Pack
 
-- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-privacy-scope-v4.zip`
+- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5.zip`
 - Primary validation format: JSON/JSONL.
