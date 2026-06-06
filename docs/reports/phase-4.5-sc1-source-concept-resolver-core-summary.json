@@ -1,0 +1,199 @@
+{
+  "artifact_consistency": {
+    "alias_context_conflict_active_merge_count": 0,
+    "checked_at": "2026-06-06T14:58:55.010808+00:00",
+    "concept_count": 1104,
+    "context_conflict_active_merge_count": 0,
+    "forbidden_truth_table_write_count": 0,
+    "fragmentation_violation_count": 0,
+    "missing_alias_concepts": 0,
+    "missing_evidence_concepts": 0,
+    "missing_link_concepts": 0,
+    "missing_link_signals": 0,
+    "overmerge_violation_count": 0,
+    "passed": true,
+    "semantic_metric_violations": {},
+    "signal_count": 4216,
+    "undermerge_violation_count": 0
+  },
+  "expanded_validation_summary": {
+    "active_concepts": 355,
+    "ai_only_concept_count": 215,
+    "context_conflict_active_merge_count": 0,
+    "context_conflict_candidate_count": 1303,
+    "general_source_tag_pollution_count": 0,
+    "largest_concept_signal_counts": [
+      124,
+      121,
+      85,
+      79,
+      68,
+      67,
+      63,
+      61,
+      60,
+      53
+    ],
+    "needs_review_concepts": 749,
+    "path_like_output_violation_count": 0,
+    "random_holdout_sample_size": 200,
+    "random_holdout_severe_violation_count": 0,
+    "repeated_canonical_fragmentation_violations": 0,
+    "source_title_only_concept_count": 206,
+    "total_concepts": 1104,
+    "total_signals": 4216
+  },
+  "f7a_final_pack_import": {
+    "candidate_bundle_count": 730,
+    "existing_db_candidate_count_for_run": 730,
+    "llm_or_provider_calls_for_backfill": false,
+    "needs_import": false,
+    "run_id": "phase-4.4p2r-f7a-llm-source-name-candidates-20260605T110243Z-b0de7057"
+  },
+  "forbidden_truth_table_write_count": 0,
+  "generated_at": "2026-06-06T14:58:55.059096+00:00",
+  "image_uploads": false,
+  "inventory_counts": {
+    "f7a_source_name_candidate": 730,
+    "media_tags": 105699,
+    "provider_cache": 2,
+    "provider_structured_fields": 200,
+    "source_name_alias_candidate": 45,
+    "source_name_observation": 459,
+    "source_searchable_name_assertion": 300,
+    "source_tag_observation": 710
+  },
+  "llm_adjudication": {
+    "error_count": 0,
+    "judgment_count": 300,
+    "max_budget_usd": 50.0,
+    "max_calls": 300,
+    "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
+    "projected_cost_usd": 0.097474,
+    "used": true,
+    "uses_fallback_provider": false
+  },
+  "negative_case_summary": {
+    "failed": 0,
+    "passed": 4,
+    "total": 4
+  },
+  "no_llm_or_provider_calls": false,
+  "phase": "phase-4.5-sc1-source-concept-resolver-core",
+  "positive_case_summary": {
+    "failed": 0,
+    "passed": 6,
+    "status_counts": {
+      "pass": 6
+    },
+    "total": 6,
+    "unavailable": 0
+  },
+  "provider_or_enrichment_calls": false,
+  "public_redacted": true,
+  "readiness_check": {
+    "checked_at": "2026-06-06T14:58:55.942086+00:00",
+    "failure_count": 0,
+    "failures": [],
+    "passed": true
+  },
+  "resolver_summary": {
+    "ai_only_active_violation_count": 0,
+    "alias_context_conflict_active_merge_count": 0,
+    "alias_count": 1691,
+    "ambiguous_link_count": 517,
+    "blocking_oversized_blocks": 21,
+    "concept_count": 1104,
+    "concept_counts_by_status": {
+      "active": 355,
+      "needs_review": 749
+    },
+    "context_alias_count": 4,
+    "context_conflict_active_merge_count": 0,
+    "edge_graph": {
+      "blocking_block_count": 3890,
+      "edge_count": 23529,
+      "edge_counts_by_status": {
+        "active": 3199,
+        "needs_review": 14722,
+        "rejected": 1303,
+        "weak": 4305
+      },
+      "edge_counts_by_type": {
+        "context_only": 153,
+        "cooccurrence_context": 4151,
+        "exact_canonical_key": 100,
+        "negative_guard": 2582,
+        "same_scope_duplicate_review": 109,
+        "same_surface_context": 239,
+        "stable_identity_anchor": 16195
+      },
+      "oversized_block_count": 21,
+      "processed_block_count": 2165
+    },
+    "evidence_count": 3582,
+    "fragmentation_violation_count": 0,
+    "general_source_tag_pollution_count": 0,
+    "link_count": 3582,
+    "link_counts_by_status": {
+      "active": 1103,
+      "needs_review": 2479
+    },
+    "llm_budget_violation_count": 0,
+    "llm_usage": {
+      "error_count": 0,
+      "judgment_count": 300,
+      "plan": {
+        "enabled": true,
+        "max_budget_usd": 50.0,
+        "max_calls": 300,
+        "projected_calls": 300,
+        "projected_cost_usd": 0.097474,
+        "projected_input_tokens": 24737,
+        "projected_output_tokens": 24000,
+        "reason": null,
+        "selected_block_count": 300,
+        "skipped_block_count": 4027,
+        "status": "ready"
+      },
+      "policy": "bounded_optional_primary_openai_only_after_deterministic_blocking",
+      "provider": {
+        "base_url_redacted": true,
+        "llm_access_configured": true,
+        "llm_access_stored": false,
+        "llm_provider_label": "primary_openai",
+        "model_label": "primary_model_configured",
+        "model_name_redacted": true,
+        "primary_enabled": true,
+        "primary_provider_type": "openai_compatible",
+        "provider_mode": "primary_openai",
+        "uses_fallback_provider": false,
+        "uses_primary_model": true
+      },
+      "selected_pair_count": 300,
+      "used": true
+    },
+    "overmerge_violation_count": 0,
+    "path_like_output_violation_count": 0,
+    "random_holdout_severe_violation_count": 0,
+    "rejected_signal_count": 634,
+    "resolver_version": "source_concept_resolver_core_v2_graph",
+    "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5",
+    "schema_version": "source_concept_schema_v1",
+    "search_index_preview_count": 1691,
+    "signal_count": 4216,
+    "signal_counts_by_origin": {
+      "ai_model_tag": 1622,
+      "f7a_candidate": 730,
+      "provider_structured_field": 305,
+      "source_alias_candidate": 90,
+      "source_assertion": 300,
+      "source_name_observation": 459,
+      "source_tag_observation": 710
+    },
+    "source_title_only_active_violation_count": 0,
+    "undermerge_violation_count": 0
+  },
+  "run_id": "phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5",
+  "zip_artifact_name": "phase-4.5-sc1-source-concept-resolver-core-final-lifecycle-scope-v5.zip"
+}

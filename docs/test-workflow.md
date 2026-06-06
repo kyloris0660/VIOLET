@@ -83,6 +83,7 @@ Phase 3.8d-I2 unifies this behind a Source Ingestion Gate. Tests must prove that
 | `tests/test_media_processor_mime_magic_cache.py` | python-magic availability caching, thread-local detectors, fallback chain, concurrent init safety |
 | `tests/test_config_precedence.py` | Config precedence: process env beats `.env`, `TEST_DATABASE_URL` override, translation flag overrides, code defaults |
 | `tests/test_phase44p2r_f6_source_layer_search.py` | F6 source-layer media chips, source assertion/source tag AND search with ordinary tags, promotion preview no-op, and no truth-path writes |
+| `tests/test_phase45_sc1_source_concept_resolver.py` | SC1 SourceConcept schema, multi-source signal adapters, alias-edge linking, AI-only trust guard, short-name overmerge guards, F7a final-pack local backfill, and no truth-path writes |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -211,6 +212,26 @@ VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
 ```powershell
 & "$PY" -m pytest tests/test_smoke_validation.py -v
 ```
+
+### SourceConcept Resolver Validation (Phase 4.5-SC1)
+
+Phase 4.5-SC1 is a DB/schema/resolver phase, not a UI/search integration phase.
+Use focused tests plus the runner-generated validation pack:
+
+```powershell
+& "$PY" -m pytest tests/test_phase45_sc1_source_concept_resolver.py -v
+& "$PY" scripts/run_phase45_sc1_source_concept_resolver.py --apply-db --apply-f7a-final-pack --use-llm-adjudication --max-llm-calls 300 --max-llm-budget-usd 50
+```
+
+Required checks:
+
+- F7a final pack candidates are persisted locally if the final validated run is absent from the F7a DB tables.
+- The runner produces `source-signal-inventory.json`, `source-signals.jsonl`, `source-concepts.jsonl`, aliases, evidence, links, search-preview, positive/negative case review, consistency check, redaction check, and a zip under `.local_manifests`.
+- `artifact-consistency-check.json` must pass.
+- `public-redaction-check.txt` must pass.
+- `forbidden_truth_table_write_count` must be `0` for both F7a local backfill and SC1 resolver persistence.
+- Bounded text-only LLM pair adjudication is allowed only when explicitly enabled by `--use-llm-adjudication`, capped by `--max-llm-calls` and `--max-llm-budget-usd`, cache-backed, primary-provider-only, and recorded in the validation pack. It must never upload images, run provider/gallery-dl/Pixiv/SauceNAO/Google enrichment, run localization batches, use fallback providers by default, or create Entity truth.
+- SC1 must not start full SC2 search/UI integration.
 
 ### Fixture Validation (Tier 2)
 

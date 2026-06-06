@@ -776,14 +776,15 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - No DB write, DB migration, LocalSourceHint, ProviderCache, EntityEvidence, MediaEntityCandidate, NegativeLookupCache, confirmed assignment, automatic Entity creation, media_tags mutation, TagTranslation mutation, localization execution, Entity Resolver, similarity/clustering, Pixiv login/cookie/refresh-token use, authenticated request, gallery-dl credentialed run, image download, source/iCloud mutation, app-managed storage mutation, push to `main`, or merge occurred.
 - Public reports: `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design.md` and `docs/reports/phase-4.4p2r-pixiv-authenticated-metadata-route-design-summary.json`.
 
-#### Phase 4.4-P2R-F5 / F6 update
+#### Phase 4.4-P2R-F5 / F6 / F7a / 4.5-SC update
 
 - PR #92 / F5 added the provider-neutral source metadata, source tag, source name, source name registry, alias candidate, evidence, and `SourceSearchableNameAssertion` foundation. This is a source-search layer, not Entity truth.
 - PR #93 fixed a local debug startup self-lock before F6. It did not implement source-search UI.
-- Phase 4.4-P2R-F6 makes F5 source-layer data usable in the normal media workflow: media detail tag area, visual multi-select search, mixed ordinary tag + source assertion/source tag AND search, and a clearer admin Content layout.
-- F6 is a layered migration for CHARACTER/name-like data. Existing ordinary tags and existing CHARACTER tag display/search remain intact; F6 adds separate source-layer character/person/artist/work/source_title chips clearly marked as source assertions / unconfirmed entities.
-- F6 does not run providers, gallery-dl, LLM classification, tag localization batches, background translation, source enrichment, broad scans, imports, or image uploads. It consumes existing F5 data and test fixtures only.
-- F6 does not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, `TagTranslation`, confirmed assignments, or `media_tags`. Manual promotion remains preview/design/disabled until a later explicit Entity bridge phase.
+- PR #94 / F6 made F5 source-layer data usable in the normal media workflow: media detail source chips, visual multi-select search, mixed ordinary tag + source-layer search, and a clearer admin Content layout. Existing ordinary tags and existing CHARACTER tag display/search remain intact.
+- PR #95 / F7a added the primary-provider-backed source-name candidate extraction path and final validation pack. F7a candidates are source-layer evidence only; they are not Entity truth and are not the full SourceConcept scope.
+- Phase 4.5-SC1 adds the missing source-layer soft linker between raw source signals and future Entity promotion. It aggregates F7a candidates, ordinary media tags, AI/model character tags, `SourceSearchableNameAssertion`, `SourceNameObservation`, `SourceTagObservation`, `SourceNameAliasCandidate`, provider structured fields/cache context, and future provider/manual signals into unconfirmed `SourceConcept` rows with aliases, evidence, links, run ledger, and search-preview rows.
+- Phase 4.5-SC1 does not run providers, gallery-dl, Pixiv/SauceNAO/Google enrichment, tag localization batches, background translation, source enrichment, broad scans, imports, image uploads, full search/UI integration, or Entity promotion. Bounded text-only LLM pair adjudication is allowed only when explicitly enabled for resolver validation, capped by call/budget settings, cache-backed, primary-provider-only, and recorded in the validation pack.
+- Phase 4.5-SC1 does not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, `TagTranslation`, confirmed assignments, or `media_tags`. Manual promotion remains preview/design/disabled until a later explicit Entity bridge phase.
 
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
@@ -798,19 +799,20 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.4-P2R-F6:
+Current near-term options after Phase 4.5-SC1:
 
-1. Finish and review F6 as a UI/search/admin-layout phase: source assertions/source tags appear in media detail, visual multi-select search works without manual AND input, mixed ordinary tag + source-layer AND search works, and admin Content is split into left navigation plus active sections.
-2. Keep Entity promotion out of F6. A later bridge phase must explicitly design preview, user confirmation, audit trail, rollback/supersede, and write guards before creating `Entity`, aliases, candidates, assignments, `LocalSourceHint`, or `media_tags` relations.
-3. Do not merge PR #86 as the durable Pixiv metadata route. Public-page preview probing is diagnostic/fallback only, not the source of reliable Pixiv tags/artist/page metadata.
-4. Any new provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/localization run after F6 requires a separate approved run policy and must not be smuggled into UI validation.
-5. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
-6. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
-7. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
-8. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
-9. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
-10. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
-11. Admin stats/settings UI rewrite remains separate from the F6 Content layout cleanup.
+1. Review and harden SC1 as the durable source-layer resolver core: additive SourceConcept schema, multi-source signal adapters, deterministic resolver, evidence/link/search-preview rows, no-truth write proof, and validation pack.
+2. Keep Phase 4.5-SC2 separate. SC2 should implement search expansion through SourceConcepts, UI concept grouping/chips, evidence preview, and manual-promotion preview without turning SourceConcept into confirmed Entity truth.
+3. A later Entity bridge phase must explicitly design preview, user confirmation, audit trail, rollback/supersede, and write guards before creating `Entity`, aliases, candidates, assignments, `LocalSourceHint`, or `media_tags` relations.
+4. Do not merge PR #86 as the durable Pixiv metadata route. Public-page preview probing is diagnostic/fallback only, not the source of reliable Pixiv tags/artist/page metadata.
+5. Any new provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment/localization run after SC1 requires a separate approved run policy and must not be smuggled into resolver validation. Future broad LLM extraction/classification or localization runs also need separate approval; SC1's approved LLM scope is limited to bounded text-only pair adjudication.
+6. Phase 3.9: production Ingestion Run Ledger / Source Item State Ledger, over-selection buffer, and provider/source run ledger discipline before `100+`, repeated, broad, 5k/10k scale, large cache population, or full-library provider scheduling.
+7. Exact booru/source lookup only after reverse search, Pixiv source-prior validation, or another approved source-discovery path yields a source/post candidate.
+8. Repeat or expand B0-style preflight only with new explicit sample approval; do not auto-select replacements or broaden beyond approved IDs.
+9. Six failed rows recovery/backfill decision for I6 rows `799`, `839`, `922`, `970`, `971`, and `972`.
+10. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
+11. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
+12. Admin stats/settings UI rewrite remains separate from source concept search/UI work.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
