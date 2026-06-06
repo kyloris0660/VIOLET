@@ -846,8 +846,6 @@ def _trust_for_f7a_candidate(row: SourceNameCandidate) -> tuple[str, str]:
 def _trust_for_media_tag(category: Any, source: str | None, is_suggestion: bool, name: str) -> tuple[str, str, str]:
     role = role_from_tag_category(category)
     ai_source = is_ai_tag_source(source)
-    if role == "unknown" and parse_parenthetical(name)[0]:
-        role = "character"
     if is_popularity_or_meta(name):
         return role, "rejected", "rejected"
     if role == "unknown":
@@ -1166,11 +1164,62 @@ def build_source_concept_signals(
     return _dedupe_signals(signals)
 
 
+PROVIDER_NAME_VALUE_KEYS = {
+    "name",
+    "title",
+    "display_name",
+    "character",
+    "character_name",
+    "artist",
+    "artist_name",
+    "creator",
+    "creator_name",
+    "work",
+    "work_title",
+    "copyright",
+}
+
+PROVIDER_EXCLUDED_VALUE_KEYS = {
+    "id",
+    "url",
+    "image",
+    "image_url",
+    "profile_url",
+    "avatar_url",
+    "thumbnail",
+    "thumbnail_url",
+    "path",
+    "file",
+    "file_path",
+    "hash",
+    "description",
+    "label",
+}
+
+
+def _looks_like_metadata_non_name(value: str) -> bool:
+    normalized = normalize_source_text(value)
+    lowered = normalized.lower()
+    if not lowered:
+        return True
+    if lowered.startswith(("http://", "https://", "file://")):
+        return True
+    if "\\" in normalized:
+        return True
+    if "/" in normalized and lowered.rsplit(".", 1)[-1] in {"jpg", "jpeg", "png", "gif", "webp", "avif", "zip", "json"}:
+        return True
+    if len(normalized) >= 3 and normalized[1] == ":":
+        return True
+    if len(normalized) >= 16 and all(ch in "0123456789abcdefABCDEF" for ch in normalized):
+        return True
+    return False
+
+
 def _iter_scalar_values(value: Any) -> Iterable[str]:
     if value is None:
         return
     if isinstance(value, str):
-        if normalize_source_text(value):
+        if normalize_source_text(value) and not _looks_like_metadata_non_name(value):
             yield value
         return
     if isinstance(value, (int, float, bool)):
@@ -1180,7 +1229,12 @@ def _iter_scalar_values(value: Any) -> Iterable[str]:
             yield from _iter_scalar_values(item)
         return
     if isinstance(value, Mapping):
-        for item in value.values():
+        for key, item in value.items():
+            normalized_key = normalize_source_text(key).lower()
+            if normalized_key in PROVIDER_EXCLUDED_VALUE_KEYS:
+                continue
+            if normalized_key not in PROVIDER_NAME_VALUE_KEYS:
+                continue
             yield from _iter_scalar_values(item)
 
 
@@ -3700,6 +3754,7 @@ def persist_source_concept_resolution(
     scoped_source_run_ids = sorted({signal.source_run_id for signal in result.signals if signal.source_run_id})
     scoped_signal_ids: set[int] = set()
     scoped_concept_ids: set[int] = set()
+    stale_supersede_mode = "scoped_source_run" if scoped_source_run_ids else "skipped_empty_source_run_scope"
     if scoped_source_run_ids:
         scoped_signal_ids = {
             int(row_id)
@@ -3729,7 +3784,7 @@ def persist_source_concept_resolution(
 
     def _apply_scope_filter(query: Any, model: Any) -> Any:
         if not scoped_source_run_ids:
-            return query
+            return query.filter(model.id.in_([-1]))
         if model is SourceConceptSignal:
             return query.filter(SourceConceptSignal.source_run_id.in_(scoped_source_run_ids))
         if model is SourceConcept:
@@ -3772,14 +3827,24 @@ def persist_source_concept_resolution(
             changed += 1
         return changed
 
-    stale_transition_counts = {
-        "signals": _supersede_stale_rows(SourceConceptSignal, current_signal_rows, "status"),
-        "concepts": _supersede_stale_rows(SourceConcept, current_concept_rows, "status"),
-        "aliases": _supersede_stale_rows(SourceConceptAlias, current_alias_rows, "status"),
-        "evidence": _supersede_stale_rows(SourceConceptEvidence, current_evidence_rows, "status"),
-        "links": _supersede_stale_rows(SourceConceptSignalLink, current_link_rows, "link_status"),
-        "search_index": _supersede_stale_rows(SourceConceptSearchIndex, current_search_rows, "status"),
-    }
+    if scoped_source_run_ids:
+        stale_transition_counts = {
+            "signals": _supersede_stale_rows(SourceConceptSignal, current_signal_rows, "status"),
+            "concepts": _supersede_stale_rows(SourceConcept, current_concept_rows, "status"),
+            "aliases": _supersede_stale_rows(SourceConceptAlias, current_alias_rows, "status"),
+            "evidence": _supersede_stale_rows(SourceConceptEvidence, current_evidence_rows, "status"),
+            "links": _supersede_stale_rows(SourceConceptSignalLink, current_link_rows, "link_status"),
+            "search_index": _supersede_stale_rows(SourceConceptSearchIndex, current_search_rows, "status"),
+        }
+    else:
+        stale_transition_counts = {
+            "signals": 0,
+            "concepts": 0,
+            "aliases": 0,
+            "evidence": 0,
+            "links": 0,
+            "search_index": 0,
+        }
 
     finished = datetime.now(timezone.utc)
     run_row.status = "completed"
@@ -3813,6 +3878,7 @@ def persist_source_concept_resolution(
         "forbidden_truth_table_write_count": sum(1 for delta in forbidden_deltas.values() if delta != 0),
         "stale_transition_counts": stale_transition_counts,
         "stale_supersede_scope": {
+            "mode": stale_supersede_mode,
             "source_run_ids": scoped_source_run_ids,
             "scoped_signal_count": len(scoped_signal_ids),
             "scoped_concept_count": len(scoped_concept_ids),
@@ -3864,25 +3930,80 @@ def _candidate_bundle_rows(candidate_bundle_path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _pack_candidate_stable_key(row: Mapping[str, Any]) -> dict[str, Any]:
-    payload = dict(row.get("evidence_payload") or {})
+def _candidate_checksum_payload_from_draft(candidate: CandidateDraft) -> dict[str, Any]:
+    payload = dict(candidate.evidence_payload or {})
+    payload.pop("logical_candidate_key", None)
+    payload.pop("run_scoped_candidate_key", None)
     return {
-        "logical_candidate_key": row.get("logical_candidate_key") or payload.get("logical_candidate_key") or row.get("candidate_key"),
-        "group_key": row.get("group_key"),
-        "provider": row.get("provider"),
-        "origin_type": row.get("origin_type"),
-        "origin_id": row.get("origin_id"),
-        "canonical_key": row.get("canonical_key"),
-        "candidate_role": row.get("candidate_role"),
-        "candidate_status": row.get("candidate_status"),
-        "source_metadata_record_id": row.get("source_metadata_record_id"),
-        "media_id": row.get("media_id"),
+        "logical_candidate_key": candidate.candidate_key,
+        "group_key": candidate.group_key,
+        "provider": candidate.provider,
+        "source_metadata_record_id": candidate.source_metadata_record_id,
+        "media_id": candidate.media_id,
+        "origin_type": candidate.origin_type,
+        "origin_id": candidate.origin_id,
+        "raw_value": candidate.raw_value,
+        "display_name": candidate.display_name,
+        "normalized_value": candidate.normalized_value,
+        "canonical_key": candidate.canonical_key,
+        "candidate_role": candidate.candidate_role,
+        "candidate_status": candidate.candidate_status,
+        "extraction_verdict": candidate.extraction_verdict,
+        "language_hint": candidate.language_hint,
+        "script_hint": candidate.script_hint,
+        "work_context": candidate.work_context,
+        "work_context_key": candidate.work_context_key,
+        "parenthetical_base": candidate.parenthetical_base,
+        "parenthetical_context": candidate.parenthetical_context,
+        "extraction_action": candidate.extraction_action,
+        "confidence": candidate.confidence,
+        "reason": candidate.reason,
+        "rejection_reason": candidate.rejection_reason,
+        "no_name_reason": candidate.no_name_reason,
+        "evidence_payload": payload,
     }
 
 
 def _candidate_rows_checksum(rows: Sequence[Mapping[str, Any]]) -> str:
-    stable_rows = sorted((_pack_candidate_stable_key(row) for row in rows), key=lambda row: json.dumps(row, sort_keys=True, default=str))
+    stable_rows = sorted(
+        (_candidate_checksum_payload_from_draft(_candidate_from_pack_row(row)) for row in rows),
+        key=lambda row: json.dumps(row, sort_keys=True, default=str),
+    )
     return value_hash(stable_rows, 32)
+
+
+def _candidate_checksum_payload_from_db_row(row: SourceNameCandidate) -> dict[str, Any]:
+    payload = dict(row.evidence_payload or {})
+    logical_candidate_key = payload.pop("logical_candidate_key", None) or row.candidate_key
+    payload.pop("run_scoped_candidate_key", None)
+    return {
+        "logical_candidate_key": logical_candidate_key,
+        "group_key": row.group_key,
+        "provider": row.provider,
+        "source_metadata_record_id": row.source_metadata_record_id,
+        "media_id": row.media_id,
+        "origin_type": row.origin_type,
+        "origin_id": row.origin_id,
+        "raw_value": row.raw_value,
+        "display_name": row.display_name,
+        "normalized_value": row.normalized_value,
+        "canonical_key": row.canonical_key,
+        "candidate_role": row.candidate_role,
+        "candidate_status": row.candidate_status,
+        "extraction_verdict": row.extraction_verdict,
+        "language_hint": row.language_hint,
+        "script_hint": row.script_hint,
+        "work_context": row.work_context,
+        "work_context_key": row.work_context_key,
+        "parenthetical_base": row.parenthetical_base,
+        "parenthetical_context": row.parenthetical_context,
+        "extraction_action": row.extraction_action,
+        "confidence": row.confidence,
+        "reason": row.reason,
+        "rejection_reason": row.rejection_reason,
+        "no_name_reason": row.no_name_reason,
+        "evidence_payload": payload,
+    }
 
 
 def _db_candidates_checksum(db: Session, run_id: str) -> tuple[int, str]:
@@ -3896,24 +4017,11 @@ def _db_candidates_checksum(db: Session, run_id: str) -> tuple[int, str]:
         .filter(SourceNameCandidate.status == "active")
         .all()
     )
-    stable_rows = []
-    for row in rows:
-        payload = dict(row.evidence_payload or {})
-        stable_rows.append(
-            {
-                "logical_candidate_key": payload.get("logical_candidate_key") or row.candidate_key,
-                "group_key": row.group_key,
-                "provider": row.provider,
-                "origin_type": row.origin_type,
-                "origin_id": row.origin_id,
-                "canonical_key": row.canonical_key,
-                "candidate_role": row.candidate_role,
-                "candidate_status": row.candidate_status,
-                "source_metadata_record_id": row.source_metadata_record_id,
-                "media_id": row.media_id,
-            }
-        )
-    return len(rows), _candidate_rows_checksum(stable_rows)
+    stable_rows = sorted(
+        (_candidate_checksum_payload_from_db_row(row) for row in rows),
+        key=lambda row: json.dumps(row, sort_keys=True, default=str),
+    )
+    return len(rows), value_hash(stable_rows, 32)
 
 
 def import_f7a_final_pack_candidates(

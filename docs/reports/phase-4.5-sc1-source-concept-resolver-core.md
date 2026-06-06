@@ -13,13 +13,13 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Counts
 
-- Signals: 4602
-- Concepts: 1151 ({'active': 355, 'needs_review': 796})
-- Links: 3968 ({'active': 1103, 'needs_review': 2865})
-- Aliases: 1737
-- Evidence rows: 3968
-- Search preview rows: 1737
-- Edge candidates: 26664
+- Signals: 4217
+- Concepts: 1105 ({'active': 355, 'needs_review': 750})
+- Links: 3583 ({'active': 1103, 'needs_review': 2480})
+- Aliases: 1692
+- Evidence rows: 3583
+- Search preview rows: 1692
+- Edge candidates: 23529
 - Undermerge violations: 0
 - Overmerge violations: 0
 - Fragmentation violations: 0
@@ -30,7 +30,7 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Expanded Validation
 
-{"active_concepts": 355, "ai_only_concept_count": 260, "context_conflict_active_merge_count": 0, "context_conflict_candidate_count": 1707, "general_source_tag_pollution_count": 0, "largest_concept_signal_counts": [124, 121, 97, 85, 79, 68, 68, 67, 63, 61], "needs_review_concepts": 796, "random_holdout_sample_size": 200, "random_holdout_severe_violation_count": 0, "repeated_canonical_fragmentation_violations": 0, "source_title_only_concept_count": 207, "total_concepts": 1151, "total_signals": 4602}
+{"active_concepts": 355, "ai_only_concept_count": 215, "context_conflict_active_merge_count": 0, "context_conflict_candidate_count": 1303, "general_source_tag_pollution_count": 0, "largest_concept_signal_counts": [124, 121, 85, 79, 68, 67, 63, 61, 60, 53], "needs_review_concepts": 750, "random_holdout_sample_size": 200, "random_holdout_severe_violation_count": 0, "repeated_canonical_fragmentation_violations": 0, "source_title_only_concept_count": 207, "total_concepts": 1105, "total_signals": 4217}
 
 ## Source Signal Inventory
 
@@ -52,7 +52,7 @@ This report is public/redacted: it contains counts and safety results only, not 
 - Error count: 0
 - Max calls: 300
 - Budget cap USD: 50.0
-- Projected cost USD: 0.097532
+- Projected cost USD: 0.097474
 - Uses fallback provider: False
 - Provider/source enrichment calls: false
 - Image uploads: false
@@ -67,5 +67,5 @@ This report is public/redacted: it contains counts and safety results only, not 
 
 ## Validation Pack
 
-- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-context-guarded-v2.zip`
+- Zip artifact: `phase-4.5-sc1-source-concept-resolver-core-final-p2-cleanup-v3.zip`
 - Primary validation format: JSON/JSONL.

@@ -21,6 +21,7 @@ from app.database import Base, migrate_add_source_concept_resolver_core  # noqa:
 from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
 from app.models import (  # noqa: E402
     Media,
+    ProviderCache,
     SourceConcept,
     SourceConceptAlias,
     SourceConceptEvidence,
@@ -112,7 +113,7 @@ def _db():
     return engine, session
 
 
-def _source_concept_signal_row(signal_key: str, *, source_run_id: str, status: str = "active") -> SourceConceptSignal:
+def _source_concept_signal_row(signal_key: str, *, source_run_id: str | None, status: str = "active") -> SourceConceptSignal:
     return SourceConceptSignal(
         signal_key=signal_key,
         origin_type="f7a_candidate",
@@ -303,6 +304,104 @@ def test_adapter_builds_multi_source_signals_and_medium_ai_distinction():
     assert any(signal.origin_type == "ai_model_tag" and signal.trust_tier == "medium_ai" for signal in signals)
 
 
+def test_nested_provider_metadata_extraction_uses_name_title_allowlist():
+    _engine, session = _db()
+    media = _media(21)
+    metadata = SourceMetadataRecord(
+        id=21,
+        provider="pixiv",
+        provider_record_key="pixiv:nested",
+        media_id=media.id,
+        metadata_kind="provider_metadata",
+        data_type_label="fixture",
+        status="observed",
+        raw_metadata_json={
+            "characters": [
+                {
+                    "id": "123456",
+                    "url": "https://example.invalid/character",
+                    "image_url": "https://example.invalid/character.jpg",
+                    "label": "metadata label",
+                    "name": "Kamisato Ayaka",
+                }
+            ],
+            "work": {"title": "Genshin Impact", "url": "https://example.invalid/work"},
+            "artist": {"name": "Artist One", "profile_url": "https://example.invalid/artist"},
+        },
+    )
+    cache = ProviderCache(
+        provider="saucenao",
+        query_hash="nested-cache",
+        query_type="reverse_search",
+        response_status="ok",
+        response_json_redacted={
+            "characters": [{"name": "Cache Character", "id": "999", "image_url": "https://example.invalid/cache.png"}],
+            "artist": {"artist_name": "Cache Artist", "profile_url": "https://example.invalid/profile"},
+            "work": {"work_title": "Cache Work", "hash": "deadbeefdeadbeefdeadbeefdeadbeef"},
+        },
+    )
+    session.add_all([media, metadata, cache])
+    session.commit()
+
+    signals = build_source_concept_signals(session, run_id="sc1-test")
+    values = {signal.raw_value for signal in signals if signal.origin_type == "provider_structured_field"}
+
+    assert {"Kamisato Ayaka", "Genshin Impact", "Artist One", "Cache Character", "Cache Artist", "Cache Work"}.issubset(values)
+    assert "123456" not in values
+    assert "999" not in values
+    assert "metadata label" not in values
+    assert not any(str(value).startswith("https://") for value in values)
+    assert not any(str(value).endswith((".jpg", ".png")) for value in values)
+
+
+def test_general_parenthetical_media_tag_does_not_promote_to_active_character():
+    _engine, session = _db()
+    media = _media(22)
+    general_tag = Tag(name="blue_hair_(genshin_impact)", category=TagCategoryEnum.general)
+    character_tag = Tag(name="barbara_(genshin_impact)", category=TagCategoryEnum.character)
+    metadata = SourceMetadataRecord(
+        id=22,
+        provider="pixiv",
+        provider_record_key="pixiv:parenthetical",
+        media_id=media.id,
+        metadata_kind="provider_metadata",
+        data_type_label="fixture",
+        status="observed",
+        raw_metadata_json={"character": {"name": "Barbara (Genshin Impact)"}},
+    )
+    session.add_all([media, general_tag, character_tag, metadata])
+    session.flush()
+    for tag in (general_tag, character_tag):
+        session.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media.id,
+                tag_id=tag.id,
+                source="manual",
+                confidence=1.0,
+                is_locked=True,
+                is_suggestion=False,
+            )
+        )
+    session.commit()
+
+    signals = build_source_concept_signals(session, run_id="sc1-test")
+    general_signal = next((signal for signal in signals if signal.raw_value == "blue_hair_(genshin_impact)"), None)
+    character_signal = next(signal for signal in signals if signal.raw_value == "barbara_(genshin_impact)")
+    provider_signal = next(signal for signal in signals if signal.raw_value == "Barbara (Genshin Impact)")
+
+    assert general_signal is None
+    assert character_signal.role_hint == "character"
+    assert character_signal.trust_tier == "strong"
+    assert character_signal.status == "active"
+    assert character_signal.work_context_key == "genshin_impact"
+    assert provider_signal.role_hint == "character"
+    assert provider_signal.work_context_key == "genshin_impact"
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+    assert all(alias.alias_key != "blue_hair" for alias in result.aliases)
+    assert all(item.search_key != "blue_hair" for item in result.search_index)
+
+
 def test_alias_edge_links_multilingual_sources_without_entity_truth():
     _engine, session = _db()
     f7a_run_id = _seed_multi_source_case(session)
@@ -439,8 +538,78 @@ def test_scoped_stale_supersede_leaves_unrelated_runs_untouched():
     assert other_evidence.status == "active"
     assert other_link.link_status == "active"
     assert other_search.status == "active"
+    assert persistence["stale_supersede_scope"]["mode"] == "scoped_source_run"
     assert persistence["stale_supersede_scope"]["source_run_ids"] == ["scope-a"]
     assert persistence["stale_supersede_scope_violation_count"] == 0
+
+
+def test_empty_source_run_scope_does_not_globally_supersede_previous_rows():
+    _engine, session = _db()
+    old_signal = _source_concept_signal_row("old-scope-signal", source_run_id="old-scope")
+    old_concept = SourceConcept(
+        concept_key="character:old_scope",
+        primary_display_name="old",
+        concept_type_hint="character",
+        status="active",
+        created_by_run_id="old-run",
+    )
+    session.add_all([old_signal, old_concept])
+    session.flush()
+    old_alias = SourceConceptAlias(
+        concept_id=old_concept.id,
+        alias_value="old",
+        alias_key="old",
+        display_name="old",
+        alias_role="f7a_candidate",
+        status="active",
+        source_signal_id=old_signal.id,
+        created_by_run_id="old-run",
+    )
+    old_evidence = SourceConceptEvidence(
+        concept_id=old_concept.id,
+        signal_id=old_signal.id,
+        evidence_type="f7a_candidate",
+        evidence_strength="medium",
+        status="active",
+        run_id="old-run",
+    )
+    old_link = SourceConceptSignalLink(
+        signal_id=old_signal.id,
+        concept_id=old_concept.id,
+        link_status="active",
+        resolver_version="old",
+        run_id="old-run",
+    )
+    old_search = SourceConceptSearchIndex(
+        concept_id=old_concept.id,
+        search_key="old",
+        display_name="old",
+        alias_role="f7a_candidate",
+        weight=0.5,
+        status="active",
+        run_id="old-run",
+    )
+    session.add_all([old_alias, old_evidence, old_link, old_search])
+    session.commit()
+
+    result = resolve_source_concepts(
+        [_signal("current-no-scope", "current_no_scope", source_run_id=None)],
+        run_id="new-run",
+    )
+    persistence = persist_source_concept_resolution(session, result, apply=True)
+
+    for row in (old_signal, old_concept, old_alias, old_evidence, old_link, old_search):
+        session.refresh(row)
+
+    assert old_signal.status == "active"
+    assert old_concept.status == "active"
+    assert old_alias.status == "active"
+    assert old_evidence.status == "active"
+    assert old_link.link_status == "active"
+    assert old_search.status == "active"
+    assert persistence["stale_supersede_scope"]["mode"] == "skipped_empty_source_run_scope"
+    assert persistence["stale_supersede_scope"]["source_run_ids"] == []
+    assert all(count == 0 for count in persistence["stale_transition_counts"].values())
 
 
 def test_ai_only_signal_creates_needs_review_not_active_truth():
@@ -1248,31 +1417,40 @@ def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tm
         json.dumps({"run_id": "f7a-pack-run", "validated_head": "abc", "candidate_summary": {"total": 1}}),
         encoding="utf-8",
     )
-    (pack / "candidate-bundle.jsonl").write_text(
-        json.dumps(
-            {
-                "group_key": "source_record:1",
-                "provider": "pixiv",
-                "source_metadata_record_id": None,
-                "media_id": None,
-                "origin_type": "pixiv_tag",
-                "origin_id": "tag:1",
-                "raw_value": "\u795e\u91cc\u7dbe\u83ef",
-                "display_name": "\u795e\u91cc\u7dbe\u83ef",
-                "normalized_value": "\u795e\u91cc\u7dbe\u83ef",
-                "canonical_key": "\u795e\u91cc\u7dbe\u83ef",
-                "candidate_role": "character",
-                "candidate_status": "active_candidate",
-                "extraction_verdict": "single_candidate_found",
-                "extraction_action": "accepted",
-                "confidence": 0.9,
-                "candidate_key": "logical-key",
-            },
-            ensure_ascii=False,
+    base_row = {
+        "group_key": "source_record:1",
+        "provider": "pixiv",
+        "source_metadata_record_id": None,
+        "media_id": None,
+        "origin_type": "pixiv_tag",
+        "origin_id": "tag:1",
+        "raw_value": "\u795e\u91cc\u7dbe\u83ef",
+        "display_name": "\u795e\u91cc\u7dbe\u83ef",
+        "normalized_value": "\u795e\u91cc\u7dbe\u83ef",
+        "canonical_key": "\u795e\u91cc\u7dbe\u83ef",
+        "candidate_role": "character",
+        "candidate_status": "active_candidate",
+        "extraction_verdict": "single_candidate_found",
+        "language_hint": "ja",
+        "script_hint": "jpan",
+        "work_context": "\u539f\u795e",
+        "work_context_key": "genshin_impact",
+        "parenthetical_base": None,
+        "parenthetical_context": None,
+        "extraction_action": "accepted",
+        "confidence": 0.9,
+        "reason": "fixture",
+        "candidate_key": "logical-key",
+        "evidence_payload": {"source_field": "tag"},
+    }
+
+    def write_candidate(row: dict) -> None:
+        (pack / "candidate-bundle.jsonl").write_text(
+            json.dumps(row, ensure_ascii=False) + "\n",
+            encoding="utf-8",
         )
-        + "\n",
-        encoding="utf-8",
-    )
+
+    write_candidate(base_row)
 
     result = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=True)
 
@@ -1283,31 +1461,21 @@ def test_f7a_final_pack_backfill_uses_candidate_bundle_without_provider_calls(tm
     assert repeat["needs_import"] is False
     assert repeat["stable_checksum_matches"] is True
 
-    (pack / "candidate-bundle.jsonl").write_text(
-        json.dumps(
-            {
-                "group_key": "source_record:1",
-                "provider": "pixiv",
-                "source_metadata_record_id": None,
-                "media_id": None,
-                "origin_type": "pixiv_tag",
-                "origin_id": "tag:1",
-                "raw_value": "Different",
-                "display_name": "Different",
-                "normalized_value": "different",
-                "canonical_key": "different",
-                "candidate_role": "character",
-                "candidate_status": "active_candidate",
-                "extraction_verdict": "single_candidate_found",
-                "extraction_action": "accepted",
-                "confidence": 0.9,
-                "candidate_key": "different-logical-key",
-            },
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    changed_display = {**base_row, "display_name": "Kamisato Ayaka"}
+    write_candidate(changed_display)
+    display_mismatch = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=False)
+    assert display_mismatch["candidate_bundle_count"] == display_mismatch["existing_db_candidate_count_for_run"] == 1
+    assert display_mismatch["needs_import"] is True
+    assert display_mismatch["stable_checksum_matches"] is False
+
+    changed_context = {**base_row, "work_context": "Genshin Impact", "work_context_key": "genshin_impact_en"}
+    write_candidate(changed_context)
+    context_mismatch = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=False)
+    assert context_mismatch["candidate_bundle_count"] == context_mismatch["existing_db_candidate_count_for_run"] == 1
+    assert context_mismatch["needs_import"] is True
+    assert context_mismatch["stable_checksum_matches"] is False
+
+    write_candidate({**base_row, "candidate_key": "different-logical-key"})
     mismatch = import_f7a_final_pack_candidates(session, pack_dir=pack, apply=False)
     assert mismatch["candidate_bundle_count"] == mismatch["existing_db_candidate_count_for_run"] == 1
     assert mismatch["needs_import"] is True
