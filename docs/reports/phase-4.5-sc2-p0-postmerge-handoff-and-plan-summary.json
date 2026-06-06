@@ -1,0 +1,90 @@
+{
+  "phase": "phase-4.5-sc2-p0-postmerge-handoff-and-plan",
+  "generated_at": "2026-06-07T00:15:40+08:00",
+  "generated_at_utc": "2026-06-06T16:15:40Z",
+  "timestamp_basis": "P0 handoff generated from local commit context in China Standard Time; local date is 2026-06-07 while the corresponding UTC/GitHub date is 2026-06-06.",
+  "prerequisite_pr": {
+    "number": 96,
+    "phase": "Phase 4.5-SC1",
+    "state": "merged",
+    "merge_commit": "a54e5ade2a8bc50adc00c8129699f0c2540e479e",
+    "title": "Phase 4.5-SC1: Multi-source source concept resolver core"
+  },
+  "sc1_state": {
+    "source_concept_core_merged": true,
+    "source_layer_only": true,
+    "entity_truth": false,
+    "entity_alias_truth": false,
+    "confirmed_assignment": false,
+    "media_tags_truth": false
+  },
+  "sc2_plan": {
+    "title": "Phase 4.5-SC2: SourceConcept search expansion and evidence UI",
+    "target_surfaces": [
+      "search expansion",
+      "media detail source concept grouping",
+      "evidence preview",
+      "manual promotion preview only"
+    ],
+    "search_examples": [
+      "q=\u795e\u91cc\u7dbe\u83ef",
+      "q=kamisato_ayaka",
+      "q=Kamisato Ayaka"
+    ],
+    "must_preserve": [
+      "normal tag search",
+      "F6 global q chip behavior",
+      "scoped source filters as advanced/debug routes",
+      "SourceConcept as unconfirmed source-layer evidence"
+    ],
+    "manual_promotion": "disabled/no-op preview only"
+  },
+  "acceptance_criteria": {
+    "backend_api": [
+      "read-only SourceConcept search expansion path",
+      "read-only SourceConcept detail/evidence endpoint",
+      "SourceConceptSearchIndex used instead of broad scans",
+      "status/confidence/trust-gated expansion",
+      "no truth-path writes"
+    ],
+    "ui": [
+      "media detail SourceConcept grouping",
+      "search expansion explanation",
+      "understandable evidence preview",
+      "clear unconfirmed/source-layer labeling"
+    ],
+    "validation": [
+      "pytest for API/search semantics",
+      "redaction and no unsafe data tests",
+      "no truth-path write assertions",
+      "Playwright/browser E2E"
+    ]
+  },
+  "non_goals": {
+    "write_entity": false,
+    "write_entity_alias": false,
+    "write_entity_evidence": false,
+    "write_media_entity_candidate": false,
+    "write_media_entity_assignment": false,
+    "write_local_source_hint": false,
+    "mutate_media_tags": false,
+    "mutate_tag_translation": false,
+    "run_provider_or_gallery_dl": false,
+    "run_llm": false,
+    "mutate_source_icloud_or_app_storage": false
+  },
+  "future_doc_phase": {
+    "phase": "Phase 4.5-DOC1",
+    "title": "Documentation consolidation after SC2",
+    "principles": [
+      "keep long-term docs concise",
+      "avoid duplicating rules across README, AGENTS, handoff, roadmap, reports, and test workflow",
+      "move hard safety constraints into code, tests, DB guards, validation runners, and runtime assertions where practical",
+      "keep agent-facing docs operational and short",
+      "keep README as a lightweight entry point"
+    ],
+    "performed_in_p0": false
+  },
+  "public_redacted": true,
+  "artifact_lifecycle": "public report / handoff / roadmap update"
+}

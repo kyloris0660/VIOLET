@@ -233,6 +233,18 @@ Required checks:
 - Bounded text-only LLM pair adjudication is allowed only when explicitly enabled by `--use-llm-adjudication`, capped by `--max-llm-calls` and `--max-llm-budget-usd`, cache-backed, primary-provider-only, and recorded in the validation pack. It must never upload images, run provider/gallery-dl/Pixiv/SauceNAO/Google enrichment, run localization batches, use fallback providers by default, or create Entity truth.
 - SC1 must not start full SC2 search/UI integration.
 
+### SourceConcept Search and Evidence UI Validation (Phase 4.5-SC2 planned)
+
+Phase 4.5-SC2 will touch search/API behavior and user-visible media-detail UI, so real browser validation is required. Do not treat SC1 resolver readiness as proof that SC2 user workflows work.
+
+Required SC2 validation shape:
+
+- API/search tests for SourceConcept alias expansion through the search-preview index, including exact alias examples, normal tag search preservation, mixed normal tag + SourceConcept queries, negative/exact-query boundaries, and conservative `needs_review` behavior.
+- Read-only SourceConcept detail/evidence endpoint tests covering aliases, providers, signal origins, trust tiers, concept status, evidence count, redaction, and no local paths/secrets.
+- No-truth-write assertions proving SC2 does not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignments, `TagTranslation`, or `media_tags`.
+- Playwright/browser E2E on a controlled test server for media-detail SourceConcept grouping, concept/alias chip click through global `q=` search, search expansion explanation, mixed normal tag + SourceConcept search, evidence preview expansion, no console errors, and no truth writes.
+- F6 behavior must remain intact: user-facing chips default to global `q=` search, while scoped source filters remain advanced/debug routes.
+
 ### Fixture Validation (Tier 2)
 
 ```powershell
