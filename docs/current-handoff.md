@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.5-SC2-P0 post-merge handoff planning (2026-06-07), after PR #96 / Phase 4.5-SC1 was merged into `main`.
+> Last updated during Phase 4.5-SC2-P0 post-merge handoff planning at `2026-06-07T00:15:40+08:00` (`2026-06-06T16:15:40Z` UTC), after PR #96 / Phase 4.5-SC1 was merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Historical repo name | `AnimeLocalBooru`; old links may redirect, but active references should use VIOLET |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), PR #95 (`5b0a6fa`), and PR #96 (`a54e5ad`) as of 2026-06-07 |
+| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), PR #95 (`5b0a6fa`), and PR #96 (`a54e5ad`) as of `2026-06-07T00:15:40+08:00` local time (`2026-06-06T16:15:40Z` UTC) |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | Project venv at `.\venv\Scripts\python.exe` |
 | Dev DB | `blombooru` on `localhost:5432` |

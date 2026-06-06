@@ -4,6 +4,8 @@
 
 PR #96 / Phase 4.5-SC1 is merged into `main`. SC1 delivered the multi-source source-layer `SourceConcept` resolver core: additive schema, source signal adapters, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
 
+Timestamp basis: this P0 handoff was generated at `2026-06-07T00:15:40+08:00` local time, which is `2026-06-06T16:15:40Z` UTC. The local date and GitHub/UTC date differ only because the work was committed just after midnight in China Standard Time.
+
 SC1 is not Entity truth. `SourceConcept` rows are source-layer evidence only; they are not `Entity`, `EntityAlias`, confirmed assignment, or `media_tags` truth.
 
 The next planned feature phase is:
