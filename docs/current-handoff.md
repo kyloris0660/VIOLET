@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.5-SC1 implementation (2026-06-06), after PR #92, PR #93, PR #94, and PR #95 were merged into `main`.
+> Last updated during Phase 4.5-SC2-P0 post-merge handoff planning (2026-06-07), after PR #96 / Phase 4.5-SC1 was merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Historical repo name | `AnimeLocalBooru`; old links may redirect, but active references should use VIOLET |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), and PR #95 (`5b0a6fa`) as of 2026-06-05 |
+| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), PR #95 (`5b0a6fa`), and PR #96 (`a54e5ad`) as of 2026-06-07 |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | Project venv at `.\venv\Scripts\python.exe` |
 | Dev DB | `blombooru` on `localhost:5432` |
@@ -40,7 +40,9 @@
 - Phase 4.4-P2R-F6 preflight hotfix is merged. PR #93 fixed the local debug startup self-lock in `migrate_add_external_tag_category_lookup_cache()` by using an inspector bound to the active migration connection. This was a narrow startup fix; it did not implement F6 UI/search.
 - Phase 4.4-P2R-F6 is merged. PR #94 made F5 source-layer data usable in the media workflow: source assertions/source tags appear separately from ordinary tags, source chips default to ordinary `q=` search behavior, scoped source filters remain available for advanced/debug use, and admin Content layout was cleaned up without starting Entity promotion.
 - Phase 4.4-P2R-F7a is merged. PR #95 produced the primary-provider-backed source-name candidate extraction path and final validation pack. F7a candidates are source-layer evidence only; they are not `Entity`, `EntityAlias`, `MediaEntityAssignment`, confirmed assignment, or `media_tags` truth. Public report: `docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md`.
-- Phase 4.5-SC1 / PR #96 is the active source-concept core route. It aggregates F7a candidates, ordinary/AI tags, source assertions/observations/tags, alias candidates, provider structured fields/cache context, and future provider/manual signals into unconfirmed `SourceConcept` rows. The resolver may use bounded text-only pair adjudication when explicitly enabled and budget/cache recorded, but it must remain source-layer only and must not implement full SC2 search/UI integration or Entity promotion.
+- Phase 4.5-SC1 / PR #96 is merged. It delivered the multi-source source-layer `SourceConcept` resolver core: additive schema, aliases, evidence, links, search-preview rows, run ledger, readiness/no-truth-write validation, and a public validation report. SC1 did not implement user-facing SC2 search/UI integration or Entity promotion.
+- `SourceConcept` remains source-layer evidence only. It is not `Entity` truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
+- Phase 4.5-SC2 is the next planned feature phase. It should expose `SourceConcept` through transparent search expansion and media-detail evidence UI while preserving the unconfirmed/source-layer boundary.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -73,11 +75,12 @@ Workflow weight must decrease:
 Near-term route during Phase 4.5-SC:
 
 1. Treat PR #95/F7a as one input adapter, not the scope boundary. The SourceConcept resolver must aggregate all current source-layer name, tag, assertion, observation, alias, provider structured field, AI/model, and future manual/provider signals.
-2. Keep SC1 focused on additive schema, signal adapters, resolver core, run ledger, evidence/link/search-preview tables, documentation, and final validation pack.
-3. Keep SC2 separate: full search expansion, UI concept grouping/chips, evidence preview, and manual promotion preview belong after the core resolver is reviewed.
-4. Keep all SourceConcept rows unconfirmed. Do not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignment, `TagTranslation`, or `media_tags`.
-5. Do not run gallery-dl, Pixiv/SauceNAO/Google/provider calls, LLM extraction/classification, tag localization batches, background translation, broad scans, imports, or image uploads unless a later phase explicitly approves that run. SC1's explicit, bounded, text-only LLM pair adjudication is the narrow exception for resolver validation and must remain cache/budget recorded with no fallback provider by default.
-6. Phase 3.9 remains required before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import.
+2. Treat SC1 as complete core infrastructure on `main`, not as Entity truth. Its `SourceConceptSearchIndex` rows are the read-only basis for SC2 search expansion, not a promotion result.
+3. Keep SC2 focused on SourceConcept search expansion, media-detail grouping/chips, evidence preview, and disabled/manual-promotion preview only.
+4. SC2 must keep all SourceConcept rows unconfirmed. Do not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignment, `TagTranslation`, or `media_tags`.
+5. Preserve F6 chip behavior: user-facing source/concept chips should default to ordinary global `q=` search, while explicit `source_tag=` / `source_assertion=` style scoped filters remain advanced/debug routes.
+6. Do not run gallery-dl, Pixiv/SauceNAO/Google/provider calls, LLM extraction/classification, tag localization batches, background translation, broad scans, imports, or image uploads unless a later phase explicitly approves that run. SC2 should be read-only over existing SC1/source-layer data.
+7. Phase 3.9 remains required before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import.
 
 Do not treat older "blocked until X" wording in historical reports as current unless this handoff or the roadmap repeats it as active.
 

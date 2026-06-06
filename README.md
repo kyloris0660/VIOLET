@@ -34,8 +34,9 @@ At a high level:
 
 - Phase 3.8d medium pilot is accepted.
 - Phase 4.1 entity metadata foundation and Phase 4.2 manual correction/review foundation are merged.
-- SauceNAO high-confidence reverse-search results are viable source-backed evidence candidates; low-confidence results are discarded by default for this workflow.
-- PR #79 merged the provider-neutral evidence contract foundation for future C1 persistence.
+- Source-backed evidence and source-layer concept work are active project foundations; see `docs/current-handoff.md` and `docs/project-roadmap.md` for the latest accepted phase state.
+- PR #96 / Phase 4.5-SC1 merged the multi-source source-layer `SourceConcept` resolver core. `SourceConcept` is evidence, not Entity truth.
+- Phase 4.5-SC2 is planned for SourceConcept search expansion and evidence UI, not Entity promotion.
 - GOV-2 workflow policy is active: durable core contracts remain strict, while phase-scoped and one-off tooling should stay lightweight and should not become generic frameworks unless explicitly promoted.
 
 ## Quick Start
