@@ -54,6 +54,7 @@ from .source_name_candidate_extraction_service import (
     primary_openai_provider_from_settings,
     table_counts,
 )
+from ..utils.cache import invalidate_source_concept_search_cache
 
 RESOLVER_VERSION = "source_concept_resolver_core_v2_graph"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
@@ -4077,6 +4078,7 @@ def persist_source_concept_resolution(
     }
     run_row.no_truth_write_proof_json = proof
     db.commit()
+    invalidate_source_concept_search_cache()
     return {"apply": True, "run_db_id": run_row.id, **proof}
 
 

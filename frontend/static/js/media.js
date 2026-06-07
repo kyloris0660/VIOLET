@@ -567,8 +567,10 @@ class MediaViewer extends MediaViewerBase {
         const assertions = sourceLayer?.source_assertions || [];
         const reviewAssertions = sourceLayer?.needs_review_assertions || [];
         const sourceTags = sourceLayer?.source_tags || [];
-        const hasSourceLayer = assertions.length || reviewAssertions.length || sourceTags.length;
+        const sourceConcepts = sourceLayer?.source_concepts || [];
+        const hasSourceLayer = assertions.length || reviewAssertions.length || sourceTags.length || sourceConcepts.length;
 
+        const sourceConceptTitle = this.t('media.source_layer.source_concepts', 'SourceConcepts');
         const sourceAssertionTitle = this.t('media.source_layer.source_assertions', 'Source assertions');
         const sourceTagTitle = this.t('media.source_layer.source_tags', 'Source tags');
         const unconfirmed = this.t('media.source_layer.unconfirmed_entity', 'Unconfirmed entity');
@@ -581,9 +583,9 @@ class MediaViewer extends MediaViewerBase {
                     <div class="source-layer-eyebrow">${this.escapeHtml(this.t('media.source_layer.label', 'Source assertion'))}</div>
                     <h4>${this.escapeHtml(this.t('media.source_layer.title', 'Source layer candidates'))}</h4>
                 </div>
-                <span class="source-layer-status">${this.escapeHtml(unconfirmed)}</span>
+                    <span class="source-layer-status">${this.escapeHtml(unconfirmed)}</span>
             </div>
-            <p class="source-layer-note">${this.escapeHtml(this.t('media.source_layer.note', 'Provider/source chips are searchable but are not confirmed Entity truth.'))}</p>
+            <p class="source-layer-note">${this.escapeHtml(this.t('media.source_layer.note', 'Provider/source chips and SourceConcept groups are searchable source-layer evidence, not confirmed Entity truth.'))}</p>
         `;
 
         if (!hasSourceLayer) {
@@ -596,6 +598,24 @@ class MediaViewer extends MediaViewerBase {
             container.innerHTML = html;
             container.style.display = 'block';
             return;
+        }
+
+        if (sourceConcepts.length) {
+            const conceptGroups = this.groupSourceConceptsForDisplay(sourceConcepts);
+            html += `
+                <div class="tag-category source-layer-group source-concept-group">
+                    <h4>${this.escapeHtml(sourceConceptTitle)}</h4>
+                    <div class="tag-list source-concept-chip-list">
+                        ${conceptGroups.map(group => this.renderSourceConceptChip(group)).join('')}
+                    </div>
+                    <details class="source-concept-details-panel">
+                        <summary>${this.escapeHtml(this.t('media.source_layer.evidence_preview', 'Evidence preview'))}</summary>
+                        <div class="source-concept-details-list">
+                            ${conceptGroups.map(group => this.renderSourceConceptDetails(group)).join('')}
+                        </div>
+                    </details>
+                </div>
+            `;
         }
 
         if (assertions.length) {
@@ -632,6 +652,175 @@ class MediaViewer extends MediaViewerBase {
 
         container.innerHTML = html;
         container.style.display = 'block';
+    }
+
+    compactList(values, fallback = '-') {
+        const clean = (values || []).filter(Boolean).map(value => String(value));
+        if (!clean.length) return fallback;
+        const visible = clean.slice(0, 5).join(', ');
+        return clean.length > 5 ? `${visible} +${clean.length - 5}` : visible;
+    }
+
+    uniqueValues(values) {
+        const seen = new Set();
+        const clean = [];
+        for (const value of values || []) {
+            const text = String(value || '').trim();
+            if (!text || seen.has(text)) continue;
+            seen.add(text);
+            clean.push(text);
+        }
+        return clean;
+    }
+
+    sourceConceptLabel(concept) {
+        return concept.display_name || concept.primary_display_name || concept.search_value || `SourceConcept ${concept.concept_id}`;
+    }
+
+    sourceConceptGroupKey(label) {
+        return String(label || '').normalize('NFKC').trim().toLocaleLowerCase();
+    }
+
+    groupSourceConceptsForDisplay(sourceConcepts) {
+        const groups = new Map();
+        for (const concept of sourceConcepts || []) {
+            const label = this.sourceConceptLabel(concept);
+            const key = this.sourceConceptGroupKey(label);
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    label,
+                    searchValue: concept.search_value || label,
+                    statuses: [],
+                    conceptIds: [],
+                    aliases: [],
+                    matchedAliases: [],
+                    providers: [],
+                    origins: [],
+                    trustTiers: [],
+                    evidenceItems: [],
+                    evidenceCount: 0,
+                    linkedMediaCount: 0,
+                    typeHints: [],
+                });
+            }
+            const group = groups.get(key);
+            group.statuses.push(concept.status || 'unknown');
+            group.conceptIds.push(concept.concept_id || concept.id);
+            group.typeHints.push(concept.concept_type_hint);
+            group.aliases.push(...(concept.aliases || []).map(alias => alias.display_name || alias.alias_value || alias.alias_key));
+            group.matchedAliases.push(...(concept.matched_aliases || []).map(alias => alias.display_name || alias.alias_value || alias.search_key));
+            group.providers.push(...(concept.providers || []));
+            group.origins.push(...(concept.signal_origins || []));
+            group.trustTiers.push(...(concept.trust_tiers || []));
+            group.evidenceItems.push(...(concept.evidence_items || []));
+            group.evidenceCount += Number(concept.evidence_count || 0);
+            group.linkedMediaCount += Number(concept.linked_media_count || 0);
+        }
+
+        return Array.from(groups.values()).map(group => ({
+            ...group,
+            statuses: this.uniqueValues(group.statuses),
+            conceptIds: this.uniqueValues(group.conceptIds),
+            aliases: this.uniqueValues(group.aliases),
+            matchedAliases: this.uniqueValues(group.matchedAliases),
+            providers: this.uniqueValues(group.providers),
+            origins: this.uniqueValues(group.origins),
+            trustTiers: this.uniqueValues(group.trustTiers),
+            typeHints: this.uniqueValues(group.typeHints),
+            evidenceItems: group.evidenceItems.slice(0, 12),
+        }));
+    }
+
+    sourceConceptStatusLabel(group) {
+        return this.compactList(group.statuses, 'unknown');
+    }
+
+    renderSourceConceptChip(group) {
+        const label = group.label;
+        const statusLabel = this.sourceConceptStatusLabel(group);
+        const statusClass = (group.statuses[0] || 'unknown').replace(/[^a-z0-9_-]/gi, '-');
+        const href = this.buildGlobalTextSearchUrl(group.searchValue || label, false);
+        const unconfirmed = this.t('media.source_layer.source_concept_unconfirmed', 'Unconfirmed source-layer');
+        const evidenceCountLabel = this.t('media.source_layer.evidence_count', 'Evidence');
+        const providerLabel = this.t('media.source_layer.providers', 'Providers');
+        const aliasLabel = this.t('media.source_layer.aliases', 'Aliases');
+        const title = [
+            `${label} (${statusLabel})`,
+            unconfirmed,
+            `${aliasLabel}: ${this.compactList(group.aliases)}`,
+            `${providerLabel}: ${this.compactList(group.providers)}`,
+            `${evidenceCountLabel}: ${group.evidenceCount}`,
+        ].filter(Boolean).join(', ');
+
+        return `
+            <a href="${href}"
+                class="tag source-chip source-concept-chip source-concept-compact-chip status-${this.escapeHtml(statusClass)}"
+                title="${this.escapeHtml(title)}"
+                aria-label="${this.escapeHtml(title)}"
+                data-search-chip="true"
+                data-chip-type="source_concept"
+                data-search-param="q"
+                data-search-value="${this.escapeHtml(group.searchValue || label)}"
+                data-include-source-needs-review="false"
+                data-source-concept-ids="${this.escapeHtml(group.conceptIds.join(','))}"
+                data-display-name="${this.escapeHtml(label)}">
+                <span class="source-chip-name">${this.escapeHtml(label)}</span>
+                <span class="source-chip-marker">${this.escapeHtml(unconfirmed)}</span>
+                <span class="source-concept-status-inline">${this.escapeHtml(statusLabel)}</span>
+            </a>
+        `;
+    }
+
+    renderSourceConceptDetails(group) {
+        const label = group.label;
+        const statusLabel = this.sourceConceptStatusLabel(group);
+        const unconfirmed = this.t('media.source_layer.source_concept_unconfirmed', 'Unconfirmed source-layer');
+        const evidenceTitle = this.t('media.source_layer.evidence_preview', 'Evidence preview');
+        const promotionDisabled = this.t('media.source_layer.source_concept_promotion_disabled', 'Entity promotion disabled');
+        const aliasLabel = this.t('media.source_layer.aliases', 'Aliases');
+        const providerLabel = this.t('media.source_layer.providers', 'Providers');
+        const originLabel = this.t('media.source_layer.signal_origins', 'Signal origins');
+        const trustLabel = this.t('media.source_layer.trust_tiers', 'Trust tiers');
+        const evidenceCountLabel = this.t('media.source_layer.evidence_count', 'Evidence');
+        const linkedMediaLabel = this.t('media.source_layer.linked_media_count', 'Linked media');
+        const matchedAliasLabel = this.t('media.source_layer.matched_aliases', 'Matched aliases');
+
+        return `
+            <div class="source-concept-detail" data-source-concept-ids="${this.escapeHtml(group.conceptIds.join(','))}">
+                <div class="source-concept-detail-header">
+                    <strong>${this.escapeHtml(label)}</strong>
+                    <span class="source-layer-status source-concept-status">${this.escapeHtml(statusLabel)} / ${this.escapeHtml(unconfirmed)}</span>
+                </div>
+                <div class="source-concept-meta-grid">
+                    <div><span>${this.escapeHtml(aliasLabel)}</span><strong>${this.escapeHtml(this.compactList(group.aliases))}</strong></div>
+                    <div><span>${this.escapeHtml(providerLabel)}</span><strong>${this.escapeHtml(this.compactList(group.providers))}</strong></div>
+                    <div><span>${this.escapeHtml(originLabel)}</span><strong>${this.escapeHtml(this.compactList(group.origins))}</strong></div>
+                    <div><span>${this.escapeHtml(trustLabel)}</span><strong>${this.escapeHtml(this.compactList(group.trustTiers))}</strong></div>
+                    <div><span>${this.escapeHtml(evidenceCountLabel)}</span><strong>${this.escapeHtml(group.evidenceCount)}</strong></div>
+                    <div><span>${this.escapeHtml(linkedMediaLabel)}</span><strong>${this.escapeHtml(group.linkedMediaCount)}</strong></div>
+                </div>
+                ${group.matchedAliases.length ? `<div class="source-concept-matched">${this.escapeHtml(matchedAliasLabel)}: ${this.escapeHtml(this.compactList(group.matchedAliases))}</div>` : ''}
+                <div class="source-concept-evidence">
+                    <div class="source-layer-eyebrow">${this.escapeHtml(evidenceTitle)}</div>
+                    <div class="source-concept-evidence-body">
+                        ${group.evidenceItems.length ? group.evidenceItems.map(item => `
+                            <div class="source-concept-evidence-row">
+                                <span>${this.escapeHtml(item.provider || 'unknown')}</span>
+                                <span>${this.escapeHtml(item.evidence_type || 'unknown')}</span>
+                                <span>${this.escapeHtml(item.evidence_strength || 'unknown')}</span>
+                                <span>${this.escapeHtml(item.status || 'unknown')}</span>
+                            </div>
+                        `).join('') : `
+                            <div class="text-secondary">${this.escapeHtml(this.t('media.source_layer.no_evidence_preview', 'No safe evidence rows to preview.'))}</div>
+                        `}
+                    </div>
+                </div>
+                <div class="source-concept-promotion-preview">
+                    <span>${this.escapeHtml(this.t('media.source_layer.preview_only', 'Preview only'))}</span>
+                    <span>${this.escapeHtml(promotionDisabled)}</span>
+                </div>
+            </div>
+        `;
     }
 
     renderSourceChip(chip, extraClass = '') {
@@ -678,7 +867,7 @@ class MediaViewer extends MediaViewerBase {
     formatGlobalSearchToken(value) {
         const text = String(value || '').trim();
         if (!text) return '';
-        if (/\s/.test(text)) {
+        if (/^-|[\s:"*?\[\]\(\)]/.test(text)) {
             return `"${text.replace(/"/g, '')}"`;
         }
         return text;

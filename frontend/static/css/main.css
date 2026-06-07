@@ -338,6 +338,32 @@ span.checked:hover {
     border-color: color-mix(in srgb, var(--info) 70%, var(--border));
 }
 
+.source-concept-chip {
+    border-color: color-mix(in srgb, var(--primary-color) 55%, var(--warning));
+    background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+
+.source-concept-chip-list {
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.source-concept-compact-chip {
+    border-style: solid;
+    padding: 0.22rem 0.48rem;
+}
+
+.source-concept-compact-chip .source-chip-marker,
+.source-concept-status-inline {
+    font-size: 0.56rem;
+    color: var(--text-secondary);
+}
+
+.source-concept-status-inline {
+    border-left: 1px solid var(--border);
+    padding-left: 0.3rem;
+}
+
 .source-chip-review {
     opacity: 0.82;
 }
@@ -367,6 +393,108 @@ span.checked:hover {
     font-size: 0.68rem;
 }
 
+.source-concept-details-panel {
+    margin-top: 0.4rem;
+    font-size: 0.66rem;
+}
+
+.source-concept-details-panel summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 700;
+}
+
+.source-concept-details-list {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+}
+
+.source-concept-detail {
+    border: 1px dashed color-mix(in srgb, var(--warning) 55%, var(--border));
+    border-radius: 0.35rem;
+    padding: 0.5rem;
+    background: color-mix(in srgb, var(--surface-light) 35%, var(--surface));
+}
+
+.source-concept-detail-header,
+.source-concept-expansion-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.source-concept-status {
+    font-size: 0.58rem;
+}
+
+.source-concept-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem 0.55rem;
+    margin-top: 0.45rem;
+    font-size: 0.65rem;
+}
+
+.source-concept-meta-grid span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.58rem;
+}
+
+.source-concept-meta-grid strong {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.source-concept-matched,
+.source-concept-expansion-text {
+    color: var(--text-secondary);
+    font-size: 0.64rem;
+    line-height: 1.35;
+}
+
+.source-concept-evidence {
+    margin-top: 0.45rem;
+    font-size: 0.66rem;
+}
+
+.source-concept-evidence-body {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+}
+
+.source-concept-evidence-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem;
+    padding: 0.28rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    background: var(--surface);
+}
+
+.source-concept-evidence-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.source-concept-promotion-preview {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.62rem;
+}
+
 .source-search-summary {
     border-radius: 0.45rem;
 }
@@ -378,6 +506,17 @@ span.checked:hover {
 
 .normal-search-chip {
     border-color: color-mix(in srgb, var(--primary-color) 70%, var(--border));
+}
+
+.source-concept-expansion-list,
+.source-concept-review-hint {
+    border-top: 1px solid var(--border);
+    margin-top: 0.6rem;
+    padding-top: 0.55rem;
+}
+
+.source-concept-search-chip {
+    max-width: 12rem;
 }
 
 .admin-content-layout {

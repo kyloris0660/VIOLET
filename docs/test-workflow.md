@@ -233,17 +233,43 @@ Required checks:
 - Bounded text-only LLM pair adjudication is allowed only when explicitly enabled by `--use-llm-adjudication`, capped by `--max-llm-calls` and `--max-llm-budget-usd`, cache-backed, primary-provider-only, and recorded in the validation pack. It must never upload images, run provider/gallery-dl/Pixiv/SauceNAO/Google enrichment, run localization batches, use fallback providers by default, or create Entity truth.
 - SC1 must not start full SC2 search/UI integration.
 
-### SourceConcept Search and Evidence UI Validation (Phase 4.5-SC2 planned)
+### SourceConcept Search and Evidence UI Validation (Phase 4.5-SC2)
 
-Phase 4.5-SC2 will touch search/API behavior and user-visible media-detail UI, so real browser validation is required. Do not treat SC1 resolver readiness as proof that SC2 user workflows work.
+Phase 4.5-SC2 touches search/API behavior and user-visible media-detail UI, so real browser validation is required. Do not treat SC1 resolver readiness as proof that SC2 user workflows work.
+
+Focused pytest:
+
+```powershell
+& "$PY" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v
+```
+
+Controlled real-browser fixture and E2E:
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+$env:VIOLET_ENV = "test"
+$env:POSTGRES_DB = "blombooru_test"
+$env:VIOLET_STORAGE_ROOT = Join-Path $env:USERPROFILE "VioletStorage\test"
+$env:VIOLET_TEST_STORAGE_ROOT = $env:VIOLET_STORAGE_ROOT
+& "$PY" scripts/seed_phase45_sc2_e2e_fixture.py
+
+$env:VIOLET_RUN_REAL_E2E = "1"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:<agent-started-port>"
+npx playwright test tests/e2e/source-concept-search-evidence.spec.ts --project=edge
+```
 
 Required SC2 validation shape:
 
-- API/search tests for SourceConcept alias expansion through the search-preview index, including exact alias examples, normal tag search preservation, mixed normal tag + SourceConcept queries, negative/exact-query boundaries, and conservative `needs_review` behavior.
-- Read-only SourceConcept detail/evidence endpoint tests covering aliases, providers, signal origins, trust tiers, concept status, evidence count, redaction, and no local paths/secrets.
+- API/search tests for SourceConcept alias expansion through the search-preview index, including exact alias examples, bidirectional concept-level alias expansion, normal tag search preservation, mixed normal tag + SourceConcept queries, negative/exact-query boundaries, and clearly labeled `needs_review` SourceConcept expansion for explicit alias `q=` search.
+- Read-only SourceConcept detail/evidence endpoint tests covering aliases, providers, signal origins, trust tiers, concept status, evidence count, redaction, no local paths/secrets, no public exposure of raw or canonicalized path-derived `concept_key` values, and no filename-derived alias/search-key leakage such as `vacation_2024_jpg`, `img_1234_jpeg`, or `private_png`.
+- Detail and promotion-preview direct-ID lookups must be gated to visible statuses: `active` and intentionally visible `needs_review` return data, while `rejected`, `ambiguous`, and `superseded` return safe not-found responses.
+- Cache-invalidation tests covering SourceConcept resolver/fixture writes and stale cached `q=<alias>` search responses.
+- Search filtering tests proving display caps do not cap the actual SourceConcept ids used for media filtering.
+- SourceConcept `q=` chip/search URL tests must quote parser metacharacters such as `:`, leading `-`, wildcard characters, brackets, parentheses, and whitespace while leaving safe ordinary tags such as `kamisato_ayaka` unquoted.
 - No-truth-write assertions proving SC2 does not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignments, `TagTranslation`, or `media_tags`.
-- Playwright/browser E2E on a controlled test server for media-detail SourceConcept grouping, concept/alias chip click through global `q=` search, search expansion explanation, mixed normal tag + SourceConcept search, evidence preview expansion, no console errors, and no truth writes.
+- Playwright/browser E2E on a controlled test server for compact media-detail SourceConcept grouping, same-name chip dedupe, concept/alias chip click through global `q=` search, search expansion explanation, mixed normal tag + SourceConcept search, collapsed evidence preview expansion, no console errors, and no truth writes.
 - F6 behavior must remain intact: user-facing chips default to global `q=` search, while scoped source filters remain advanced/debug routes.
+- Real SourceConcept management/editing remains out of scope for SC2 validation; if present before SC3 it must be read-only or disabled/no-op.
 
 ### Fixture Validation (Tier 2)
 

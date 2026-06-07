@@ -76,6 +76,10 @@ def invalidate_tag_cache():
     """Invalidate all tag-related caches"""
     invalidate_cache("tags", "tag_detail", "autocomplete", "danbooru", "media_list", "search")
 
+def invalidate_source_concept_search_cache():
+    """Invalidate search responses that depend on SourceConcept rows."""
+    invalidate_cache("search")
+
 def invalidate_album_cache():
     """Invalidate all album-related caches"""
     invalidate_cache("album_list", "album_contents", "danbooru")

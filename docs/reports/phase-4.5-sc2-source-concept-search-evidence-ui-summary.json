@@ -1,0 +1,112 @@
+{
+  "phase": "4.5-SC2",
+  "title": "SourceConcept search expansion and evidence UI",
+  "branch": "codex/phase45-sc2-source-concept-search-evidence-ui",
+  "generated_at": "2026-06-07T21:17:42+08:00",
+  "status": "manual_validation_fix_ready_for_pr_update",
+  "summary": [
+    "Adds read-only SourceConcept alias expansion through SourceConceptSearchIndex.",
+    "Adds compact media-detail SourceConcept chips with same-name grouping, collapsed evidence preview, unconfirmed/source-layer labeling, and disabled promotion preview.",
+    "Adds search-result expansion explanations and needs_review SourceConcept expansion when an explicit alias q search matches.",
+    "Fixes reviewer P1/P2 issues by omitting public concept keys, redacting canonicalized path/filename aliases, invalidating search cache after SourceConcept writes, and using uncapped concept ids for actual filtering.",
+    "Fixes reviewer P2 issues by gating detail/promotion lookups to visible statuses and quoting parser metacharacters in SourceConcept q= chip URLs.",
+    "Fixes manual-validation issues by making alias search concept-level and bidirectional across linked aliases, and by replacing debug-like cards with compact chips.",
+    "Preserves normal tag search and F6 q= chip behavior.",
+    "Does not create or mutate Entity truth paths, TagTranslation, media_tags, providers, LLMs, source storage, iCloud, or app-managed storage."
+  ],
+  "implemented_files": [
+    "backend/app/services/source_concept_search_service.py",
+    "backend/app/routes/source_concepts.py",
+    "backend/app/main.py",
+    "backend/app/routes/search.py",
+    "backend/app/services/source_assertion_search_service.py",
+    "frontend/static/js/media.js",
+    "frontend/static/js/gallery.js",
+    "frontend/static/css/main.css",
+    "frontend/static/locales/en.json",
+    "frontend/static/locales/zh-cn.json"
+  ],
+  "validation_files": [
+    "tests/test_phase45_sc2_source_concept_search_evidence_ui.py",
+    "tests/e2e/source-concept-search-evidence.spec.ts",
+    "scripts/seed_phase45_sc2_e2e_fixture.py"
+  ],
+  "docs_updated": [
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md",
+    "docs/test-workflow.md",
+    "docs/reports/phase-4.5-sc2-source-concept-search-evidence-ui.md",
+    "docs/reports/phase-4.5-sc2-source-concept-search-evidence-ui-summary.json"
+  ],
+  "search_semantics": {
+    "active_default": "Active and needs_review SourceConcept aliases can expand matching explicit q terms as an OR inside the term.",
+    "multi_term": "Existing AND semantics across query terms are preserved.",
+    "negative": "Negative terms remain bounded by negating the same expanded term condition.",
+    "quoted": "Quoted/exact terms stay one parser token and can match one exact alias search key; SourceConcept q= chips quote parser metacharacters such as colon, leading dash, wildcard characters, brackets, parentheses, and whitespace.",
+    "alias_closure": "When one alias matches a visible SourceConcept, search expands through the concept alias closure so linked aliases such as 神里綾華, Kamisato Ayaka, and kamisato_ayaka produce the same SourceConcept-linked media set.",
+    "needs_review": "needs_review SourceConcepts expand for explicit alias q search and remain labeled as unconfirmed source-layer; rejected, ambiguous, and superseded concepts stay hidden.",
+    "normal_tag_priority": "Normal tag search remains intact and SourceConcept expansion only adds transparent source-layer matches."
+  },
+  "validation": {
+    "focused_pytest": {
+      "command": "& \"$PY\" -m pytest tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v",
+      "result": "16 passed"
+    },
+    "f6_regression_pytest": {
+      "command": "& \"$PY\" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v",
+      "result": "34 passed"
+    },
+    "sc1_resolver_pytest": {
+      "command": "& \"$PY\" -m pytest tests/test_phase45_sc1_source_concept_resolver.py -v",
+      "result": "47 passed"
+    },
+    "playwright_edge": {
+      "command": "npx playwright test tests/e2e/source-concept-search-evidence.spec.ts --project=edge",
+      "result": "4 passed"
+    },
+    "browser_validation": {
+      "server_url": "http://127.0.0.1:8012",
+      "identity_check": "OK: all checks passed",
+      "server_pids": {
+        "parent": 94456,
+        "reloader": 102132,
+        "worker": 105776
+      },
+      "metacharacter_chip": "Re:Zero clicked through quoted q= search",
+      "compact_ui": "SourceConcept media detail rendered compact chips; duplicate Kamisato Ayaka concepts grouped to one visible chip; evidence details were collapsed by default.",
+      "console_errors": [],
+      "unsafe_text_present": false,
+      "server_stopped": true
+    }
+  },
+  "forbidden_writes": {
+    "entity": false,
+    "entity_alias": false,
+    "entity_evidence": false,
+    "media_entity_candidate": false,
+    "media_entity_assignment": false,
+    "local_source_hint": false,
+    "confirmed_assignment": false,
+    "tag_translation": false,
+    "media_tags": false
+  },
+  "artifact_lifecycle": {
+    "durable_production_code": [
+      "SourceConcept read-only service/routes/search integration/UI"
+    ],
+    "phase_scoped_operational_runner": [
+      "scripts/seed_phase45_sc2_e2e_fixture.py"
+    ],
+    "validation_code": [
+      "focused pytest",
+      "Playwright E2E"
+    ],
+    "public_report_handoff_roadmap_update": [
+      "SC2 report",
+      "current handoff",
+      "roadmap",
+      "test workflow"
+    ]
+  },
+  "next_step": "Open a normal PR, trigger @codex review, and stop. Do not start DOC1 or the Entity bridge."
+}
