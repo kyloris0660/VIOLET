@@ -27,6 +27,7 @@ from app.models import (  # noqa: E402
     Tag,
 )
 from app.services.source_metadata_registry_service import canonical_source_key  # noqa: E402
+from app.utils.cache import invalidate_source_concept_search_cache  # noqa: E402
 
 RUN_ID = "phase45-sc2-e2e-fixture"
 MARKER_TAG = "phase45_sc2_e2e_marker"
@@ -208,6 +209,7 @@ def _delete_existing_fixture(db) -> None:
     db.query(SourceConceptSignal).filter(SourceConceptSignal.created_by_run_id == RUN_ID).delete(synchronize_session=False)
     db.query(Media).filter(Media.hash.like(f"hash-{RUN_ID}-%")).delete(synchronize_session=False)
     db.commit()
+    invalidate_source_concept_search_cache()
 
 
 def main() -> int:
@@ -230,6 +232,7 @@ def main() -> int:
             aliases=["Review Only Character", "review_only_character"],
         )
         db.commit()
+        invalidate_source_concept_search_cache()
         print(
             json.dumps(
                 {

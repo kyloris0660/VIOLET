@@ -42,11 +42,21 @@ from app.models import (  # noqa: E402
 from app.routes import search as search_route  # noqa: E402
 from app.routes import source_assertions as source_assertions_route  # noqa: E402
 from app.routes import source_concepts as source_concepts_route  # noqa: E402
+from app.services import source_concept_resolver_service as resolver_service  # noqa: E402
+from app.services import source_concept_search_service as concept_search_service  # noqa: E402
+from app.services.source_concept_resolver_service import (  # noqa: E402
+    SourceConceptSignalDraft,
+    persist_source_concept_resolution,
+    resolve_source_concepts,
+)
 from app.services.source_concept_search_service import (  # noqa: E402
     list_media_source_concepts,
     preview_source_concept_promotion,
 )
 from app.services.source_metadata_registry_service import canonical_source_key  # noqa: E402
+from app.utils import cache as cache_module  # noqa: E402
+from app.utils.cache import invalidate_source_concept_search_cache  # noqa: E402
+from scripts import seed_phase45_sc2_e2e_fixture as sc2_seed  # noqa: E402
 
 
 AYAKA_JA = "\u795e\u91cc\u7dbe\u83ef"
@@ -114,6 +124,7 @@ def add_source_concept(
     medias: list[Media],
     *,
     display_name: str = "Kamisato Ayaka",
+    concept_key: str | None = None,
     aliases: list[str] | None = None,
     status: str = "active",
     provider: str = "pixiv",
@@ -122,7 +133,7 @@ def add_source_concept(
 ) -> SourceConcept:
     aliases = aliases or [display_name, "kamisato_ayaka", AYAKA_JA]
     concept = SourceConcept(
-        concept_key=f"character:{canonical_source_key(display_name)}:fixture",
+        concept_key=concept_key or f"character:{canonical_source_key(display_name)}:fixture",
         primary_display_name=display_name,
         concept_type_hint="character",
         status=status,
@@ -229,6 +240,59 @@ def add_source_concept(
     return concept
 
 
+class FakeRedisClient:
+    def __init__(self, store: dict[str, object]):
+        self.store = store
+
+    def scan_iter(self, pattern: str, count: int = 100):
+        prefix = pattern[:-1] if pattern.endswith("*") else pattern
+        yield from [key for key in list(self.store) if key.startswith(prefix)]
+
+    def delete(self, *keys: str):
+        for key in keys:
+            self.store.pop(key, None)
+
+
+class FakeRedisCache:
+    def __init__(self):
+        self._enabled = True
+        self.store: dict[str, object] = {}
+        self.client = FakeRedisClient(self.store)
+
+    def get(self, key: str):
+        return self.store.get(key)
+
+    def set(self, key: str, value: object, expire: int = 3600):
+        self.store[key] = value
+
+
+def resolver_signal(key: str, raw: str, *, media_id: int | None = None) -> SourceConceptSignalDraft:
+    canonical = canonical_source_key(raw)
+    return SourceConceptSignalDraft(
+        signal_key=key,
+        origin_type="source_searchable_name_assertion",
+        origin_table="fixture",
+        origin_id=key,
+        provider="fixture",
+        media_id=media_id,
+        source_metadata_record_id=None,
+        source_record_id=f"fixture:{key}",
+        raw_value=raw,
+        display_value=raw,
+        normalized_key=canonical,
+        canonical_key=canonical,
+        role_hint="character",
+        work_context_key=None,
+        parenthetical_base=None,
+        parenthetical_context=None,
+        source_kind="source_assertion",
+        trust_tier="strong",
+        confidence=0.9,
+        status="active",
+        evidence_payload={"safe": True},
+    )
+
+
 def truth_counts(db) -> dict[str, int]:
     return {
         "Entity": db.query(Entity).count(),
@@ -330,6 +394,7 @@ def test_media_source_concept_grouping_and_detail_endpoint_are_redacted(client, 
         db,
         [media],
         display_name="Safe Character",
+        concept_key="character:c:_users_kyloris_pictures_private.png:fixture",
         aliases=["Safe Character", r"C:\Users\kyloris\Pictures\private.png"],
         payload={
             "local_path": r"C:\Users\kyloris\Pictures\private.png",
@@ -343,15 +408,148 @@ def test_media_source_concept_grouping_and_detail_endpoint_are_redacted(client, 
     assert grouped["display_name"] == "Safe Character"
     assert grouped["is_entity_truth"] is False
     assert grouped["evidence_items"][0]["provider"] == "pixiv"
+    assert "concept_key" not in grouped
+    assert "concept_key_redacted" not in grouped
 
     detail = client.get(f"/api/source-concepts/{concept.id}")
     assert detail.status_code == 200
     text = json.dumps(detail.json(), ensure_ascii=False)
     assert r"C:\Users" not in text
     assert "private.png" not in text
+    assert "private_png" not in text
+    assert "c:_users_kyloris_pictures" not in text
+    assert "c_users_kyloris_pictures" not in text
     assert "secret-token" not in text
     assert "api_key" not in text
     assert "local_path" not in text
+    assert "concept_key" not in detail.json()
+
+    search_payload = client.get("/api/search", params={"q": "Safe Character"}).json()
+    search_text = json.dumps(search_payload, ensure_ascii=False)
+    assert "concept_key" not in search_text
+    assert "private.png" not in search_text
+    assert "private_png" not in search_text
+
+
+def test_canonicalized_filename_like_keys_are_omitted_from_public_payloads(client, db):
+    media = create_media(db, "canonical-key-media")
+    concept = add_source_concept(
+        db,
+        [media],
+        display_name="Public Alias",
+        concept_key="character:icloud_photos_original_private_png:fixture",
+        aliases=["Public Alias", "icloud_photos_original_private_png"],
+    )
+
+    responses = [
+        client.get(f"/api/source-concepts/{concept.id}").json(),
+        client.get(f"/api/source-concepts/media/{media.id}").json(),
+        client.get(f"/api/source-assertions/media/{media.id}").json(),
+        client.get("/api/search", params={"q": "Public Alias"}).json(),
+    ]
+    for payload in responses:
+        text = json.dumps(payload, ensure_ascii=False)
+        assert "concept_key" not in text
+        assert "icloud_photos_original_private_png" not in text
+        assert "private_png" not in text
+
+
+def test_search_cache_is_invalidated_after_source_concept_rows_change(client, db, monkeypatch):
+    fake_cache = FakeRedisCache()
+    monkeypatch.setattr(cache_module, "redis_cache", fake_cache)
+
+    before = client.get("/api/search", params={"q": "late_alias"})
+    assert before.status_code == 200
+    assert before.json()["total"] == 0
+    assert fake_cache.store
+
+    media = create_media(db, "late-cache-media")
+    add_source_concept(db, [media], display_name="Late Cache", aliases=["late_alias"])
+
+    stale = client.get("/api/search", params={"q": "late_alias"})
+    assert stale.json()["total"] == 0
+
+    invalidate_source_concept_search_cache()
+    updated = client.get("/api/search", params={"q": "late_alias"})
+    updated_payload = updated.json()
+    assert updated_payload["total"] == 1
+    assert result_ids(updated) == {media.id}
+    assert updated_payload["source_concept_expansions"]
+
+
+def test_source_concept_write_paths_invalidate_search_cache(db, monkeypatch):
+    resolver_calls = []
+    seed_calls = []
+    monkeypatch.setattr(
+        resolver_service,
+        "invalidate_source_concept_search_cache",
+        lambda: resolver_calls.append("search"),
+    )
+    monkeypatch.setattr(
+        sc2_seed,
+        "invalidate_source_concept_search_cache",
+        lambda: seed_calls.append("search"),
+    )
+
+    media = create_media(db, "resolver-cache")
+    result = resolve_source_concepts(
+        [resolver_signal("resolver-cache-signal", "Resolver Cache Alias", media_id=media.id)],
+        run_id="resolver-cache-test",
+    )
+    persistence = persist_source_concept_resolution(db, result, apply=True)
+    assert persistence["apply"] is True
+    assert resolver_calls == ["search"]
+
+    sc2_seed._delete_existing_fixture(db)
+    assert seed_calls == ["search"]
+
+
+def test_source_concept_filter_uses_all_matching_ids_beyond_display_cap(client, db):
+    shared_alias = "shared_alias"
+    total_active = concept_search_service.MAX_SEARCH_EXPANSIONS_PER_TERM * 3 + 5
+    concept_media_ids = set()
+    for idx in range(total_active):
+        media = create_media(db, f"shared-{idx}", [("solo", TagCategoryEnum.general)])
+        concept_media_ids.add(media.id)
+        add_source_concept(
+            db,
+            [media],
+            display_name=f"Shared Character {idx:02d}",
+            aliases=[shared_alias, f"shared_character_{idx:02d}"],
+        )
+    review_media = create_media(db, "shared-review", [("solo", TagCategoryEnum.general)])
+    add_source_concept(
+        db,
+        [review_media],
+        display_name="Shared Review",
+        aliases=[shared_alias, "shared_review"],
+        status="needs_review",
+        evidence_strength="weak",
+    )
+    keeper = create_media(db, "shared-keeper", [("solo", TagCategoryEnum.general)])
+
+    positive = client.get("/api/search", params={"q": shared_alias, "limit": 100})
+    positive_payload = positive.json()
+    assert positive_payload["total"] == total_active
+    assert result_ids(positive) == concept_media_ids
+    assert len(positive_payload["source_concept_expansions"]) == concept_search_service.MAX_SEARCH_EXPANSIONS_PER_TERM
+    assert review_media.id not in result_ids(positive)
+
+    opt_in = client.get(
+        "/api/search",
+        params={"q": shared_alias, "limit": 100, "include_source_needs_review": "1"},
+    )
+    assert opt_in.json()["total"] == total_active + 1
+    assert review_media.id in result_ids(opt_in)
+
+    negated = client.get("/api/search", params={"q": f"solo -{shared_alias}", "limit": 100})
+    assert result_ids(negated) == {keeper.id, review_media.id}
+
+    negated_opt_in = client.get(
+        "/api/search",
+        params={"q": f"solo -{shared_alias}", "limit": 100, "include_source_needs_review": "1"},
+    )
+    assert result_ids(negated_opt_in) == {keeper.id}
 
 
 def test_source_concept_read_paths_do_not_write_truth_tables(client, db):

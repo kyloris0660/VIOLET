@@ -42,6 +42,37 @@ MAX_SEARCH_EXPANSIONS_PER_TERM = 8
 MAX_ALIASES_PER_CONCEPT = 18
 MAX_EVIDENCE_ITEMS_PER_CONCEPT = 12
 REDACTED_TEXT = "[redacted source value]"
+MEDIA_EXTENSION_PARTS = (
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "gif",
+    "bmp",
+    "avif",
+    "mp4",
+    "webm",
+    "mov",
+    "zip",
+    "rar",
+    "7z",
+)
+PATH_MARKER_PARTS = (
+    "users",
+    "home",
+    "mnt",
+    "volumes",
+    "icloud",
+    "pictures",
+    "storage",
+    "documents",
+    "downloads",
+    "desktop",
+    "media",
+    "original",
+    "thumbnails",
+    "thumbs",
+)
 
 
 def _status_scope(include_needs_review: bool) -> tuple[str, ...]:
@@ -76,12 +107,33 @@ def _unsafe_text_reason(value: Any) -> str | None:
         return None
     if re.search(r"(?i)(api[_-]?key|secret|token|password|authorization)", text):
         return "secret_like"
+    if re.search(r"(?i)\bfile://", text):
+        return "file_url"
     if re.search(r"(?i)\b[a-z]:[\\/]", text) or text.startswith("\\\\"):
         return "local_path"
     if re.search(r"(?i)(^|[\\/])(users|home|mnt|volumes|icloud|pictures|storage)([\\/]|$)", text):
         return "local_path"
     if re.search(r"(?i)\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)$", text):
         return "filename_like"
+    canonical = re.sub(r"[^a-z0-9]+", "_", text.casefold()).strip("_")
+    if not canonical:
+        return None
+    parts = [part for part in canonical.split("_") if part]
+    part_set = set(parts)
+    has_extension_part = bool(part_set.intersection(MEDIA_EXTENSION_PARTS))
+    has_path_marker = bool(part_set.intersection(PATH_MARKER_PARTS))
+    has_windows_user_shape = any(
+        idx + 1 < len(parts) and len(part) == 1 and parts[idx + 1] == "users"
+        for idx, part in enumerate(parts)
+    )
+    has_posix_user_shape = any(
+        part in {"home", "users"} and idx + 1 < len(parts)
+        for idx, part in enumerate(parts)
+    )
+    if has_windows_user_shape or has_posix_user_shape:
+        return "canonical_path"
+    if has_path_marker and has_extension_part:
+        return "canonical_path"
     return None
 
 
@@ -151,6 +203,38 @@ def _query_search_index_rows(
     )
 
 
+def _query_search_index_concept_ids(
+    db: Session,
+    term: str,
+    *,
+    include_needs_review: bool = False,
+) -> list[int]:
+    keys = _search_keys_for_term(term)
+    if not keys:
+        return []
+
+    statuses = _status_scope(include_needs_review)
+    rows = (
+        db.query(SourceConcept.id)
+        .join(SourceConceptSearchIndex, SourceConcept.id == SourceConceptSearchIndex.concept_id)
+        .join(
+            SourceConceptAlias,
+            and_(
+                SourceConceptAlias.concept_id == SourceConceptSearchIndex.concept_id,
+                SourceConceptAlias.alias_key == SourceConceptSearchIndex.search_key,
+                SourceConceptAlias.alias_role == SourceConceptSearchIndex.alias_role,
+            ),
+        )
+        .filter(SourceConceptSearchIndex.search_key.in_(sorted(keys)))
+        .filter(SourceConceptSearchIndex.status.in_(statuses))
+        .filter(SourceConceptAlias.status.in_(statuses))
+        .filter(SourceConcept.status.in_(statuses))
+        .distinct()
+        .all()
+    )
+    return [int(row[0]) for row in rows]
+
+
 def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs_review: bool = False):
     ids = sorted({int(concept_id) for concept_id in concept_ids if concept_id is not None})
     if not ids:
@@ -190,8 +274,11 @@ def source_concept_media_condition_for_term(
 ):
     """Return a read-only Media condition for SourceConcept expansion."""
 
-    rows = _query_search_index_rows(db, term, include_needs_review=include_needs_review)
-    concept_ids = [concept.id for _search, concept, _alias in rows]
+    concept_ids = _query_search_index_concept_ids(
+        db,
+        term,
+        include_needs_review=include_needs_review,
+    )
     return _source_concept_media_condition(concept_ids, include_needs_review=include_needs_review)
 
 
@@ -292,7 +379,6 @@ def _concept_summary(
     )
 
     display_name = _safe_text(concept.primary_display_name, fallback=f"SourceConcept {concept.id}")
-    concept_key = _safe_text(concept.concept_key, fallback=f"redacted:{concept.id}")
     aliases = [_alias_payload(alias) for alias in alias_rows]
     search_label = next((alias["display_name"] for alias in aliases if alias.get("display_name") and not alias.get("redacted")), display_name)
     providers = _safe_list((row[0] for row in all_evidence_rows), limit=12)
@@ -311,8 +397,6 @@ def _concept_summary(
         "truth_writes_allowed": False,
         "concept_id": concept.id,
         "id": concept.id,
-        "concept_key": concept_key,
-        "concept_key_redacted": concept_key.startswith("redacted:"),
         "display_name": display_name,
         "primary_display_name": display_name,
         "concept_type_hint": _safe_text(concept.concept_type_hint, fallback="unknown"),

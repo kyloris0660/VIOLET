@@ -20,6 +20,7 @@ Implemented:
 - SourceConcept grouping payload in the existing media source-layer API;
 - media-detail SourceConcept cards with aliases, status, providers, origins, trust tiers, evidence counts, linked-media counts, safe evidence preview, and disabled promotion preview;
 - search-result SourceConcept expansion and `needs_review` hint explanations;
+- reviewer closeout fixes for canonicalized key redaction, SourceConcept search-cache invalidation, and uncapped search filtering semantics;
 - focused pytest and real Edge browser E2E for the SC2 user flows.
 
 Not implemented:
@@ -83,6 +84,8 @@ The detail/evidence payload intentionally returns safe summaries only:
 - safe evidence row summaries.
 
 Unsafe/path-like strings, filenames, API keys, secrets, and private raw payload fields are redacted or omitted.
+Raw `SourceConcept.concept_key` is not returned by the user-facing SourceConcept APIs, media source-layer payload, search expansion payload, or evidence preview.
+Canonicalized path-like and filename-like values are also treated as unsafe, even when path separators were removed before persistence.
 
 ## Validation
 
@@ -92,14 +95,16 @@ Static and focused checks run during implementation:
 & "$PY" -m py_compile backend/app/services/source_concept_search_service.py backend/app/routes/source_concepts.py backend/app/services/source_assertion_search_service.py backend/app/routes/search.py backend/app/main.py scripts/seed_phase45_sc2_e2e_fixture.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py
 & "$PY" -m pytest tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v
 & "$PY" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v
+& "$PY" -m pytest tests/test_phase45_sc1_source_concept_resolver.py -v
 python -m json.tool frontend/static/locales/en.json
 python -m json.tool frontend/static/locales/zh-cn.json
 ```
 
 Observed results:
 
-- `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `7 passed`.
-- `tests/test_phase44p2r_f6_source_layer_search.py` + `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `25 passed`.
+- `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `11 passed`.
+- `tests/test_phase44p2r_f6_source_layer_search.py` + `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `29 passed`.
+- `tests/test_phase45_sc1_source_concept_resolver.py`: `47 passed`.
 - touched Python files compiled successfully.
 - touched locale JSON files parsed successfully.
 
@@ -133,6 +138,7 @@ Observed results:
 - [x] Python files compiled
 - [x] Focused SC2 pytest passed
 - [x] F6 source-layer regression pytest passed
+- [x] SC1 resolver focused pytest passed
 - [x] Locale JSON parsed
 - [x] Controlled test server identity check passed
 - [x] Playwright Edge E2E passed
