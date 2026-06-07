@@ -138,6 +138,7 @@ def parse_search_query(query_string: str) -> Dict[str, Any]:
     matches = TOKEN_PATTERN.findall(query_string)
 
     for negate, key, value in matches:
+        was_quoted = len(value) >= 2 and value.startswith('"') and value.endswith('"')
         value = value.strip('"')
         is_negated = bool(negate)
         
@@ -148,7 +149,7 @@ def parse_search_query(query_string: str) -> Dict[str, Any]:
             result['meta'][key].append({'value': value, 'negated': is_negated})
         else:
             resolved = resolve_zh_alias(value)
-            if '*' in resolved or '?' in resolved:
+            if not was_quoted and ('*' in resolved or '?' in resolved):
                 if is_negated:
                     result['tags']['wildcards'].append(('exclude', resolved))
                 else:

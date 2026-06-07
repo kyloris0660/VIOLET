@@ -116,8 +116,9 @@ def _add_source_concept(
 
     first_signal = None
     for idx, media in enumerate(medias, start=1):
+        display_key = canonical_source_key(display_name)
         signal = SourceConceptSignal(
-            signal_key=f"{RUN_ID}:{status}:signal:{media.id}:{idx}",
+            signal_key=f"{RUN_ID}:{status}:{display_key}:signal:{media.id}:{idx}",
             origin_type="source_searchable_name_assertion",
             origin_table="blombooru_source_searchable_name_assertions",
             origin_id=f"{RUN_ID}:{media.id}:{idx}",
@@ -223,6 +224,12 @@ def main() -> int:
         concept_only = _create_media(db, "sc2-e2e-ayaka-concept-only", [])
         tag_only = _create_media(db, "sc2-e2e-ayaka-tag-only", [MARKER_TAG, "genshin_impact"])
         concept = _add_source_concept(db, [both, concept_only])
+        metachar_concept = _add_source_concept(
+            db,
+            [both],
+            display_name="Re:Zero",
+            aliases=["Re:Zero"],
+        )
         review_media = _create_media(db, "sc2-e2e-review-only", [])
         review_concept = _add_source_concept(
             db,
@@ -247,6 +254,7 @@ def main() -> int:
                     },
                     "concept_ids": {
                         "active": concept.id,
+                        "metachar": metachar_concept.id,
                         "needs_review": review_concept.id,
                     },
                 },

@@ -20,7 +20,7 @@ Implemented:
 - SourceConcept grouping payload in the existing media source-layer API;
 - media-detail SourceConcept cards with aliases, status, providers, origins, trust tiers, evidence counts, linked-media counts, safe evidence preview, and disabled promotion preview;
 - search-result SourceConcept expansion and `needs_review` hint explanations;
-- reviewer closeout fixes for canonicalized key redaction, SourceConcept search-cache invalidation, and uncapped search filtering semantics;
+- reviewer closeout fixes for public concept-key omission, canonicalized path/filename alias redaction, SourceConcept search-cache invalidation, uncapped search filtering semantics, visible-status detail gating, and parser-safe `q=` chip quoting;
 - focused pytest and real Edge browser E2E for the SC2 user flows.
 
 Not implemented:
@@ -63,7 +63,8 @@ Search expansion is term-bounded:
 - active SourceConcept aliases can expand ordinary positive search terms as an OR inside that term;
 - multiple terms keep the existing AND behavior;
 - negative terms remain bounded by applying the same term condition under negation;
-- quoted terms are preserved as one exact alias token by the existing parser behavior;
+- quoted terms are preserved as one exact alias token, including wildcard-like aliases that are quoted by SourceConcept chips;
+- SourceConcept chip URLs quote parser metacharacters such as `:`, leading `-`, wildcard characters, brackets, parentheses, and whitespace;
 - `needs_review` concepts do not expand by default and surface only as hints unless `include_source_needs_review=1` is explicitly supplied.
 
 ### UI
@@ -77,7 +78,7 @@ Search expansion is term-bounded:
 
 The detail/evidence payload intentionally returns safe summaries only:
 
-- concept id/key/display name/status;
+- concept id, display name, and status;
 - aliases after redaction checks;
 - providers, signal origins, trust tiers;
 - evidence and linked-media counts;
@@ -85,7 +86,9 @@ The detail/evidence payload intentionally returns safe summaries only:
 
 Unsafe/path-like strings, filenames, API keys, secrets, and private raw payload fields are redacted or omitted.
 Raw `SourceConcept.concept_key` is not returned by the user-facing SourceConcept APIs, media source-layer payload, search expansion payload, or evidence preview.
-Canonicalized path-like and filename-like values are also treated as unsafe, even when path separators were removed before persistence.
+Canonicalized path-like and filename-like values are also treated as unsafe, even when path separators were removed before persistence. This includes filename-derived aliases/search keys such as `vacation_2024_jpg`, `img_1234_jpeg`, `private_png`, `c_users_kyloris_pictures_private_png`, and `users_kyloris_pictures_private_png`.
+
+User-facing detail and promotion-preview lookups are status-gated. `active` and `needs_review` SourceConcepts are visible; `rejected`, `ambiguous`, and `superseded` concepts return safe not-found responses.
 
 ## Validation
 
@@ -100,10 +103,10 @@ python -m json.tool frontend/static/locales/en.json
 python -m json.tool frontend/static/locales/zh-cn.json
 ```
 
-Observed results:
+Observed results after reviewer closeout fixes:
 
-- `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `11 passed`.
-- `tests/test_phase44p2r_f6_source_layer_search.py` + `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `29 passed`.
+- `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `15 passed`.
+- `tests/test_phase44p2r_f6_source_layer_search.py` + `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `33 passed`.
 - `tests/test_phase45_sc1_source_concept_resolver.py`: `47 passed`.
 - touched Python files compiled successfully.
 - touched locale JSON files parsed successfully.
@@ -112,7 +115,7 @@ Real browser validation:
 
 ```powershell
 & "$PY" scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree
-& "$PY" scripts/check_test_server_identity.py --base-url http://127.0.0.1:8012 --expected-env test --expected-db blombooru_test --expected-code-root <repo> --expected-git-sha cba0275 --expected-branch codex/phase45-sc2-source-concept-search-evidence-ui --expected-python <repo-venv-python> --expected-storage-root <dedicated-test-storage> --admin-username admin --admin-password admin123
+& "$PY" scripts/check_test_server_identity.py --base-url http://127.0.0.1:8012 --expected-env test --expected-db blombooru_test --expected-code-root <repo> --expected-git-sha f2fa8e5 --expected-branch codex/phase45-sc2-source-concept-search-evidence-ui --expected-python <repo-venv-python> --expected-storage-root <dedicated-test-storage> --admin-username admin --admin-password admin123
 & "$PY" scripts/seed_phase45_sc2_e2e_fixture.py
 npx playwright test tests/e2e/source-concept-search-evidence.spec.ts --project=edge
 ```
@@ -121,11 +124,13 @@ Observed results:
 
 - active server audit before start: `occupied_count=0`, `violet_server_count=0`, `unknown_listener_count=0`.
 - controlled test server: port `8012`, `VIOLET_ENV=test`, `POSTGRES_DB=blombooru_test`, dedicated test storage.
+- server process tree: parent PID `94456`, reloader/listener PID `102132`, worker PID `105776` after reload.
 - identity preflight: `OK: all checks passed`.
-- E2E fixture seed: `status=ready`, active concept and needs-review concept created in test DB only.
+- E2E fixture seed: `status=ready`, active concept, metacharacter concept, and needs-review concept created in test DB only.
 - Playwright Edge SC2 E2E: `4 passed`.
 - In-app browser validation:
   - media detail SourceConcept section visible;
+  - `Re:Zero` SourceConcept chip clicked through quoted global `q=` search;
   - evidence preview present;
   - disabled promotion preview button present;
   - mixed normal tag + SourceConcept search showed expansion explanation and one gallery result for the test fixture;
@@ -145,6 +150,9 @@ Observed results:
 - [x] Real in-app browser validation passed
 - [x] No truth-path write tests passed
 - [x] Unsafe evidence/path/API-key redaction tests passed
+- [x] Filename-derived alias/search-key redaction tests passed
+- [x] Detail/promotion visible-status gate tests passed
+- [x] Parser-metacharacter `q=` chip quoting tests passed
 - [ ] Full non-E2E suite not run; not required for this bounded UI/search phase
 - [ ] Broad/manual development DB validation not run; SC2 automated validation used test DB fixtures only
 
@@ -152,7 +160,14 @@ Observed results:
 
 Local pre-review and same-class self-audit found and fixed one PostgreSQL compatibility issue: selecting distinct full `SourceConcept` ORM rows pulled JSON columns into `DISTINCT`, which fails on PostgreSQL. The service now distincts concept IDs first and then loads concept rows by ID.
 
-Latest reviewer status should be checked on the SC2 PR head after PR creation.
+Current reviewer closeout status:
+
+- fixed P2 canonicalized filename alias/search-key redaction without requiring path markers;
+- fixed P2 direct detail/promotion-preview visibility gate for hidden SourceConcept statuses;
+- fixed P2 SourceConcept chip/search URL quoting for parser metacharacters;
+- self-checked the prior search-cache invalidation thread: resolver persistence calls `invalidate_source_concept_search_cache()` after commit, SC2 fixture seed calls it after cleanup and seed commits, and focused tests cover stale cached `q=<alias>` responses plus both write paths.
+
+Latest reviewer status should be checked on the SC2 PR head after this closeout commit.
 
 ## Safety Confirmation
 

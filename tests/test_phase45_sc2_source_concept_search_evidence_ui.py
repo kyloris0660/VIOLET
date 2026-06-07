@@ -53,6 +53,7 @@ from app.services.source_concept_search_service import (  # noqa: E402
     list_media_source_concepts,
     preview_source_concept_promotion,
 )
+from app.utils.search_parser import parse_search_query  # noqa: E402
 from app.services.source_metadata_registry_service import canonical_source_key  # noqa: E402
 from app.utils import cache as cache_module  # noqa: E402
 from app.utils.cache import invalidate_source_concept_search_cache  # noqa: E402
@@ -310,6 +311,10 @@ def result_ids(response) -> set[int]:
     return {item["id"] for item in response.json()["items"]}
 
 
+def payload_text(payload: object) -> str:
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def test_source_concept_alias_expands_search_and_reports_reason(client, db):
     linked_one = create_media(db, "ayaka-one")
     linked_two = create_media(db, "ayaka-two")
@@ -454,6 +459,63 @@ def test_canonicalized_filename_like_keys_are_omitted_from_public_payloads(clien
         assert "private_png" not in text
 
 
+def test_canonicalized_filename_like_aliases_are_redacted_without_path_markers(client, db):
+    media = create_media(db, "canonical-alias-media")
+    unsafe_aliases = [
+        "vacation_2024_jpg",
+        "img_1234_jpeg",
+        "private_png",
+        "c_users_kyloris_pictures_private_png",
+        "users_kyloris_pictures_private_png",
+    ]
+    safe_aliases = ["Safe Alias", "kamisato_ayaka", "Re:Zero", "Mona", AYAKA_JA]
+    concept = add_source_concept(
+        db,
+        [media],
+        display_name="Safe Alias",
+        aliases=safe_aliases + unsafe_aliases,
+    )
+
+    responses = [
+        client.get(f"/api/source-concepts/{concept.id}").json(),
+        client.get(f"/api/source-concepts/media/{media.id}").json(),
+        client.get(f"/api/source-assertions/media/{media.id}").json(),
+        client.get("/api/search", params={"q": "Safe Alias"}).json(),
+        client.get(f"/api/source-concepts/{concept.id}/promotion-preview").json(),
+    ]
+    for payload in responses:
+        text = payload_text(payload)
+        for unsafe in unsafe_aliases:
+            assert unsafe not in text
+        assert "kyloris" not in text
+        assert "pictures_private_png" not in text
+        assert "concept_key" not in text
+
+    detail = responses[0]
+    detail_text = payload_text(detail)
+    for safe in safe_aliases:
+        assert safe in detail_text
+    assert detail["display_name"] == "Safe Alias"
+
+
+def test_filename_like_primary_display_falls_back_to_opaque_concept_label(client, db):
+    media = create_media(db, "filename-display-media")
+    concept = add_source_concept(
+        db,
+        [media],
+        display_name="vacation_2024_jpg",
+        aliases=["vacation_2024_jpg"],
+    )
+
+    detail = client.get(f"/api/source-concepts/{concept.id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    text = payload_text(payload)
+    assert payload["concept_id"] == concept.id
+    assert payload["display_name"] == f"SourceConcept {concept.id}"
+    assert "vacation_2024_jpg" not in text
+
+
 def test_search_cache_is_invalidated_after_source_concept_rows_change(client, db, monkeypatch):
     fake_cache = FakeRedisCache()
     monkeypatch.setattr(cache_module, "redis_cache", fake_cache)
@@ -475,6 +537,78 @@ def test_search_cache_is_invalidated_after_source_concept_rows_change(client, db
     assert updated_payload["total"] == 1
     assert result_ids(updated) == {media.id}
     assert updated_payload["source_concept_expansions"]
+
+
+def test_detail_and_promotion_preview_visibility_gate_by_status(client, db):
+    active_media = create_media(db, "visible-active")
+    review_media = create_media(db, "visible-review")
+    active = add_source_concept(db, [active_media], display_name="Visible Active")
+    review = add_source_concept(
+        db,
+        [review_media],
+        display_name="Visible Review",
+        aliases=["visible_review"],
+        status="needs_review",
+        evidence_strength="weak",
+    )
+
+    assert client.get(f"/api/source-concepts/{active.id}").status_code == 200
+    assert client.get(f"/api/source-concepts/{review.id}").status_code == 200
+    assert client.get(f"/api/source-concepts/{active.id}/promotion-preview").status_code == 200
+    assert client.get(f"/api/source-concepts/{review.id}/promotion-preview").status_code == 200
+
+    hidden_statuses = ["rejected", "ambiguous", "superseded"]
+    for status in hidden_statuses:
+        media = create_media(db, f"hidden-{status}")
+        concept = add_source_concept(
+            db,
+            [media],
+            display_name=f"Hidden {status}",
+            aliases=[f"hidden_{status}"],
+            status=status,
+            evidence_strength="weak",
+        )
+        assert client.get(f"/api/source-concepts/{concept.id}").status_code == 404
+        assert client.get(f"/api/source-concepts/{concept.id}/promotion-preview").status_code == 404
+        assert preview_source_concept_promotion(db, concept.id) is None
+
+
+def test_source_concept_search_urls_quote_parser_metacharacters(client, db):
+    cases = [
+        ("Re:Zero", '"Re:Zero"'),
+        ("-name", '"-name"'),
+        ("wild*alias", '"wild*alias"'),
+        ("Kamisato Ayaka", '"Kamisato Ayaka"'),
+        ("kamisato_ayaka", "kamisato_ayaka"),
+    ]
+    for idx, (alias, expected_token) in enumerate(cases):
+        media = create_media(db, f"quote-{idx}")
+        concept = add_source_concept(
+            db,
+            [media],
+            display_name=alias,
+            concept_key=f"character:quote_token_{idx}:fixture",
+            aliases=[alias],
+        )
+        detail = client.get(f"/api/source-concepts/{concept.id}")
+        assert detail.status_code == 200
+        payload = detail.json()
+        assert payload["search_value"] == alias
+
+        from urllib.parse import parse_qs, urlparse
+
+        q_token = parse_qs(urlparse(payload["search_url"]).query)["q"][0]
+        assert q_token == expected_token
+        parsed = parse_search_query(q_token)
+        assert parsed["tags"]["include"] == [alias]
+        assert parsed["tags"]["exclude"] == []
+        assert parsed["tags"]["wildcards"] == []
+
+        response = client.get("/api/search", params={"q": q_token})
+        ids = result_ids(response)
+        assert media.id in ids
+        if alias != "kamisato_ayaka":
+            assert ids == {media.id}
 
 
 def test_source_concept_write_paths_invalidate_search_cache(db, monkeypatch):

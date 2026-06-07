@@ -261,9 +261,11 @@ npx playwright test tests/e2e/source-concept-search-evidence.spec.ts --project=e
 Required SC2 validation shape:
 
 - API/search tests for SourceConcept alias expansion through the search-preview index, including exact alias examples, normal tag search preservation, mixed normal tag + SourceConcept queries, negative/exact-query boundaries, and conservative `needs_review` behavior.
-- Read-only SourceConcept detail/evidence endpoint tests covering aliases, providers, signal origins, trust tiers, concept status, evidence count, redaction, no local paths/secrets, and no public exposure of raw or canonicalized path-derived `concept_key` values.
+- Read-only SourceConcept detail/evidence endpoint tests covering aliases, providers, signal origins, trust tiers, concept status, evidence count, redaction, no local paths/secrets, no public exposure of raw or canonicalized path-derived `concept_key` values, and no filename-derived alias/search-key leakage such as `vacation_2024_jpg`, `img_1234_jpeg`, or `private_png`.
+- Detail and promotion-preview direct-ID lookups must be gated to visible statuses: `active` and intentionally visible `needs_review` return data, while `rejected`, `ambiguous`, and `superseded` return safe not-found responses.
 - Cache-invalidation tests covering SourceConcept resolver/fixture writes and stale cached `q=<alias>` search responses.
 - Search filtering tests proving display caps do not cap the actual SourceConcept ids used for media filtering.
+- SourceConcept `q=` chip/search URL tests must quote parser metacharacters such as `:`, leading `-`, wildcard characters, brackets, parentheses, and whitespace while leaving safe ordinary tags such as `kamisato_ayaka` unquoted.
 - No-truth-write assertions proving SC2 does not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignments, `TagTranslation`, or `media_tags`.
 - Playwright/browser E2E on a controlled test server for media-detail SourceConcept grouping, concept/alias chip click through global `q=` search, search expansion explanation, mixed normal tag + SourceConcept search, evidence preview expansion, no console errors, and no truth writes.
 - F6 behavior must remain intact: user-facing chips default to global `q=` search, while scoped source filters remain advanced/debug routes.

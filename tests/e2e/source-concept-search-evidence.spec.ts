@@ -13,7 +13,7 @@ type SourceConceptFixture = {
 };
 
 function expectedQToken(label: string): string {
-  return /\s/.test(label) ? `"${label.replace(/"/g, '')}"` : label;
+  return /^-|[\s:"*?\[\]\(\)]/.test(label) ? `"${label.replace(/"/g, '')}"` : label;
 }
 
 async function collectConsoleErrors(page: Page, fn: () => Promise<void>): Promise<string[]> {
@@ -75,16 +75,17 @@ test.describe('SC2 SourceConcept search expansion and evidence UI', () => {
 
       const sourceLayer = page.locator('#source-layer-container');
       await expect(sourceLayer).toBeVisible();
-      await expect(sourceLayer.locator('.source-concept-card')).toBeVisible();
-      await expect(sourceLayer.locator('.source-concept-chip')).toBeVisible();
-      await expect(sourceLayer.locator('.source-concept-status')).toContainText(/active|source-layer|unconfirmed/i);
-      await expect(sourceLayer.locator('.source-concept-promotion-preview button')).toBeDisabled();
+      await expect(sourceLayer.locator('.source-concept-card').first()).toBeVisible();
+      await expect(sourceLayer.locator('.source-concept-chip').first()).toBeVisible();
+      await expect(sourceLayer.locator('.source-concept-status').first()).toContainText(/active|source-layer|unconfirmed/i);
+      await expect(sourceLayer.locator('.source-concept-promotion-preview button').first()).toBeDisabled();
 
-      await sourceLayer.locator('.source-concept-evidence summary').click();
+      await sourceLayer.locator('.source-concept-evidence summary').first().click();
       await expect(sourceLayer.locator('.source-concept-evidence-row').first()).toBeVisible();
       await expect(sourceLayer).not.toContainText(/C:\\|Users\\|api_key|secret-token|private\.png/i);
 
-      const chip = sourceLayer.locator('.source-concept-chip').first();
+      const chip = sourceLayer.locator('.source-concept-chip[data-search-value="Re:Zero"]').first();
+      await expect(chip).toBeVisible();
       const searchValue = (await chip.getAttribute('data-search-value')) || (await chip.innerText()).trim();
       await chip.click();
       await page.waitForURL(/q=/);

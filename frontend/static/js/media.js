@@ -773,7 +773,7 @@ class MediaViewer extends MediaViewerBase {
     formatGlobalSearchToken(value) {
         const text = String(value || '').trim();
         if (!text) return '';
-        if (/\s/.test(text)) {
+        if (/^-|[\s:"*?\[\]\(\)]/.test(text)) {
             return `"${text.replace(/"/g, '')}"`;
         }
         return text;

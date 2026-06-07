@@ -27,6 +27,7 @@ from .source_metadata_registry_service import canonical_source_key, normalize_so
 
 ACTIVE_SOURCE_CONCEPT_STATUSES = ("active",)
 REVIEW_SOURCE_CONCEPT_STATUSES = ("needs_review",)
+VISIBLE_SOURCE_CONCEPT_STATUSES = ACTIVE_SOURCE_CONCEPT_STATUSES + REVIEW_SOURCE_CONCEPT_STATUSES
 FORBIDDEN_TRUTH_PATHS = (
     "Entity",
     "EntityAlias",
@@ -73,6 +74,7 @@ PATH_MARKER_PARTS = (
     "thumbnails",
     "thumbs",
 )
+SEARCH_TOKEN_META_RE = re.compile(r'[\s:"*?\[\]\(\)]|^-')
 
 
 def _status_scope(include_needs_review: bool) -> tuple[str, ...]:
@@ -121,6 +123,7 @@ def _unsafe_text_reason(value: Any) -> str | None:
     parts = [part for part in canonical.split("_") if part]
     part_set = set(parts)
     has_extension_part = bool(part_set.intersection(MEDIA_EXTENSION_PARTS))
+    has_trailing_extension_part = len(parts) >= 2 and parts[-1] in MEDIA_EXTENSION_PARTS
     has_path_marker = bool(part_set.intersection(PATH_MARKER_PARTS))
     has_windows_user_shape = any(
         idx + 1 < len(parts) and len(part) == 1 and parts[idx + 1] == "users"
@@ -134,6 +137,8 @@ def _unsafe_text_reason(value: Any) -> str | None:
         return "canonical_path"
     if has_path_marker and has_extension_part:
         return "canonical_path"
+    if has_trailing_extension_part:
+        return "canonical_filename"
     return None
 
 
@@ -306,7 +311,11 @@ def _alias_payload(alias: SourceConceptAlias) -> dict[str, Any]:
         "alias_role": _safe_text(alias.alias_role, fallback="unknown"),
         "status": alias.status,
         "confidence": alias.confidence,
-        "redacted": bool(_unsafe_text_reason(alias.display_name) or _unsafe_text_reason(alias.alias_value)),
+        "redacted": bool(
+            _unsafe_text_reason(alias.display_name)
+            or _unsafe_text_reason(alias.alias_value)
+            or _unsafe_text_reason(alias.alias_key)
+        ),
     }
 
 
@@ -443,13 +452,22 @@ def _build_search_url(value: str | None, *, include_needs_review: bool = False) 
     text = normalize_source_text(value)
     if not text:
         return "/"
-    token = f'"{text.replace(chr(34), "")}"' if re.search(r"\s", text) else text
+    token = _format_search_query_token(text)
     from urllib.parse import urlencode
 
     params = {"q": token}
     if include_needs_review:
         params["include_source_needs_review"] = "1"
     return "/?" + urlencode(params)
+
+
+def _format_search_query_token(value: str | None) -> str:
+    text = normalize_source_text(value)
+    if not text:
+        return ""
+    if SEARCH_TOKEN_META_RE.search(text):
+        return f'"{text.replace(chr(34), "")}"'
+    return text
 
 
 def resolve_source_concept_query_expansions(
@@ -564,7 +582,12 @@ def list_media_source_concepts(db: Session, media_id: int) -> list[dict[str, Any
 
 
 def get_source_concept_detail(db: Session, concept_id: int) -> dict[str, Any] | None:
-    concept = db.query(SourceConcept).filter(SourceConcept.id == concept_id).one_or_none()
+    concept = (
+        db.query(SourceConcept)
+        .filter(SourceConcept.id == concept_id)
+        .filter(SourceConcept.status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES))
+        .one_or_none()
+    )
     if concept is None:
         return None
     return _concept_summary(db, concept, include_evidence_items=True)
@@ -576,7 +599,12 @@ def preview_source_concept_promotion(
     *,
     limit: int = 50,
 ) -> dict[str, Any] | None:
-    concept = db.query(SourceConcept).filter(SourceConcept.id == concept_id).one_or_none()
+    concept = (
+        db.query(SourceConcept)
+        .filter(SourceConcept.id == concept_id)
+        .filter(SourceConcept.status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES))
+        .one_or_none()
+    )
     if concept is None:
         return None
 
