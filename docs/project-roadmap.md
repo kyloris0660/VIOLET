@@ -785,7 +785,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Phase 4.5-SC1 / PR #96 is complete. It added the missing source-layer soft linker between raw source signals and future Entity promotion. It aggregates F7a candidates, ordinary media tags, AI/model character tags, `SourceSearchableNameAssertion`, `SourceNameObservation`, `SourceTagObservation`, `SourceNameAliasCandidate`, provider structured fields/cache context, and future provider/manual signals into unconfirmed `SourceConcept` rows with aliases, evidence, links, run ledger, and search-preview rows.
 - Phase 4.5-SC1 did not run providers, gallery-dl, Pixiv/SauceNAO/Google enrichment, tag localization batches, background translation, source enrichment, broad scans, imports, image uploads, full search/UI integration, or Entity promotion. Bounded text-only LLM pair adjudication was allowed only when explicitly enabled for resolver validation, capped by call/budget settings, cache-backed, primary-provider-only, and recorded in the validation pack.
 - Phase 4.5-SC1 did not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, `TagTranslation`, confirmed assignments, or `media_tags`. Manual promotion remains preview/design/disabled until a later explicit Entity bridge phase.
-- Phase 4.5-SC2 is planned as the next feature phase. Its scope is SourceConcept search expansion, media-detail grouping, evidence preview, and manual-promotion preview only. It must preserve normal tag search, preserve F6 user-facing chip behavior through global `q=` search, keep scoped source filters advanced/debug-only, and remain read-only over Entity truth paths.
+- Phase 4.5-SC2 implementation is prepared on branch `codex/phase45-sc2-source-concept-search-evidence-ui`. It adds read-only SourceConcept alias expansion through `SourceConceptSearchIndex`, media-detail SourceConcept grouping/evidence UI, search expansion explanation, conservative `needs_review` default behavior, and disabled/no-op manual-promotion preview. It preserves normal tag search, preserves F6 user-facing chip behavior through global `q=` search, keeps scoped source filters advanced/debug-only, and remains read-only over Entity truth paths.
 - Phase 4.5-DOC1 should happen after SC2, not inside SC2 implementation. It should consolidate README / AGENTS / current handoff / roadmap / test-workflow guidance, link to reports instead of copying long rules, and identify hard safety rules that should move into code, tests, DB guards, validation runners, or explicit runtime assertions.
 
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
@@ -801,10 +801,10 @@ Fixed crash during scan import when files with certain Unicode characters in the
 
 ## Upcoming Phases
 
-Current near-term options after Phase 4.5-SC1:
+Current near-term options after Phase 4.5-SC2 implementation:
 
-1. Start Phase 4.5-SC2 only after accepting the P0 plan. SC2 should implement search expansion through SourceConcepts, media-detail concept grouping/chips, evidence preview, and disabled/manual-promotion preview without turning SourceConcept into confirmed Entity truth.
-2. SC2 acceptance should include API/search tests and Playwright/browser E2E for alias search expansion, mixed normal tag + SourceConcept queries, media-detail SourceConcept evidence UI, evidence preview expansion, no console errors, and no truth-path writes.
+1. Review Phase 4.5-SC2 implementation for transparent search expansion, media-detail SourceConcept evidence UI, conservative `needs_review` behavior, disabled promotion preview, no unsafe evidence exposure, and no truth-path writes.
+2. If accepted, merge SC2 manually through GitHub. Agents must not merge the PR or push `main`.
 3. A later Entity bridge phase must explicitly design preview, user confirmation, audit trail, rollback/supersede, and write guards before creating `Entity`, aliases, candidates, assignments, `LocalSourceHint`, or `media_tags` relations.
 4. Do not merge PR #86 as the durable Pixiv metadata route. Public-page preview probing is diagnostic/fallback only, not the source of reliable Pixiv tags/artist/page metadata.
 5. Any new provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment/localization run after SC1 requires a separate approved run policy and must not be smuggled into resolver validation. Future broad LLM extraction/classification or localization runs also need separate approval; SC1's approved LLM scope is limited to bounded text-only pair adjudication.

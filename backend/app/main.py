@@ -18,7 +18,7 @@ from .database import get_db, init_db, init_engine
 from .models import Media
 from .routes import (admin, ai_tagger, albums, booru_config, booru_import,
                      danbooru, media, search, sharing, source_assertions,
-                     system, tag_implications, tags)
+                     source_concepts, system, tag_implications, tags)
 from .translations import language_registry, translation_helper
 from .utils.logger import logger
 
@@ -193,6 +193,7 @@ app.include_router(media.router)
 app.include_router(tags.router)
 app.include_router(search.router)
 app.include_router(source_assertions.router)
+app.include_router(source_concepts.router)
 app.include_router(sharing.router)
 app.include_router(albums.router)
 app.include_router(ai_tagger.router)

@@ -15,6 +15,10 @@ from ..services.source_assertion_search_service import (
     has_source_layer_filters,
     resolve_source_filter_labels,
 )
+from ..services.source_concept_search_service import (
+    resolve_source_concept_needs_review_hints,
+    resolve_source_concept_query_expansions,
+)
 from ..utils.cache import cache_response
 from ..utils.media_helpers import VALID_CONTENT_CLASSES, apply_content_class_filter
 from ..utils.search_parser import parse_search_query
@@ -77,6 +81,14 @@ async def search_media(
 
     query = db.query(Media).options(selectinload(Media.tags))
     parsed = parse_search_query(q)
+    source_concept_expansions = resolve_source_concept_query_expansions(
+        db,
+        parsed,
+        include_needs_review=include_source_needs_review,
+    )
+    source_concept_review_hints = []
+    if not include_source_needs_review:
+        source_concept_review_hints = resolve_source_concept_needs_review_hints(db, parsed)
     
     if rating and rating != "explicit":
         rating_value = "safe" if rating == "safe" else "safe,questionable"
@@ -119,6 +131,8 @@ async def search_media(
         "source_layer": "unconfirmed_source_assertion",
         "source_assertion_filters": source_assertion or [],
         "source_tag_filters": source_tag or [],
+        "source_concept_expansions": source_concept_expansions,
+        "source_concept_review_hints": source_concept_review_hints,
     }
     if has_source_layer_filters(source_assertion, source_tag):
         result["source_filters"] = resolve_source_filter_labels(

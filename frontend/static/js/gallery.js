@@ -151,13 +151,22 @@ class Gallery extends BaseGallery {
         return terms;
     }
 
+    compactList(values, fallback = '-') {
+        const clean = (values || []).filter(Boolean).map(value => String(value));
+        if (!clean.length) return fallback;
+        const visible = clean.slice(0, 4).join(', ');
+        return clean.length > 4 ? `${visible} +${clean.length - 4}` : visible;
+    }
+
     renderSourceSearchSummary(data, combinedQuery, sourceAssertions, sourceTags, includeSourceNeedsReview = false) {
         const panel = document.getElementById('source-search-summary');
         if (!panel) return;
 
         const normalTags = this.parseQueryChipTokens(combinedQuery || '');
         const sourceFilters = data?.source_filters || { source_assertions: [], source_tags: [] };
-        const hasFilters = normalTags.length || sourceAssertions.length || sourceTags.length;
+        const conceptExpansions = data?.source_concept_expansions || [];
+        const conceptReviewHints = data?.source_concept_review_hints || [];
+        const hasFilters = normalTags.length || sourceAssertions.length || sourceTags.length || conceptExpansions.length || conceptReviewHints.length;
 
         if (!hasFilters) {
             panel.classList.add('hidden');
@@ -222,6 +231,55 @@ class Gallery extends BaseGallery {
 
         const title = window.i18n.t('media.source_layer.active_search_title');
         const note = window.i18n.t('media.source_layer.active_search_note');
+        const sourceConceptLabel = window.i18n.t('media.source_layer.source_concepts');
+        const expansionLabel = window.i18n.t('media.source_layer.search_expansion_label');
+        const reviewHintLabel = window.i18n.t('media.source_layer.needs_review_hint');
+        const unconfirmed = window.i18n.t('media.source_layer.source_concept_unconfirmed');
+        const aliasLabel = window.i18n.t('media.source_layer.matched_aliases');
+        const providerLabel = window.i18n.t('media.source_layer.providers');
+        const evidenceLabel = window.i18n.t('media.source_layer.evidence_count');
+
+        const expansionHtml = conceptExpansions.length ? `
+            <div class="source-concept-expansion-list">
+                <div class="source-layer-eyebrow">${this.escapeHtml(expansionLabel === 'media.source_layer.search_expansion_label' ? 'SourceConcept expansion' : expansionLabel)}</div>
+                ${conceptExpansions.map(concept => {
+                    const matchedAliases = (concept.matched_aliases || []).map(alias => alias.display_name || alias.alias_value || alias.search_key).filter(Boolean);
+                    const status = concept.status || 'unknown';
+                    return `
+                        <div class="source-concept-expansion-row">
+                            <span class="tag source-chip source-concept-chip source-concept-search-chip">
+                                <span class="source-chip-name">${this.escapeHtml(concept.display_name || concept.search_value || sourceConceptLabel)}</span>
+                            </span>
+                            <span class="source-concept-expansion-text">
+                                ${this.escapeHtml(concept.negated ? '-' : '')}${this.escapeHtml(concept.term || '')}
+                                -> ${this.escapeHtml(this.compactList(matchedAliases))}
+                                · ${this.escapeHtml(status)} / ${this.escapeHtml(unconfirmed === 'media.source_layer.source_concept_unconfirmed' ? 'unconfirmed source-layer' : unconfirmed)}
+                                · ${this.escapeHtml(providerLabel === 'media.source_layer.providers' ? 'Providers' : providerLabel)}: ${this.escapeHtml(this.compactList(concept.providers))}
+                                · ${this.escapeHtml(evidenceLabel === 'media.source_layer.evidence_count' ? 'Evidence' : evidenceLabel)}: ${this.escapeHtml(concept.evidence_count ?? 0)}
+                            </span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        ` : '';
+
+        const reviewHintHtml = conceptReviewHints.length ? `
+            <div class="source-concept-review-hint">
+                <div class="source-layer-eyebrow">${this.escapeHtml(reviewHintLabel === 'media.source_layer.needs_review_hint' ? 'Needs-review SourceConcept not expanded' : reviewHintLabel)}</div>
+                ${conceptReviewHints.map(concept => `
+                    <div class="source-concept-expansion-row">
+                        <span class="tag source-chip source-chip-review source-concept-chip">
+                            <span class="source-chip-name">${this.escapeHtml(concept.display_name || concept.search_value || sourceConceptLabel)}</span>
+                        </span>
+                        <span class="source-concept-expansion-text">
+                            ${this.escapeHtml(concept.term || '')}
+                            · ${this.escapeHtml(concept.status || 'needs_review')} / ${this.escapeHtml(unconfirmed === 'media.source_layer.source_concept_unconfirmed' ? 'unconfirmed source-layer' : unconfirmed)}
+                        </span>
+                    </div>
+                `).join('')}
+            </div>
+        ` : '';
+
         panel.innerHTML = `
             <div class="flex items-start justify-between gap-3 mb-2">
                 <div>
@@ -238,6 +296,8 @@ class Gallery extends BaseGallery {
                     </a>
                 `).join('')}
             </div>
+            ${expansionHtml}
+            ${reviewHintHtml}
         `;
         panel.classList.remove('hidden');
     }

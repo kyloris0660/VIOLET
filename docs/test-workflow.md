@@ -233,9 +233,30 @@ Required checks:
 - Bounded text-only LLM pair adjudication is allowed only when explicitly enabled by `--use-llm-adjudication`, capped by `--max-llm-calls` and `--max-llm-budget-usd`, cache-backed, primary-provider-only, and recorded in the validation pack. It must never upload images, run provider/gallery-dl/Pixiv/SauceNAO/Google enrichment, run localization batches, use fallback providers by default, or create Entity truth.
 - SC1 must not start full SC2 search/UI integration.
 
-### SourceConcept Search and Evidence UI Validation (Phase 4.5-SC2 planned)
+### SourceConcept Search and Evidence UI Validation (Phase 4.5-SC2)
 
-Phase 4.5-SC2 will touch search/API behavior and user-visible media-detail UI, so real browser validation is required. Do not treat SC1 resolver readiness as proof that SC2 user workflows work.
+Phase 4.5-SC2 touches search/API behavior and user-visible media-detail UI, so real browser validation is required. Do not treat SC1 resolver readiness as proof that SC2 user workflows work.
+
+Focused pytest:
+
+```powershell
+& "$PY" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v
+```
+
+Controlled real-browser fixture and E2E:
+
+```powershell
+. "$env:USERPROFILE\.violet\test-env.ps1"
+$env:VIOLET_ENV = "test"
+$env:POSTGRES_DB = "blombooru_test"
+$env:VIOLET_STORAGE_ROOT = Join-Path $env:USERPROFILE "VioletStorage\test"
+$env:VIOLET_TEST_STORAGE_ROOT = $env:VIOLET_STORAGE_ROOT
+& "$PY" scripts/seed_phase45_sc2_e2e_fixture.py
+
+$env:VIOLET_RUN_REAL_E2E = "1"
+$env:VIOLET_BASE_URL = "http://127.0.0.1:<agent-started-port>"
+npx playwright test tests/e2e/source-concept-search-evidence.spec.ts --project=edge
+```
 
 Required SC2 validation shape:
 

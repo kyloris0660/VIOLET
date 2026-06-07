@@ -26,6 +26,10 @@ from ..models import (
     SourceTagObservation,
     Tag,
 )
+from .source_concept_search_service import (
+    list_media_source_concepts,
+    source_concept_media_condition_for_term,
+)
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
 
 ACTIVE_ASSERTION_STATUSES = ("searchable_active",)
@@ -608,16 +612,19 @@ def list_media_source_layer(db: Session, media_id: int, source_tag_limit: int = 
         represented_name_keys.add(key)
 
     source_tags = [_source_tag_chip(tag, record) for tag, record in source_tag_rows]
+    source_concepts = list_media_source_concepts(db, media_id)
 
     return {
         "media_id": media_id,
         "source_assertions": active_assertions,
         "needs_review_assertions": needs_review_assertions,
         "source_tags": source_tags,
+        "source_concepts": source_concepts,
         "counts": {
             "source_assertions": len(active_assertions),
             "needs_review_assertions": len(needs_review_assertions),
             "source_tags": len(source_tags),
+            "source_concepts": len(source_concepts),
             "assertion_statuses": status_counts,
             "hidden_assertions": hidden_assertion_counts,
         },
@@ -763,6 +770,11 @@ def _soft_search_condition_for_term(db: Session, term: str, *, include_needs_rev
             _source_layer_exact_text_condition(normalized, include_needs_review=include_needs_review),
             _source_name_condition(source_keys, include_needs_review=include_needs_review),
             _source_tag_condition(tag_keys),
+            source_concept_media_condition_for_term(
+                db,
+                normalized,
+                include_needs_review=include_needs_review,
+            ),
         )
     )
     return condition
