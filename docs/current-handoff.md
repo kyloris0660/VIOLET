@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.5-SC2 implementation handoff at `2026-06-07T13:01:18+08:00` (`2026-06-07T05:01:18Z` UTC), after PR #96 / Phase 4.5-SC1 and PR #97 / Phase 4.5-SC2-P0 were merged into `main`.
+> Last updated during Phase 4.5-DOC1 at `2026-06-07T22:10:31+08:00` (`2026-06-07T14:10:31Z` UTC), after PR #96 / Phase 4.5-SC1, PR #97 / Phase 4.5-SC2-P0, and PR #98 / Phase 4.5-SC2 were merged into `main`.
 > Read this file at the start of any new conversation before opening older phase reports.
 
 ## Repository State
@@ -11,7 +11,7 @@
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Historical repo name | `AnimeLocalBooru`; old links may redirect, but active references should use VIOLET |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), PR #95 (`5b0a6fa`), PR #96 (`a54e5ad`), and PR #97 (`cba0275`) as of `2026-06-07T13:01:18+08:00` local time (`2026-06-07T05:01:18Z` UTC) |
+| Main branch status | `main` includes PR #92 (`325c51c`), PR #93 (`b1103b2`), PR #94 (`fddedef`), PR #95 (`5b0a6fa`), PR #96 (`a54e5ad`), PR #97 (`cba0275`), and PR #98 (`192eba7`) as of `2026-06-07T22:10:31+08:00` local time (`2026-06-07T14:10:31Z` UTC) |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | Project venv at `.\venv\Scripts\python.exe` |
 | Dev DB | `blombooru` on `localhost:5432` |
@@ -42,7 +42,8 @@
 - Phase 4.4-P2R-F7a is merged. PR #95 produced the primary-provider-backed source-name candidate extraction path and final validation pack. F7a candidates are source-layer evidence only; they are not `Entity`, `EntityAlias`, `MediaEntityAssignment`, confirmed assignment, or `media_tags` truth. Public report: `docs/reports/phase-4.4p2r-f7a-llm-source-name-candidates.md`.
 - Phase 4.5-SC1 / PR #96 is merged. It delivered the multi-source source-layer `SourceConcept` resolver core: additive schema, aliases, evidence, links, search-preview rows, run ledger, readiness/no-truth-write validation, and a public validation report. SC1 did not implement user-facing SC2 search/UI integration or Entity promotion.
 - `SourceConcept` remains source-layer evidence only. It is not `Entity` truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
-- Phase 4.5-SC2 implementation is prepared on branch `codex/phase45-sc2-source-concept-search-evidence-ui`. It exposes existing `SourceConcept` rows through transparent search expansion, media-detail evidence UI, search expansion explanation, and disabled/no-op promotion preview while preserving the unconfirmed/source-layer boundary.
+- Phase 4.5-SC2 / PR #98 is merged. It exposes existing `SourceConcept` rows through transparent alias search expansion, media-detail SourceConcept chips/grouping, collapsed evidence preview, search expansion explanation, conservative visible-status handling, `needs_review` source-layer search behavior, and disabled/no-op promotion preview while preserving the unconfirmed/source-layer boundary. Public report: `docs/reports/phase-4.5-sc2-source-concept-search-evidence-ui.md`.
+- Current manual observation after SC2: `nahida_(genshin_impact)` expands to `Nahida` / `nahida_(genshin_impact)`, but `纳西妲` currently appears as separate Pixiv/source evidence and is not yet linked to the Nahida concept. This is a coverage/input/resolver evidence gap to investigate in expanded validation, not an SC2 UI blocker.
 - GOV-2 workflow policy is active in this branch: durable core reliability stays strict, while workflow weight decreases for one-off and phase-scoped artifacts.
 - GOV-2a reminder: reducing workflow weight does not remove the Chinese final report requirement or the required `工程判断 / 操作员备注` section for non-trivial final reports.
 
@@ -72,15 +73,14 @@ Workflow weight must decrease:
 
 ## Current Recommended Route
 
-Near-term route during Phase 4.5-SC:
+Near-term route after Phase 4.5-DOC1:
 
-1. Treat PR #95/F7a as one input adapter, not the scope boundary. The SourceConcept resolver must aggregate all current source-layer name, tag, assertion, observation, alias, provider structured field, AI/model, and future manual/provider signals.
-2. Treat SC1 as complete core infrastructure on `main`, not as Entity truth. Its `SourceConceptSearchIndex` rows are the read-only basis for SC2 search expansion, not a promotion result.
-3. SC2 implementation scope is SourceConcept search expansion, media-detail grouping/chips, evidence preview, search result expansion explanation, and disabled/manual-promotion preview only.
-4. SC2 must keep all SourceConcept rows unconfirmed. It must not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, confirmed assignment, `TagTranslation`, or `media_tags`.
-5. Preserve F6 chip behavior: user-facing source/concept chips should default to ordinary global `q=` search, while explicit `source_tag=` / `source_assertion=` style scoped filters remain advanced/debug routes.
-6. Do not run gallery-dl, Pixiv/SauceNAO/Google/provider calls, LLM extraction/classification, tag localization batches, background translation, broad scans, imports, or image uploads unless a later phase explicitly approves that run. SC2 should be read-only over existing SC1/source-layer data.
-7. Phase 3.9 remains required before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import.
+1. Treat SC1 and SC2 as accepted source-layer infrastructure/UI on `main`, not as Entity truth or promotion approval.
+2. Run `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit` before any Entity bridge. SCV1 should inventory current DB coverage, validate larger current-data samples, identify alias gaps, and decide whether broader import/source-data expansion is needed.
+3. Use the Nahida / `纳西妲` observation as one seed for coverage auditing, alongside other cross-language aliases such as Japanese/English/Chinese/romaji variants and other Genshin names.
+4. Keep future provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment/localization/LLM runs behind separate approved run policies; do not smuggle them into documentation or validation cleanup.
+5. A later Entity bridge must explicitly design preview, user confirmation, audit trail, rollback/supersede, write guards, and truth-path boundaries before creating `Entity`, aliases, candidates, assignments, `LocalSourceHint`, or `media_tags` relations.
+6. Phase 3.9 remains required before broad/repeated provider runs, `100+` scale, 5k/10k scale, large cache population, full-library scheduling, or full-library import.
 
 Do not treat older "blocked until X" wording in historical reports as current unless this handoff or the roadmap repeats it as active.
 

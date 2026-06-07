@@ -84,6 +84,7 @@ Phase 3.8d-I2 unifies this behind a Source Ingestion Gate. Tests must prove that
 | `tests/test_config_precedence.py` | Config precedence: process env beats `.env`, `TEST_DATABASE_URL` override, translation flag overrides, code defaults |
 | `tests/test_phase44p2r_f6_source_layer_search.py` | F6 source-layer media chips, source assertion/source tag AND search with ordinary tags, promotion preview no-op, and no truth-path writes |
 | `tests/test_phase45_sc1_source_concept_resolver.py` | SC1 SourceConcept schema, multi-source signal adapters, alias-edge linking, AI-only trust guard, short-name overmerge guards, F7a final-pack local backfill, and no truth-path writes |
+| `tests/test_phase45_sc2_source_concept_search_evidence_ui.py` | SC2 SourceConcept search expansion, redaction, visible-status gates, cache invalidation, alias closure, `needs_review` behavior, promotion preview no-op, and no truth-path writes |
 
 ### Tier 2 — Fixture Validation (read-only, requires fixture path)
 
@@ -270,6 +271,18 @@ Required SC2 validation shape:
 - Playwright/browser E2E on a controlled test server for compact media-detail SourceConcept grouping, same-name chip dedupe, concept/alias chip click through global `q=` search, search expansion explanation, mixed normal tag + SourceConcept search, collapsed evidence preview expansion, no console errors, and no truth writes.
 - F6 behavior must remain intact: user-facing chips default to global `q=` search, while scoped source filters remain advanced/debug routes.
 - Real SourceConcept management/editing remains out of scope for SC2 validation; if present before SC3 it must be read-only or disabled/no-op.
+
+### Expanded SourceConcept Validation and Coverage Audit (Phase 4.5-SCV1)
+
+SCV1 should validate whether SC1/SC2 coverage holds beyond the current small-medium fixtures before any Entity bridge or promotion work. Start with current DB data and read-only reporting; do not run new imports, providers, LLMs, AI tagging/classification, localization, or source enrichment unless a separate phase explicitly approves that run.
+
+Recommended SCV1 validation shape:
+
+- Coverage inventory: media count, AI tag coverage, Pixiv/source signal coverage, F7a candidate coverage, SourceConcept coverage, search-preview coverage, active versus `needs_review` concepts, and orphan/gap counts.
+- Larger sample validation: current-data concept samples across providers, signal origins, trust tiers, and statuses, with redacted evidence review artifacts.
+- Alias gap analysis: Japanese/English/Chinese/romaji variants, ordinary tags versus Pixiv/source tags versus AI tags, `needs_review` clusters, and examples such as Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)`.
+- Search symmetry checks: aliases linked to the same visible SourceConcept should produce the same SourceConcept-linked media set unless status or trust gates intentionally prevent expansion.
+- Guard carry-forward: reuse SC2 redaction, visible-status, cache-invalidation, no-truth-write, F6 q-chip, and promotion no-op tests when SCV1 code or reports touch those paths.
 
 ### Fixture Validation (Tier 2)
 

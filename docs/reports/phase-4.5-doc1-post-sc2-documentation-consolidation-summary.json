@@ -1,0 +1,152 @@
+{
+  "phase": "4.5-DOC1",
+  "title": "Post-SC2 documentation consolidation and guard audit",
+  "branch": "codex/phase45-doc1-post-sc2-doc-consolidation",
+  "generated_at": "2026-06-07T22:10:31+08:00",
+  "main_verified": {
+    "local_main_equals_origin_main": true,
+    "origin_main_head": "192eba7088568adc7aec2b5a8672b3aa630c3f04",
+    "merged_prs": [
+      {
+        "number": 96,
+        "title": "Phase 4.5-SC1: Multi-source source concept resolver core",
+        "merge_commit": "a54e5ade2a8bc50adc00c8129699f0c2540e479e",
+        "merged": true
+      },
+      {
+        "number": 97,
+        "title": "Phase 4.5-SC2-P0: Post-merge handoff and SC2 plan",
+        "merge_commit": "cba0275d4106f62e3ce20b4706419d568b605a7e",
+        "merged": true
+      },
+      {
+        "number": 98,
+        "title": "Phase 4.5-SC2: SourceConcept search expansion and evidence UI",
+        "merge_commit": "192eba7088568adc7aec2b5a8672b3aa630c3f04",
+        "merged": true
+      }
+    ]
+  },
+  "docs_updated": [
+    "README.md",
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md",
+    "docs/test-workflow.md",
+    "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation.md",
+    "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json"
+  ],
+  "guard_audit": {
+    "source_concept_not_entity_truth": {
+      "status": "enforced_for_sc1_sc2_paths",
+      "evidence": [
+        "SC1 forbidden_truth_table_write_count=0",
+        "tests/test_phase45_sc1_source_concept_resolver.py",
+        "tests/test_phase45_sc2_source_concept_search_evidence_ui.py::test_source_concept_read_paths_do_not_write_truth_tables",
+        "tests/test_phase44p2r_f6_source_layer_search.py::test_promotion_preview_does_not_write_truth_path"
+      ]
+    },
+    "redaction": {
+      "status": "enforced_for_sc2_payloads_and_e2e_fixture",
+      "evidence": [
+        "SC2 backend redaction tests",
+        "tests/e2e/source-concept-search-evidence.spec.ts"
+      ]
+    },
+    "visible_status_gate": {
+      "status": "enforced",
+      "evidence": [
+        "test_detail_and_promotion_preview_visibility_gate_by_status"
+      ]
+    },
+    "search_cache_invalidation": {
+      "status": "enforced_for_current_write_paths",
+      "evidence": [
+        "test_search_cache_is_invalidated_after_source_concept_rows_change",
+        "test_source_concept_write_paths_invalidate_search_cache",
+        "test_source_registry_persist_invalidates_search_cache"
+      ]
+    },
+    "alias_expansion_symmetry": {
+      "status": "partially_enforced",
+      "evidence": [
+        "test_source_concept_aliases_expand_to_same_concept_level_media_set"
+      ],
+      "gap": "Focused fixture coverage exists, but broad real-DB or property-style symmetry checks belong to SCV1."
+    },
+    "needs_review_behavior": {
+      "status": "enforced_for_sc2_behavior",
+      "evidence": [
+        "test_needs_review_concept_expands_on_explicit_alias_search",
+        "tests/e2e/source-concept-search-evidence.spec.ts"
+      ]
+    },
+    "f6_global_q_chip_behavior": {
+      "status": "enforced",
+      "evidence": [
+        "tests/test_phase44p2r_f6_source_layer_search.py",
+        "tests/e2e/source-layer-search.spec.ts",
+        "tests/e2e/source-concept-search-evidence.spec.ts"
+      ]
+    },
+    "sc2_no_provider_llm_source_enrichment": {
+      "status": "documented_and_static_scope_reviewed",
+      "gap": "Current tests do not provide a generic runtime no-provider/no-LLM call guard for SC2 read routes."
+    },
+    "promotion_preview_disabled_noop": {
+      "status": "enforced",
+      "evidence": [
+        "test_source_concept_read_paths_do_not_write_truth_tables",
+        "tests/e2e/source-concept-search-evidence.spec.ts",
+        "test_promotion_preview_does_not_write_truth_path"
+      ]
+    }
+  },
+  "known_observation_for_scv1": {
+    "status": "future_validation_seed_not_doc1_blocker",
+    "observation": "`nahida_(genshin_impact)` expands to Nahida / `nahida_(genshin_impact)`, while `纳西妲` appears as separate Pixiv/source evidence and is not currently linked.",
+    "suggested_aliases": [
+      "Nahida",
+      "纳西妲",
+      "草神",
+      "nahida_(genshin_impact)"
+    ]
+  },
+  "recommended_next_phase": {
+    "phase": "4.5-SCV1",
+    "title": "Expanded SourceConcept validation and coverage audit",
+    "before_entity_bridge": true
+  },
+  "validation": {
+    "status": "passed",
+    "python_identity": {
+      "command": "& \"$PY\" scripts/check_python_env.py --expected-python \"$PY\"",
+      "result": "PASS",
+      "sys_executable": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\venv\\Scripts\\python.exe",
+      "python_version": "3.12.0"
+    },
+    "git_diff_check": {
+      "command": "git diff --check",
+      "result": "pass"
+    },
+    "json_tool": {
+      "command": "& \"$PY\" -m json.tool docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json",
+      "result": "pass"
+    },
+    "pytest_run": false,
+    "browser_validation_run": false,
+    "server_started": false
+  },
+  "safety": {
+    "code_runtime_ui_changes": false,
+    "db_migration": false,
+    "db_import": false,
+    "provider_or_gallery_dl_or_source_enrichment": false,
+    "llm": false,
+    "ai_tagging_classification_localization": false,
+    "source_icloud_storage_mutation": false,
+    "media_tags_mutation": false,
+    "entity_truth_write": false,
+    "full_library_validation": false
+  },
+  "artifact_lifecycle": "public report / handoff / roadmap update"
+}
