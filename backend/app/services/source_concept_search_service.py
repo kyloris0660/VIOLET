@@ -237,7 +237,64 @@ def _query_search_index_concept_ids(
         .distinct()
         .all()
     )
-    return [int(row[0]) for row in rows]
+    return _expand_concept_ids_by_alias_closure(
+        db,
+        [int(row[0]) for row in rows],
+        include_needs_review=include_needs_review,
+    )
+
+
+def _expand_concept_ids_by_alias_closure(
+    db: Session,
+    concept_ids: Sequence[int],
+    *,
+    include_needs_review: bool,
+) -> list[int]:
+    """Expand matched concepts to visible sibling concepts that share aliases.
+
+    A query term can match any alias of a SourceConcept. Once a concept is
+    matched, all visible concepts sharing that alias set should contribute the
+    same concept-level media set, so q=A/q=B/q=C behave symmetrically.
+    """
+
+    statuses = _status_scope(include_needs_review)
+    all_ids = {int(concept_id) for concept_id in concept_ids if concept_id is not None}
+    if not all_ids:
+        return []
+
+    for _ in range(4):
+        alias_keys = {
+            row[0]
+            for row in (
+                db.query(SourceConceptAlias.alias_key)
+                .filter(SourceConceptAlias.concept_id.in_(sorted(all_ids)))
+                .filter(SourceConceptAlias.status.in_(statuses))
+                .filter(SourceConceptAlias.alias_key.isnot(None))
+                .all()
+            )
+            if row[0]
+        }
+        if not alias_keys:
+            break
+
+        sibling_ids = {
+            int(row[0])
+            for row in (
+                db.query(SourceConcept.id)
+                .join(SourceConceptAlias, SourceConceptAlias.concept_id == SourceConcept.id)
+                .filter(SourceConcept.status.in_(statuses))
+                .filter(SourceConceptAlias.status.in_(statuses))
+                .filter(SourceConceptAlias.alias_key.in_(sorted(alias_keys)))
+                .distinct()
+                .all()
+            )
+        }
+        before = len(all_ids)
+        all_ids.update(sibling_ids)
+        if len(all_ids) == before:
+            break
+
+    return sorted(all_ids)
 
 
 def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs_review: bool = False):

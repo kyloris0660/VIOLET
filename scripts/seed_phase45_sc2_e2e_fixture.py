@@ -94,9 +94,11 @@ def _add_source_concept(
     status: str = "active",
     display_name: str = "Kamisato Ayaka",
     aliases: list[str] | None = None,
+    concept_key_suffix: str | None = None,
 ) -> SourceConcept:
+    suffix = concept_key_suffix or canonical_source_key(display_name)
     concept = SourceConcept(
-        concept_key=f"character:phase45_sc2_e2e:{canonical_source_key(display_name)}:{status}",
+        concept_key=f"character:phase45_sc2_e2e:{suffix}:{status}",
         primary_display_name=display_name,
         concept_type_hint="character",
         status=status,
@@ -118,7 +120,7 @@ def _add_source_concept(
     for idx, media in enumerate(medias, start=1):
         display_key = canonical_source_key(display_name)
         signal = SourceConceptSignal(
-            signal_key=f"{RUN_ID}:{status}:{display_key}:signal:{media.id}:{idx}",
+            signal_key=f"{RUN_ID}:{status}:{suffix}:{display_key}:signal:{media.id}:{idx}",
             origin_type="source_searchable_name_assertion",
             origin_table="blombooru_source_searchable_name_assertions",
             origin_id=f"{RUN_ID}:{media.id}:{idx}",
@@ -224,11 +226,19 @@ def main() -> int:
         concept_only = _create_media(db, "sc2-e2e-ayaka-concept-only", [])
         tag_only = _create_media(db, "sc2-e2e-ayaka-tag-only", [MARKER_TAG, "genshin_impact"])
         concept = _add_source_concept(db, [both, concept_only])
+        duplicate_concept = _add_source_concept(
+            db,
+            [both],
+            display_name="Kamisato Ayaka",
+            aliases=["Kamisato Ayaka", "kamisato_ayaka"],
+            concept_key_suffix="kamisato_ayaka_duplicate",
+        )
         metachar_concept = _add_source_concept(
             db,
             [both],
             display_name="Re:Zero",
             aliases=["Re:Zero"],
+            concept_key_suffix="rezero",
         )
         review_media = _create_media(db, "sc2-e2e-review-only", [])
         review_concept = _add_source_concept(
@@ -254,6 +264,7 @@ def main() -> int:
                     },
                     "concept_ids": {
                         "active": concept.id,
+                        "duplicate": duplicate_concept.id,
                         "metachar": metachar_concept.id,
                         "needs_review": review_concept.id,
                     },

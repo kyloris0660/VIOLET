@@ -4,8 +4,8 @@
 
 Phase 4.5-SC2 exposes existing source-layer `SourceConcept` data in two user-facing places:
 
-- normal gallery search can transparently expand matching active/safe SourceConcept aliases through `SourceConceptSearchIndex`;
-- media detail pages show unconfirmed SourceConcept grouping, safe evidence summaries, and a disabled/manual-promotion preview.
+- normal gallery search can transparently expand matching visible SourceConcept aliases through `SourceConceptSearchIndex`;
+- media detail pages show compact unconfirmed SourceConcept chips, grouped safe evidence summaries, and a collapsed disabled/manual-promotion preview.
 
 SC2 does not turn SourceConcept into Entity truth. `SourceConcept`, `SourceConceptAlias`, and `SourceConceptEvidence` remain source-layer evidence only. This phase does not create confirmed assignments and does not mutate `media_tags`.
 
@@ -18,9 +18,10 @@ Implemented:
 - read-only SourceConcept alias expansion in `/api/search`;
 - read-only SourceConcept detail and promotion-preview endpoints under `/api/source-concepts`;
 - SourceConcept grouping payload in the existing media source-layer API;
-- media-detail SourceConcept cards with aliases, status, providers, origins, trust tiers, evidence counts, linked-media counts, safe evidence preview, and disabled promotion preview;
-- search-result SourceConcept expansion and `needs_review` hint explanations;
+- media-detail compact SourceConcept chips with same-name dedupe/grouping and collapsed evidence details;
+- search-result SourceConcept expansion explanations, including clearly labeled `needs_review` source-layer concepts when an explicit alias query matches them;
 - reviewer closeout fixes for public concept-key omission, canonicalized path/filename alias redaction, SourceConcept search-cache invalidation, uncapped search filtering semantics, visible-status detail gating, and parser-safe `q=` chip quoting;
+- manual-validation closeout fixes for compact user-facing SourceConcept UI, same-name chip grouping, and bidirectional concept-level alias expansion;
 - focused pytest and real Edge browser E2E for the SC2 user flows.
 
 Not implemented:
@@ -30,6 +31,7 @@ Not implemented:
 - provider/gallery-dl/Pixiv/SauceNAO/Google enrichment;
 - LLM extraction/classification/localization;
 - source/iCloud/app-managed storage mutation;
+- editable SourceConcept management writes;
 - DOC1 documentation consolidation.
 
 ## Safety / Hard Constraints
@@ -60,19 +62,28 @@ The implementation uses existing SC1 tables and `SourceConceptSearchIndex`. No m
 
 Search expansion is term-bounded:
 
-- active SourceConcept aliases can expand ordinary positive search terms as an OR inside that term;
+- active and `needs_review` SourceConcept aliases can expand ordinary explicit `q=` terms as an OR inside that term;
+- rejected, ambiguous, and superseded SourceConcepts stay hidden from search/detail/promotion-preview;
+- alias hits are expanded to the concept-level alias closure, so aliases like `神里綾華`, `Kamisato Ayaka`, and `kamisato_ayaka` produce the same SourceConcept-linked media set when they belong to the same visible SourceConcept group;
 - multiple terms keep the existing AND behavior;
 - negative terms remain bounded by applying the same term condition under negation;
 - quoted terms are preserved as one exact alias token, including wildcard-like aliases that are quoted by SourceConcept chips;
 - SourceConcept chip URLs quote parser metacharacters such as `:`, leading `-`, wildcard characters, brackets, parentheses, and whitespace;
-- `needs_review` concepts do not expand by default and surface only as hints unless `include_source_needs_review=1` is explicitly supplied.
+- F6 source assertion/source tag `needs_review` behavior remains unchanged and still uses explicit opt-in for scoped/debug filters.
 
 ### UI
 
-- Media detail source-layer UI now includes SourceConcept cards before lower-level source assertions/source tags.
+- Media detail source-layer UI now includes compact SourceConcept chips before lower-level source assertions/source tags.
+- Default SourceConcept UI shows only the display name, source-layer/unconfirmed marker, and compact status.
+- Provider, signal origin, trust tier, evidence count, linked-media count, and disabled promotion details are available behind a collapsed evidence/details panel instead of large default cards.
+- Repeated SourceConcepts with the same visible display name are grouped behind one chip/details entry.
 - SourceConcept chips default to ordinary global `q=` search, preserving the F6 default workflow.
 - Search result UI shows which SourceConcept matched, which aliases expanded, status, source-layer/unconfirmed label, provider summary, and evidence count.
-- Manual promotion preview is visible only as disabled/no-op UI.
+- Manual promotion preview is visible only as collapsed disabled/no-op UI.
+
+### Deferred Management UI
+
+Real editable SourceConcept management is intentionally deferred. A later explicit phase, suggested as `Phase 4.5-SC3: SourceConcept management and manual source-layer corrections`, should design browse/filter UI by type/status/provider/trust, alias/evidence inspection, merge/split proposals, source-layer override audit, and rollback/supersede behavior. SC3 must remain source-layer only unless a later Entity bridge explicitly approves truth writes.
 
 ### Redaction
 
@@ -103,10 +114,10 @@ python -m json.tool frontend/static/locales/en.json
 python -m json.tool frontend/static/locales/zh-cn.json
 ```
 
-Observed results after reviewer closeout fixes:
+Observed results after manual-validation closeout fixes:
 
-- `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `15 passed`.
-- `tests/test_phase44p2r_f6_source_layer_search.py` + `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `33 passed`.
+- `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `16 passed`.
+- `tests/test_phase44p2r_f6_source_layer_search.py` + `tests/test_phase45_sc2_source_concept_search_evidence_ui.py`: `34 passed`.
 - `tests/test_phase45_sc1_source_concept_resolver.py`: `47 passed`.
 - touched Python files compiled successfully.
 - touched locale JSON files parsed successfully.
@@ -153,6 +164,8 @@ Observed results:
 - [x] Filename-derived alias/search-key redaction tests passed
 - [x] Detail/promotion visible-status gate tests passed
 - [x] Parser-metacharacter `q=` chip quoting tests passed
+- [x] Bidirectional SourceConcept alias expansion tests passed
+- [x] Compact media-detail SourceConcept chip E2E passed
 - [ ] Full non-E2E suite not run; not required for this bounded UI/search phase
 - [ ] Broad/manual development DB validation not run; SC2 automated validation used test DB fixtures only
 
@@ -166,6 +179,14 @@ Current reviewer closeout status:
 - fixed P2 direct detail/promotion-preview visibility gate for hidden SourceConcept statuses;
 - fixed P2 SourceConcept chip/search URL quoting for parser metacharacters;
 - self-checked the prior search-cache invalidation thread: resolver persistence calls `invalidate_source_concept_search_cache()` after commit, SC2 fixture seed calls it after cleanup and seed commits, and focused tests cover stale cached `q=<alias>` responses plus both write paths.
+
+Manual-validation closeout status:
+
+- fixed compact SourceConcept UI so the default media-detail section renders tag-like chips rather than large debug cards;
+- fixed same-name SourceConcept dedupe/grouping in the media detail UI;
+- fixed bidirectional concept-level alias expansion so linked aliases produce symmetric SourceConcept media sets;
+- changed SourceConcept `needs_review` user-facing q search behavior so explicit alias searches expand and remain clearly labeled as unconfirmed source-layer;
+- deferred real editable SourceConcept management writes to a later SC3 phase.
 
 Latest reviewer status should be checked on the SC2 PR head after this closeout commit.
 
@@ -199,7 +220,7 @@ Artifact lifecycle:
 
 Risk assessment:
 
-- Over-broad search risk is controlled by exact search-index lookup, term-bounded OR expansion, preserved AND semantics, and conservative `needs_review` default behavior.
+- Over-broad search risk is controlled by exact search-index lookup, visible-status gating, term-bounded OR expansion, preserved AND semantics, and source-layer labeling for `needs_review` matches.
 - UI confusion risk is controlled by separate SourceConcept styling and explicit source-layer/unconfirmed labels.
 - Performance risk is bounded by using `SourceConceptSearchIndex` and media-link joins instead of full resolver recomputation on ordinary search.
 - Redaction risk is covered by tests and browser checks, but future provider payload shapes should keep using allowlisted summary fields rather than raw payload display.

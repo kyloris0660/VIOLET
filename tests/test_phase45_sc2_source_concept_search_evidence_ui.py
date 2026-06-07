@@ -311,6 +311,11 @@ def result_ids(response) -> set[int]:
     return {item["id"] for item in response.json()["items"]}
 
 
+def expansion_names(response) -> set[str]:
+    assert response.status_code == 200
+    return {item["display_name"] for item in response.json()["source_concept_expansions"]}
+
+
 def payload_text(payload: object) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
@@ -344,6 +349,39 @@ def test_normal_tag_results_are_preserved_when_alias_also_matches(client, db):
     assert result_ids(response) == {normal_tag_media.id, source_media.id}
 
 
+def test_source_concept_aliases_expand_to_same_concept_level_media_set(client, db):
+    shared_one = create_media(db, "alias-shared-one")
+    shared_two = create_media(db, "alias-shared-two")
+    add_source_concept(
+        db,
+        [shared_one],
+        display_name="Kamisato Ayaka",
+        concept_key="character:alias_symmetry_ja:fixture",
+        aliases=[AYAKA_JA, "Kamisato Ayaka", "kamisato_ayaka"],
+    )
+    add_source_concept(
+        db,
+        [shared_two],
+        display_name="Kamisato Ayaka",
+        concept_key="character:alias_symmetry_en:fixture",
+        aliases=["Kamisato Ayaka", "kamisato_ayaka"],
+    )
+
+    responses = [
+        client.get("/api/search", params={"q": AYAKA_JA}),
+        client.get("/api/search", params={"q": '"Kamisato Ayaka"'}),
+        client.get("/api/search", params={"q": "kamisato_ayaka"}),
+    ]
+
+    expected_ids = {shared_one.id, shared_two.id}
+    for response in responses:
+        assert result_ids(response) == expected_ids
+        assert expansion_names(response) == {"Kamisato Ayaka"}
+        expansion_text = payload_text(response.json()["source_concept_expansions"])
+        assert "unconfirmed source-layer" in expansion_text
+        assert "concept_key" not in expansion_text
+
+
 def test_mixed_normal_tag_and_source_concept_query_preserves_and_semantics(client, db):
     both = create_media(db, "both", [("genshin_impact", TagCategoryEnum.copyright)])
     source_only = create_media(db, "source-only")
@@ -368,7 +406,7 @@ def test_negative_and_quoted_query_boundaries(client, db):
     assert result_ids(negated) == {keeper.id}
 
 
-def test_needs_review_concept_requires_explicit_opt_in(client, db):
+def test_needs_review_concept_expands_on_explicit_alias_search(client, db):
     review_media = create_media(db, "review-only")
     add_source_concept(
         db,
@@ -381,16 +419,12 @@ def test_needs_review_concept_requires_explicit_opt_in(client, db):
 
     default_response = client.get("/api/search", params={"q": "review_only_character"})
     default_payload = default_response.json()
-    assert result_ids(default_response) == set()
-    assert default_payload["source_concept_expansions"] == []
-    assert default_payload["source_concept_review_hints"]
-
-    opt_in = client.get(
-        "/api/search",
-        params={"q": "review_only_character", "include_source_needs_review": "1"},
-    )
-    assert result_ids(opt_in) == {review_media.id}
-    assert opt_in.json()["source_concept_expansions"][0]["status"] == "needs_review"
+    assert result_ids(default_response) == {review_media.id}
+    assert default_payload["source_concept_review_hints"] == []
+    expansion = default_payload["source_concept_expansions"][0]
+    assert expansion["status"] == "needs_review"
+    assert expansion["source_layer_label"] == "unconfirmed source-layer"
+    assert expansion["is_entity_truth"] is False
 
 
 def test_media_source_concept_grouping_and_detail_endpoint_are_redacted(client, db):
@@ -571,6 +605,9 @@ def test_detail_and_promotion_preview_visibility_gate_by_status(client, db):
         assert client.get(f"/api/source-concepts/{concept.id}").status_code == 404
         assert client.get(f"/api/source-concepts/{concept.id}/promotion-preview").status_code == 404
         assert preview_source_concept_promotion(db, concept.id) is None
+        hidden_search = client.get("/api/search", params={"q": f"hidden_{status}"})
+        assert result_ids(hidden_search) == set()
+        assert hidden_search.json()["source_concept_expansions"] == []
 
 
 def test_source_concept_search_urls_quote_parser_metacharacters(client, db):
@@ -664,10 +701,9 @@ def test_source_concept_filter_uses_all_matching_ids_beyond_display_cap(client, 
 
     positive = client.get("/api/search", params={"q": shared_alias, "limit": 100})
     positive_payload = positive.json()
-    assert positive_payload["total"] == total_active
-    assert result_ids(positive) == concept_media_ids
+    assert positive_payload["total"] == total_active + 1
+    assert result_ids(positive) == concept_media_ids | {review_media.id}
     assert len(positive_payload["source_concept_expansions"]) == concept_search_service.MAX_SEARCH_EXPANSIONS_PER_TERM
-    assert review_media.id not in result_ids(positive)
 
     opt_in = client.get(
         "/api/search",
@@ -677,7 +713,7 @@ def test_source_concept_filter_uses_all_matching_ids_beyond_display_cap(client, 
     assert review_media.id in result_ids(opt_in)
 
     negated = client.get("/api/search", params={"q": f"solo -{shared_alias}", "limit": 100})
-    assert result_ids(negated) == {keeper.id, review_media.id}
+    assert result_ids(negated) == {keeper.id}
 
     negated_opt_in = client.get(
         "/api/search",

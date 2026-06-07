@@ -343,6 +343,27 @@ span.checked:hover {
     background: color-mix(in srgb, var(--warning) 10%, var(--surface));
 }
 
+.source-concept-chip-list {
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.source-concept-compact-chip {
+    border-style: solid;
+    padding: 0.22rem 0.48rem;
+}
+
+.source-concept-compact-chip .source-chip-marker,
+.source-concept-status-inline {
+    font-size: 0.56rem;
+    color: var(--text-secondary);
+}
+
+.source-concept-status-inline {
+    border-left: 1px solid var(--border);
+    padding-left: 0.3rem;
+}
+
 .source-chip-review {
     opacity: 0.82;
 }
@@ -372,15 +393,31 @@ span.checked:hover {
     font-size: 0.68rem;
 }
 
-.source-concept-card {
-    border: 1px dashed color-mix(in srgb, var(--warning) 65%, var(--border));
-    border-radius: 0.45rem;
-    padding: 0.6rem;
-    margin-top: 0.45rem;
-    background: color-mix(in srgb, var(--surface-light) 52%, var(--surface));
+.source-concept-details-panel {
+    margin-top: 0.4rem;
+    font-size: 0.66rem;
 }
 
-.source-concept-card-header,
+.source-concept-details-panel summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 700;
+}
+
+.source-concept-details-list {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+}
+
+.source-concept-detail {
+    border: 1px dashed color-mix(in srgb, var(--warning) 55%, var(--border));
+    border-radius: 0.35rem;
+    padding: 0.5rem;
+    background: color-mix(in srgb, var(--surface-light) 35%, var(--surface));
+}
+
+.source-concept-detail-header,
 .source-concept-expansion-row {
     display: flex;
     align-items: center;
@@ -426,12 +463,6 @@ span.checked:hover {
     font-size: 0.66rem;
 }
 
-.source-concept-evidence summary {
-    cursor: pointer;
-    color: var(--primary-color);
-    font-weight: 700;
-}
-
 .source-concept-evidence-body {
     display: grid;
     gap: 0.25rem;
@@ -456,7 +487,12 @@ span.checked:hover {
 }
 
 .source-concept-promotion-preview {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
     margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.62rem;
 }
 
 .source-search-summary {

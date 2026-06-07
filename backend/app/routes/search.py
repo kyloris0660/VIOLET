@@ -16,7 +16,6 @@ from ..services.source_assertion_search_service import (
     resolve_source_filter_labels,
 )
 from ..services.source_concept_search_service import (
-    resolve_source_concept_needs_review_hints,
     resolve_source_concept_query_expansions,
 )
 from ..utils.cache import cache_response
@@ -81,14 +80,13 @@ async def search_media(
 
     query = db.query(Media).options(selectinload(Media.tags))
     parsed = parse_search_query(q)
+    source_concept_include_needs_review = True
     source_concept_expansions = resolve_source_concept_query_expansions(
         db,
         parsed,
-        include_needs_review=include_source_needs_review,
+        include_needs_review=source_concept_include_needs_review,
     )
     source_concept_review_hints = []
-    if not include_source_needs_review:
-        source_concept_review_hints = resolve_source_concept_needs_review_hints(db, parsed)
     
     if rating and rating != "explicit":
         rating_value = "safe" if rating == "safe" else "safe,questionable"
@@ -103,6 +101,7 @@ async def search_media(
         parsed,
         db,
         include_needs_review=include_source_needs_review,
+        include_source_concept_needs_review=source_concept_include_needs_review,
     )
     query = apply_source_layer_filters(
         query,
@@ -155,6 +154,7 @@ async def get_random_media(
     """Get a random media ID matching the search criteria"""
     query = db.query(Media.id)
     parsed = parse_search_query(q)
+    source_concept_include_needs_review = True
     
     if rating and rating != "explicit":
         rating_value = "safe" if rating == "safe" else "safe,questionable"
@@ -168,6 +168,7 @@ async def get_random_media(
         parsed,
         db,
         include_needs_review=include_source_needs_review,
+        include_source_concept_needs_review=source_concept_include_needs_review,
     )
     query = apply_source_layer_filters(
         query,

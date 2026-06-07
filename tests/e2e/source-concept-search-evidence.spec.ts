@@ -75,13 +75,17 @@ test.describe('SC2 SourceConcept search expansion and evidence UI', () => {
 
       const sourceLayer = page.locator('#source-layer-container');
       await expect(sourceLayer).toBeVisible();
-      await expect(sourceLayer.locator('.source-concept-card').first()).toBeVisible();
       await expect(sourceLayer.locator('.source-concept-chip').first()).toBeVisible();
-      await expect(sourceLayer.locator('.source-concept-status').first()).toContainText(/active|source-layer|unconfirmed/i);
-      await expect(sourceLayer.locator('.source-concept-promotion-preview button').first()).toBeDisabled();
+      await expect(sourceLayer.locator('.source-concept-card')).toHaveCount(0);
+      await expect(sourceLayer.locator('.source-concept-chip[data-display-name="Kamisato Ayaka"]')).toHaveCount(1);
+      await expect(sourceLayer.locator('.source-concept-chip').first()).toContainText(/source-layer|未确认|active/i);
+      await expect(sourceLayer.locator('.source-concept-details-panel')).not.toHaveAttribute('open', '');
+      await expect(sourceLayer.locator('.source-concept-meta-grid').first()).toBeHidden();
 
-      await sourceLayer.locator('.source-concept-evidence summary').first().click();
+      await sourceLayer.locator('.source-concept-details-panel summary').click();
+      await expect(sourceLayer.locator('.source-concept-detail').first()).toBeVisible();
       await expect(sourceLayer.locator('.source-concept-evidence-row').first()).toBeVisible();
+      await expect(sourceLayer.locator('.source-concept-promotion-preview').first()).toContainText(/disabled|禁用|Preview only|仅预览/i);
       await expect(sourceLayer).not.toContainText(/C:\\|Users\\|api_key|secret-token|private\.png/i);
 
       const chip = sourceLayer.locator('.source-concept-chip[data-search-value="Re:Zero"]').first();
@@ -129,17 +133,13 @@ test.describe('SC2 SourceConcept search expansion and evidence UI', () => {
     expect(errors).toEqual([]);
   });
 
-  test('needs-review SourceConcept is a hint by default and expands only with opt-in', async ({ page }) => {
+  test('needs-review SourceConcept expands on explicit alias search and stays labeled', async ({ page }) => {
     const defaultResp = await apiCall(page, '/api/search?q=review_only_character');
     expect(defaultResp.status).toBe(200);
-    expect(defaultResp.data.total).toBe(0);
-    expect(defaultResp.data.source_concept_expansions).toEqual([]);
-    expect(defaultResp.data.source_concept_review_hints.length).toBeGreaterThan(0);
-
-    const optInResp = await apiCall(page, '/api/search?q=review_only_character&include_source_needs_review=1');
-    expect(optInResp.status).toBe(200);
-    expect(optInResp.data.total).toBeGreaterThanOrEqual(1);
-    expect(optInResp.data.source_concept_expansions[0].status).toBe('needs_review');
+    expect(defaultResp.data.total).toBeGreaterThanOrEqual(1);
+    expect(defaultResp.data.source_concept_review_hints).toEqual([]);
+    expect(defaultResp.data.source_concept_expansions[0].status).toBe('needs_review');
+    expect(defaultResp.data.source_concept_expansions[0].source_layer_label).toBe('unconfirmed source-layer');
   });
 
   test('promotion preview API remains disabled and source-layer only', async ({ page }) => {

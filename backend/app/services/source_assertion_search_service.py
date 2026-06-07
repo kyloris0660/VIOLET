@@ -708,6 +708,7 @@ def apply_source_soft_search(
     db: Session,
     *,
     include_needs_review: bool = False,
+    include_source_concept_needs_review: bool | None = None,
 ):
     """Apply ordinary query terms with read-time source concept expansion.
 
@@ -729,7 +730,12 @@ def apply_source_soft_search(
 
     remaining_include: list[str] = []
     for term in parsed["tags"]["include"]:
-        condition = _soft_search_condition_for_term(db, term, include_needs_review=include_needs_review)
+        condition = _soft_search_condition_for_term(
+            db,
+            term,
+            include_needs_review=include_needs_review,
+            include_source_concept_needs_review=include_source_concept_needs_review,
+        )
         if condition is None:
             remaining_include.append(term)
         else:
@@ -738,7 +744,12 @@ def apply_source_soft_search(
     parsed["tags"]["include"] = remaining_include
     remaining_exclude: list[str] = []
     for term in parsed["tags"]["exclude"]:
-        condition = _soft_search_condition_for_term(db, term, include_needs_review=include_needs_review)
+        condition = _soft_search_condition_for_term(
+            db,
+            term,
+            include_needs_review=include_needs_review,
+            include_source_concept_needs_review=include_source_concept_needs_review,
+        )
         if condition is None:
             remaining_exclude.append(term)
         else:
@@ -748,7 +759,13 @@ def apply_source_soft_search(
     return apply_search_criteria(query, parsed, db)
 
 
-def _soft_search_condition_for_term(db: Session, term: str, *, include_needs_review: bool = False):
+def _soft_search_condition_for_term(
+    db: Session,
+    term: str,
+    *,
+    include_needs_review: bool = False,
+    include_source_concept_needs_review: bool | None = None,
+):
     normalized = normalize_source_text(term)
     if not normalized:
         return None
@@ -773,7 +790,9 @@ def _soft_search_condition_for_term(db: Session, term: str, *, include_needs_rev
             source_concept_media_condition_for_term(
                 db,
                 normalized,
-                include_needs_review=include_needs_review,
+                include_needs_review=include_needs_review
+                if include_source_concept_needs_review is None
+                else include_source_concept_needs_review,
             ),
         )
     )
