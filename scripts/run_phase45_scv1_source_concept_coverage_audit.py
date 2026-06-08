@@ -73,6 +73,7 @@ FORBIDDEN_TABLES = (
     "blombooru_source_name_observations",
     "blombooru_source_searchable_name_assertions",
     "blombooru_source_name_candidates",
+    "blombooru_source_concept_signals",
     "blombooru_source_concepts",
     "blombooru_source_concept_aliases",
     "blombooru_source_concept_evidence",
@@ -132,6 +133,9 @@ SEARCH_SYMMETRY_METRIC_KEYS = (
     "sampled_examples_private_count",
     "public_safe_example_count",
 )
+
+ALIAS_GAP_SAMPLE_LIMIT = 30
+HIGH_FREQUENCY_GAP_SAMPLE_LIMIT = 25
 
 SECRET_VALUE_RE = re.compile(
     r"(?i)(api[_-]?key|secret|token|password|authorization)\s*[:=]\s*['\"]?[A-Za-z0-9_\-./:+]{6,}"
@@ -222,6 +226,16 @@ def root_relative_or_name(path: Path) -> str:
         return str(path.relative_to(ROOT)).replace("\\", "/")
     except ValueError:
         return path.name
+
+
+def public_private_artifact_summary(*, bundle_created: bool = False) -> dict[str, Any]:
+    return {
+        "private_artifact_root_label": f".local_manifests/{PHASE_SLUG}",
+        "private_artifact_count": len(PRIVATE_ARTIFACT_NAMES) + 1,
+        "private_artifact_bundle_created": bundle_created,
+        "private_artifact_bundle_format": "zip",
+        "exact_private_paths_public": False,
+    }
 
 
 def load_dotenv_values(path: Path) -> dict[str, str]:
@@ -1058,6 +1072,15 @@ def audit_source_concepts(conn: Connection) -> tuple[dict[str, Any], list[dict[s
     return summary, alias_inventory_rows, evidence_inventory_rows
 
 
+def hidden_concept_ids_in_visible_closure(concept_ids: Sequence[int], concept_by_id: Mapping[int, Mapping[str, Any]]) -> list[int]:
+    leaked: list[int] = []
+    for concept_id in sorted({int(value) for value in concept_ids if value is not None}):
+        status = (concept_by_id.get(concept_id) or {}).get("status")
+        if status not in VISIBLE_STATUSES:
+            leaked.append(concept_id)
+    return leaked
+
+
 def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]], aliases: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     visible_concepts = [row for row in concepts if row.get("status") in VISIBLE_STATUSES]
     concept_by_id = {int(row["id"]): row for row in concepts}
@@ -1083,6 +1106,7 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
         for alias in concept_aliases:
             alias_label = str(alias.get("display_name") or alias.get("alias_value") or alias.get("alias_key") or "")
             concept_ids, hidden_rows = concept_ids_for_term(conn, alias_label, statuses=VISIBLE_STATUSES)
+            hidden_leak_concept_ids = hidden_concept_ids_in_visible_closure(concept_ids, concept_by_id)
             media_set = concept_media_set_for_ids(conn, concept_ids, statuses=VISIBLE_STATUSES)
             alias_results.append(
                 {
@@ -1092,6 +1116,7 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
                     "closure_concept_ids": concept_ids,
                     "media_ids": media_set,
                     "hidden_rows": hidden_rows,
+                    "hidden_leak_concept_ids": hidden_leak_concept_ids,
                     "metacharacter": bool(SEARCH_TOKEN_META_RE.search(alias_label)),
                 }
             )
@@ -1100,6 +1125,8 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
                 metrics["metacharacter_alias_count"] += 1
             if hidden_rows:
                 metrics["hidden_status_raw_match_count"] += 1
+            if hidden_leak_concept_ids:
+                metrics["hidden_status_leak_count"] += 1
 
         media_sets = [item["media_ids"] for item in alias_results]
         closure_sets = [set(item["closure_concept_ids"]) for item in alias_results]
@@ -1147,6 +1174,11 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
                     "max_alias_media_count": max_media,
                     "distinct_media_set_shapes": len({tuple(sorted(item["media_ids"])) for item in alias_results}),
                     "distinct_closure_shapes": len({tuple(sorted(item["closure_concept_ids"])) for item in alias_results}),
+                    "hidden_leak_concept_ids": "; ".join(
+                        ",".join(str(cid) for cid in item["hidden_leak_concept_ids"][:12])
+                        for item in alias_results
+                        if item["hidden_leak_concept_ids"]
+                    ),
                     "sample_aliases": "; ".join(safe_public_value(item["alias_label"], fallback="[redacted alias]") for item in alias_results[:8]),
                     "sample_closure_concepts": "; ".join(
                         ",".join(str(cid) for cid in item["closure_concept_ids"][:12])
@@ -1160,6 +1192,44 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
     for key in SEARCH_SYMMETRY_METRIC_KEYS:
         metrics.setdefault(key, 0)
     return dict(metrics), samples
+
+
+def build_gap_bucket_detail(
+    *,
+    total_distinct_keys: int,
+    missing_distinct_keys: int,
+    sampled_missing_keys: int,
+    sample_limit: int,
+) -> dict[str, Any]:
+    return {
+        "total_distinct_keys": int(total_distinct_keys),
+        "missing_distinct_keys": int(missing_distinct_keys),
+        "sampled_missing_keys": int(sampled_missing_keys),
+        "sample_limit": int(sample_limit),
+        "counts_are_full": True,
+        "sampling_affects": "examples_only",
+    }
+
+
+def summarize_missing_key_gap_rows(
+    rows: Sequence[Mapping[str, Any]],
+    visible_alias_keys: set[str],
+    *,
+    sample_limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    missing = [
+        dict(row)
+        for row in rows
+        if canonical_source_key(row.get("key_value") or "") not in visible_alias_keys
+        and str(row.get("key_value") or "") not in visible_alias_keys
+    ]
+    sampled = missing[:sample_limit]
+    return sampled, build_gap_bucket_detail(
+        total_distinct_keys=len(rows),
+        missing_distinct_keys=len(missing),
+        sampled_missing_keys=len(sampled),
+        sample_limit=sample_limit,
+    )
 
 
 def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], aliases: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -1180,6 +1250,14 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
             aliases_by_concept[int(row["concept_id"])].append(row)
     bucket_counts: Counter[str] = Counter()
     samples: list[dict[str, Any]] = []
+    sample_counts: Counter[str] = Counter()
+    gap_bucket_details: dict[str, dict[str, Any]] = {}
+
+    def add_sample(bucket: str, row: dict[str, Any], *, limit: int = ALIAS_GAP_SAMPLE_LIMIT) -> None:
+        if sample_counts[bucket] >= limit:
+            return
+        samples.append(row)
+        sample_counts[bucket] += 1
 
     for concept in visible_concepts:
         concept_id = int(concept["id"])
@@ -1192,10 +1270,10 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
         has_parenthetical = any(looks_danbooru_parenthetical(value) for value in values)
         if has_cjk and not has_latin:
             bucket_counts["cjk_alias_without_english_romaji_sibling"] += 1
-            samples.append({"bucket": "cjk_alias_without_english_romaji_sibling", "concept_id": concept_id, "status": concept.get("status"), "sample": "; ".join(safe_public_value(v, fallback="[redacted alias]") for v in values[:5])})
+            add_sample("cjk_alias_without_english_romaji_sibling", {"bucket": "cjk_alias_without_english_romaji_sibling", "concept_id": concept_id, "status": concept.get("status"), "sample": "; ".join(safe_public_value(v, fallback="[redacted alias]") for v in values[:5])})
         if has_parenthetical and not has_cjk:
             bucket_counts["danbooru_parenthetical_without_cjk_sibling"] += 1
-            samples.append({"bucket": "danbooru_parenthetical_without_cjk_sibling", "concept_id": concept_id, "status": concept.get("status"), "sample": "; ".join(safe_public_value(v, fallback="[redacted alias]") for v in values[:5])})
+            add_sample("danbooru_parenthetical_without_cjk_sibling", {"bucket": "danbooru_parenthetical_without_cjk_sibling", "concept_id": concept_id, "status": concept.get("status"), "sample": "; ".join(safe_public_value(v, fallback="[redacted alias]") for v in values[:5])})
 
     alias_key_groups: dict[str, set[int]] = defaultdict(set)
     display_groups: dict[str, set[int]] = defaultdict(set)
@@ -1207,10 +1285,11 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
     for key, ids in alias_key_groups.items():
         if key and len(ids) > 1:
             bucket_counts["same_normalized_alias_key_split_across_multiple_concepts"] += 1
-            samples.append({"bucket": "same_normalized_alias_key_split_across_multiple_concepts", "concept_id": ",".join(map(str, sorted(ids)[:12])), "sample": safe_public_value(key, fallback="[redacted alias key]")})
+            add_sample("same_normalized_alias_key_split_across_multiple_concepts", {"bucket": "same_normalized_alias_key_split_across_multiple_concepts", "concept_id": ",".join(map(str, sorted(ids)[:12])), "sample": safe_public_value(key, fallback="[redacted alias key]")})
     for key, ids in display_groups.items():
         if key and len(ids) > 1:
             bucket_counts["same_display_name_split_across_contexts"] += 1
+            add_sample("same_display_name_split_across_contexts", {"bucket": "same_display_name_split_across_contexts", "concept_id": ",".join(map(str, sorted(ids)[:12])), "sample": safe_public_value(key, fallback="[redacted display key]")})
 
     source_unlinked_queries = [
         ("source_tag_present_no_source_concept_alias", "blombooru_source_tag_observations", "canonical_tag_key", "raw_tag"),
@@ -1231,20 +1310,22 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
             WHERE {qident(key_column)} IS NOT NULL
             GROUP BY {qident(key_column)}
             ORDER BY count DESC
-            LIMIT 500
             """,
         )
-        missing = [row for row in rows if canonical_source_key(row["key_value"]) not in visible_alias_keys and str(row["key_value"]) not in visible_alias_keys]
-        bucket_counts[bucket] += len(missing)
-        for row in missing[:30]:
-            samples.append(
+        sampled_missing, detail = summarize_missing_key_gap_rows(rows, visible_alias_keys, sample_limit=ALIAS_GAP_SAMPLE_LIMIT)
+        gap_bucket_details[bucket] = detail
+        bucket_counts[bucket] += int(detail["missing_distinct_keys"])
+        for row in sampled_missing:
+            add_sample(
+                bucket,
                 {
                     "bucket": bucket,
                     "concept_id": "",
                     "sample": safe_public_value(row.get("label") or row.get("key_value"), fallback="[redacted source value]"),
                     "count": row.get("count"),
-                }
+                },
             )
+        gap_bucket_details[bucket]["sampled_missing_keys"] = sample_counts[bucket]
 
     if table_exists(conn, "blombooru_source_tag_registry"):
         rows = rows_dict(
@@ -1253,13 +1334,20 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
             SELECT canonical_tag_key AS key_value, normalized_tag AS label, seen_count
             FROM blombooru_source_tag_registry
             ORDER BY seen_count DESC NULLS LAST
-            LIMIT 200
             """,
         )
         missing = [row for row in rows if str(row.get("key_value") or "") not in visible_alias_keys]
-        bucket_counts["high_frequency_source_tag_or_name_unlinked"] += sum(1 for row in missing if int(row.get("seen_count") or 0) >= 2)
-        for row in missing[:25]:
-            samples.append({"bucket": "high_frequency_source_tag_or_name_unlinked", "sample": safe_public_value(row.get("label"), fallback="[redacted source value]"), "count": row.get("seen_count")})
+        high_frequency_missing = [row for row in missing if int(row.get("seen_count") or 0) >= 2]
+        bucket = "high_frequency_source_tag_or_name_unlinked"
+        bucket_counts[bucket] += len(high_frequency_missing)
+        for row in high_frequency_missing[:HIGH_FREQUENCY_GAP_SAMPLE_LIMIT]:
+            add_sample(bucket, {"bucket": bucket, "sample": safe_public_value(row.get("label"), fallback="[redacted source value]"), "count": row.get("seen_count")}, limit=HIGH_FREQUENCY_GAP_SAMPLE_LIMIT)
+        gap_bucket_details[bucket] = build_gap_bucket_detail(
+            total_distinct_keys=len(rows),
+            missing_distinct_keys=len(high_frequency_missing),
+            sampled_missing_keys=sample_counts[bucket],
+            sample_limit=HIGH_FREQUENCY_GAP_SAMPLE_LIMIT,
+        )
 
     needs_review_rows = [row for row in concepts if row.get("status") == "needs_review"]
     for row in needs_review_rows:
@@ -1267,6 +1355,7 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
         keys = {str(alias.get("alias_key") or "") for alias in aliases_by_concept.get(concept_id, [])}
         if keys and not keys.intersection(active_alias_keys):
             bucket_counts["needs_review_cluster_with_no_active_alias_path"] += 1
+            add_sample("needs_review_cluster_with_no_active_alias_path", {"bucket": "needs_review_cluster_with_no_active_alias_path", "concept_id": concept_id, "status": row.get("status"), "sample": safe_public_value(row.get("primary_display_name"), fallback="[redacted concept]")})
 
     seed_results = {}
     for seed_name, values in SEED_GROUPS.items():
@@ -1288,13 +1377,38 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
     if seed_results["nahida_prompt_and_doc1"]["gap_detected"]:
         bucket_counts["nahida_seed_gap"] += 1
 
+    concept_bucket_total_keys = {
+        "cjk_alias_without_english_romaji_sibling": len(visible_concepts),
+        "danbooru_parenthetical_without_cjk_sibling": len(visible_concepts),
+        "same_normalized_alias_key_split_across_multiple_concepts": len(alias_key_groups),
+        "same_display_name_split_across_contexts": len(display_groups),
+        "needs_review_cluster_with_no_active_alias_path": len(needs_review_rows),
+        "nahida_seed_gap": len(SEED_GROUPS["nahida_prompt_and_doc1"]),
+    }
+    for bucket, count in bucket_counts.items():
+        if bucket in gap_bucket_details:
+            continue
+        gap_bucket_details[bucket] = build_gap_bucket_detail(
+            total_distinct_keys=concept_bucket_total_keys.get(bucket, count),
+            missing_distinct_keys=count,
+            sampled_missing_keys=sample_counts[bucket],
+            sample_limit=ALIAS_GAP_SAMPLE_LIMIT,
+        )
+
     recommended = "source_concept_alias_resolver_improvement" if sum(bucket_counts.values()) else "entity_bridge_preview_design"
     return {
         "gap_buckets": dict(bucket_counts),
+        "gap_bucket_details": gap_bucket_details,
+        "sample_limit_policy": {
+            "counts_are_full": True,
+            "samples_are_limited_to_examples_only": True,
+            "default_sample_limit": ALIAS_GAP_SAMPLE_LIMIT,
+            "high_frequency_sample_limit": HIGH_FREQUENCY_GAP_SAMPLE_LIMIT,
+        },
         "total_gap_signals": sum(bucket_counts.values()),
         "seed_results": seed_results,
         "recommended_next_fix_category": recommended,
-    }, samples[:500]
+    }, samples
 
 
 def audit_needs_review(conn: Connection, concepts: Sequence[Mapping[str, Any]], aliases: Sequence[Mapping[str, Any]], evidence: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -1521,7 +1635,6 @@ def build_public_summary(
             "recorded_at",
         ]
     }
-    private_artifacts = [root_relative_or_name(output_dir / name) for name in PRIVATE_ARTIFACT_NAMES]
     return {
         "phase": PHASE,
         "title": PHASE_TITLE,
@@ -1540,6 +1653,8 @@ def build_public_summary(
         "search_symmetry": symmetry,
         "alias_gap_analysis": {
             "gap_buckets": alias_gaps.get("gap_buckets"),
+            "gap_bucket_details": alias_gaps.get("gap_bucket_details"),
+            "sample_limit_policy": alias_gaps.get("sample_limit_policy"),
             "total_gap_signals": alias_gaps.get("total_gap_signals"),
             "recommended_next_fix_category": alias_gaps.get("recommended_next_fix_category"),
         },
@@ -1565,7 +1680,7 @@ def build_public_summary(
             "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json": "public report / handoff / roadmap update",
             ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit": "one-off local artifact / ignored output",
         },
-        "private_artifacts": private_artifacts,
+        "private_artifacts": public_private_artifact_summary(bundle_created=False),
     }
 
 
@@ -1578,12 +1693,16 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     decision = summary["decision_matrix"]
     answers = decision["answers"]
     seed = summary["seed_results"].get("nahida_prompt_and_doc1", {})
+    private_artifacts = summary.get("private_artifacts", {})
+    checked_tables = summary["read_only_proof"].get("forbidden_tables_checked") or []
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
         "## Summary",
         "",
         "SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.",
+        "",
+        "This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where redaction proof ordering, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.",
         "",
         "## Scope",
         "",
@@ -1604,6 +1723,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- PostgreSQL transaction_read_only: `{summary['db_identity'].get('transaction_read_only')}`.",
         f"- Forbidden table count proof passed: `{summary['read_only_proof'].get('passed')}`.",
         f"- Missing optional forbidden tables recorded: `{len(summary['read_only_proof'].get('missing_tables') or [])}`.",
+        f"- SourceConcept signals table included in mutation proof: `{'blombooru_source_concept_signals' in checked_tables}`.",
         "",
         "## Media coverage baseline",
         "",
@@ -1637,13 +1757,20 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Exact symmetric concepts: `{symmetry.get('exact_symmetric_concepts')}`.",
         f"- Explainable no-media concepts: `{symmetry.get('explainable_no_media_concepts')}`.",
         f"- Asymmetric concepts: `{symmetry.get('asymmetric_concepts')}`; severe asymmetry: `{symmetry.get('severe_asymmetry_count')}`.",
-        f"- One-way links / fragmentation / overbroad / hidden leakage: `{symmetry.get('one_way_link_count')}` / `{symmetry.get('fragmentation_count')}` / `{symmetry.get('overbroad_expansion_count')}` / `{symmetry.get('hidden_status_leak_count')}`.",
+        f"- One-way links / fragmentation / overbroad: `{symmetry.get('one_way_link_count')}` / `{symmetry.get('fragmentation_count')}` / `{symmetry.get('overbroad_expansion_count')}`.",
+        f"- Hidden raw matches / actual visible hidden leakage: `{symmetry.get('hidden_status_raw_match_count')}` / `{symmetry.get('hidden_status_leak_count')}`.",
+        "- Hidden raw matches mean a lookup encountered hidden rejected/ambiguous/superseded rows; actual leakage means hidden concepts entered the visible closure/media result and should remain zero.",
         f"- Parser/metacharacter aliases: `{symmetry.get('metacharacter_alias_count')}`.",
         "",
         "## Alias gap analysis",
         "",
         f"- Total gap signals: `{gaps.get('total_gap_signals')}`.",
         f"- Gap buckets: `{json.dumps(gaps.get('gap_buckets'), ensure_ascii=False, sort_keys=True)}`.",
+        f"- Gap bucket details: `{json.dumps(gaps.get('gap_bucket_details'), ensure_ascii=False, sort_keys=True)}`.",
+        f"- Sample policy: `{json.dumps(gaps.get('sample_limit_policy'), ensure_ascii=False, sort_keys=True)}`.",
+        "- Alias/source gap counts are full grouped-key counts; sample limits affect examples only, not totals or the decision matrix.",
+        f"- Full-count correction supersedes the pre-fix limited total gap signal value `2025` with `{gaps.get('total_gap_signals')}`.",
+        f"- Route impact: the corrected count strengthens the alias/source-linkage concern; highest recommendation remains `{summary.get('recommended_next_phase')}`.",
         f"- Recommended fix category: `{gaps.get('recommended_next_fix_category')}`.",
         "",
         "## Needs-review cluster analysis",
@@ -1657,7 +1784,11 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Public redaction passed: `{summary['redaction_privacy_audit'].get('passed')}`.",
         f"- Public artifacts checked: `{json.dumps(summary['redaction_privacy_audit'].get('public_paths'), ensure_ascii=False)}`.",
+        f"- Final scan after public fields finalized: `{summary['redaction_privacy_audit'].get('final_public_scan_after_public_fields_finalized')}`.",
+        f"- Checked at: `{summary['redaction_privacy_audit'].get('checked_at')}`.",
         f"- Findings: `{json.dumps(summary['redaction_privacy_audit'].get('findings'), ensure_ascii=False)}`.",
+        f"- Private artifact bundle created: `{private_artifacts.get('private_artifact_bundle_created')}`; exact private paths public: `{private_artifacts.get('exact_private_paths_public')}`.",
+        f"- Private artifact count: `{private_artifacts.get('private_artifact_count')}` under `{private_artifacts.get('private_artifact_root_label')}`.",
         "",
         "## Nahida / 纳西妲 / 草神 seed result",
         "",
@@ -1723,36 +1854,51 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def scan_public_artifacts(paths: Sequence[Path]) -> dict[str, Any]:
+def scan_public_artifacts(paths: Sequence[Path], *, checked_at: str | None = None) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     for path in paths:
         if not path.exists():
-            findings.append({"path": str(path.relative_to(ROOT)), "type": "missing_public_artifact"})
+            findings.append({"path": root_relative_or_name(path), "type": "missing_public_artifact"})
             continue
         text_value = path.read_text(encoding="utf-8", errors="replace")
         for finding in scan_public_text(text_value):
-            findings.append({"path": str(path.relative_to(ROOT)), **finding})
+            findings.append({"path": root_relative_or_name(path), **finding})
     return {
-        "checked_at": utc_now_iso(),
+        "checked_at": checked_at or utc_now_iso(),
         "passed": not findings,
-        "public_paths": [str(path.relative_to(ROOT)).replace("\\", "/") for path in paths],
+        "public_paths": [root_relative_or_name(path) for path in paths],
         "findings": findings,
     }
 
 
+def final_redaction_record(paths: Sequence[Path], *, checked_at: str) -> dict[str, Any]:
+    return {
+        "checked_at": checked_at,
+        "passed": True,
+        "public_paths": [root_relative_or_name(path) for path in paths],
+        "findings": [],
+        "final_public_scan_after_public_fields_finalized": True,
+        "exact_private_paths_public": False,
+        "private_artifact_paths_public": False,
+        "policy": "final public report and summary JSON are written with all public fields finalized, then scanned without another public rewrite",
+    }
+
+
 def write_reports_and_redaction(summary: dict[str, Any], output_dir: Path) -> dict[str, Any]:
-    placeholder_redaction = {"checked_at": utc_now_iso(), "passed": None, "public_paths": [], "findings": [], "status": "pending"}
-    summary["redaction_privacy_audit"] = placeholder_redaction
-    write_json(PUBLIC_REPORT_JSON, summary)
-    write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
-    redaction = scan_public_artifacts([PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON])
+    paths = [PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON]
+    checked_at = utc_now_iso()
+    redaction = final_redaction_record(paths, checked_at=checked_at)
     summary["redaction_privacy_audit"] = redaction
     write_json(PUBLIC_REPORT_JSON, summary)
     write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
-    redaction = scan_public_artifacts([PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON])
-    summary["redaction_privacy_audit"] = redaction
-    write_json(PUBLIC_REPORT_JSON, summary)
-    write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
+
+    final_scan = scan_public_artifacts(paths, checked_at=checked_at)
+    if not final_scan["passed"]:
+        failed_redaction = {**redaction, "passed": False, "findings": final_scan["findings"]}
+        write_json(output_dir / "redaction-privacy-audit.json", failed_redaction)
+        write_text(output_dir / "public-redaction-check.txt", json.dumps(failed_redaction, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        raise AuditBlockedError(f"Public redaction scan failed: {final_scan['findings']!r}")
+
     write_json(output_dir / "redaction-privacy-audit.json", redaction)
     write_text(output_dir / "public-redaction-check.txt", json.dumps(redaction, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return redaction
@@ -1890,6 +2036,7 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
                 "max_alias_media_count",
                 "distinct_media_set_shapes",
                 "distinct_closure_shapes",
+                "hidden_leak_concept_ids",
                 "sample_aliases",
                 "sample_closure_concepts",
             ],
@@ -1904,29 +2051,15 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
         )
         write_json(output_dir / "scv1-decision-matrix.json", decision)
 
+        initial_zip_path = zip_directory(output_dir)
+        summary["private_artifacts"] = public_private_artifact_summary(bundle_created=initial_zip_path.exists())
+
         if args.write_public_report:
             redaction = write_reports_and_redaction(summary, output_dir)
-            decision = decide_next_phase(media, source_layer, source_concepts, symmetry_metrics, alias_gap_analysis, needs_review_analysis, bool(redaction["passed"]))
-            summary["decision_matrix"] = decision
-            summary["recommended_next_phase"] = decision["recommended_next_phase"]
             summary["redaction_privacy_audit"] = redaction
-            write_json(PUBLIC_REPORT_JSON, summary)
-            write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
-            redaction = scan_public_artifacts([PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON])
-            summary["redaction_privacy_audit"] = redaction
-            write_json(PUBLIC_REPORT_JSON, summary)
-            write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
-            write_json(output_dir / "redaction-privacy-audit.json", redaction)
-            write_text(output_dir / "public-redaction-check.txt", json.dumps(redaction, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            if not redaction["passed"]:
-                raise AuditBlockedError(f"Public redaction scan failed: {redaction['findings']!r}")
 
         write_json(output_dir / "checksums.json", build_artifact_checksums(output_dir))
-        zip_path = zip_directory(output_dir)
-        summary["private_artifact_zip"] = str(zip_path.relative_to(ROOT)).replace("\\", "/")
-        if args.write_public_report:
-            write_json(PUBLIC_REPORT_JSON, summary)
-            write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
+        zip_directory(output_dir)
         conn.exec_driver_sql("ROLLBACK")
         return summary
     finally:

@@ -47,6 +47,28 @@ def test_forbidden_table_mutation_proof_detects_count_changes() -> None:
     assert proof["changed_tables"] == [{"table": "blombooru_media", "before": 10, "after": 11}]
 
 
+def test_forbidden_tables_include_source_concept_signals() -> None:
+    assert "blombooru_source_concept_signals" in runner.FORBIDDEN_TABLES
+
+
+def test_source_concept_signals_mutation_proof_detects_count_changes() -> None:
+    before = {
+        "tables": {
+            "blombooru_source_concept_signals": {"status": "present", "count": 10},
+        }
+    }
+    after = {
+        "tables": {
+            "blombooru_source_concept_signals": {"status": "present", "count": 11},
+        }
+    }
+
+    proof = runner.compare_mutation_counts(before, after)
+
+    assert proof["passed"] is False
+    assert proof["changed_tables"] == [{"table": "blombooru_source_concept_signals", "before": 10, "after": 11}]
+
+
 def test_public_redaction_scan_catches_paths_filenames_and_secrets() -> None:
     unsafe = (
         r"C:\Users\kyloris\Pictures\private.png "
@@ -63,6 +85,59 @@ def test_public_redaction_scan_catches_paths_filenames_and_secrets() -> None:
     assert "canonical_filename_like" in finding_types
     assert "secret_assignment_like" in finding_types
     assert "authorization_bearer_like" in finding_types
+
+
+def test_final_public_redaction_scan_runs_after_final_public_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    report_md = tmp_path / "phase-report.md"
+    report_json = tmp_path / "phase-summary.json"
+    output_dir = tmp_path / "private"
+    output_dir.mkdir()
+    summary = minimal_public_summary(output_dir)
+    summary["private_artifacts"] = runner.public_private_artifact_summary(bundle_created=True)
+    expected_zip_path = f".local_manifests/{runner.PHASE_SLUG}.zip"
+    scanned = {"called": False}
+
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", report_md)
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", report_json)
+
+    def fake_scan(paths, *, checked_at=None):
+        scanned["called"] = True
+        assert report_md in paths
+        assert report_json in paths
+        payload = json.loads(report_json.read_text(encoding="utf-8"))
+        combined_text = report_md.read_text(encoding="utf-8") + "\n" + report_json.read_text(encoding="utf-8")
+        assert payload["private_artifacts"]["private_artifact_bundle_created"] is True
+        assert payload["private_artifacts"]["exact_private_paths_public"] is False
+        assert payload["redaction_privacy_audit"]["checked_at"] == checked_at
+        assert payload["redaction_privacy_audit"]["final_public_scan_after_public_fields_finalized"] is True
+        assert "private_artifact_zip" not in combined_text
+        assert expected_zip_path not in combined_text
+        return {
+            "checked_at": checked_at,
+            "passed": True,
+            "public_paths": [path.name for path in paths],
+            "findings": [],
+        }
+
+    monkeypatch.setattr(runner, "scan_public_artifacts", fake_scan)
+
+    redaction = runner.write_reports_and_redaction(summary, output_dir)
+
+    assert scanned["called"] is True
+    assert redaction["passed"] is True
+    final_payload = json.loads(report_json.read_text(encoding="utf-8"))
+    assert final_payload["redaction_privacy_audit"]["checked_at"] == redaction["checked_at"]
+    assert final_payload["redaction_privacy_audit"]["final_public_scan_after_public_fields_finalized"] is True
+
+
+def test_public_private_artifact_summary_does_not_expose_exact_zip_path() -> None:
+    public_artifacts = runner.public_private_artifact_summary(bundle_created=True)
+    text_value = json.dumps(public_artifacts, ensure_ascii=False)
+
+    assert public_artifacts["private_artifact_bundle_created"] is True
+    assert public_artifacts["exact_private_paths_public"] is False
+    assert "private_artifact_zip" not in text_value
+    assert f"{runner.PHASE_SLUG}.zip" not in text_value
 
 
 def test_search_symmetry_comparison_detects_exact_symmetry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,6 +211,45 @@ def test_hidden_rejected_ambiguous_superseded_statuses_do_not_count_as_visible(m
     assert called is False
 
 
+def test_hidden_raw_match_without_visible_leak_keeps_leak_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    concepts = [
+        {"id": 1, "status": "active", "primary_display_name": "Visible Alias", "concept_type_hint": "character"},
+        {"id": 2, "status": "superseded", "primary_display_name": "Hidden Alias", "concept_type_hint": "character"},
+    ]
+    aliases = [{"id": 1, "concept_id": 1, "status": "active", "display_name": "visible_alias", "alias_key": "visible_alias"}]
+    monkeypatch.setattr(
+        runner,
+        "concept_ids_for_term",
+        lambda *_args, **_kwargs: ([1], [{"concept_id": 2, "concept_status": "superseded"}]),
+    )
+    monkeypatch.setattr(runner, "concept_media_set_for_ids", lambda *_args, **_kwargs: {123})
+
+    metrics, _samples = runner.audit_search_symmetry(None, concepts, aliases)
+
+    assert metrics["hidden_status_raw_match_count"] == 1
+    assert metrics["hidden_status_leak_count"] == 0
+
+
+def test_hidden_visible_closure_leak_increments_leak_metric(monkeypatch: pytest.MonkeyPatch) -> None:
+    concepts = [
+        {"id": 1, "status": "active", "primary_display_name": "Visible Alias", "concept_type_hint": "character"},
+        {"id": 2, "status": "superseded", "primary_display_name": "Hidden Alias", "concept_type_hint": "character"},
+    ]
+    aliases = [{"id": 1, "concept_id": 1, "status": "active", "display_name": "visible_alias", "alias_key": "visible_alias"}]
+    monkeypatch.setattr(
+        runner,
+        "concept_ids_for_term",
+        lambda *_args, **_kwargs: ([1, 2], [{"concept_id": 2, "concept_status": "superseded"}]),
+    )
+    monkeypatch.setattr(runner, "concept_media_set_for_ids", lambda *_args, **_kwargs: {123})
+
+    metrics, samples = runner.audit_search_symmetry(None, concepts, aliases)
+
+    assert metrics["hidden_status_raw_match_count"] == 1
+    assert metrics["hidden_status_leak_count"] == 1
+    assert samples[0]["hidden_leak_concept_ids"] == "2"
+
+
 def test_needs_review_is_labeled_distinctly_from_active(monkeypatch: pytest.MonkeyPatch) -> None:
     concepts = [{"id": 1, "status": "needs_review", "primary_display_name": "Review Alias", "concept_type_hint": "character"}]
     aliases = [{"id": 1, "concept_id": 1, "status": "needs_review", "display_name": "review_alias", "alias_key": "review_alias"}]
@@ -164,6 +278,32 @@ def test_decision_matrix_selects_conservative_next_steps() -> None:
     assert decision["answers"]["is_5k_10k_expansion_justified_now"] is False
     assert decision["answers"]["is_entity_bridge_justified_now"] is False
     assert any(item["key"] == "run_ledger_or_phase39_prerequisite" and item["recommended"] for item in decision["options"])
+
+
+def test_alias_gap_full_counts_are_independent_of_sample_limit() -> None:
+    rows = [{"key_value": f"missing_{index}", "label": f"Missing {index}", "count": 10 - index} for index in range(6)]
+
+    sampled, detail = runner.summarize_missing_key_gap_rows(rows, set(), sample_limit=2)
+
+    assert detail["total_distinct_keys"] == 6
+    assert detail["missing_distinct_keys"] == 6
+    assert detail["sampled_missing_keys"] == 2
+    assert detail["sample_limit"] == 2
+    assert detail["counts_are_full"] is True
+    assert detail["sampling_affects"] == "examples_only"
+    assert len(sampled) == 2
+
+
+def test_alias_gap_sample_limit_does_not_change_total_count() -> None:
+    rows = [{"key_value": f"missing_{index}", "label": f"Missing {index}", "count": 1} for index in range(8)]
+
+    _sampled_one, detail_one = runner.summarize_missing_key_gap_rows(rows, set(), sample_limit=1)
+    _sampled_three, detail_three = runner.summarize_missing_key_gap_rows(rows, set(), sample_limit=3)
+
+    assert detail_one["missing_distinct_keys"] == 8
+    assert detail_three["missing_distinct_keys"] == 8
+    assert detail_one["sampled_missing_keys"] == 1
+    assert detail_three["sampled_missing_keys"] == 3
 
 
 def minimal_public_summary(tmp_path: Path) -> dict:
@@ -195,8 +335,19 @@ def minimal_public_summary(tmp_path: Path) -> dict:
         media={"total_media": 0, "eligible_policy": "content_class IN ('anime', 'unknown')", "eligible_media_count": 0, "eligible_media_pct": 0, "media_with_any_tags": 0, "media_with_ai_tag_provenance": 0, "media_without_ai_tags": 0, "media_with_source_layer_signals": 0, "media_without_source_layer_signals": 0, "media_with_source_concept_evidence_or_links": 0, "content_class_distribution": {}, "tags": {"translation": {"total": 0}, "total_tags": 0}},
         source_layer={"source_records": {"by_provider": {}, "linked_to_media": 0}, "f7a_candidate_coverage": {"distinct_media_with_candidates": 0}, "source_assertions_by_status": {}},
         concepts={"total_source_concepts": 0, "by_status": {}, "by_concept_type_hint": {}, "aliases_total": 0, "evidence_total": 0, "search_index_total": 0, "concepts_with_no_media": 0, "concepts_with_no_aliases": 0, "concepts_with_no_evidence": 0, "concepts_with_no_search_index": 0, "same_alias_key_across_multiple_concepts": []},
-        symmetry={"concepts_checked": 0, "aliases_checked": 0, "exact_symmetric_concepts": 0, "explainable_no_media_concepts": 0, "asymmetric_concepts": 0, "severe_asymmetry_count": 0, "one_way_link_count": 0, "fragmentation_count": 0, "overbroad_expansion_count": 0, "hidden_status_leak_count": 0, "metacharacter_alias_count": 0},
-        alias_gaps={"gap_buckets": {}, "total_gap_signals": 0, "recommended_next_fix_category": "entity_bridge_preview_design", "seed_results": {"nahida_prompt_and_doc1": {"seed_values_tested": ["Nahida"], "matched_alias_values": [], "matched_concept_count": 0, "matched_media_count": 0, "gap_detected": True}}},
+        symmetry={"concepts_checked": 0, "aliases_checked": 0, "exact_symmetric_concepts": 0, "explainable_no_media_concepts": 0, "asymmetric_concepts": 0, "severe_asymmetry_count": 0, "one_way_link_count": 0, "fragmentation_count": 0, "overbroad_expansion_count": 0, "hidden_status_raw_match_count": 0, "hidden_status_leak_count": 0, "metacharacter_alias_count": 0},
+        alias_gaps={
+            "gap_buckets": {},
+            "gap_bucket_details": {},
+            "sample_limit_policy": {
+                "counts_are_full": True,
+                "samples_are_limited_to_examples_only": True,
+                "default_sample_limit": runner.ALIAS_GAP_SAMPLE_LIMIT,
+            },
+            "total_gap_signals": 0,
+            "recommended_next_fix_category": "entity_bridge_preview_design",
+            "seed_results": {"nahida_prompt_and_doc1": {"seed_values_tested": ["Nahida"], "matched_alias_values": [], "matched_concept_count": 0, "matched_media_count": 0, "gap_detected": True}},
+        },
         needs_review={"total_needs_review_concepts": 0, "assessment": "none"},
         redaction={"passed": True, "findings": [], "public_paths": []},
         decision=decision,
@@ -231,6 +382,10 @@ def test_summary_json_has_required_fields(tmp_path: Path) -> None:
     }
 
     assert required.issubset(summary)
+    assert summary["private_artifacts"]["private_artifact_bundle_created"] is False
+    assert summary["private_artifacts"]["exact_private_paths_public"] is False
+    assert summary["alias_gap_analysis"]["gap_bucket_details"] == {}
+    assert summary["alias_gap_analysis"]["sample_limit_policy"]["counts_are_full"] is True
     json.dumps(summary, ensure_ascii=False)
 
 

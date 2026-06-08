@@ -1,11 +1,93 @@
 {
   "alias_gap_analysis": {
+    "gap_bucket_details": {
+      "cjk_alias_without_english_romaji_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 367,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1115
+      },
+      "danbooru_parenthetical_without_cjk_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 199,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1115
+      },
+      "high_frequency_source_tag_or_name_unlinked": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 13,
+        "sample_limit": 25,
+        "sampled_missing_keys": 13,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 418
+      },
+      "needs_review_cluster_with_no_active_alias_path": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 523,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 760
+      },
+      "normal_tag_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 3635,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 3889
+      },
+      "same_display_name_split_across_contexts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 176,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 849
+      },
+      "same_normalized_alias_key_split_across_multiple_concepts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 176,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 851
+      },
+      "source_assertion_present_not_connected": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 22,
+        "sample_limit": 30,
+        "sampled_missing_keys": 22,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 266
+      },
+      "source_name_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 0,
+        "sample_limit": 30,
+        "sampled_missing_keys": 0,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 370
+      },
+      "source_tag_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 81,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 418
+      }
+    },
     "gap_buckets": {
       "cjk_alias_without_english_romaji_sibling": 367,
       "danbooru_parenthetical_without_cjk_sibling": 199,
       "high_frequency_source_tag_or_name_unlinked": 13,
       "needs_review_cluster_with_no_active_alias_path": 523,
-      "normal_tag_present_no_source_concept_alias": 468,
+      "normal_tag_present_no_source_concept_alias": 3635,
       "same_display_name_split_across_contexts": 176,
       "same_normalized_alias_key_split_across_multiple_concepts": 176,
       "source_assertion_present_not_connected": 22,
@@ -13,7 +95,13 @@
       "source_tag_present_no_source_concept_alias": 81
     },
     "recommended_next_fix_category": "source_concept_alias_resolver_improvement",
-    "total_gap_signals": 2025
+    "sample_limit_policy": {
+      "counts_are_full": true,
+      "default_sample_limit": 30,
+      "high_frequency_sample_limit": 25,
+      "samples_are_limited_to_examples_only": true
+    },
+    "total_gap_signals": 5192
   },
   "artifact_lifecycle": {
     ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit": "one-off local artifact / ignored output",
@@ -27,11 +115,11 @@
     "connected_database": "blombooru",
     "database": "blombooru",
     "git_branch": "codex/phase45-scv1-source-concept-coverage-audit",
-    "git_sha": "2912c58c5fbb10344f29e661def7373b7ea654eb",
+    "git_sha": "6c5d8075d4486b4e9febb354f031f72b2d7f433a",
     "host": "localhost",
     "port": 5432,
     "python_executable": "python.exe",
-    "recorded_at": "2026-06-08T08:32:12Z",
+    "recorded_at": "2026-06-08T09:05:50Z",
     "server_port": 5432,
     "transaction_read_only": "on",
     "transaction_read_only_ok": true,
@@ -65,7 +153,7 @@
         "priority": "P1",
         "reasons": [
           "search asymmetry concepts=0, severe=0",
-          "alias/cross-language/source linkage gap signals=2025",
+          "alias/cross-language/source linkage gap signals=5192",
           "needs_review concepts=760"
         ],
         "recommended": true
@@ -143,7 +231,7 @@
     ],
     "recommended_next_phase": "source_concept_alias_resolver_improvement"
   },
-  "generated_at": "2026-06-08T08:32:30Z",
+  "generated_at": "2026-06-08T09:06:05Z",
   "media_coverage": {
     "ai_jobs_by_status": {
       "completed": 51
@@ -218,25 +306,13 @@
     "total_needs_review_concepts": 760
   },
   "phase": "4.5-SCV1",
-  "private_artifact_zip": ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit.zip",
-  "private_artifacts": [
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/db-identity.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/read-only-mutation-proof.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/media-coverage-inventory.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-layer-coverage-inventory.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-inventory.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-alias-inventory.csv",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-evidence-inventory.csv",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-search-symmetry.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-search-symmetry-samples.csv",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/alias-gap-analysis.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/alias-gap-samples.csv",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/needs-review-cluster-analysis.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/needs-review-cluster-samples.csv",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/redaction-privacy-audit.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/scv1-decision-matrix.json",
-    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/public-redaction-check.txt"
-  ],
+  "private_artifacts": {
+    "exact_private_paths_public": false,
+    "private_artifact_bundle_created": true,
+    "private_artifact_bundle_format": "zip",
+    "private_artifact_count": 17,
+    "private_artifact_root_label": ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit"
+  },
   "read_only_proof": {
     "changed_tables": [],
     "forbidden_tables_checked": [
@@ -256,6 +332,7 @@
       "blombooru_source_name_observations",
       "blombooru_source_searchable_name_assertions",
       "blombooru_source_name_candidates",
+      "blombooru_source_concept_signals",
       "blombooru_source_concepts",
       "blombooru_source_concept_aliases",
       "blombooru_source_concept_evidence",
@@ -269,9 +346,13 @@
   },
   "recommended_next_phase": "source_concept_alias_resolver_improvement",
   "redaction_privacy_audit": {
-    "checked_at": "2026-06-08T08:32:30Z",
+    "checked_at": "2026-06-08T09:06:06Z",
+    "exact_private_paths_public": false,
+    "final_public_scan_after_public_fields_finalized": true,
     "findings": [],
     "passed": true,
+    "policy": "final public report and summary JSON are written with all public fields finalized, then scanned without another public rewrite",
+    "private_artifact_paths_public": false,
     "public_paths": [
       "docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md",
       "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"

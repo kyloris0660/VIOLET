@@ -4,6 +4,8 @@
 
 SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.
 
+This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where redaction proof ordering, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.
+
 ## Scope
 
 - Current development DB only.
@@ -18,11 +20,12 @@ SCV1 performed a read-only audit over the current development DB. It generated p
 ## DB identity and read-only proof
 
 - DB: `blombooru` on `localhost:5432`.
-- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `2912c58c5fbb10344f29e661def7373b7ea654eb`.
+- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `6c5d8075d4486b4e9febb354f031f72b2d7f433a`.
 - Python: `python.exe`.
 - PostgreSQL transaction_read_only: `on`.
 - Forbidden table count proof passed: `True`.
 - Missing optional forbidden tables recorded: `1`.
+- SourceConcept signals table included in mutation proof: `True`.
 
 ## Media coverage baseline
 
@@ -56,13 +59,20 @@ SCV1 performed a read-only audit over the current development DB. It generated p
 - Exact symmetric concepts: `1115`.
 - Explainable no-media concepts: `416`.
 - Asymmetric concepts: `0`; severe asymmetry: `0`.
-- One-way links / fragmentation / overbroad / hidden leakage: `0` / `1` / `60` / `0`.
+- One-way links / fragmentation / overbroad: `0` / `1` / `60`.
+- Hidden raw matches / actual visible hidden leakage: `1702` / `0`.
+- Hidden raw matches mean a lookup encountered hidden rejected/ambiguous/superseded rows; actual leakage means hidden concepts entered the visible closure/media result and should remain zero.
 - Parser/metacharacter aliases: `922`.
 
 ## Alias gap analysis
 
-- Total gap signals: `2025`.
-- Gap buckets: `{"cjk_alias_without_english_romaji_sibling": 367, "danbooru_parenthetical_without_cjk_sibling": 199, "high_frequency_source_tag_or_name_unlinked": 13, "needs_review_cluster_with_no_active_alias_path": 523, "normal_tag_present_no_source_concept_alias": 468, "same_display_name_split_across_contexts": 176, "same_normalized_alias_key_split_across_multiple_concepts": 176, "source_assertion_present_not_connected": 22, "source_name_present_no_source_concept_alias": 0, "source_tag_present_no_source_concept_alias": 81}`.
+- Total gap signals: `5192`.
+- Gap buckets: `{"cjk_alias_without_english_romaji_sibling": 367, "danbooru_parenthetical_without_cjk_sibling": 199, "high_frequency_source_tag_or_name_unlinked": 13, "needs_review_cluster_with_no_active_alias_path": 523, "normal_tag_present_no_source_concept_alias": 3635, "same_display_name_split_across_contexts": 176, "same_normalized_alias_key_split_across_multiple_concepts": 176, "source_assertion_present_not_connected": 22, "source_name_present_no_source_concept_alias": 0, "source_tag_present_no_source_concept_alias": 81}`.
+- Gap bucket details: `{"cjk_alias_without_english_romaji_sibling": {"counts_are_full": true, "missing_distinct_keys": 367, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 1115}, "danbooru_parenthetical_without_cjk_sibling": {"counts_are_full": true, "missing_distinct_keys": 199, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 1115}, "high_frequency_source_tag_or_name_unlinked": {"counts_are_full": true, "missing_distinct_keys": 13, "sample_limit": 25, "sampled_missing_keys": 13, "sampling_affects": "examples_only", "total_distinct_keys": 418}, "needs_review_cluster_with_no_active_alias_path": {"counts_are_full": true, "missing_distinct_keys": 523, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 760}, "normal_tag_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 3635, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 3889}, "same_display_name_split_across_contexts": {"counts_are_full": true, "missing_distinct_keys": 176, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 849}, "same_normalized_alias_key_split_across_multiple_concepts": {"counts_are_full": true, "missing_distinct_keys": 176, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 851}, "source_assertion_present_not_connected": {"counts_are_full": true, "missing_distinct_keys": 22, "sample_limit": 30, "sampled_missing_keys": 22, "sampling_affects": "examples_only", "total_distinct_keys": 266}, "source_name_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 0, "sample_limit": 30, "sampled_missing_keys": 0, "sampling_affects": "examples_only", "total_distinct_keys": 370}, "source_tag_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 81, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 418}}`.
+- Sample policy: `{"counts_are_full": true, "default_sample_limit": 30, "high_frequency_sample_limit": 25, "samples_are_limited_to_examples_only": true}`.
+- Alias/source gap counts are full grouped-key counts; sample limits affect examples only, not totals or the decision matrix.
+- Full-count correction supersedes the pre-fix limited total gap signal value `2025` with `5192`.
+- Route impact: the corrected count strengthens the alias/source-linkage concern; highest recommendation remains `source_concept_alias_resolver_improvement`.
 - Recommended fix category: `source_concept_alias_resolver_improvement`.
 
 ## Needs-review cluster analysis
@@ -76,7 +86,11 @@ SCV1 performed a read-only audit over the current development DB. It generated p
 
 - Public redaction passed: `True`.
 - Public artifacts checked: `["docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md", "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"]`.
+- Final scan after public fields finalized: `True`.
+- Checked at: `2026-06-08T09:06:06Z`.
 - Findings: `[]`.
+- Private artifact bundle created: `True`; exact private paths public: `False`.
+- Private artifact count: `17` under `.local_manifests/phase-4.5-scv1-source-concept-coverage-audit`.
 
 ## Nahida / 纳西妲 / 草神 seed result
 
@@ -87,7 +101,7 @@ SCV1 performed a read-only audit over the current development DB. It generated p
 
 ## Decision matrix
 
-- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; alias/cross-language/source linkage gap signals=2025; needs_review concepts=760
+- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; alias/cross-language/source linkage gap signals=5192; needs_review concepts=760
 - `bounded_ai_tag_expansion`: priority `P3`, recommended `False`; reasons: media without AI tag provenance=27/1989; would be a separate approved run
 - `bounded_pixiv_metadata_expansion`: priority `P2`, recommended `True`; reasons: source metadata records linked to media=60/1989; coverage gap may limit SourceConcept evidence
 - `tag_localization_catchup`: priority `P3`, recommended `False`; reasons: tag translations=3732, total tags=3889; separate from SourceConcept identity linking
