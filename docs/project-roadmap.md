@@ -21,34 +21,35 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is SourceConcept validation before Entity truth work.
+The active route is SourceConcept alias-quality improvement before Entity truth work.
 
 Current accepted state:
 
 - Phase 4.5-SC1 is merged: SourceConcept resolver core, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
 - Phase 4.5-SC2 is merged: read-only SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
+- Phase 4.5-DOC1-R1 is merged: README/handoff/roadmap/test workflow restructuring and guard-debt classification.
+- Phase 4.5-SCV1 is implemented on branch `codex/phase45-scv1-source-concept-coverage-audit`: read-only current-DB coverage audit, search symmetry check, alias-gap analysis, `needs_review` cluster analysis, redaction proof, and decision matrix.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
-Current DOC1-R1 documentation goal:
+Current SCV1 audit result:
 
-- Keep README public and concise.
-- Keep `docs/current-handoff.md` short and operational.
-- Keep this roadmap focused at the top, with historical details below as archive/reference.
-- Keep `docs/test-workflow.md` centered on scope-based validation.
-- Classify GOV-2 guard debt by the phase that must turn it into executable checks.
+- Read-only proof passed: PostgreSQL transaction was read-only and forbidden table row counts did not change.
+- Public redaction passed for `docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md` and summary JSON.
+- Search symmetry was exact for checked visible concepts, but alias-gap signals and `needs_review` noise are high.
+- Recommended next route: `source_concept_alias_resolver_improvement`.
+- Broad 5k/10k expansion and Entity bridge are not justified yet.
 
 ## Near-Term Route
 
-1. Finish and review Phase 4.5-DOC1-R1.
-2. If accepted and manually merged, start `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit`.
-3. SCV1 should inventory current DB/source-signal/SourceConcept coverage, audit cross-language alias gaps, check search-expansion symmetry, and review larger current-data samples without new import first.
-4. Use the current Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)` gap as one validation seed, not as a hardcoded DOC1 fix.
-5. Only after SCV1 should the project decide whether broader import, AI tagging, source metadata extraction, SourceConcept management/editing, or an Entity bridge is justified.
+1. Review and merge Phase 4.5-SCV1 if accepted.
+2. Start a separate `source_concept_alias_resolver_improvement` phase to reduce alias fragmentation, cross-language gaps, and noisy `needs_review` clusters while staying source-layer-only.
+3. Treat bounded Pixiv/source metadata expansion as a secondary route only after provider policy, cache/audit/rate-limit/budget, and run-ledger safeguards are explicit.
+4. Do not start 5k/10k expansion, SourceConcept editing, Entity bridge, promotion, AI tagging expansion, tag localization catch-up, or provider/source enrichment inside SCV1.
 
 Explicit ordering:
 
-- SCV1 comes before Entity bridge or promotion.
-- SourceConcept management/editing is a later source-layer phase, not DOC1/SCV1 by default.
+- Alias resolver improvement comes before Entity bridge or promotion.
+- SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
 

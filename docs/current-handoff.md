@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.5-DOC1-R1 on `2026-06-08T12:25:15+08:00`.
-> Active PR branch: `codex/phase45-doc1-post-sc2-doc-consolidation` for PR #99.
+> Last updated during Phase 4.5-SCV1 on `2026-06-08T16:23:34+08:00`.
+> Active PR branch: `codex/phase45-scv1-source-concept-coverage-audit`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,8 +11,8 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Current PR | #99 / Phase 4.5-DOC1-R1 documentation restructuring |
-| Baseline main | PR #98 / SC2 merge commit `192eba7` or later |
+| Current PR | Phase 4.5-SCV1 coverage audit PR pending |
+| Baseline main | PR #99 / DOC1-R1 merge commit `237e5ca` or later |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | `.\venv\Scripts\python.exe` |
 
@@ -21,22 +21,24 @@
 - PR #96 / Phase 4.5-SC1 is merged. It delivered the multi-source SourceConcept resolver core: source signals, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
 - PR #97 / Phase 4.5-SC2-P0 is merged. It documented the post-SC1 handoff and SC2 plan.
 - PR #98 / Phase 4.5-SC2 is merged. It delivered SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
+- PR #99 / Phase 4.5-DOC1-R1 is merged. It restructured docs and classified guard debt.
+- Phase 4.5-SCV1 generated a read-only current-DB coverage audit and public-safe report on branch `codex/phase45-scv1-source-concept-coverage-audit`.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
-- Historical details before SC1/SC2 live in `docs/project-roadmap.md` and `docs/reports/`.
+- Historical details before SC1/SC2/SCV1 live in `docs/project-roadmap.md` and `docs/reports/`.
 
 ## Current Route
 
-Next recommended non-doc phase:
+SCV1 audit recommendation:
 
-`Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit`
+`source_concept_alias_resolver_improvement`
 
-SCV1 should run before any Entity bridge, SourceConcept editing, or promotion work. It should start from current DB data and read-only reporting, then inventory SourceConcept coverage, alias gaps, `needs_review` clusters, redaction, and search symmetry. It should not run new imports, providers, LLMs, AI tagging/classification/localization, source enrichment, or full-library validation unless separately approved.
+SCV1 found strong read-only/redaction safety and exact search symmetry for checked visible concepts, but also high alias-gap and `needs_review` noise. Broad 5k/10k expansion and Entity bridge are not justified yet. The next implementation phase should improve SourceConcept alias resolution/closure and `needs_review` triage before SourceConcept editing, Entity bridge, promotion, or broad provider/AI/source expansion.
 
 ## Current Known Observations / Validation Seeds
 
-- `nahida_(genshin_impact)` currently expands to Nahida / `nahida_(genshin_impact)`.
-- `纳西妲` currently appears as separate Pixiv/source evidence and is not yet linked to the Nahida concept.
-- SCV1 should investigate Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)` plus other cross-language aliases, especially names not repeatedly used in golden fixtures.
+- SCV1 tested Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)` plus the prompt mojibake seed variants.
+- Nahida seed matched 10 visible concept IDs and 33 media, so the immediate issue is not a single missing alias; it is broader alias fragmentation and `needs_review` noise.
+- Source metadata remains sparse: SCV1 recorded 60 source metadata records linked to 1989 media, so any Pixiv/source metadata expansion must be a separate bounded provider phase with ledger/privacy guards.
 
 ## Hard Non-Goals Without Explicit Approval
 
@@ -57,6 +59,7 @@ SCV1 should run before any Entity bridge, SourceConcept editing, or promotion wo
 ## Validation Starting Points
 
 - Python identity: `& "$PY" scripts/check_python_env.py --expected-python "$PY"`.
+- SCV1 runner: `& "$PY" scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir ".local_manifests\phase-4.5-scv1-source-concept-coverage-audit" --write-public-report --read-only`.
 - Scope-based test selection: `docs/test-workflow.md`.
 - Manual development validation: `docs/manual-validation.md`.
 - Source/iCloud safety: `docs/icloud-safe-ingestion.md`.
@@ -68,4 +71,5 @@ SCV1 should run before any Entity bridge, SourceConcept editing, or promotion wo
 - DOC1 report: `docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation.md`.
 - SC1 report: `docs/reports/phase-4.5-sc1-source-concept-resolver-core.md`.
 - SC2 report: `docs/reports/phase-4.5-sc2-source-concept-search-evidence-ui.md`.
+- SCV1 report: `docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md`.
 - Historical reports: `docs/reports/`.

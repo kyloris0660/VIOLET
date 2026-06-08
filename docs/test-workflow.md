@@ -290,6 +290,13 @@ Required SC2 validation shape:
 
 SCV1 should validate whether SC1/SC2 coverage holds beyond the current small-medium fixtures before any Entity bridge or promotion work. Start with current DB data and read-only reporting; do not run new imports, providers, LLMs, AI tagging/classification, localization, or source enrichment unless a separate phase explicitly approves that run.
 
+Implemented SCV1 entry points:
+
+- Runner: `& "$PY" scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir ".local_manifests\phase-4.5-scv1-source-concept-coverage-audit" --write-public-report --read-only`.
+- Focused tests: `& "$PY" -m pytest tests/test_phase45_scv1_source_concept_coverage_audit.py -v`.
+- Public report: `docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md`.
+- Public summary: `docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json`.
+
 Recommended SCV1 validation shape:
 
 - Coverage inventory: media count, AI tag coverage, Pixiv/source signal coverage, F7a candidate coverage, SourceConcept coverage, search-preview coverage, active versus `needs_review` concepts, and orphan/gap counts.
