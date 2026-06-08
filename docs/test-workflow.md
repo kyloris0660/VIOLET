@@ -44,6 +44,7 @@ Use these first for current SourceConcept/documentation work:
 | SC1 SourceConcept resolver core | `& "$PY" -m pytest tests/test_phase45_sc1_source_concept_resolver.py -v`; runner validation pack only when the phase explicitly authorizes DB/apply work |
 | SC2 SourceConcept search/evidence UI | `& "$PY" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v`; gated Playwright Edge E2E when UI/runtime behavior is in scope |
 | SCV1 expanded validation planning | Start read-only: coverage inventory, larger current-data samples, alias-gap analysis, `needs_review` clusters, redacted evidence review, and search-symmetry checks. Do not run imports/providers/LLMs/source enrichment without separate approval |
+| SCV2-P0 controlled medium expansion policy | `& "$PY" scripts/run_phase45_scv2_p0_controlled_medium_expansion_policy.py --output-dir ".local_manifests\phase-4.5-scv2-p0-controlled-medium-expansion-policy" --write-public-report --read-only`; `& "$PY" -m pytest tests/test_phase45_scv2_p0_controlled_medium_expansion_policy.py -v`; no server/browser/import/provider/AI jobs |
 | Entity bridge / SourceConcept editing | Not covered by current validation. Must add preview, confirmation, audit, rollback/supersede, write guards, and no-truth-pollution tests before implementation |
 | Provider or full-library scale | Requires separate provider policy, privacy eligibility, budget/cache/audit gates, run ledger, and Phase 3.9-style source item ledger discipline before execution |
 
