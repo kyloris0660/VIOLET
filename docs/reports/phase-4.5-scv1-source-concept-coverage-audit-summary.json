@@ -25,6 +25,29 @@
         "sampling_affects": "examples_only",
         "total_distinct_keys": 418
       },
+      "identity_tag_present_no_source_concept_alias": {
+        "category_counts": {
+          "character": 248,
+          "general": 3637,
+          "meta": 4
+        },
+        "counts_are_full": true,
+        "excluded_category_counts": {
+          "general": 3637,
+          "meta": 4
+        },
+        "excluded_visual_or_meta_distinct_keys": 3641,
+        "identity_category_counts": {
+          "character": 248
+        },
+        "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+        "identity_eligible_distinct_keys": 248,
+        "missing_distinct_keys": 14,
+        "sample_limit": 30,
+        "sampled_missing_keys": 14,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 3889
+      },
       "needs_review_cluster_with_no_active_alias_path": {
         "counts_are_full": true,
         "missing_distinct_keys": 523,
@@ -32,14 +55,6 @@
         "sampled_missing_keys": 30,
         "sampling_affects": "examples_only",
         "total_distinct_keys": 760
-      },
-      "normal_tag_present_no_source_concept_alias": {
-        "counts_are_full": true,
-        "missing_distinct_keys": 3635,
-        "sample_limit": 30,
-        "sampled_missing_keys": 30,
-        "sampling_affects": "examples_only",
-        "total_distinct_keys": 3889
       },
       "same_display_name_split_across_contexts": {
         "counts_are_full": true,
@@ -86,13 +101,25 @@
       "cjk_alias_without_english_romaji_sibling": 367,
       "danbooru_parenthetical_without_cjk_sibling": 199,
       "high_frequency_source_tag_or_name_unlinked": 13,
+      "identity_tag_present_no_source_concept_alias": 14,
       "needs_review_cluster_with_no_active_alias_path": 523,
-      "normal_tag_present_no_source_concept_alias": 3635,
       "same_display_name_split_across_contexts": 176,
       "same_normalized_alias_key_split_across_multiple_concepts": 176,
       "source_assertion_present_not_connected": 22,
       "source_name_present_no_source_concept_alias": 0,
       "source_tag_present_no_source_concept_alias": 81
+    },
+    "normal_tag_gap_policy": {
+      "bucket": "identity_tag_present_no_source_concept_alias",
+      "counts_are_full": true,
+      "excluded_visual_or_meta_tags": 3641,
+      "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+      "identity_eligible_normal_tags": 248,
+      "missing_identity_tags_without_source_concept_alias": 14,
+      "sampling_affects": "examples_only",
+      "table_present": true,
+      "total_normal_tags": 3889,
+      "visual_tags_counted_in_total_gap_signals": false
     },
     "recommended_next_fix_category": "source_concept_alias_resolver_improvement",
     "sample_limit_policy": {
@@ -101,7 +128,7 @@
       "high_frequency_sample_limit": 25,
       "samples_are_limited_to_examples_only": true
     },
-    "total_gap_signals": 5192
+    "total_gap_signals": 1571
   },
   "artifact_lifecycle": {
     ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit": "one-off local artifact / ignored output",
@@ -114,12 +141,31 @@
   "db_identity": {
     "connected_database": "blombooru",
     "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "app_equivalent_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+      "database_file_settings_used": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "runner_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+      "settings_json_exists": true,
+      "urls_match": true,
+      "violet_env_source": "process_env"
+    },
     "git_branch": "codex/phase45-scv1-source-concept-coverage-audit",
-    "git_sha": "6c5d8075d4486b4e9febb354f031f72b2d7f433a",
+    "git_sha": "a2c6046e0da59b2480b22c5dbe0d919c3696c9c7",
     "host": "localhost",
     "port": 5432,
     "python_executable": "python.exe",
-    "recorded_at": "2026-06-08T09:05:50Z",
+    "recorded_at": "2026-06-08T11:39:03Z",
     "server_port": 5432,
     "transaction_read_only": "on",
     "transaction_read_only_ok": true,
@@ -153,7 +199,7 @@
         "priority": "P1",
         "reasons": [
           "search asymmetry concepts=0, severe=0",
-          "alias/cross-language/source linkage gap signals=5192",
+          "alias/cross-language/source linkage gap signals=1571",
           "needs_review concepts=760"
         ],
         "recommended": true
@@ -231,7 +277,7 @@
     ],
     "recommended_next_phase": "source_concept_alias_resolver_improvement"
   },
-  "generated_at": "2026-06-08T09:06:05Z",
+  "generated_at": "2026-06-08T11:39:20Z",
   "media_coverage": {
     "ai_jobs_by_status": {
       "completed": 51
@@ -346,12 +392,12 @@
   },
   "recommended_next_phase": "source_concept_alias_resolver_improvement",
   "redaction_privacy_audit": {
-    "checked_at": "2026-06-08T09:06:06Z",
+    "checked_at": "2026-06-08T11:39:21Z",
     "exact_private_paths_public": false,
     "final_public_scan_after_public_fields_finalized": true,
     "findings": [],
     "passed": true,
-    "policy": "final public report and summary JSON are written with all public fields finalized, then scanned without another public rewrite",
+    "policy": "final public report and summary JSON are rendered to ignored temp files with all public fields finalized, scanned, and only then replace tracked public paths",
     "private_artifact_paths_public": false,
     "public_paths": [
       "docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md",

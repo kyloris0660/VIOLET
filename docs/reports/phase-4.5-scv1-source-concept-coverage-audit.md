@@ -4,7 +4,7 @@
 
 SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.
 
-This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where redaction proof ordering, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.
+This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where DB resolution precedence, redaction/path safety, public report write ordering, tag alias-gap scoring, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.
 
 ## Scope
 
@@ -20,9 +20,13 @@ This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superse
 ## DB identity and read-only proof
 
 - DB: `blombooru` on `localhost:5432`.
-- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `6c5d8075d4486b4e9febb354f031f72b2d7f433a`.
+- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `a2c6046e0da59b2480b22c5dbe0d919c3696c9c7`.
 - Python: `python.exe`.
 - PostgreSQL transaction_read_only: `on`.
+- DB resolution mirrors app development precedence: `True`.
+- `data/settings.json` database settings present: `True`; database file settings used: `True`.
+- DB field sources: `{"host": "settings_json", "name": "settings_json", "password": "settings_json_present", "port": "settings_json", "user": "settings_json"}`.
+- Runner/app-equivalent DB URLs match: `True`; runner URL: `postgresql://postgres:***@localhost:5432/blombooru`; app-equivalent URL: `postgresql://postgres:***@localhost:5432/blombooru`.
 - Forbidden table count proof passed: `True`.
 - Missing optional forbidden tables recorded: `1`.
 - SourceConcept signals table included in mutation proof: `True`.
@@ -66,13 +70,17 @@ This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superse
 
 ## Alias gap analysis
 
-- Total gap signals: `5192`.
-- Gap buckets: `{"cjk_alias_without_english_romaji_sibling": 367, "danbooru_parenthetical_without_cjk_sibling": 199, "high_frequency_source_tag_or_name_unlinked": 13, "needs_review_cluster_with_no_active_alias_path": 523, "normal_tag_present_no_source_concept_alias": 3635, "same_display_name_split_across_contexts": 176, "same_normalized_alias_key_split_across_multiple_concepts": 176, "source_assertion_present_not_connected": 22, "source_name_present_no_source_concept_alias": 0, "source_tag_present_no_source_concept_alias": 81}`.
-- Gap bucket details: `{"cjk_alias_without_english_romaji_sibling": {"counts_are_full": true, "missing_distinct_keys": 367, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 1115}, "danbooru_parenthetical_without_cjk_sibling": {"counts_are_full": true, "missing_distinct_keys": 199, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 1115}, "high_frequency_source_tag_or_name_unlinked": {"counts_are_full": true, "missing_distinct_keys": 13, "sample_limit": 25, "sampled_missing_keys": 13, "sampling_affects": "examples_only", "total_distinct_keys": 418}, "needs_review_cluster_with_no_active_alias_path": {"counts_are_full": true, "missing_distinct_keys": 523, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 760}, "normal_tag_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 3635, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 3889}, "same_display_name_split_across_contexts": {"counts_are_full": true, "missing_distinct_keys": 176, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 849}, "same_normalized_alias_key_split_across_multiple_concepts": {"counts_are_full": true, "missing_distinct_keys": 176, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 851}, "source_assertion_present_not_connected": {"counts_are_full": true, "missing_distinct_keys": 22, "sample_limit": 30, "sampled_missing_keys": 22, "sampling_affects": "examples_only", "total_distinct_keys": 266}, "source_name_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 0, "sample_limit": 30, "sampled_missing_keys": 0, "sampling_affects": "examples_only", "total_distinct_keys": 370}, "source_tag_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 81, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 418}}`.
+- Total gap signals: `1571`.
+- Gap buckets: `{"cjk_alias_without_english_romaji_sibling": 367, "danbooru_parenthetical_without_cjk_sibling": 199, "high_frequency_source_tag_or_name_unlinked": 13, "identity_tag_present_no_source_concept_alias": 14, "needs_review_cluster_with_no_active_alias_path": 523, "same_display_name_split_across_contexts": 176, "same_normalized_alias_key_split_across_multiple_concepts": 176, "source_assertion_present_not_connected": 22, "source_name_present_no_source_concept_alias": 0, "source_tag_present_no_source_concept_alias": 81}`.
+- Gap bucket details: `{"cjk_alias_without_english_romaji_sibling": {"counts_are_full": true, "missing_distinct_keys": 367, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 1115}, "danbooru_parenthetical_without_cjk_sibling": {"counts_are_full": true, "missing_distinct_keys": 199, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 1115}, "high_frequency_source_tag_or_name_unlinked": {"counts_are_full": true, "missing_distinct_keys": 13, "sample_limit": 25, "sampled_missing_keys": 13, "sampling_affects": "examples_only", "total_distinct_keys": 418}, "identity_tag_present_no_source_concept_alias": {"category_counts": {"character": 248, "general": 3637, "meta": 4}, "counts_are_full": true, "excluded_category_counts": {"general": 3637, "meta": 4}, "excluded_visual_or_meta_distinct_keys": 3641, "identity_category_counts": {"character": 248}, "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics", "identity_eligible_distinct_keys": 248, "missing_distinct_keys": 14, "sample_limit": 30, "sampled_missing_keys": 14, "sampling_affects": "examples_only", "total_distinct_keys": 3889}, "needs_review_cluster_with_no_active_alias_path": {"counts_are_full": true, "missing_distinct_keys": 523, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 760}, "same_display_name_split_across_contexts": {"counts_are_full": true, "missing_distinct_keys": 176, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 849}, "same_normalized_alias_key_split_across_multiple_concepts": {"counts_are_full": true, "missing_distinct_keys": 176, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 851}, "source_assertion_present_not_connected": {"counts_are_full": true, "missing_distinct_keys": 22, "sample_limit": 30, "sampled_missing_keys": 22, "sampling_affects": "examples_only", "total_distinct_keys": 266}, "source_name_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 0, "sample_limit": 30, "sampled_missing_keys": 0, "sampling_affects": "examples_only", "total_distinct_keys": 370}, "source_tag_present_no_source_concept_alias": {"counts_are_full": true, "missing_distinct_keys": 81, "sample_limit": 30, "sampled_missing_keys": 30, "sampling_affects": "examples_only", "total_distinct_keys": 418}}`.
 - Sample policy: `{"counts_are_full": true, "default_sample_limit": 30, "high_frequency_sample_limit": 25, "samples_are_limited_to_examples_only": true}`.
 - Alias/source gap counts are full grouped-key counts; sample limits affect examples only, not totals or the decision matrix.
-- Full-count correction supersedes the pre-fix limited total gap signal value `2025` with `5192`.
-- Route impact: the corrected count strengthens the alias/source-linkage concern; highest recommendation remains `source_concept_alias_resolver_improvement`.
+- SourceConcept is an identity/source-layer concept system. Normal visual/general/meta tags are intentionally excluded from SourceConcept alias-gap scoring; tag localization and visual tag search remain separate systems.
+- Normal tag policy: total tags `3889`, identity-eligible `248`, excluded visual/general/meta `3641`, missing identity aliases `14`.
+- Identity tag bucket detail: `{"category_counts": {"character": 248, "general": 3637, "meta": 4}, "counts_are_full": true, "excluded_category_counts": {"general": 3637, "meta": 4}, "excluded_visual_or_meta_distinct_keys": 3641, "identity_category_counts": {"character": 248}, "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics", "identity_eligible_distinct_keys": 248, "missing_distinct_keys": 14, "sample_limit": 30, "sampled_missing_keys": 14, "sampling_affects": "examples_only", "total_distinct_keys": 3889}`.
+- Full-count correction supersedes the pre-fix limited total gap signal value `2025` with `1571`.
+- Visual-tag exclusion supersedes the pre-fix all-tag total gap signal value `5192` with `1571`.
+- Route impact: the corrected identity/source-relevant count still supports `source_concept_alias_resolver_improvement` if alias/source gaps and needs_review remain the dominant current-stage risks.
 - Recommended fix category: `source_concept_alias_resolver_improvement`.
 
 ## Needs-review cluster analysis
@@ -87,10 +95,13 @@ This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superse
 - Public redaction passed: `True`.
 - Public artifacts checked: `["docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md", "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"]`.
 - Final scan after public fields finalized: `True`.
-- Checked at: `2026-06-08T09:06:06Z`.
+- Checked at: `2026-06-08T11:39:21Z`.
 - Findings: `[]`.
 - Private artifact bundle created: `True`; exact private paths public: `False`.
 - Private artifact count: `17` under `.local_manifests/phase-4.5-scv1-source-concept-coverage-audit`.
+- Public redaction covers Windows, UNC, file URL, POSIX/NAS/macOS volume, app-managed storage-like roots, canonicalized private path tokens, filenames, and secret/token patterns.
+- Public Markdown/JSON are rendered to ignored temp files, scanned first, and only then atomically replace tracked report paths; failed scans leave old tracked public files unchanged.
+- Public samples are privacy-redacted; false redaction is acceptable for public reports.
 
 ## Nahida / 纳西妲 / 草神 seed result
 
@@ -101,7 +112,7 @@ This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superse
 
 ## Decision matrix
 
-- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; alias/cross-language/source linkage gap signals=5192; needs_review concepts=760
+- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; alias/cross-language/source linkage gap signals=1571; needs_review concepts=760
 - `bounded_ai_tag_expansion`: priority `P3`, recommended `False`; reasons: media without AI tag provenance=27/1989; would be a separate approved run
 - `bounded_pixiv_metadata_expansion`: priority `P2`, recommended `True`; reasons: source metadata records linked to media=60/1989; coverage gap may limit SourceConcept evidence
 - `tag_localization_catchup`: priority `P3`, recommended `False`; reasons: tag translations=3732, total tags=3889; separate from SourceConcept identity linking

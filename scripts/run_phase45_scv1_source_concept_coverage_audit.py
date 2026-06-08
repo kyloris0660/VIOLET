@@ -137,17 +137,77 @@ SEARCH_SYMMETRY_METRIC_KEYS = (
 ALIAS_GAP_SAMPLE_LIMIT = 30
 HIGH_FREQUENCY_GAP_SAMPLE_LIMIT = 25
 
+APP_DEFAULT_DATABASE = {
+    "host": "db",
+    "port": 5432,
+    "name": "blombooru",
+    "user": "postgres",
+    "password": "",
+}
+DB_FIELD_ENV_KEYS = {
+    "host": "POSTGRES_HOST",
+    "port": "POSTGRES_PORT",
+    "name": "POSTGRES_DB",
+    "user": "POSTGRES_USER",
+    "password": "POSTGRES_PASSWORD",
+}
+IDENTITY_TAG_CATEGORIES = {"artist", "character", "copyright", "creator", "circle", "source", "work", "franchise", "person"}
+EXCLUDED_VISUAL_TAG_CATEGORIES = {"general", "meta", "rating", "visual", "descriptor"}
+
 SECRET_VALUE_RE = re.compile(
     r"(?i)(api[_-]?key|secret|token|password|authorization)\s*[:=]\s*['\"]?[A-Za-z0-9_\-./:+]{6,}"
 )
 BEARER_RE = re.compile(r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._\-]{8,}")
 OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b")
 LOCAL_PATH_RE = re.compile(
-    r"(?i)([A-Z]:[\\/]|file://|\\\\|/Users/|/home/|\\Users\\|"
-    r"\bUsers[\\/]|(?:iCloud|Pictures|Documents|Desktop|Downloads)[\\/])"
+    r"(?i)((?<![A-Za-z])[A-Z]:[\\/]|file://|\\\\|"
+    r"/(?:Users|home|mnt|Volumes|storage|media|original|thumbnails|thumbs)(?:/|$)|"
+    r"\\Users\\|\bUsers[\\/]|(?:iCloud|Pictures|Documents|Desktop|Downloads)[\\/])"
 )
 MEDIA_FILENAME_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,80}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)\b")
 CANONICAL_FILENAME_RE = re.compile(r"(?i)\b(?:img_\d+|image_\d+|private|vacation(?:_\d{4})?|users_[a-z0-9_]+|icloud_[a-z0-9_]+)_(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov)\b")
+CANONICAL_PATH_RE = re.compile(
+    r"(?i)\b(?:mnt_storage|volumes_[a-z0-9]|storage_[a-z0-9]|media_original|"
+    r"original_[a-z0-9]|thumbnails_[a-z0-9]|thumbs_[a-z0-9]|icloud_[a-z0-9]|"
+    r"pictures_[a-z0-9]|documents_[a-z0-9]|downloads_[a-z0-9]|desktop_[a-z0-9])"
+)
+VISUAL_DESCRIPTOR_TAG_KEYS = {
+    "1girl",
+    "1boy",
+    "solo",
+    "multiple_girls",
+    "long_hair",
+    "short_hair",
+    "blue_hair",
+    "blonde_hair",
+    "brown_hair",
+    "black_hair",
+    "red_hair",
+    "looking_at_viewer",
+    "smile",
+    "open_mouth",
+    "simple_background",
+    "white_background",
+    "standing",
+    "sitting",
+}
+VISUAL_DESCRIPTOR_TAG_PARTS = {
+    "hair",
+    "eyes",
+    "background",
+    "clothes",
+    "clothing",
+    "shirt",
+    "skirt",
+    "dress",
+    "pose",
+    "view",
+    "smile",
+    "mouth",
+    "breasts",
+    "rating",
+    "resolution",
+}
 CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]")
 LATIN_RE = re.compile(r"[A-Za-z]")
 DANBOORU_PAREN_RE = re.compile(r"^[a-z0-9_:+.\-]+_\([^()]+\)$")
@@ -254,60 +314,178 @@ def load_dotenv_values(path: Path) -> dict[str, str]:
     return values
 
 
-def load_database_file_settings() -> dict[str, Any]:
-    path = ROOT / "data" / "settings.json"
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-    database = payload.get("database")
-    return database if isinstance(database, dict) else {}
+def nonempty(value: Any) -> bool:
+    return value is not None and str(value) != ""
+
+
+def env_or_dotenv_lookup(
+    key: str,
+    dotenv: Mapping[str, str],
+    default: str | None = None,
+    *,
+    process_env: Mapping[str, str] | None = None,
+) -> tuple[str | None, str]:
+    env = process_env if process_env is not None else os.environ
+    value = env.get(key)
+    if nonempty(value):
+        return str(value), "process_env"
+    value = dotenv.get(key)
+    if nonempty(value):
+        return str(value), ".env"
+    return default, "app_default"
 
 
 def env_lookup(key: str, dotenv: Mapping[str, str], default: str | None = None) -> str | None:
-    value = os.getenv(key)
-    if value is not None and value != "":
-        return value
-    value = dotenv.get(key)
-    if value is not None and value != "":
-        return value
-    return default
+    value, _source = env_or_dotenv_lookup(key, dotenv, default)
+    return value
+
+
+def app_settings_file_path(dotenv: Mapping[str, str], *, process_env: Mapping[str, str] | None = None) -> Path:
+    storage_root_value, _source = env_or_dotenv_lookup("VIOLET_STORAGE_ROOT", dotenv, None, process_env=process_env)
+    storage_root = Path(storage_root_value) if storage_root_value else ROOT
+    return storage_root / "data" / "settings.json"
+
+
+def load_database_file_settings(path: Path | None = None, *, dotenv: Mapping[str, str] | None = None) -> tuple[dict[str, Any], bool]:
+    if path is None:
+        path = app_settings_file_path(dotenv or load_dotenv_values(ROOT / ".env"))
+    if not path.exists():
+        return {}, False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}, True
+    database = payload.get("database")
+    return (database if isinstance(database, dict) else {}), True
+
+
+def password_source_label(source: str, value: Any) -> str:
+    suffix = "present" if nonempty(value) else "empty"
+    if source == "settings_json":
+        return f"settings_json_{suffix}"
+    if source == "process_env":
+        return f"process_env_{suffix}"
+    if source == ".env":
+        return f".env_{suffix}"
+    return f"app_default_{suffix}"
+
+
+def resolve_db_field(
+    field: str,
+    file_db: Mapping[str, Any],
+    dotenv: Mapping[str, str],
+    *,
+    process_env: Mapping[str, str] | None = None,
+) -> tuple[Any, str]:
+    if nonempty(file_db.get(field)):
+        return file_db[field], "settings_json"
+    env_value, env_source = env_or_dotenv_lookup(DB_FIELD_ENV_KEYS[field], dotenv, None, process_env=process_env)
+    if nonempty(env_value):
+        return env_value, env_source
+    return APP_DEFAULT_DATABASE[field], "app_default"
+
+
+def resolve_app_database_config(
+    *,
+    dotenv: Mapping[str, str] | None = None,
+    file_db: Mapping[str, Any] | None = None,
+    settings_json_exists: bool | None = None,
+    process_env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    dotenv_values = dict(dotenv or load_dotenv_values(ROOT / ".env"))
+    if file_db is None or settings_json_exists is None:
+        loaded_file_db, loaded_exists = load_database_file_settings(dotenv=dotenv_values)
+        file_db = loaded_file_db if file_db is None else file_db
+        settings_json_exists = loaded_exists if settings_json_exists is None else settings_json_exists
+
+    # App development DB precedence is intentionally mirrored without importing
+    # global app settings: data/settings.json database field first, then process
+    # env / .env fallback, then app defaults from Settings._get_default_settings().
+    resolved_fields: dict[str, Any] = {}
+    field_sources: dict[str, str] = {}
+    for field in ("host", "port", "name", "user", "password"):
+        value, source = resolve_db_field(field, file_db or {}, dotenv_values, process_env=process_env)
+        resolved_fields[field] = value
+        field_sources[field] = password_source_label(source, value) if field == "password" else source
+
+    try:
+        resolved_fields["port"] = int(resolved_fields["port"])
+    except (TypeError, ValueError) as exc:
+        raise AuditBlockedError(f"Invalid PostgreSQL port for SCV1 DB resolution: {resolved_fields['port']!r}") from exc
+
+    violet_env, violet_env_source = env_or_dotenv_lookup("VIOLET_ENV", dotenv_values, "development", process_env=process_env)
+    violet_env = str(violet_env or "development").strip().lower()
+    password = str(resolved_fields.get("password") or "")
+    url = URL.create(
+        drivername="postgresql",
+        username=str(resolved_fields["user"]),
+        password=password,
+        host=str(resolved_fields["host"]),
+        port=int(resolved_fields["port"]),
+        database=str(resolved_fields["name"]),
+    )
+    url_without_password = str(url.set(password=None))
+    return {
+        **resolved_fields,
+        "password": password,
+        "violet_env": violet_env,
+        "violet_env_source": violet_env_source,
+        "settings_json_exists": bool(settings_json_exists),
+        "database_file_settings_used": any(source.startswith("settings_json") for source in field_sources.values()),
+        "field_sources": field_sources,
+        "url": url,
+        "app_equivalent_url_without_password": url_without_password,
+        "runner_url_without_password": url_without_password,
+        "urls_match": True,
+        "runner_matches_app_equivalent": True,
+        "app_compatible": True,
+        "password_present": bool(password),
+        "password_value_recorded": False,
+    }
+
+
+def assert_db_resolution_parity(identity: Mapping[str, Any]) -> None:
+    resolution = identity.get("db_resolution") if "db_resolution" in identity else identity
+    if not isinstance(resolution, Mapping) or not resolution.get("app_compatible"):
+        raise AuditBlockedError("SCV1 DB resolution did not certify app-compatible development precedence.")
+    if not resolution.get("urls_match") or not resolution.get("runner_matches_app_equivalent"):
+        raise AuditBlockedError("SCV1 runner DB URL does not match app-equivalent development DB URL.")
 
 
 def build_database_url() -> tuple[URL, dict[str, Any]]:
-    dotenv = load_dotenv_values(ROOT / ".env")
-    file_db = load_database_file_settings()
-    violet_env = (env_lookup("VIOLET_ENV", dotenv, "development") or "development").strip().lower()
+    resolved = resolve_app_database_config()
+    violet_env = str(resolved["violet_env"]).strip().lower()
     if violet_env != "development":
         raise AuditBlockedError(f"SCV1 must run against VIOLET_ENV=development, got {violet_env!r}.")
 
-    database = env_lookup("POSTGRES_DB", dotenv, str(file_db.get("name") or "blombooru"))
+    database = str(resolved["name"])
     if database != "blombooru":
         raise AuditBlockedError(f"SCV1 must run against development DB 'blombooru', got {database!r}.")
 
-    host = env_lookup("POSTGRES_HOST", dotenv, str(file_db.get("host") or "localhost"))
-    port = int(env_lookup("POSTGRES_PORT", dotenv, str(file_db.get("port") or 5432)) or 5432)
-    username = env_lookup("POSTGRES_USER", dotenv, str(file_db.get("user") or "postgres"))
-    password = env_lookup("POSTGRES_PASSWORD", dotenv, str(file_db.get("password") or "")) or ""
-    url = URL.create(
-        drivername="postgresql",
-        username=username,
-        password=password,
-        host=host,
-        port=port,
-        database=database,
-    )
+    url = resolved["url"]
+    assert_db_resolution_parity(resolved)
     identity = {
         "violet_env": violet_env,
         "database": database,
-        "host": host,
-        "port": port,
-        "username": username,
-        "password_recorded": bool(password),
+        "host": str(resolved["host"]),
+        "port": int(resolved["port"]),
+        "username": str(resolved["user"]),
+        "password_recorded": bool(resolved["password_present"]),
         "password_value_recorded": False,
-        "url_without_password": str(url.set(password=None)),
+        "url_without_password": resolved["runner_url_without_password"],
+        "db_resolution": {
+            "app_compatible": True,
+            "settings_json_exists": bool(resolved["settings_json_exists"]),
+            "database_file_settings_used": bool(resolved["database_file_settings_used"]),
+            "field_sources": dict(resolved["field_sources"]),
+            "violet_env_source": resolved["violet_env_source"],
+            "runner_url_without_password": resolved["runner_url_without_password"],
+            "app_equivalent_url_without_password": resolved["app_equivalent_url_without_password"],
+            "urls_match": bool(resolved["urls_match"]),
+            "runner_matches_app_equivalent": bool(resolved["runner_matches_app_equivalent"]),
+            "password_present": bool(resolved["password_present"]),
+            "password_value_recorded": False,
+        },
     }
     return url, identity
 
@@ -415,6 +593,7 @@ def percent(part: int, whole: int) -> float:
 def scan_public_text(text_value: str) -> list[dict[str, str]]:
     checks = [
         ("local_path_or_private_root", LOCAL_PATH_RE),
+        ("canonical_path_like", CANONICAL_PATH_RE),
         ("media_filename_like", MEDIA_FILENAME_RE),
         ("canonical_filename_like", CANONICAL_FILENAME_RE),
         ("secret_assignment_like", SECRET_VALUE_RE),
@@ -488,6 +667,7 @@ def read_only_identity(conn: Connection, env_identity: Mapping[str, Any]) -> dic
         raise AuditBlockedError(f"Connected DB identity is not blombooru: {identity['connected_database']!r}")
     if not identity["transaction_read_only_ok"]:
         raise AuditBlockedError(f"PostgreSQL transaction is not read-only: {transaction_read_only!r}")
+    assert_db_resolution_parity(identity)
     return identity
 
 
@@ -1232,6 +1412,79 @@ def summarize_missing_key_gap_rows(
     )
 
 
+def tag_category_label(row: Mapping[str, Any]) -> str:
+    value = row.get("category")
+    if value is None:
+        return "missing"
+    text_value = str(value).strip().lower()
+    if "." in text_value:
+        text_value = text_value.rsplit(".", 1)[-1]
+    return text_value or "missing"
+
+
+def looks_visual_descriptor_tag(value: Any) -> bool:
+    key = canonical_source_key(value or "")
+    if not key:
+        return True
+    if key in VISUAL_DESCRIPTOR_TAG_KEYS:
+        return True
+    parts = set(key.split("_"))
+    return bool(parts.intersection(VISUAL_DESCRIPTOR_TAG_PARTS))
+
+
+def looks_identity_tag_candidate(row: Mapping[str, Any]) -> bool:
+    category = tag_category_label(row)
+    if category in IDENTITY_TAG_CATEGORIES:
+        return True
+    if category in EXCLUDED_VISUAL_TAG_CATEGORIES:
+        return False
+    value = str(row.get("key_value") or row.get("label") or "")
+    key = canonical_source_key(value)
+    if not key or looks_visual_descriptor_tag(key):
+        return False
+    if looks_danbooru_parenthetical(key):
+        return True
+    if looks_cjk(value):
+        return True
+    return False
+
+
+def summarize_identity_tag_gap_rows(
+    rows: Sequence[Mapping[str, Any]],
+    visible_alias_keys: set[str],
+    *,
+    sample_limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    identity_rows: list[Mapping[str, Any]] = []
+    excluded_rows: list[Mapping[str, Any]] = []
+    category_counts: Counter[str] = Counter()
+    excluded_category_counts: Counter[str] = Counter()
+    identity_category_counts: Counter[str] = Counter()
+    for row in rows:
+        category = tag_category_label(row)
+        category_counts[category] += 1
+        if looks_identity_tag_candidate(row):
+            identity_rows.append(row)
+            identity_category_counts[category] += 1
+        else:
+            excluded_rows.append(row)
+            excluded_category_counts[category] += 1
+
+    sampled, detail = summarize_missing_key_gap_rows(identity_rows, visible_alias_keys, sample_limit=sample_limit)
+    detail.update(
+        {
+            "total_distinct_keys": len(rows),
+            "identity_eligible_distinct_keys": len(identity_rows),
+            "excluded_visual_or_meta_distinct_keys": len(excluded_rows),
+            "category_counts": dict(category_counts),
+            "identity_category_counts": dict(identity_category_counts),
+            "excluded_category_counts": dict(excluded_category_counts),
+            "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+        }
+    )
+    return sampled, detail
+
+
 def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], aliases: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     visible_concepts = [row for row in concepts if row.get("status") in VISIBLE_STATUSES]
     active_alias_keys = {
@@ -1295,7 +1548,6 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
         ("source_tag_present_no_source_concept_alias", "blombooru_source_tag_observations", "canonical_tag_key", "raw_tag"),
         ("source_name_present_no_source_concept_alias", "blombooru_source_name_observations", "canonical_name_key", "raw_name"),
         ("source_assertion_present_not_connected", "blombooru_source_searchable_name_assertions", "canonical_name_key", "asserted_name"),
-        ("normal_tag_present_no_source_concept_alias", "blombooru_tags", "name", "name"),
     ]
     for bucket, table_name, key_column, label_column in source_unlinked_queries:
         if not table_exists(conn, table_name) or not column_exists(conn, table_name, key_column):
@@ -1326,6 +1578,59 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
                 },
             )
         gap_bucket_details[bucket]["sampled_missing_keys"] = sample_counts[bucket]
+
+    normal_tag_policy: dict[str, Any] = {
+        "bucket": "identity_tag_present_no_source_concept_alias",
+        "table_present": False,
+        "total_normal_tags": 0,
+        "identity_eligible_normal_tags": 0,
+        "excluded_visual_or_meta_tags": 0,
+        "missing_identity_tags_without_source_concept_alias": 0,
+        "visual_tags_counted_in_total_gap_signals": False,
+    }
+    if table_exists(conn, "blombooru_tags") and column_exists(conn, "blombooru_tags", "name"):
+        category_sql = "MIN(CAST(category AS TEXT)) AS category" if column_exists(conn, "blombooru_tags", "category") else "NULL AS category"
+        rows = rows_dict(
+            conn,
+            f"""
+            SELECT name AS key_value,
+                   MIN(name) AS label,
+                   COUNT(*) AS count,
+                   {category_sql}
+            FROM blombooru_tags
+            WHERE name IS NOT NULL
+            GROUP BY name
+            ORDER BY count DESC
+            """,
+        )
+        bucket = "identity_tag_present_no_source_concept_alias"
+        sampled_missing, detail = summarize_identity_tag_gap_rows(rows, visible_alias_keys, sample_limit=ALIAS_GAP_SAMPLE_LIMIT)
+        gap_bucket_details[bucket] = detail
+        bucket_counts[bucket] += int(detail["missing_distinct_keys"])
+        for row in sampled_missing:
+            add_sample(
+                bucket,
+                {
+                    "bucket": bucket,
+                    "concept_id": "",
+                    "status": tag_category_label(row),
+                    "sample": safe_public_value(row.get("label") or row.get("key_value"), fallback="[redacted tag]"),
+                    "count": row.get("count"),
+                },
+            )
+        gap_bucket_details[bucket]["sampled_missing_keys"] = sample_counts[bucket]
+        normal_tag_policy = {
+            "bucket": bucket,
+            "table_present": True,
+            "total_normal_tags": int(detail["total_distinct_keys"]),
+            "identity_eligible_normal_tags": int(detail["identity_eligible_distinct_keys"]),
+            "excluded_visual_or_meta_tags": int(detail["excluded_visual_or_meta_distinct_keys"]),
+            "missing_identity_tags_without_source_concept_alias": int(detail["missing_distinct_keys"]),
+            "visual_tags_counted_in_total_gap_signals": False,
+            "counts_are_full": True,
+            "sampling_affects": "examples_only",
+            "identity_category_policy": detail["identity_category_policy"],
+        }
 
     if table_exists(conn, "blombooru_source_tag_registry"):
         rows = rows_dict(
@@ -1406,6 +1711,7 @@ def audit_alias_gaps(conn: Connection, concepts: Sequence[Mapping[str, Any]], al
             "high_frequency_sample_limit": HIGH_FREQUENCY_GAP_SAMPLE_LIMIT,
         },
         "total_gap_signals": sum(bucket_counts.values()),
+        "normal_tag_gap_policy": normal_tag_policy,
         "seed_results": seed_results,
         "recommended_next_fix_category": recommended,
     }, samples
@@ -1633,6 +1939,7 @@ def build_public_summary(
             "git_sha",
             "python_executable",
             "recorded_at",
+            "db_resolution",
         ]
     }
     return {
@@ -1656,6 +1963,7 @@ def build_public_summary(
             "gap_bucket_details": alias_gaps.get("gap_bucket_details"),
             "sample_limit_policy": alias_gaps.get("sample_limit_policy"),
             "total_gap_signals": alias_gaps.get("total_gap_signals"),
+            "normal_tag_gap_policy": alias_gaps.get("normal_tag_gap_policy"),
             "recommended_next_fix_category": alias_gaps.get("recommended_next_fix_category"),
         },
         "needs_review_analysis": needs_review,
@@ -1695,6 +2003,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     seed = summary["seed_results"].get("nahida_prompt_and_doc1", {})
     private_artifacts = summary.get("private_artifacts", {})
     checked_tables = summary["read_only_proof"].get("forbidden_tables_checked") or []
+    db_resolution = summary["db_identity"].get("db_resolution") or {}
+    identity_tag_detail = (gaps.get("gap_bucket_details") or {}).get("identity_tag_present_no_source_concept_alias") or {}
+    normal_tag_policy = gaps.get("normal_tag_gap_policy") or {}
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
@@ -1702,7 +2013,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.",
         "",
-        "This report is a reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where redaction proof ordering, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.",
+        "This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where DB resolution precedence, redaction/path safety, public report write ordering, tag alias-gap scoring, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.",
         "",
         "## Scope",
         "",
@@ -1721,6 +2032,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Git: `{summary['db_identity'].get('git_branch')}` at `{summary['db_identity'].get('git_sha')}`.",
         f"- Python: `{summary['db_identity'].get('python_executable')}`.",
         f"- PostgreSQL transaction_read_only: `{summary['db_identity'].get('transaction_read_only')}`.",
+        f"- DB resolution mirrors app development precedence: `{db_resolution.get('app_compatible')}`.",
+        f"- `data/settings.json` database settings present: `{db_resolution.get('settings_json_exists')}`; database file settings used: `{db_resolution.get('database_file_settings_used')}`.",
+        f"- DB field sources: `{json.dumps(db_resolution.get('field_sources'), ensure_ascii=False, sort_keys=True)}`.",
+        f"- Runner/app-equivalent DB URLs match: `{db_resolution.get('urls_match')}`; runner URL: `{db_resolution.get('runner_url_without_password')}`; app-equivalent URL: `{db_resolution.get('app_equivalent_url_without_password')}`.",
         f"- Forbidden table count proof passed: `{summary['read_only_proof'].get('passed')}`.",
         f"- Missing optional forbidden tables recorded: `{len(summary['read_only_proof'].get('missing_tables') or [])}`.",
         f"- SourceConcept signals table included in mutation proof: `{'blombooru_source_concept_signals' in checked_tables}`.",
@@ -1769,8 +2084,12 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Gap bucket details: `{json.dumps(gaps.get('gap_bucket_details'), ensure_ascii=False, sort_keys=True)}`.",
         f"- Sample policy: `{json.dumps(gaps.get('sample_limit_policy'), ensure_ascii=False, sort_keys=True)}`.",
         "- Alias/source gap counts are full grouped-key counts; sample limits affect examples only, not totals or the decision matrix.",
+        "- SourceConcept is an identity/source-layer concept system. Normal visual/general/meta tags are intentionally excluded from SourceConcept alias-gap scoring; tag localization and visual tag search remain separate systems.",
+        f"- Normal tag policy: total tags `{normal_tag_policy.get('total_normal_tags')}`, identity-eligible `{normal_tag_policy.get('identity_eligible_normal_tags')}`, excluded visual/general/meta `{normal_tag_policy.get('excluded_visual_or_meta_tags')}`, missing identity aliases `{normal_tag_policy.get('missing_identity_tags_without_source_concept_alias')}`.",
+        f"- Identity tag bucket detail: `{json.dumps(identity_tag_detail, ensure_ascii=False, sort_keys=True)}`.",
         f"- Full-count correction supersedes the pre-fix limited total gap signal value `2025` with `{gaps.get('total_gap_signals')}`.",
-        f"- Route impact: the corrected count strengthens the alias/source-linkage concern; highest recommendation remains `{summary.get('recommended_next_phase')}`.",
+        f"- Visual-tag exclusion supersedes the pre-fix all-tag total gap signal value `5192` with `{gaps.get('total_gap_signals')}`.",
+        f"- Route impact: the corrected identity/source-relevant count still supports `{summary.get('recommended_next_phase')}` if alias/source gaps and needs_review remain the dominant current-stage risks.",
         f"- Recommended fix category: `{gaps.get('recommended_next_fix_category')}`.",
         "",
         "## Needs-review cluster analysis",
@@ -1789,6 +2108,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Findings: `{json.dumps(summary['redaction_privacy_audit'].get('findings'), ensure_ascii=False)}`.",
         f"- Private artifact bundle created: `{private_artifacts.get('private_artifact_bundle_created')}`; exact private paths public: `{private_artifacts.get('exact_private_paths_public')}`.",
         f"- Private artifact count: `{private_artifacts.get('private_artifact_count')}` under `{private_artifacts.get('private_artifact_root_label')}`.",
+        "- Public redaction covers Windows, UNC, file URL, POSIX/NAS/macOS volume, app-managed storage-like roots, canonicalized private path tokens, filenames, and secret/token patterns.",
+        "- Public Markdown/JSON are rendered to ignored temp files, scanned first, and only then atomically replace tracked report paths; failed scans leave old tracked public files unchanged.",
+        "- Public samples are privacy-redacted; false redaction is acceptable for public reports.",
         "",
         "## Nahida / 纳西妲 / 草神 seed result",
         "",
@@ -1854,19 +2176,26 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def scan_public_artifacts(paths: Sequence[Path], *, checked_at: str | None = None) -> dict[str, Any]:
+def scan_public_artifacts(
+    paths: Sequence[Path],
+    *,
+    checked_at: str | None = None,
+    public_path_labels: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    labels = list(public_path_labels) if public_path_labels is not None else [root_relative_or_name(path) for path in paths]
     findings: list[dict[str, Any]] = []
-    for path in paths:
+    for index, path in enumerate(paths):
+        label = labels[index] if index < len(labels) else root_relative_or_name(path)
         if not path.exists():
-            findings.append({"path": root_relative_or_name(path), "type": "missing_public_artifact"})
+            findings.append({"path": label, "type": "missing_public_artifact"})
             continue
         text_value = path.read_text(encoding="utf-8", errors="replace")
         for finding in scan_public_text(text_value):
-            findings.append({"path": root_relative_or_name(path), **finding})
+            findings.append({"path": label, **finding})
     return {
         "checked_at": checked_at or utc_now_iso(),
         "passed": not findings,
-        "public_paths": [root_relative_or_name(path) for path in paths],
+        "public_paths": labels,
         "findings": findings,
     }
 
@@ -1880,25 +2209,43 @@ def final_redaction_record(paths: Sequence[Path], *, checked_at: str) -> dict[st
         "final_public_scan_after_public_fields_finalized": True,
         "exact_private_paths_public": False,
         "private_artifact_paths_public": False,
-        "policy": "final public report and summary JSON are written with all public fields finalized, then scanned without another public rewrite",
+        "policy": "final public report and summary JSON are rendered to ignored temp files with all public fields finalized, scanned, and only then replace tracked public paths",
     }
 
 
 def write_reports_and_redaction(summary: dict[str, Any], output_dir: Path) -> dict[str, Any]:
     paths = [PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON]
+    labels = [root_relative_or_name(path) for path in paths]
     checked_at = utc_now_iso()
     redaction = final_redaction_record(paths, checked_at=checked_at)
     summary["redaction_privacy_audit"] = redaction
-    write_json(PUBLIC_REPORT_JSON, summary)
-    write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
+    temp_dir = output_dir / "_public_report_staging"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_md = temp_dir / PUBLIC_REPORT_MD.name
+    temp_json = temp_dir / PUBLIC_REPORT_JSON.name
+    write_text(temp_md, public_report_markdown(summary))
+    write_json(temp_json, summary)
 
-    final_scan = scan_public_artifacts(paths, checked_at=checked_at)
+    final_scan = scan_public_artifacts([temp_md, temp_json], checked_at=checked_at, public_path_labels=labels)
     if not final_scan["passed"]:
         failed_redaction = {**redaction, "passed": False, "findings": final_scan["findings"]}
         write_json(output_dir / "redaction-privacy-audit.json", failed_redaction)
         write_text(output_dir / "public-redaction-check.txt", json.dumps(failed_redaction, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        for temp_path in (temp_md, temp_json):
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise AuditBlockedError(f"Public redaction scan failed: {final_scan['findings']!r}")
 
+    PUBLIC_REPORT_MD.parent.mkdir(parents=True, exist_ok=True)
+    PUBLIC_REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    temp_md.replace(PUBLIC_REPORT_MD)
+    temp_json.replace(PUBLIC_REPORT_JSON)
+    try:
+        temp_dir.rmdir()
+    except OSError:
+        pass
     write_json(output_dir / "redaction-privacy-audit.json", redaction)
     write_text(output_dir / "public-redaction-check.txt", json.dumps(redaction, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return redaction

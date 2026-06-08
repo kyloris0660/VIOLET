@@ -69,6 +69,81 @@ def test_source_concept_signals_mutation_proof_detects_count_changes() -> None:
     assert proof["changed_tables"] == [{"table": "blombooru_source_concept_signals", "before": 10, "after": 11}]
 
 
+def test_db_resolution_settings_json_beats_stale_dotenv() -> None:
+    resolved = runner.resolve_app_database_config(
+        file_db={"host": "settings-host", "port": 15432, "name": "blombooru", "user": "settings_user", "password": "settings_pw"},
+        settings_json_exists=True,
+        dotenv={
+            "POSTGRES_HOST": "stale-dotenv-host",
+            "POSTGRES_PORT": "25432",
+            "POSTGRES_DB": "stale_db",
+            "POSTGRES_USER": "stale_user",
+            "POSTGRES_PASSWORD": "stale_pw",
+            "VIOLET_ENV": "development",
+        },
+        process_env={},
+    )
+
+    assert resolved["host"] == "settings-host"
+    assert resolved["port"] == 15432
+    assert resolved["name"] == "blombooru"
+    assert resolved["user"] == "settings_user"
+    assert resolved["field_sources"]["host"] == "settings_json"
+    assert resolved["field_sources"]["password"] == "settings_json_present"
+    assert resolved["runner_url_without_password"] == resolved["app_equivalent_url_without_password"]
+    assert resolved["urls_match"] is True
+
+
+def test_db_resolution_uses_env_and_dotenv_only_for_missing_settings_fields() -> None:
+    resolved = runner.resolve_app_database_config(
+        file_db={"name": "blombooru"},
+        settings_json_exists=True,
+        dotenv={"POSTGRES_USER": "dotenv_user", "VIOLET_ENV": "development"},
+        process_env={"POSTGRES_HOST": "env-host", "POSTGRES_PORT": "16432"},
+    )
+
+    assert resolved["host"] == "env-host"
+    assert resolved["port"] == 16432
+    assert resolved["name"] == "blombooru"
+    assert resolved["user"] == "dotenv_user"
+    assert resolved["password"] == ""
+    assert resolved["field_sources"]["host"] == "process_env"
+    assert resolved["field_sources"]["user"] == ".env"
+    assert resolved["field_sources"]["password"] == "app_default_empty"
+
+
+def test_build_database_url_requires_development_blombooru(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        runner,
+        "resolve_app_database_config",
+        lambda: {
+            "violet_env": "development",
+            "name": "other_db",
+            "url": "unused",
+            "settings_json_exists": False,
+            "database_file_settings_used": False,
+            "field_sources": {},
+            "runner_url_without_password": "postgresql://postgres@localhost:5432/other_db",
+            "app_equivalent_url_without_password": "postgresql://postgres@localhost:5432/other_db",
+            "urls_match": True,
+            "runner_matches_app_equivalent": True,
+            "app_compatible": True,
+            "host": "localhost",
+            "port": 5432,
+            "user": "postgres",
+            "password_present": False,
+        },
+    )
+
+    with pytest.raises(runner.AuditBlockedError, match="development DB 'blombooru'"):
+        runner.build_database_url()
+
+
+def test_db_resolution_mismatch_fails_closed() -> None:
+    with pytest.raises(runner.AuditBlockedError, match="does not match app-equivalent"):
+        runner.assert_db_resolution_parity({"app_compatible": True, "urls_match": False, "runner_matches_app_equivalent": False})
+
+
 def test_public_redaction_scan_catches_paths_filenames_and_secrets() -> None:
     unsafe = (
         r"C:\Users\kyloris\Pictures\private.png "
@@ -87,6 +162,26 @@ def test_public_redaction_scan_catches_paths_filenames_and_secrets() -> None:
     assert "authorization_bearer_like" in finding_types
 
 
+def test_public_redaction_scan_catches_broadened_private_path_shapes() -> None:
+    unsafe_values = [
+        "/mnt/storage/foo",
+        "/Volumes/Anime/foo",
+        "/storage/private/foo",
+        "/media/original/foo",
+        "/original/foo",
+        "/thumbnails/foo",
+        "mnt_storage_private",
+        "media_original_foo",
+        r"\\server\share\folder",
+        "file:///Users/name/Pictures/private",
+        "OpenAI key sk-abcdefghijklmnop",
+    ]
+
+    for value in unsafe_values:
+        assert runner.scan_public_text(value), value
+        assert runner.safe_public_value(value) == "[redacted]"
+
+
 def test_final_public_redaction_scan_runs_after_final_public_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     report_md = tmp_path / "phase-report.md"
     report_json = tmp_path / "phase-summary.json"
@@ -100,12 +195,18 @@ def test_final_public_redaction_scan_runs_after_final_public_fields(monkeypatch:
     monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", report_md)
     monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", report_json)
 
-    def fake_scan(paths, *, checked_at=None):
+    def fake_scan(paths, *, checked_at=None, public_path_labels=None):
         scanned["called"] = True
-        assert report_md in paths
-        assert report_json in paths
-        payload = json.loads(report_json.read_text(encoding="utf-8"))
-        combined_text = report_md.read_text(encoding="utf-8") + "\n" + report_json.read_text(encoding="utf-8")
+        assert report_md not in paths
+        assert report_json not in paths
+        assert public_path_labels == [runner.root_relative_or_name(report_md), runner.root_relative_or_name(report_json)]
+        temp_md, temp_json = paths
+        assert temp_md.parent == output_dir / "_public_report_staging"
+        assert temp_json.parent == output_dir / "_public_report_staging"
+        assert not report_md.exists()
+        assert not report_json.exists()
+        payload = json.loads(temp_json.read_text(encoding="utf-8"))
+        combined_text = temp_md.read_text(encoding="utf-8") + "\n" + temp_json.read_text(encoding="utf-8")
         assert payload["private_artifacts"]["private_artifact_bundle_created"] is True
         assert payload["private_artifacts"]["exact_private_paths_public"] is False
         assert payload["redaction_privacy_audit"]["checked_at"] == checked_at
@@ -115,7 +216,7 @@ def test_final_public_redaction_scan_runs_after_final_public_fields(monkeypatch:
         return {
             "checked_at": checked_at,
             "passed": True,
-            "public_paths": [path.name for path in paths],
+            "public_paths": list(public_path_labels or []),
             "findings": [],
         }
 
@@ -128,6 +229,54 @@ def test_final_public_redaction_scan_runs_after_final_public_fields(monkeypatch:
     final_payload = json.loads(report_json.read_text(encoding="utf-8"))
     assert final_payload["redaction_privacy_audit"]["checked_at"] == redaction["checked_at"]
     assert final_payload["redaction_privacy_audit"]["final_public_scan_after_public_fields_finalized"] is True
+
+
+def test_public_report_redaction_failure_leaves_tracked_files_unchanged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    report_md = tmp_path / "phase-report.md"
+    report_json = tmp_path / "phase-summary.json"
+    report_md.write_text("old safe markdown\n", encoding="utf-8")
+    report_json.write_text('{"old": "safe"}\n', encoding="utf-8")
+    output_dir = tmp_path / "private"
+    output_dir.mkdir()
+    summary = minimal_public_summary(output_dir)
+    summary["source_concept_inventory"]["by_status"] = {"leak": "/mnt/storage/foo"}
+
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", report_md)
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", report_json)
+
+    with pytest.raises(runner.AuditBlockedError, match="Public redaction scan failed"):
+        runner.write_reports_and_redaction(summary, output_dir)
+
+    assert report_md.read_text(encoding="utf-8") == "old safe markdown\n"
+    assert report_json.read_text(encoding="utf-8") == '{"old": "safe"}\n'
+    assert not (output_dir / "_public_report_staging" / report_md.name).exists()
+    assert not (output_dir / "_public_report_staging" / report_json.name).exists()
+
+
+def test_public_report_writer_replaces_only_after_temp_scan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    report_md = tmp_path / "phase-report.md"
+    report_json = tmp_path / "phase-summary.json"
+    report_md.write_text("old safe markdown\n", encoding="utf-8")
+    report_json.write_text('{"old": "safe"}\n', encoding="utf-8")
+    output_dir = tmp_path / "private"
+    output_dir.mkdir()
+    summary = minimal_public_summary(output_dir)
+
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", report_md)
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", report_json)
+
+    def fake_scan(paths, *, checked_at=None, public_path_labels=None):
+        assert report_md.read_text(encoding="utf-8") == "old safe markdown\n"
+        assert report_json.read_text(encoding="utf-8") == '{"old": "safe"}\n'
+        assert all(path.parent == output_dir / "_public_report_staging" for path in paths)
+        return {"checked_at": checked_at, "passed": True, "public_paths": list(public_path_labels or []), "findings": []}
+
+    monkeypatch.setattr(runner, "scan_public_artifacts", fake_scan)
+
+    runner.write_reports_and_redaction(summary, output_dir)
+
+    assert "old safe markdown" not in report_md.read_text(encoding="utf-8")
+    assert json.loads(report_json.read_text(encoding="utf-8"))["phase"] == runner.PHASE
 
 
 def test_public_private_artifact_summary_does_not_expose_exact_zip_path() -> None:
@@ -306,6 +455,61 @@ def test_alias_gap_sample_limit_does_not_change_total_count() -> None:
     assert detail_three["sampled_missing_keys"] == 3
 
 
+def test_identity_tag_gap_excludes_visual_general_meta_tags() -> None:
+    rows = [
+        {"key_value": "1girl", "label": "1girl", "category": "general", "count": 20},
+        {"key_value": "solo", "label": "solo", "category": "general", "count": 18},
+        {"key_value": "highres", "label": "highres", "category": "meta", "count": 10},
+        {"key_value": "nahida_(genshin_impact)", "label": "nahida_(genshin_impact)", "category": "character", "count": 3},
+        {"key_value": "genshin_impact", "label": "genshin_impact", "category": "copyright", "count": 3},
+    ]
+
+    sampled, detail = runner.summarize_identity_tag_gap_rows(rows, {"genshin_impact"}, sample_limit=10)
+
+    assert detail["total_distinct_keys"] == 5
+    assert detail["identity_eligible_distinct_keys"] == 2
+    assert detail["excluded_visual_or_meta_distinct_keys"] == 3
+    assert detail["missing_distinct_keys"] == 1
+    assert sampled == [{"key_value": "nahida_(genshin_impact)", "label": "nahida_(genshin_impact)", "category": "character", "count": 3}]
+
+
+def test_identity_tag_gap_full_counts_are_independent_of_sample_limit() -> None:
+    rows = [
+        {"key_value": f"character_{index}_(work)", "label": f"character_{index}_(work)", "category": "character", "count": 1}
+        for index in range(8)
+    ] + [{"key_value": "1girl", "label": "1girl", "category": "general", "count": 8}]
+
+    _sampled_one, detail_one = runner.summarize_identity_tag_gap_rows(rows, set(), sample_limit=1)
+    _sampled_three, detail_three = runner.summarize_identity_tag_gap_rows(rows, set(), sample_limit=3)
+
+    assert detail_one["missing_distinct_keys"] == 8
+    assert detail_three["missing_distinct_keys"] == 8
+    assert detail_one["sampled_missing_keys"] == 1
+    assert detail_three["sampled_missing_keys"] == 3
+    assert detail_one["excluded_visual_or_meta_distinct_keys"] == 1
+
+
+def test_decision_matrix_uses_identity_source_relevant_gap_count_not_visual_tags() -> None:
+    visual_rows = [{"key_value": f"visual_{index}", "label": f"visual_{index}", "category": "general", "count": 1} for index in range(20)]
+    identity_rows = [{"key_value": "nahida_(genshin_impact)", "label": "nahida_(genshin_impact)", "category": "character", "count": 1}]
+    _sampled, detail = runner.summarize_identity_tag_gap_rows(visual_rows + identity_rows, set(), sample_limit=5)
+    alias_gaps = {"total_gap_signals": detail["missing_distinct_keys"]}
+
+    decision = runner.decide_next_phase(
+        media={"total_media": 100, "eligible_media_count": 80, "media_without_ai_tags": 0, "tags": {"translation": {"total": 0}, "total_tags": 21}},
+        source_layer={"source_records": {"linked_to_media": 100}},
+        concepts={"total_source_concepts": 20},
+        symmetry={"severe_asymmetry_count": 0, "asymmetric_concepts": 0},
+        alias_gaps=alias_gaps,
+        needs_review={"total_needs_review_concepts": 0},
+        redaction_passed=True,
+    )
+
+    assert detail["missing_distinct_keys"] == 1
+    assert detail["excluded_visual_or_meta_distinct_keys"] == 20
+    assert "alias/cross-language/source linkage gap signals=1" in decision["options"][0]["reasons"]
+
+
 def minimal_public_summary(tmp_path: Path) -> dict:
     decision = runner.decide_next_phase(
         media={"total_media": 0, "eligible_media_count": 0, "media_without_ai_tags": 0, "tags": {"translation": {"total": 0}, "total_tags": 0}},
@@ -330,6 +534,24 @@ def minimal_public_summary(tmp_path: Path) -> dict:
             "git_sha": "abc123",
             "python_executable": "python",
             "recorded_at": "2026-06-08T00:00:00Z",
+            "db_resolution": {
+                "app_compatible": True,
+                "settings_json_exists": True,
+                "database_file_settings_used": True,
+                "field_sources": {
+                    "host": "settings_json",
+                    "port": "settings_json",
+                    "name": "settings_json",
+                    "user": "settings_json",
+                    "password": "settings_json_empty",
+                },
+                "runner_url_without_password": "postgresql://postgres@localhost:5432/blombooru",
+                "app_equivalent_url_without_password": "postgresql://postgres@localhost:5432/blombooru",
+                "urls_match": True,
+                "runner_matches_app_equivalent": True,
+                "password_present": False,
+                "password_value_recorded": False,
+            },
         },
         proof={"passed": True, "changed_tables": [], "missing_tables": [], "forbidden_tables_checked": list(runner.FORBIDDEN_TABLES)},
         media={"total_media": 0, "eligible_policy": "content_class IN ('anime', 'unknown')", "eligible_media_count": 0, "eligible_media_pct": 0, "media_with_any_tags": 0, "media_with_ai_tag_provenance": 0, "media_without_ai_tags": 0, "media_with_source_layer_signals": 0, "media_without_source_layer_signals": 0, "media_with_source_concept_evidence_or_links": 0, "content_class_distribution": {}, "tags": {"translation": {"total": 0}, "total_tags": 0}},
@@ -343,6 +565,15 @@ def minimal_public_summary(tmp_path: Path) -> dict:
                 "counts_are_full": True,
                 "samples_are_limited_to_examples_only": True,
                 "default_sample_limit": runner.ALIAS_GAP_SAMPLE_LIMIT,
+            },
+            "normal_tag_gap_policy": {
+                "bucket": "identity_tag_present_no_source_concept_alias",
+                "table_present": True,
+                "total_normal_tags": 0,
+                "identity_eligible_normal_tags": 0,
+                "excluded_visual_or_meta_tags": 0,
+                "missing_identity_tags_without_source_concept_alias": 0,
+                "visual_tags_counted_in_total_gap_signals": False,
             },
             "total_gap_signals": 0,
             "recommended_next_fix_category": "entity_bridge_preview_design",
