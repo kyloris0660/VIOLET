@@ -1,0 +1,140 @@
+# 4.5-SCV1 Expanded SourceConcept Validation and Coverage Audit
+
+## Summary
+
+SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.
+
+## Scope
+
+- Current development DB only.
+- Existing media, tags, AI tag provenance, source metadata/source-layer rows, F7a candidates, and SourceConcept tables.
+- Public report uses aggregate counts and redacted labels only.
+
+## Non-goals
+
+- No 5k/10k/full-library run.
+- No DB writes, migrations, imports, providers, LLMs, localization, AI jobs, SourceConcept editing, Entity bridge, promotion, confirmed assignments, or `media_tags` mutation.
+
+## DB identity and read-only proof
+
+- DB: `blombooru` on `localhost:5432`.
+- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `237e5ca48cffb0028636b120c35492641913f777`.
+- Python: `python.exe`.
+- PostgreSQL transaction_read_only: `on`.
+- Forbidden table count proof passed: `True`.
+- Missing optional forbidden tables recorded: `1`.
+
+## Media coverage baseline
+
+- Total media: `1989`.
+- Eligible media policy: `content_class IN ('anime', 'unknown')`; eligible count `1936` (`97.34%`).
+- Media with any tags: `1962`.
+- Media with AI tag provenance: `1962`; without AI tags `27`.
+- Media with source-layer signals: `1338`; without source-layer signals `651`.
+- Media with SourceConcept evidence or links: `1266`.
+- Content class distribution: `{"anime": 1882, "non_anime": 53, "unknown": 54}`.
+
+## Source-layer coverage
+
+- Source metadata records by provider: `{"danbooru": 22, "gelbooru": 21, "google_vision": 1, "no_tag_provider": 22, "pixiv": 97, "saucenao": 37}`.
+- Source metadata records linked to media: `60`.
+- F7a distinct media with candidates: `62`.
+- Source assertions by status: `{"needs_review": 5, "rejected": 113, "searchable_active": 182}`.
+
+## SourceConcept inventory
+
+- Total SourceConcepts: `4214`.
+- By status: `{"active": 355, "needs_review": 760, "superseded": 3099}`.
+- By type hint: `{"artist": 290, "character": 2371, "person": 51, "source_title": 350, "unknown": 913, "work": 239}`.
+- Aliases/evidence/search index totals: `5561` / `9317` / `5561`.
+- Concepts with no media / no aliases / no evidence / no search index: `3563` / `0` / `0` / `0`.
+- Same alias key across multiple concepts: `100` sampled groups.
+
+## Search symmetry audit
+
+- Concepts checked: `1115`; aliases checked: `1702`.
+- Exact symmetric concepts: `1115`.
+- Explainable no-media concepts: `416`.
+- Asymmetric concepts: `0`; severe asymmetry: `0`.
+- One-way links / fragmentation / overbroad / hidden leakage: `0` / `1` / `60` / `0`.
+- Parser/metacharacter aliases: `922`.
+
+## Alias gap analysis
+
+- Total gap signals: `2025`.
+- Gap buckets: `{"cjk_alias_without_english_romaji_sibling": 367, "danbooru_parenthetical_without_cjk_sibling": 199, "high_frequency_source_tag_or_name_unlinked": 13, "needs_review_cluster_with_no_active_alias_path": 523, "normal_tag_present_no_source_concept_alias": 468, "same_display_name_split_across_contexts": 176, "same_normalized_alias_key_split_across_multiple_concepts": 176, "source_assertion_present_not_connected": 22, "source_name_present_no_source_concept_alias": 0, "source_tag_present_no_source_concept_alias": 81}`.
+- Recommended fix category: `source_concept_alias_resolver_improvement`.
+
+## Needs-review cluster analysis
+
+- Total needs_review concepts: `760`.
+- With media / high evidence / sharing active alias: `567` / `84` / `237`.
+- CJK alias / parenthetical context / empty cluster: `331` / `167` / `0`.
+- Assessment: needs_review retains recall value but should be triaged/scored before broader truth or management work.
+
+## Redaction/privacy audit
+
+- Public redaction passed: `True`.
+- Public artifacts checked: `["docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md", "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"]`.
+- Findings: `[]`.
+
+## Nahida / 纳西妲 / 草神 seed result
+
+- Seed values tested: `["Nahida", "纳西妲", "草神", "nahida_(genshin_impact)", "绾宠タ濡瞏", "鑽夬"]`.
+- Matched aliases: `["Nahida", "纳西妲", "草神", "nahida_(genshin_impact)"]`.
+- Matched concept count: `10`; matched media count: `33`.
+- Gap detected: `False`.
+
+## Decision matrix
+
+- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; alias/cross-language/source linkage gap signals=2025; needs_review concepts=760
+- `bounded_ai_tag_expansion`: priority `P3`, recommended `False`; reasons: media without AI tag provenance=27/1989; would be a separate approved run
+- `bounded_pixiv_metadata_expansion`: priority `P2`, recommended `True`; reasons: source metadata records linked to media=60/1989; coverage gap may limit SourceConcept evidence
+- `tag_localization_catchup`: priority `P3`, recommended `False`; reasons: tag translations=3732, total tags=3889; separate from SourceConcept identity linking
+- `source_concept_management_or_editing_design`: priority `P2`, recommended `False`; reasons: manual correction may help after alias/resolver quality is acceptable
+- `entity_bridge_preview_design`: priority `P3`, recommended `False`; reasons: requires strong coverage, redaction, search symmetry, and low needs_review noise
+- `run_ledger_or_phase39_prerequisite`: priority `P1`, recommended `True`; reasons: any 5k/10k or provider/AI/source expansion needs checkpoint/failure-budget discipline
+
+## Recommended next phase
+
+`source_concept_alias_resolver_improvement` is the highest impact/risk-adjusted next route from this audit.
+
+## Expansion and bridge answers
+
+- Is 5k/10k expansion justified now? `False`.
+- If yes, expansion of what exactly? `N/A; broad 5k/10k expansion is not justified inside or immediately after SCV1 without a separate ledger and bounded phase.`.
+- Must add before any 5k/10k run: `["run ledger/checkpoint/failure budget", "read-only identity and mutation proof per run", "redaction-safe reporting boundary", "separate approval for AI/provider/import/localization execution"]`.
+- Is Entity bridge justified now? `False`.
+- Is SourceConcept editing justified now? `False`.
+- Should Pixiv/source metadata extraction be next? `True`.
+- Should local AI tagging be next? `False`.
+- Should tag localization be next? `False`.
+
+## Deferred work
+
+- Any AI tagging, provider/Pixiv/source metadata expansion, localization, SourceConcept editing, Entity bridge, promotion, or broad-library work remains a separate approved phase.
+- Entity bridge still requires preview, manual confirmation, audit trail, rollback/supersede behavior, and no truth-path pollution guards.
+
+## Validation
+
+- Operational audit command: `python scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir .local_manifests/phase-4.5-scv1-source-concept-coverage-audit --write-public-report --read-only`.
+- Operational audit result: `passed`.
+- Focused test results are recorded in the PR/final delivery report.
+- Real browser validation: N/A, no UI/runtime behavior changed.
+
+## Safety confirmation
+
+- No push to main.
+- No merge.
+- No DB write, migration, import, cleanup/delete/reset/drop/truncate, source storage mutation, cloud-file mutation, app-storage mutation, AI tagging, localization, LLM, provider call, Entity Resolver, similarity, SourceConcept editing, Entity bridge, promotion, confirmed assignment, or media_tags mutation.
+
+## Artifact lifecycle
+
+- `scripts/run_phase45_scv1_source_concept_coverage_audit.py`: phase-scoped operational runner.
+- `tests/test_phase45_scv1_source_concept_coverage_audit.py`: phase-scoped validation test.
+- Private `.local_manifests` outputs: one-off local artifacts / ignored output.
+- Public report and summary JSON: public report / handoff / roadmap update.
+
+## Engineering judgment / operator notes
+
+SCV1 achieved the intended audit shape if the read-only proof and redaction scan pass. The prompt scope is appropriate: broad enough to answer the next-route question, but correctly narrow because it forbids writes, providers, LLMs, localization, imports, SourceConcept editing, and Entity bridge work. The next phase should address the highest-priority audited gap rather than starting broad 5k/10k execution.

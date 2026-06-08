@@ -1,0 +1,3365 @@
+{
+  "alias_gap_analysis": {
+    "gap_buckets": {
+      "cjk_alias_without_english_romaji_sibling": 367,
+      "danbooru_parenthetical_without_cjk_sibling": 199,
+      "high_frequency_source_tag_or_name_unlinked": 13,
+      "needs_review_cluster_with_no_active_alias_path": 523,
+      "normal_tag_present_no_source_concept_alias": 468,
+      "same_display_name_split_across_contexts": 176,
+      "same_normalized_alias_key_split_across_multiple_concepts": 176,
+      "source_assertion_present_not_connected": 22,
+      "source_name_present_no_source_concept_alias": 0,
+      "source_tag_present_no_source_concept_alias": 81
+    },
+    "recommended_next_fix_category": "source_concept_alias_resolver_improvement",
+    "total_gap_signals": 2025
+  },
+  "artifact_lifecycle": {
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit": "one-off local artifact / ignored output",
+    "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json": "public report / handoff / roadmap update",
+    "docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md": "public report / handoff / roadmap update",
+    "scripts/run_phase45_scv1_source_concept_coverage_audit.py": "phase-scoped operational runner",
+    "tests/test_phase45_scv1_source_concept_coverage_audit.py": "phase-scoped validation test"
+  },
+  "branch": "codex/phase45-scv1-source-concept-coverage-audit",
+  "db_identity": {
+    "connected_database": "blombooru",
+    "database": "blombooru",
+    "git_branch": "codex/phase45-scv1-source-concept-coverage-audit",
+    "git_sha": "237e5ca48cffb0028636b120c35492641913f777",
+    "host": "localhost",
+    "port": 5432,
+    "python_executable": "python.exe",
+    "recorded_at": "2026-06-08T08:22:19Z",
+    "server_port": 5432,
+    "transaction_read_only": "on",
+    "transaction_read_only_ok": true,
+    "violet_env": "development"
+  },
+  "decision_matrix": {
+    "answers": {
+      "highest_impact_risk_adjusted_priority": "source_concept_alias_resolver_improvement",
+      "if_yes_expansion_of_what": "N/A; broad 5k/10k expansion is not justified inside or immediately after SCV1 without a separate ledger and bounded phase.",
+      "is_5k_10k_expansion_justified_now": false,
+      "is_entity_bridge_justified_now": false,
+      "is_source_concept_editing_justified_now": false,
+      "should_local_ai_tagging_be_next": false,
+      "should_pixiv_metadata_tag_extraction_be_next": true,
+      "should_tag_localization_be_next": false,
+      "what_must_be_added_before_5k_10k": [
+        "run ledger/checkpoint/failure budget",
+        "read-only identity and mutation proof per run",
+        "redaction-safe reporting boundary",
+        "separate approval for AI/provider/import/localization execution"
+      ]
+    },
+    "conservative_note": "SCV1 is an audit only; recommendations require separate approved implementation/run phases.",
+    "options": [
+      {
+        "blockers": [
+          "must remain source-layer only",
+          "must not promote to Entity/media_tags truth"
+        ],
+        "key": "source_concept_alias_resolver_improvement",
+        "priority": "P1",
+        "reasons": [
+          "search asymmetry concepts=0, severe=0",
+          "alias/cross-language/source linkage gap signals=2025",
+          "needs_review concepts=760"
+        ],
+        "recommended": true
+      },
+      {
+        "blockers": [
+          "requires separate AI job phase, test DB/storage safety, no localization/provider coupling"
+        ],
+        "key": "bounded_ai_tag_expansion",
+        "priority": "P3",
+        "reasons": [
+          "media without AI tag provenance=27/1989",
+          "would be a separate approved run"
+        ],
+        "recommended": false
+      },
+      {
+        "blockers": [
+          "requires provider policy, cache/audit/rate limit/budget, no originals by default, separate run approval"
+        ],
+        "key": "bounded_pixiv_metadata_expansion",
+        "priority": "P2",
+        "reasons": [
+          "source metadata records linked to media=60/1989",
+          "coverage gap may limit SourceConcept evidence"
+        ],
+        "recommended": true
+      },
+      {
+        "blockers": [
+          "must not run background translation in SCV1",
+          "proper-noun aliases are not translation truth"
+        ],
+        "key": "tag_localization_catchup",
+        "priority": "P3",
+        "reasons": [
+          "tag translations=3732, total tags=3889",
+          "separate from SourceConcept identity linking"
+        ],
+        "recommended": false
+      },
+      {
+        "blockers": [
+          "requires audit trail, rollback/supersede, source-layer-only guard"
+        ],
+        "key": "source_concept_management_or_editing_design",
+        "priority": "P2",
+        "reasons": [
+          "manual correction may help after alias/resolver quality is acceptable"
+        ],
+        "recommended": false
+      },
+      {
+        "blockers": [
+          "preview/manual confirmation/audit trail/rollback/no truth-path pollution guards required"
+        ],
+        "key": "entity_bridge_preview_design",
+        "priority": "P3",
+        "reasons": [
+          "requires strong coverage, redaction, search symmetry, and low needs_review noise"
+        ],
+        "recommended": false
+      },
+      {
+        "blockers": [
+          "must exist before broad/full-library run"
+        ],
+        "key": "run_ledger_or_phase39_prerequisite",
+        "priority": "P1",
+        "reasons": [
+          "any 5k/10k or provider/AI/source expansion needs checkpoint/failure-budget discipline"
+        ],
+        "recommended": true
+      }
+    ],
+    "recommended_next_phase": "source_concept_alias_resolver_improvement"
+  },
+  "generated_at": "2026-06-08T08:22:36Z",
+  "media_coverage": {
+    "ai_jobs_by_status": {
+      "completed": 51
+    },
+    "classification_jobs_by_status": {
+      "completed": 25
+    },
+    "content_class_distribution": {
+      "anime": 1882,
+      "non_anime": 53,
+      "unknown": 54
+    },
+    "eligible_media_count": 1936,
+    "eligible_media_pct": 97.34,
+    "eligible_policy": "content_class IN ('anime', 'unknown')",
+    "media_with_ai_tag_provenance": 1962,
+    "media_with_ai_tag_provenance_pct": 98.64,
+    "media_with_any_tags": 1962,
+    "media_with_any_tags_pct": 98.64,
+    "media_with_manual_or_locked_tags": 0,
+    "media_with_source_concept_evidence_or_links": 1266,
+    "media_with_source_imported_provider_tag_provenance": 0,
+    "media_with_source_layer_signals": 1338,
+    "media_without_ai_tags": 27,
+    "media_without_source_concept_evidence_or_links": 723,
+    "media_without_source_layer_signals": 651,
+    "tag_translation_jobs_by_status": {
+      "completed": 15,
+      "interrupted": 1,
+      "rate_limited": 1
+    },
+    "tags": {
+      "associations_by_source": {
+        "ai_wd": 105699
+      },
+      "media_tag_associations": 105699,
+      "proper_noun_tag_category_counts": {
+        "character": 248,
+        "general": 3637,
+        "meta": 4
+      },
+      "total_tags": 3889,
+      "translation": {
+        "by_category": {
+          "character": 77,
+          "general": 3651,
+          "meta": 4
+        },
+        "by_source": {
+          "llm": 3653,
+          "static": 79
+        },
+        "by_status": {
+          "translated": 3732
+        },
+        "total": 3732
+      }
+    },
+    "total_media": 1989
+  },
+  "needs_review_analysis": {
+    "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
+    "needs_review_ai_only": 218,
+    "needs_review_duplicate_or_fragment_candidate": 237,
+    "needs_review_high_evidence_count": 84,
+    "needs_review_sharing_alias_with_active": 237,
+    "needs_review_with_cjk_alias": 331,
+    "needs_review_with_media": 567,
+    "needs_review_with_parenthetical_context": 167,
+    "sample_count": 385,
+    "top_reason_buckets": {},
+    "total_needs_review_concepts": 760
+  },
+  "phase": "4.5-SCV1",
+  "private_artifact_zip": ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit.zip",
+  "private_artifacts": [
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/db-identity.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/read-only-mutation-proof.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/media-coverage-inventory.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-layer-coverage-inventory.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-inventory.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-alias-inventory.csv",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-evidence-inventory.csv",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-search-symmetry.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/source-concept-search-symmetry-samples.csv",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/alias-gap-analysis.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/alias-gap-samples.csv",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/needs-review-cluster-analysis.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/needs-review-cluster-samples.csv",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/redaction-privacy-audit.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/scv1-decision-matrix.json",
+    ".local_manifests/phase-4.5-scv1-source-concept-coverage-audit/public-redaction-check.txt"
+  ],
+  "read_only_proof": {
+    "changed_tables": [],
+    "forbidden_tables_checked": [
+      "blombooru_media",
+      "blombooru_tags",
+      "blombooru_media_tags",
+      "blombooru_tag_translations",
+      "blombooru_entities",
+      "blombooru_entity_aliases",
+      "blombooru_entity_evidence",
+      "blombooru_media_entity_candidates",
+      "blombooru_media_entity_assignments",
+      "blombooru_local_source_hints",
+      "blombooru_provider_cache",
+      "blombooru_source_metadata_records",
+      "blombooru_source_tag_observations",
+      "blombooru_source_name_observations",
+      "blombooru_source_searchable_name_assertions",
+      "blombooru_source_name_candidates",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_search_index"
+    ],
+    "missing_tables": [
+      "blombooru_local_source_hints"
+    ],
+    "passed": true
+  },
+  "recommended_next_phase": "source_concept_alias_resolver_improvement",
+  "redaction_privacy_audit": {
+    "checked_at": "2026-06-08T08:22:37Z",
+    "findings": [],
+    "passed": true,
+    "public_paths": [
+      "docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md",
+      "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"
+    ]
+  },
+  "safety": {
+    "browser_validation": "N/A; no UI/runtime change",
+    "db_migration": false,
+    "db_write": false,
+    "entity_or_truth_path_write": false,
+    "provider_llm_ai_localization_import_run": false,
+    "server_started": false,
+    "source_icloud_app_storage_mutation": false
+  },
+  "search_symmetry": {
+    "active_concepts_checked": 355,
+    "aliases_checked": 1702,
+    "asymmetric_concepts": 0,
+    "concepts_checked": 1115,
+    "exact_symmetric_concepts": 1115,
+    "explainable_no_media_concepts": 416,
+    "fragmentation_count": 1,
+    "hidden_status_leak_count": 0,
+    "hidden_status_raw_match_count": 1702,
+    "metacharacter_alias_count": 922,
+    "needs_review_concepts_checked": 760,
+    "one_way_link_count": 0,
+    "overbroad_expansion_count": 60,
+    "public_safe_example_count": 12,
+    "sampled_examples_private_count": 517,
+    "severe_asymmetry_count": 0
+  },
+  "seed_results": {
+    "2b": {
+      "gap_detected": false,
+      "matched_alias_values": [
+        "2B",
+        "2b_(nier_automata)",
+        "ヨルハ二号B型"
+      ],
+      "matched_concept_count": 1,
+      "matched_concept_ids": [
+        1504
+      ],
+      "matched_media_count": 3,
+      "seed_values_tested": [
+        "2B",
+        "2b_(nier_automata)",
+        "ヨルハ二号B型",
+        "銉ヨ。儷銉忒二号B媚"
+      ]
+    },
+    "barbara": {
+      "gap_detected": false,
+      "matched_alias_values": [
+        "Barbara",
+        "barbara_(genshin_impact)",
+        "バーバラ"
+      ],
+      "matched_concept_count": 2,
+      "matched_concept_ids": [
+        1526,
+        4004
+      ],
+      "matched_media_count": 51,
+      "seed_values_tested": [
+        "Barbara",
+        "barbara_(genshin_impact)",
+        "バーバラ",
+        "銉愜。共銉愜。儥"
+      ]
+    },
+    "kamisato_ayaka": {
+      "gap_detected": false,
+      "matched_alias_values": [
+        "Kamisato Ayaka",
+        "kamisato_ayaka",
+        "神里綾華"
+      ],
+      "matched_concept_count": 1,
+      "matched_concept_ids": [
+        143
+      ],
+      "matched_media_count": 57,
+      "seed_values_tested": [
+        "Kamisato Ayaka",
+        "kamisato_ayaka",
+        "神里綾華",
+        "绁為噷缍捱彲"
+      ]
+    },
+    "mona": {
+      "gap_detected": false,
+      "matched_alias_values": [
+        "mona_(genshin_impact)",
+        "モナ"
+      ],
+      "matched_concept_count": 1,
+      "matched_concept_ids": [
+        4161
+      ],
+      "matched_media_count": 39,
+      "seed_values_tested": [
+        "Mona",
+        "mona_(genshin_impact)",
+        "モナ",
+        "銉、儕"
+      ]
+    },
+    "nahida_prompt_and_doc1": {
+      "gap_detected": false,
+      "matched_alias_values": [
+        "Nahida",
+        "纳西妲",
+        "草神",
+        "nahida_(genshin_impact)"
+      ],
+      "matched_concept_count": 10,
+      "matched_concept_ids": [
+        212,
+        1769,
+        1828,
+        1834,
+        1841,
+        1842,
+        1847,
+        4055,
+        4075,
+        4173
+      ],
+      "matched_media_count": 33,
+      "seed_values_tested": [
+        "Nahida",
+        "纳西妲",
+        "草神",
+        "nahida_(genshin_impact)",
+        "绾宠タ濡瞏",
+        "鑽夬"
+      ]
+    },
+    "nilou": {
+      "gap_detected": false,
+      "matched_alias_values": [
+        "Nilou",
+        "nilou_(genshin_impact)",
+        "妮露"
+      ],
+      "matched_concept_count": 15,
+      "matched_concept_ids": [
+        1571,
+        1623,
+        1753,
+        3618,
+        3619,
+        3624,
+        4036,
+        4040,
+        4060,
+        4071,
+        4078,
+        4080,
+        4081,
+        4082,
+        4162
+      ],
+      "matched_media_count": 61,
+      "seed_values_tested": [
+        "Nilou",
+        "nilou_(genshin_impact)",
+        "妮露",
+        "濞渶",
+        "銉ニ。偅銉偊"
+      ]
+    }
+  },
+  "source_concept_inventory": {
+    "active_concepts": 355,
+    "ai_only_concept_count": 1893,
+    "alias_count_per_concept": {
+      "average": 1.32,
+      "count": 4214,
+      "max": 11,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "aliases_total": 5561,
+    "by_concept_type_hint": {
+      "artist": 290,
+      "character": 2371,
+      "person": 51,
+      "source_title": 350,
+      "unknown": 913,
+      "work": 239
+    },
+    "by_status": {
+      "active": 355,
+      "needs_review": 760,
+      "superseded": 3099
+    },
+    "concepts_by_evidence_origin_provider_source_kind": [
+      {
+        "count": 56,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_artist",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "source_kind": "alias_edge_source",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 60,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_name_observation",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 36,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 190,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "superseded",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 58,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 10,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_tag_observation",
+        "provider": "google_vision",
+        "source_kind": "generic_provider_label",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.artist",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 57,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_name_observation",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 22,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.creator",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 100,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:character",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 445,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "provider_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 9,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 56,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_parenthetical_outer",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1522,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:character",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_artist_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 35,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "source_title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 101,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_assertion",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 51,
+        "origin_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "title",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 21,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.work_or_copyright",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_artist_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 32,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "artist_name",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 86,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "artist_name",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 16,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "popularity_marker",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "source_kind": "alias_edge_target",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 93,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 22,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.characters",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_tag_observation",
+        "provider": "saucenao",
+        "source_kind": "provider_label",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 25,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "raw_metadata_json.title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 86,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_user_metadata",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 6,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "creator",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 94,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 53,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "popularity_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "work_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 116,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_assertion",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 98,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "artist",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "source_kind": "provider_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 56,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 48,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "artist",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 9,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "work_title",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 74,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "character",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 28,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_creator",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 56,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_parenthetical_inner_work",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 46,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 44,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "source_kind": "alias_edge_target",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 58,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 34,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_work_or_copyright",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "unknown",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 95,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "general_descriptor",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 3,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_artist",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 112,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 44,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "source_kind": "alias_edge_source",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 27,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_characters",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 13,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "work_title",
+        "status": "active",
+        "trust_tier": "strong"
+      }
+    ],
+    "concepts_with_multiple_aliases": 800,
+    "concepts_with_no_aliases": 0,
+    "concepts_with_no_evidence": 0,
+    "concepts_with_no_media": 3563,
+    "concepts_with_no_search_index": 0,
+    "duplicate_primary_display_name_groups": [
+      {
+        "concept_count": 6,
+        "concept_ids": [
+          1,
+          3,
+          704,
+          1503,
+          1505,
+          3641
+        ],
+        "display_key": "d.i.s.h"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          2,
+          691,
+          981,
+          1504
+        ],
+        "display_key": "2b"
+      },
+      {
+        "concept_count": 7,
+        "concept_ids": [
+          4,
+          6,
+          718,
+          982,
+          1506,
+          1508,
+          3655
+        ],
+        "display_key": "ニーアオートマタ"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          5,
+          985,
+          1507
+        ],
+        "display_key": "はいてない"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          7,
+          984,
+          1509
+        ],
+        "display_key": "ガーターベルト"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          8,
+          10,
+          979,
+          1510,
+          1512
+        ],
+        "display_key": "nier:automata"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          9,
+          13,
+          719,
+          980,
+          1511
+        ],
+        "display_key": "ヨルハ二号b型"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          12,
+          987,
+          1513
+        ],
+        "display_key": "お尻"
+      },
+      {
+        "concept_count": 8,
+        "concept_ids": [
+          14,
+          24,
+          714,
+          994,
+          1514,
+          1523,
+          3649,
+          4152
+        ],
+        "display_key": "lycaon"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          15,
+          17,
+          996,
+          1515
+        ],
+        "display_key": "カリン_ウィクス"
+      },
+      {
+        "concept_count": 11,
+        "concept_ids": [
+          16,
+          35,
+          41,
+          688,
+          1431,
+          1432,
+          1516,
+          1535,
+          3625,
+          4031,
+          4032
+        ],
+        "display_key": "水着バーバラちゃん"
+      },
+      {
+        "concept_count": 9,
+        "concept_ids": [
+          18,
+          995,
+          1073,
+          1155,
+          1190,
+          1237,
+          1267,
+          1279,
+          1517
+        ],
+        "display_key": "裸足"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          19,
+          25,
+          1518,
+          1524
+        ],
+        "display_key": "略略子"
+      },
+      {
+        "concept_count": 11,
+        "concept_ids": [
+          20,
+          194,
+          208,
+          679,
+          990,
+          1130,
+          1147,
+          1519,
+          1695,
+          1709,
+          3614
+        ],
+        "display_key": "zenlesszonezero"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          21,
+          991,
+          1520
+        ],
+        "display_key": "メイド"
+      },
+      {
+        "concept_count": 6,
+        "concept_ids": [
+          22,
+          188,
+          205,
+          1521,
+          1688,
+          4153
+        ],
+        "display_key": "ゼンゼロ"
+      },
+      {
+        "concept_count": 11,
+        "concept_ids": [
+          23,
+          191,
+          206,
+          682,
+          989,
+          1133,
+          1144,
+          1522,
+          1691,
+          1707,
+          3616
+        ],
+        "display_key": "绝区零"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          26,
+          1663,
+          4025,
+          4168
+        ],
+        "display_key": "蛍"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          27,
+          1526,
+          4004
+        ],
+        "display_key": "バーバラ"
+      },
+      {
+        "concept_count": 12,
+        "concept_ids": [
+          28,
+          34,
+          44,
+          97,
+          680,
+          1004,
+          1011,
+          1049,
+          1529,
+          1534,
+          1540,
+          1588
+        ],
+        "display_key": "サマータイムスパークル"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          29,
+          1000,
+          1007,
+          1219,
+          1530
+        ],
+        "display_key": "スク水"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          30,
+          32,
+          42,
+          1531,
+          1533
+        ],
+        "display_key": "七茂やど_お仕事募集中"
+      },
+      {
+        "concept_count": 27,
+        "concept_ids": [
+          31,
+          673,
+          997,
+          1005,
+          1013,
+          1031,
+          1048,
+          1060,
+          1069,
+          1099,
+          1103,
+          1150,
+          1166,
+          1181,
+          1197,
+          1203,
+          1209,
+          1248,
+          1276,
+          1300
+        ],
+        "display_key": "genshinimpact"
+      },
+      {
+        "concept_count": 8,
+        "concept_ids": [
+          33,
+          40,
+          43,
+          96,
+          677,
+          999,
+          1006,
+          1044
+        ],
+        "display_key": "barbara"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          36,
+          1003,
+          1010,
+          1536
+        ],
+        "display_key": "ウィンク"
+      },
+      {
+        "concept_count": 8,
+        "concept_ids": [
+          37,
+          1002,
+          1009,
+          1046,
+          1090,
+          1118,
+          1256,
+          1537
+        ],
+        "display_key": "少女"
+      },
+      {
+        "concept_count": 9,
+        "concept_ids": [
+          39,
+          1001,
+          1008,
+          1045,
+          1072,
+          1075,
+          1283,
+          1341,
+          1538
+        ],
+        "display_key": "水着"
+      },
+      {
+        "concept_count": 15,
+        "concept_ids": [
+          45,
+          47,
+          118,
+          144,
+          179,
+          231,
+          238,
+          391,
+          1542,
+          1544,
+          1609,
+          1638,
+          1681,
+          1912,
+          4156
+        ],
+        "display_key": "feint"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          46,
+          1543,
+          3991,
+          4155
+        ],
+        "display_key": "アルレッキーノ"
+      },
+      {
+        "concept_count": 17,
+        "concept_ids": [
+          48,
+          2064,
+          2084,
+          2106,
+          2136,
+          2140,
+          2159,
+          2209,
+          2225,
+          2227,
+          2229,
+          2255,
+          2299,
+          2341,
+          2362,
+          2442,
+          2811
+        ],
+        "display_key": "arlecchino_(genshin_impact)"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          49,
+          720,
+          1014,
+          1545,
+          4157
+        ],
+        "display_key": "召使"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          50,
+          1015,
+          1546
+        ],
+        "display_key": "lingerie"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          51,
+          1433,
+          1547,
+          4033
+        ],
+        "display_key": "arlecchino"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          52,
+          1017,
+          1127,
+          1163,
+          1548
+        ],
+        "display_key": "ぱんつ"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          53,
+          1553,
+          4027,
+          4159
+        ],
+        "display_key": "酒呑童子"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          54,
+          58,
+          1550,
+          1555
+        ],
+        "display_key": "魚デニム"
+      },
+      {
+        "concept_count": 5,
+        "concept_ids": [
+          55,
+          696,
+          1018,
+          1551,
+          3634
+        ],
+        "display_key": "fate_grandorder"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          56,
+          1022,
+          1552
+        ],
+        "display_key": "メイドビキニ"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          57,
+          1023,
+          1554
+        ],
+        "display_key": "大股開き"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          59,
+          1024,
+          1556
+        ],
+        "display_key": "手でハート"
+      },
+      {
+        "concept_count": 2,
+        "concept_ids": [
+          60,
+          1557
+        ],
+        "display_key": "fate_go"
+      },
+      {
+        "concept_count": 2,
+        "concept_ids": [
+          61,
+          2298
+        ],
+        "display_key": "shuten_douji_(fate)"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          62,
+          1558,
+          4006,
+          4160
+        ],
+        "display_key": "フィッシュル"
+      },
+      {
+        "concept_count": 4,
+        "concept_ids": [
+          63,
+          1559,
+          4010,
+          4161
+        ],
+        "display_key": "モナ"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          64,
+          1030,
+          1561
+        ],
+        "display_key": "原神風景"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          65,
+          70,
+          1028
+        ],
+        "display_key": "アストローギスト_モナ_メギストス"
+      },
+      {
+        "concept_count": 6,
+        "concept_ids": [
+          66,
+          67,
+          160,
+          1562,
+          1563,
+          1657
+        ],
+        "display_key": "atdan-"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          68,
+          71,
+          1029
+        ],
+        "display_key": "フィッシュル_ヴォン_ルフシュロス_ナフィードット"
+      },
+      {
+        "concept_count": 3,
+        "concept_ids": [
+          69,
+          1027,
+          1564
+        ],
+        "display_key": "原神イラコン夏fa"
+      },
+      {
+        "concept_count": 14,
+        "concept_ids": [
+          72,
+          2024,
+          2027,
+          2069,
+          2112,
+          2161,
+          2164,
+          2170,
+          2187,
+          2247,
+          2250,
+          2324,
+          2383,
+          3213
+        ],
+        "display_key": "fischl_(genshin_impact)"
+      }
+    ],
+    "evidence_count_per_concept": {
+      "average": 2.211,
+      "count": 4214,
+      "max": 172,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "evidence_total": 9317,
+    "hidden_status_counts": {
+      "ambiguous": 0,
+      "hidden": 0,
+      "rejected": 0,
+      "superseded": 3099,
+      "weak": 0
+    },
+    "high_evidence_count_concepts": [
+      {
+        "concept_id": 26,
+        "display": "蛍",
+        "evidence_count": 172,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 1628,
+        "display": "甘雨",
+        "evidence_count": 124,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4162,
+        "display": "妮露",
+        "evidence_count": 121,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 1572,
+        "display": "妮露",
+        "evidence_count": 102,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 404,
+        "display": "vision_(genshin_impact)",
+        "evidence_count": 97,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 4186,
+        "display": "vision_(genshin_impact)",
+        "evidence_count": 97,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 134,
+        "display": "ganyu_(genshin_impact)",
+        "evidence_count": 96,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 4168,
+        "display": "蛍",
+        "evidence_count": 85,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 1526,
+        "display": "バーバラ",
+        "evidence_count": 79,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 79,
+        "display": "nilou_(genshin_impact)",
+        "evidence_count": 77,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 1671,
+        "display": "Lumine",
+        "evidence_count": 70,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 171,
+        "display": "lumine_(genshin_impact)",
+        "evidence_count": 68,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 405,
+        "display": "star_(symbol)",
+        "evidence_count": 68,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 1527,
+        "display": "原神",
+        "evidence_count": 68,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 4154,
+        "display": "原神",
+        "evidence_count": 68,
+        "status": "active"
+      },
+      {
+        "concept_id": 143,
+        "display": "神里綾華",
+        "evidence_count": 67,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 497,
+        "display": "kisaki (blue archive)",
+        "evidence_count": 63,
+        "status": "active"
+      },
+      {
+        "concept_id": 2456,
+        "display": "kisaki (blue archive)",
+        "evidence_count": 63,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 4161,
+        "display": "モナ",
+        "evidence_count": 61,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 212,
+        "display": "草神",
+        "evidence_count": 60,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 38,
+        "display": "barbara_(genshin_impact)",
+        "evidence_count": 57,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 4180,
+        "display": "刻晴",
+        "evidence_count": 53,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 409,
+        "display": "shrug_(clothing)",
+        "evidence_count": 46,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 283,
+        "display": "keqing_(genshin_impact)",
+        "evidence_count": 45,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 503,
+        "display": "toki_(blue_archive)",
+        "evidence_count": 45,
+        "status": "needs_review"
+      }
+    ],
+    "high_media_count_concepts": [
+      {
+        "concept_id": 1628,
+        "display": "甘雨",
+        "media_count": 87,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4168,
+        "display": "蛍",
+        "media_count": 64,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 497,
+        "display": "kisaki (blue archive)",
+        "media_count": 61,
+        "status": "active"
+      },
+      {
+        "concept_id": 4162,
+        "display": "妮露",
+        "media_count": 61,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 143,
+        "display": "神里綾華",
+        "media_count": 57,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 1526,
+        "display": "バーバラ",
+        "media_count": 51,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 503,
+        "display": "toki_(blue_archive)",
+        "media_count": 45,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4180,
+        "display": "刻晴",
+        "media_count": 43,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 499,
+        "display": "plana_(blue_archive)",
+        "media_count": 39,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4161,
+        "display": "モナ",
+        "media_count": 39,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 212,
+        "display": "草神",
+        "media_count": 33,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 483,
+        "display": "hina_(blue_archive)",
+        "media_count": 32,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 429,
+        "display": "noelle_(genshin_impact)",
+        "media_count": 29,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 521,
+        "display": "furina_(genshin_impact)",
+        "media_count": 28,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 427,
+        "display": "raiden_shogun",
+        "media_count": 27,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 506,
+        "display": "toki_(bunny)_(blue_archive)",
+        "media_count": 27,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4174,
+        "display": "胡桃",
+        "media_count": 27,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 522,
+        "display": "trailblazer_(honkai:_star_rail)",
+        "media_count": 25,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 415,
+        "display": "asuna_(blue_archive)",
+        "media_count": 24,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4214,
+        "display": "空",
+        "media_count": 24,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 4154,
+        "display": "原神",
+        "media_count": 23,
+        "status": "active"
+      },
+      {
+        "concept_id": 412,
+        "display": "sensei_(blue_archive)",
+        "media_count": 18,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 416,
+        "display": "mari_(blue_archive)",
+        "media_count": 18,
+        "status": "needs_review"
+      },
+      {
+        "concept_id": 426,
+        "display": "star_(sky)",
+        "media_count": 18,
+        "status": "superseded"
+      },
+      {
+        "concept_id": 559,
+        "display": "stelle_(honkai:_star_rail)",
+        "media_count": 18,
+        "status": "needs_review"
+      }
+    ],
+    "link_count_per_concept": {
+      "average": 9.476,
+      "count": 4214,
+      "max": 868,
+      "median": 3.0,
+      "min": 1,
+      "p90": 18,
+      "zero_count": 0
+    },
+    "media_link_count_per_concept": {
+      "average": 0.513,
+      "count": 4214,
+      "max": 87,
+      "median": 0.0,
+      "min": 0,
+      "p90": 1,
+      "zero_count": 3563
+    },
+    "media_linked_concepts": 651,
+    "needs_review_concepts": 760,
+    "same_alias_key_across_multiple_concepts": [
+      {
+        "alias_key": "d.i.s.h",
+        "concept_count": 6,
+        "concept_ids": [
+          1,
+          3,
+          704,
+          1503,
+          1505,
+          3641
+        ]
+      },
+      {
+        "alias_key": "2b",
+        "concept_count": 4,
+        "concept_ids": [
+          2,
+          691,
+          981,
+          1504
+        ]
+      },
+      {
+        "alias_key": "ニーアオートマタ",
+        "concept_count": 7,
+        "concept_ids": [
+          4,
+          6,
+          718,
+          982,
+          1506,
+          1508,
+          3655
+        ]
+      },
+      {
+        "alias_key": "はいてない",
+        "concept_count": 3,
+        "concept_ids": [
+          5,
+          985,
+          1507
+        ]
+      },
+      {
+        "alias_key": "ガーターベルト",
+        "concept_count": 3,
+        "concept_ids": [
+          7,
+          984,
+          1509
+        ]
+      },
+      {
+        "alias_key": "nier:automata",
+        "concept_count": 5,
+        "concept_ids": [
+          8,
+          10,
+          979,
+          1510,
+          1512
+        ]
+      },
+      {
+        "alias_key": "ヨルハ2号b型",
+        "concept_count": 2,
+        "concept_ids": [
+          9,
+          1511
+        ]
+      },
+      {
+        "alias_key": "2b_(nier:automata)",
+        "concept_count": 2,
+        "concept_ids": [
+          11,
+          1504
+        ]
+      },
+      {
+        "alias_key": "お尻",
+        "concept_count": 3,
+        "concept_ids": [
+          12,
+          987,
+          1513
+        ]
+      },
+      {
+        "alias_key": "ヨルハ二号b型",
+        "concept_count": 4,
+        "concept_ids": [
+          13,
+          719,
+          980,
+          1504
+        ]
+      },
+      {
+        "alias_key": "lycaon",
+        "concept_count": 8,
+        "concept_ids": [
+          14,
+          24,
+          714,
+          994,
+          1514,
+          1523,
+          3649,
+          4152
+        ]
+      },
+      {
+        "alias_key": "カリン_ウィクス",
+        "concept_count": 4,
+        "concept_ids": [
+          15,
+          17,
+          996,
+          1515
+        ]
+      },
+      {
+        "alias_key": "水着バーバラちゃん",
+        "concept_count": 11,
+        "concept_ids": [
+          16,
+          35,
+          41,
+          688,
+          1431,
+          1432,
+          1516,
+          1535,
+          3625,
+          4031,
+          4032
+        ]
+      },
+      {
+        "alias_key": "裸足",
+        "concept_count": 9,
+        "concept_ids": [
+          18,
+          995,
+          1073,
+          1155,
+          1190,
+          1237,
+          1267,
+          1279,
+          1517
+        ]
+      },
+      {
+        "alias_key": "略略子",
+        "concept_count": 4,
+        "concept_ids": [
+          19,
+          25,
+          1518,
+          1524
+        ]
+      },
+      {
+        "alias_key": "zenlesszonezero",
+        "concept_count": 11,
+        "concept_ids": [
+          20,
+          194,
+          208,
+          679,
+          990,
+          1130,
+          1147,
+          1519,
+          1695,
+          1709,
+          3614
+        ]
+      },
+      {
+        "alias_key": "メイド",
+        "concept_count": 3,
+        "concept_ids": [
+          21,
+          991,
+          1520
+        ]
+      },
+      {
+        "alias_key": "ゼンゼロ",
+        "concept_count": 6,
+        "concept_ids": [
+          22,
+          188,
+          205,
+          1521,
+          1688,
+          4153
+        ]
+      },
+      {
+        "alias_key": "绝区零",
+        "concept_count": 11,
+        "concept_ids": [
+          23,
+          191,
+          206,
+          682,
+          989,
+          1133,
+          1144,
+          1522,
+          1691,
+          1707,
+          3616
+        ]
+      },
+      {
+        "alias_key": "原神",
+        "concept_count": 55,
+        "concept_ids": [
+          26,
+          1525,
+          1527,
+          1528,
+          1539,
+          1541,
+          1560,
+          1590,
+          1617,
+          1619,
+          1626,
+          1634,
+          1642,
+          1646,
+          1670,
+          1677,
+          1680,
+          1685,
+          1698,
+          1723
+        ]
+      },
+      {
+        "alias_key": "蛍",
+        "concept_count": 4,
+        "concept_ids": [
+          26,
+          1663,
+          4025,
+          4168
+        ]
+      },
+      {
+        "alias_key": "バーバラ",
+        "concept_count": 3,
+        "concept_ids": [
+          27,
+          1526,
+          4004
+        ]
+      },
+      {
+        "alias_key": "サマータイムスパークル",
+        "concept_count": 12,
+        "concept_ids": [
+          28,
+          34,
+          44,
+          97,
+          680,
+          1004,
+          1011,
+          1049,
+          1529,
+          1534,
+          1540,
+          1588
+        ]
+      },
+      {
+        "alias_key": "スク水",
+        "concept_count": 5,
+        "concept_ids": [
+          29,
+          1000,
+          1007,
+          1219,
+          1530
+        ]
+      },
+      {
+        "alias_key": "七茂やど_お仕事募集中",
+        "concept_count": 5,
+        "concept_ids": [
+          30,
+          32,
+          42,
+          1531,
+          1533
+        ]
+      },
+      {
+        "alias_key": "genshinimpact",
+        "concept_count": 27,
+        "concept_ids": [
+          31,
+          673,
+          997,
+          1005,
+          1013,
+          1031,
+          1048,
+          1060,
+          1069,
+          1099,
+          1103,
+          1150,
+          1166,
+          1181,
+          1197,
+          1203,
+          1209,
+          1248,
+          1276,
+          1300
+        ]
+      },
+      {
+        "alias_key": "barbara",
+        "concept_count": 9,
+        "concept_ids": [
+          33,
+          40,
+          43,
+          96,
+          677,
+          999,
+          1006,
+          1044,
+          1526
+        ]
+      },
+      {
+        "alias_key": "ウィンク",
+        "concept_count": 4,
+        "concept_ids": [
+          36,
+          1003,
+          1010,
+          1536
+        ]
+      },
+      {
+        "alias_key": "少女",
+        "concept_count": 8,
+        "concept_ids": [
+          37,
+          1002,
+          1009,
+          1046,
+          1090,
+          1118,
+          1256,
+          1537
+        ]
+      },
+      {
+        "alias_key": "barbara_(genshin_impact)",
+        "concept_count": 2,
+        "concept_ids": [
+          38,
+          1526
+        ]
+      },
+      {
+        "alias_key": "水着",
+        "concept_count": 9,
+        "concept_ids": [
+          39,
+          1001,
+          1008,
+          1045,
+          1072,
+          1075,
+          1283,
+          1341,
+          1538
+        ]
+      },
+      {
+        "alias_key": "feint",
+        "concept_count": 15,
+        "concept_ids": [
+          45,
+          47,
+          118,
+          144,
+          179,
+          231,
+          238,
+          391,
+          1542,
+          1544,
+          1609,
+          1638,
+          1681,
+          1912,
+          4156
+        ]
+      },
+      {
+        "alias_key": "アルレッキーノ",
+        "concept_count": 4,
+        "concept_ids": [
+          46,
+          1543,
+          3991,
+          4155
+        ]
+      },
+      {
+        "alias_key": "arlecchino_(genshin_impact)",
+        "concept_count": 19,
+        "concept_ids": [
+          48,
+          1543,
+          2064,
+          2084,
+          2106,
+          2136,
+          2140,
+          2159,
+          2209,
+          2225,
+          2227,
+          2229,
+          2255,
+          2299,
+          2341,
+          2362,
+          2442,
+          2811,
+          4155
+        ]
+      },
+      {
+        "alias_key": "召使",
+        "concept_count": 5,
+        "concept_ids": [
+          49,
+          720,
+          1014,
+          1545,
+          4157
+        ]
+      },
+      {
+        "alias_key": "lingerie",
+        "concept_count": 3,
+        "concept_ids": [
+          50,
+          1015,
+          1546
+        ]
+      },
+      {
+        "alias_key": "arlecchino",
+        "concept_count": 4,
+        "concept_ids": [
+          51,
+          1433,
+          1547,
+          4033
+        ]
+      },
+      {
+        "alias_key": "ぱんつ",
+        "concept_count": 5,
+        "concept_ids": [
+          52,
+          1017,
+          1127,
+          1163,
+          1548
+        ]
+      },
+      {
+        "alias_key": "fate",
+        "concept_count": 4,
+        "concept_ids": [
+          53,
+          1549,
+          4028,
+          4158
+        ]
+      },
+      {
+        "alias_key": "酒呑童子",
+        "concept_count": 4,
+        "concept_ids": [
+          53,
+          1553,
+          4027,
+          4159
+        ]
+      },
+      {
+        "alias_key": "魚デニム",
+        "concept_count": 4,
+        "concept_ids": [
+          54,
+          58,
+          1550,
+          1555
+        ]
+      },
+      {
+        "alias_key": "fate_grandorder",
+        "concept_count": 5,
+        "concept_ids": [
+          55,
+          696,
+          1018,
+          1551,
+          3634
+        ]
+      },
+      {
+        "alias_key": "メイドビキニ",
+        "concept_count": 3,
+        "concept_ids": [
+          56,
+          1022,
+          1552
+        ]
+      },
+      {
+        "alias_key": "大股開き",
+        "concept_count": 3,
+        "concept_ids": [
+          57,
+          1023,
+          1554
+        ]
+      },
+      {
+        "alias_key": "手でハート",
+        "concept_count": 3,
+        "concept_ids": [
+          59,
+          1024,
+          1556
+        ]
+      },
+      {
+        "alias_key": "fate_go",
+        "concept_count": 2,
+        "concept_ids": [
+          60,
+          1557
+        ]
+      },
+      {
+        "alias_key": "shuten_douji_(fate)",
+        "concept_count": 4,
+        "concept_ids": [
+          61,
+          1553,
+          2298,
+          4159
+        ]
+      },
+      {
+        "alias_key": "フィッシュル",
+        "concept_count": 4,
+        "concept_ids": [
+          62,
+          1558,
+          4006,
+          4160
+        ]
+      },
+      {
+        "alias_key": "モナ",
+        "concept_count": 4,
+        "concept_ids": [
+          63,
+          1559,
+          4010,
+          4161
+        ]
+      },
+      {
+        "alias_key": "原神風景",
+        "concept_count": 3,
+        "concept_ids": [
+          64,
+          1030,
+          1561
+        ]
+      },
+      {
+        "alias_key": "アストローギスト_モナ_メギストス",
+        "concept_count": 5,
+        "concept_ids": [
+          65,
+          70,
+          1028,
+          1559,
+          4161
+        ]
+      },
+      {
+        "alias_key": "atdan-",
+        "concept_count": 6,
+        "concept_ids": [
+          66,
+          67,
+          160,
+          1562,
+          1563,
+          1657
+        ]
+      },
+      {
+        "alias_key": "フィッシュル_ヴォン_ルフシュロス_ナフィードット",
+        "concept_count": 5,
+        "concept_ids": [
+          68,
+          71,
+          1029,
+          1558,
+          4160
+        ]
+      },
+      {
+        "alias_key": "原神イラコン夏fa",
+        "concept_count": 3,
+        "concept_ids": [
+          69,
+          1027,
+          1564
+        ]
+      },
+      {
+        "alias_key": "fischl_(genshin_impact)",
+        "concept_count": 16,
+        "concept_ids": [
+          72,
+          1558,
+          2024,
+          2027,
+          2069,
+          2112,
+          2161,
+          2164,
+          2170,
+          2187,
+          2247,
+          2250,
+          2324,
+          2383,
+          3213,
+          4160
+        ]
+      },
+      {
+        "alias_key": "mona_(genshin_impact)",
+        "concept_count": 41,
+        "concept_ids": [
+          73,
+          1559,
+          1929,
+          2056,
+          2067,
+          2070,
+          2099,
+          2104,
+          2107,
+          2119,
+          2184,
+          2252,
+          2259,
+          2271,
+          2274,
+          2275,
+          2282,
+          2286,
+          2325,
+          2342
+        ]
+      },
+      {
+        "alias_key": "あれいと",
+        "concept_count": 4,
+        "concept_ids": [
+          74,
+          78,
+          1565,
+          1569
+        ]
+      },
+      {
+        "alias_key": "スメール",
+        "concept_count": 7,
+        "concept_ids": [
+          75,
+          77,
+          716,
+          1032,
+          1566,
+          1568,
+          3652
+        ]
+      },
+      {
+        "alias_key": "ニィロウ",
+        "concept_count": 16,
+        "concept_ids": [
+          76,
+          1567,
+          1570,
+          1571,
+          1572,
+          1621,
+          1643,
+          1747,
+          1879,
+          1886,
+          3609,
+          3624,
+          3999,
+          4036,
+          4082,
+          4162
+        ]
+      },
+      {
+        "alias_key": "nilou_(genshin_impact)",
+        "concept_count": 3,
+        "concept_ids": [
+          79,
+          1572,
+          4162
+        ]
+      },
+      {
+        "alias_key": "女の子",
+        "concept_count": 11,
+        "concept_ids": [
+          80,
+          1033,
+          1047,
+          1070,
+          1157,
+          1180,
+          1247,
+          1254,
+          1282,
+          1319,
+          1573
+        ]
+      },
+      {
+        "alias_key": "클로저스",
+        "concept_count": 3,
+        "concept_ids": [
+          81,
+          1035,
+          1574
+        ]
+      },
+      {
+        "alias_key": "超凶の狄璐卡",
+        "concept_count": 4,
+        "concept_ids": [
+          82,
+          90,
+          1575,
+          1584
+        ]
+      },
+      {
+        "alias_key": "ミライ",
+        "concept_count": 4,
+        "concept_ids": [
+          83,
+          1042,
+          1576,
+          4008
+        ]
+      },
+      {
+        "alias_key": "クローザーズ",
+        "concept_count": 7,
+        "concept_ids": [
+          84,
+          1577,
+          1578,
+          3620,
+          4009,
+          4014,
+          4163
+        ]
+      },
+      {
+        "alias_key": "レヴィア",
+        "concept_count": 4,
+        "concept_ids": [
+          84,
+          1041,
+          1579,
+          4013
+        ]
+      },
+      {
+        "alias_key": "美脚",
+        "concept_count": 5,
+        "concept_ids": [
+          85,
+          1038,
+          1097,
+          1260,
+          1580
+        ]
+      },
+      {
+        "alias_key": "泳装",
+        "concept_count": 2,
+        "concept_ids": [
+          86,
+          1581
+        ]
+      },
+      {
+        "alias_key": "尻神様",
+        "concept_count": 4,
+        "concept_ids": [
+          87,
+          89,
+          1036,
+          1582
+        ]
+      },
+      {
+        "alias_key": "closers",
+        "concept_count": 5,
+        "concept_ids": [
+          88,
+          694,
+          1039,
+          1583,
+          3632
+        ]
+      },
+      {
+        "alias_key": "레비아",
+        "concept_count": 3,
+        "concept_ids": [
+          91,
+          1040,
+          1585
+        ]
+      },
+      {
+        "alias_key": "ソックス足裏",
+        "concept_count": 5,
+        "concept_ids": [
+          92,
+          1037,
+          1261,
+          1326,
+          1586
+        ]
+      },
+      {
+        "alias_key": "芭芭拉",
+        "concept_count": 4,
+        "concept_ids": [
+          93,
+          95,
+          1043,
+          1526
+        ]
+      },
+      {
+        "alias_key": "zunkw",
+        "concept_count": 4,
+        "concept_ids": [
+          94,
+          98,
+          1587,
+          1589
+        ]
+      },
+      {
+        "alias_key": "かぐや様は告らせたい",
+        "concept_count": 5,
+        "concept_ids": [
+          99,
+          107,
+          1053,
+          1591,
+          1598
+        ]
+      },
+      {
+        "alias_key": "かぐやさまはこくらせたい",
+        "concept_count": 4,
+        "concept_ids": [
+          100,
+          109,
+          1592,
+          1600
+        ]
+      },
+      {
+        "alias_key": "3p",
+        "concept_count": 3,
+        "concept_ids": [
+          101,
+          1055,
+          1593
+        ]
+      },
+      {
+        "alias_key": "へそ",
+        "concept_count": 3,
+        "concept_ids": [
+          102,
+          1056,
+          1594
+        ]
+      },
+      {
+        "alias_key": "早坂愛",
+        "concept_count": 5,
+        "concept_ids": [
+          103,
+          105,
+          725,
+          1052,
+          1595
+        ]
+      },
+      {
+        "alias_key": "汗だく",
+        "concept_count": 3,
+        "concept_ids": [
+          104,
+          1057,
+          1596
+        ]
+      },
+      {
+        "alias_key": "sunhyunそんひょん",
+        "concept_count": 4,
+        "concept_ids": [
+          106,
+          108,
+          1597,
+          1599
+        ]
+      },
+      {
+        "alias_key": "白銀圭",
+        "concept_count": 4,
+        "concept_ids": [
+          110,
+          1051,
+          1601,
+          4164
+        ]
+      },
+      {
+        "alias_key": "nilou",
+        "concept_count": 27,
+        "concept_ids": [
+          111,
+          126,
+          129,
+          310,
+          313,
+          359,
+          380,
+          676,
+          684,
+          1068,
+          1251,
+          1309,
+          1335,
+          1439,
+          1469,
+          1475,
+          1572,
+          1602,
+          1618,
+          1623
+        ]
+      },
+      {
+        "alias_key": "jean_(genshin_impact)",
+        "concept_count": 16,
+        "concept_ids": [
+          112,
+          1603,
+          1927,
+          1935,
+          1951,
+          1964,
+          2016,
+          2125,
+          2385,
+          2559,
+          2576,
+          2651,
+          2813,
+          2836,
+          3014,
+          3304
+        ]
+      },
+      {
+        "alias_key": "yoimiya",
+        "concept_count": 12,
+        "concept_ids": [
+          113,
+          116,
+          120,
+          244,
+          715,
+          1059,
+          1438,
+          1604,
+          1607,
+          1743,
+          3650,
+          4039
+        ]
+      },
+      {
+        "alias_key": "宵宮",
+        "concept_count": 10,
+        "concept_ids": [
+          114,
+          115,
+          120,
+          240,
+          1063,
+          1182,
+          1605,
+          1606,
+          1611,
+          1738
+        ]
+      },
+      {
+        "alias_key": "ベリーダンス",
+        "concept_count": 5,
+        "concept_ids": [
+          117,
+          1065,
+          1177,
+          1291,
+          1608
+        ]
+      },
+      {
+        "alias_key": "宵宫",
+        "concept_count": 5,
+        "concept_ids": [
+          119,
+          1061,
+          1610,
+          3657,
+          4165
+        ]
+      },
+      {
+        "alias_key": "yoimiya_(genshin_impact)",
+        "concept_count": 13,
+        "concept_ids": [
+          120,
+          1611,
+          1738,
+          1741,
+          1928,
+          1938,
+          1952,
+          2233,
+          2288,
+          2384,
+          2660,
+          2679,
+          2697
+        ]
+      },
+      {
+        "alias_key": "フェイスベール",
+        "concept_count": 4,
+        "concept_ids": [
+          121,
+          1064,
+          1178,
+          1612
+        ]
+      },
+      {
+        "alias_key": "踊り子",
+        "concept_count": 6,
+        "concept_ids": [
+          122,
+          1062,
+          1176,
+          1290,
+          1318,
+          1613
+        ]
+      },
+      {
+        "alias_key": "おへそ",
+        "concept_count": 9,
+        "concept_ids": [
+          123,
+          1067,
+          1085,
+          1125,
+          1293,
+          1294,
+          1336,
+          1342,
+          1614
+        ]
+      },
+      {
+        "alias_key": "slime_(genshin_impact)",
+        "concept_count": 22,
+        "concept_ids": [
+          124,
+          1615,
+          1832,
+          1856,
+          1930,
+          1946,
+          1954,
+          1972,
+          1979,
+          2034,
+          2109,
+          2127,
+          2179,
+          2183,
+          2289,
+          2290,
+          2309,
+          2311,
+          2414,
+          2799
+        ]
+      },
+      {
+        "alias_key": "アラビアン",
+        "concept_count": 4,
+        "concept_ids": [
+          125,
+          1066,
+          1179,
+          1616
+        ]
+      },
+      {
+        "alias_key": "kaya",
+        "concept_count": 6,
+        "concept_ids": [
+          127,
+          128,
+          215,
+          1620,
+          1622,
+          1716
+        ]
+      },
+      {
+        "alias_key": "めたたろう",
+        "concept_count": 4,
+        "concept_ids": [
+          130,
+          131,
+          1624,
+          1625
+        ]
+      },
+      {
+        "alias_key": "6u_c107_1日目a18",
+        "concept_count": 4,
+        "concept_ids": [
+          132,
+          140,
+          1627,
+          1633
+        ]
+      },
+      {
+        "alias_key": "甘雨",
+        "concept_count": 7,
+        "concept_ids": [
+          133,
+          1628,
+          1838,
+          3626,
+          4017,
+          4074,
+          4079
+        ]
+      },
+      {
+        "alias_key": "ganyu_(genshin_impact)",
+        "concept_count": 2,
+        "concept_ids": [
+          134,
+          1628
+        ]
+      },
+      {
+        "alias_key": "c100",
+        "concept_count": 4,
+        "concept_ids": [
+          135,
+          1076,
+          1161,
+          1629
+        ]
+      }
+    ],
+    "search_index_count_per_concept": {
+      "average": 1.32,
+      "count": 4214,
+      "max": 11,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "search_index_total": 5561,
+    "signal_links_total": 39933,
+    "singleton_alias_concepts": 3414,
+    "source_title_only_concept_count": 0,
+    "total_source_concepts": 4214,
+    "weak_only_concept_count": 3931
+  },
+  "source_layer_coverage": {
+    "f7a_candidate_coverage": {
+      "candidate_status_distribution": {
+        "active_candidate": 495,
+        "needs_review": 408
+      },
+      "candidates_by_provider": {
+        "local_media_tags": 51,
+        "pixiv": 852
+      },
+      "candidates_by_role": {
+        "artist_creator": 143,
+        "character": 307,
+        "person": 33,
+        "source_title": 64,
+        "unknown_name_like": 250,
+        "work_title": 106
+      },
+      "candidates_by_status": {
+        "active": 903
+      },
+      "candidates_linked_to_media": 903,
+      "distinct_media_with_candidates": 62,
+      "extraction_runs_by_status": {
+        "completed": 2
+      },
+      "record_verdicts_by_verdict": {
+        "extraction_error_terminal": 5,
+        "multiple_candidates_found": 71,
+        "name_candidate_found": 36
+      }
+    },
+    "provider_cache_by_provider": {
+      "saucenao": 2
+    },
+    "source_assertions_by_provider": {
+      "pixiv": 283,
+      "saucenao": 17
+    },
+    "source_assertions_by_status": {
+      "needs_review": 5,
+      "rejected": 113,
+      "searchable_active": 182
+    },
+    "source_assertions_linked_to_media": 270,
+    "source_name_observations_by_provider": {
+      "danbooru": 66,
+      "gelbooru": 63,
+      "pixiv": 236,
+      "saucenao": 94
+    },
+    "source_name_observations_linked_to_media": 126,
+    "source_records": {
+      "by_provider": {
+        "danbooru": 22,
+        "gelbooru": 21,
+        "google_vision": 1,
+        "no_tag_provider": 22,
+        "pixiv": 97,
+        "saucenao": 37
+      },
+      "by_status": {
+        "observed": 200
+      },
+      "linked_to_media": 60
+    },
+    "source_tag_observations_by_provider": {
+      "danbooru": 88,
+      "gelbooru": 63,
+      "google_vision": 2,
+      "pixiv": 556,
+      "saucenao": 1
+    },
+    "source_tag_observations_linked_to_media": 499,
+    "table_counts": {
+      "blombooru_provider_cache": {
+        "count": 2,
+        "status": "present"
+      },
+      "blombooru_source_metadata_evidence": {
+        "count": 659,
+        "status": "present"
+      },
+      "blombooru_source_metadata_records": {
+        "count": 200,
+        "status": "present"
+      },
+      "blombooru_source_name_alias_candidates": {
+        "count": 45,
+        "status": "present"
+      },
+      "blombooru_source_name_candidate_extraction_runs": {
+        "count": 2,
+        "status": "present"
+      },
+      "blombooru_source_name_candidate_record_verdicts": {
+        "count": 112,
+        "status": "present"
+      },
+      "blombooru_source_name_candidates": {
+        "count": 903,
+        "status": "present"
+      },
+      "blombooru_source_name_observations": {
+        "count": 459,
+        "status": "present"
+      },
+      "blombooru_source_name_registry": {
+        "count": 371,
+        "status": "present"
+      },
+      "blombooru_source_searchable_name_assertions": {
+        "count": 300,
+        "status": "present"
+      },
+      "blombooru_source_tag_observations": {
+        "count": 710,
+        "status": "present"
+      },
+      "blombooru_source_tag_registry": {
+        "count": 418,
+        "status": "present"
+      }
+    }
+  },
+  "title": "Expanded SourceConcept Validation and Coverage Audit",
+  "validation": {
+    "forbidden_table_count_changes": [],
+    "operational_audit_command": "python scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir .local_manifests/phase-4.5-scv1-source-concept-coverage-audit --write-public-report --read-only",
+    "operational_audit_result": "passed",
+    "transaction_read_only": "on"
+  }
+}
