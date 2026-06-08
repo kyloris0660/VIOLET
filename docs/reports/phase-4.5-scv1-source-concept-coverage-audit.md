@@ -4,7 +4,7 @@
 
 SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.
 
-This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where DB resolution precedence, redaction/path safety, public report write ordering, tag alias-gap scoring, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.
+This report is the latest current-stage correctness rerun for PR #100. Pre-fix SCV1 values are superseded where app-import side effects, direct-media alias reachability, AI/metadata decision denominators, DB resolution precedence, redaction/path safety, public report write ordering, tag alias-gap scoring, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.
 
 ## Scope
 
@@ -17,10 +17,17 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 - No 5k/10k/full-library run.
 - No DB writes, migrations, imports, providers, LLMs, localization, AI jobs, SourceConcept editing, Entity bridge, promotion, confirmed assignments, or `media_tags` mutation.
 
+## Runner import safety
+
+- App module imports removed from SCV1 runner: `True`.
+- Backend sys.path insertion removed: `True`.
+- Uses script-local side-effect-free normalization/search-key helpers: `True`.
+- Import can instantiate app settings / write settings JSON / write app storage dirs: `False` / `False` / `False`.
+
 ## DB identity and read-only proof
 
 - DB: `blombooru` on `localhost:5432`.
-- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `a2c6046e0da59b2480b22c5dbe0d919c3696c9c7`.
+- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `f07425ee7678054c801aa28da1ff68f02b2e607b`.
 - Python: `python.exe`.
 - PostgreSQL transaction_read_only: `on`.
 - DB resolution mirrors app development precedence: `True`.
@@ -37,6 +44,8 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 - Eligible media policy: `content_class IN ('anime', 'unknown')`; eligible count `1936` (`97.34%`).
 - Media with any tags: `1962`.
 - Media with AI tag provenance: `1962`; without AI tags `27`.
+- Eligible media with AI tag provenance: `1936`; eligible without AI tags `0`; eligible AI coverage `100.0%`.
+- AI expansion denominator policy: `eligible_media`.
 - Media with source-layer signals: `1338`; without source-layer signals `651`.
 - Media with SourceConcept evidence or links: `1266`.
 - Content class distribution: `{"anime": 1882, "non_anime": 53, "unknown": 54}`.
@@ -45,6 +54,9 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 
 - Source metadata records by provider: `{"danbooru": 22, "gelbooru": 21, "google_vision": 1, "no_tag_provider": 22, "pixiv": 97, "saucenao": 37}`.
 - Source metadata records linked to media: `60`.
+- Source metadata distinct media coverage: `60` / `1989` (`3.02%`).
+- Source metadata distinct eligible-media coverage: `60` / `1936` (`3.1%`).
+- Source metadata coverage denominator policy: `distinct_media`; row count remains context only.
 - F7a distinct media with candidates: `62`.
 - Source assertions by status: `{"needs_review": 5, "rejected": 113, "searchable_active": 182}`.
 
@@ -64,6 +76,8 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 - Explainable no-media concepts: `416`.
 - Asymmetric concepts: `0`; severe asymmetry: `0`.
 - One-way links / fragmentation / overbroad: `0` / `1` / `60`.
+- Direct-media concepts unreachable by aliases: `0`; active / needs_review `0` / `0`.
+- Direct-media reachability checks prevent concepts with media evidence/links but empty alias search results from being counted as exact symmetric or explainable no-media.
 - Hidden raw matches / actual visible hidden leakage: `1702` / `0`.
 - Hidden raw matches mean a lookup encountered hidden rejected/ambiguous/superseded rows; actual leakage means hidden concepts entered the visible closure/media result and should remain zero.
 - Parser/metacharacter aliases: `922`.
@@ -95,7 +109,7 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 - Public redaction passed: `True`.
 - Public artifacts checked: `["docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md", "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"]`.
 - Final scan after public fields finalized: `True`.
-- Checked at: `2026-06-08T11:39:21Z`.
+- Checked at: `2026-06-08T12:07:06Z`.
 - Findings: `[]`.
 - Private artifact bundle created: `True`; exact private paths public: `False`.
 - Private artifact count: `17` under `.local_manifests/phase-4.5-scv1-source-concept-coverage-audit`.
@@ -112,9 +126,9 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 
 ## Decision matrix
 
-- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; alias/cross-language/source linkage gap signals=1571; needs_review concepts=760
-- `bounded_ai_tag_expansion`: priority `P3`, recommended `False`; reasons: media without AI tag provenance=27/1989; would be a separate approved run
-- `bounded_pixiv_metadata_expansion`: priority `P2`, recommended `True`; reasons: source metadata records linked to media=60/1989; coverage gap may limit SourceConcept evidence
+- `source_concept_alias_resolver_improvement`: priority `P1`, recommended `True`; reasons: search asymmetry concepts=0, severe=0; direct-media concepts unreachable by alias=0; alias/cross-language/source linkage gap signals=1571; needs_review concepts=760
+- `bounded_ai_tag_expansion`: priority `P3`, recommended `False`; reasons: eligible media without AI tag provenance=0/1936 (0.0%); eligible AI tag provenance coverage=100.0%; would be a separate approved run
+- `bounded_pixiv_metadata_expansion`: priority `P2`, recommended `True`; reasons: source metadata distinct-media coverage=60/1936 (3.1%); row counts kept for context; decision uses distinct covered media; coverage gap may limit SourceConcept evidence
 - `tag_localization_catchup`: priority `P3`, recommended `False`; reasons: tag translations=3732, total tags=3889; separate from SourceConcept identity linking
 - `source_concept_management_or_editing_design`: priority `P2`, recommended `False`; reasons: manual correction may help after alias/resolver quality is acceptable
 - `entity_bridge_preview_design`: priority `P3`, recommended `False`; reasons: requires strong coverage, redaction, search symmetry, and low needs_review noise
@@ -123,6 +137,7 @@ This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are s
 ## Recommended next phase
 
 `source_concept_alias_resolver_improvement` is the highest impact/risk-adjusted next route from this audit.
+- Recommendation changed after direct-media, eligible-AI, and distinct-metadata corrections: `False`.
 
 ## Expansion and bridge answers
 

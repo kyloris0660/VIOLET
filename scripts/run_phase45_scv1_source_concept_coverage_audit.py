@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -31,17 +32,6 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 ROOT = Path(__file__).resolve().parent.parent
-BACKEND_ROOT = ROOT / "backend"
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-if str(BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(BACKEND_ROOT))
-
-from app.services.source_concept_search_service import (  # noqa: E402
-    SEARCH_TOKEN_META_RE,
-    _search_keys_for_term,
-)
-from app.services.source_metadata_registry_service import canonical_source_key, normalize_source_text  # noqa: E402
 
 PHASE = "4.5-SCV1"
 PHASE_TITLE = "Expanded SourceConcept Validation and Coverage Audit"
@@ -127,6 +117,10 @@ SEARCH_SYMMETRY_METRIC_KEYS = (
     "one_way_link_count",
     "fragmentation_count",
     "overbroad_expansion_count",
+    "direct_media_unreachable_by_alias_count",
+    "direct_media_unreachable_active_count",
+    "direct_media_unreachable_needs_review_count",
+    "direct_media_unreachable_sample_count",
     "hidden_status_leak_count",
     "hidden_status_raw_match_count",
     "metacharacter_alias_count",
@@ -286,6 +280,41 @@ def root_relative_or_name(path: Path) -> str:
         return str(path.relative_to(ROOT)).replace("\\", "/")
     except ValueError:
         return path.name
+
+
+def normalize_source_text(value: Any) -> str:
+    text_value = unicodedata.normalize("NFKC", str(value or ""))
+    return re.sub(r"\s+", " ", text_value).strip()
+
+
+def canonical_source_key(value: Any) -> str:
+    text_value = normalize_source_text(value).casefold()
+    text_value = re.sub(r"[\s/／・·,，|]+", "_", text_value)
+    text_value = re.sub(r"[^\w:()+.-]+", "_", text_value, flags=re.UNICODE)
+    return re.sub(r"_+", "_", text_value).strip("_")
+
+
+SEARCH_TOKEN_META_RE = re.compile(r'[\s:"*?\[\]\(\)]|^-')
+
+
+def _search_keys_for_term(value: str | None) -> set[str]:
+    normalized = normalize_source_text(value)
+    if not normalized:
+        return set()
+
+    variants = {
+        normalized,
+        normalized.casefold(),
+        normalized.replace("_", " "),
+        normalized.replace("_(", "("),
+        canonical_source_key(normalized),
+    }
+    parenthetical = re.match(r"^(.+?)_?\(([^()]+)\)$", normalized.replace("\uff08", "(").replace("\uff09", ")"))
+    if parenthetical:
+        variants.add(parenthetical.group(1))
+
+    keys = {canonical_source_key(variant) for variant in variants if normalize_source_text(variant)}
+    return {key for key in keys if key}
 
 
 def public_private_artifact_summary(*, bundle_created: bool = False) -> dict[str, Any]:
@@ -868,19 +897,34 @@ def audit_media_coverage(conn: Connection) -> dict[str, Any]:
     )
     media_tag_source_distribution = group_count(conn, "blombooru_media_tags", "source")
     media_with_ai_tags = 0
+    eligible_media_with_ai_tags = 0
     media_with_manual_or_locked = 0
     media_with_source_provider_tags = 0
     if media_tags_present and column_exists(conn, "blombooru_media_tags", "media_id"):
         if column_exists(conn, "blombooru_media_tags", "source") or column_exists(conn, "blombooru_media_tags", "is_suggestion"):
             where_parts = []
+            eligible_where_parts = []
             if column_exists(conn, "blombooru_media_tags", "source"):
                 where_parts.append("LOWER(COALESCE(source, '')) SIMILAR TO '%(ai|wd|tagger|model|clip)%'")
+                eligible_where_parts.append("LOWER(COALESCE(mt.source, '')) SIMILAR TO '%(ai|wd|tagger|model|clip)%'")
             if column_exists(conn, "blombooru_media_tags", "is_suggestion"):
                 where_parts.append("is_suggestion IS TRUE")
+                eligible_where_parts.append("mt.is_suggestion IS TRUE")
             media_with_ai_tags = scalar_count(
                 conn,
                 f"SELECT COUNT(DISTINCT media_id) FROM blombooru_media_tags WHERE {' OR '.join(where_parts)}",
             )
+            if table_exists(conn, "blombooru_media") and column_exists(conn, "blombooru_media", "content_class"):
+                eligible_media_with_ai_tags = scalar_count(
+                    conn,
+                    f"""
+                    SELECT COUNT(DISTINCT mt.media_id)
+                    FROM blombooru_media_tags mt
+                    JOIN blombooru_media m ON m.id = mt.media_id
+                    WHERE m.content_class IN ('anime', 'unknown')
+                      AND ({' OR '.join(eligible_where_parts)})
+                    """,
+                )
         if column_exists(conn, "blombooru_media_tags", "source") or column_exists(conn, "blombooru_media_tags", "is_locked"):
             where_parts = []
             if column_exists(conn, "blombooru_media_tags", "source"):
@@ -933,6 +977,10 @@ def audit_media_coverage(conn: Connection) -> dict[str, Any]:
         "media_with_any_tags_pct": percent(media_with_any_tags, total_media),
         "media_with_ai_tag_provenance": media_with_ai_tags,
         "media_with_ai_tag_provenance_pct": percent(media_with_ai_tags, total_media),
+        "eligible_media_with_ai_tag_provenance": eligible_media_with_ai_tags,
+        "eligible_media_without_ai_tag_provenance": max(eligible_media - eligible_media_with_ai_tags, 0),
+        "eligible_ai_tag_provenance_pct": percent(eligible_media_with_ai_tags, eligible_media),
+        "ai_expansion_denominator_policy": "eligible_media",
         "media_with_manual_or_locked_tags": media_with_manual_or_locked,
         "media_with_source_imported_provider_tag_provenance": media_with_source_provider_tags,
         "media_without_ai_tags": max(total_media - media_with_ai_tags, 0),
@@ -947,17 +995,85 @@ def audit_media_coverage(conn: Connection) -> dict[str, Any]:
     }
 
 
+def build_source_metadata_coverage_summary(
+    *,
+    total_media: int,
+    eligible_media: int,
+    total_rows: int,
+    linked_rows: int,
+    distinct_media: int,
+    distinct_eligible_media: int,
+) -> dict[str, Any]:
+    return {
+        "source_metadata_records_total": int(total_rows),
+        "source_metadata_records_linked_to_media": int(linked_rows),
+        "source_metadata_distinct_media_count": int(distinct_media),
+        "source_metadata_distinct_eligible_media_count": int(distinct_eligible_media),
+        "source_metadata_distinct_media_pct": percent(int(distinct_media), int(total_media)),
+        "source_metadata_distinct_eligible_media_pct": percent(int(distinct_eligible_media), int(eligible_media)),
+        "source_metadata_coverage_denominator_policy": "distinct_media",
+    }
+
+
 def audit_source_layer_coverage(conn: Connection) -> dict[str, Any]:
     table_counts = {table: count_table(conn, table) for table in SOURCE_LAYER_TABLES}
-    source_records = {
-        "by_provider": group_count(conn, "blombooru_source_metadata_records", "provider"),
-        "by_status": group_count(conn, "blombooru_source_metadata_records", "status"),
-        "linked_to_media": scalar_count(
+    total_media = count_table(conn, "blombooru_media")["count"] or 0
+    eligible_media = (
+        scalar_count(conn, "SELECT COUNT(*) FROM blombooru_media WHERE content_class IN ('anime', 'unknown')")
+        if table_exists(conn, "blombooru_media") and column_exists(conn, "blombooru_media", "content_class")
+        else 0
+    )
+    source_metadata_total = count_table(conn, "blombooru_source_metadata_records")["count"] if table_exists(conn, "blombooru_source_metadata_records") else 0
+    source_metadata_linked = (
+        scalar_count(
             conn,
             "SELECT COUNT(*) FROM blombooru_source_metadata_records WHERE media_id IS NOT NULL",
         )
         if table_exists(conn, "blombooru_source_metadata_records")
-        else 0,
+        else 0
+    )
+    source_metadata_distinct_media = (
+        scalar_count(
+            conn,
+            "SELECT COUNT(DISTINCT media_id) FROM blombooru_source_metadata_records WHERE media_id IS NOT NULL",
+        )
+        if table_exists(conn, "blombooru_source_metadata_records")
+        else 0
+    )
+    source_metadata_distinct_eligible_media = (
+        scalar_count(
+            conn,
+            """
+            SELECT COUNT(DISTINCT r.media_id)
+            FROM blombooru_source_metadata_records r
+            JOIN blombooru_media m ON m.id = r.media_id
+            WHERE r.media_id IS NOT NULL
+              AND m.content_class IN ('anime', 'unknown')
+            """,
+        )
+        if table_exists(conn, "blombooru_source_metadata_records")
+        and table_exists(conn, "blombooru_media")
+        and column_exists(conn, "blombooru_media", "content_class")
+        else 0
+    )
+    metadata_coverage = build_source_metadata_coverage_summary(
+        total_media=total_media,
+        eligible_media=eligible_media,
+        total_rows=source_metadata_total,
+        linked_rows=source_metadata_linked,
+        distinct_media=source_metadata_distinct_media,
+        distinct_eligible_media=source_metadata_distinct_eligible_media,
+    )
+    source_records = {
+        "by_provider": group_count(conn, "blombooru_source_metadata_records", "provider"),
+        "by_status": group_count(conn, "blombooru_source_metadata_records", "status"),
+        "total_rows": source_metadata_total,
+        "linked_to_media": source_metadata_linked,
+        "distinct_media": source_metadata_distinct_media,
+        "distinct_eligible_media": source_metadata_distinct_eligible_media,
+        "distinct_media_pct": metadata_coverage["source_metadata_distinct_media_pct"],
+        "distinct_eligible_media_pct": metadata_coverage["source_metadata_distinct_eligible_media_pct"],
+        "coverage_denominator_policy": metadata_coverage["source_metadata_coverage_denominator_policy"],
     }
     tag_obs_linked = 0
     assertion_linked = 0
@@ -1003,6 +1119,7 @@ def audit_source_layer_coverage(conn: Connection) -> dict[str, Any]:
     }
     return {
         "table_counts": table_counts,
+        **metadata_coverage,
         "source_records": source_records,
         "source_tag_observations_linked_to_media": tag_obs_linked,
         "source_name_observations_linked_to_media": scalar_count(
@@ -1282,6 +1399,7 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
         elif concept.get("status") == "needs_review":
             metrics["needs_review_concepts_checked"] += 1
 
+        concept_media = concept_media_set_for_ids(conn, [concept_id], statuses=VISIBLE_STATUSES)
         alias_results = []
         for alias in concept_aliases:
             alias_label = str(alias.get("display_name") or alias.get("alias_value") or alias.get("alias_key") or "")
@@ -1314,8 +1432,18 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
         all_media_equal = all(item == first_media_set for item in media_sets)
         first_closure = closure_sets[0] if closure_sets else set()
         all_closure_equal = all(item == first_closure for item in closure_sets)
+        max_media = max((len(item) for item in media_sets), default=0)
+        direct_media_unreachable = bool(concept_media and not any(media_sets))
         mismatch_type = "exact_symmetric"
-        if all_media_equal:
+        if direct_media_unreachable:
+            metrics["direct_media_unreachable_by_alias_count"] += 1
+            if concept.get("status") == "active":
+                metrics["direct_media_unreachable_active_count"] += 1
+            elif concept.get("status") == "needs_review":
+                metrics["direct_media_unreachable_needs_review_count"] += 1
+            metrics["direct_media_unreachable_sample_count"] += 1
+            mismatch_type = "direct_media_unreachable_by_alias"
+        elif all_media_equal:
             metrics["exact_symmetric_concepts"] += 1
             if not first_media_set:
                 metrics["explainable_no_media_concepts"] += 1
@@ -1334,8 +1462,6 @@ def audit_search_symmetry(conn: Connection, concepts: Sequence[Mapping[str, Any]
             metrics["fragmentation_count"] += 1
             if mismatch_type == "exact_symmetric":
                 mismatch_type = "fragmented_closure_same_media"
-        concept_media = concept_media_set_for_ids(conn, [concept_id], statuses=VISIBLE_STATUSES)
-        max_media = max((len(item) for item in media_sets), default=0)
         if concept_media and max_media > max(len(concept_media) * 3, len(concept_media) + 10):
             metrics["overbroad_expansion_count"] += 1
             if mismatch_type == "exact_symmetric":
@@ -1802,11 +1928,24 @@ def decide_next_phase(
     options: list[dict[str, Any]] = []
     total_media = int(media.get("total_media") or 0)
     eligible = int(media.get("eligible_media_count") or 0)
-    ai_missing = int(media.get("media_without_ai_tags") or 0)
-    source_records = int(source_layer.get("source_records", {}).get("linked_to_media") or 0)
+    ai_denominator = eligible if eligible else total_media
+    ai_missing = int(
+        media.get("eligible_media_without_ai_tag_provenance")
+        if media.get("eligible_media_without_ai_tag_provenance") is not None
+        else media.get("media_without_ai_tags")
+        or 0
+    )
+    ai_coverage_pct = float(media.get("eligible_ai_tag_provenance_pct") or 0)
+    ai_missing_pct = percent(ai_missing, ai_denominator)
+    metadata_distinct_eligible = int(source_layer.get("source_metadata_distinct_eligible_media_count") or 0)
+    metadata_distinct_media = int(source_layer.get("source_metadata_distinct_media_count") or 0)
+    metadata_covered_media = metadata_distinct_eligible if eligible else metadata_distinct_media
+    metadata_denominator = eligible if eligible else total_media
+    metadata_coverage_pct = percent(metadata_covered_media, metadata_denominator)
     total_concepts = int(concepts.get("total_source_concepts") or 0)
     severe = int(symmetry.get("severe_asymmetry_count") or 0)
     asym = int(symmetry.get("asymmetric_concepts") or 0)
+    direct_unreachable = int(symmetry.get("direct_media_unreachable_by_alias_count") or 0)
     gaps = int(alias_gaps.get("total_gap_signals") or 0)
     needs_review_total = int(needs_review.get("total_needs_review_concepts") or 0)
 
@@ -1824,13 +1963,14 @@ def decide_next_phase(
     if not redaction_passed:
         add("redaction_or_safety_fix_first", "P0", True, ["public/private redaction scan failed"], ["fix report/artifact boundary before any expansion"])
 
-    alias_problem = severe > 0 or asym > 0 or gaps > 0 or needs_review_total > 0
+    alias_problem = severe > 0 or asym > 0 or direct_unreachable > 0 or gaps > 0 or needs_review_total > 0
     add(
         "source_concept_alias_resolver_improvement",
         "P1" if alias_problem else "P2",
         bool(redaction_passed and alias_problem),
         [
             f"search asymmetry concepts={asym}, severe={severe}",
+            f"direct-media concepts unreachable by alias={direct_unreachable}",
             f"alias/cross-language/source linkage gap signals={gaps}",
             f"needs_review concepts={needs_review_total}",
         ],
@@ -1838,16 +1978,24 @@ def decide_next_phase(
     )
     add(
         "bounded_ai_tag_expansion",
-        "P2" if eligible and percent(ai_missing, max(total_media, 1)) >= 20 else "P3",
-        bool(redaction_passed and eligible and percent(ai_missing, max(total_media, 1)) >= 50),
-        [f"media without AI tag provenance={ai_missing}/{total_media}", "would be a separate approved run"],
+        "P2" if ai_denominator and ai_missing_pct >= 20 else "P3",
+        bool(redaction_passed and ai_denominator and ai_missing_pct >= 50),
+        [
+            f"eligible media without AI tag provenance={ai_missing}/{ai_denominator} ({ai_missing_pct}%)",
+            f"eligible AI tag provenance coverage={ai_coverage_pct}%",
+            "would be a separate approved run",
+        ],
         ["requires separate AI job phase, test DB/storage safety, no localization/provider coupling"],
     )
     add(
         "bounded_pixiv_metadata_expansion",
-        "P2" if total_media and percent(source_records, max(total_media, 1)) < 50 else "P3",
-        bool(redaction_passed and total_media and percent(source_records, max(total_media, 1)) < 25),
-        [f"source metadata records linked to media={source_records}/{total_media}", "coverage gap may limit SourceConcept evidence"],
+        "P2" if metadata_denominator and metadata_coverage_pct < 50 else "P3",
+        bool(redaction_passed and metadata_denominator and metadata_coverage_pct < 25),
+        [
+            f"source metadata distinct-media coverage={metadata_covered_media}/{metadata_denominator} ({metadata_coverage_pct}%)",
+            "row counts kept for context; decision uses distinct covered media",
+            "coverage gap may limit SourceConcept evidence",
+        ],
         ["requires provider policy, cache/audit/rate limit/budget, no originals by default, separate run approval"],
     )
     translation_total = media.get("tags", {}).get("translation", {}).get("total")
@@ -1862,12 +2010,12 @@ def decide_next_phase(
     )
     add(
         "source_concept_management_or_editing_design",
-        "P2" if total_concepts and not severe else "P3",
-        bool(redaction_passed and total_concepts > 0 and not severe and gaps < max(5, total_concepts // 10)),
+        "P2" if total_concepts and not severe and not direct_unreachable else "P3",
+        bool(redaction_passed and total_concepts > 0 and not severe and not direct_unreachable and gaps < max(5, total_concepts // 10)),
         ["manual correction may help after alias/resolver quality is acceptable"],
         ["requires audit trail, rollback/supersede, source-layer-only guard"],
     )
-    entity_ready = redaction_passed and total_concepts > 0 and severe == 0 and gaps == 0 and needs_review_total == 0
+    entity_ready = redaction_passed and total_concepts > 0 and severe == 0 and direct_unreachable == 0 and gaps == 0 and needs_review_total == 0
     add(
         "entity_bridge_preview_design",
         "P3",
@@ -1947,6 +2095,14 @@ def build_public_summary(
         "title": PHASE_TITLE,
         "branch": BRANCH,
         "generated_at": utc_now_iso(),
+        "runner_import_safety": {
+            "app_module_imports": False,
+            "backend_sys_path_insertion": False,
+            "uses_script_local_normalization_helpers": True,
+            "app_settings_instantiated_on_import": False,
+            "settings_json_write_on_import": False,
+            "app_storage_directory_write_on_import": False,
+        },
         "db_identity": safe_identity,
         "read_only_proof": {
             "passed": proof.get("passed"),
@@ -1977,6 +2133,8 @@ def build_public_summary(
             "db_migration": False,
             "server_started": False,
             "browser_validation": "N/A; no UI/runtime change",
+            "app_module_imports": False,
+            "app_settings_or_storage_write_on_import": False,
             "provider_llm_ai_localization_import_run": False,
             "entity_or_truth_path_write": False,
             "source_icloud_app_storage_mutation": False,
@@ -2002,6 +2160,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     answers = decision["answers"]
     seed = summary["seed_results"].get("nahida_prompt_and_doc1", {})
     private_artifacts = summary.get("private_artifacts", {})
+    import_safety = summary.get("runner_import_safety", {})
     checked_tables = summary["read_only_proof"].get("forbidden_tables_checked") or []
     db_resolution = summary["db_identity"].get("db_resolution") or {}
     identity_tag_detail = (gaps.get("gap_bucket_details") or {}).get("identity_tag_present_no_source_concept_alias") or {}
@@ -2013,7 +2172,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "SCV1 performed a read-only audit over the current development DB. It generated private aggregate/sample artifacts under `.local_manifests` and this public-safe report. No import, provider call, AI tagging, localization, LLM, migration, server, browser, Entity bridge, promotion, or truth-path write was run.",
         "",
-        "This report is another reviewer-fix rerun for PR #100. Pre-fix SCV1 values are superseded where DB resolution precedence, redaction/path safety, public report write ordering, tag alias-gap scoring, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.",
+        "This report is the latest current-stage correctness rerun for PR #100. Pre-fix SCV1 values are superseded where app-import side effects, direct-media alias reachability, AI/metadata decision denominators, DB resolution precedence, redaction/path safety, public report write ordering, tag alias-gap scoring, mutation-proof table coverage, alias gap counts, or hidden-status metrics were affected.",
         "",
         "## Scope",
         "",
@@ -2025,6 +2184,13 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "- No 5k/10k/full-library run.",
         "- No DB writes, migrations, imports, providers, LLMs, localization, AI jobs, SourceConcept editing, Entity bridge, promotion, confirmed assignments, or `media_tags` mutation.",
+        "",
+        "## Runner import safety",
+        "",
+        f"- App module imports removed from SCV1 runner: `{not import_safety.get('app_module_imports')}`.",
+        f"- Backend sys.path insertion removed: `{not import_safety.get('backend_sys_path_insertion')}`.",
+        f"- Uses script-local side-effect-free normalization/search-key helpers: `{import_safety.get('uses_script_local_normalization_helpers')}`.",
+        f"- Import can instantiate app settings / write settings JSON / write app storage dirs: `{import_safety.get('app_settings_instantiated_on_import')}` / `{import_safety.get('settings_json_write_on_import')}` / `{import_safety.get('app_storage_directory_write_on_import')}`.",
         "",
         "## DB identity and read-only proof",
         "",
@@ -2046,6 +2212,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Eligible media policy: `{media.get('eligible_policy')}`; eligible count `{media.get('eligible_media_count')}` (`{media.get('eligible_media_pct')}%`).",
         f"- Media with any tags: `{media.get('media_with_any_tags')}`.",
         f"- Media with AI tag provenance: `{media.get('media_with_ai_tag_provenance')}`; without AI tags `{media.get('media_without_ai_tags')}`.",
+        f"- Eligible media with AI tag provenance: `{media.get('eligible_media_with_ai_tag_provenance')}`; eligible without AI tags `{media.get('eligible_media_without_ai_tag_provenance')}`; eligible AI coverage `{media.get('eligible_ai_tag_provenance_pct')}%`.",
+        f"- AI expansion denominator policy: `{media.get('ai_expansion_denominator_policy')}`.",
         f"- Media with source-layer signals: `{media.get('media_with_source_layer_signals')}`; without source-layer signals `{media.get('media_without_source_layer_signals')}`.",
         f"- Media with SourceConcept evidence or links: `{media.get('media_with_source_concept_evidence_or_links')}`.",
         f"- Content class distribution: `{json.dumps(media.get('content_class_distribution'), ensure_ascii=False, sort_keys=True)}`.",
@@ -2054,6 +2222,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Source metadata records by provider: `{json.dumps(summary['source_layer_coverage'].get('source_records', {}).get('by_provider'), ensure_ascii=False, sort_keys=True)}`.",
         f"- Source metadata records linked to media: `{summary['source_layer_coverage'].get('source_records', {}).get('linked_to_media')}`.",
+        f"- Source metadata distinct media coverage: `{summary['source_layer_coverage'].get('source_metadata_distinct_media_count')}` / `{media.get('total_media')}` (`{summary['source_layer_coverage'].get('source_metadata_distinct_media_pct')}%`).",
+        f"- Source metadata distinct eligible-media coverage: `{summary['source_layer_coverage'].get('source_metadata_distinct_eligible_media_count')}` / `{media.get('eligible_media_count')}` (`{summary['source_layer_coverage'].get('source_metadata_distinct_eligible_media_pct')}%`).",
+        f"- Source metadata coverage denominator policy: `{summary['source_layer_coverage'].get('source_metadata_coverage_denominator_policy')}`; row count remains context only.",
         f"- F7a distinct media with candidates: `{summary['source_layer_coverage'].get('f7a_candidate_coverage', {}).get('distinct_media_with_candidates')}`.",
         f"- Source assertions by status: `{json.dumps(summary['source_layer_coverage'].get('source_assertions_by_status'), ensure_ascii=False, sort_keys=True)}`.",
         "",
@@ -2073,6 +2244,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Explainable no-media concepts: `{symmetry.get('explainable_no_media_concepts')}`.",
         f"- Asymmetric concepts: `{symmetry.get('asymmetric_concepts')}`; severe asymmetry: `{symmetry.get('severe_asymmetry_count')}`.",
         f"- One-way links / fragmentation / overbroad: `{symmetry.get('one_way_link_count')}` / `{symmetry.get('fragmentation_count')}` / `{symmetry.get('overbroad_expansion_count')}`.",
+        f"- Direct-media concepts unreachable by aliases: `{symmetry.get('direct_media_unreachable_by_alias_count')}`; active / needs_review `{symmetry.get('direct_media_unreachable_active_count')}` / `{symmetry.get('direct_media_unreachable_needs_review_count')}`.",
+        "- Direct-media reachability checks prevent concepts with media evidence/links but empty alias search results from being counted as exact symmetric or explainable no-media.",
         f"- Hidden raw matches / actual visible hidden leakage: `{symmetry.get('hidden_status_raw_match_count')}` / `{symmetry.get('hidden_status_leak_count')}`.",
         "- Hidden raw matches mean a lookup encountered hidden rejected/ambiguous/superseded rows; actual leakage means hidden concepts entered the visible closure/media result and should remain zero.",
         f"- Parser/metacharacter aliases: `{symmetry.get('metacharacter_alias_count')}`.",
@@ -2130,6 +2303,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             "## Recommended next phase",
             "",
             f"`{summary.get('recommended_next_phase')}` is the highest impact/risk-adjusted next route from this audit.",
+            f"- Recommendation changed after direct-media, eligible-AI, and distinct-metadata corrections: `{summary.get('recommended_next_phase') != 'source_concept_alias_resolver_improvement'}`.",
             "",
             "## Expansion and bridge answers",
             "",

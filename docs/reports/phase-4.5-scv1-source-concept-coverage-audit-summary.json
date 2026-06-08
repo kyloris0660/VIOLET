@@ -161,11 +161,11 @@
       "violet_env_source": "process_env"
     },
     "git_branch": "codex/phase45-scv1-source-concept-coverage-audit",
-    "git_sha": "a2c6046e0da59b2480b22c5dbe0d919c3696c9c7",
+    "git_sha": "f07425ee7678054c801aa28da1ff68f02b2e607b",
     "host": "localhost",
     "port": 5432,
     "python_executable": "python.exe",
-    "recorded_at": "2026-06-08T11:39:03Z",
+    "recorded_at": "2026-06-08T12:06:47Z",
     "server_port": 5432,
     "transaction_read_only": "on",
     "transaction_read_only_ok": true,
@@ -199,6 +199,7 @@
         "priority": "P1",
         "reasons": [
           "search asymmetry concepts=0, severe=0",
+          "direct-media concepts unreachable by alias=0",
           "alias/cross-language/source linkage gap signals=1571",
           "needs_review concepts=760"
         ],
@@ -211,7 +212,8 @@
         "key": "bounded_ai_tag_expansion",
         "priority": "P3",
         "reasons": [
-          "media without AI tag provenance=27/1989",
+          "eligible media without AI tag provenance=0/1936 (0.0%)",
+          "eligible AI tag provenance coverage=100.0%",
           "would be a separate approved run"
         ],
         "recommended": false
@@ -223,7 +225,8 @@
         "key": "bounded_pixiv_metadata_expansion",
         "priority": "P2",
         "reasons": [
-          "source metadata records linked to media=60/1989",
+          "source metadata distinct-media coverage=60/1936 (3.1%)",
+          "row counts kept for context; decision uses distinct covered media",
           "coverage gap may limit SourceConcept evidence"
         ],
         "recommended": true
@@ -277,8 +280,9 @@
     ],
     "recommended_next_phase": "source_concept_alias_resolver_improvement"
   },
-  "generated_at": "2026-06-08T11:39:20Z",
+  "generated_at": "2026-06-08T12:07:06Z",
   "media_coverage": {
+    "ai_expansion_denominator_policy": "eligible_media",
     "ai_jobs_by_status": {
       "completed": 51
     },
@@ -290,8 +294,11 @@
       "non_anime": 53,
       "unknown": 54
     },
+    "eligible_ai_tag_provenance_pct": 100.0,
     "eligible_media_count": 1936,
     "eligible_media_pct": 97.34,
+    "eligible_media_with_ai_tag_provenance": 1936,
+    "eligible_media_without_ai_tag_provenance": 0,
     "eligible_policy": "content_class IN ('anime', 'unknown')",
     "media_with_ai_tag_provenance": 1962,
     "media_with_ai_tag_provenance_pct": 98.64,
@@ -392,7 +399,7 @@
   },
   "recommended_next_phase": "source_concept_alias_resolver_improvement",
   "redaction_privacy_audit": {
-    "checked_at": "2026-06-08T11:39:21Z",
+    "checked_at": "2026-06-08T12:07:06Z",
     "exact_private_paths_public": false,
     "final_public_scan_after_public_fields_finalized": true,
     "findings": [],
@@ -404,7 +411,17 @@
       "docs/reports/phase-4.5-scv1-source-concept-coverage-audit-summary.json"
     ]
   },
+  "runner_import_safety": {
+    "app_module_imports": false,
+    "app_settings_instantiated_on_import": false,
+    "app_storage_directory_write_on_import": false,
+    "backend_sys_path_insertion": false,
+    "settings_json_write_on_import": false,
+    "uses_script_local_normalization_helpers": true
+  },
   "safety": {
+    "app_module_imports": false,
+    "app_settings_or_storage_write_on_import": false,
     "browser_validation": "N/A; no UI/runtime change",
     "db_migration": false,
     "db_write": false,
@@ -418,6 +435,10 @@
     "aliases_checked": 1702,
     "asymmetric_concepts": 0,
     "concepts_checked": 1115,
+    "direct_media_unreachable_active_count": 0,
+    "direct_media_unreachable_by_alias_count": 0,
+    "direct_media_unreachable_needs_review_count": 0,
+    "direct_media_unreachable_sample_count": 0,
     "exact_symmetric_concepts": 1115,
     "explainable_no_media_concepts": 416,
     "fragmentation_count": 1,
@@ -3402,6 +3423,13 @@
       "searchable_active": 182
     },
     "source_assertions_linked_to_media": 270,
+    "source_metadata_coverage_denominator_policy": "distinct_media",
+    "source_metadata_distinct_eligible_media_count": 60,
+    "source_metadata_distinct_eligible_media_pct": 3.1,
+    "source_metadata_distinct_media_count": 60,
+    "source_metadata_distinct_media_pct": 3.02,
+    "source_metadata_records_linked_to_media": 60,
+    "source_metadata_records_total": 200,
     "source_name_observations_by_provider": {
       "danbooru": 66,
       "gelbooru": 63,
@@ -3421,7 +3449,13 @@
       "by_status": {
         "observed": 200
       },
-      "linked_to_media": 60
+      "coverage_denominator_policy": "distinct_media",
+      "distinct_eligible_media": 60,
+      "distinct_eligible_media_pct": 3.1,
+      "distinct_media": 60,
+      "distinct_media_pct": 3.02,
+      "linked_to_media": 60,
+      "total_rows": 200
     },
     "source_tag_observations_by_provider": {
       "danbooru": 88,

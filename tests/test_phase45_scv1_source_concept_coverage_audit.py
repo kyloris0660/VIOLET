@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,6 +16,63 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts import run_phase45_scv1_source_concept_coverage_audit as runner  # noqa: E402
+
+
+def test_runner_source_has_no_app_imports() -> None:
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+
+    assert "from app." not in source
+    assert "import app." not in source
+    assert "BACKEND_ROOT" not in source
+    assert "source_concept_search_service" not in source
+    assert "source_metadata_registry_service" not in source
+
+
+def test_importing_runner_does_not_create_app_settings_or_storage(tmp_path: Path) -> None:
+    storage_root = tmp_path / "fresh-storage-root"
+    code = f"""
+import json
+import os
+import sys
+from pathlib import Path
+os.environ["VIOLET_STORAGE_ROOT"] = {str(storage_root)!r}
+sys.path.insert(0, {str(ROOT)!r})
+import scripts.run_phase45_scv1_source_concept_coverage_audit as runner
+root = Path(os.environ["VIOLET_STORAGE_ROOT"])
+print(json.dumps({{
+    "settings_json_exists": (root / "data" / "settings.json").exists(),
+    "data_dir_exists": (root / "data").exists(),
+    "media_dir_exists": (root / "media").exists(),
+    "app_config_imported": "app.config" in sys.modules,
+    "helper": runner.canonical_source_key("Kamisato Ayaka"),
+}}))
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env={**os.environ, "VIOLET_STORAGE_ROOT": str(storage_root)},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["helper"] == "kamisato_ayaka"
+    assert payload["settings_json_exists"] is False
+    assert payload["data_dir_exists"] is False
+    assert payload["media_dir_exists"] is False
+    assert payload["app_config_imported"] is False
+
+
+def test_script_local_search_key_helpers_cover_sc2_style_aliases() -> None:
+    assert runner.normalize_source_text("  Kamisato   Ayaka  ") == "Kamisato Ayaka"
+    assert runner.canonical_source_key("Kamisato Ayaka") == "kamisato_ayaka"
+    assert runner.canonical_source_key("神里綾華") == "神里綾華"
+    assert "nahida_(genshin_impact)" in runner._search_keys_for_term("nahida_(genshin_impact)")
+    assert "nahida" in runner._search_keys_for_term("nahida_(genshin_impact)")
+    assert "kamisato_ayaka" in runner._search_keys_for_term("Kamisato Ayaka")
+    assert "神里綾華" in runner._search_keys_for_term("神里綾華")
 
 
 def test_runner_refuses_without_read_only_flag(tmp_path: Path) -> None:
@@ -331,6 +390,24 @@ def test_search_symmetry_comparison_detects_asymmetric_media_sets(monkeypatch: p
     assert samples[0]["mismatch_type"] == "asymmetric_media_set"
 
 
+def test_direct_media_with_empty_alias_lookup_is_reachability_gap(monkeypatch: pytest.MonkeyPatch) -> None:
+    concepts = [{"id": 1, "status": "active", "primary_display_name": "Reachability Gap", "concept_type_hint": "character"}]
+    aliases = [{"id": 1, "concept_id": 1, "status": "active", "display_name": "reachability_gap", "alias_key": "reachability_gap"}]
+
+    monkeypatch.setattr(runner, "concept_ids_for_term", lambda *_args, **_kwargs: ([], []))
+    monkeypatch.setattr(runner, "concept_media_set_for_ids", lambda _conn, ids, statuses=runner.VISIBLE_STATUSES: {100} if list(ids) == [1] else set())
+
+    metrics, samples = runner.audit_search_symmetry(None, concepts, aliases)
+
+    assert metrics["direct_media_unreachable_by_alias_count"] == 1
+    assert metrics["direct_media_unreachable_active_count"] == 1
+    assert metrics["exact_symmetric_concepts"] == 0
+    assert metrics["explainable_no_media_concepts"] == 0
+    assert samples[0]["mismatch_type"] == "direct_media_unreachable_by_alias"
+    assert samples[0]["concept_media_count"] == 1
+    assert samples[0]["max_alias_media_count"] == 0
+
+
 def test_hidden_rejected_ambiguous_superseded_statuses_do_not_count_as_visible(monkeypatch: pytest.MonkeyPatch) -> None:
     hidden_statuses = ["rejected", "ambiguous", "superseded"]
     concepts = [
@@ -414,10 +491,17 @@ def test_needs_review_is_labeled_distinctly_from_active(monkeypatch: pytest.Monk
 
 def test_decision_matrix_selects_conservative_next_steps() -> None:
     decision = runner.decide_next_phase(
-        media={"total_media": 100, "eligible_media_count": 80, "media_without_ai_tags": 70, "tags": {"translation": {"total": 10}, "total_tags": 100}},
-        source_layer={"source_records": {"linked_to_media": 5}},
+        media={
+            "total_media": 100,
+            "eligible_media_count": 80,
+            "media_without_ai_tags": 70,
+            "eligible_media_without_ai_tag_provenance": 60,
+            "eligible_ai_tag_provenance_pct": 25,
+            "tags": {"translation": {"total": 10}, "total_tags": 100},
+        },
+        source_layer={"source_records": {"linked_to_media": 5}, "source_metadata_distinct_eligible_media_count": 5, "source_metadata_distinct_media_count": 5},
         concepts={"total_source_concepts": 20},
-        symmetry={"severe_asymmetry_count": 2, "asymmetric_concepts": 3},
+        symmetry={"severe_asymmetry_count": 2, "asymmetric_concepts": 3, "direct_media_unreachable_by_alias_count": 1},
         alias_gaps={"total_gap_signals": 12},
         needs_review={"total_needs_review_concepts": 6},
         redaction_passed=True,
@@ -427,6 +511,79 @@ def test_decision_matrix_selects_conservative_next_steps() -> None:
     assert decision["answers"]["is_5k_10k_expansion_justified_now"] is False
     assert decision["answers"]["is_entity_bridge_justified_now"] is False
     assert any(item["key"] == "run_ledger_or_phase39_prerequisite" and item["recommended"] for item in decision["options"])
+
+
+def test_ai_decision_uses_eligible_media_denominator_not_total_media() -> None:
+    decision = runner.decide_next_phase(
+        media={
+            "total_media": 1000,
+            "eligible_media_count": 10,
+            "media_without_ai_tags": 901,
+            "eligible_media_without_ai_tag_provenance": 1,
+            "eligible_ai_tag_provenance_pct": 90,
+            "tags": {"translation": {"total": 0}, "total_tags": 0},
+        },
+        source_layer={
+            "source_records": {"linked_to_media": 1000},
+            "source_metadata_distinct_media_count": 1000,
+            "source_metadata_distinct_eligible_media_count": 10,
+        },
+        concepts={"total_source_concepts": 20},
+        symmetry={"severe_asymmetry_count": 0, "asymmetric_concepts": 0, "direct_media_unreachable_by_alias_count": 0},
+        alias_gaps={"total_gap_signals": 0},
+        needs_review={"total_needs_review_concepts": 0},
+        redaction_passed=True,
+    )
+    ai_option = next(item for item in decision["options"] if item["key"] == "bounded_ai_tag_expansion")
+
+    assert ai_option["priority"] == "P3"
+    assert ai_option["recommended"] is False
+    assert "eligible media without AI tag provenance=1/10 (10.0%)" in ai_option["reasons"]
+
+
+def test_source_metadata_coverage_counts_distinct_media_not_rows() -> None:
+    coverage = runner.build_source_metadata_coverage_summary(
+        total_media=10,
+        eligible_media=8,
+        total_rows=3,
+        linked_rows=3,
+        distinct_media=1,
+        distinct_eligible_media=1,
+    )
+
+    assert coverage["source_metadata_records_linked_to_media"] == 3
+    assert coverage["source_metadata_distinct_media_count"] == 1
+    assert coverage["source_metadata_distinct_media_pct"] == 10.0
+    assert coverage["source_metadata_distinct_eligible_media_pct"] == 12.5
+
+
+def test_metadata_decision_uses_distinct_media_not_linked_row_count() -> None:
+    decision = runner.decide_next_phase(
+        media={
+            "total_media": 100,
+            "eligible_media_count": 100,
+            "media_without_ai_tags": 0,
+            "eligible_media_without_ai_tag_provenance": 0,
+            "eligible_ai_tag_provenance_pct": 100,
+            "tags": {"translation": {"total": 0}, "total_tags": 0},
+        },
+        source_layer={
+            "source_records": {"linked_to_media": 80},
+            "source_metadata_distinct_media_count": 1,
+            "source_metadata_distinct_eligible_media_count": 1,
+        },
+        concepts={"total_source_concepts": 20},
+        symmetry={"severe_asymmetry_count": 0, "asymmetric_concepts": 0, "direct_media_unreachable_by_alias_count": 0},
+        alias_gaps={"total_gap_signals": 0},
+        needs_review={"total_needs_review_concepts": 0},
+        redaction_passed=True,
+    )
+    metadata_option = next(item for item in decision["options"] if item["key"] == "bounded_pixiv_metadata_expansion")
+
+    assert metadata_option["priority"] == "P2"
+    assert metadata_option["recommended"] is True
+    assert "source metadata distinct-media coverage=1/100 (1.0%)" in metadata_option["reasons"]
+    assert "row counts kept for context; decision uses distinct covered media" in metadata_option["reasons"]
 
 
 def test_alias_gap_full_counts_are_independent_of_sample_limit() -> None:
@@ -512,10 +669,21 @@ def test_decision_matrix_uses_identity_source_relevant_gap_count_not_visual_tags
 
 def minimal_public_summary(tmp_path: Path) -> dict:
     decision = runner.decide_next_phase(
-        media={"total_media": 0, "eligible_media_count": 0, "media_without_ai_tags": 0, "tags": {"translation": {"total": 0}, "total_tags": 0}},
-        source_layer={"source_records": {"linked_to_media": 0}},
+        media={
+            "total_media": 0,
+            "eligible_media_count": 0,
+            "media_without_ai_tags": 0,
+            "eligible_media_without_ai_tag_provenance": 0,
+            "eligible_ai_tag_provenance_pct": 0,
+            "tags": {"translation": {"total": 0}, "total_tags": 0},
+        },
+        source_layer={
+            "source_records": {"linked_to_media": 0},
+            "source_metadata_distinct_media_count": 0,
+            "source_metadata_distinct_eligible_media_count": 0,
+        },
         concepts={"total_source_concepts": 0},
-        symmetry={"severe_asymmetry_count": 0, "asymmetric_concepts": 0},
+        symmetry={"severe_asymmetry_count": 0, "asymmetric_concepts": 0, "direct_media_unreachable_by_alias_count": 0},
         alias_gaps={"total_gap_signals": 0},
         needs_review={"total_needs_review_concepts": 0},
         redaction_passed=True,
@@ -554,10 +722,55 @@ def minimal_public_summary(tmp_path: Path) -> dict:
             },
         },
         proof={"passed": True, "changed_tables": [], "missing_tables": [], "forbidden_tables_checked": list(runner.FORBIDDEN_TABLES)},
-        media={"total_media": 0, "eligible_policy": "content_class IN ('anime', 'unknown')", "eligible_media_count": 0, "eligible_media_pct": 0, "media_with_any_tags": 0, "media_with_ai_tag_provenance": 0, "media_without_ai_tags": 0, "media_with_source_layer_signals": 0, "media_without_source_layer_signals": 0, "media_with_source_concept_evidence_or_links": 0, "content_class_distribution": {}, "tags": {"translation": {"total": 0}, "total_tags": 0}},
-        source_layer={"source_records": {"by_provider": {}, "linked_to_media": 0}, "f7a_candidate_coverage": {"distinct_media_with_candidates": 0}, "source_assertions_by_status": {}},
+        media={
+            "total_media": 0,
+            "eligible_policy": "content_class IN ('anime', 'unknown')",
+            "eligible_media_count": 0,
+            "eligible_media_pct": 0,
+            "media_with_any_tags": 0,
+            "media_with_ai_tag_provenance": 0,
+            "media_without_ai_tags": 0,
+            "eligible_media_with_ai_tag_provenance": 0,
+            "eligible_media_without_ai_tag_provenance": 0,
+            "eligible_ai_tag_provenance_pct": 0,
+            "ai_expansion_denominator_policy": "eligible_media",
+            "media_with_source_layer_signals": 0,
+            "media_without_source_layer_signals": 0,
+            "media_with_source_concept_evidence_or_links": 0,
+            "content_class_distribution": {},
+            "tags": {"translation": {"total": 0}, "total_tags": 0},
+        },
+        source_layer={
+            "source_records": {"by_provider": {}, "linked_to_media": 0, "distinct_media": 0, "distinct_eligible_media": 0, "coverage_denominator_policy": "distinct_media"},
+            "source_metadata_records_total": 0,
+            "source_metadata_records_linked_to_media": 0,
+            "source_metadata_distinct_media_count": 0,
+            "source_metadata_distinct_eligible_media_count": 0,
+            "source_metadata_distinct_media_pct": 0,
+            "source_metadata_distinct_eligible_media_pct": 0,
+            "source_metadata_coverage_denominator_policy": "distinct_media",
+            "f7a_candidate_coverage": {"distinct_media_with_candidates": 0},
+            "source_assertions_by_status": {},
+        },
         concepts={"total_source_concepts": 0, "by_status": {}, "by_concept_type_hint": {}, "aliases_total": 0, "evidence_total": 0, "search_index_total": 0, "concepts_with_no_media": 0, "concepts_with_no_aliases": 0, "concepts_with_no_evidence": 0, "concepts_with_no_search_index": 0, "same_alias_key_across_multiple_concepts": []},
-        symmetry={"concepts_checked": 0, "aliases_checked": 0, "exact_symmetric_concepts": 0, "explainable_no_media_concepts": 0, "asymmetric_concepts": 0, "severe_asymmetry_count": 0, "one_way_link_count": 0, "fragmentation_count": 0, "overbroad_expansion_count": 0, "hidden_status_raw_match_count": 0, "hidden_status_leak_count": 0, "metacharacter_alias_count": 0},
+        symmetry={
+            "concepts_checked": 0,
+            "aliases_checked": 0,
+            "exact_symmetric_concepts": 0,
+            "explainable_no_media_concepts": 0,
+            "asymmetric_concepts": 0,
+            "severe_asymmetry_count": 0,
+            "one_way_link_count": 0,
+            "fragmentation_count": 0,
+            "overbroad_expansion_count": 0,
+            "direct_media_unreachable_by_alias_count": 0,
+            "direct_media_unreachable_active_count": 0,
+            "direct_media_unreachable_needs_review_count": 0,
+            "direct_media_unreachable_sample_count": 0,
+            "hidden_status_raw_match_count": 0,
+            "hidden_status_leak_count": 0,
+            "metacharacter_alias_count": 0,
+        },
         alias_gaps={
             "gap_buckets": {},
             "gap_bucket_details": {},
@@ -594,6 +807,7 @@ def test_summary_json_has_required_fields(tmp_path: Path) -> None:
         "title",
         "branch",
         "generated_at",
+        "runner_import_safety",
         "db_identity",
         "read_only_proof",
         "media_coverage",
@@ -615,6 +829,11 @@ def test_summary_json_has_required_fields(tmp_path: Path) -> None:
     assert required.issubset(summary)
     assert summary["private_artifacts"]["private_artifact_bundle_created"] is False
     assert summary["private_artifacts"]["exact_private_paths_public"] is False
+    assert summary["runner_import_safety"]["app_module_imports"] is False
+    assert summary["runner_import_safety"]["settings_json_write_on_import"] is False
+    assert summary["media_coverage"]["ai_expansion_denominator_policy"] == "eligible_media"
+    assert summary["source_layer_coverage"]["source_metadata_coverage_denominator_policy"] == "distinct_media"
+    assert "direct_media_unreachable_by_alias_count" in summary["search_symmetry"]
     assert summary["alias_gap_analysis"]["gap_bucket_details"] == {}
     assert summary["alias_gap_analysis"]["sample_limit_policy"]["counts_are_full"] is True
     json.dumps(summary, ensure_ascii=False)
