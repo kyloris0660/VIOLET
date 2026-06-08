@@ -1,143 +1,294 @@
 {
-  "phase": "4.5-DOC1",
-  "title": "Post-SC2 documentation consolidation and guard audit",
+  "phase": "4.5-DOC1-R1",
+  "title": "Documentation restructuring, README rewrite, handoff slimming, and executable-guard debt classification",
   "branch": "codex/phase45-doc1-post-sc2-doc-consolidation",
-  "generated_at": "2026-06-07T22:10:31+08:00",
-  "main_verified": {
-    "local_main_equals_origin_main": true,
-    "origin_main_head": "192eba7088568adc7aec2b5a8672b3aa630c3f04",
-    "merged_prs": [
-      {
-        "number": 96,
-        "title": "Phase 4.5-SC1: Multi-source source concept resolver core",
-        "merge_commit": "a54e5ade2a8bc50adc00c8129699f0c2540e479e",
-        "merged": true
-      },
-      {
-        "number": 97,
-        "title": "Phase 4.5-SC2-P0: Post-merge handoff and SC2 plan",
-        "merge_commit": "cba0275d4106f62e3ce20b4706419d568b605a7e",
-        "merged": true
-      },
-      {
-        "number": 98,
-        "title": "Phase 4.5-SC2: SourceConcept search expansion and evidence UI",
-        "merge_commit": "192eba7088568adc7aec2b5a8672b3aa630c3f04",
-        "merged": true
-      }
-    ]
-  },
+  "generated_at": "2026-06-08T12:25:15+08:00",
   "docs_updated": [
     "README.md",
     "docs/current-handoff.md",
     "docs/project-roadmap.md",
     "docs/test-workflow.md",
     "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation.md",
-    "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json"
+    "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json",
+    "tests/test_phase45_doc1_documentation_state.py"
   ],
-  "guard_audit": {
-    "source_concept_not_entity_truth": {
-      "status": "enforced_for_sc1_sc2_paths",
+  "docs_restructured": {
+    "readme": "Rewritten as a public open-source-style project entry point.",
+    "current_handoff": "Slimmed to current operational state, route, non-goals, validation seeds, and links.",
+    "project_roadmap": "Active roadmap and governance sections moved near the top; historical phase log preserved as archive/reference in the same file.",
+    "test_workflow": "Scope-based validation and current SourceConcept entry points clarified near the top.",
+    "archive_file_created": false
+  },
+  "line_counts_before_after": {
+    "README.md": {
+      "before": 106,
+      "after": 113,
+      "delta": 7
+    },
+    "docs/current-handoff.md": {
+      "before": 107,
+      "after": 71,
+      "delta": -36
+    },
+    "docs/project-roadmap.md": {
+      "before": 995,
+      "after": 1043,
+      "delta": 48
+    },
+    "docs/test-workflow.md": {
+      "before": 409,
+      "after": 423,
+      "delta": 14
+    },
+    "docs/archive_or_phase_history": {
+      "before": 0,
+      "after": 0,
+      "delta": 0,
+      "note": "No separate archive file was created; historical traceability remains in project-roadmap under an archive heading."
+    }
+  },
+  "readme_rewrite": {
+    "status": "completed",
+    "summary": "README now covers project purpose, key features, current status, architecture, quick start, safety/privacy model, documentation map, development focus, and upstream attribution without becoming a phase changelog.",
+    "source_concept_boundary_stated": true,
+    "production_readiness_overclaimed": false,
+    "automatic_confirmed_entity_assignment_claimed": false
+  },
+  "handoff_slimming": {
+    "status": "completed",
+    "before_lines": 107,
+    "after_lines": 71,
+    "summary": "Long historical accepted-state paragraphs were removed from current-handoff and replaced with current accepted SC1/SC2 state, route, non-goals, validation seeds, governance reminders, and links.",
+    "historical_traceability_preserved": [
+      "docs/project-roadmap.md",
+      "docs/reports/"
+    ]
+  },
+  "roadmap_restructure": {
+    "status": "completed",
+    "before_lines": 995,
+    "after_lines": 1043,
+    "archive_file_created": false,
+    "summary": "Current active roadmap, near-term route, and governance standards now appear near the top. Historical details remain in the same file under Phase Archive / Historical Traceability to minimize churn."
+  },
+  "test_workflow_restructure": {
+    "status": "completed",
+    "before_lines": 409,
+    "after_lines": 423,
+    "summary": "Docs-only validation, SC1/SC2/SCV1 entry points, and DOC1 documentation-state guard are clarified near the top while long test inventory remains reference material."
+  },
+  "guard_debt_classification": [
+    {
+      "key": "source_concept_not_entity_truth",
+      "classification": "executable_now",
       "evidence": [
         "SC1 forbidden_truth_table_write_count=0",
         "tests/test_phase45_sc1_source_concept_resolver.py",
+        "tests/test_phase45_sc2_source_concept_search_evidence_ui.py::test_source_concept_read_paths_do_not_write_truth_tables"
+      ]
+    },
+    {
+      "key": "no_truth_path_writes_sc1_sc2_read_paths",
+      "classification": "executable_now",
+      "evidence": [
         "tests/test_phase45_sc2_source_concept_search_evidence_ui.py::test_source_concept_read_paths_do_not_write_truth_tables",
         "tests/test_phase44p2r_f6_source_layer_search.py::test_promotion_preview_does_not_write_truth_path"
       ]
     },
-    "redaction": {
-      "status": "enforced_for_sc2_payloads_and_e2e_fixture",
+    {
+      "key": "redaction_local_paths_filenames_secrets",
+      "classification": "executable_now",
       "evidence": [
-        "SC2 backend redaction tests",
+        "SC2 redaction tests for detail/media/search/promotion payloads",
         "tests/e2e/source-concept-search-evidence.spec.ts"
       ]
     },
-    "visible_status_gate": {
-      "status": "enforced",
+    {
+      "key": "visible_status_gate",
+      "classification": "executable_now",
       "evidence": [
         "test_detail_and_promotion_preview_visibility_gate_by_status"
       ]
     },
-    "search_cache_invalidation": {
-      "status": "enforced_for_current_write_paths",
+    {
+      "key": "search_cache_invalidation",
+      "classification": "executable_now",
       "evidence": [
         "test_search_cache_is_invalidated_after_source_concept_rows_change",
         "test_source_concept_write_paths_invalidate_search_cache",
         "test_source_registry_persist_invalidates_search_cache"
       ]
     },
-    "alias_expansion_symmetry": {
-      "status": "partially_enforced",
-      "evidence": [
-        "test_source_concept_aliases_expand_to_same_concept_level_media_set"
-      ],
-      "gap": "Focused fixture coverage exists, but broad real-DB or property-style symmetry checks belong to SCV1."
+    {
+      "key": "alias_expansion_symmetry",
+      "classification": "must_add_in_scv1",
+      "why_not_now": "SC2 has focused fixture coverage, but broad real-DB alias symmetry requires SCV1 current-data inventory and sampling.",
+      "future_phase": "Phase 4.5-SCV1",
+      "future_guard_shape": "Read-only search-symmetry runner or focused tests over real current SourceConcept aliases, including cross-language variants and hidden-status exclusions."
     },
-    "needs_review_behavior": {
-      "status": "enforced_for_sc2_behavior",
+    {
+      "key": "needs_review_explicit_alias_expansion",
+      "classification": "executable_now",
       "evidence": [
         "test_needs_review_concept_expands_on_explicit_alias_search",
         "tests/e2e/source-concept-search-evidence.spec.ts"
       ]
     },
-    "f6_global_q_chip_behavior": {
-      "status": "enforced",
+    {
+      "key": "f6_global_q_chip_behavior",
+      "classification": "executable_now",
       "evidence": [
         "tests/test_phase44p2r_f6_source_layer_search.py",
         "tests/e2e/source-layer-search.spec.ts",
         "tests/e2e/source-concept-search-evidence.spec.ts"
       ]
     },
-    "sc2_no_provider_llm_source_enrichment": {
-      "status": "documented_and_static_scope_reviewed",
-      "gap": "Current tests do not provide a generic runtime no-provider/no-LLM call guard for SC2 read routes."
-    },
-    "promotion_preview_disabled_noop": {
-      "status": "enforced",
+    {
+      "key": "promotion_preview_disabled_noop",
+      "classification": "executable_now",
       "evidence": [
         "test_source_concept_read_paths_do_not_write_truth_tables",
-        "tests/e2e/source-concept-search-evidence.spec.ts",
-        "test_promotion_preview_does_not_write_truth_path"
+        "test_promotion_preview_does_not_write_truth_path",
+        "tests/e2e/source-concept-search-evidence.spec.ts"
+      ]
+    },
+    {
+      "key": "sc2_no_provider_llm_source_enrichment",
+      "classification": "documented_only_acceptable",
+      "why_not_now": "DOC1-R1 touches docs/tests only, and current SC2 read routes do not depend on provider/LLM/source-enrichment adapters.",
+      "future_phase": "Any future SourceConcept read/write phase that introduces provider-adjacent dependencies",
+      "future_guard_shape": "Monkeypatch provider/LLM/source-enrichment adapters to assert no calls, or add an explicit dependency allowlist for read routes."
+    },
+    {
+      "key": "scv1_coverage_inventory_alias_gap_search_symmetry",
+      "classification": "must_add_in_scv1",
+      "why_not_now": "DOC1-R1 is documentation restructuring and cannot run broad current-data validation.",
+      "future_phase": "Phase 4.5-SCV1",
+      "future_guard_shape": "Read-only coverage inventory and redacted validation runner covering media/source signal/SourceConcept coverage, alias gaps, needs_review clusters, redaction, and search symmetry."
+    },
+    {
+      "key": "entity_bridge_preview_confirmation_audit_rollback_write_guards",
+      "classification": "must_add_before_sc3_or_entity_bridge",
+      "why_not_now": "DOC1-R1 does not implement editing, management, promotion, or truth writes.",
+      "future_phase": "SC3 or explicit Entity bridge phase",
+      "future_guard_shape": "Tests and write guards for preview-only flows, manual confirmation, audit trail, rollback/supersede, and no media_tags/entity truth pollution."
+    },
+    {
+      "key": "provider_gallery_dl_llm_broad_run_ledger_budget_gates",
+      "classification": "must_add_before_provider_or_full_library_run",
+      "why_not_now": "DOC1-R1 performs no provider, gallery-dl, LLM, source-enrichment, or broad run work.",
+      "future_phase": "Provider/source/LLM run phase before any execution",
+      "future_guard_shape": "Provider policy tests, privacy eligibility gates, budget/rate-limit/cache/audit assertions, and redacted public/private artifact checks."
+    },
+    {
+      "key": "phase39_ledger_prerequisite",
+      "classification": "must_add_before_provider_or_full_library_run",
+      "why_not_now": "DOC1-R1 is not a broad import or full-library execution phase.",
+      "future_phase": "Phase 3.9 or equivalent run-ledger prerequisite phase",
+      "future_guard_shape": "Production ingestion/source item ledger with per-item final state, failure reason, retry/defer state, imported media ID, and public/private artifact separation."
+    },
+    {
+      "key": "docs_only_validation_policy",
+      "classification": "add_in_doc1_r1",
+      "evidence": [
+        "tests/test_phase45_doc1_documentation_state.py",
+        "docs/test-workflow.md"
+      ]
+    },
+    {
+      "key": "agent_no_merge_no_push_main_policy",
+      "classification": "documented_only_acceptable",
+      "why_not_now": "This is process/repository governance; DOC1-R1 cannot enforce GitHub admin rules from repo docs.",
+      "future_phase": "Repository administration / branch protection setup",
+      "future_guard_shape": "GitHub branch protection or rulesets requiring PR-based merge and blocking direct pushes to main."
+    }
+  ],
+  "executable_guards_added": [
+    {
+      "path": "tests/test_phase45_doc1_documentation_state.py",
+      "artifact_lifecycle": "reusable validation/safety test",
+      "scope": "Documentation-state and summary JSON guard only; no DB/server/runtime/UI/provider/LLM dependency.",
+      "checks": [
+        "No stale SC2 planned/prepared wording in active docs",
+        "README public entrypoint sections and SourceConcept boundary",
+        "Current handoff line-count and active route focus",
+        "DOC1 summary JSON required fields and guard classification enum",
+        "Concrete future guard shape for non-executable debt",
+        "Docs-only validation policy remains explicit"
       ]
     }
-  },
-  "known_observation_for_scv1": {
-    "status": "future_validation_seed_not_doc1_blocker",
-    "observation": "`nahida_(genshin_impact)` expands to Nahida / `nahida_(genshin_impact)`, while `纳西妲` appears as separate Pixiv/source evidence and is not currently linked.",
-    "suggested_aliases": [
-      "Nahida",
-      "纳西妲",
-      "草神",
-      "nahida_(genshin_impact)"
-    ]
-  },
+  ],
+  "deferred_guards": [
+    {
+      "classification": "must_add_in_scv1",
+      "items": [
+        "alias_expansion_symmetry",
+        "scv1_coverage_inventory_alias_gap_search_symmetry"
+      ]
+    },
+    {
+      "classification": "must_add_before_sc3_or_entity_bridge",
+      "items": [
+        "entity_bridge_preview_confirmation_audit_rollback_write_guards"
+      ]
+    },
+    {
+      "classification": "must_add_before_provider_or_full_library_run",
+      "items": [
+        "provider_gallery_dl_llm_broad_run_ledger_budget_gates",
+        "phase39_ledger_prerequisite"
+      ]
+    },
+    {
+      "classification": "documented_only_acceptable",
+      "items": [
+        "sc2_no_provider_llm_source_enrichment",
+        "agent_no_merge_no_push_main_policy"
+      ]
+    }
+  ],
   "recommended_next_phase": {
     "phase": "4.5-SCV1",
     "title": "Expanded SourceConcept validation and coverage audit",
-    "before_entity_bridge": true
+    "before_entity_bridge": true,
+    "doc1_r1_does_not_implement_scv1": true
   },
   "validation": {
     "status": "passed",
-    "python_identity": {
-      "command": "& \"$PY\" scripts/check_python_env.py --expected-python \"$PY\"",
-      "result": "PASS",
-      "sys_executable": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\venv\\Scripts\\python.exe",
-      "python_version": "3.12.0"
-    },
-    "git_diff_check": {
-      "command": "git diff --check",
-      "result": "pass"
-    },
-    "json_tool": {
-      "command": "& \"$PY\" -m json.tool docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json",
-      "result": "pass"
-    },
-    "pytest_run": false,
-    "browser_validation_run": false,
-    "server_started": false
+    "commands": [
+      {
+        "command": "git diff --check",
+        "result": "pass"
+      },
+      {
+        "command": "git diff --cached --check",
+        "result": "pass"
+      },
+      {
+        "command": "& \"$PY\" scripts/check_python_env.py --expected-python \"$PY\"",
+        "result": "PASS",
+        "sys_executable": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\venv\\Scripts\\python.exe"
+      },
+      {
+        "command": "& \"$PY\" -m json.tool docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json",
+        "result": "pass"
+      },
+      {
+        "command": "& \"$PY\" -m py_compile tests/test_phase45_doc1_documentation_state.py",
+        "result": "pass"
+      },
+      {
+        "command": "& \"$PY\" -m pytest tests/test_phase45_doc1_documentation_state.py -v",
+        "result": "5 passed"
+      }
+    ],
+    "pytest_required": true,
+    "browser_validation_required": false,
+    "server_required": false
   },
   "safety": {
-    "code_runtime_ui_changes": false,
+    "runtime_ui_behavior_changed": false,
+    "db_write": false,
     "db_migration": false,
     "db_import": false,
     "provider_or_gallery_dl_or_source_enrichment": false,
@@ -146,7 +297,22 @@
     "source_icloud_storage_mutation": false,
     "media_tags_mutation": false,
     "entity_truth_write": false,
-    "full_library_validation": false
+    "source_concept_editing": false,
+    "entity_bridge_or_promotion": false,
+    "full_library_validation": false,
+    "scv1_executed": false
   },
-  "artifact_lifecycle": "public report / handoff / roadmap update"
+  "artifact_lifecycle": {
+    "public_report_handoff_roadmap_update": [
+      "README.md",
+      "docs/current-handoff.md",
+      "docs/project-roadmap.md",
+      "docs/test-workflow.md",
+      "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation.md",
+      "docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json"
+    ],
+    "reusable_validation_safety_test": [
+      "tests/test_phase45_doc1_documentation_state.py"
+    ]
+  }
 }

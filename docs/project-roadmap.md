@@ -19,7 +19,55 @@ The finished system should:
 
 ---
 
-## Completed Phases
+## Current Active Roadmap
+
+The active route is SourceConcept validation before Entity truth work.
+
+Current accepted state:
+
+- Phase 4.5-SC1 is merged: SourceConcept resolver core, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
+- Phase 4.5-SC2 is merged: read-only SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
+- SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
+
+Current DOC1-R1 documentation goal:
+
+- Keep README public and concise.
+- Keep `docs/current-handoff.md` short and operational.
+- Keep this roadmap focused at the top, with historical details below as archive/reference.
+- Keep `docs/test-workflow.md` centered on scope-based validation.
+- Classify GOV-2 guard debt by the phase that must turn it into executable checks.
+
+## Near-Term Route
+
+1. Finish and review Phase 4.5-DOC1-R1.
+2. If accepted and manually merged, start `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit`.
+3. SCV1 should inventory current DB/source-signal/SourceConcept coverage, audit cross-language alias gaps, check search-expansion symmetry, and review larger current-data samples without new import first.
+4. Use the current Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)` gap as one validation seed, not as a hardcoded DOC1 fix.
+5. Only after SCV1 should the project decide whether broader import, AI tagging, source metadata extraction, SourceConcept management/editing, or an Entity bridge is justified.
+
+Explicit ordering:
+
+- SCV1 comes before Entity bridge or promotion.
+- SourceConcept management/editing is a later source-layer phase, not DOC1/SCV1 by default.
+- Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
+- Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
+
+## Current Governance / Development Standards
+
+- Agents may create/update branches and PRs, but must not push `main` or merge PRs.
+- Use the established PR body sections for reviewable phase PRs: summary, scope, constraints, implementation, validation, test plan, reviewer status, safety confirmation, and next step.
+- GOV-2 is active: use focused executable guards, tests, DB constraints, validation runners, and runtime assertions where practical; avoid repeating long hard rules in every doc.
+- Docs-only stages use `git diff --check`, JSON validation, Python identity if Python is used, and focused doc consistency tests when present. They do not need pytest/E2E/browser/server validation unless they touch code, runtime, or UI.
+- UI/runtime changes require real browser validation with a controlled test server and identity preflight.
+- Broad provider/source/full-library work must wait for run-ledger discipline and explicit approval.
+
+Detailed historical standards remain below under development standards; older phase reports remain archival.
+
+---
+
+## Phase Archive / Historical Traceability
+
+This section preserves historical context. For the current route, read the active roadmap above and `docs/current-handoff.md` first.
 
 ### Phase 0 — Project Bootstrap
 
@@ -800,9 +848,9 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Small docs/process updates should be batched unless they remove major contradictions or unblock current work.
 - Public reports: `docs/reports/governance-documentation-alignment-and-workflow-weight-reduction.md` and `docs/reports/governance-documentation-alignment-and-workflow-weight-reduction-summary.json`.
 
-## Upcoming Phases
+## Future Backlog Reference
 
-Current near-term options after Phase 4.5-DOC1 documentation consolidation:
+This reference preserves older backlog items. The active near-term route is the `Near-Term Route` section at the top of this file.
 
 1. `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit` should run before any Entity bridge. It should inventory current DB coverage, validate larger current-data samples, identify cross-language alias gaps, check search-expansion symmetry, and decide whether broader import/source-data expansion is needed.
 2. The current Nahida / `纳西妲` observation belongs to SCV1-style coverage analysis: `nahida_(genshin_impact)` links to Nahida, while `纳西妲` currently appears as separate Pixiv/source evidence and is not yet linked.

@@ -17,7 +17,7 @@ runtime suites unless that work actually changes runtime behavior.
 
 | Change lifecycle / scope | Required validation |
 |--------------------------|---------------------|
-| Docs-only governance, handoff, roadmap, or report updates | `git diff --check`; validate JSON reports with `json.tool`; Python identity check if Python is used. No pytest/E2E required unless code changes occur. |
+| Docs-only governance, handoff, roadmap, report, or README updates | `git diff --check`; validate JSON reports with `json.tool`; Python identity check if Python is used. Run focused doc consistency tests when the PR adds or changes them. No pytest/E2E/browser/server required unless code, tests, runtime, or UI changed. |
 | Durable production runtime code | Focused tests for changed behavior plus broader non-E2E coverage when shared contracts, DB behavior, or cross-module behavior is touched. |
 | DB schema or migration work | Migration plan/review, focused migration tests, DB safety checks, and explicit user/ChatGPT approval before implementation. |
 | Provider-neutral contract or provider persistence code | Focused contract tests, privacy/public-safe serialization tests, and persistence-readiness tests. DB writes remain gated by phase approval. |
@@ -34,11 +34,24 @@ start a server.
 If any Python/runtime code changes occur during a docs-only stage, stop and
 explain why before continuing.
 
+## Current Active Validation Entry Points
+
+Use these first for current SourceConcept/documentation work:
+
+| Scope | Entry point |
+|-------|-------------|
+| DOC1/DOC1-R1 documentation consolidation | `git diff --check`; `git diff --cached --check`; `& "$PY" scripts/check_python_env.py --expected-python "$PY"`; `& "$PY" -m json.tool <changed-summary-json>`; `& "$PY" -m pytest tests/test_phase45_doc1_documentation_state.py -v` when that test exists or changes |
+| SC1 SourceConcept resolver core | `& "$PY" -m pytest tests/test_phase45_sc1_source_concept_resolver.py -v`; runner validation pack only when the phase explicitly authorizes DB/apply work |
+| SC2 SourceConcept search/evidence UI | `& "$PY" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v`; gated Playwright Edge E2E when UI/runtime behavior is in scope |
+| SCV1 expanded validation planning | Start read-only: coverage inventory, larger current-data samples, alias-gap analysis, `needs_review` clusters, redacted evidence review, and search-symmetry checks. Do not run imports/providers/LLMs/source enrichment without separate approval |
+| Entity bridge / SourceConcept editing | Not covered by current validation. Must add preview, confirmation, audit, rollback/supersede, write guards, and no-truth-pollution tests before implementation |
+| Provider or full-library scale | Requires separate provider policy, privacy eligibility, budget/cache/audit gates, run ledger, and Phase 3.9-style source item ledger discipline before execution |
+
 ## Manual Entity Correction Testing Principle
 
 Entity metadata UI/API validation must reflect the product model: targeted correction, not exhaustive review. Tests should prove that operators can find and correct entities, aliases, assignments, and targeted candidates, while preserving durable evidence/provenance and avoiding broad queue assumptions. Do not design tests that imply every AI/entity suggestion must be manually processed one by one.
 
-## Test Tiers
+## Reference: Test Inventory And Environment
 
 ### Local Test Output Path Safety
 
@@ -82,6 +95,7 @@ Phase 3.8d-I2 unifies this behind a Source Ingestion Gate. Tests must prove that
 | `tests/test_check_server_identity_script.py` | Identity script proxy bypass (`trust_env=False`), `normalize_path`, `normalize_executable_path` |
 | `tests/test_media_processor_mime_magic_cache.py` | python-magic availability caching, thread-local detectors, fallback chain, concurrent init safety |
 | `tests/test_config_precedence.py` | Config precedence: process env beats `.env`, `TEST_DATABASE_URL` override, translation flag overrides, code defaults |
+| `tests/test_phase45_doc1_documentation_state.py` | DOC1-R1 active documentation state, stale SC2 wording prevention, handoff slimming guard, summary JSON guard classification schema |
 | `tests/test_phase44p2r_f6_source_layer_search.py` | F6 source-layer media chips, source assertion/source tag AND search with ordinary tags, promotion preview no-op, and no truth-path writes |
 | `tests/test_phase45_sc1_source_concept_resolver.py` | SC1 SourceConcept schema, multi-source signal adapters, alias-edge linking, AI-only trust guard, short-name overmerge guards, F7a final-pack local backfill, and no truth-path writes |
 | `tests/test_phase45_sc2_source_concept_search_evidence_ui.py` | SC2 SourceConcept search expansion, redaction, visible-status gates, cache invalidation, alias closure, `needs_review` behavior, promotion preview no-op, and no truth-path writes |

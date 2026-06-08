@@ -5,39 +5,51 @@
 <h1 align="center">V.I.O.L.E.T.</h1>
 
 <p align="center">
-  <strong>Visual Image Organizer for Local Evaluation & Tagging</strong>
+  <strong>Visual Image Organizer for Local Evaluation &amp; Tagging</strong>
 </p>
 
-V.I.O.L.E.T. is a local-first anime/illustration image library built on top of
-[Blombooru](https://github.com/mrblomblo/blombooru). Its core value is
-Danbooru-style tag-based retrieval for a personal local collection, with Chinese
-UI/localization support and strict safety around local files, iCloud sources,
-provider uploads, and database writes.
+V.I.O.L.E.T. is a local-first anime and illustration library for people who
+want Danbooru-style retrieval over their own image collection. It builds on
+[Blombooru](https://github.com/mrblomblo/blombooru), adds Windows/iCloud-aware
+local ingestion safety, Chinese UI/localization support, AI-assisted tagging,
+source-backed evidence, and provenance-aware workflows for future entity
+correction.
 
-Canonical GitHub repository: [kyloris0660/VIOLET](https://github.com/kyloris0660/VIOLET).
-The historical repository name was `AnimeLocalBooru`; local working directories
-may still use that folder name.
+Canonical repository: [kyloris0660/VIOLET](https://github.com/kyloris0660/VIOLET).
+The historical local folder name may still be `AnimeLocalBooru`.
 
-## Current State
+## Key Features
 
-Start with these active docs instead of old phase reports:
+- Self-hosted gallery for local anime/illustration media.
+- Danbooru-style tag search with upload, scan, thumbnail, and media-detail workflows.
+- Local library scanning with dry-run, cloud-file safety, deduplication, and per-file failure handling.
+- Tag provenance for manual, AI, and imported suggestions; manual/locked tags take priority.
+- Opt-in WDv3 AI tagging jobs and Chinese general/meta tag localization.
+- Source-layer evidence tables for provider-neutral source names, tags, assertions, and SourceConcepts.
+- Targeted manual entity correction foundations without requiring exhaustive review queues.
 
-| Document | Purpose |
-|----------|---------|
-| [Current Handoff](docs/current-handoff.md) | Latest accepted state, current route, and active safety/governance policy |
-| [Project Roadmap](docs/project-roadmap.md) | Phase history, near-term route, and development standards |
-| [Manual Validation](docs/manual-validation.md) | Local development/manual validation runbook |
-| [Test Workflow](docs/test-workflow.md) | Test tiers, environment setup, and scope-based validation guidance |
-| [iCloud Safe Ingestion](docs/icloud-safe-ingestion.md) | Source/iCloud scan, staging, and ingestion safety rules |
+## Current Status
 
-At a high level:
+V.I.O.L.E.T. is a personal/local development project, not a production SaaS.
+The current active work is source-backed evidence quality: SourceConcepts group
+source-layer names, aliases, assertions, tags, AI/model signals, and provider
+metadata into unconfirmed evidence that can power search and validation.
 
-- Phase 3.8d medium pilot is accepted.
-- Phase 4.1 entity metadata foundation and Phase 4.2 manual correction/review foundation are merged.
-- Source-backed evidence and source-layer concept work are active project foundations; see `docs/current-handoff.md` and `docs/project-roadmap.md` for the latest accepted phase state.
-- PR #98 / Phase 4.5-SC2 merged SourceConcept search expansion and compact evidence UI. `SourceConcept` remains source-layer evidence only: not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
-- The next route is expanded SourceConcept validation and coverage audit before any Entity bridge or promotion work.
-- GOV-2 workflow policy is active: durable core contracts remain strict, while phase-scoped and one-off tooling should stay lightweight and should not become generic frameworks unless explicitly promoted.
+SourceConcepts are deliberately not Entity truth. They are not `EntityAlias`
+truth, confirmed assignments, or `media_tags` truth, and they do not approve
+automatic entity promotion. The next development route is expanded
+SourceConcept validation and coverage auditing before any Entity bridge.
+
+## Architecture Overview
+
+| Layer | Technology / Notes |
+|-------|--------------------|
+| Backend | FastAPI, SQLAlchemy ORM, PostgreSQL 17 |
+| Frontend | Jinja2 templates, Tailwind CSS, vanilla JavaScript |
+| Runtime entry point | `python run.py --debug` from repo root |
+| Local config | `.env` for DB/runtime settings; `data/settings.json` after onboarding |
+| AI models | WDv3 ONNX and CLIP ONNX only where explicitly enabled |
+| Tests | Pytest tiers plus gated Playwright Edge E2E |
 
 ## Quick Start
 
@@ -46,59 +58,54 @@ Windows local development:
 ```powershell
 git clone https://github.com/kyloris0660/VIOLET.git AnimeLocalBooru
 cd AnimeLocalBooru
+
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
 Copy-Item example.env .env
-# Edit .env before startup. For Windows local dev, verify local PostgreSQL:
+# Edit .env for local PostgreSQL, for example:
 # POSTGRES_HOST=localhost
 # POSTGRES_DB=blombooru
 # POSTGRES_USER=<local postgres user>
 # POSTGRES_PASSWORD=<local postgres password>
+
 python run.py --debug
 ```
 
 Open <http://localhost:8000>. First run shows onboarding; later runs load the
-gallery directly. Repo-root `python run.py --debug` with the project venv is the
-current startup path; the old `PYTHONPATH=<repo>\backend` workaround is not
-required.
+gallery. Default local development credentials after onboarding are
+`admin` / `admin123`; do not expose those credentials on a public network.
 
-Default local development credentials after onboarding are `admin` / `admin123`.
-Do not use those credentials for an exposed deployment.
+## Safety And Privacy Model
 
-## Core Capabilities
+- Local/source files are never mutated by default.
+- iCloud and Windows Cloud Files workflows must use preflight/dry-run safety paths.
+- Originals, local paths, filenames, API keys, and private source labels must not be exposed in public reports or sent to external providers by default.
+- Provider calls, source enrichment, LLM runs, DB imports, migrations, broad validation, Entity Resolver work, similarity/clustering, and `media_tags` mutation require explicit phase approval.
+- Confirmed automatic entity assignment is not approved by current policy; reliable identity work must remain provenance-first and confirmation-aware.
 
-| Area | Status |
-|------|--------|
-| Blombooru gallery, upload, search, tags | Done |
-| External local library scan and dry-run safety | Done |
-| iCloud/Windows Cloud Files scan safety | Done |
-| Tag provenance, AI suggestions, and manual lock priority | Done |
-| WDv3 AI tagging and background jobs | Done, opt-in |
-| Chinese UI and general/meta tag localization | Done |
-| Entity metadata foundation and targeted manual correction | Done |
-| Provider-neutral reverse-search evidence contract | Done in PR #79 |
-| Broad/repeated provider enrichment | Future, requires ledger discipline and explicit approval |
-| Confirmed automatic entity assignment | Future, not approved by current policy |
+## Documentation Map
 
-## Safety Basics
+| Document | Use it for |
+|----------|------------|
+| [Current Handoff](docs/current-handoff.md) | Short active state, route, non-goals, and validation starting points |
+| [Project Roadmap](docs/project-roadmap.md) | Active roadmap, governance standards, and phase archive |
+| [Test Workflow](docs/test-workflow.md) | Scope-based validation policy and current test entry points |
+| [Manual Validation](docs/manual-validation.md) | Local development/manual validation runbook |
+| [iCloud Safe Ingestion](docs/icloud-safe-ingestion.md) | Source/iCloud scan, staging, and ingestion safety |
 
-- Never commit `.env`, API keys, model files, local manifests, media files, or local database artifacts.
-- Run iCloud/source workflows through preflight and dry-run paths first.
-- Do not upload originals or privacy-sensitive local/source data to external providers by default.
-- Do not perform DB imports, migrations, provider calls, localization execution, Entity Resolver execution, similarity/clustering, source/iCloud mutation, or app-managed storage mutation unless a phase explicitly approves it.
-- For workflow and reviewer rules, use `AGENTS.md`, `CLAUDE.md`, and `docs/project-roadmap.md`; this README is intentionally only a concise entry point.
+Historical phase reports live in `docs/reports/` and are archival traceability,
+not active onboarding material.
 
-## Tech Stack
+## Development Focus
 
-| Component | Technology |
-|-----------|------------|
-| Backend | FastAPI, SQLAlchemy ORM, PostgreSQL 17 |
-| Frontend | Jinja2 templates, Tailwind CSS, vanilla JavaScript |
-| AI models | WDv3 ONNX, CLIP ViT-B/32 ONNX where explicitly used |
-| Local runtime | Python 3.12 project venv on Windows |
+Current source-backed work is focused on validating SourceConcept coverage,
+alias linking, redaction, and search symmetry before any SourceConcept editing,
+Entity bridge, promotion, broad provider run, or full-library scale-up. See the
+roadmap and current handoff before starting a new phase.
 
-## Upstream Attribution
+## Upstream Attribution / License
 
 V.I.O.L.E.T. extends **Blombooru**, a self-hosted media tagging tool.
 
