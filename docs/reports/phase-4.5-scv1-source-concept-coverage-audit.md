@@ -18,7 +18,7 @@ SCV1 performed a read-only audit over the current development DB. It generated p
 ## DB identity and read-only proof
 
 - DB: `blombooru` on `localhost:5432`.
-- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `237e5ca48cffb0028636b120c35492641913f777`.
+- Git: `codex/phase45-scv1-source-concept-coverage-audit` at `2912c58c5fbb10344f29e661def7373b7ea654eb`.
 - Python: `python.exe`.
 - PostgreSQL transaction_read_only: `on`.
 - Forbidden table count proof passed: `True`.

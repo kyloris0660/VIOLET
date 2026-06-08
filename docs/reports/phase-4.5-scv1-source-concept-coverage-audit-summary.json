@@ -27,11 +27,11 @@
     "connected_database": "blombooru",
     "database": "blombooru",
     "git_branch": "codex/phase45-scv1-source-concept-coverage-audit",
-    "git_sha": "237e5ca48cffb0028636b120c35492641913f777",
+    "git_sha": "2912c58c5fbb10344f29e661def7373b7ea654eb",
     "host": "localhost",
     "port": 5432,
     "python_executable": "python.exe",
-    "recorded_at": "2026-06-08T08:22:19Z",
+    "recorded_at": "2026-06-08T08:32:12Z",
     "server_port": 5432,
     "transaction_read_only": "on",
     "transaction_read_only_ok": true,
@@ -143,7 +143,7 @@
     ],
     "recommended_next_phase": "source_concept_alias_resolver_improvement"
   },
-  "generated_at": "2026-06-08T08:22:36Z",
+  "generated_at": "2026-06-08T08:32:30Z",
   "media_coverage": {
     "ai_jobs_by_status": {
       "completed": 51
@@ -269,7 +269,7 @@
   },
   "recommended_next_phase": "source_concept_alias_resolver_improvement",
   "redaction_privacy_audit": {
-    "checked_at": "2026-06-08T08:22:37Z",
+    "checked_at": "2026-06-08T08:32:30Z",
     "findings": [],
     "passed": true,
     "public_paths": [
