@@ -19,7 +19,55 @@ The finished system should:
 
 ---
 
-## Completed Phases
+## Current Active Roadmap
+
+The active route is SourceConcept validation before Entity truth work.
+
+Current accepted state:
+
+- Phase 4.5-SC1 is merged: SourceConcept resolver core, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
+- Phase 4.5-SC2 is merged: read-only SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
+- SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
+
+Current DOC1-R1 documentation goal:
+
+- Keep README public and concise.
+- Keep `docs/current-handoff.md` short and operational.
+- Keep this roadmap focused at the top, with historical details below as archive/reference.
+- Keep `docs/test-workflow.md` centered on scope-based validation.
+- Classify GOV-2 guard debt by the phase that must turn it into executable checks.
+
+## Near-Term Route
+
+1. Finish and review Phase 4.5-DOC1-R1.
+2. If accepted and manually merged, start `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit`.
+3. SCV1 should inventory current DB/source-signal/SourceConcept coverage, audit cross-language alias gaps, check search-expansion symmetry, and review larger current-data samples without new import first.
+4. Use the current Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)` gap as one validation seed, not as a hardcoded DOC1 fix.
+5. Only after SCV1 should the project decide whether broader import, AI tagging, source metadata extraction, SourceConcept management/editing, or an Entity bridge is justified.
+
+Explicit ordering:
+
+- SCV1 comes before Entity bridge or promotion.
+- SourceConcept management/editing is a later source-layer phase, not DOC1/SCV1 by default.
+- Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
+- Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
+
+## Current Governance / Development Standards
+
+- Agents may create/update branches and PRs, but must not push `main` or merge PRs.
+- Use the established PR body sections for reviewable phase PRs: summary, scope, constraints, implementation, validation, test plan, reviewer status, safety confirmation, and next step.
+- GOV-2 is active: use focused executable guards, tests, DB constraints, validation runners, and runtime assertions where practical; avoid repeating long hard rules in every doc.
+- Docs-only stages use `git diff --check`, JSON validation, Python identity if Python is used, and focused doc consistency tests when present. They do not need pytest/E2E/browser/server validation unless they touch code, runtime, or UI.
+- UI/runtime changes require real browser validation with a controlled test server and identity preflight.
+- Broad provider/source/full-library work must wait for run-ledger discipline and explicit approval.
+
+Detailed historical standards remain below under development standards; older phase reports remain archival.
+
+---
+
+## Phase Archive / Historical Traceability
+
+This section preserves historical context. For the current route, read the active roadmap above and `docs/current-handoff.md` first.
 
 ### Phase 0 — Project Bootstrap
 
@@ -785,8 +833,9 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Phase 4.5-SC1 / PR #96 is complete. It added the missing source-layer soft linker between raw source signals and future Entity promotion. It aggregates F7a candidates, ordinary media tags, AI/model character tags, `SourceSearchableNameAssertion`, `SourceNameObservation`, `SourceTagObservation`, `SourceNameAliasCandidate`, provider structured fields/cache context, and future provider/manual signals into unconfirmed `SourceConcept` rows with aliases, evidence, links, run ledger, and search-preview rows.
 - Phase 4.5-SC1 did not run providers, gallery-dl, Pixiv/SauceNAO/Google enrichment, tag localization batches, background translation, source enrichment, broad scans, imports, image uploads, full search/UI integration, or Entity promotion. Bounded text-only LLM pair adjudication was allowed only when explicitly enabled for resolver validation, capped by call/budget settings, cache-backed, primary-provider-only, and recorded in the validation pack.
 - Phase 4.5-SC1 did not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, `TagTranslation`, confirmed assignments, or `media_tags`. Manual promotion remains preview/design/disabled until a later explicit Entity bridge phase.
-- Phase 4.5-SC2 implementation is prepared on branch `codex/phase45-sc2-source-concept-search-evidence-ui`. It adds read-only SourceConcept alias expansion through `SourceConceptSearchIndex`, media-detail SourceConcept grouping/evidence UI, search expansion explanation, conservative `needs_review` default behavior, and disabled/no-op manual-promotion preview. It preserves normal tag search, preserves F6 user-facing chip behavior through global `q=` search, keeps scoped source filters advanced/debug-only, and remains read-only over Entity truth paths.
-- Phase 4.5-DOC1 should happen after SC2, not inside SC2 implementation. It should consolidate README / AGENTS / current handoff / roadmap / test-workflow guidance, link to reports instead of copying long rules, and identify hard safety rules that should move into code, tests, DB guards, validation runners, or explicit runtime assertions.
+- Phase 4.5-SC2 / PR #98 is complete. It added read-only SourceConcept alias expansion through `SourceConceptSearchIndex`, media-detail SourceConcept grouping/evidence UI, search expansion explanation, `needs_review` source-layer search behavior, and disabled/no-op manual-promotion preview. It preserves normal tag search, preserves F6 user-facing chip behavior through global `q=` search, keeps scoped source filters advanced/debug-only, and remains read-only over Entity truth paths.
+- Phase 4.5-DOC1 is the post-SC2 documentation consolidation and executable-guard audit. It should keep long-term docs concise, link to reports instead of copying long rules, and identify hard safety rules that are enforced by code/tests versus still documented-only.
+- Next recommended route after DOC1: `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit` before any Entity bridge or promotion work.
 
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 
@@ -799,12 +848,12 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Small docs/process updates should be batched unless they remove major contradictions or unblock current work.
 - Public reports: `docs/reports/governance-documentation-alignment-and-workflow-weight-reduction.md` and `docs/reports/governance-documentation-alignment-and-workflow-weight-reduction-summary.json`.
 
-## Upcoming Phases
+## Future Backlog Reference
 
-Current near-term options after Phase 4.5-SC2 implementation:
+This reference preserves older backlog items. The active near-term route is the `Near-Term Route` section at the top of this file.
 
-1. Review Phase 4.5-SC2 implementation for transparent search expansion, media-detail SourceConcept evidence UI, conservative `needs_review` behavior, disabled promotion preview, no unsafe evidence exposure, and no truth-path writes.
-2. If accepted, merge SC2 manually through GitHub. Agents must not merge the PR or push `main`.
+1. `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit` should run before any Entity bridge. It should inventory current DB coverage, validate larger current-data samples, identify cross-language alias gaps, check search-expansion symmetry, and decide whether broader import/source-data expansion is needed.
+2. The current Nahida / `纳西妲` observation belongs to SCV1-style coverage analysis: `nahida_(genshin_impact)` links to Nahida, while `纳西妲` currently appears as separate Pixiv/source evidence and is not yet linked.
 3. A later Entity bridge phase must explicitly design preview, user confirmation, audit trail, rollback/supersede, and write guards before creating `Entity`, aliases, candidates, assignments, `LocalSourceHint`, or `media_tags` relations.
 4. Do not merge PR #86 as the durable Pixiv metadata route. Public-page preview probing is diagnostic/fallback only, not the source of reliable Pixiv tags/artist/page metadata.
 5. Any new provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment/localization run after SC1 requires a separate approved run policy and must not be smuggled into resolver validation. Future broad LLM extraction/classification or localization runs also need separate approval; SC1's approved LLM scope is limited to bounded text-only pair adjudication.
@@ -815,7 +864,7 @@ Current near-term options after Phase 4.5-SC2 implementation:
 10. Proper noun / entity / character localization strategy after source-backed entity correction and alias foundations are usable.
 11. Seed-based local retrieval or clustering only as supplementary recall after source-discovery/source-backed evidence exists; no automatic confirmed assignments.
 12. Admin stats/settings UI rewrite remains separate from source concept search/UI work.
-13. Phase 4.5-DOC1: documentation consolidation after SC2. Keep long-term docs concise, avoid duplicating rules across README / AGENTS / handoff / roadmap / reports, keep agent-facing docs operational and short, make README a lightweight entry point, and move hard safety constraints into code/tests/DB guards/runners wherever practical.
+13. SourceConcept management/editing remains a later source-layer phase. Do not start it inside DOC1 or SCV1 unless explicitly approved.
 
 ### Future prerequisite - Ingestion Run Ledger / Source Item State Ledger
 
