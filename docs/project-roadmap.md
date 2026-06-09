@@ -21,34 +21,38 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is SourceConcept alias-quality improvement before Entity truth work.
+The active route is governed controlled medium expansion before renewed SourceConcept triage and Entity truth work.
 
 Current accepted state:
 
 - Phase 4.5-SC1 is merged: SourceConcept resolver core, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
 - Phase 4.5-SC2 is merged: read-only SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
 - Phase 4.5-DOC1-R1 is merged: README/handoff/roadmap/test workflow restructuring and guard-debt classification.
-- Phase 4.5-SCV1 is implemented on branch `codex/phase45-scv1-source-concept-coverage-audit`: read-only current-DB coverage audit, search symmetry check, alias-gap analysis, `needs_review` cluster analysis, redaction proof, and decision matrix.
+- Phase 4.5-SCV1 is merged: read-only current-DB coverage audit, search symmetry check, alias-gap analysis, `needs_review` cluster analysis, redaction proof, and decision matrix.
+- Phase 4.5-SCV2-P0 is implemented on branch `codex/phase45-scv2-p0-controlled-medium-expansion-policy`: read-only current-DB media/Pixiv-like/source metadata inventory, AI tag continuity policy, medium expansion target/buffer, E1/PX1/R1/A1 split, ledger schemas, safety gates, and public/private artifact boundary.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
-Current SCV1 audit result:
+Current SCV2-P0 result:
 
 - Read-only proof passed: PostgreSQL transaction was read-only and forbidden table row counts did not change.
-- Public redaction passed for `docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md` and summary JSON.
-- Search symmetry was exact for checked visible concepts, but alias-gap signals and `needs_review` noise are high.
-- Recommended next route: `source_concept_alias_resolver_improvement`.
-- Broad 5k/10k expansion and Entity bridge are not justified yet.
+- Public redaction passed for `docs/reports/phase-4.5-scv2-p0-controlled-medium-expansion-policy.md` and summary JSON.
+- Current DB baseline is 1989 total media, 1936 eligible media, and 1936/1936 eligible AI tag coverage.
+- DB-derived Pixiv-like media candidates are 557; 60 have source metadata and 497 are metadata backlog.
+- Recommended next route: `SCV2-E1` medium import plus AI tag completion, followed by `PX1`, `SCV2-R1`, and `SCV2-A1`.
+- 5k/10k/full-library expansion and Entity bridge are not next.
 
 ## Near-Term Route
 
-1. Review and merge Phase 4.5-SCV1 if accepted.
-2. Start a separate `source_concept_alias_resolver_improvement` phase to reduce alias fragmentation, cross-language gaps, and noisy `needs_review` clusters while staying source-layer-only.
-3. Treat bounded Pixiv/source metadata expansion as a secondary route only after provider policy, cache/audit/rate-limit/budget, and run-ledger safeguards are explicit.
-4. Do not start 5k/10k expansion, SourceConcept editing, Entity bridge, promotion, AI tagging expansion, tag localization catch-up, or provider/source enrichment inside SCV1.
+1. Review and merge Phase 4.5-SCV2-P0 if accepted.
+2. Start `SCV2-E1` only after approving import target, source roots, staging/import safety, AI job behavior, localization-off behavior, and item ledger.
+3. Run `PX1` as a separate bounded Pixiv/source metadata phase after provider/gallery-dl/auth/cache/rate-limit/retry/redaction policy is approved.
+4. Run `SCV2-R1` SourceConcept alias resolver / `needs_review` triage only after expanded AI/source metadata signals exist.
+5. Run `SCV2-A1` as the post-expansion read-only audit before any broader scale, SourceConcept editing, or Entity bridge decision.
 
 Explicit ordering:
 
-- Alias resolver improvement comes before Entity bridge or promotion.
+- Controlled medium import/AI continuity comes before PX1, and PX1 comes before renewed SourceConcept alias/needs_review triage in this route.
+- Alias resolver improvement still comes before Entity bridge or promotion.
 - SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
