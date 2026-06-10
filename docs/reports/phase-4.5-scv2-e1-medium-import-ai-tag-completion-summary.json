@@ -1,0 +1,2159 @@
+{
+  "ai_tagging_results": {
+    "ai_tag_failure_count": 0,
+    "ai_tag_success_count": 1751,
+    "continuity_policy": {
+      "ai_tag_failures": 0,
+      "coverage_pct": 100.0,
+      "coverage_ratio": 1.0,
+      "eligible_new_media": 1751,
+      "eligible_new_media_with_ai_tag_provenance": 1751,
+      "eligible_new_media_without_ai_tag_provenance": 0,
+      "passed": true,
+      "target_pct": 100.0
+    },
+    "coverage_pct": 100.0,
+    "coverage_ratio": 1.0,
+    "eligible_new_media": 1751,
+    "failure_budget": {
+      "attempted": 1751,
+      "consecutive_failures": 0,
+      "exceeded": [],
+      "failed": 0,
+      "failure_rate": 0.0,
+      "failure_reasons": {},
+      "max_consecutive_failures": 10,
+      "max_failure_rate": 0.05,
+      "max_item_failures": 20,
+      "max_same_reason_failures": 20,
+      "passed": true,
+      "same_reason_exceeded": {}
+    },
+    "jobs": [
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 56,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 100,
+        "tags_added": 468
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 57,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 128,
+        "tags_added": 424
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 58,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 116,
+        "tags_added": 433
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 59,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 112,
+        "tags_added": 393
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 60,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 154,
+        "tags_added": 410
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 61,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 140,
+        "tags_added": 454
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 62,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 501
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 63,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 103,
+        "tags_added": 392
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 64,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 106,
+        "tags_added": 373
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 65,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 103,
+        "tags_added": 418
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 66,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 143,
+        "tags_added": 423
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 67,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 130,
+        "tags_added": 501
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 68,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 361
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 69,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 140,
+        "tags_added": 416
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 70,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 393
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 71,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 386
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 72,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 125,
+        "tags_added": 397
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 73,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 411
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 74,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 134,
+        "tags_added": 448
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 75,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 118,
+        "tags_added": 409
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 76,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 119,
+        "tags_added": 369
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 77,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 406
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 78,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 378
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 79,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 165,
+        "tags_added": 399
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 80,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 117,
+        "tags_added": 433
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 81,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 83,
+        "tags_added": 344
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 82,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 383
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 83,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 107,
+        "tags_added": 415
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 84,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 425
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 85,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 144,
+        "tags_added": 381
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 86,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 129,
+        "tags_added": 407
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 87,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 135,
+        "tags_added": 404
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 88,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 134,
+        "tags_added": 398
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 89,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 402
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 90,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 130,
+        "tags_added": 376
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 91,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 116,
+        "tags_added": 387
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 92,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 134,
+        "tags_added": 374
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 93,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 127,
+        "tags_added": 388
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 94,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 134,
+        "tags_added": 399
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 95,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 412
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 96,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 394
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 97,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 116,
+        "tags_added": 372
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 98,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 91,
+        "tags_added": 429
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 99,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 100,
+        "tags_added": 394
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 100,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 98,
+        "tags_added": 437
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 101,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 130,
+        "tags_added": 391
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 102,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 138,
+        "tags_added": 346
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 103,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 106,
+        "tags_added": 376
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 104,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 370
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 105,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 380
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 106,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 106,
+        "tags_added": 438
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 107,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 132,
+        "tags_added": 435
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 108,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 102,
+        "tags_added": 446
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 109,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 115,
+        "tags_added": 360
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 110,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 149,
+        "tags_added": 428
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 111,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 133,
+        "tags_added": 373
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 112,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 107,
+        "tags_added": 294
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 113,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 370
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 114,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 384
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 115,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 341
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 116,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 108,
+        "tags_added": 396
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 117,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 390
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 118,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 118,
+        "tags_added": 369
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 119,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 114,
+        "tags_added": 368
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 120,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 147,
+        "tags_added": 379
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 121,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 111,
+        "tags_added": 352
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 122,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 91,
+        "tags_added": 343
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 123,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 126,
+        "tags_added": 374
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 124,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 106,
+        "tags_added": 398
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 125,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 407
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 126,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 137,
+        "tags_added": 366
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 127,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 121,
+        "tags_added": 433
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 128,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 145,
+        "tags_added": 451
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 129,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 111,
+        "tags_added": 307
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 130,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 111,
+        "tags_added": 397
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 131,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 412
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 132,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 115,
+        "tags_added": 341
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 133,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 100,
+        "tags_added": 430
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 134,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 105,
+        "tags_added": 388
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 135,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 138,
+        "tags_added": 392
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 136,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 140,
+        "tags_added": 332
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 137,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 108,
+        "tags_added": 394
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 138,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 127,
+        "tags_added": 424
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 139,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 371
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 140,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 136,
+        "tags_added": 373
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 141,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 351
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 142,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 122,
+        "tags_added": 413
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 143,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 98,
+        "tags_added": 372
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 144,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 137,
+        "tags_added": 452
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 145,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 135,
+        "tags_added": 472
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 146,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 127,
+        "tags_added": 404
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 147,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 97,
+        "tags_added": 374
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 148,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 105,
+        "tags_added": 419
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 149,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 105,
+        "tags_added": 373
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 150,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 135,
+        "tags_added": 450
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 151,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 121,
+        "tags_added": 424
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 152,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 102,
+        "tags_added": 390
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 153,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 105,
+        "tags_added": 397
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 154,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 126,
+        "tags_added": 434
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 155,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 130,
+        "tags_added": 421
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 156,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 130,
+        "tags_added": 468
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 157,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 118,
+        "tags_added": 438
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 158,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 123,
+        "tags_added": 429
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 159,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 414
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 160,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 157,
+        "tags_added": 446
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 161,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 145,
+        "tags_added": 424
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 162,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 112,
+        "tags_added": 435
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 163,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 415
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 164,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 120,
+        "tags_added": 369
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 165,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 90,
+        "tags_added": 391
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 166,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 108,
+        "tags_added": 431
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 167,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 130,
+        "tags_added": 347
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 168,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 141,
+        "tags_added": 385
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 169,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 119,
+        "tags_added": 377
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 170,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 158,
+        "tags_added": 422
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 171,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 126,
+        "tags_added": 413
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 172,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 140,
+        "tags_added": 371
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 173,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 115,
+        "tags_added": 347
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 174,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 103,
+        "tags_added": 374
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 175,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 111,
+        "tags_added": 383
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 176,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 152,
+        "tags_added": 405
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 177,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 137,
+        "tags_added": 350
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 178,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 119,
+        "tags_added": 467
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 179,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 146,
+        "tags_added": 417
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 180,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 110,
+        "tags_added": 392
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 181,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 123,
+        "tags_added": 401
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 182,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 91,
+        "tags_added": 398
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 183,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 122,
+        "tags_added": 388
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 184,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 115,
+        "tags_added": 364
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 185,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 387
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 186,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 406
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 187,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 95,
+        "tags_added": 404
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 188,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 110,
+        "tags_added": 328
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 189,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 121,
+        "tags_added": 314
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 190,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 380
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 191,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 303
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 192,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 116,
+        "tags_added": 391
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 193,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 160,
+        "tags_added": 379
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 194,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 381
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 195,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 138,
+        "tags_added": 410
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 196,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 174,
+        "tags_added": 486
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 197,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 117,
+        "tags_added": 377
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 198,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 140,
+        "tags_added": 403
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 199,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 111,
+        "tags_added": 363
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 200,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 116,
+        "tags_added": 390
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 201,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 115,
+        "tags_added": 391
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 202,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 94,
+        "tags_added": 372
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 203,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 118,
+        "tags_added": 395
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 204,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 132,
+        "tags_added": 433
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 205,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 95,
+        "tags_added": 407
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 206,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 149,
+        "tags_added": 442
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 207,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 446
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 208,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 127,
+        "tags_added": 385
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 209,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 122,
+        "tags_added": 395
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 210,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 154,
+        "tags_added": 430
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 211,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 396
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 212,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 118,
+        "tags_added": 419
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 213,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 460
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 214,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 100,
+        "tags_added": 422
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 215,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 106,
+        "tags_added": 430
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 216,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 129,
+        "tags_added": 397
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 217,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 129,
+        "tags_added": 388
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 218,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 105,
+        "tags_added": 363
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 219,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 114,
+        "tags_added": 383
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 220,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 124,
+        "tags_added": 424
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 221,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 107,
+        "tags_added": 354
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 222,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 121,
+        "tags_added": 342
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 223,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 94,
+        "tags_added": 354
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 224,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 456
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 225,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 117,
+        "tags_added": 427
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 226,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 113,
+        "tags_added": 394
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 227,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 131,
+        "tags_added": 366
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 228,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 139,
+        "tags_added": 464
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 229,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 121,
+        "tags_added": 371
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 230,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 10,
+        "status": "completed",
+        "suggestions_added": 122,
+        "tags_added": 399
+      },
+      {
+        "error_message": "",
+        "failed": 0,
+        "job_id": 231,
+        "localization_status": "skipped_auto_localization_disabled",
+        "processed": 1,
+        "status": "completed",
+        "suggestions_added": 9,
+        "tags_added": 31
+      }
+    ],
+    "localization_auto_disabled": true,
+    "model_status": {
+      "available": true,
+      "enabled": true,
+      "model_downloaded": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "network_download_allowed": false
+    },
+    "status": "completed"
+  },
+  "artifact_lifecycle": {
+    "private_artifacts": "one-off local artifact / ignored output",
+    "public_report": "public report / handoff / roadmap update",
+    "runner": "phase-scoped operational runner",
+    "tests": "phase-scoped validation test"
+  },
+  "baseline_before": {
+    "content_class_distribution": {
+      "anime": 1882,
+      "non_anime": 53,
+      "unknown": 54
+    },
+    "eligible_ai_tag_provenance_pct": 100.0,
+    "eligible_media": 1936,
+    "eligible_media_with_ai_tag_provenance": 1936,
+    "eligible_media_without_ai_tag_provenance": 0,
+    "eligible_policy": "content_class IN ('anime', 'unknown')",
+    "media_with_source_metadata": 60,
+    "source_metadata_total_rows": 200,
+    "total_media": 1989
+  },
+  "branch": "codex/phase45-scv2-e1-medium-import-ai-tag-completion",
+  "candidate_discovery": {
+    "candidate_target": 2378,
+    "deferred_pre_duplicate": 5919,
+    "deferred_reason_counts": {
+      "cloud_recall_on_data_access": 5919
+    },
+    "eligible_pre_duplicate": 4081,
+    "extension_counts": {
+      ".jpeg": 16,
+      ".jpg": 6957,
+      ".mov": 1,
+      ".mp4": 2,
+      ".png": 3027
+    },
+    "max_discovery_files": 10000,
+    "paths_private_artifact_only": true,
+    "total_candidates_considered": 10000
+  },
+  "classification_results": {
+    "anime": 1732,
+    "distribution": {
+      "anime": 1732,
+      "non_anime": 10,
+      "unknown": 19
+    },
+    "eligible": 1751,
+    "failed": 0,
+    "ineligible": 10,
+    "jobs": [
+      {
+        "classified_anime": 485,
+        "classified_non_anime": 5,
+        "classified_unknown": 10,
+        "error_message": "",
+        "failed": 0,
+        "job_id": 26,
+        "processed": 500,
+        "status": "completed"
+      },
+      {
+        "classified_anime": 497,
+        "classified_non_anime": 1,
+        "classified_unknown": 2,
+        "error_message": "",
+        "failed": 0,
+        "job_id": 27,
+        "processed": 500,
+        "status": "completed"
+      },
+      {
+        "classified_anime": 492,
+        "classified_non_anime": 3,
+        "classified_unknown": 5,
+        "error_message": "",
+        "failed": 0,
+        "job_id": 28,
+        "processed": 500,
+        "status": "completed"
+      },
+      {
+        "classified_anime": 258,
+        "classified_non_anime": 1,
+        "classified_unknown": 2,
+        "error_message": "",
+        "failed": 0,
+        "job_id": 29,
+        "processed": 261,
+        "status": "completed"
+      }
+    ],
+    "non_anime": 10,
+    "processed": 1761,
+    "status": "completed",
+    "unknown": 19
+  },
+  "db_identity_after": {
+    "connected_database": "blombooru",
+    "connected_user_recorded": true,
+    "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "urls_match": true
+    },
+    "git_branch": "codex/phase45-scv2-e1-medium-import-ai-tag-completion",
+    "git_sha": "b6f7ee3b3724dd37414bcfe80e168eb7139546a7",
+    "host": "localhost",
+    "password_value_recorded": false,
+    "port": 5432,
+    "python_executable": "python.exe",
+    "python_executable_path_recorded_private_only": true,
+    "recorded_at": "2026-06-10T07:23:00.831949+00:00",
+    "total_media_after": 3750,
+    "violet_env": "development"
+  },
+  "db_identity_before": {
+    "connected_database": "blombooru",
+    "connected_user_recorded": true,
+    "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "urls_match": true
+    },
+    "git_branch": "codex/phase45-scv2-e1-medium-import-ai-tag-completion",
+    "git_sha": "b6f7ee3b3724dd37414bcfe80e168eb7139546a7",
+    "host": "localhost",
+    "password_value_recorded": false,
+    "port": 5432,
+    "python_executable": "python.exe",
+    "python_executable_path_recorded_private_only": true,
+    "recorded_at": "2026-06-10T06:44:09.419168+00:00",
+    "total_media_before": 1989,
+    "violet_env": "development"
+  },
+  "decision_matrix": {
+    "broad_import_deferred": true,
+    "e1_target_met": true,
+    "five_k_ten_k_full_library_deferred_reason": "Requires stronger production ingestion/source-item ledger and broad-run discipline.",
+    "pixiv_source_metadata_not_run_reason": "PX1 owns provider/gallery-dl/Pixiv/source metadata extraction.",
+    "px1_may_start_next": true,
+    "source_concept_resolver_not_run_reason": "SCV2-R1 owns resolver/needs_review triage."
+  },
+  "duplicate_detection": {
+    "deferred_or_failed_count": 0,
+    "duplicate_count": 358,
+    "hash_timeout_seconds": 30,
+    "paths_private_artifact_only": true,
+    "reason_counts": {
+      "duplicate_by_hash": 319,
+      "duplicate_by_manifest_hash": 36,
+      "duplicate_by_pixiv_id_page": 3,
+      "unique_import_candidate": 2020
+    },
+    "selected_for_duplicate_detection": 2378,
+    "unique_import_candidates": 2020
+  },
+  "failure_budget": {
+    "max_consecutive_failures": 10,
+    "max_failure_rate": 0.05,
+    "max_item_failures": 20,
+    "max_same_reason_failures": 20,
+    "scope": "import execution and AI tagging; candidate discovery deferrals are separately item-ledgered and do not count against import/AI failure budget"
+  },
+  "generated_at": "2026-06-10T07:23:01.374196+00:00",
+  "import_results": {
+    "acceptable_range": [
+      1511,
+      2011
+    ],
+    "app_managed_storage_writes": 1761,
+    "attempted_imports": 1761,
+    "db_import": true,
+    "failure_count": 0,
+    "failure_reason_counts": {},
+    "recommended_target_met": true,
+    "source_root_mutation": false,
+    "status": "completed_recommended_target_met",
+    "successful_imports": 1761,
+    "target_met": true,
+    "target_successful_imports": 1761
+  },
+  "mode": "execute",
+  "mutation_proof": {
+    "expected_changed_table_names": [
+      "blombooru_ai_tag_jobs",
+      "blombooru_classification_jobs",
+      "blombooru_media",
+      "blombooru_media_tags",
+      "blombooru_tags"
+    ],
+    "expected_changed_tables": [
+      {
+        "after": 227,
+        "before": 51,
+        "delta": 176,
+        "table": "blombooru_ai_tag_jobs"
+      },
+      {
+        "after": 29,
+        "before": 25,
+        "delta": 4,
+        "table": "blombooru_classification_jobs"
+      },
+      {
+        "after": 3750,
+        "before": 1989,
+        "delta": 1761,
+        "table": "blombooru_media"
+      },
+      {
+        "after": 196794,
+        "before": 105699,
+        "delta": 91095,
+        "table": "blombooru_media_tags"
+      },
+      {
+        "after": 4549,
+        "before": 3889,
+        "delta": 660,
+        "table": "blombooru_tags"
+      }
+    ],
+    "forbidden_changed_table_names": [],
+    "forbidden_changed_tables": [],
+    "missing_forbidden_tables": [],
+    "passed": true,
+    "unexpected_changed_table_names": [],
+    "unexpected_changed_tables": []
+  },
+  "phase": "4.5-SCV2-E1",
+  "private_artifacts": {
+    "paths_public": false,
+    "private_artifact_names": [
+      "db-identity-before.json",
+      "db-identity-after.json",
+      "storage-identity.json",
+      "source-root-inventory.json",
+      "candidate-discovery-ledger.jsonl",
+      "candidate-summary.json",
+      "duplicate-detection-ledger.jsonl",
+      "import-item-ledger.jsonl",
+      "classification-ledger.jsonl",
+      "ai-tagging-ledger.jsonl",
+      "ai-tagging-failure-ledger.jsonl",
+      "mutation-proof-before.json",
+      "mutation-proof-after.json",
+      "mutation-proof-delta.json",
+      "safety-stop-conditions.json",
+      "public-redaction-check.txt"
+    ],
+    "private_artifact_root_label": ".local_manifests/phase-4.5-scv2-e1-medium-import-ai-tag-completion",
+    "private_artifacts_committed": false
+  },
+  "public_redaction": {
+    "checked_paths": [
+      "phase-4.5-scv2-e1-medium-import-ai-tag-completion.md",
+      "phase-4.5-scv2-e1-medium-import-ai-tag-completion-summary.json"
+    ],
+    "findings": [],
+    "passed": true
+  },
+  "recommended_next_phase": "PX1",
+  "safety": {
+    "browser_validation": "not_run_no_ui_runtime_target",
+    "no_classification_ai_beyond_new_imported_eligible": true,
+    "no_cleanup_delete_reset_drop_truncate": true,
+    "no_entity_resolver_similarity_sourceconcept_entity_bridge": true,
+    "no_localization_llm_provider_pixiv_gallery_dl": true,
+    "no_merge": true,
+    "no_push_main": true,
+    "no_source_icloud_mutation": true,
+    "no_unapproved_db_import": true,
+    "phase_boundary": {
+      "browser_validation": false,
+      "entity_bridge": false,
+      "gallery_dl": false,
+      "llm": false,
+      "localization": false,
+      "pixiv": false,
+      "provider_calls": false,
+      "server_start": false,
+      "source_concept_resolver": false,
+      "source_metadata_extraction": false
+    },
+    "stop_conditions": {
+      "ai_continuity_not_met": false,
+      "forbidden_table_changed": false,
+      "target_not_met": false,
+      "unexpected_table_changed": false
+    }
+  },
+  "source_root_safety": {
+    "icloud_or_cloud_backed_source_roots": 1,
+    "read_only_from_e1_perspective": true,
+    "safe_source_roots": 2,
+    "source_paths_public": false,
+    "source_roots_total": 2,
+    "source_storage_overlap_safe": true
+  },
+  "status": "completed",
+  "storage_identity": {
+    "original_path_exists": true,
+    "original_path_label": "app_storage/media/original",
+    "paths_redacted": true,
+    "source_storage_overlap_safe": true,
+    "storage_root_exists": true,
+    "storage_root_label": "app_storage",
+    "thumbnails_path_exists": true,
+    "thumbnails_path_label": "app_storage/media/thumbnails"
+  },
+  "title": "Medium Import + AI Tag Completion",
+  "validation": {
+    "browser_validation": "not_run_no_ui_runtime_target",
+    "commands": [
+      "python.exe scripts/run_phase45_scv2_e1_medium_import_ai_tag_completion.py --execute --confirm-execution EXECUTE_PHASE45_SCV2_E1_MEDIUM_IMPORT_AI_TAG_COMPLETION --write-public-report"
+    ],
+    "dry_run_first_required": true,
+    "model_preflight": {
+      "ai_model": {
+        "available": true,
+        "enabled": true,
+        "model_downloaded": true,
+        "model_name": "wd-swinv2-tagger-v3",
+        "network_download_allowed": false
+      },
+      "classification_model": {
+        "error": null,
+        "loaded": true,
+        "network_download_allowed": false,
+        "required": true
+      }
+    },
+    "server_started": false
+  }
+}
