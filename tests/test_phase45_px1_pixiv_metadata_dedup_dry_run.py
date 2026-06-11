@@ -126,6 +126,19 @@ def test_retention_policy_prefers_existing_source_metadata_signal() -> None:
     assert plan["retained_media_candidate"] == 2
 
 
+def test_duplicate_retention_labels_non_pixiv_source_metadata_preference() -> None:
+    plan = px1.duplicate_group_plan(
+        [
+            candidate(8, pixiv_like=False, work_ids=(), has_metadata=True),
+            candidate(4, pixiv_like=False, work_ids=()),
+        ],
+        group_index=1,
+    )
+
+    assert plan["retained_media_candidate"] == 8
+    assert plan["retention_reason"] == "source_metadata_preferred"
+
+
 def test_all_non_pixiv_duplicate_group_retains_lowest_id() -> None:
     plan = px1.duplicate_group_plan(
         [
@@ -317,6 +330,86 @@ def test_existing_raw_cache_prevents_provider_call(tmp_path) -> None:
     assert request["provider_called"] is False
 
 
+def write_cached_not_found(raw_dir, target: px1.MediaCandidate) -> None:
+    paths = px1.raw_cache_paths(raw_dir, target)
+    paths["stdout"].parent.mkdir(parents=True, exist_ok=True)
+    paths["stdout"].write_text(
+        json.dumps([[-1, {"error": "NotFoundError", "message": "Requested resource could not be found"}]], indent=2),
+        encoding="utf-8",
+    )
+    paths["stderr"].write_text("", encoding="utf-8")
+
+
+def test_cached_failures_do_not_consume_provider_budget_or_block_uncached_candidates(tmp_path) -> None:
+    cached = [candidate(i, filename=f"{10000000 + i}_p0.png", file_hash=f"hash-{i}") for i in range(1, 4)]
+    uncached = candidate(50, filename="20000000_p0.png", file_hash="hash-50")
+    raw_dir = tmp_path / "provider-cache" / "raw-gallery-dl-json"
+    for item in cached:
+        write_cached_not_found(raw_dir, item)
+    calls: list[list[str]] = []
+
+    def fake_runner(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps([2, "https://example.invalid", {"id": 20000000, "num": 0, "title": "ok", "tags": ["tag"]}]),
+            stderr="",
+        )
+
+    budget = px1.ProviderFailureBudget(max_total_failures=1, max_failure_rate=0.0, max_consecutive_failures=1)
+    requests, successes, failures, summary = px1.execute_metadata_requests(
+        [*cached, uncached],
+        px1.GalleryDlEntrypoint(True, "unit_test", ("gallery-dl",), "1.0"),
+        output_dir=tmp_path,
+        timeout=1,
+        sleep_request_seconds=0,
+        failure_budget=budget,
+        runner=fake_runner,
+    )
+
+    assert len(calls) == 1
+    assert len(requests) == 4
+    assert len(successes) == 1
+    assert len(failures) == 3
+    assert summary["cache_failure_count"] == 3
+    assert summary["cache_no_metadata_records_count"] == 3
+    assert summary["cache_unavailable_private_or_deleted_count"] == 3
+    assert summary["provider_called_count"] == 1
+    assert summary["failure_budget"]["attempts"] == 1
+    assert summary["failure_budget"]["total_failures"] == 0
+    assert budget.stopped is False
+
+
+def test_cache_only_replay_reports_network_not_attempted(tmp_path) -> None:
+    cached = [candidate(i, filename=f"{30000000 + i}_p0.png", file_hash=f"hash-{i}") for i in range(1, 3)]
+    raw_dir = tmp_path / "provider-cache" / "raw-gallery-dl-json"
+    for item in cached:
+        write_cached_not_found(raw_dir, item)
+
+    def fail_runner(*args, **kwargs):
+        raise AssertionError("cache-only replay must not call provider")
+
+    budget = px1.ProviderFailureBudget(max_total_failures=1, max_failure_rate=0.0, max_consecutive_failures=1)
+    requests, successes, failures, summary = px1.execute_metadata_requests(
+        cached,
+        px1.GalleryDlEntrypoint(True, "unit_test", ("gallery-dl",), "1.0"),
+        output_dir=tmp_path,
+        timeout=1,
+        sleep_request_seconds=0,
+        failure_budget=budget,
+        runner=fail_runner,
+    )
+
+    assert len(requests) == 2
+    assert successes == []
+    assert len(failures) == 2
+    assert summary["provider_called_count"] == 0
+    assert summary["cache_hit_count"] == 2
+    assert summary["failure_budget"]["attempts"] == 0
+    assert px1.provider_network_attempted(summary) is False
+
+
 def test_no_metadata_records_saves_private_raw_diagnostics(tmp_path) -> None:
     target = candidate(43, filename="12345679_p0.png")
 
@@ -357,6 +450,26 @@ def test_public_provider_diagnosis_does_not_expose_raw_stdout_or_stderr() -> Non
     assert public["raw_stdout_stderr_public"] is False
 
 
+def test_public_command_label_redacts_gallery_dl_auth_args() -> None:
+    label = px1.public_command_label(
+        [
+            "scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py",
+            "--gallery-dl-command",
+            r"gallery-dl --cookies C:\Users\kyloris\secret-cookie.txt -u alice -p hunter2 --config C:\Users\kyloris\gallery.conf --cookies-from-browser firefox:C:\Users\kyloris\profile",
+            "--header",
+            "Authorization: Bearer abcdefghijklmnop",
+        ]
+    )
+
+    assert "alice" not in label
+    assert "hunter2" not in label
+    assert "secret-cookie" not in label
+    assert "gallery.conf" not in label
+    assert "profile" not in label
+    assert "abcdefghijklmnop" not in label
+    assert "[sensitive-arg-redacted]" in label
+
+
 def test_gallery_dl_error_event_classifies_unavailable_not_parser_or_auth() -> None:
     stdout = json.dumps(
         [[-1, {"error": "NotFoundError", "message": "Requested resource could not be found"}]],
@@ -374,6 +487,24 @@ def test_gallery_dl_error_event_classifies_unavailable_not_parser_or_auth() -> N
     assert summary["auth_config_failure_count"] == 0
     assert summary["parser_mismatch_count"] == 0
     assert summary["provider_error_type_counts"] == {"NotFoundError": 1}
+
+
+def test_report_generation_metadata_records_runtime_head() -> None:
+    original = px1.git_value
+
+    def fake_git_value(args):
+        return "branch-x" if args == ["branch", "--show-current"] else "sha-x"
+
+    try:
+        px1.git_value = fake_git_value
+        metadata = px1.report_generation_metadata()
+    finally:
+        px1.git_value = original
+
+    assert metadata["git_branch"] == "branch-x"
+    assert metadata["git_sha"] == "sha-x"
+    assert metadata["git_sha_scope"] == "runtime_head_at_report_generation"
+    assert metadata["operational_result_reused_older_artifact"] is False
 
 
 def test_px1_searchable_assertions_use_needs_review_policy() -> None:
@@ -401,6 +532,66 @@ def test_provider_failure_budget_stops_repeated_auth_and_rate_limit_failures() -
     assert auth_budget.stop_reason == "repeated_auth_or_config_failures"
     assert rate_budget.stopped is True
     assert rate_budget.stop_reason == "repeated_rate_limit_failures"
+
+
+def test_transaction_mutation_proof_rolls_back_unexpected_changes() -> None:
+    class FakeTransaction:
+        def __init__(self) -> None:
+            self.committed = False
+            self.rolled_back = False
+
+        def commit(self) -> None:
+            self.committed = True
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.transaction = FakeTransaction()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def begin(self):
+            return self.transaction
+
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.connection = FakeConnection()
+
+        def connect(self):
+            return self.connection
+
+    states = [
+        {"tables": {"blombooru_media": {"count": 10, "fingerprint": "a"}}},
+        {"tables": {"blombooru_media": {"count": 11, "fingerprint": "b"}}},
+    ]
+
+    def fake_state_builder(_conn):
+        return states.pop(0)
+
+    def fake_persister(_conn, successes, *, run_id):
+        return [{"media_id": 1, "write_counts": {"SourceMetadataRecord_inserted": 1}}]
+
+    engine = FakeEngine()
+    write_rows, mutation_delta, committed = px1.persist_source_metadata_successes_with_mutation_proof(
+        engine,
+        [{"media_id": 1}],
+        run_id="unit-test",
+        state_builder=fake_state_builder,
+        persister=fake_persister,
+    )
+
+    assert write_rows
+    assert committed is False
+    assert mutation_delta["passed"] is False
+    assert mutation_delta["forbidden_changed_table_names"] == ["blombooru_media"]
+    assert engine.connection.transaction.rolled_back is True
+    assert engine.connection.transaction.committed is False
 
 
 def test_inventory_only_mode_does_not_write_db() -> None:

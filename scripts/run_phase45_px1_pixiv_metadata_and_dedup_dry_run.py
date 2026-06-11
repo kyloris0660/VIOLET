@@ -154,6 +154,7 @@ PIXIV_MARKER_RE = re.compile(r"(?i)(^|[^a-z0-9])(pixiv|pximg|artworks?|illust_id
 
 SECRET_RE = re.compile(
     r"(?i)(bearer\s+[A-Za-z0-9._~+\-/]{8,}|"
+    r"authorization\s*:\s*bearer\s+[A-Za-z0-9._~+\-/]{8,}|"
     r"(?:access|refresh)[_-]?token\s*[=:]\s*\S+|"
     r"(?:authorization|cookie|api[_-]?key|password|secret)\s*[=:]\s*\S+|"
     r"sk-[A-Za-z0-9_-]{12,})"
@@ -180,6 +181,27 @@ UNAVAILABLE_RE = re.compile(
     r"unavailable|does\s+not\s+exist|removed|suspended)"
 )
 COMMAND_OPTION_RE = re.compile(r"(?i)(unrecognized|unknown option|invalid option|usage:|no such option)")
+GALLERY_DL_SENSITIVE_ARG_RE = re.compile(
+    r"(?ix)"
+    r"(?P<flag>"
+    r"--username|-u|"
+    r"--password|-p|"
+    r"--cookies(?:-from-browser)?|"
+    r"--config"
+    r")"
+    r"(?P<sep>\s+|=)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|\S+)"
+)
+PUBLIC_SENSITIVE_VALUE_FLAGS = {
+    "-u",
+    "--username",
+    "-p",
+    "--password",
+    "--cookies",
+    "--cookies-from-browser",
+    "--config",
+}
+PUBLIC_NESTED_COMMAND_FLAGS = {"--gallery-dl-command"}
 
 PX1_SEARCHABLE_ASSERTION_STATUS = "needs_review"
 PX1_SEARCHABLE_ASSERTION_SCHEMA_VERSION = "phase45_px1_direct_source_metadata_v2"
@@ -905,6 +927,12 @@ def duplicate_group_plan(
         eligibility = "needs_manual_review" if not any(reason.startswith("would_delete_has_entity") for reason in risk_reasons) else "blocked_from_auto_delete"
     else:
         eligibility = "auto_delete_candidate"
+    if retained.pixiv_like:
+        retention_reason = "pixiv_like_or_source_metadata_preferred"
+    elif retained.has_any_source_metadata:
+        retention_reason = "source_metadata_preferred"
+    else:
+        retention_reason = "deterministic_lowest_media_id"
     return {
         "group_id": f"exact_hash_group_{group_index:05d}",
         "hash_private_ref": stable_private_id(members[0].file_hash or "", "hash"),
@@ -926,7 +954,7 @@ def duplicate_group_plan(
         "retained_media_private_ref": stable_private_id(retained.media_id, "media"),
         "would_delete_media_candidates": [member.media_id for member in would_delete],
         "would_delete_private_refs": [stable_private_id(member.media_id, "media") for member in would_delete],
-        "retention_reason": "pixiv_like_or_source_metadata_preferred" if retained.pixiv_like else "deterministic_lowest_media_id",
+        "retention_reason": retention_reason,
         "deletion_eligibility": eligibility,
         "auto_delete_candidate": eligibility == "auto_delete_candidate",
         "needs_manual_review": eligibility == "needs_manual_review",
@@ -1113,6 +1141,20 @@ def selection_priority(candidate: MediaCandidate, would_delete_ids: set[int]) ->
     )
 
 
+def selected_candidate_pattern_summary(selected: Sequence[MediaCandidate]) -> dict[str, Any]:
+    return {
+        "work_id_digit_length_counts": dict(
+            sorted(Counter(str(len(item.primary_work_id or "")) for item in selected if item.primary_work_id).items())
+        ),
+        "page_index_counts": dict(
+            sorted(Counter(str(item.primary_page_index) for item in selected).items(), key=lambda row: int(row[0]))
+        ),
+        "e1_imported_vs_pre_e1_detectability": "not_detected_from_safe_db_fields",
+        "exact_work_ids_public": False,
+        "exact_filenames_public": False,
+    }
+
+
 def select_metadata_targets(
     candidates: Sequence[MediaCandidate],
     duplicate_plans: Sequence[Mapping[str, Any]],
@@ -1158,6 +1200,7 @@ def select_metadata_targets(
         "manual_review_candidates_excluded": excluded.get("duplicate_group_needs_manual_review", 0),
         "exact_media_ids_public": False,
         "exact_pixiv_ids_public": False,
+        "sample_pattern_summary": selected_candidate_pattern_summary(selected),
         "selection_policy": [
             "exclude would-delete candidates from exact duplicate dry-run",
             "exclude manual-review duplicate groups",
@@ -1722,6 +1765,7 @@ def execute_metadata_requests(
     timeout: int,
     sleep_request_seconds: float,
     failure_budget: ProviderFailureBudget,
+    runner: CompletedRunner = subprocess.run,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     raw_dir = output_dir / "provider-cache" / "raw-gallery-dl-json"
     request_rows: list[dict[str, Any]] = []
@@ -1736,18 +1780,36 @@ def execute_metadata_requests(
             raw_dir=raw_dir,
             timeout=timeout,
             sleep_request_seconds=sleep_request_seconds,
+            runner=runner,
         )
         request_rows.append(request)
+        provider_called = bool(request.get("provider_called"))
         if success is not None:
             success_rows.append(success)
-            failure_budget.record_success()
+            if provider_called:
+                failure_budget.record_success()
         if failure is not None:
             failure_rows.append(failure)
-            failure_budget.record_failure(str(failure.get("failure_reason") or "provider_request_failed"))
-        if request.get("provider_called"):
+            if provider_called:
+                failure_budget.record_failure(str(failure.get("failure_reason") or "provider_request_failed"))
+        if provider_called:
             time.sleep(max(float(sleep_request_seconds), 0.0))
     failure_reason_counts = Counter(str(row.get("failure_reason") or "unknown") for row in failure_rows)
     diagnosis = provider_output_diagnosis_summary(failure_rows)
+    cache_failure_rows = [
+        row
+        for row in failure_rows
+        if row.get("cache_hit") and not row.get("provider_called")
+    ]
+    provider_failure_rows = [
+        row
+        for row in failure_rows
+        if row.get("provider_called")
+    ]
+    cache_failure_diagnostics = Counter(
+        str((row.get("public_provider_output_shape") or {}).get("diagnostic_class") or "unknown")
+        for row in cache_failure_rows
+    )
     provider_cache_summary = {
         "filesystem_provider_cache_used": True,
         "db_provider_cache_used": False,
@@ -1755,16 +1817,21 @@ def execute_metadata_requests(
         "request_count": len(request_rows),
         "success_count": len(success_rows),
         "failure_count": len(failure_rows),
+        "provider_success_count": sum(1 for row in success_rows if row.get("provider_called")),
+        "provider_failure_count": len(provider_failure_rows),
         "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
         "cache_hit_count": sum(1 for row in request_rows if row.get("cache_hit")),
         "cache_miss_count": sum(1 for row in request_rows if not row.get("cache_hit")),
         "provider_called_count": sum(1 for row in request_rows if row.get("provider_called")),
+        "cache_failure_count": len(cache_failure_rows),
         "cache_parse_failure_count": sum(
-            1 for row in failure_rows if row.get("failure_reason") == "cache_parse_failure"
+            1 for row in cache_failure_rows if row.get("failure_reason") == "cache_parse_failure"
         ),
         "cache_no_metadata_records_count": sum(
-            1 for row in failure_rows if row.get("failure_reason") == "cache_no_metadata_records"
+            1 for row in cache_failure_rows if row.get("failure_reason") == "cache_no_metadata_records"
         ),
+        "cache_unavailable_private_or_deleted_count": cache_failure_diagnostics.get("unavailable_private_or_deleted", 0),
+        "provider_budget_consumed_count": failure_budget.public_dict().get("attempts", 0),
         "raw_failure_artifact_count": sum(1 for row in failure_rows if row.get("raw_diagnostics_private_ref")),
         "provider_output_diagnosis": diagnosis,
         "original_downloaded": False,
@@ -2251,6 +2318,35 @@ def persist_source_metadata_successes(
     return write_rows
 
 
+def persist_source_metadata_successes_with_mutation_proof(
+    engine: Engine,
+    successes: Sequence[Mapping[str, Any]],
+    *,
+    run_id: str,
+    state_builder: Callable[[Connection], dict[str, Any]] = build_table_state,
+    persister: Callable[..., list[dict[str, Any]]] = persist_source_metadata_successes,
+    mutation_classifier: Callable[..., dict[str, Any]] = classify_table_mutations,
+) -> tuple[list[dict[str, Any]], dict[str, Any], bool]:
+    if not successes:
+        empty_state = {"tables": {}}
+        return [], mutation_classifier(empty_state, empty_state), False
+    with engine.connect() as conn:
+        transaction = conn.begin()
+        try:
+            mutation_before = state_builder(conn)
+            write_rows = persister(conn, successes, run_id=run_id)
+            mutation_after = state_builder(conn)
+            mutation_delta = mutation_classifier(mutation_before, mutation_after)
+            if not mutation_delta.get("passed"):
+                transaction.rollback()
+                return write_rows, mutation_delta, False
+            transaction.commit()
+            return write_rows, mutation_delta, True
+        except Exception:
+            transaction.rollback()
+            raise
+
+
 def redact_public_text(value: str) -> str:
     value = SECRET_RE.sub("[secret-redacted]", value)
     value = LOCAL_PATH_RE.sub("[path-redacted]", value)
@@ -2309,14 +2405,74 @@ def searchable_assertion_write_policy() -> dict[str, Any]:
     }
 
 
+def provider_network_attempted(provider_cache_summary: Mapping[str, Any]) -> bool:
+    return int(provider_cache_summary.get("provider_called_count") or 0) > 0
+
+
+def report_generation_metadata() -> dict[str, Any]:
+    return {
+        "git_branch": git_value(["branch", "--show-current"]),
+        "git_sha": git_value(["rev-parse", "HEAD"]),
+        "git_sha_scope": "runtime_head_at_report_generation",
+        "operational_result_reused_older_artifact": False,
+    }
+
+
+def _redact_gallery_dl_command_value(value: str) -> str:
+    normalized = str(value).replace("\\", "/")
+
+    def replace_sensitive(match: re.Match[str]) -> str:
+        return f"{match.group('flag')}{match.group('sep')}[sensitive-arg-redacted]"
+
+    normalized = GALLERY_DL_SENSITIVE_ARG_RE.sub(replace_sensitive, normalized)
+    return redact_public_text(normalized)
+
+
+def _redact_public_argv_token(value: str) -> str:
+    normalized = str(value).replace("\\", "/")
+    root_text = str(ROOT).replace("\\", "/")
+    if normalized.startswith(root_text):
+        normalized = Path(normalized).name
+    return redact_public_text(normalized)
+
+
 def public_command_label(argv: Sequence[str]) -> str:
     parts = [Path(sys.executable).name]
+    redact_next = False
+    nested_command_next = False
     for item in argv:
-        value = str(item).replace("\\", "/")
-        root_text = str(ROOT).replace("\\", "/")
-        if value.startswith(root_text):
-            value = Path(value).name
-        parts.append(value)
+        value = str(item)
+        lower_value = value.casefold()
+        if nested_command_next:
+            parts.append(_redact_gallery_dl_command_value(value))
+            nested_command_next = False
+            continue
+        if redact_next:
+            parts.append("[sensitive-arg-redacted]")
+            redact_next = False
+            continue
+        if lower_value in PUBLIC_NESTED_COMMAND_FLAGS:
+            parts.append(_redact_public_argv_token(value))
+            nested_command_next = True
+            continue
+        if any(lower_value.startswith(f"{flag}=") for flag in PUBLIC_NESTED_COMMAND_FLAGS):
+            flag, _, raw_arg = value.partition("=")
+            parts.append(f"{_redact_public_argv_token(flag)}={_redact_gallery_dl_command_value(raw_arg)}")
+            continue
+        if lower_value in PUBLIC_SENSITIVE_VALUE_FLAGS:
+            parts.append(_redact_public_argv_token(value))
+            redact_next = True
+            continue
+        matched_sensitive_assignment = False
+        for flag in PUBLIC_SENSITIVE_VALUE_FLAGS:
+            if lower_value.startswith(f"{flag}="):
+                flag_text, _, _ = value.partition("=")
+                parts.append(f"{_redact_public_argv_token(flag_text)}=[sensitive-arg-redacted]")
+                matched_sensitive_assignment = True
+                break
+        if matched_sensitive_assignment:
+            continue
+        parts.append(_redact_public_argv_token(value))
     return " ".join(parts)
 
 
@@ -2362,6 +2518,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Metadata extraction selected/success/failure: `{selection.get('selected_count')}` / `{results.get('success_count')}` / `{results.get('failure_count')}`.",
         f"- Exact duplicate groups: `{dup.get('exact_duplicate_groups')}`; would-delete if later approved: `{dup.get('would_delete_count_if_later_approved')}`.",
         f"- Provider execution policy: `{selection.get('provider_execution_policy')}`.",
+        f"- Report generation git branch/head: `{summary.get('report_generation', {}).get('git_branch')}` / `{summary.get('report_generation', {}).get('git_sha')}`.",
         "",
         "## Scope and non-goals",
         "",
@@ -2413,11 +2570,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Excluded reason counts: `{json.dumps(selection.get('excluded_reason_counts'), sort_keys=True)}`.",
         f"- Unknown excluded from provider execution: `{selection.get('unknown_excluded_from_provider_execution')}`.",
         f"- Non-anime excluded from provider execution: `{selection.get('non_anime_excluded_from_provider_execution')}`.",
+        f"- Sample work/page pattern summary: `{json.dumps(selection.get('sample_pattern_summary'), sort_keys=True)}`.",
         "",
         "## Provider/auth/cache/rate-limit preflight",
         "",
         f"- gallery-dl available: `{provider.get('gallery_dl_available')}`.",
         f"- Entry mode: `{provider.get('entrypoint', {}).get('mode')}`.",
+        f"- Network attempted: `{provider.get('network_attempted')}`.",
+        f"- Request/cache/provider counts: request=`{provider.get('provider_cache', {}).get('request_count')}`, provider_called=`{provider.get('provider_cache', {}).get('provider_called_count')}`, cache_hit=`{provider.get('provider_cache', {}).get('cache_hit_count')}`.",
         f"- Original download policy: `{provider.get('original_download_policy')}`.",
         f"- Provider cache: `{json.dumps(provider.get('provider_cache'), sort_keys=True)}`.",
         "",
@@ -2425,6 +2585,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Execution mode: `{results.get('mode')}`.",
         f"- Attempted: `{results.get('attempted_count')}`.",
+        f"- Request/provider/cache/network counts: request=`{results.get('request_count')}`, provider_called=`{results.get('provider_called_count')}`, cache_hit=`{results.get('cache_hit_count')}`, network_attempted=`{results.get('network_attempted')}`.",
         f"- Success: `{results.get('success_count')}`.",
         f"- Failure: `{results.get('failure_count')}`.",
         f"- Failure reason counts: `{json.dumps(results.get('failure_reason_counts'), sort_keys=True)}`.",
@@ -2567,14 +2728,19 @@ def build_public_summary(
         duplicate_auto_delete_groups=int(duplicate_summary.get("auto_delete_candidate_groups_if_later_approved") or 0),
         duplicate_risk_groups=int(duplicate_summary.get("groups_blocked_by_attached_data_risk") or 0),
     )
+    source_write_blocked = bool(write_results.get("mutation_blocked"))
+    if source_write_blocked:
+        next_phase = "PX1 source-layer mutation proof fix"
     decision_matrix = {
-        "px1_target_met": bool(metadata_results.get("success_count")) and mutation_delta.get("passed") is True,
+        "px1_target_met": bool(metadata_results.get("success_count")) and mutation_delta.get("passed") is True and not source_write_blocked,
         "metadata_extraction_succeeded_for_bounded_batch": int(metadata_results.get("success_count") or 0) > 0,
         "provider_auth_or_rate_limit_blocked": metadata_results.get("stop_reason")
         in {"repeated_auth_or_config_failures", "repeated_rate_limit_failures"},
+        "source_write_blocked_by_mutation_proof": source_write_blocked,
         "dedup1_may_be_proposed": int(duplicate_summary.get("auto_delete_candidate_groups_if_later_approved") or 0) > 0,
         "scv2_r1_may_start": int(metadata_results.get("success_count") or 0) > 0
         and mutation_delta.get("passed") is True
+        and not source_write_blocked
         and metadata_results.get("stop_reason") not in {"repeated_auth_or_config_failures", "repeated_rate_limit_failures"},
         "recommended_next_phase": next_phase,
     }
@@ -2584,6 +2750,7 @@ def build_public_summary(
         "status": status,
         "branch": BRANCH,
         "generated_at": utc_now(),
+        "report_generation": report_generation_metadata(),
         "db_identity_before": public_identity(db_identity_before),
         "db_identity_after": public_identity(db_identity_after),
         "baseline": dict(baseline),
@@ -2667,7 +2834,13 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "cache_hit_count": 0,
         "cache_miss_count": 0,
         "provider_called_count": 0,
+        "provider_success_count": 0,
+        "provider_failure_count": 0,
+        "cache_failure_count": 0,
         "cache_parse_failure_count": 0,
+        "cache_no_metadata_records_count": 0,
+        "cache_unavailable_private_or_deleted_count": 0,
+        "provider_budget_consumed_count": 0,
         "raw_failure_artifact_count": 0,
         "provider_output_diagnosis": provider_output_diagnosis_summary([]),
         "original_downloaded": False,
@@ -2715,10 +2888,16 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "failure_reason_counts": {},
             "provider_output_diagnosis": provider_output_diagnosis_summary([]),
             "stop_reason": None,
+            "request_count": 0,
+            "provider_called_count": 0,
+            "cache_hit_count": 0,
+            "network_attempted": False,
             "original_downloaded": False,
         }
         write_results = {
             "writes_applied": False,
+            "write_transaction_committed": False,
+            "mutation_blocked": False,
             "source_metadata_records_affected": 0,
             "tag_observations_affected": 0,
             "name_observations_affected": 0,
@@ -2746,7 +2925,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                     sleep_request_seconds=args.sleep_request_seconds,
                     failure_budget=provider_budget,
                 )
-                provider_preflight["network_attempted"] = bool(request_rows)
+                provider_preflight["network_attempted"] = provider_network_attempted(provider_cache_summary)
                 provider_preflight["auth_status"] = "ok_or_not_required" if success_rows else (
                     "auth_or_config_failed" if any(row.get("failure_reason") == "auth_or_config_failure" for row in failure_rows) else "unknown_no_success"
                 )
@@ -2758,32 +2937,60 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                         "failure_reason_counts": dict(provider_cache_summary.get("failure_reason_counts") or {}),
                         "provider_output_diagnosis": dict(provider_cache_summary.get("provider_output_diagnosis") or {}),
                         "stop_reason": provider_budget.stop_reason,
+                        "request_count": provider_cache_summary.get("request_count", len(request_rows)),
+                        "provider_called_count": provider_cache_summary.get("provider_called_count", 0),
+                        "cache_hit_count": provider_cache_summary.get("cache_hit_count", 0),
+                        "network_attempted": provider_network_attempted(provider_cache_summary),
                         "original_downloaded": False,
                     }
                 )
                 if success_rows:
-                    with engine.begin() as conn:
-                        write_rows = persist_source_metadata_successes(conn, success_rows, run_id=args.run_id or uuid.uuid4().hex)
+                    write_rows, transaction_mutation_delta, write_committed = persist_source_metadata_successes_with_mutation_proof(
+                        engine,
+                        success_rows,
+                        run_id=args.run_id or uuid.uuid4().hex,
+                    )
                     write_counts = Counter()
                     for row in write_rows:
                         for key, value in row.get("write_counts", {}).items():
                             write_counts[key] += int(value)
+                        row["write_transaction_committed"] = bool(write_committed)
+                        row["blocked_by_mutation_proof"] = not bool(write_committed)
                     write_results.update(
                         {
-                            "writes_applied": True,
-                            "source_metadata_records_affected": write_counts.get("SourceMetadataRecord_inserted", 0)
-                            + write_counts.get("SourceMetadataRecord_updated", 0),
-                            "tag_observations_affected": write_counts.get("SourceTagObservation_inserted", 0)
-                            + write_counts.get("SourceTagObservation_updated", 0),
-                            "name_observations_affected": write_counts.get("SourceNameObservation_inserted", 0)
-                            + write_counts.get("SourceNameObservation_updated", 0),
-                            "source_assertions_affected": write_counts.get("SourceSearchableNameAssertion_inserted", 0)
-                            + write_counts.get("SourceSearchableNameAssertion_updated", 0),
+                            "writes_applied": bool(write_committed),
+                            "write_transaction_committed": bool(write_committed),
+                            "mutation_blocked": not bool(write_committed),
+                            "transaction_mutation_proof": transaction_mutation_delta,
+                            "source_metadata_records_affected": (
+                                write_counts.get("SourceMetadataRecord_inserted", 0)
+                                + write_counts.get("SourceMetadataRecord_updated", 0)
+                                if write_committed
+                                else 0
+                            ),
+                            "tag_observations_affected": (
+                                write_counts.get("SourceTagObservation_inserted", 0)
+                                + write_counts.get("SourceTagObservation_updated", 0)
+                                if write_committed
+                                else 0
+                            ),
+                            "name_observations_affected": (
+                                write_counts.get("SourceNameObservation_inserted", 0)
+                                + write_counts.get("SourceNameObservation_updated", 0)
+                                if write_committed
+                                else 0
+                            ),
+                            "source_assertions_affected": (
+                                write_counts.get("SourceSearchableNameAssertion_inserted", 0)
+                                + write_counts.get("SourceSearchableNameAssertion_updated", 0)
+                                if write_committed
+                                else 0
+                            ),
                             "write_ledger_count": len(write_rows),
-                            "allowed_tables_only": True,
+                            "allowed_tables_only": bool(transaction_mutation_delta.get("passed")),
                         }
                     )
-                    status = "metadata_execution_completed"
+                    status = "metadata_execution_completed" if write_committed else "blocked_mutation_proof_failed"
                 else:
                     status = "inventory_and_dedup_completed_provider_metadata_not_written"
             else:
