@@ -25,19 +25,19 @@
     "eligible_media": 3687,
     "eligible_media_pct": 98.32,
     "eligible_media_with_ai_tag_provenance": 3687,
-    "eligible_media_with_source_metadata_by_distinct_media": 60,
+    "eligible_media_with_source_metadata_by_distinct_media": 61,
     "eligible_media_without_ai_tag_provenance": 0,
     "eligible_policy": "content_class IN ('anime', 'unknown')",
     "media_with_ai_tag_provenance": 3713,
     "media_with_any_tags": 3713,
     "media_with_any_tags_pct": 99.01,
     "media_with_source_concept_evidence_or_links": 1338,
-    "media_with_source_layer_signals": 1338,
-    "media_with_source_metadata": 60,
-    "media_with_source_metadata_by_distinct_media": 60,
-    "media_without_source_metadata": 3690,
+    "media_with_source_layer_signals": 1339,
+    "media_with_source_metadata": 61,
+    "media_with_source_metadata_by_distinct_media": 61,
+    "media_without_source_metadata": 3689,
     "non_anime_count": 63,
-    "source_metadata_total_rows": 200,
+    "source_metadata_total_rows": 201,
     "total_media": 3750
   },
   "branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
@@ -60,13 +60,13 @@
       "urls_match": true
     },
     "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
-    "git_sha": "325a5f8949b24078435e225e8f90737f80d7f2a6",
+    "git_sha": "cfaf69116b1b765efc8ce13c3f02d388bc8ac366",
     "host": "localhost",
     "password_value_recorded": false,
     "port": 5432,
     "python_executable": "python.exe",
     "python_executable_path_recorded_private_only": true,
-    "recorded_at": "2026-06-11T13:07:45.846508+00:00",
+    "recorded_at": "2026-06-11T14:28:29.287490+00:00",
     "total_media_after": 3750,
     "violet_env": "development"
   },
@@ -89,22 +89,23 @@
       "urls_match": true
     },
     "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
-    "git_sha": "325a5f8949b24078435e225e8f90737f80d7f2a6",
+    "git_sha": "cfaf69116b1b765efc8ce13c3f02d388bc8ac366",
     "host": "localhost",
     "password_value_recorded": false,
     "port": 5432,
     "python_executable": "python.exe",
     "python_executable_path_recorded_private_only": true,
-    "recorded_at": "2026-06-11T13:07:44.616191+00:00",
+    "recorded_at": "2026-06-11T14:13:55.551808+00:00",
     "violet_env": "development"
   },
   "decision_matrix": {
     "dedup1_may_be_proposed": false,
-    "metadata_extraction_succeeded_for_bounded_batch": false,
+    "metadata_extraction_succeeded_for_bounded_batch": true,
     "provider_auth_or_rate_limit_blocked": false,
-    "px1_target_met": false,
-    "recommended_next_phase": "PX1 precondition resolution",
-    "scv2_r1_may_start": false
+    "px1_target_met": true,
+    "recommended_next_phase": "SCV2-R1",
+    "scv2_r1_may_start": true,
+    "source_write_blocked_by_mutation_proof": false
   },
   "duplicate_cleanup_plan_summary": {
     "all_non_pixiv_groups": 0,
@@ -128,43 +129,48 @@
     "read_only": true
   },
   "failure_budget": {
-    "attempts": 5,
+    "attempts": 446,
     "auth_failures": 0,
-    "consecutive_failures": 5,
+    "consecutive_failures": 0,
     "max_auth_failures": 3,
-    "max_consecutive_failures": 5,
-    "max_failure_rate": 0.25,
+    "max_consecutive_failures": 500,
+    "max_failure_rate": 1.0,
     "max_rate_limit_failures": 3,
-    "max_total_failures": 20,
+    "max_total_failures": 500,
     "rate_limit_failures": 0,
-    "stop_reason": "max_failure_rate",
-    "stopped": true,
-    "total_failures": 5
+    "stop_reason": null,
+    "stopped": false,
+    "total_failures": 22
   },
-  "generated_at": "2026-06-11T13:07:46.226075+00:00",
+  "generated_at": "2026-06-11T14:28:29.789786+00:00",
   "metadata_extraction_results": {
-    "attempted_count": 5,
-    "failure_count": 5,
+    "attempted_count": 500,
+    "cache_hit_count": 54,
+    "failure_count": 30,
     "failure_reason_counts": {
-      "cache_no_metadata_records": 5
+      "cache_no_metadata_records": 8,
+      "no_metadata_records": 22
     },
     "mode": "execute_metadata",
+    "network_attempted": true,
     "original_downloaded": false,
+    "provider_called_count": 446,
     "provider_output_diagnosis": {
       "auth_config_failure_count": 0,
       "command_option_issue_count": 0,
       "diagnostic_class_counts": {
-        "unavailable_private_or_deleted": 5
+        "unavailable_private_or_deleted": 30
       },
       "failure_reason_counts": {
-        "cache_no_metadata_records": 5
+        "cache_no_metadata_records": 8,
+        "no_metadata_records": 22
       },
-      "no_metadata_records_count": 5,
+      "no_metadata_records_count": 30,
       "other_provider_failure_count": 0,
       "parser_mismatch_count": 0,
-      "provider_error_event_count": 5,
+      "provider_error_event_count": 30,
       "provider_error_type_counts": {
-        "NotFoundError": 5
+        "NotFoundError": 30
       },
       "public_shapes": [
         {
@@ -226,35 +232,113 @@
           "stderr_present": false,
           "stdout_empty": false,
           "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 1,
+          "stderr_present": true,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
         }
       ],
       "rate_limited_count": 0,
       "raw_stdout_stderr_public": false,
       "stdout_empty_count": 0,
       "stdout_nonempty_unparsed_count": 0,
-      "unavailable_private_deleted_count": 5
+      "unavailable_private_deleted_count": 30
     },
-    "selected_count": 5,
-    "stop_reason": "max_failure_rate",
-    "success_count": 0
+    "request_count": 500,
+    "selected_count": 500,
+    "stop_reason": null,
+    "success_count": 470
   },
   "metadata_selection": {
-    "already_has_source_metadata_excluded": 57,
+    "already_has_source_metadata_excluded": 58,
     "default_limit": 500,
-    "eligible_before_limit": 2194,
+    "eligible_before_limit": 2193,
     "exact_media_ids_public": false,
     "exact_pixiv_ids_public": false,
     "excluded_reason_counts": {
-      "already_has_source_metadata": 57,
+      "already_has_source_metadata": 58,
       "non_anime_excluded_from_provider_execution": 10,
       "unknown_excluded_from_provider_execution": 26
     },
     "manual_review_candidates_excluded": 0,
     "non_anime_excluded_from_provider_execution": 10,
-    "provider_execution_eligible_anime_candidates": 2194,
+    "provider_execution_eligible_anime_candidates": 2193,
     "provider_execution_policy": "anime_only_source_metadata_missing_reliable_single_pixiv_filename_prior",
-    "requested_limit": 5,
-    "selected_count": 5,
+    "requested_limit": 500,
+    "sample_pattern_summary": {
+      "e1_imported_vs_pre_e1_detectability": "not_detected_from_safe_db_fields",
+      "exact_filenames_public": false,
+      "exact_work_ids_public": false,
+      "page_index_counts": {
+        "0": 450,
+        "1": 35,
+        "2": 10,
+        "3": 1,
+        "4": 1,
+        "5": 3
+      },
+      "work_id_digit_length_counts": {
+        "8": 84,
+        "9": 416
+      }
+    },
+    "selected_count": 500,
     "selection_policy": [
       "exclude would-delete candidates from exact duplicate dry-run",
       "exclude manual-review duplicate groups",
@@ -274,9 +358,87 @@
       "blombooru_source_searchable_name_assertions",
       "blombooru_source_tag_observations"
     ],
-    "changed_tables": [],
-    "expected_changed_table_names": [],
-    "expected_changed_tables": [],
+    "changed_tables": [
+      {
+        "after": 4386,
+        "before": 659,
+        "delta": 3727,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_metadata_evidence"
+      },
+      {
+        "after": 671,
+        "before": 201,
+        "delta": 470,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_metadata_records"
+      },
+      {
+        "after": 1377,
+        "before": 459,
+        "delta": 918,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_name_observations"
+      },
+      {
+        "after": 1218,
+        "before": 300,
+        "delta": 918,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_searchable_name_assertions"
+      },
+      {
+        "after": 4437,
+        "before": 710,
+        "delta": 3727,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_tag_observations"
+      }
+    ],
+    "expected_changed_table_names": [
+      "blombooru_source_metadata_evidence",
+      "blombooru_source_metadata_records",
+      "blombooru_source_name_observations",
+      "blombooru_source_searchable_name_assertions",
+      "blombooru_source_tag_observations"
+    ],
+    "expected_changed_tables": [
+      {
+        "after": 4386,
+        "before": 659,
+        "delta": 3727,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_metadata_evidence"
+      },
+      {
+        "after": 671,
+        "before": 201,
+        "delta": 470,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_metadata_records"
+      },
+      {
+        "after": 1377,
+        "before": 459,
+        "delta": 918,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_name_observations"
+      },
+      {
+        "after": 1218,
+        "before": 300,
+        "delta": 918,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_searchable_name_assertions"
+      },
+      {
+        "after": 4437,
+        "before": 710,
+        "delta": 3727,
+        "fingerprint_changed": true,
+        "table": "blombooru_source_tag_observations"
+      }
+    ],
     "forbidden_changed_table_names": [],
     "forbidden_changed_tables": [],
     "forbidden_tables": [
@@ -320,8 +482,8 @@
   },
   "phase": "4.5-PX1",
   "pixiv_like_inventory": {
-    "candidates_eligible_for_metadata_extraction": 2194,
-    "candidates_excluded_from_metadata_extraction": 93,
+    "candidates_eligible_for_metadata_extraction": 2193,
+    "candidates_excluded_from_metadata_extraction": 94,
     "candidates_that_are_exact_duplicate_would_delete": 0,
     "distinct_pixiv_work_ids": 2237,
     "duplicate_dry_run_available_before_selection": true,
@@ -345,23 +507,23 @@
     "exact_media_ids_public": false,
     "exact_pixiv_ids_public": false,
     "exclusion_reason_counts": {
-      "already_has_source_metadata": 60,
+      "already_has_source_metadata": 61,
       "ineligible_content_class": 10
     },
     "invalid_or_ambiguous_pixiv_id_candidates": 0,
-    "local_backlog_candidates_before_provider_privacy_gate": 2217,
+    "local_backlog_candidates_before_provider_privacy_gate": 2216,
     "method": "DB-derived signals only; no source root scan, import, classification, AI tagging, or SourceConcept resolver.",
-    "pixiv_like_candidates_with_existing_source_metadata": 60,
-    "pixiv_like_candidates_without_source_metadata": 2227,
+    "pixiv_like_candidates_with_existing_source_metadata": 61,
+    "pixiv_like_candidates_without_source_metadata": 2226,
     "pixiv_like_media_candidates": 2287,
     "private_candidate_count": 2287,
     "private_candidate_rows_public": false,
-    "provider_execution_eligible_anime_candidates": 2194,
-    "provider_execution_excluded_already_has_source_metadata": 57,
+    "provider_execution_eligible_anime_candidates": 2193,
+    "provider_execution_excluded_already_has_source_metadata": 58,
     "provider_execution_excluded_non_anime": 10,
     "provider_execution_excluded_unknown": 26,
     "provider_execution_exclusion_reason_counts": {
-      "already_has_source_metadata": 57,
+      "already_has_source_metadata": 58,
       "non_anime_excluded_from_provider_execution": 10,
       "unknown_excluded_from_provider_execution": 26
     },
@@ -371,8 +533,8 @@
       "source_assertion_provider_pixiv": 56,
       "source_concept_evidence_provider_pixiv": 60,
       "source_concept_signal_provider_pixiv": 60,
-      "source_metadata_pixiv_work_id": 60,
-      "source_metadata_provider_pixiv": 60,
+      "source_metadata_pixiv_work_id": 61,
+      "source_metadata_provider_pixiv": 61,
       "source_name_candidate_provider_pixiv": 57,
       "source_name_observation_provider_pixiv": 60,
       "source_tag_observation_provider_pixiv": 60
@@ -403,7 +565,7 @@
     "private_artifacts_committed": false
   },
   "provider_preflight": {
-    "auth_status": "unknown_no_success",
+    "auth_status": "ok_or_not_required",
     "entrypoint": {
       "available": true,
       "command_label": "gallery-dl executable",
@@ -415,47 +577,53 @@
     "network_attempted": true,
     "original_download_policy": "forbidden; command uses --dump-json --no-download",
     "provider_cache": {
-      "cache_hit_count": 5,
-      "cache_miss_count": 0,
-      "cache_no_metadata_records_count": 5,
+      "cache_failure_count": 8,
+      "cache_hit_count": 54,
+      "cache_miss_count": 446,
+      "cache_no_metadata_records_count": 8,
       "cache_parse_failure_count": 0,
+      "cache_unavailable_private_or_deleted_count": 8,
       "db_provider_cache_used": false,
       "failure_budget": {
-        "attempts": 5,
+        "attempts": 446,
         "auth_failures": 0,
-        "consecutive_failures": 5,
+        "consecutive_failures": 0,
         "max_auth_failures": 3,
-        "max_consecutive_failures": 5,
-        "max_failure_rate": 0.25,
+        "max_consecutive_failures": 500,
+        "max_failure_rate": 1.0,
         "max_rate_limit_failures": 3,
-        "max_total_failures": 20,
+        "max_total_failures": 500,
         "rate_limit_failures": 0,
-        "stop_reason": "max_failure_rate",
-        "stopped": true,
-        "total_failures": 5
+        "stop_reason": null,
+        "stopped": false,
+        "total_failures": 22
       },
-      "failure_count": 5,
+      "failure_count": 30,
       "failure_reason_counts": {
-        "cache_no_metadata_records": 5
+        "cache_no_metadata_records": 8,
+        "no_metadata_records": 22
       },
       "filesystem_provider_cache_used": true,
       "original_downloaded": false,
-      "provider_called_count": 0,
+      "provider_budget_consumed_count": 446,
+      "provider_called_count": 446,
+      "provider_failure_count": 22,
       "provider_output_diagnosis": {
         "auth_config_failure_count": 0,
         "command_option_issue_count": 0,
         "diagnostic_class_counts": {
-          "unavailable_private_or_deleted": 5
+          "unavailable_private_or_deleted": 30
         },
         "failure_reason_counts": {
-          "cache_no_metadata_records": 5
+          "cache_no_metadata_records": 8,
+          "no_metadata_records": 22
         },
-        "no_metadata_records_count": 5,
+        "no_metadata_records_count": 30,
         "other_provider_failure_count": 0,
         "parser_mismatch_count": 0,
-        "provider_error_event_count": 5,
+        "provider_error_event_count": 30,
         "provider_error_type_counts": {
-          "NotFoundError": 5
+          "NotFoundError": 30
         },
         "public_shapes": [
           {
@@ -517,19 +685,80 @@
             "stderr_present": false,
             "stdout_empty": false,
             "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 1,
+            "stderr_present": true,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
           }
         ],
         "rate_limited_count": 0,
         "raw_stdout_stderr_public": false,
         "stdout_empty_count": 0,
         "stdout_nonempty_unparsed_count": 0,
-        "unavailable_private_deleted_count": 5
+        "unavailable_private_deleted_count": 30
       },
-      "raw_failure_artifact_count": 5,
+      "provider_success_count": 424,
+      "raw_failure_artifact_count": 30,
       "raw_json_cache_dir_private": true,
       "raw_json_cache_dir_public_label": ".local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run/provider-cache/raw-gallery-dl-json",
-      "request_count": 5,
-      "success_count": 0
+      "request_count": 500,
+      "success_count": 470
     },
     "rate_limit_policy": "serial requests, bounded failure budget"
   },
@@ -541,7 +770,13 @@
     "findings": [],
     "passed": true
   },
-  "recommended_next_phase": "PX1 precondition resolution",
+  "recommended_next_phase": "SCV2-R1",
+  "report_generation": {
+    "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
+    "git_sha": "cfaf69116b1b765efc8ce13c3f02d388bc8ac366",
+    "git_sha_scope": "runtime_head_at_report_generation",
+    "operational_result_reused_older_artifact": false
+  },
   "safety": {
     "browser_validation": "not_run_no_ui_runtime_target",
     "no_classification_ai_localization_llm": true,
@@ -556,19 +791,151 @@
   },
   "source_layer_write_results": {
     "allowed_tables_only": true,
-    "name_observations_affected": 0,
-    "source_assertions_affected": 0,
-    "source_metadata_records_affected": 0,
-    "tag_observations_affected": 0,
-    "write_ledger_count": 0,
-    "writes_applied": false
+    "mutation_blocked": false,
+    "name_observations_affected": 918,
+    "source_assertions_affected": 918,
+    "source_metadata_records_affected": 470,
+    "tag_observations_affected": 3727,
+    "transaction_mutation_proof": {
+      "allowed_tables": [
+        "blombooru_source_metadata_evidence",
+        "blombooru_source_metadata_records",
+        "blombooru_source_name_observations",
+        "blombooru_source_searchable_name_assertions",
+        "blombooru_source_tag_observations"
+      ],
+      "changed_tables": [
+        {
+          "after": 4386,
+          "before": 659,
+          "delta": 3727,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_metadata_evidence"
+        },
+        {
+          "after": 671,
+          "before": 201,
+          "delta": 470,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_metadata_records"
+        },
+        {
+          "after": 1377,
+          "before": 459,
+          "delta": 918,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_name_observations"
+        },
+        {
+          "after": 1218,
+          "before": 300,
+          "delta": 918,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_searchable_name_assertions"
+        },
+        {
+          "after": 4437,
+          "before": 710,
+          "delta": 3727,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_tag_observations"
+        }
+      ],
+      "expected_changed_table_names": [
+        "blombooru_source_metadata_evidence",
+        "blombooru_source_metadata_records",
+        "blombooru_source_name_observations",
+        "blombooru_source_searchable_name_assertions",
+        "blombooru_source_tag_observations"
+      ],
+      "expected_changed_tables": [
+        {
+          "after": 4386,
+          "before": 659,
+          "delta": 3727,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_metadata_evidence"
+        },
+        {
+          "after": 671,
+          "before": 201,
+          "delta": 470,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_metadata_records"
+        },
+        {
+          "after": 1377,
+          "before": 459,
+          "delta": 918,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_name_observations"
+        },
+        {
+          "after": 1218,
+          "before": 300,
+          "delta": 918,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_searchable_name_assertions"
+        },
+        {
+          "after": 4437,
+          "before": 710,
+          "delta": 3727,
+          "fingerprint_changed": true,
+          "table": "blombooru_source_tag_observations"
+        }
+      ],
+      "forbidden_changed_table_names": [],
+      "forbidden_changed_tables": [],
+      "forbidden_tables": [
+        "blombooru_ai_tag_jobs",
+        "blombooru_classification_jobs",
+        "blombooru_entities",
+        "blombooru_entity_aliases",
+        "blombooru_entity_evidence",
+        "blombooru_entity_external_identities",
+        "blombooru_entity_translations",
+        "blombooru_media",
+        "blombooru_media_entity_assignments",
+        "blombooru_media_entity_candidates",
+        "blombooru_media_tags",
+        "blombooru_negative_lookup_cache",
+        "blombooru_pixiv_tag_alias_kb",
+        "blombooru_pixiv_tag_taxonomy_kb",
+        "blombooru_provider_cache",
+        "blombooru_scan_job_media",
+        "blombooru_scan_jobs",
+        "blombooru_source_concept_aliases",
+        "blombooru_source_concept_evidence",
+        "blombooru_source_concept_resolution_runs",
+        "blombooru_source_concept_search_index",
+        "blombooru_source_concept_signal_links",
+        "blombooru_source_concept_signals",
+        "blombooru_source_concepts",
+        "blombooru_source_name_alias_candidates",
+        "blombooru_source_name_candidate_extraction_runs",
+        "blombooru_source_name_candidate_record_verdicts",
+        "blombooru_source_name_candidates",
+        "blombooru_source_name_registry",
+        "blombooru_source_tag_registry",
+        "blombooru_tag_translation_jobs",
+        "blombooru_tag_translations",
+        "blombooru_tags"
+      ],
+      "passed": true,
+      "unexpected_changed_table_names": [],
+      "unexpected_changed_tables": []
+    },
+    "write_ledger_count": 470,
+    "write_transaction_committed": true,
+    "writes_applied": true
   },
-  "status": "inventory_and_dedup_completed_provider_metadata_not_written",
+  "status": "metadata_execution_completed",
   "title": "Bounded Pixiv Metadata Extraction and Exact-Duplicate Cleanup Dry-Run",
   "validation": {
     "browser_validation": "not_run_no_ui_runtime_target",
     "commands": [
-      "python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 5 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY"
+      "python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 500 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY --sleep-request-seconds 1 --max-provider-failures 500 --max-provider-failure-rate 1.0 --max-consecutive-provider-failures 500"
     ],
     "dedup_read_only": true,
     "operational_mode": "execute-metadata",
