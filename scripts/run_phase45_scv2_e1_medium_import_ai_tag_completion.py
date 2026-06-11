@@ -208,7 +208,9 @@ PHASE_BOUNDARY = {
 }
 
 FAILURE_STATUSES = {
+    "completed_with_blockers",
     "import_failed",
+    "import_failure_budget_exceeded",
     "classification_failed",
     "ai_tagging_failed",
     "mutation_proof_failed",
@@ -1410,6 +1412,16 @@ def execute_imports(
     failure_reasons: Counter[str] = Counter()
     consecutive_failures = 0
     attempted = 0
+    last_budget = evaluate_failure_budget(
+        attempted=0,
+        failure_reasons=failure_reasons,
+        consecutive_failures=consecutive_failures,
+        max_item_failures=int(failure_budget["max_item_failures"]),
+        max_failure_rate=float(failure_budget["max_failure_rate"]),
+        max_same_reason_failures=int(failure_budget["max_same_reason_failures"]),
+        max_consecutive_failures=int(failure_budget["max_consecutive_failures"]),
+    )
+    budget_exceeded = False
     for row in candidates:
         if len(imported_ids) >= max_successful_imports:
             break
@@ -1490,7 +1502,7 @@ def execute_imports(
                 "eligible_for_db_import": row.get("eligible_for_import", False),
             }
         )
-        budget = evaluate_failure_budget(
+        last_budget = evaluate_failure_budget(
             attempted=attempted,
             failure_reasons=failure_reasons,
             consecutive_failures=consecutive_failures,
@@ -1499,21 +1511,35 @@ def execute_imports(
             max_same_reason_failures=int(failure_budget["max_same_reason_failures"]),
             max_consecutive_failures=int(failure_budget["max_consecutive_failures"]),
         )
-        if not budget["passed"]:
+        if not last_budget["passed"]:
+            budget_exceeded = True
             break
-    status = "completed" if min_successful_imports <= len(imported_ids) <= max_successful_imports else "completed_target_not_met"
-    if len(imported_ids) == target_successful_imports:
+    target_met = min_successful_imports <= len(imported_ids) <= max_successful_imports
+    recommended_target_met = len(imported_ids) == target_successful_imports
+    status = "completed" if target_met else "completed_target_not_met"
+    if recommended_target_met:
         status = "completed_recommended_target_met"
+    stop_reason: dict[str, Any] | None = None
+    if budget_exceeded:
+        status = "import_failure_budget_exceeded"
+        target_met = False
+        recommended_target_met = False
+        stop_reason = {
+            "reason": "failure_budget_exceeded",
+            "exceeded": list(last_budget.get("exceeded", [])),
+        }
     return ledger, {
         "status": status,
         "successful_imports": len(imported_ids),
         "target_successful_imports": target_successful_imports,
         "acceptable_range": [min_successful_imports, max_successful_imports],
-        "target_met": min_successful_imports <= len(imported_ids) <= max_successful_imports,
-        "recommended_target_met": len(imported_ids) == target_successful_imports,
+        "target_met": target_met,
+        "recommended_target_met": recommended_target_met,
         "attempted_imports": attempted,
         "failure_count": sum(failure_reasons.values()),
         "failure_reason_counts": dict(sorted(failure_reasons.items())),
+        "failure_budget": last_budget,
+        "stop_reason": stop_reason,
         "app_managed_storage_writes": len(imported_ids),
         "source_root_mutation": False,
         "db_import": True,
@@ -1708,19 +1734,26 @@ def run_ai_tagging(
     failure_rows: list[dict[str, Any]] = []
     failure_reasons: Counter[str] = Counter()
     for media_id in eligible_media_ids:
+        scheduled = int(media_id) in media_to_job
         count = int(tag_counts.get(int(media_id), 0))
-        success = count > 0
-        reason = None if success else "missing_ai_tag_provenance"
+        success = scheduled and count > 0
+        if success:
+            reason = None
+        elif scheduled:
+            reason = "missing_ai_tag_provenance"
+        else:
+            reason = "ai_tagging_aborted_before_scheduling"
         if reason:
             failure_reasons[reason] += 1
         row = {
             "run_id": "",
             "media_id": int(media_id),
-            "ai_tag_attempted": True,
+            "ai_tag_attempted": scheduled,
             "ai_tag_success": success,
             "failure_reason": reason,
+            "deferred_reason": None if scheduled else "ai_job_not_scheduled",
             "job_id": media_to_job.get(int(media_id)),
-            "output_tag_count": count,
+            "output_tag_count": count if scheduled else 0,
             "has_ai_tag_provenance": success,
         }
         ledger.append(row)
@@ -2250,6 +2283,15 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 }
             )
         write_jsonl(context.output_dir / "import-item-ledger.jsonl", import_ledger)
+        if pipeline_error_status is None and (
+            import_results.get("status") == "import_failure_budget_exceeded"
+            or not import_results.get("target_met")
+        ):
+            pipeline_error_status = (
+                "import_failure_budget_exceeded"
+                if import_results.get("status") == "import_failure_budget_exceeded"
+                else "import_failed"
+            )
     else:
         import_ledger, import_results, imported_media_ids = execute_imports(
             engine,

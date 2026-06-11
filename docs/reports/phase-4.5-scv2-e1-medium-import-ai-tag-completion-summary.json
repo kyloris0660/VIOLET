@@ -2062,17 +2062,20 @@
       "successful_imports": 1761,
       "total_media_after": 3750
     },
-    "fix_loop_reason": "PR #102 reviewer safety findings on the committed phase-scoped write runner",
+    "fix_loop_reason": "Final PR #102 reviewer safety findings on runner success/failure status semantics",
     "fixed_findings": [
       "maximum import cap enforced before writes",
       "safe temp-first public redaction failure behavior",
       "scan-job tables removed from E1 allowed mutation set",
       "post-import failure finalization records after-state mutation proof",
       "forbidden table fingerprint proof added",
-      "hash worker pipe fallback remains timeout-bounded"
+      "hash worker pipe fallback remains timeout-bounded",
+      "budget-aborted import cannot be reported successful",
+      "completed_with_blockers exits non-zero",
+      "unscheduled AI items are marked not attempted/deferred rather than attempted"
     ],
     "import_run_in_fix_loop": false,
-    "next_phase_constraint": "PX1 only after PR #102 is accepted and merged",
+    "next_phase_constraint": "PX1 only after PR #102 is accepted/merged and manual data validation is done",
     "no_pixiv_gallery_dl_provider_source_metadata_sourceconcept_localization_entity_bridge": true
   },
   "private_artifacts": {

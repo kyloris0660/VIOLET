@@ -111,7 +111,14 @@ def pipeline_args(tmp_path: Path, *, execute: bool = True) -> SimpleNamespace:
     )
 
 
-def install_pipeline_mocks(tmp_path: Path, monkeypatch, *, classification_status: str, ai_status: str = "completed"):
+def install_pipeline_mocks(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    classification_status: str,
+    ai_status: str = "completed",
+    import_status: str = "completed_recommended_target_met",
+):
     source_root = tmp_path / "source"
     source_root.mkdir()
     storage_root = tmp_path / "storage"
@@ -240,15 +247,25 @@ def install_pipeline_mocks(tmp_path: Path, monkeypatch, *, classification_status
         lambda *_args, **_kwargs: (
             [{"candidate_id": "candidate_1", "status": "imported", "media_id": 1}],
             {
-                "status": "completed_recommended_target_met",
+                "status": import_status,
                 "successful_imports": 1,
                 "target_successful_imports": 1,
                 "acceptable_range": [1, 1],
-                "target_met": True,
-                "recommended_target_met": True,
+                "target_met": import_status == "completed_recommended_target_met",
+                "recommended_target_met": import_status == "completed_recommended_target_met",
                 "attempted_imports": 1,
-                "failure_count": 0,
-                "failure_reason_counts": {},
+                "failure_count": 1 if import_status == "import_failure_budget_exceeded" else 0,
+                "failure_reason_counts": {"copy_failed": 1} if import_status == "import_failure_budget_exceeded" else {},
+                "failure_budget": {
+                    "passed": import_status != "import_failure_budget_exceeded",
+                    "exceeded": ["max_item_failures"] if import_status == "import_failure_budget_exceeded" else [],
+                },
+                "stop_reason": {
+                    "reason": "failure_budget_exceeded",
+                    "exceeded": ["max_item_failures"],
+                }
+                if import_status == "import_failure_budget_exceeded"
+                else None,
                 "app_managed_storage_writes": 1,
                 "source_root_mutation": False,
                 "db_import": True,
@@ -569,6 +586,244 @@ def test_execute_imports_defensively_stops_at_max_cap(tmp_path, monkeypatch):
     assert results["successful_imports"] == 2
 
 
+def test_execute_imports_successful_path_reports_recommended_target(tmp_path, monkeypatch):
+    from app.utils import media_helpers, media_processor, thumbnail_generator
+
+    storage_root = tmp_path / "storage"
+    original_dir = storage_root / "media" / "original"
+    thumbnail_dir = storage_root / "media" / "thumbnails"
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    rows = []
+    for index in range(2):
+        source = source_dir / f"success_{index}.jpg"
+        source.write_text(f"success-hash-{index}", encoding="utf-8")
+        rows.append(
+            {
+                "candidate_id": f"candidate_{index}",
+                "public_safe_label": f"candidate_{index}.jpg",
+                "source_locator_private_ref": str(source),
+                "file_hash": f"success-hash-{index}",
+                "eligible_for_import": True,
+            }
+        )
+
+    monkeypatch.setattr(media_helpers, "get_unique_filename", lambda _directory, filename: filename)
+    monkeypatch.setattr(
+        media_processor,
+        "process_media_file",
+        lambda path: {
+            "hash": Path(path).read_text(encoding="utf-8"),
+            "file_type": "image",
+            "mime_type": "image/jpeg",
+            "file_size": Path(path).stat().st_size,
+            "width": 1,
+            "height": 1,
+            "duration": None,
+        },
+    )
+    monkeypatch.setattr(
+        thumbnail_generator,
+        "generate_thumbnail",
+        lambda _source, target, _file_type: Path(target).write_text("thumb", encoding="utf-8") is not None,
+    )
+
+    class FakeResult:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar(self):
+            return self.value
+
+        def scalar_one(self):
+            return self.value
+
+    class FakeConnection:
+        def __init__(self):
+            self.inserted = 0
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            if "SELECT id FROM blombooru_media" in sql:
+                return FakeResult(None)
+            if "INSERT INTO blombooru_media" in sql:
+                self.inserted += 1
+                return FakeResult(self.inserted)
+            raise AssertionError(sql)
+
+    fake_connection = FakeConnection()
+
+    class FakeBegin:
+        def __enter__(self):
+            return fake_connection
+
+        def __exit__(self, _exc_type, _exc, _tb):
+            return False
+
+    class FakeEngine:
+        def begin(self):
+            return FakeBegin()
+
+    context = e1.RuntimeContext(
+        run_id="run",
+        mode="execute",
+        output_dir=tmp_path / "artifacts",
+        storage_root=storage_root,
+        original_dir=original_dir,
+        thumbnail_dir=thumbnail_dir,
+        database_url_safe="db",
+        db_identity_source={},
+    )
+    _ledger, results, imported_ids = e1.execute_imports(
+        FakeEngine(),
+        context,
+        rows,
+        execute=True,
+        target_successful_imports=2,
+        min_successful_imports=1,
+        max_successful_imports=2,
+        copy_timeout_seconds=30,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 0.05,
+            "max_same_reason_failures": 20,
+            "max_consecutive_failures": 10,
+        },
+    )
+    assert imported_ids == [1, 2]
+    assert results["status"] == "completed_recommended_target_met"
+    assert results["target_met"] is True
+    assert results["recommended_target_met"] is True
+
+
+def test_budget_aborted_import_is_not_reported_successful(tmp_path, monkeypatch):
+    from app.utils import media_helpers, media_processor, thumbnail_generator
+
+    storage_root = tmp_path / "storage"
+    original_dir = storage_root / "media" / "original"
+    thumbnail_dir = storage_root / "media" / "thumbnails"
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    first = source_dir / "first.jpg"
+    second = source_dir / "second.jpg"
+    first.write_text("first-hash", encoding="utf-8")
+    second.write_text("second-hash", encoding="utf-8")
+    rows = [
+        {
+            "candidate_id": "candidate_1",
+            "public_safe_label": "candidate_1.jpg",
+            "source_locator_private_ref": str(first),
+            "file_hash": "first-hash",
+            "eligible_for_import": True,
+        },
+        {
+            "candidate_id": "candidate_2",
+            "public_safe_label": "candidate_2.jpg",
+            "source_locator_private_ref": str(second),
+            "file_hash": "second-hash",
+            "eligible_for_import": True,
+        },
+    ]
+
+    monkeypatch.setattr(media_helpers, "get_unique_filename", lambda _directory, filename: filename)
+
+    def fake_copy(source, target, _timeout):
+        if Path(source).name == "second.jpg":
+            return {"ok": False, "bytes_copied": 0, "error_reason": "copy_failed"}
+        Path(target).write_text(Path(source).read_text(encoding="utf-8"), encoding="utf-8")
+        return {"ok": True, "bytes_copied": Path(target).stat().st_size}
+
+    monkeypatch.setattr(e1, "copy_with_timeout", fake_copy)
+    monkeypatch.setattr(
+        media_processor,
+        "process_media_file",
+        lambda path: {
+            "hash": Path(path).read_text(encoding="utf-8"),
+            "file_type": "image",
+            "mime_type": "image/jpeg",
+            "file_size": Path(path).stat().st_size,
+            "width": 1,
+            "height": 1,
+            "duration": None,
+        },
+    )
+    monkeypatch.setattr(
+        thumbnail_generator,
+        "generate_thumbnail",
+        lambda _source, target, _file_type: Path(target).write_text("thumb", encoding="utf-8") is not None,
+    )
+
+    class FakeResult:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar(self):
+            return self.value
+
+        def scalar_one(self):
+            return self.value
+
+    class FakeConnection:
+        def __init__(self):
+            self.inserted = 0
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            if "SELECT id FROM blombooru_media" in sql:
+                return FakeResult(None)
+            if "INSERT INTO blombooru_media" in sql:
+                self.inserted += 1
+                return FakeResult(self.inserted)
+            raise AssertionError(sql)
+
+    fake_connection = FakeConnection()
+
+    class FakeBegin:
+        def __enter__(self):
+            return fake_connection
+
+        def __exit__(self, _exc_type, _exc, _tb):
+            return False
+
+    class FakeEngine:
+        def begin(self):
+            return FakeBegin()
+
+    context = e1.RuntimeContext(
+        run_id="run",
+        mode="execute",
+        output_dir=tmp_path / "artifacts",
+        storage_root=storage_root,
+        original_dir=original_dir,
+        thumbnail_dir=thumbnail_dir,
+        database_url_safe="db",
+        db_identity_source={},
+    )
+    ledger, results, imported_ids = e1.execute_imports(
+        FakeEngine(),
+        context,
+        rows,
+        execute=True,
+        target_successful_imports=2,
+        min_successful_imports=1,
+        max_successful_imports=2,
+        copy_timeout_seconds=30,
+        failure_budget={
+            "max_item_failures": 0,
+            "max_failure_rate": 0.05,
+            "max_same_reason_failures": 20,
+            "max_consecutive_failures": 10,
+        },
+    )
+    assert imported_ids == [1]
+    assert len(ledger) == 2
+    assert results["status"] == "import_failure_budget_exceeded"
+    assert results["target_met"] is False
+    assert results["recommended_target_met"] is False
+    assert results["failure_budget"]["passed"] is False
+    assert results["stop_reason"]["exceeded"] == ["max_item_failures", "max_failure_rate"]
+
+
 def test_duplicate_classification_from_mock_candidate_rows():
     existing = {
         "hash_to_media": {"hash1": 1},
@@ -740,6 +995,64 @@ def test_non_anime_media_are_excluded_from_required_ai_tag_continuity():
     assert e1.eligible_media_ids_from_classification(ledger) == [1, 2]
 
 
+def test_unscheduled_ai_media_are_not_marked_attempted(monkeypatch):
+    from app.services import ai_tagging_job_service, ai_tagging_service
+
+    class FakeDb:
+        def close(self):
+            pass
+
+        def get(self, _model, job_id):
+            return SimpleNamespace(
+                id=job_id,
+                status="failed",
+                processed=1,
+                failed=1,
+                tags_added=4,
+                suggestions_added=0,
+                localization_status="skipped_auto_localization_disabled",
+                error_message="model stopped",
+            )
+
+    job_ids: list[int] = []
+
+    def fake_create_ai_tag_job(_db, media_ids, **_kwargs):
+        job_ids.append(500 + len(job_ids))
+        return SimpleNamespace(id=job_ids[-1])
+
+    monkeypatch.setattr(e1, "init_app_database_session", lambda: FakeDb)
+    monkeypatch.setattr(ai_tagging_service, "check_model_status", lambda: {"model_downloaded": True})
+    monkeypatch.setattr(ai_tagging_job_service, "create_ai_tag_job", fake_create_ai_tag_job)
+    monkeypatch.setattr(ai_tagging_job_service, "run_ai_tag_job", lambda _job_id: None)
+    monkeypatch.setattr(e1, "ai_tag_counts_for_media", lambda _ids: {10: 4})
+
+    ledger, failure_rows, results = e1.run_ai_tagging(
+        [10, 11, 12, 13],
+        chunk_size=2,
+        failure_budget={
+            "max_item_failures": 20,
+            "max_failure_rate": 1.0,
+            "max_same_reason_failures": 20,
+            "max_consecutive_failures": 10,
+        },
+    )
+    by_id = {row["media_id"]: row for row in ledger}
+    assert by_id[10]["ai_tag_attempted"] is True
+    assert by_id[10]["ai_tag_success"] is True
+    assert by_id[11]["ai_tag_attempted"] is True
+    assert by_id[11]["failure_reason"] == "missing_ai_tag_provenance"
+    assert by_id[12]["ai_tag_attempted"] is False
+    assert by_id[12]["deferred_reason"] == "ai_job_not_scheduled"
+    assert by_id[12]["failure_reason"] == "ai_tagging_aborted_before_scheduling"
+    assert by_id[12]["job_id"] is None
+    assert by_id[12]["output_tag_count"] == 0
+    assert by_id[13]["ai_tag_attempted"] is False
+    assert len(failure_rows) == 3
+    assert results["status"] == "failed"
+    assert results["coverage_ratio"] == 0.25
+    assert results["failure_budget"]["failure_reasons"]["ai_tagging_aborted_before_scheduling"] == 2
+
+
 def test_public_redaction_catches_source_paths_and_filenames():
     findings = e1.scan_public_text(r"C:\Users\name\Pictures\iCloud Photos\Photos\12345678_p0.jpg")
     reasons = {finding["reason"] for finding in findings}
@@ -797,6 +1110,34 @@ def test_ai_failure_after_classification_still_writes_mutation_proof(tmp_path, m
     assert (artifact_root / "mutation-proof-after.json").exists()
     assert (artifact_root / "mutation-proof-delta.json").exists()
     assert (artifact_root / "safety-stop-conditions.json").exists()
+
+
+def test_import_failure_budget_exceeded_makes_pipeline_blocker(tmp_path, monkeypatch):
+    install_pipeline_mocks(
+        tmp_path,
+        monkeypatch,
+        classification_status="completed",
+        import_status="import_failure_budget_exceeded",
+    )
+    called = {"classification": False}
+
+    def fail_if_classification_runs(_ids, _chunk):
+        called["classification"] = True
+        raise AssertionError("classification must not run after import budget blocker")
+
+    monkeypatch.setattr(e1, "run_classification", fail_if_classification_runs)
+    summary = e1.run_pipeline(pipeline_args(tmp_path, execute=True))
+    assert summary["status"] == "import_failure_budget_exceeded"
+    assert summary["import_results"]["target_met"] is False
+    assert summary["import_results"]["failure_budget"]["passed"] is False
+    assert summary["mutation_proof"]["passed"] is True
+    assert not called["classification"]
+    assert (tmp_path / "artifacts" / "mutation-proof-delta.json").exists()
+
+
+def test_completed_with_blockers_exits_nonzero(monkeypatch):
+    monkeypatch.setattr(e1, "run_pipeline", lambda _args: {"status": "completed_with_blockers"})
+    assert e1.main(["--dry-run"]) == 2
 
 
 def test_hash_worker_pipe_failure_marks_pending_without_unbounded_hash(monkeypatch):

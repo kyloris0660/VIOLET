@@ -8,11 +8,12 @@
 - Recommended next phase: `PX1`.
 
 ## Reviewer safety-fix loop
-- This report was updated after the completed E1 run for the PR #102 reviewer safety-fix loop.
+- This report was updated after the completed E1 run for the final PR #102 reviewer safety-fix loop.
 - E1 operational results remain unchanged: successful imports `1761`, total media after `3750`, eligible AI coverage `1751` / `1751` (`100.0`%).
 - No new import, classification job, AI tagging job, DB write, or app-storage mutation was run in this fix loop.
 - Reviewer findings fixed in the committed runner/tests: maximum import cap enforced before writes, temp-first public redaction failure behavior, scan-job tables removed from E1 allowed mutation set, post-import failure finalization records mutation proof, forbidden table fingerprint proof added, and hash worker pipe fallback remains timeout-bounded.
-- PX1 remains next only after PR #102 is accepted and merged.
+- Final narrow reviewer findings fixed in this loop: budget-aborted import cannot be reported successful, `completed_with_blockers` exits non-zero, and unscheduled AI items are marked not attempted/deferred rather than attempted.
+- PX1 remains next only after PR #102 is accepted/merged and manual data validation is done.
 
 ## Scope and non-goals
 - E1 imports a controlled medium batch and completes AI tag provenance for newly imported eligible media.
