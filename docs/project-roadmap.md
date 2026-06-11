@@ -21,7 +21,7 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is governed controlled medium expansion before renewed SourceConcept triage and Entity truth work.
+The active route is post-R1 SourceConcept audit / route decision before any provider expansion, SourceConcept editing, or Entity truth work.
 
 Current accepted state:
 
@@ -29,29 +29,33 @@ Current accepted state:
 - Phase 4.5-SC2 is merged: read-only SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
 - Phase 4.5-DOC1-R1 is merged: README/handoff/roadmap/test workflow restructuring and guard-debt classification.
 - Phase 4.5-SCV1 is merged: read-only current-DB coverage audit, search symmetry check, alias-gap analysis, `needs_review` cluster analysis, redaction proof, and decision matrix.
-- Phase 4.5-SCV2-P0 is implemented on branch `codex/phase45-scv2-p0-controlled-medium-expansion-policy`: read-only current-DB media/Pixiv-like/source metadata inventory, AI tag continuity policy, medium expansion target/buffer, E1/PX1/R1/A1 split, ledger schemas, safety gates, and public/private artifact boundary.
+- Phase 4.5-SCV2-P0 is merged: read-only current-DB media/Pixiv-like/source metadata inventory, AI tag continuity policy, medium expansion target/buffer, E1/PX1/R1/A1 split, ledger schemas, safety gates, and public/private artifact boundary.
+- Phase 4.5-SCV2-E1 / PR #102 is merged: medium import plus eligible AI tag completion, ending at 3750 media and 3687/3687 eligible AI tag coverage.
+- Phase 4.5-PX1 / PR #103 is merged: bounded Pixiv/gallery-dl metadata extraction selected 500, succeeded 470, recorded 30 unavailable/private/deleted failures, wrote source-layer metadata/observations/assertions only, and found 0 exact duplicate dry-run groups.
+- Phase 4.5-SCV2-R1 has run dry-run and execute on branch `codex/phase45-scv2-r1-post-px1-source-concept-triage`: PX1 evidence was consumed by SourceConcept triage, mutation proof/public redaction passed, and only allowed SourceConcept resolver tables changed.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
-Current SCV2-P0 result:
+Current post-PX1 result:
 
-- Read-only proof passed: PostgreSQL transaction was read-only and forbidden table row counts did not change.
-- Public redaction passed for `docs/reports/phase-4.5-scv2-p0-controlled-medium-expansion-policy.md` and summary JSON.
-- Current DB baseline is 1989 total media, 1936 eligible media, and 1936/1936 eligible AI tag coverage.
-- DB-derived Pixiv-like media candidates are 557; 60 have source metadata and 497 are metadata backlog.
-- Recommended next route: `SCV2-E1` medium import plus AI tag completion, followed by `PX1`, `SCV2-R1`, and `SCV2-A1`.
-- 5k/10k/full-library expansion and Entity bridge are not next.
+- Current DB baseline is 3750 total media, 3687 eligible media, and 3687/3687 eligible AI tag coverage.
+- DB-derived Pixiv-like media candidates are 2287; PX1 selected a bounded 500 for metadata extraction and persisted 470 successes.
+- PX1 source searchable assertions are intentionally `needs_review` with `requires_review=true`; they are not `searchable_active`.
+- R1 SourceConcept counts moved 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence.
+- R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
+- Recommended next route: `SCV2-A1` post-expansion audit and route decision.
+- PX1-B, DEDUP1, 5k/10k/full-library expansion, SourceConcept editing, and Entity bridge are not next.
 
 ## Near-Term Route
 
-1. Review and merge Phase 4.5-SCV2-P0 if accepted.
-2. Start `SCV2-E1` only after approving import target, source roots, staging/import safety, AI job behavior, localization-off behavior, and item ledger.
-3. Run `PX1` as a separate bounded Pixiv/source metadata phase after provider/gallery-dl/auth/cache/rate-limit/retry/redaction policy is approved.
-4. Run `SCV2-R1` SourceConcept alias resolver / `needs_review` triage only after expanded AI/source metadata signals exist.
-5. Run `SCV2-A1` as the post-expansion read-only audit before any broader scale, SourceConcept editing, or Entity bridge decision.
+1. Review and merge `SCV2-R1` if accepted.
+2. After R1 merge, run `SCV2-A1` as the post-expansion audit and route decision.
+3. Defer PX1-B until after A1 or a separate provider-policy decision.
+4. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
+5. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
-- Controlled medium import/AI continuity comes before PX1, and PX1 comes before renewed SourceConcept alias/needs_review triage in this route.
+- Controlled medium import/AI continuity, PX1, and R1 are complete for this route; A1 is the next audit/decision step.
 - Alias resolver improvement still comes before Entity bridge or promotion.
 - SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
@@ -840,7 +844,11 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Phase 4.5-SC1 did not create or mutate `Entity`, `EntityAlias`, `EntityEvidence`, `MediaEntityCandidate`, `MediaEntityAssignment`, `LocalSourceHint`, `TagTranslation`, confirmed assignments, or `media_tags`. Manual promotion remains preview/design/disabled until a later explicit Entity bridge phase.
 - Phase 4.5-SC2 / PR #98 is complete. It added read-only SourceConcept alias expansion through `SourceConceptSearchIndex`, media-detail SourceConcept grouping/evidence UI, search expansion explanation, `needs_review` source-layer search behavior, and disabled/no-op manual-promotion preview. It preserves normal tag search, preserves F6 user-facing chip behavior through global `q=` search, keeps scoped source filters advanced/debug-only, and remains read-only over Entity truth paths.
 - Phase 4.5-DOC1 is the post-SC2 documentation consolidation and executable-guard audit. It should keep long-term docs concise, link to reports instead of copying long rules, and identify hard safety rules that are enforced by code/tests versus still documented-only.
-- Next recommended route after DOC1: `Phase 4.5-SCV1: Expanded SourceConcept validation and coverage audit` before any Entity bridge or promotion work.
+- Phase 4.5-SCV1 / PR #100 is complete. It audited current SourceConcept coverage, alias gaps, search symmetry, and `needs_review` clusters before any Entity bridge.
+- Phase 4.5-SCV2-P0 / PR #101 is complete. It established the E1/PX1/R1/A1 route and safety split.
+- Phase 4.5-SCV2-E1 / PR #102 is complete. It expanded to 3750 media and restored eligible AI tag coverage to 3687/3687 without provider or SourceConcept resolver work.
+- Phase 4.5-PX1 / PR #103 is complete. It produced a bounded Pixiv source metadata batch for R1: 470 metadata successes, 3727 tag observations, 918 name observations/assertions, 3727 metadata evidence rows, all new PX1 assertions review-scoped, and 0 exact duplicate dry-run groups.
+- Phase 4.5-SCV2-R1 generated `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md` and `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json`: dry-run and execute passed, PX1 evidence influenced 1692 SourceConcepts, public redaction passed, and only allowed SourceConcept tables changed.
 
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 

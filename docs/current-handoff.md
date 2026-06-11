@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated during Phase 4.5-SCV2-P0 on `2026-06-08T21:42:49+08:00`.
-> Active PR branch: `codex/phase45-scv2-p0-controlled-medium-expansion-policy`.
+> Last updated after Phase 4.5-SCV2-R1 execute on `2026-06-11T23:58:17+08:00`.
+> Active PR branch: `codex/phase45-scv2-r1-post-px1-source-concept-triage`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,8 +11,8 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Current PR | Phase 4.5-SCV2-P0 controlled medium expansion policy |
-| Baseline main | PR #100 / SCV1 merge commit `c1c2cf3` or later |
+| Current PR | Phase 4.5-SCV2-R1 post-PX1 SourceConcept triage |
+| Baseline main | PR #103 / PX1 merge commit `20e31c1` or later |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | `.\venv\Scripts\python.exe` |
 
@@ -24,29 +24,33 @@
 - PR #99 / Phase 4.5-DOC1-R1 is merged. It restructured docs and classified guard debt.
 - PR #100 / Phase 4.5-SCV1 is merged. It generated a read-only current-DB coverage audit, search symmetry check, alias-gap analysis, `needs_review` cluster analysis, redaction proof, and decision matrix.
 - Phase 4.5-SCV2-P0 generated a read-only current-DB inventory and governed split for controlled medium expansion on branch `codex/phase45-scv2-p0-controlled-medium-expansion-policy`.
+- PR #102 / Phase 4.5-SCV2-E1 is merged. It expanded the library to 3750 media and completed eligible AI tag coverage without Pixiv/provider/SourceConcept resolver work.
+- PR #103 / Phase 4.5-PX1 is merged. It ran the bounded Pixiv/gallery-dl metadata extraction batch: 500 selected, 470 metadata successes, 30 unavailable/private/deleted failures, zero exact duplicate dry-run groups, and source-layer-only metadata/assertion writes.
+- Phase 4.5-SCV2-R1 has run dry-run and execute on branch `codex/phase45-scv2-r1-post-px1-source-concept-triage`. It consumed PX1 evidence into SourceConcept triage, wrote only allowed SourceConcept tables, and generated the R1 public report/summary.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
-- Historical details before SC1/SC2/SCV1/SCV2-P0 live in `docs/project-roadmap.md` and `docs/reports/`.
+- Historical details before SC1/SC2/SCV1/SCV2-P0/E1/PX1/R1 live in `docs/project-roadmap.md` and `docs/reports/`.
 
 ## Current Route
 
-SCV2-P0 recommendation:
+`SCV2-A1` - post-expansion SourceConcept audit and route decision after R1.
 
-`SCV2-E1` - Medium Import + AI Tag Completion, then `PX1`, `SCV2-R1`, and `SCV2-A1`.
-
-P0 confirms current eligible AI tag coverage is complete and that already-imported Pixiv-like media substantially exceed source metadata coverage. The next executable phase should be a controlled medium import with AI tag completion only after target, source roots, staging/import safety, AI job behavior, localization-off behavior, and item ledger are approved. Pixiv/gallery-dl/provider metadata belongs in PX1, not E1.
+R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resolver/triage, mutation proof and public redaction passed, and no truth-path/source-metadata writes occurred. The next step is not more provider extraction, broader import, DEDUP1, or Entity bridge.
 
 ## Current Known Observations / Validation Seeds
 
 - SCV1 tested Nahida / `纳西妲` / `草神` / `nahida_(genshin_impact)` plus the prompt mojibake seed variants.
 - Nahida seed matched 10 visible concept IDs and 33 media, so the immediate issue is not a single missing alias; it is broader alias fragmentation and `needs_review` noise.
-- Source metadata remains sparse: SCV1 recorded 60 source metadata records linked to 1989 media, so any Pixiv/source metadata expansion must be a separate bounded provider phase with ledger/privacy guards.
-- SCV2-P0 recorded 1989 total media, 1936 eligible media, eligible AI tag coverage 1936/1936, 557 DB-derived Pixiv-like media candidates, 60 Pixiv-like candidates with source metadata, and 497 Pixiv-like metadata backlog.
+- PX1 post-E1 baseline recorded 3750 total media, 3687 eligible media, eligible AI tag coverage 3687/3687, 2287 Pixiv-like candidates, 500 selected metadata requests, 470 metadata successes, and zero exact duplicate dry-run groups.
+- PX1 source assertions are intentionally `needs_review` with `requires_review=true`; R1 may consume them as review-scoped SourceConcept input but must not promote them into active search truth or Entity/media_tags truth.
+- R1 SourceConcept counts moved from 4214 to 6094 total, 355 to 1078 active, and 760 to 1809 `needs_review`; 1692 concepts are now influenced by PX1 evidence.
+- R1 alias gap deltas improved source assertion/source name/source tag/identity-tag gaps but increased total gap signals by 626 because PX1 added much more review-scoped evidence and fragmentation to triage.
+- R1 search seed symmetry checked 10 groups / 67 seeds / 49 matched seeds; all 10 groups remain asymmetric and should be reviewed in A1 before any truth bridge.
 
 ## Hard Non-Goals Without Explicit Approval
 
 - No push to `main`; agents do not merge PRs.
-- No DB migration, DB import, DB write, cleanup, drop, truncate, or destructive operation.
-- No provider/gallery-dl/Pixiv/SauceNAO/Google/source enrichment run.
+- No further DB migration, DB import, DB write, cleanup, drop, truncate, or destructive operation without explicit approval. R1's completed execute writes were limited to the allowed SourceConcept resolver tables.
+- No provider/gallery-dl/Pixiv/SauceNAO/Google/source enrichment run unless a later phase explicitly approves it.
 - No LLM, AI tagging, classification, localization, background jobs, or full-library validation.
 - No source/iCloud/staging/app-managed storage mutation.
 - No Entity Resolver, similarity/clustering, SourceConcept editing, Entity bridge, promotion, confirmed assignment, trusted Entity creation, or `media_tags` mutation.
@@ -62,7 +66,7 @@ P0 confirms current eligible AI tag coverage is complete and that already-import
 
 - Python identity: `& "$PY" scripts/check_python_env.py --expected-python "$PY"`.
 - SCV1 runner: `& "$PY" scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir ".local_manifests\phase-4.5-scv1-source-concept-coverage-audit" --write-public-report --read-only`.
-- SCV2-P0 runner: `& "$PY" scripts/run_phase45_scv2_p0_controlled_medium_expansion_policy.py --output-dir ".local_manifests\phase-4.5-scv2-p0-controlled-medium-expansion-policy" --write-public-report --read-only`.
+- SCV2-R1 runner: `& "$PY" scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py --dry-run --output-dir ".local_manifests\phase-4.5-scv2-r1-post-px1-source-concept-triage" --write-public-report`, then execute only with `--confirm-execution EXECUTE_PHASE45_SCV2_R1_SOURCE_CONCEPT_TRIAGE`.
 - Scope-based test selection: `docs/test-workflow.md`.
 - Manual development validation: `docs/manual-validation.md`.
 - Source/iCloud safety: `docs/icloud-safe-ingestion.md`.
@@ -76,4 +80,6 @@ P0 confirms current eligible AI tag coverage is complete and that already-import
 - SC2 report: `docs/reports/phase-4.5-sc2-source-concept-search-evidence-ui.md`.
 - SCV1 report: `docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md`.
 - SCV2-P0 report: `docs/reports/phase-4.5-scv2-p0-controlled-medium-expansion-policy.md`.
-- Historical reports: `docs/reports/`.
+- E1 report: `docs/reports/phase-4.5-scv2-e1-medium-import-ai-tag-completion.md`.
+- PX1 report: `docs/reports/phase-4.5-px1-pixiv-metadata-dedup-dry-run.md`.
+- R1 report: `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md`.
