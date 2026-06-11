@@ -1,0 +1,382 @@
+{
+  "artifact_lifecycle": {
+    "private_artifacts": "one-off local artifact / ignored output",
+    "public_report": "public report / handoff / roadmap update",
+    "runner": "phase-scoped operational runner",
+    "tests": "phase-scoped validation test"
+  },
+  "baseline": {
+    "comparison_baseline_media_count": 3750,
+    "comparison_baseline_policy": "Use current DB media count as the denominator for pre/post medium expansion comparisons.",
+    "content_class_distribution": {
+      "anime": 3614,
+      "non_anime": 63,
+      "unknown": 73
+    },
+    "current_eligible_ai_tag_coverage_effectively_complete": true,
+    "eligible_ai_tag_provenance_pct": 100.0,
+    "eligible_media": 3687,
+    "eligible_media_pct": 98.32,
+    "eligible_media_with_ai_tag_provenance": 3687,
+    "eligible_media_with_source_metadata_by_distinct_media": 60,
+    "eligible_media_without_ai_tag_provenance": 0,
+    "eligible_policy": "content_class IN ('anime', 'unknown')",
+    "media_with_ai_tag_provenance": 3713,
+    "media_with_any_tags": 3713,
+    "media_with_any_tags_pct": 99.01,
+    "media_with_source_concept_evidence_or_links": 1338,
+    "media_with_source_layer_signals": 1338,
+    "media_with_source_metadata": 60,
+    "media_with_source_metadata_by_distinct_media": 60,
+    "media_without_source_metadata": 3690,
+    "non_anime_count": 63,
+    "source_metadata_total_rows": 200,
+    "total_media": 3750
+  },
+  "branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
+  "db_identity_after": {
+    "connected_database": "blombooru",
+    "connected_user_recorded": true,
+    "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "urls_match": true
+    },
+    "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
+    "git_sha": "f7d69e8c9e69d2933c160a9f76205ceb0d82f000",
+    "host": "localhost",
+    "password_value_recorded": false,
+    "port": 5432,
+    "python_executable": "python.exe",
+    "python_executable_path_recorded_private_only": true,
+    "recorded_at": "2026-06-11T11:21:27.694247+00:00",
+    "total_media_after": 3750,
+    "violet_env": "development"
+  },
+  "db_identity_before": {
+    "connected_database": "blombooru",
+    "connected_user_recorded": true,
+    "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "urls_match": true
+    },
+    "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
+    "git_sha": "f7d69e8c9e69d2933c160a9f76205ceb0d82f000",
+    "host": "localhost",
+    "password_value_recorded": false,
+    "port": 5432,
+    "python_executable": "python.exe",
+    "python_executable_path_recorded_private_only": true,
+    "recorded_at": "2026-06-11T11:21:06.980025+00:00",
+    "violet_env": "development"
+  },
+  "decision_matrix": {
+    "dedup1_may_be_proposed": false,
+    "metadata_extraction_succeeded_for_bounded_batch": false,
+    "provider_auth_or_rate_limit_blocked": false,
+    "px1_target_met": false,
+    "recommended_next_phase": "PX1 precondition resolution",
+    "scv2_r1_may_start": false
+  },
+  "duplicate_cleanup_plan_summary": {
+    "all_non_pixiv_groups": 0,
+    "ambiguous_conflicting_pixiv_groups": 0,
+    "auto_delete_candidate_groups_if_later_approved": 0,
+    "db_mutated_for_dedup": false,
+    "deletion_executed": false,
+    "estimated_storage_reclaim_bytes_if_safely_computable": 0,
+    "exact_duplicate_groups": 0,
+    "files_mutated_for_dedup": false,
+    "groups_blocked_by_attached_data_risk": 0,
+    "groups_with_pixiv_like_retention": 0,
+    "policy": "exact hash only; deletion is deferred to a later explicitly approved destructive phase",
+    "total_duplicate_media_involved": 0,
+    "would_delete_count_if_later_approved": 0
+  },
+  "duplicate_dry_run": {
+    "deletion_executed": false,
+    "exact_hash_only": true,
+    "perceptual_or_similarity_detection": false,
+    "read_only": true
+  },
+  "failure_budget": {
+    "attempts": 5,
+    "auth_failures": 0,
+    "consecutive_failures": 5,
+    "max_auth_failures": 3,
+    "max_consecutive_failures": 5,
+    "max_failure_rate": 0.25,
+    "max_rate_limit_failures": 3,
+    "max_total_failures": 20,
+    "rate_limit_failures": 0,
+    "stop_reason": "max_failure_rate",
+    "stopped": true,
+    "total_failures": 5
+  },
+  "generated_at": "2026-06-11T11:21:28.153887+00:00",
+  "metadata_extraction_results": {
+    "attempted_count": 5,
+    "failure_count": 5,
+    "failure_reason_counts": {
+      "no_metadata_records": 5
+    },
+    "mode": "execute_metadata",
+    "original_downloaded": false,
+    "selected_count": 500,
+    "stop_reason": "max_failure_rate",
+    "success_count": 0
+  },
+  "metadata_selection": {
+    "default_limit": 500,
+    "eligible_before_limit": 2217,
+    "exact_media_ids_public": false,
+    "exact_pixiv_ids_public": false,
+    "excluded_reason_counts": {
+      "already_has_source_metadata": 60,
+      "ineligible_content_class": 10
+    },
+    "manual_review_candidates_excluded": 0,
+    "requested_limit": 500,
+    "selected_count": 500,
+    "selection_policy": [
+      "exclude would-delete candidates from exact duplicate dry-run",
+      "exclude manual-review duplicate groups",
+      "prefer reliable filename Pixiv ID/page priors",
+      "exclude candidates with existing source metadata",
+      "respect bounded metadata limit"
+    ],
+    "would_delete_candidates_excluded": 0
+  },
+  "mutation_proof": {
+    "allowed_tables": [
+      "blombooru_source_metadata_evidence",
+      "blombooru_source_metadata_records",
+      "blombooru_source_name_observations",
+      "blombooru_source_searchable_name_assertions",
+      "blombooru_source_tag_observations"
+    ],
+    "changed_tables": [],
+    "expected_changed_table_names": [],
+    "expected_changed_tables": [],
+    "forbidden_changed_table_names": [],
+    "forbidden_changed_tables": [],
+    "forbidden_tables": [
+      "blombooru_ai_tag_jobs",
+      "blombooru_classification_jobs",
+      "blombooru_entities",
+      "blombooru_entity_aliases",
+      "blombooru_entity_evidence",
+      "blombooru_entity_external_identities",
+      "blombooru_entity_translations",
+      "blombooru_media",
+      "blombooru_media_entity_assignments",
+      "blombooru_media_entity_candidates",
+      "blombooru_media_tags",
+      "blombooru_negative_lookup_cache",
+      "blombooru_pixiv_tag_alias_kb",
+      "blombooru_pixiv_tag_taxonomy_kb",
+      "blombooru_provider_cache",
+      "blombooru_scan_job_media",
+      "blombooru_scan_jobs",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_search_index",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts",
+      "blombooru_source_name_alias_candidates",
+      "blombooru_source_name_candidate_extraction_runs",
+      "blombooru_source_name_candidate_record_verdicts",
+      "blombooru_source_name_candidates",
+      "blombooru_source_name_registry",
+      "blombooru_source_tag_registry",
+      "blombooru_tag_translation_jobs",
+      "blombooru_tag_translations",
+      "blombooru_tags"
+    ],
+    "passed": true,
+    "unexpected_changed_table_names": [],
+    "unexpected_changed_tables": []
+  },
+  "phase": "4.5-PX1",
+  "pixiv_like_inventory": {
+    "candidates_eligible_for_metadata_extraction": 2217,
+    "candidates_excluded_from_metadata_extraction": 70,
+    "candidates_that_are_exact_duplicate_would_delete": 0,
+    "distinct_pixiv_work_ids": 2237,
+    "duplicate_dry_run_available_before_selection": true,
+    "duplicate_pixiv_work_page_candidates": 0,
+    "duplicate_summary": {
+      "all_non_pixiv_groups": 0,
+      "ambiguous_conflicting_pixiv_groups": 0,
+      "auto_delete_candidate_groups_if_later_approved": 0,
+      "db_mutated_for_dedup": false,
+      "deletion_executed": false,
+      "estimated_storage_reclaim_bytes_if_safely_computable": 0,
+      "exact_duplicate_groups": 0,
+      "files_mutated_for_dedup": false,
+      "groups_blocked_by_attached_data_risk": 0,
+      "groups_with_pixiv_like_retention": 0,
+      "policy": "exact hash only; deletion is deferred to a later explicitly approved destructive phase",
+      "total_duplicate_media_involved": 0,
+      "would_delete_count_if_later_approved": 0
+    },
+    "eligible_media": 3687,
+    "exact_media_ids_public": false,
+    "exact_pixiv_ids_public": false,
+    "exclusion_reason_counts": {
+      "already_has_source_metadata": 60,
+      "ineligible_content_class": 10
+    },
+    "invalid_or_ambiguous_pixiv_id_candidates": 0,
+    "method": "DB-derived signals only; no source root scan, import, classification, AI tagging, or SourceConcept resolver.",
+    "pixiv_like_candidates_with_existing_source_metadata": 60,
+    "pixiv_like_candidates_without_source_metadata": 2227,
+    "pixiv_like_media_candidates": 2287,
+    "private_candidate_count": 2287,
+    "private_candidate_rows_public": false,
+    "reason_category_counts": {
+      "filename_pixiv_id_pattern": 2287,
+      "filename_pixiv_marker": 2,
+      "source_assertion_provider_pixiv": 56,
+      "source_concept_evidence_provider_pixiv": 60,
+      "source_concept_signal_provider_pixiv": 60,
+      "source_metadata_pixiv_work_id": 60,
+      "source_metadata_provider_pixiv": 60,
+      "source_name_candidate_provider_pixiv": 57,
+      "source_name_observation_provider_pixiv": 60,
+      "source_tag_observation_provider_pixiv": 60
+    },
+    "total_media": 3750
+  },
+  "private_artifacts": {
+    "paths_public": false,
+    "private_artifact_names": [
+      "db-identity-before.json",
+      "db-identity-after.json",
+      "pixiv-like-inventory.json",
+      "pixiv-like-candidates.jsonl",
+      "pixiv-metadata-request-ledger.jsonl",
+      "pixiv-metadata-success-ledger.jsonl",
+      "pixiv-metadata-failure-ledger.jsonl",
+      "source-metadata-write-ledger.jsonl",
+      "duplicate-groups-dry-run.jsonl",
+      "duplicate-cleanup-plan.jsonl",
+      "duplicate-cleanup-summary.json",
+      "mutation-proof-before.json",
+      "mutation-proof-after.json",
+      "mutation-proof-delta.json",
+      "provider-cache-summary.json",
+      "public-redaction-check.txt"
+    ],
+    "private_artifact_root_label": ".local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run",
+    "private_artifacts_committed": false
+  },
+  "provider_preflight": {
+    "auth_status": "unknown_no_success",
+    "entrypoint": {
+      "available": true,
+      "command_label": "gallery-dl executable",
+      "error": null,
+      "mode": "external_executable",
+      "version_present": true
+    },
+    "gallery_dl_available": true,
+    "network_attempted": true,
+    "original_download_policy": "forbidden; command uses --dump-json --no-download",
+    "provider_cache": {
+      "cache_hit_count": 0,
+      "cache_miss_count": 5,
+      "db_provider_cache_used": false,
+      "failure_budget": {
+        "attempts": 5,
+        "auth_failures": 0,
+        "consecutive_failures": 5,
+        "max_auth_failures": 3,
+        "max_consecutive_failures": 5,
+        "max_failure_rate": 0.25,
+        "max_rate_limit_failures": 3,
+        "max_total_failures": 20,
+        "rate_limit_failures": 0,
+        "stop_reason": "max_failure_rate",
+        "stopped": true,
+        "total_failures": 5
+      },
+      "failure_count": 5,
+      "failure_reason_counts": {
+        "no_metadata_records": 5
+      },
+      "filesystem_provider_cache_used": true,
+      "original_downloaded": false,
+      "raw_json_cache_dir_private": true,
+      "raw_json_cache_dir_public_label": ".local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run/provider-cache/raw-gallery-dl-json",
+      "request_count": 5,
+      "success_count": 0
+    },
+    "rate_limit_policy": "serial requests, bounded failure budget"
+  },
+  "public_redaction": {
+    "checked_paths": [
+      "phase-4.5-px1-pixiv-metadata-dedup-dry-run.md",
+      "phase-4.5-px1-pixiv-metadata-dedup-dry-run-summary.json"
+    ],
+    "findings": [],
+    "passed": true
+  },
+  "recommended_next_phase": "PX1 precondition resolution",
+  "safety": {
+    "browser_validation": "not_run_no_ui_runtime_target",
+    "no_classification_ai_localization_llm": true,
+    "no_duplicate_deletion": true,
+    "no_media_import": true,
+    "no_media_tags_mutation": true,
+    "no_merge": true,
+    "no_original_image_download": true,
+    "no_push_main": true,
+    "no_source_concept_resolver_or_entity_bridge": true,
+    "no_source_icloud_mutation": true
+  },
+  "source_layer_write_results": {
+    "allowed_tables_only": true,
+    "name_observations_affected": 0,
+    "source_assertions_affected": 0,
+    "source_metadata_records_affected": 0,
+    "tag_observations_affected": 0,
+    "write_ledger_count": 0,
+    "writes_applied": false
+  },
+  "status": "inventory_and_dedup_completed_provider_metadata_not_written",
+  "title": "Bounded Pixiv Metadata Extraction and Exact-Duplicate Cleanup Dry-Run",
+  "validation": {
+    "browser_validation": "not_run_no_ui_runtime_target",
+    "commands": [
+      "python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 500 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY"
+    ],
+    "dedup_read_only": true,
+    "operational_mode": "execute-metadata",
+    "provider_network_attempted": true,
+    "server_started": false
+  }
+}
