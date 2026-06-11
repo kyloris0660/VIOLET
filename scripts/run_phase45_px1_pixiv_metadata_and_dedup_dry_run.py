@@ -1291,6 +1291,12 @@ def classify_provider_failure(stderr: str, stdout: str = "") -> str:
 
 
 def _json_rows_from_stdout(stdout: str) -> list[Any]:
+    text_value = stdout.strip()
+    if text_value:
+        try:
+            return [json.loads(text_value)]
+        except json.JSONDecodeError:
+            pass
     rows: list[Any] = []
     for line in stdout.splitlines():
         line = line.strip()
@@ -1300,12 +1306,6 @@ def _json_rows_from_stdout(stdout: str) -> list[Any]:
             rows.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    if not rows and stdout.strip():
-        try:
-            value = json.loads(stdout)
-            rows.append(value)
-        except json.JSONDecodeError:
-            pass
     return rows
 
 

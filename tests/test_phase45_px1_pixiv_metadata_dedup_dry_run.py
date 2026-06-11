@@ -301,6 +301,17 @@ def test_gallery_dl_nested_event_array_output_is_parsed() -> None:
     assert records == [{"id": 12345678, "num": 0}]
 
 
+def test_gallery_dl_pretty_json_object_output_is_parsed_as_whole_document() -> None:
+    stdout = json.dumps({"id": 12345678, "num": 0, "title": "pretty", "tags": ["tag"]}, indent=2)
+
+    rows = px1._json_rows_from_stdout(stdout)
+    records = px1._metadata_dicts_from_gallery_dl(stdout)
+
+    assert len(rows) == 1
+    assert isinstance(rows[0], dict)
+    assert records == [{"id": 12345678, "num": 0, "title": "pretty", "tags": ["tag"]}]
+
+
 def test_existing_raw_cache_prevents_provider_call(tmp_path) -> None:
     cached = candidate(42, filename="12345678_p0.png")
     paths = px1.raw_cache_paths(tmp_path, cached)
