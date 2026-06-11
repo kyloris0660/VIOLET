@@ -545,6 +545,27 @@ def test_provider_failure_budget_stops_repeated_auth_and_rate_limit_failures() -
     assert rate_budget.stop_reason == "repeated_rate_limit_failures"
 
 
+def test_provider_budget_uses_auth_or_rate_limit_diagnostic_class() -> None:
+    assert (
+        px1.provider_budget_failure_reason(
+            {
+                "failure_reason": "no_metadata_records",
+                "public_provider_output_shape": {"diagnostic_class": "auth_or_config_failure"},
+            }
+        )
+        == "auth_or_config_failure"
+    )
+    assert (
+        px1.provider_budget_failure_reason(
+            {
+                "failure_reason": "no_metadata_records",
+                "public_provider_output_shape": {"diagnostic_class": "rate_limited"},
+            }
+        )
+        == "rate_limited"
+    )
+
+
 def test_transaction_mutation_proof_rolls_back_unexpected_changes() -> None:
     class FakeTransaction:
         def __init__(self) -> None:

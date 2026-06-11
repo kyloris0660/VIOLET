@@ -1791,7 +1791,7 @@ def execute_metadata_requests(
         if failure is not None:
             failure_rows.append(failure)
             if provider_called:
-                failure_budget.record_failure(str(failure.get("failure_reason") or "provider_request_failed"))
+                failure_budget.record_failure(provider_budget_failure_reason(failure))
         if provider_called:
             time.sleep(max(float(sleep_request_seconds), 0.0))
     failure_reason_counts = Counter(str(row.get("failure_reason") or "unknown") for row in failure_rows)
@@ -2407,6 +2407,13 @@ def searchable_assertion_write_policy() -> dict[str, Any]:
 
 def provider_network_attempted(provider_cache_summary: Mapping[str, Any]) -> bool:
     return int(provider_cache_summary.get("provider_called_count") or 0) > 0
+
+
+def provider_budget_failure_reason(failure: Mapping[str, Any]) -> str:
+    diagnostic_class = str((failure.get("public_provider_output_shape") or {}).get("diagnostic_class") or "")
+    if diagnostic_class in {"auth_or_config_failure", "rate_limited"}:
+        return diagnostic_class
+    return str(failure.get("failure_reason") or "provider_request_failed")
 
 
 def report_generation_metadata() -> dict[str, Any]:
