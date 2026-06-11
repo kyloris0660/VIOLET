@@ -5,8 +5,9 @@
 - Status: `inventory_and_dedup_completed_provider_metadata_not_written`.
 - Current total media: `3750`.
 - Pixiv-like candidates: `2287`.
-- Metadata extraction selected/success/failure: `500` / `0` / `5`.
+- Metadata extraction selected/success/failure: `5` / `0` / `5`.
 - Exact duplicate groups: `0`; would-delete if later approved: `0`.
+- Provider execution policy: `anime_only_source_metadata_missing_reliable_single_pixiv_filename_prior`.
 
 ## Scope and non-goals
 
@@ -27,8 +28,13 @@
 - Distinct Pixiv work IDs: `2237`.
 - Duplicate Pixiv work/page candidates: `0`.
 - Invalid or ambiguous Pixiv ID candidates: `0`.
-- Eligible for metadata extraction before limit: `2217`.
+- Eligible for metadata extraction before limit: `2194`.
+- Anime provider execution eligible: `2194`.
+- Unknown excluded from provider execution: `26`.
+- Non-anime excluded from provider execution: `10`.
+- Already has source metadata excluded: `57`.
 - Exclusion reasons: `{"already_has_source_metadata": 60, "ineligible_content_class": 10}`.
+- Provider execution exclusion reasons: `{"already_has_source_metadata": 57, "non_anime_excluded_from_provider_execution": 10, "unknown_excluded_from_provider_execution": 26}`.
 
 ## Exact duplicate dry-run summary
 
@@ -47,17 +53,19 @@
 
 ## Metadata extraction candidate selection
 
-- Selected count: `500`.
-- Eligible before limit: `2217`.
-- Requested limit: `500`.
-- Excluded reason counts: `{"already_has_source_metadata": 60, "ineligible_content_class": 10}`.
+- Selected count: `5`.
+- Eligible before limit: `2194`.
+- Requested limit: `5`.
+- Excluded reason counts: `{"already_has_source_metadata": 57, "non_anime_excluded_from_provider_execution": 10, "unknown_excluded_from_provider_execution": 26}`.
+- Unknown excluded from provider execution: `26`.
+- Non-anime excluded from provider execution: `10`.
 
 ## Provider/auth/cache/rate-limit preflight
 
 - gallery-dl available: `True`.
 - Entry mode: `external_executable`.
 - Original download policy: `forbidden; command uses --dump-json --no-download`.
-- Provider cache: `{"cache_hit_count": 0, "cache_miss_count": 5, "db_provider_cache_used": false, "failure_budget": {"attempts": 5, "auth_failures": 0, "consecutive_failures": 5, "max_auth_failures": 3, "max_consecutive_failures": 5, "max_failure_rate": 0.25, "max_rate_limit_failures": 3, "max_total_failures": 20, "rate_limit_failures": 0, "stop_reason": "max_failure_rate", "stopped": true, "total_failures": 5}, "failure_count": 5, "failure_reason_counts": {"no_metadata_records": 5}, "filesystem_provider_cache_used": true, "original_downloaded": false, "raw_json_cache_dir_private": true, "raw_json_cache_dir_public_label": ".local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run/provider-cache/raw-gallery-dl-json", "request_count": 5, "success_count": 0}`.
+- Provider cache: `{"cache_hit_count": 5, "cache_miss_count": 0, "cache_no_metadata_records_count": 5, "cache_parse_failure_count": 0, "db_provider_cache_used": false, "failure_budget": {"attempts": 5, "auth_failures": 0, "consecutive_failures": 5, "max_auth_failures": 3, "max_consecutive_failures": 5, "max_failure_rate": 0.25, "max_rate_limit_failures": 3, "max_total_failures": 20, "rate_limit_failures": 0, "stop_reason": "max_failure_rate", "stopped": true, "total_failures": 5}, "failure_count": 5, "failure_reason_counts": {"cache_no_metadata_records": 5}, "filesystem_provider_cache_used": true, "original_downloaded": false, "provider_called_count": 0, "provider_output_diagnosis": {"auth_config_failure_count": 0, "command_option_issue_count": 0, "diagnostic_class_counts": {"unavailable_private_or_deleted": 5}, "failure_reason_counts": {"cache_no_metadata_records": 5}, "no_metadata_records_count": 5, "other_provider_failure_count": 0, "parser_mismatch_count": 0, "provider_error_event_count": 5, "provider_error_type_counts": {"NotFoundError": 5}, "public_shapes": [{"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 1, "stderr_present": true, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}], "rate_limited_count": 0, "raw_stdout_stderr_public": false, "stdout_empty_count": 0, "stdout_nonempty_unparsed_count": 0, "unavailable_private_deleted_count": 5}, "raw_failure_artifact_count": 5, "raw_json_cache_dir_private": true, "raw_json_cache_dir_public_label": ".local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run/provider-cache/raw-gallery-dl-json", "request_count": 5, "success_count": 0}`.
 
 ## Metadata extraction execution results
 
@@ -65,6 +73,8 @@
 - Attempted: `5`.
 - Success: `0`.
 - Failure: `5`.
+- Failure reason counts: `{"cache_no_metadata_records": 5}`.
+- Provider output diagnosis: `{"auth_config_failure_count": 0, "command_option_issue_count": 0, "diagnostic_class_counts": {"unavailable_private_or_deleted": 5}, "failure_reason_counts": {"cache_no_metadata_records": 5}, "no_metadata_records_count": 5, "other_provider_failure_count": 0, "parser_mismatch_count": 0, "provider_error_event_count": 5, "provider_error_type_counts": {"NotFoundError": 5}, "public_shapes": [{"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 1, "stderr_present": true, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}, {"diagnostic_class": "unavailable_private_or_deleted", "failure_reason": "cache_no_metadata_records", "first_json_type": "array", "json_line_count": 1, "provider_error_present": true, "provider_error_type": "NotFoundError", "stderr_line_count": 0, "stderr_present": false, "stdout_empty": false, "stdout_line_count": 9}], "rate_limited_count": 0, "raw_stdout_stderr_public": false, "stdout_empty_count": 0, "stdout_nonempty_unparsed_count": 0, "unavailable_private_deleted_count": 5}`.
 - Stop reason: `max_failure_rate`.
 
 ## Source-layer write results
@@ -74,6 +84,7 @@
 - Tag observations affected: `0`.
 - Name observations affected: `0`.
 - Assertions affected: `0`.
+- Searchable assertion status policy: `{"new_px1_assertion_status": "needs_review", "new_px1_requires_review": true, "new_px1_searchable_active": false, "preserve_existing_reviewed_active_or_accepted": true, "schema_version": "phase45_px1_direct_source_metadata_v2"}`.
 
 ## Failure budget and stop conditions
 
@@ -115,7 +126,7 @@
 
 ## Validation
 
-`{"browser_validation": "not_run_no_ui_runtime_target", "commands": ["python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 500 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY"], "dedup_read_only": true, "operational_mode": "execute-metadata", "provider_network_attempted": true, "server_started": false}`
+`{"browser_validation": "not_run_no_ui_runtime_target", "commands": ["python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 5 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY"], "dedup_read_only": true, "operational_mode": "execute-metadata", "provider_network_attempted": true, "server_started": false}`
 
 ## Safety confirmation
 

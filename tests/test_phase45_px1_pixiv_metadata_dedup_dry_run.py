@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import inspect
+import subprocess
 
 from scripts import run_phase45_px1_pixiv_metadata_and_dedup_dry_run as px1
 
@@ -192,6 +194,37 @@ def test_metadata_selection_respects_bounded_limit() -> None:
     assert summary["eligible_before_limit"] == 5
 
 
+def test_unknown_pixiv_like_candidates_are_not_selected_for_provider_execution() -> None:
+    unknown = candidate(1, filename="11111111_p0.png", content_class="unknown")
+    anime = candidate(2, filename="22222222_p0.png", content_class="anime", file_hash="hash-b")
+
+    selected, summary = px1.select_metadata_targets([unknown, anime], [], limit=10)
+
+    assert [item.media_id for item in selected] == [2]
+    assert summary["unknown_excluded_from_provider_execution"] == 1
+    assert summary["provider_execution_eligible_anime_candidates"] == 1
+
+
+def test_pixiv_inventory_reports_provider_execution_privacy_counts() -> None:
+    anime = candidate(1, filename="11111111_p0.png", content_class="anime")
+    unknown = candidate(2, filename="22222222_p0.png", content_class="unknown", file_hash="hash-b")
+    non_anime = candidate(3, filename="33333333_p0.png", content_class="non_anime", file_hash="hash-c")
+    with_metadata = candidate(4, filename="44444444_p0.png", has_pixiv_metadata=True, file_hash="hash-d")
+
+    inventory = px1.build_pixiv_inventory(
+        {"total_media": 4, "eligible_media": 2},
+        [anime, unknown, non_anime, with_metadata],
+        {},
+        [],
+    )
+
+    assert inventory["pixiv_like_media_candidates"] == 4
+    assert inventory["provider_execution_eligible_anime_candidates"] == 1
+    assert inventory["provider_execution_excluded_unknown"] == 1
+    assert inventory["provider_execution_excluded_non_anime"] == 1
+    assert inventory["provider_execution_excluded_already_has_source_metadata"] == 1
+
+
 def test_source_layer_allowed_mutation_table_classification() -> None:
     before = {"tables": {"blombooru_source_metadata_records": {"count": 1, "fingerprint": "a"}}}
     after = {"tables": {"blombooru_source_metadata_records": {"count": 2, "fingerprint": "b"}}}
@@ -253,6 +286,106 @@ def test_gallery_dl_nested_event_array_output_is_parsed() -> None:
     records = px1._metadata_dicts_from_gallery_dl(stdout)
 
     assert records == [{"id": 12345678, "num": 0}]
+
+
+def test_existing_raw_cache_prevents_provider_call(tmp_path) -> None:
+    cached = candidate(42, filename="12345678_p0.png")
+    paths = px1.raw_cache_paths(tmp_path, cached)
+    paths["stdout"].parent.mkdir(parents=True, exist_ok=True)
+    paths["stdout"].write_text(
+        json.dumps([2, "https://example.invalid", {"id": 12345678, "num": 0, "title": "cached", "tags": ["tag"]}]),
+        encoding="utf-8",
+    )
+    paths["stderr"].write_text("", encoding="utf-8")
+
+    def fail_runner(*args, **kwargs):
+        raise AssertionError("provider should not be called when raw cache normalizes")
+
+    request, success, failure = px1.run_single_metadata_request(
+        cached,
+        px1.GalleryDlEntrypoint(True, "unit_test", ("gallery-dl",), "1.0"),
+        raw_dir=tmp_path,
+        timeout=1,
+        sleep_request_seconds=0,
+        runner=fail_runner,
+    )
+
+    assert failure is None
+    assert success is not None
+    assert success["metadata_request_status"] == "success_cache_hit"
+    assert request["cache_hit"] is True
+    assert request["provider_called"] is False
+
+
+def test_no_metadata_records_saves_private_raw_diagnostics(tmp_path) -> None:
+    target = candidate(43, filename="12345679_p0.png")
+
+    def fake_runner(args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    request, success, failure = px1.run_single_metadata_request(
+        target,
+        px1.GalleryDlEntrypoint(True, "unit_test", ("gallery-dl",), "1.0"),
+        raw_dir=tmp_path,
+        timeout=1,
+        sleep_request_seconds=0,
+        runner=fake_runner,
+    )
+
+    assert success is None
+    assert failure is not None
+    assert failure["failure_reason"] == "no_metadata_records"
+    assert failure["public_provider_output_shape"]["stdout_empty"] is True
+    assert request["provider_called"] is True
+    assert px1.raw_cache_paths(tmp_path, target)["stdout"].exists()
+    assert px1.raw_cache_paths(tmp_path, target)["stderr"].exists()
+    assert px1.raw_cache_paths(tmp_path, target)["diagnostics"].exists()
+
+
+def test_public_provider_diagnosis_does_not_expose_raw_stdout_or_stderr() -> None:
+    stdout = "raw provider stdout with private details"
+    stderr = "cookie=sessionid"
+    shape = px1.provider_output_shape(stdout, stderr, "no_metadata_records")
+
+    public = px1.provider_output_diagnosis_summary(
+        [{"failure_reason": "no_metadata_records", "public_provider_output_shape": shape}]
+    )
+    public_text = json.dumps(public, sort_keys=True)
+
+    assert stdout not in public_text
+    assert stderr not in public_text
+    assert public["raw_stdout_stderr_public"] is False
+
+
+def test_gallery_dl_error_event_classifies_unavailable_not_parser_or_auth() -> None:
+    stdout = json.dumps(
+        [[-1, {"error": "NotFoundError", "message": "Requested resource could not be found"}]],
+        indent=2,
+    )
+    stderr = "[pixiv][info] Refreshing access token\n"
+    shape = px1.provider_output_shape(stdout, stderr, "no_metadata_records")
+    summary = px1.provider_output_diagnosis_summary(
+        [{"failure_reason": "no_metadata_records", "public_provider_output_shape": shape}]
+    )
+
+    assert shape["diagnostic_class"] == "unavailable_private_or_deleted"
+    assert shape["provider_error_type"] == "NotFoundError"
+    assert summary["unavailable_private_deleted_count"] == 1
+    assert summary["auth_config_failure_count"] == 0
+    assert summary["parser_mismatch_count"] == 0
+    assert summary["provider_error_type_counts"] == {"NotFoundError": 1}
+
+
+def test_px1_searchable_assertions_use_needs_review_policy() -> None:
+    policy = px1.searchable_assertion_write_policy()
+    source = inspect.getsource(px1._upsert_searchable_assertion)
+
+    assert policy["new_px1_assertion_status"] == "needs_review"
+    assert policy["new_px1_requires_review"] is True
+    assert policy["new_px1_searchable_active"] is False
+    assert px1.PX1_SEARCHABLE_ASSERTION_STATUS != "searchable_active"
+    assert ":assertion_status, :confidence" in source
+    assert "'searchable_active', :confidence" not in source
 
 
 def test_provider_failure_budget_stops_repeated_auth_and_rate_limit_failures() -> None:

@@ -164,8 +164,25 @@ LOCAL_PATH_RE = re.compile(
 MEDIA_FILENAME_RE = re.compile(
     r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov)\b"
 )
-AUTH_ERROR_RE = re.compile(r"(?i)(auth|login|cookie|token|401|403|forbidden|unauthorized)")
+AUTH_ERROR_RE = re.compile(
+    r"(?i)("
+    r"auth(?:entication|orization)?\s*(?:failed|required|error)|"
+    r"login\s*(?:required|failed)|"
+    r"not\s+logged\s+in|"
+    r"cookie(?:s)?\s*(?:missing|required|invalid|expired)|"
+    r"(?:access|refresh)[_-]?token\s*(?:missing|required|invalid|expired|failed)|"
+    r"401|403|forbidden|unauthorized"
+    r")"
+)
 RATE_LIMIT_RE = re.compile(r"(?i)(rate.?limit|too many requests|429|retry-after)")
+UNAVAILABLE_RE = re.compile(
+    r"(?i)(deleted|private|not\s*found|notfound|could\s+not\s+be\s+found|404|"
+    r"unavailable|does\s+not\s+exist|removed|suspended)"
+)
+COMMAND_OPTION_RE = re.compile(r"(?i)(unrecognized|unknown option|invalid option|usage:|no such option)")
+
+PX1_SEARCHABLE_ASSERTION_STATUS = "needs_review"
+PX1_SEARCHABLE_ASSERTION_SCHEMA_VERSION = "phase45_px1_direct_source_metadata_v2"
 
 
 class PX1BlockedError(RuntimeError):
@@ -205,6 +222,15 @@ class MediaCandidate:
     @property
     def eligible(self) -> bool:
         return str(self.content_class or "").casefold() in {"anime", "unknown"}
+
+    @property
+    def provider_execution_eligible(self) -> bool:
+        return (
+            str(self.content_class or "").casefold() == "anime"
+            and self.pixiv_like
+            and not self.has_any_source_metadata
+            and self.reliable_pixiv_prior
+        )
 
     @property
     def reliable_pixiv_prior(self) -> bool:
@@ -912,6 +938,31 @@ def duplicate_group_plan(
     }
 
 
+def provider_execution_exclusion_reason(
+    candidate: MediaCandidate,
+    would_delete_ids: set[int],
+    manual_review_group_members: set[int],
+) -> str | None:
+    if not candidate.pixiv_like:
+        return "not_pixiv_like"
+    content_class = str(candidate.content_class or "").casefold()
+    if content_class == "unknown":
+        return "unknown_excluded_from_provider_execution"
+    if content_class != "anime":
+        return "non_anime_excluded_from_provider_execution"
+    if candidate.has_any_source_metadata:
+        return "already_has_source_metadata"
+    if not candidate.primary_work_id:
+        return "missing_pixiv_work_id"
+    if len(candidate.pixiv_work_ids) != 1 or not candidate.reliable_pixiv_prior:
+        return "unreliable_or_ambiguous_pixiv_work_id"
+    if candidate.media_id in would_delete_ids:
+        return "would_delete_exact_duplicate"
+    if candidate.media_id in manual_review_group_members:
+        return "duplicate_group_needs_manual_review"
+    return None
+
+
 def build_duplicate_dry_run(conn: Connection, candidates: Sequence[MediaCandidate]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     groups = group_exact_duplicates(candidates)
     plans: list[dict[str, Any]] = []
@@ -960,7 +1011,24 @@ def build_pixiv_inventory(
         for plan in duplicate_plans
         for media_id in plan.get("would_delete_media_candidates", [])
     }
+    manual_review_group_members = {
+        int(media_id)
+        for plan in duplicate_plans
+        if plan.get("needs_manual_review") or plan.get("blocked_from_auto_delete")
+        for media_id in [*plan.get("would_delete_media_candidates", []), plan.get("retained_media_candidate")]
+        if media_id is not None
+    }
+    local_backlog_candidates = [
+        candidate
+        for candidate in pixiv_candidates
+        if candidate.eligible
+        and not candidate.has_any_source_metadata
+        and candidate.primary_work_id
+        and len(candidate.pixiv_work_ids) == 1
+        and candidate.media_id not in would_delete_ids
+    ]
     excluded_reasons = Counter()
+    provider_excluded_reasons = Counter()
     for candidate in pixiv_candidates:
         if not candidate.eligible:
             excluded_reasons["ineligible_content_class"] += 1
@@ -972,14 +1040,13 @@ def build_pixiv_inventory(
             excluded_reasons["ambiguous_pixiv_work_id"] += 1
         elif candidate.media_id in would_delete_ids:
             excluded_reasons["would_delete_exact_duplicate"] += 1
-    eligible_for_metadata = [
+        provider_reason = provider_execution_exclusion_reason(candidate, would_delete_ids, manual_review_group_members)
+        if provider_reason:
+            provider_excluded_reasons[provider_reason] += 1
+    provider_execution_eligible = [
         candidate
         for candidate in pixiv_candidates
-        if candidate.eligible
-        and not candidate.has_any_source_metadata
-        and candidate.primary_work_id
-        and len(candidate.pixiv_work_ids) == 1
-        and candidate.media_id not in would_delete_ids
+        if provider_execution_exclusion_reason(candidate, would_delete_ids, manual_review_group_members) is None
     ]
     return {
         "method": "DB-derived signals only; no source root scan, import, classification, AI tagging, or SourceConcept resolver.",
@@ -991,9 +1058,15 @@ def build_pixiv_inventory(
         "distinct_pixiv_work_ids": len({item.primary_work_id for item in pixiv_candidates if item.primary_work_id}),
         "duplicate_pixiv_work_page_candidates": sum(1 for value in work_page_counter.values() if value > 1),
         "invalid_or_ambiguous_pixiv_id_candidates": sum(1 for item in pixiv_candidates if not item.primary_work_id or len(item.pixiv_work_ids) > 1),
-        "candidates_eligible_for_metadata_extraction": len(eligible_for_metadata),
-        "candidates_excluded_from_metadata_extraction": len(pixiv_candidates) - len(eligible_for_metadata),
+        "local_backlog_candidates_before_provider_privacy_gate": len(local_backlog_candidates),
+        "candidates_eligible_for_metadata_extraction": len(provider_execution_eligible),
+        "provider_execution_eligible_anime_candidates": len(provider_execution_eligible),
+        "provider_execution_excluded_unknown": provider_excluded_reasons.get("unknown_excluded_from_provider_execution", 0),
+        "provider_execution_excluded_non_anime": provider_excluded_reasons.get("non_anime_excluded_from_provider_execution", 0),
+        "provider_execution_excluded_already_has_source_metadata": provider_excluded_reasons.get("already_has_source_metadata", 0),
+        "candidates_excluded_from_metadata_extraction": len(pixiv_candidates) - len(provider_execution_eligible),
         "exclusion_reason_counts": dict(sorted(excluded_reasons.items())),
+        "provider_execution_exclusion_reason_counts": dict(sorted(provider_excluded_reasons.items())),
         "candidates_that_are_exact_duplicate_would_delete": sum(1 for item in pixiv_candidates if item.media_id in would_delete_ids),
         "reason_category_counts": dict(sorted(reason_counter.items())),
         "duplicate_dry_run_available_before_selection": True,
@@ -1021,6 +1094,7 @@ def candidate_private_row(candidate: MediaCandidate) -> dict[str, Any]:
         "has_any_source_metadata": candidate.has_any_source_metadata,
         "has_pixiv_source_metadata": candidate.has_pixiv_source_metadata,
         "eligible": candidate.eligible,
+        "provider_execution_eligible_without_duplicate_context": candidate.provider_execution_eligible,
         "ai_tag_count": candidate.ai_tag_count,
         "manual_locked_tag_count": candidate.manual_locked_tag_count,
         "source_metadata_count": candidate.source_metadata_count,
@@ -1062,23 +1136,9 @@ def select_metadata_targets(
     for candidate in candidates:
         if not candidate.pixiv_like:
             continue
-        if not candidate.eligible:
-            excluded["ineligible_content_class"] += 1
-            continue
-        if candidate.has_any_source_metadata:
-            excluded["already_has_source_metadata"] += 1
-            continue
-        if not candidate.primary_work_id:
-            excluded["missing_pixiv_work_id"] += 1
-            continue
-        if len(candidate.pixiv_work_ids) > 1:
-            excluded["ambiguous_pixiv_work_id"] += 1
-            continue
-        if candidate.media_id in would_delete_ids:
-            excluded["would_delete_exact_duplicate"] += 1
-            continue
-        if candidate.media_id in manual_review_group_members:
-            excluded["duplicate_group_needs_manual_review"] += 1
+        reason = provider_execution_exclusion_reason(candidate, would_delete_ids, manual_review_group_members)
+        if reason:
+            excluded[reason] += 1
             continue
         eligible.append(candidate)
     eligible.sort(key=lambda item: selection_priority(item, would_delete_ids))
@@ -1089,6 +1149,11 @@ def select_metadata_targets(
         "eligible_before_limit": len(eligible),
         "selected_count": len(selected),
         "excluded_reason_counts": dict(sorted(excluded.items())),
+        "provider_execution_policy": "anime_only_source_metadata_missing_reliable_single_pixiv_filename_prior",
+        "provider_execution_eligible_anime_candidates": len(eligible),
+        "unknown_excluded_from_provider_execution": excluded.get("unknown_excluded_from_provider_execution", 0),
+        "non_anime_excluded_from_provider_execution": excluded.get("non_anime_excluded_from_provider_execution", 0),
+        "already_has_source_metadata_excluded": excluded.get("already_has_source_metadata", 0),
         "would_delete_candidates_excluded": excluded.get("would_delete_exact_duplicate", 0),
         "manual_review_candidates_excluded": excluded.get("duplicate_group_needs_manual_review", 0),
         "exact_media_ids_public": False,
@@ -1096,6 +1161,7 @@ def select_metadata_targets(
         "selection_policy": [
             "exclude would-delete candidates from exact duplicate dry-run",
             "exclude manual-review duplicate groups",
+            "exclude unknown/non-anime content from provider execution",
             "prefer reliable filename Pixiv ID/page priors",
             "exclude candidates with existing source metadata",
             "respect bounded metadata limit",
@@ -1172,8 +1238,12 @@ def classify_provider_failure(stderr: str, stdout: str = "") -> str:
     text_value = f"{stderr}\n{stdout}"
     if RATE_LIMIT_RE.search(text_value):
         return "rate_limited"
+    if UNAVAILABLE_RE.search(text_value):
+        return "unavailable_private_or_deleted"
     if AUTH_ERROR_RE.search(text_value):
         return "auth_or_config_failure"
+    if COMMAND_OPTION_RE.search(text_value):
+        return "command_option_issue"
     return "provider_request_failed"
 
 
@@ -1239,6 +1309,175 @@ def _metadata_dicts_from_gallery_dl(stdout: str) -> list[dict[str, Any]]:
     for row in _json_rows_from_stdout(stdout):
         visit(row)
     return records
+
+
+def _gallery_dl_error_events(stdout: str) -> list[dict[str, str]]:
+    events: list[dict[str, str]] = []
+
+    def visit(row: Any) -> None:
+        if (
+            isinstance(row, list)
+            and len(row) >= 2
+            and row[0] == -1
+            and isinstance(row[1], Mapping)
+        ):
+            payload = row[1]
+            events.append(
+                {
+                    "error": normalize_text(payload.get("error")) or "unknown",
+                    "message": normalize_text(payload.get("message")) or "",
+                }
+            )
+            return
+        if isinstance(row, list):
+            for item in row:
+                visit(item)
+
+    for row in _json_rows_from_stdout(stdout):
+        visit(row)
+    return events
+
+
+def _provider_error_public_type(stdout: str) -> str | None:
+    for event in _gallery_dl_error_events(stdout):
+        error = normalize_text(event.get("error"))
+        if error:
+            return error[:80]
+    return None
+
+
+def raw_cache_paths(raw_dir: Path, candidate: MediaCandidate) -> dict[str, Path]:
+    work_id = re.sub(r"[^A-Za-z0-9_-]+", "_", candidate.primary_work_id or "missing")
+    stem = f"provider-pixiv-work-{work_id}-p{candidate.primary_page_index}-media-{candidate.media_id}"
+    return {
+        "stdout": raw_dir / f"{stem}.stdout.jsonl",
+        "stderr": raw_dir / f"{stem}.stderr.txt",
+        "diagnostics": raw_dir / f"{stem}.diagnostics.json",
+    }
+
+
+def completed_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def json_type_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, Mapping):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    return type(value).__name__
+
+
+def classify_provider_output_diagnostic(stdout: str, stderr: str, failure_reason: str) -> str:
+    combined = f"{stderr}\n{stdout}"
+    provider_errors = _gallery_dl_error_events(stdout)
+    provider_error_text = "\n".join(
+        f"{event.get('error', '')}\n{event.get('message', '')}" for event in provider_errors
+    )
+    if RATE_LIMIT_RE.search(combined):
+        return "rate_limited"
+    if COMMAND_OPTION_RE.search(combined):
+        return "command_option_issue"
+    if UNAVAILABLE_RE.search(f"{provider_error_text}\n{combined}"):
+        return "unavailable_private_or_deleted"
+    if AUTH_ERROR_RE.search(f"{provider_error_text}\n{combined}"):
+        return "auth_or_config_failure"
+    if provider_errors:
+        return "provider_error_event"
+    if failure_reason in {"no_metadata_records", "cache_no_metadata_records"}:
+        if not stdout.strip():
+            return "stdout_empty"
+        rows = _json_rows_from_stdout(stdout)
+        if not rows:
+            return "stdout_nonempty_unparsed"
+        return "json_shape_unsupported"
+    if failure_reason in {"metadata_normalization_failed", "cache_parse_failure"}:
+        return "parser_mismatch"
+    return "other_provider_failure"
+
+
+def provider_output_shape(stdout: str, stderr: str, failure_reason: str) -> dict[str, Any]:
+    rows = _json_rows_from_stdout(stdout)
+    first_json = rows[0] if rows else None
+    provider_error_type = _provider_error_public_type(stdout)
+    return {
+        "stdout_empty": not bool(stdout.strip()),
+        "stdout_line_count": len(stdout.splitlines()),
+        "json_line_count": len(rows),
+        "first_json_type": json_type_name(first_json),
+        "provider_error_type": provider_error_type,
+        "provider_error_present": provider_error_type is not None,
+        "stderr_present": bool(stderr.strip()),
+        "stderr_line_count": len(stderr.splitlines()),
+        "failure_reason": failure_reason,
+        "diagnostic_class": classify_provider_output_diagnostic(stdout, stderr, failure_reason),
+    }
+
+
+def write_raw_provider_diagnostics(
+    paths: Mapping[str, Path],
+    *,
+    stdout: str,
+    stderr: str,
+    diagnostics: Mapping[str, Any],
+) -> None:
+    for path in paths.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    paths["stdout"].write_text(stdout, encoding="utf-8", newline="\n")
+    paths["stderr"].write_text(stderr, encoding="utf-8", newline="\n")
+    write_json(paths["diagnostics"], dict(diagnostics))
+
+
+def raw_ref_fields(paths: Mapping[str, Path]) -> dict[str, str]:
+    return {
+        "raw_stdout_private_ref": str(paths["stdout"]),
+        "raw_stderr_private_ref": str(paths["stderr"]),
+        "raw_diagnostics_private_ref": str(paths["diagnostics"]),
+    }
+
+
+def provider_output_diagnosis_summary(failure_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    shapes = [dict(row.get("public_provider_output_shape") or {}) for row in failure_rows]
+    diagnostic_counts = Counter(str(shape.get("diagnostic_class") or "unknown") for shape in shapes)
+    failure_reason_counts = Counter(str(row.get("failure_reason") or "unknown") for row in failure_rows)
+    provider_error_type_counts = Counter(
+        str(shape.get("provider_error_type"))
+        for shape in shapes
+        if shape.get("provider_error_type")
+    )
+    return {
+        "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
+        "diagnostic_class_counts": dict(sorted(diagnostic_counts.items())),
+        "provider_error_event_count": sum(1 for shape in shapes if shape.get("provider_error_present")),
+        "provider_error_type_counts": dict(sorted(provider_error_type_counts.items())),
+        "stdout_empty_count": diagnostic_counts.get("stdout_empty", 0),
+        "stdout_nonempty_unparsed_count": diagnostic_counts.get("stdout_nonempty_unparsed", 0),
+        "parser_mismatch_count": diagnostic_counts.get("parser_mismatch", 0) + diagnostic_counts.get("json_shape_unsupported", 0),
+        "auth_config_failure_count": diagnostic_counts.get("auth_or_config_failure", 0),
+        "rate_limited_count": diagnostic_counts.get("rate_limited", 0),
+        "unavailable_private_deleted_count": diagnostic_counts.get("unavailable_private_or_deleted", 0),
+        "command_option_issue_count": diagnostic_counts.get("command_option_issue", 0),
+        "other_provider_failure_count": diagnostic_counts.get("other_provider_failure", 0),
+        "no_metadata_records_count": sum(
+            1
+            for row in failure_rows
+            if row.get("failure_reason") in {"no_metadata_records", "cache_no_metadata_records"}
+        ),
+        "public_shapes": shapes[:10],
+        "raw_stdout_stderr_public": False,
+    }
 
 
 def _as_text_list(value: Any) -> list[str]:
@@ -1322,7 +1561,7 @@ def run_single_metadata_request(
     runner: CompletedRunner = subprocess.run,
 ) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any] | None]:
     command = build_gallery_dl_metadata_command(entrypoint, candidate.primary_work_id or "", sleep_request_seconds=sleep_request_seconds)
-    raw_path = raw_dir / f"metadata-media-{candidate.media_id}.jsonl"
+    cache_paths = raw_cache_paths(raw_dir, candidate)
     request_row = {
         "media_id": candidate.media_id,
         "private_media_ref": stable_private_id(candidate.media_id, "media"),
@@ -1333,10 +1572,53 @@ def run_single_metadata_request(
         "authenticated": "unknown_config_external_to_runner",
         "original_downloaded": False,
         "cache_hit": False,
+        "provider_called": False,
         "retry_count": 0,
         "command_private": command,
         "public_safe_label": stable_private_id(candidate.media_id, "px1_target"),
+        **raw_ref_fields(cache_paths),
     }
+    if cache_paths["stdout"].exists():
+        stdout = cache_paths["stdout"].read_text(encoding="utf-8", errors="replace")
+        stderr = cache_paths["stderr"].read_text(encoding="utf-8", errors="replace") if cache_paths["stderr"].exists() else ""
+        cached_request = {**request_row, "cache_hit": True, "provider_called": False}
+        records = _metadata_dicts_from_gallery_dl(stdout)
+        if not records:
+            reason = "cache_no_metadata_records"
+            shape = provider_output_shape(stdout, stderr, reason)
+            write_raw_provider_diagnostics(cache_paths, stdout=stdout, stderr=stderr, diagnostics=shape)
+            failure = {
+                **cached_request,
+                "metadata_request_status": "failed",
+                "failure_reason": reason,
+                "exit_code": None,
+                "public_provider_output_shape": shape,
+            }
+            return cached_request, None, failure
+        success = normalize_gallery_dl_metadata(records, candidate=candidate, raw_stdout_path=cache_paths["stdout"])
+        if success is None:
+            reason = "cache_parse_failure"
+            shape = provider_output_shape(stdout, stderr, reason)
+            write_raw_provider_diagnostics(cache_paths, stdout=stdout, stderr=stderr, diagnostics=shape)
+            failure = {
+                **cached_request,
+                "metadata_request_status": "failed",
+                "failure_reason": reason,
+                "exit_code": None,
+                "public_provider_output_shape": shape,
+            }
+            return cached_request, None, failure
+        success_row = {
+            **cached_request,
+            **success,
+            "metadata_request_status": "success_cache_hit",
+            "failure_reason": None,
+            "raw_provider_json_private_ref": str(cache_paths["stdout"]),
+            "tag_count": len(success["tags"]),
+            "translated_tag_count": len(success["translated_tags"]),
+        }
+        return cached_request, success_row, None
+    provider_request = {**request_row, "cache_hit": False, "provider_called": True}
     try:
         completed = runner(
             command,
@@ -1348,41 +1630,88 @@ def run_single_metadata_request(
             shell=False,
         )
     except subprocess.TimeoutExpired as exc:
-        failure = {**request_row, "metadata_request_status": "failed", "failure_reason": "provider_timeout", "stderr_redacted": ""}
-        return request_row, None, failure
+        stdout = completed_text(getattr(exc, "output", ""))
+        stderr = completed_text(getattr(exc, "stderr", ""))
+        reason = "provider_timeout"
+        shape = provider_output_shape(stdout, stderr, reason)
+        write_raw_provider_diagnostics(cache_paths, stdout=stdout, stderr=stderr, diagnostics=shape)
+        failure = {
+            **provider_request,
+            "metadata_request_status": "failed",
+            "failure_reason": reason,
+            "stderr_redacted": redact_public_text(stderr)[:500],
+            "public_provider_output_shape": shape,
+        }
+        return provider_request, None, failure
     except (OSError, subprocess.SubprocessError) as exc:
-        failure = {**request_row, "metadata_request_status": "failed", "failure_reason": exc.__class__.__name__, "stderr_redacted": ""}
-        return request_row, None, failure
+        reason = exc.__class__.__name__
+        shape = provider_output_shape("", str(exc), reason)
+        write_raw_provider_diagnostics(cache_paths, stdout="", stderr=str(exc), diagnostics=shape)
+        failure = {
+            **provider_request,
+            "metadata_request_status": "failed",
+            "failure_reason": reason,
+            "stderr_redacted": redact_public_text(str(exc))[:500],
+            "public_provider_output_shape": shape,
+        }
+        return provider_request, None, failure
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    write_raw_provider_diagnostics(
+        cache_paths,
+        stdout=stdout,
+        stderr=stderr,
+        diagnostics=provider_output_shape(stdout, stderr, "provider_completed"),
+    )
     if completed.returncode != 0:
         reason = classify_provider_failure(completed.stderr or "", completed.stdout or "")
+        shape = provider_output_shape(stdout, stderr, reason)
+        write_raw_provider_diagnostics(cache_paths, stdout=stdout, stderr=stderr, diagnostics=shape)
         failure = {
-            **request_row,
+            **provider_request,
             "metadata_request_status": "failed",
             "failure_reason": reason,
             "exit_code": completed.returncode,
             "stderr_redacted": redact_public_text(completed.stderr or "")[:500],
+            "public_provider_output_shape": shape,
         }
-        return request_row, None, failure
-    records = _metadata_dicts_from_gallery_dl(completed.stdout or "")
+        return provider_request, None, failure
+    records = _metadata_dicts_from_gallery_dl(stdout)
     if not records:
-        failure = {**request_row, "metadata_request_status": "failed", "failure_reason": "no_metadata_records", "exit_code": 0}
-        return request_row, None, failure
-    raw_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_path.write_text(completed.stdout or "", encoding="utf-8", newline="\n")
-    success = normalize_gallery_dl_metadata(records, candidate=candidate, raw_stdout_path=raw_path)
+        reason = "no_metadata_records"
+        shape = provider_output_shape(stdout, stderr, reason)
+        write_raw_provider_diagnostics(cache_paths, stdout=stdout, stderr=stderr, diagnostics=shape)
+        failure = {
+            **provider_request,
+            "metadata_request_status": "failed",
+            "failure_reason": reason,
+            "exit_code": 0,
+            "public_provider_output_shape": shape,
+        }
+        return provider_request, None, failure
+    success = normalize_gallery_dl_metadata(records, candidate=candidate, raw_stdout_path=cache_paths["stdout"])
     if success is None:
-        failure = {**request_row, "metadata_request_status": "failed", "failure_reason": "metadata_normalization_failed", "exit_code": 0}
-        return request_row, None, failure
+        reason = "metadata_normalization_failed"
+        shape = provider_output_shape(stdout, stderr, reason)
+        write_raw_provider_diagnostics(cache_paths, stdout=stdout, stderr=stderr, diagnostics=shape)
+        failure = {
+            **provider_request,
+            "metadata_request_status": "failed",
+            "failure_reason": reason,
+            "exit_code": 0,
+            "public_provider_output_shape": shape,
+        }
+        return provider_request, None, failure
     success_row = {
-        **request_row,
+        **provider_request,
         **success,
         "metadata_request_status": "success",
         "failure_reason": None,
-        "raw_provider_json_private_ref": str(raw_path),
+        "raw_provider_json_private_ref": str(cache_paths["stdout"]),
         "tag_count": len(success["tags"]),
         "translated_tag_count": len(success["translated_tags"]),
     }
-    return request_row, success_row, None
+    return provider_request, success_row, None
 
 
 def execute_metadata_requests(
@@ -1415,8 +1744,10 @@ def execute_metadata_requests(
         if failure is not None:
             failure_rows.append(failure)
             failure_budget.record_failure(str(failure.get("failure_reason") or "provider_request_failed"))
-        time.sleep(max(float(sleep_request_seconds), 0.0))
+        if request.get("provider_called"):
+            time.sleep(max(float(sleep_request_seconds), 0.0))
     failure_reason_counts = Counter(str(row.get("failure_reason") or "unknown") for row in failure_rows)
+    diagnosis = provider_output_diagnosis_summary(failure_rows)
     provider_cache_summary = {
         "filesystem_provider_cache_used": True,
         "db_provider_cache_used": False,
@@ -1425,8 +1756,17 @@ def execute_metadata_requests(
         "success_count": len(success_rows),
         "failure_count": len(failure_rows),
         "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
-        "cache_hit_count": 0,
-        "cache_miss_count": len(request_rows),
+        "cache_hit_count": sum(1 for row in request_rows if row.get("cache_hit")),
+        "cache_miss_count": sum(1 for row in request_rows if not row.get("cache_hit")),
+        "provider_called_count": sum(1 for row in request_rows if row.get("provider_called")),
+        "cache_parse_failure_count": sum(
+            1 for row in failure_rows if row.get("failure_reason") == "cache_parse_failure"
+        ),
+        "cache_no_metadata_records_count": sum(
+            1 for row in failure_rows if row.get("failure_reason") == "cache_no_metadata_records"
+        ),
+        "raw_failure_artifact_count": sum(1 for row in failure_rows if row.get("raw_diagnostics_private_ref")),
+        "provider_output_diagnosis": diagnosis,
         "original_downloaded": False,
         "failure_budget": failure_budget.public_dict(),
     }
@@ -1750,11 +2090,17 @@ def _upsert_searchable_assertion(
     normalized = normalize_text(raw_input)
     key = canonical_key(normalized)
     assertion_key = f"{provider_record_key}:assertion:{role}:{key}"
-    existing = conn.execute(
-        text("SELECT id FROM blombooru_source_searchable_name_assertions WHERE assertion_key = :assertion_key"),
+    existing_row = conn.execute(
+        text(
+            """
+            SELECT id, status, requires_review
+            FROM blombooru_source_searchable_name_assertions
+            WHERE assertion_key = :assertion_key
+            """
+        ),
         {"assertion_key": assertion_key},
-    ).scalar()
-    action = "updated" if existing else "inserted"
+    ).mappings().first()
+    action = "updated" if existing_row else "inserted"
     result = conn.execute(
         text(
             """
@@ -1768,9 +2114,9 @@ def _upsert_searchable_assertion(
             VALUES (
                 'pixiv', :source_metadata_record_id, :source_name_observation_id,
                 :assertion_key, :raw_input, :normalized_input, :canonical_name_key,
-                :asserted_name, :asserted_role, 'searchable_active', :confidence,
+                :asserted_name, :asserted_role, :assertion_status, :confidence,
                 :confidence_score, CAST(:evidence_sources_json AS jsonb),
-                'phase45_px1_direct_source_metadata_v1',
+                :schema_version,
                 CAST(:provenance_summary AS jsonb), true, now()
             )
             ON CONFLICT (assertion_key) DO UPDATE SET
@@ -1781,12 +2127,22 @@ def _upsert_searchable_assertion(
                 canonical_name_key = EXCLUDED.canonical_name_key,
                 asserted_name = EXCLUDED.asserted_name,
                 asserted_role = EXCLUDED.asserted_role,
-                status = EXCLUDED.status,
+                status = CASE
+                    WHEN blombooru_source_searchable_name_assertions.requires_review IS FALSE
+                         AND blombooru_source_searchable_name_assertions.status IN ('searchable_active', 'accepted', 'active')
+                    THEN blombooru_source_searchable_name_assertions.status
+                    ELSE EXCLUDED.status
+                END,
                 confidence = EXCLUDED.confidence,
                 confidence_score = EXCLUDED.confidence_score,
                 evidence_sources_json = EXCLUDED.evidence_sources_json,
                 provenance_summary = EXCLUDED.provenance_summary,
-                requires_review = EXCLUDED.requires_review,
+                requires_review = CASE
+                    WHEN blombooru_source_searchable_name_assertions.requires_review IS FALSE
+                         AND blombooru_source_searchable_name_assertions.status IN ('searchable_active', 'accepted', 'active')
+                    THEN blombooru_source_searchable_name_assertions.requires_review
+                    ELSE EXCLUDED.requires_review
+                END,
                 updated_at = now()
             RETURNING id
             """
@@ -1800,10 +2156,12 @@ def _upsert_searchable_assertion(
             "canonical_name_key": key,
             "asserted_name": normalized,
             "asserted_role": role,
+            "assertion_status": PX1_SEARCHABLE_ASSERTION_STATUS,
             "confidence": confidence,
             "confidence_score": 0.85 if confidence == "medium" else 0.75,
             "evidence_sources_json": _json_param({"phase": PHASE, "source": "gallery-dl-pixiv"}),
             "provenance_summary": _json_param({"phase": PHASE, "provider_record_key": provider_record_key}),
+            "schema_version": PX1_SEARCHABLE_ASSERTION_SCHEMA_VERSION,
         },
     ).scalar_one()
     return int(result), action
@@ -1941,6 +2299,16 @@ def build_execution_policy(*, inventory_only: bool, execute_metadata: bool) -> d
     }
 
 
+def searchable_assertion_write_policy() -> dict[str, Any]:
+    return {
+        "new_px1_assertion_status": PX1_SEARCHABLE_ASSERTION_STATUS,
+        "new_px1_requires_review": True,
+        "new_px1_searchable_active": False,
+        "preserve_existing_reviewed_active_or_accepted": True,
+        "schema_version": PX1_SEARCHABLE_ASSERTION_SCHEMA_VERSION,
+    }
+
+
 def public_command_label(argv: Sequence[str]) -> str:
     parts = [Path(sys.executable).name]
     for item in argv:
@@ -1993,6 +2361,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Pixiv-like candidates: `{inv.get('pixiv_like_media_candidates')}`.",
         f"- Metadata extraction selected/success/failure: `{selection.get('selected_count')}` / `{results.get('success_count')}` / `{results.get('failure_count')}`.",
         f"- Exact duplicate groups: `{dup.get('exact_duplicate_groups')}`; would-delete if later approved: `{dup.get('would_delete_count_if_later_approved')}`.",
+        f"- Provider execution policy: `{selection.get('provider_execution_policy')}`.",
         "",
         "## Scope and non-goals",
         "",
@@ -2014,7 +2383,12 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Duplicate Pixiv work/page candidates: `{inv.get('duplicate_pixiv_work_page_candidates')}`.",
         f"- Invalid or ambiguous Pixiv ID candidates: `{inv.get('invalid_or_ambiguous_pixiv_id_candidates')}`.",
         f"- Eligible for metadata extraction before limit: `{inv.get('candidates_eligible_for_metadata_extraction')}`.",
+        f"- Anime provider execution eligible: `{inv.get('provider_execution_eligible_anime_candidates')}`.",
+        f"- Unknown excluded from provider execution: `{inv.get('provider_execution_excluded_unknown')}`.",
+        f"- Non-anime excluded from provider execution: `{inv.get('provider_execution_excluded_non_anime')}`.",
+        f"- Already has source metadata excluded: `{inv.get('provider_execution_excluded_already_has_source_metadata')}`.",
         f"- Exclusion reasons: `{json.dumps(inv.get('exclusion_reason_counts'), sort_keys=True)}`.",
+        f"- Provider execution exclusion reasons: `{json.dumps(inv.get('provider_execution_exclusion_reason_counts'), sort_keys=True)}`.",
         "",
         "## Exact duplicate dry-run summary",
         "",
@@ -2037,6 +2411,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Eligible before limit: `{selection.get('eligible_before_limit')}`.",
         f"- Requested limit: `{selection.get('requested_limit')}`.",
         f"- Excluded reason counts: `{json.dumps(selection.get('excluded_reason_counts'), sort_keys=True)}`.",
+        f"- Unknown excluded from provider execution: `{selection.get('unknown_excluded_from_provider_execution')}`.",
+        f"- Non-anime excluded from provider execution: `{selection.get('non_anime_excluded_from_provider_execution')}`.",
         "",
         "## Provider/auth/cache/rate-limit preflight",
         "",
@@ -2051,6 +2427,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Attempted: `{results.get('attempted_count')}`.",
         f"- Success: `{results.get('success_count')}`.",
         f"- Failure: `{results.get('failure_count')}`.",
+        f"- Failure reason counts: `{json.dumps(results.get('failure_reason_counts'), sort_keys=True)}`.",
+        f"- Provider output diagnosis: `{json.dumps(results.get('provider_output_diagnosis'), sort_keys=True)}`.",
         f"- Stop reason: `{results.get('stop_reason')}`.",
         "",
         "## Source-layer write results",
@@ -2060,6 +2438,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Tag observations affected: `{writes.get('tag_observations_affected')}`.",
         f"- Name observations affected: `{writes.get('name_observations_affected')}`.",
         f"- Assertions affected: `{writes.get('source_assertions_affected')}`.",
+        f"- Searchable assertion status policy: `{json.dumps(summary.get('assertion_status_policy'), sort_keys=True)}`.",
         "",
         "## Failure budget and stop conditions",
         "",
@@ -2220,6 +2599,7 @@ def build_public_summary(
         "provider_preflight": {**dict(provider_preflight), "provider_cache": provider_cache_public},
         "metadata_extraction_results": dict(metadata_results),
         "source_layer_write_results": dict(write_results),
+        "assertion_status_policy": searchable_assertion_write_policy(),
         "mutation_proof": dict(mutation_delta),
         "failure_budget": dict(failure_budget),
         "public_redaction": {"passed": None, "findings": [], "checked_paths": []},
@@ -2286,6 +2666,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "failure_reason_counts": {},
         "cache_hit_count": 0,
         "cache_miss_count": 0,
+        "provider_called_count": 0,
+        "cache_parse_failure_count": 0,
+        "raw_failure_artifact_count": 0,
+        "provider_output_diagnosis": provider_output_diagnosis_summary([]),
         "original_downloaded": False,
     }
     entrypoint = GalleryDlEntrypoint(False, "not_probed_inventory_only")
@@ -2329,6 +2713,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "success_count": 0,
             "failure_count": 0,
             "failure_reason_counts": {},
+            "provider_output_diagnosis": provider_output_diagnosis_summary([]),
             "stop_reason": None,
             "original_downloaded": False,
         }
@@ -2371,6 +2756,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                         "success_count": len(success_rows),
                         "failure_count": len(failure_rows),
                         "failure_reason_counts": dict(provider_cache_summary.get("failure_reason_counts") or {}),
+                        "provider_output_diagnosis": dict(provider_cache_summary.get("provider_output_diagnosis") or {}),
                         "stop_reason": provider_budget.stop_reason,
                         "original_downloaded": False,
                     }

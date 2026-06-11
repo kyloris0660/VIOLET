@@ -5,6 +5,13 @@
     "runner": "phase-scoped operational runner",
     "tests": "phase-scoped validation test"
   },
+  "assertion_status_policy": {
+    "new_px1_assertion_status": "needs_review",
+    "new_px1_requires_review": true,
+    "new_px1_searchable_active": false,
+    "preserve_existing_reviewed_active_or_accepted": true,
+    "schema_version": "phase45_px1_direct_source_metadata_v2"
+  },
   "baseline": {
     "comparison_baseline_media_count": 3750,
     "comparison_baseline_policy": "Use current DB media count as the denominator for pre/post medium expansion comparisons.",
@@ -53,13 +60,13 @@
       "urls_match": true
     },
     "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
-    "git_sha": "f7d69e8c9e69d2933c160a9f76205ceb0d82f000",
+    "git_sha": "325a5f8949b24078435e225e8f90737f80d7f2a6",
     "host": "localhost",
     "password_value_recorded": false,
     "port": 5432,
     "python_executable": "python.exe",
     "python_executable_path_recorded_private_only": true,
-    "recorded_at": "2026-06-11T11:21:27.694247+00:00",
+    "recorded_at": "2026-06-11T13:07:45.846508+00:00",
     "total_media_after": 3750,
     "violet_env": "development"
   },
@@ -82,13 +89,13 @@
       "urls_match": true
     },
     "git_branch": "codex/phase45-px1-pixiv-metadata-dedup-dry-run",
-    "git_sha": "f7d69e8c9e69d2933c160a9f76205ceb0d82f000",
+    "git_sha": "325a5f8949b24078435e225e8f90737f80d7f2a6",
     "host": "localhost",
     "password_value_recorded": false,
     "port": 5432,
     "python_executable": "python.exe",
     "python_executable_path_recorded_private_only": true,
-    "recorded_at": "2026-06-11T11:21:06.980025+00:00",
+    "recorded_at": "2026-06-11T13:07:44.616191+00:00",
     "violet_env": "development"
   },
   "decision_matrix": {
@@ -134,38 +141,129 @@
     "stopped": true,
     "total_failures": 5
   },
-  "generated_at": "2026-06-11T11:21:28.153887+00:00",
+  "generated_at": "2026-06-11T13:07:46.226075+00:00",
   "metadata_extraction_results": {
     "attempted_count": 5,
     "failure_count": 5,
     "failure_reason_counts": {
-      "no_metadata_records": 5
+      "cache_no_metadata_records": 5
     },
     "mode": "execute_metadata",
     "original_downloaded": false,
-    "selected_count": 500,
+    "provider_output_diagnosis": {
+      "auth_config_failure_count": 0,
+      "command_option_issue_count": 0,
+      "diagnostic_class_counts": {
+        "unavailable_private_or_deleted": 5
+      },
+      "failure_reason_counts": {
+        "cache_no_metadata_records": 5
+      },
+      "no_metadata_records_count": 5,
+      "other_provider_failure_count": 0,
+      "parser_mismatch_count": 0,
+      "provider_error_event_count": 5,
+      "provider_error_type_counts": {
+        "NotFoundError": 5
+      },
+      "public_shapes": [
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 1,
+          "stderr_present": true,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        },
+        {
+          "diagnostic_class": "unavailable_private_or_deleted",
+          "failure_reason": "cache_no_metadata_records",
+          "first_json_type": "array",
+          "json_line_count": 1,
+          "provider_error_present": true,
+          "provider_error_type": "NotFoundError",
+          "stderr_line_count": 0,
+          "stderr_present": false,
+          "stdout_empty": false,
+          "stdout_line_count": 9
+        }
+      ],
+      "rate_limited_count": 0,
+      "raw_stdout_stderr_public": false,
+      "stdout_empty_count": 0,
+      "stdout_nonempty_unparsed_count": 0,
+      "unavailable_private_deleted_count": 5
+    },
+    "selected_count": 5,
     "stop_reason": "max_failure_rate",
     "success_count": 0
   },
   "metadata_selection": {
+    "already_has_source_metadata_excluded": 57,
     "default_limit": 500,
-    "eligible_before_limit": 2217,
+    "eligible_before_limit": 2194,
     "exact_media_ids_public": false,
     "exact_pixiv_ids_public": false,
     "excluded_reason_counts": {
-      "already_has_source_metadata": 60,
-      "ineligible_content_class": 10
+      "already_has_source_metadata": 57,
+      "non_anime_excluded_from_provider_execution": 10,
+      "unknown_excluded_from_provider_execution": 26
     },
     "manual_review_candidates_excluded": 0,
-    "requested_limit": 500,
-    "selected_count": 500,
+    "non_anime_excluded_from_provider_execution": 10,
+    "provider_execution_eligible_anime_candidates": 2194,
+    "provider_execution_policy": "anime_only_source_metadata_missing_reliable_single_pixiv_filename_prior",
+    "requested_limit": 5,
+    "selected_count": 5,
     "selection_policy": [
       "exclude would-delete candidates from exact duplicate dry-run",
       "exclude manual-review duplicate groups",
+      "exclude unknown/non-anime content from provider execution",
       "prefer reliable filename Pixiv ID/page priors",
       "exclude candidates with existing source metadata",
       "respect bounded metadata limit"
     ],
+    "unknown_excluded_from_provider_execution": 26,
     "would_delete_candidates_excluded": 0
   },
   "mutation_proof": {
@@ -222,8 +320,8 @@
   },
   "phase": "4.5-PX1",
   "pixiv_like_inventory": {
-    "candidates_eligible_for_metadata_extraction": 2217,
-    "candidates_excluded_from_metadata_extraction": 70,
+    "candidates_eligible_for_metadata_extraction": 2194,
+    "candidates_excluded_from_metadata_extraction": 93,
     "candidates_that_are_exact_duplicate_would_delete": 0,
     "distinct_pixiv_work_ids": 2237,
     "duplicate_dry_run_available_before_selection": true,
@@ -251,12 +349,22 @@
       "ineligible_content_class": 10
     },
     "invalid_or_ambiguous_pixiv_id_candidates": 0,
+    "local_backlog_candidates_before_provider_privacy_gate": 2217,
     "method": "DB-derived signals only; no source root scan, import, classification, AI tagging, or SourceConcept resolver.",
     "pixiv_like_candidates_with_existing_source_metadata": 60,
     "pixiv_like_candidates_without_source_metadata": 2227,
     "pixiv_like_media_candidates": 2287,
     "private_candidate_count": 2287,
     "private_candidate_rows_public": false,
+    "provider_execution_eligible_anime_candidates": 2194,
+    "provider_execution_excluded_already_has_source_metadata": 57,
+    "provider_execution_excluded_non_anime": 10,
+    "provider_execution_excluded_unknown": 26,
+    "provider_execution_exclusion_reason_counts": {
+      "already_has_source_metadata": 57,
+      "non_anime_excluded_from_provider_execution": 10,
+      "unknown_excluded_from_provider_execution": 26
+    },
     "reason_category_counts": {
       "filename_pixiv_id_pattern": 2287,
       "filename_pixiv_marker": 2,
@@ -307,8 +415,10 @@
     "network_attempted": true,
     "original_download_policy": "forbidden; command uses --dump-json --no-download",
     "provider_cache": {
-      "cache_hit_count": 0,
-      "cache_miss_count": 5,
+      "cache_hit_count": 5,
+      "cache_miss_count": 0,
+      "cache_no_metadata_records_count": 5,
+      "cache_parse_failure_count": 0,
       "db_provider_cache_used": false,
       "failure_budget": {
         "attempts": 5,
@@ -326,10 +436,96 @@
       },
       "failure_count": 5,
       "failure_reason_counts": {
-        "no_metadata_records": 5
+        "cache_no_metadata_records": 5
       },
       "filesystem_provider_cache_used": true,
       "original_downloaded": false,
+      "provider_called_count": 0,
+      "provider_output_diagnosis": {
+        "auth_config_failure_count": 0,
+        "command_option_issue_count": 0,
+        "diagnostic_class_counts": {
+          "unavailable_private_or_deleted": 5
+        },
+        "failure_reason_counts": {
+          "cache_no_metadata_records": 5
+        },
+        "no_metadata_records_count": 5,
+        "other_provider_failure_count": 0,
+        "parser_mismatch_count": 0,
+        "provider_error_event_count": 5,
+        "provider_error_type_counts": {
+          "NotFoundError": 5
+        },
+        "public_shapes": [
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 1,
+            "stderr_present": true,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          },
+          {
+            "diagnostic_class": "unavailable_private_or_deleted",
+            "failure_reason": "cache_no_metadata_records",
+            "first_json_type": "array",
+            "json_line_count": 1,
+            "provider_error_present": true,
+            "provider_error_type": "NotFoundError",
+            "stderr_line_count": 0,
+            "stderr_present": false,
+            "stdout_empty": false,
+            "stdout_line_count": 9
+          }
+        ],
+        "rate_limited_count": 0,
+        "raw_stdout_stderr_public": false,
+        "stdout_empty_count": 0,
+        "stdout_nonempty_unparsed_count": 0,
+        "unavailable_private_deleted_count": 5
+      },
+      "raw_failure_artifact_count": 5,
       "raw_json_cache_dir_private": true,
       "raw_json_cache_dir_public_label": ".local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run/provider-cache/raw-gallery-dl-json",
       "request_count": 5,
@@ -372,7 +568,7 @@
   "validation": {
     "browser_validation": "not_run_no_ui_runtime_target",
     "commands": [
-      "python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 500 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY"
+      "python.exe scripts/run_phase45_px1_pixiv_metadata_and_dedup_dry_run.py --execute-metadata --metadata-limit 5 --output-dir .local_manifests/phase-4.5-px1-pixiv-metadata-dedup-dry-run --write-public-report --read-only-dedup --confirm-metadata-execution EXECUTE_PHASE45_PX1_PIXIV_METADATA_ONLY"
     ],
     "dedup_read_only": true,
     "operational_mode": "execute-metadata",
