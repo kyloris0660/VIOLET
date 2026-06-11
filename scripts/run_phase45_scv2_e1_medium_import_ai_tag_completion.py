@@ -155,8 +155,6 @@ ALLOWED_TABLES = {
     "blombooru_tags",
     "blombooru_ai_tag_jobs",
     "blombooru_classification_jobs",
-    "blombooru_scan_jobs",
-    "blombooru_scan_job_media",
 }
 
 FORBIDDEN_TABLES = {
@@ -207,6 +205,14 @@ PHASE_BOUNDARY = {
     "llm": False,
     "browser_validation": False,
     "server_start": False,
+}
+
+FAILURE_STATUSES = {
+    "import_failed",
+    "classification_failed",
+    "ai_tagging_failed",
+    "mutation_proof_failed",
+    "public_redaction_failed",
 }
 
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)(?<![A-Z0-9_])[A-Z]:[\\/](?:(?![\r\n\"<>|]).)+")
@@ -282,6 +288,43 @@ def hash_text(value: Any) -> str:
 
 def candidate_target_count(target_successful_imports: int, over_selection_ratio: float) -> int:
     return int(math.ceil(target_successful_imports * over_selection_ratio))
+
+
+def validate_import_bounds_values(
+    *,
+    min_successful_imports: int,
+    target_successful_imports: int,
+    max_successful_imports: int,
+    candidate_target: int,
+) -> dict[str, Any]:
+    errors: list[str] = []
+    if min_successful_imports <= 0:
+        errors.append("min_successful_imports_must_be_positive")
+    if target_successful_imports <= 0:
+        errors.append("target_successful_imports_must_be_positive")
+    if max_successful_imports <= 0:
+        errors.append("max_successful_imports_must_be_positive")
+    if candidate_target <= 0:
+        errors.append("candidate_target_must_be_positive")
+    if (
+        min_successful_imports > 0
+        and target_successful_imports > 0
+        and max_successful_imports > 0
+        and not (min_successful_imports <= target_successful_imports <= max_successful_imports)
+    ):
+        errors.append("min_target_max_order_invalid")
+    if candidate_target > 0 and target_successful_imports > 0 and candidate_target < target_successful_imports:
+        errors.append("candidate_target_below_target_successful_imports")
+    return {"passed": not errors, "errors": errors}
+
+
+def validate_runner_args(args: argparse.Namespace) -> dict[str, Any]:
+    return validate_import_bounds_values(
+        min_successful_imports=int(args.min_successful_imports),
+        target_successful_imports=int(args.target_successful_imports),
+        max_successful_imports=int(args.max_successful_imports),
+        candidate_target=int(args.candidate_target),
+    )
 
 
 def extract_pixiv_ids(value: Any) -> list[dict[str, Any]]:
@@ -408,14 +451,38 @@ def classify_table_mutations(
     before_tables = before.get("tables", {})
     after_tables = after.get("tables", {})
     for table in sorted(set(before_tables) | set(after_tables)):
-        left = before_tables.get(table, {}).get("count")
-        right = after_tables.get(table, {}).get("count")
-        left_status = before_tables.get(table, {}).get("status")
-        right_status = after_tables.get(table, {}).get("status")
+        before_row = before_tables.get(table, {})
+        after_row = after_tables.get(table, {})
+        left = before_row.get("count")
+        right = after_row.get("count")
+        left_status = before_row.get("status")
+        right_status = after_row.get("status")
         if left_status == "missing_table" or right_status == "missing_table":
             continue
         if left != right:
-            changed.append({"table": table, "before": left, "after": right, "delta": (right or 0) - (left or 0)})
+            changed.append(
+                {
+                    "table": table,
+                    "before": left,
+                    "after": right,
+                    "delta": (right or 0) - (left or 0),
+                    "change_reason": "row_count_changed",
+                }
+            )
+            continue
+        if table in forbidden_tables and before_row.get("fingerprint") != after_row.get("fingerprint"):
+            changed.append(
+                {
+                    "table": table,
+                    "before": left,
+                    "after": right,
+                    "delta": 0,
+                    "change_reason": "forbidden_fingerprint_changed",
+                    "fingerprint_changed": True,
+                    "fingerprint_before": before_row.get("fingerprint"),
+                    "fingerprint_after": after_row.get("fingerprint"),
+                }
+            )
     expected = [row for row in changed if row["table"] in allowed_tables]
     forbidden = [row for row in changed if row["table"] in forbidden_tables]
     unexpected = [row for row in changed if row["table"] not in allowed_tables and row["table"] not in forbidden_tables]
@@ -531,6 +598,56 @@ def count_table(conn: Connection, table_name: str) -> dict[str, Any]:
     return {"status": "present", "count": value}
 
 
+def table_columns(conn: Connection, table_name: str) -> set[str]:
+    rows = conn.execute(
+        text(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).scalars()
+    return {str(row) for row in rows}
+
+
+def forbidden_table_fingerprint(conn: Connection, table_name: str) -> dict[str, Any]:
+    columns = table_columns(conn, table_name)
+    fingerprint: dict[str, Any] = {
+        "fingerprint_limited": not bool({"id", "updated_at", "created_at"} & columns),
+    }
+    if "id" in columns:
+        fingerprint["max_id"] = conn.execute(
+            text(f"SELECT MAX({qident('id')}::text) FROM {qident(table_name)}")
+        ).scalar()
+    if "updated_at" in columns:
+        fingerprint["max_updated_at"] = conn.execute(
+            text(f"SELECT MAX({qident('updated_at')})::text FROM {qident(table_name)}")
+        ).scalar()
+    if "created_at" in columns:
+        fingerprint["max_created_at"] = conn.execute(
+            text(f"SELECT MAX({qident('created_at')})::text FROM {qident(table_name)}")
+        ).scalar()
+    if "id" in columns and "updated_at" in columns:
+        fingerprint["id_updated_at_checksum"] = conn.execute(
+            text(
+                f"""
+                SELECT md5(COALESCE(
+                    string_agg(
+                        {qident('id')}::text || ':' || COALESCE({qident('updated_at')}::text, ''),
+                        ',' ORDER BY {qident('id')}::text
+                    ),
+                    ''
+                ))
+                FROM {qident(table_name)}
+                """
+            )
+        ).scalar()
+    return fingerprint
+
+
 def list_blombooru_tables(conn: Connection) -> list[str]:
     rows = conn.execute(
         text(
@@ -549,7 +666,13 @@ def list_blombooru_tables(conn: Connection) -> list[str]:
 
 def build_table_counts(conn: Connection) -> dict[str, Any]:
     tables = sorted(set(list_blombooru_tables(conn)) | ALLOWED_TABLES | FORBIDDEN_TABLES)
-    return {"recorded_at": utc_now(), "tables": {table: count_table(conn, table) for table in tables}}
+    results: dict[str, Any] = {}
+    for table in tables:
+        row = count_table(conn, table)
+        if table in FORBIDDEN_TABLES and row.get("status") == "present":
+            row["fingerprint"] = forbidden_table_fingerprint(conn, table)
+        results[table] = row
+    return {"recorded_at": utc_now(), "tables": results}
 
 
 def scalar_count(conn: Connection, sql: str, params: Mapping[str, Any] | None = None) -> int:
@@ -931,7 +1054,12 @@ def hash_candidates_with_timeout(rows: Sequence[Mapping[str, Any]], timeout_seco
 
     if timeout_seconds <= 0:
         return {
-            str(row["candidate_id"]): _hash_one(str(row["source_locator_private_ref"]))
+            str(row["candidate_id"]): {
+                "ok": False,
+                "hash": None,
+                "error_reason": "read_timeout",
+                "error_message": "hash timeout must be positive",
+            }
             for row in rows
         }
 
@@ -995,8 +1123,13 @@ def hash_candidates_with_timeout(rows: Sequence[Mapping[str, Any]], timeout_seco
                 proc.join(timeout=2)
         parent_conn.close()
         if pipe_failed and not made_progress:
-            for candidate_id, path in pending:
-                results[candidate_id] = _hash_one(path)
+            for candidate_id, _path in pending:
+                results[candidate_id] = {
+                    "ok": False,
+                    "hash": None,
+                    "error_reason": "hash_worker_failed",
+                    "error_message": "hash worker pipe failed before returning a bounded result",
+                }
             pending = []
             break
         pending = [(candidate_id, path) for candidate_id, path in pending if candidate_id not in results]
@@ -1244,6 +1377,7 @@ def execute_imports(
     if len(candidates) < min_successful_imports and execute:
         raise E1BlockedError(f"not_enough_unique_candidates:{len(candidates)}")
     if not execute:
+        dry_run_limit = min(target_successful_imports, max_successful_imports)
         ledger = [
             {
                 "run_id": context.run_id,
@@ -1256,7 +1390,7 @@ def execute_imports(
                 "bytes_copied": 0,
                 "eligible_for_db_import": True,
             }
-            for row in candidates[:target_successful_imports]
+            for row in candidates[:dry_run_limit]
         ]
         return ledger, {
             "status": "dry_run_would_import",
@@ -1277,6 +1411,8 @@ def execute_imports(
     consecutive_failures = 0
     attempted = 0
     for row in candidates:
+        if len(imported_ids) >= max_successful_imports:
+            break
         if len(imported_ids) >= target_successful_imports:
             break
         attempted += 1
@@ -1910,26 +2046,75 @@ def public_summary(
     return summary
 
 
-def write_public_outputs(summary: dict[str, Any]) -> dict[str, Any]:
+def blocked_public_summary(redaction: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "phase": PHASE,
+        "title": PHASE_TITLE,
+        "status": "public_redaction_failed",
+        "public_redaction": {
+            "passed": False,
+            "finding_count": len(redaction.get("findings", [])),
+            "checked_paths": [PUBLIC_REPORT_MD.name, PUBLIC_REPORT_JSON.name],
+        },
+        "private_artifacts": {
+            "private_artifact_root_label": f".local_manifests/{PHASE_SLUG}",
+            "paths_public": False,
+        },
+    }
+
+
+def blocked_public_markdown(redaction: Mapping[str, Any]) -> str:
+    finding_count = len(redaction.get("findings", []))
+    return (
+        f"# {PHASE} {PHASE_TITLE}\n\n"
+        "Public report blocked by redaction scan. Private diagnostics remain local.\n\n"
+        f"- Status: `public_redaction_failed`.\n"
+        f"- Redaction findings: `{finding_count}`.\n"
+        f"- Private artifact label: `.local_manifests/{PHASE_SLUG}`.\n"
+    )
+
+
+def write_public_outputs(
+    summary: dict[str, Any],
+    *,
+    report_md: Path = PUBLIC_REPORT_MD,
+    report_json: Path = PUBLIC_REPORT_JSON,
+    temp_dir: Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    temp_root = temp_dir or (DEFAULT_OUTPUT_DIR / "public-output-tmp")
+    temp_root.mkdir(parents=True, exist_ok=True)
+    temp_prefix = f"{PHASE_SLUG}-{uuid.uuid4().hex}"
+    temp_md = temp_root / f"{temp_prefix}.md"
+    temp_json = temp_root / f"{temp_prefix}.json"
     temp_summary = dict(summary)
     temp_summary["public_redaction"] = {"passed": True, "findings": [], "checked_paths": []}
-    write_text(PUBLIC_REPORT_MD, public_report_markdown(temp_summary))
-    write_json(PUBLIC_REPORT_JSON, temp_summary)
-    redaction = scan_public_artifacts([PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON])
-    summary["public_redaction"] = redaction
+    write_text(temp_md, public_report_markdown(temp_summary))
+    write_json(temp_json, temp_summary)
+    redaction = scan_public_artifacts([temp_md, temp_json])
+    redaction["checked_paths"] = [report_md.name, report_json.name]
     if not redaction["passed"]:
-        write_json(PUBLIC_REPORT_JSON, summary)
-        write_text(
-            PUBLIC_REPORT_MD,
-            f"# {PHASE} {PHASE_TITLE}\n\nPublic report blocked by redaction scan. Private diagnostics remain local.\n",
-        )
-        raise E1BlockedError("public_redaction_failed")
-    write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
-    write_json(PUBLIC_REPORT_JSON, summary)
-    return redaction
+        safe_summary = blocked_public_summary(redaction)
+        write_text(temp_md, blocked_public_markdown(redaction))
+        write_json(temp_json, safe_summary)
+        report_md.parent.mkdir(parents=True, exist_ok=True)
+        report_json.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(temp_md, report_md)
+        os.replace(temp_json, report_json)
+        return redaction, safe_summary
+    summary["public_redaction"] = redaction
+    write_text(temp_md, public_report_markdown(summary))
+    write_json(temp_json, summary)
+    report_md.parent.mkdir(parents=True, exist_ok=True)
+    report_json.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(temp_md, report_md)
+    os.replace(temp_json, report_json)
+    return redaction, summary
 
 
 def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
+    bounds = validate_runner_args(args)
+    if not bounds["passed"]:
+        raise E1BlockedError("invalid_import_bounds:" + ",".join(bounds["errors"]))
     apply_phase_env_overrides()
     engine, db_source_identity = create_engine_for_phase()
     context = load_runtime_context(args, db_source_identity)
@@ -2003,19 +2188,22 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     if args.execute:
         validation["model_preflight"] = preflight_local_model_availability()
 
-    import_ledger, import_results, imported_media_ids = execute_imports(
-        engine,
-        context,
-        duplicate_rows,
-        execute=args.execute,
-        target_successful_imports=args.target_successful_imports,
-        min_successful_imports=args.min_successful_imports,
-        max_successful_imports=args.max_successful_imports,
-        copy_timeout_seconds=args.copy_timeout_seconds,
-        failure_budget=failure_budget,
-    )
-    write_jsonl(context.output_dir / "import-item-ledger.jsonl", import_ledger)
-
+    import_ledger: list[dict[str, Any]] = []
+    imported_media_ids: list[int] = []
+    import_results: dict[str, Any] = {
+        "status": "not_started",
+        "successful_imports": 0,
+        "target_successful_imports": args.target_successful_imports,
+        "acceptable_range": [args.min_successful_imports, args.max_successful_imports],
+        "target_met": False,
+        "recommended_target_met": False,
+        "attempted_imports": 0,
+        "failure_count": 0,
+        "failure_reason_counts": {},
+        "app_managed_storage_writes": 0,
+        "source_root_mutation": False,
+        "db_import": bool(args.execute),
+    }
     classification_ledger: list[dict[str, Any]] = []
     classification_results: dict[str, Any] = {
         "status": "dry_run_not_executed",
@@ -2038,27 +2226,90 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "coverage_ratio": None,
         "coverage_pct": None,
     }
+    pipeline_error_status: str | None = None
     if args.execute:
-        classification_ledger, classification_results = run_classification(imported_media_ids, args.classification_chunk_size)
-        for row in classification_ledger:
-            row["run_id"] = context.run_id
-        write_jsonl(context.output_dir / "classification-ledger.jsonl", classification_ledger)
-        if classification_results.get("status") != "completed":
-            raise E1BlockedError("classification_failed")
-        eligible_ids = eligible_media_ids_from_classification(classification_ledger)
-        ai_ledger, ai_failure_ledger, ai_results = run_ai_tagging(
-            eligible_ids,
-            args.ai_chunk_size,
+        try:
+            import_ledger, import_results, imported_media_ids = execute_imports(
+                engine,
+                context,
+                duplicate_rows,
+                execute=args.execute,
+                target_successful_imports=args.target_successful_imports,
+                min_successful_imports=args.min_successful_imports,
+                max_successful_imports=args.max_successful_imports,
+                copy_timeout_seconds=args.copy_timeout_seconds,
+                failure_budget=failure_budget,
+            )
+        except Exception as exc:
+            pipeline_error_status = "import_failed"
+            import_results.update(
+                {
+                    "status": "import_failed",
+                    "error_message": str(exc)[:500],
+                    "failure_count": max(1, int(import_results.get("failure_count") or 0)),
+                }
+            )
+        write_jsonl(context.output_dir / "import-item-ledger.jsonl", import_ledger)
+    else:
+        import_ledger, import_results, imported_media_ids = execute_imports(
+            engine,
+            context,
+            duplicate_rows,
+            execute=False,
+            target_successful_imports=args.target_successful_imports,
+            min_successful_imports=args.min_successful_imports,
+            max_successful_imports=args.max_successful_imports,
+            copy_timeout_seconds=args.copy_timeout_seconds,
             failure_budget=failure_budget,
         )
-        for row in ai_ledger:
-            row["run_id"] = context.run_id
-        for row in ai_failure_ledger:
-            row["run_id"] = context.run_id
-        write_jsonl(context.output_dir / "ai-tagging-ledger.jsonl", ai_ledger)
-        write_jsonl(context.output_dir / "ai-tagging-failure-ledger.jsonl", ai_failure_ledger)
-        if ai_results.get("status") != "completed":
-            raise E1BlockedError("ai_tagging_failed")
+        write_jsonl(context.output_dir / "import-item-ledger.jsonl", import_ledger)
+
+    if args.execute:
+        if pipeline_error_status is None:
+            try:
+                classification_ledger, classification_results = run_classification(
+                    imported_media_ids, args.classification_chunk_size
+                )
+            except Exception as exc:
+                pipeline_error_status = "classification_failed"
+                classification_results = {
+                    **classification_results,
+                    "status": "classification_failed",
+                    "error_message": str(exc)[:500],
+                }
+            for row in classification_ledger:
+                row["run_id"] = context.run_id
+            write_jsonl(context.output_dir / "classification-ledger.jsonl", classification_ledger)
+            if classification_results.get("status") != "completed":
+                pipeline_error_status = pipeline_error_status or "classification_failed"
+        else:
+            write_jsonl(context.output_dir / "classification-ledger.jsonl", classification_ledger)
+        if pipeline_error_status is None:
+            eligible_ids = eligible_media_ids_from_classification(classification_ledger)
+            try:
+                ai_ledger, ai_failure_ledger, ai_results = run_ai_tagging(
+                    eligible_ids,
+                    args.ai_chunk_size,
+                    failure_budget=failure_budget,
+                )
+            except Exception as exc:
+                pipeline_error_status = "ai_tagging_failed"
+                ai_results = {
+                    **ai_results,
+                    "status": "ai_tagging_failed",
+                    "error_message": str(exc)[:500],
+                }
+            for row in ai_ledger:
+                row["run_id"] = context.run_id
+            for row in ai_failure_ledger:
+                row["run_id"] = context.run_id
+            write_jsonl(context.output_dir / "ai-tagging-ledger.jsonl", ai_ledger)
+            write_jsonl(context.output_dir / "ai-tagging-failure-ledger.jsonl", ai_failure_ledger)
+            if ai_results.get("status") != "completed":
+                pipeline_error_status = pipeline_error_status or "ai_tagging_failed"
+        else:
+            write_jsonl(context.output_dir / "ai-tagging-ledger.jsonl", ai_ledger)
+            write_jsonl(context.output_dir / "ai-tagging-failure-ledger.jsonl", ai_failure_ledger)
     else:
         write_jsonl(context.output_dir / "classification-ledger.jsonl", [])
         write_jsonl(context.output_dir / "ai-tagging-ledger.jsonl", [])
@@ -2075,9 +2326,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     write_json(context.output_dir / "mutation-proof-delta.json", mutation_delta)
     write_json(context.output_dir / "safety-stop-conditions.json", {"failure_budget": failure_budget, "phase_boundary": phase_boundary_status()})
     if args.execute and not mutation_delta["passed"]:
-        raise E1BlockedError("forbidden_or_unexpected_table_mutation")
+        pipeline_error_status = pipeline_error_status or "mutation_proof_failed"
 
-    status = "completed" if (not args.execute or (import_results.get("target_met") and ai_results.get("coverage_ratio") == 1.0 and mutation_delta["passed"])) else "completed_with_blockers"
+    if pipeline_error_status:
+        status = pipeline_error_status
+    else:
+        status = "completed" if (not args.execute or (import_results.get("target_met") and ai_results.get("coverage_ratio") == 1.0 and mutation_delta["passed"])) else "completed_with_blockers"
     summary = public_summary(
         context=context,
         branch=branch,
@@ -2097,8 +2351,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         status=status,
     )
     if args.write_public_report:
-        redaction = write_public_outputs(summary)
+        redaction, public_summary_result = write_public_outputs(summary)
         write_text(context.output_dir / "public-redaction-check.txt", json.dumps(redaction, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        if not redaction["passed"]:
+            return public_summary_result
+        summary = public_summary_result
     else:
         write_text(context.output_dir / "public-redaction-check.txt", "public report not requested\n")
     return summary
@@ -2136,14 +2393,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.execute and args.confirm_execution != CONFIRM_PHRASE:
         parser.error(f"--execute requires --confirm-execution {CONFIRM_PHRASE}")
-    if args.candidate_target <= 0:
-        parser.error("--candidate-target must be positive")
+    bounds = validate_runner_args(args)
+    if not bounds["passed"]:
+        parser.error("invalid import bounds: " + ", ".join(bounds["errors"]))
     try:
         summary = run_pipeline(args)
     except E1BlockedError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=json_default))
+    if summary.get("status") in FAILURE_STATUSES:
+        return 2
     return 0
 
 
