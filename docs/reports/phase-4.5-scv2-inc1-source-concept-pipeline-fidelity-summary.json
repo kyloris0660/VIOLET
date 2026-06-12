@@ -1,10 +1,10 @@
 {
   "a1_route_evidence": {
-    "mentions_provisional": true,
+    "mentions_provisional": false,
     "pixiv_all_influenced_concepts": 3510,
     "px1_strict_influenced_concepts": 1692,
     "route_decision": null,
-    "route_status": "provisional_pending_chatgpt_pack_audit",
+    "route_status": "blocked_pending_pipeline_fidelity_remediation",
     "summary_file": "docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json",
     "uses_r1_trusted_transition": {
       "current_r1_summary_mode": "execute",
@@ -40,18 +40,35 @@
   },
   "base_branch": "codex/phase45-scv2-a1-post-expansion-audit-route-decision",
   "branch": "codex/phase45-scv2-inc1-source-concept-pipeline-fidelity",
-  "generated_at": "2026-06-12T11:14:14Z",
+  "dirty_worktree": {
+    "clean": false,
+    "dirty_count": 12,
+    "raw_status_available_private": true,
+    "status_public": "redacted_dirty_entries:12",
+    "status_redacted": true
+  },
+  "dirty_worktree_status": "redacted_dirty_entries:12",
+  "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report-generation commit; a commit cannot truthfully contain its own final SHA.",
+  "generated_at": "2026-06-12T11:42:09Z",
   "git": {
-    "base_branch_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
+    "base_branch_sha": "c27d14b2c81e1ed09f8407178c1a61c425301d0a",
     "current_branch": "codex/phase45-scv2-inc1-source-concept-pipeline-fidelity",
-    "dirty_worktree_status": "?? .claude/\n?? .codex/\n?? docs/reports/phase-3.2h.3-general-batchB-delivery.md\n?? docs/reports/phase-3.2h.4-general-final-delivery.md\n?? docs/reports/phase-3.2h.5-localization-closeout-audit.md\n?? docs/reports/phase-3.2i-tier500-browser-acceptance.md\n?? docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json\n?? docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md\n?? scripts/run_phase45_scv2_inc1_source_concept_pipeline_fidelity.py\n?? server_8012.log\n?? server_8012_3.2h.4.log\n?? server_8012_3.2j.2.log\n?? server_8014.log\n?? server_phase3.5_8012.err.log\n?? server_phase3.5_8012.out.log\n?? tests/test_phase45_scv2_inc1_source_concept_pipeline_fidelity.py",
-    "head_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
+    "dirty_worktree": {
+      "clean": false,
+      "dirty_count": 12,
+      "raw_status_available_private": true,
+      "status_public": "redacted_dirty_entries:12",
+      "status_redacted": true
+    },
+    "dirty_worktree_status": "redacted_dirty_entries:12",
+    "head_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
     "origin_main_sha": "e48b6d446f59916cd68bfa53557bd94d8c87c68c"
   },
   "impacts": {
     "a1": {
+      "a1r_required_after_r1r": true,
       "details": "A1 used R1 outputs as the post-expansion state without treating deterministic-only R1 as a fidelity incident.",
-      "route_approval_remains_provisional": true,
+      "route_approval_blocked_pending_remediation": true,
       "route_decision_incomplete": true
     },
     "depends_on_full_chain": [
@@ -98,6 +115,7 @@
       "reason": "SC1 execution is proven by summary, private resolver-run-summary, 300 judgment lines, and LLM edge output; only the exact shell transcript is unavailable."
     }
   ],
+  "operational_result_reused_older_artifacts": false,
   "phase": "4.5-SCV2-INC1",
   "pipeline_comparison": [
     {
@@ -357,6 +375,7 @@
       "exists": true
     }
   ],
+  "public_report_generated_from_runtime_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
   "r1_actual_pipeline": {
     "adapter_accounting": {
       "SourceMetadataEvidence": "read through source_metadata_record_id linkage and covered by PX1 presence/mutation proof; not written by R1",
@@ -1187,10 +1206,32 @@
       "Persist only SourceConcept-owned tables after approval; preserve no Entity truth/media_tags/source metadata mutation.",
       "Regenerate R1R public report/private artifacts, then rerun A1 route audit from R1R outputs."
     ],
-    "rationale": "R1 deterministic evidence remains useful, but R1 did not faithfully rerun the SC1 full chain because bounded LLM pair adjudication was disabled. A1 route approval must stay provisional until R1R and a fresh A1 route audit are complete.",
+    "r2_blocked_until": [
+      "R1R full-chain replay/remediation complete",
+      "A1R route audit rerun complete"
+    ],
+    "rationale": "R1 deterministic evidence remains useful, but R1 did not faithfully rerun the SC1 full chain because bounded LLM pair adjudication was disabled. A1 route approval must stay blocked until R1R and an A1R route audit rerun are complete.",
+    "required_followup_after_r1r": "Phase 4.5-SCV2-A1R: rerun A1 route audit after R1R outputs exist",
     "required_next_phase": "Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation",
     "selected_option": "4. R1/A1 invalid; rerun R1 and A1 after fixing runner/config."
   },
+  "report_provenance": {
+    "dirty_worktree": {
+      "clean": false,
+      "dirty_count": 12,
+      "raw_status_available_private": true,
+      "status_public": "redacted_dirty_entries:12",
+      "status_redacted": true
+    },
+    "dirty_worktree_status": "redacted_dirty_entries:12",
+    "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report-generation commit; a commit cannot truthfully contain its own final SHA.",
+    "final_pr_head_sha_if_different_scope": "If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later committed report/summary artifact regeneration.",
+    "operational_result_reused_older_artifacts": false,
+    "public_report_generated_from_runtime_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
+    "runtime_audit_git_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
+    "runtime_audit_git_sha_scope": "git rev-parse HEAD when the INC1 read-only file-artifact investigation runner executed."
+  },
+  "runtime_audit_git_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
   "safety": {
     "no_classification_ai_localization_llm_calls": true,
     "no_db_writes": true,
@@ -1280,8 +1321,12 @@
   },
   "severity_classification": {
     "label": "phase output invalid or route decision incomplete",
+    "project_governance_severity": "P0/P1 pipeline fidelity incident",
+    "r2_blocked": true,
     "rationale": "SC1 established bounded LLM pair adjudication as part of the full resolver chain, but R1 disabled that stage while feeding A1 route-decision evidence.",
-    "severity": "S1"
+    "route_gate_status": "blocked_pending_pipeline_fidelity_remediation",
+    "severity": "S1",
+    "technical_severity": "S1"
   },
   "source_references": [
     {
@@ -1290,7 +1335,7 @@
     },
     {
       "id": "sc1_public_llm_used",
-      "ref": "docs/reports/phase-4.5-sc1-source-concept-resolver-core.md:pattern-not-found:- Used: true"
+      "ref": "docs/reports/phase-4.5-sc1-source-concept-resolver-core.md:49"
     },
     {
       "id": "sc1_summary_llm",
@@ -1366,7 +1411,7 @@
     },
     {
       "id": "a1_summary_route_status",
-      "ref": "docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json:162"
+      "ref": "docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json:183"
     },
     {
       "id": "handoff_r1",
@@ -1384,7 +1429,15 @@
     "public_redaction": {
       "finding_count": 0,
       "findings": [],
-      "passed": true
+      "json_finding_count": 0,
+      "json_findings": [],
+      "markdown": {
+        "finding_count": 0,
+        "findings": [],
+        "passed": true
+      },
+      "passed": true,
+      "policy": "scan public Markdown and public summary JSON before writing tracked artifacts"
     },
     "runner_mode": "read_only_file_artifact_investigation",
     "summary_schema": {
@@ -1404,6 +1457,7 @@
         "r1_actual_pipeline",
         "read_files",
         "remediation_decision",
+        "report_provenance",
         "safety",
         "sc1_established_pipeline",
         "severity_classification",

@@ -2,12 +2,23 @@
 
 ## Summary
 
-INC1 confirms a pipeline fidelity incident. SC1 established and actually ran bounded LLM pair adjudication as part of the full SourceConcept resolver chain. R1 executed deterministic resolver stages and persisted SourceConcept-scoped outputs, but R1 did not request or run LLM pair adjudication. Therefore R1 is deterministic-only for fidelity purposes, and A1 route approval remains provisional until remediation.
+INC1 confirms a pipeline fidelity incident. SC1 established and actually ran bounded LLM pair adjudication as part of the full SourceConcept resolver chain. R1 executed deterministic resolver stages and persisted SourceConcept-scoped outputs, but R1 did not request or run LLM pair adjudication. Therefore R1/A1 cannot be used as full-chain route approval evidence unless the conclusion is later changed by recovered artifacts.
 
 - Conclusion: `llm_stage_missing_incident`
-- Severity: `S1` - phase output invalid or route decision incomplete
+- Technical severity: `S1` - phase output invalid or route decision incomplete
+- Project governance severity: `P0/P1 pipeline fidelity incident`
+- Route gate status: `blocked_pending_pipeline_fidelity_remediation`
 - Required remediation: 4. R1/A1 invalid; rerun R1 and A1 after fixing runner/config.
-- R2 status: blocked; do not start R2.
+- Required follow-up after R1R: Phase 4.5-SCV2-A1R: rerun A1 route audit after R1R outputs exist
+- R2 status: blocked until R1R plus A1R are complete; do not start R2.
+
+## Provenance
+
+- Runtime audit git SHA: `40bf685f66f7fd38851b9bb0e7f4818144c5a4c0`.
+- Runtime audit SHA scope: git rev-parse HEAD when the INC1 read-only file-artifact investigation runner executed.
+- Public report generated from runtime SHA: `40bf685f66f7fd38851b9bb0e7f4818144c5a4c0`.
+- Final PR head SHA if different: `reported by PR metadata/final delivery after the report-generation commit; a commit cannot truthfully contain its own final SHA.`.
+- Dirty worktree clean at runtime: `False`; dirty entry count: `12`; status filenames redacted: `True`.
 
 ## Incident Statement
 
@@ -113,11 +124,12 @@ The missing SC1 final-v5 shell transcript prevents quoting the exact historical 
 
 ## Impact on Proposed R2
 
-SCV2-R2 remains blocked. R2 target buckets, needs_review priorities, and route readiness may change after LLM adjudication changes component topology or records same/cannot/uncertain decisions.
+SCV2-R2 remains blocked until R1R full-chain remediation and A1R rerun are both complete. R2 target buckets, needs_review priorities, and route readiness may change after LLM adjudication changes component topology or records same/cannot/uncertain decisions.
 
 ## Severity Classification
 
-- Severity: `S1`
+- Technical severity: `S1`
+- Project governance severity: `P0/P1 pipeline fidelity incident`
 - Label: phase output invalid or route decision incomplete
 - Rationale: SC1 established bounded LLM pair adjudication as part of the full resolver chain, but R1 disabled that stage while feeding A1 route-decision evidence.
 
@@ -127,7 +139,9 @@ Selected decision: 4. R1/A1 invalid; rerun R1 and A1 after fixing runner/config.
 
 Required next phase: `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation`
 
-R1R should replay the full deterministic + bounded LLM adjudication chain under explicit approval. INC1 does not implement R1R.
+Required follow-up after R1R: `Phase 4.5-SCV2-A1R: rerun A1 route audit after R1R outputs exist`
+
+R1R should replay the full deterministic + bounded LLM adjudication chain under explicit approval. A1R must rerun after R1R. INC1 does not implement R1R or A1R.
 
 ## Required Next Phase, If Any
 
@@ -163,7 +177,7 @@ Minimum R1R plan:
 ## Evidence References
 
 - `sc1_public_llm_section`: `docs/reports/phase-4.5-sc1-source-concept-resolver-core.md:47`
-- `sc1_public_llm_used`: `docs/reports/phase-4.5-sc1-source-concept-resolver-core.md:pattern-not-found:- Used: true`
+- `sc1_public_llm_used`: `docs/reports/phase-4.5-sc1-source-concept-resolver-core.md:49`
 - `sc1_summary_llm`: `docs/reports/phase-4.5-sc1-source-concept-resolver-core-summary.json:66`
 - `sc1_summary_llm_usage`: `docs/reports/phase-4.5-sc1-source-concept-resolver-core-summary.json:143`
 - `sc1_runner_llm_flag`: `scripts/run_phase45_sc1_source_concept_resolver.py:920`
@@ -182,10 +196,10 @@ Minimum R1R plan:
 - `r1_private_ledger_reason`: `.local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage/resolver-run-ledger.json:952`
 - `r1_tests_provider_guard`: `tests/test_phase45_scv2_r1_post_px1_source_concept_triage.py:431`
 - `a1_public_route`: `docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision.md:1`
-- `a1_summary_route_status`: `docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json:162`
+- `a1_summary_route_status`: `docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json:183`
 - `handoff_r1`: `docs/current-handoff.md:25`
 - `roadmap_scv2`: `docs/project-roadmap.md:32`
 
 ## Engineering Judgment
 
-This is a real S1 fidelity incident, not just a wording mismatch. R1 appears to have intentionally scoped out LLM in its prompt/report, but that means it was not a faithful full-chain replay of the SC1 resolver pipeline. The root cause is a phase-scope/config omission plus insufficient reporting/tests to distinguish deterministic-only execution from full-chain execution before A1 route approval. The correct next move is a separate R1R remediation phase, then a fresh A1 audit; R2 must remain blocked until those are complete.
+This is a real technical S1 and project-governance P0/P1 fidelity incident, not just a wording mismatch. R1 appears to have intentionally scoped out LLM in its prompt/report, but that means it was not a faithful full-chain replay of the SC1 resolver pipeline. The root cause is a phase-scope/config omission plus insufficient reporting/tests to distinguish deterministic-only execution from full-chain execution before A1 route approval. The correct next move is a separate R1R remediation phase, then A1R; R2 must remain blocked until both are complete.
