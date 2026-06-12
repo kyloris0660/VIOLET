@@ -3,9 +3,33 @@
 ## Summary
 
 - Status: `provisional_pending_chatgpt_pack_audit`.
-- Branch/head: `codex/phase45-scv2-a1-post-expansion-audit-route-decision` / `a99ca54797655a0faf6495e2df4694e10d1dcdd9`.
+- Branch/runtime audit SHA: `codex/phase45-scv2-a1-post-expansion-audit-route-decision` / `d6cc8fcdf0e3552e013bd25120fd37e147d552bc`.
 - Recommendation: `SCV2-R2 targeted resolver/gap reduction`.
 - Review pack required before final route approval: `True`.
+
+## Provenance / SHA boundary
+
+- Runtime audit git SHA: `d6cc8fcdf0e3552e013bd25120fd37e147d552bc`.
+- Runtime audit git SHA scope: git rev-parse HEAD at A1 read-only runner execution; if dirty_worktree_status is non-empty, the runtime also included the listed working-tree changes.
+- Public report generated from runtime SHA: `d6cc8fcdf0e3552e013bd25120fd37e147d552bc`.
+- Final PR head SHA if different: `reported by PR metadata/final delivery after the report regeneration commit; a commit cannot truthfully contain its own final SHA.`.
+- Final PR head SHA scope: If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later A1 report/test/review-pack regeneration commit, not a separate operational audit.
+- Operational result reused older artifacts: `False`.
+- Dirty worktree status at runtime: `M scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py
+ M tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py
+?? .claude/
+?? .codex/
+?? docs/reports/phase-3.2h.3-general-batchB-delivery.md
+?? docs/reports/phase-3.2h.4-general-final-delivery.md
+?? docs/reports/phase-3.2h.5-localization-closeout-audit.md
+?? docs/reports/phase-3.2i-tier500-browser-acceptance.md
+?? server_8012.log
+?? server_8012_3.2h.4.log
+?? server_8012_3.2j.2.log
+?? server_8014.log
+?? server_phase3.5_8012.err.log
+?? server_phase3.5_8012.out.log`.
+- If the final reviewed PR head differs from the runtime audit SHA, it is expected to be the later report/test/review-pack regeneration commit after this read-only audit.
 
 ## Scope and non-goals
 
@@ -33,7 +57,8 @@
 
 - Total SourceConcept: `6094`.
 - By status: `{"active": 1078, "needs_review": 1809, "superseded": 3207}`.
-- PX1-influenced concepts: `3510`.
+- Strict PX1-influenced concepts: `1692` (`strict PX1 SourceMetadataRecord run_label=phase-4.5-px1-pixiv-metadata-dedup-dry-run`).
+- All Pixiv-influenced concepts: `3510`; non-PX1 Pixiv-influenced concepts: `1818`.
 - Duplicate/fragment candidate groups: `1088`.
 
 ## Gap audit
@@ -57,7 +82,10 @@
 
 ## PX1 evidence impact
 
-- Current PX1-influenced concepts: `3510`.
+- Strict PX1-influenced concepts: `1692` using `strict SourceMetadataRecord filter: provider='pixiv' and run_label equals px1_slug`.
+- All Pixiv-influenced concepts: `3510`.
+- Non-PX1 Pixiv-influenced concepts: `1818`.
+- Route decision PX1 impact metric: `px1_strict_influenced_concepts`.
 - PX1 remains review-scoped evidence/backlog input, not active Entity or media_tags truth.
 
 ## Comparison with SCV1/P0/E1/PX1/R1

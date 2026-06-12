@@ -103,7 +103,12 @@ def _fake_summary(tmp_path: Path, review_pack_info: dict | None = None) -> dict:
             "groups": {},
         },
         needs={"total_needs_review_concepts": 1809, "assessment": "review"},
-        px1={"current_px1_influenced_concepts": 1692},
+        px1={
+            "px1_strict_influenced_concepts": 1692,
+            "pixiv_all_influenced_concepts": 3510,
+            "non_px1_pixiv_influenced_concepts": 1818,
+            "route_decision_px1_impact_metric": "px1_strict_influenced_concepts",
+        },
         route=route,
         thresholds=thresholds,
         mutation={"passed": True, "changed_tables": []},
@@ -272,14 +277,20 @@ def test_review_pack_labels_are_private_refs_except_allowlisted_public_seed_labe
     public_seed_label = "Nahida"
 
     assert runner.safe_label(raw_short_source_label, fallback="[redacted source value]") != raw_short_source_label
-    assert runner.safe_label(raw_short_source_label, fallback="[redacted source value]").startswith("[redacted source value]:label_")
+    assert runner.safe_label(raw_short_source_label, fallback="[redacted source value]") == "[redacted source value]"
     assert runner.safe_label(public_seed_label, fallback="[redacted seed]", allow_public_seed=True) == public_seed_label
+    refs = runner.ReviewPackRefBuilder()
+    assert refs.label(raw_short_source_label) == "label_ref_000001"
+    assert refs.label(raw_short_source_label) == "label_ref_000001"
+    assert refs.ref("concept", 42) == "concept_ref_000001"
+    assert raw_short_source_label not in refs.label(raw_short_source_label)
 
     findings = runner.scan_json_payload_for_review_pack_leaks(
         {
             "display_label": raw_short_source_label,
             "search_seed_label": raw_short_source_label,
             "canonical_key_hash": "abcdef1234567890",
+            "stable_private_concept_ref": "concept_0123456789abcdef",
         }
     )
     finding_types = {item["type"] for item in findings}
@@ -287,6 +298,8 @@ def test_review_pack_labels_are_private_refs_except_allowlisted_public_seed_labe
     assert "display_label_raw_private_label" in finding_types
     assert "search_seed_label_raw_private_label" in finding_types
     assert "unsalted_or_dictionary_attackable_key_hash" in finding_types
+    assert "fixed_salt_or_hash_ref" in finding_types
+    assert runner.scan_json_payload_for_review_pack_leaks({"display_label": "label_ref_000001", "stable_private_concept_ref": "concept_ref_000001"}) == []
     assert runner.scan_json_payload_for_review_pack_leaks({"search_seed_label": public_seed_label}) == []
 
 
@@ -302,7 +315,8 @@ def test_concepts_without_media_uses_visible_status_denominator(monkeypatch: pyt
     monkeypatch.setattr(runner, "alias_count_by_role_status_provider", lambda _conn: [])
     monkeypatch.setattr(runner.scv1, "count_table", lambda *_args, **_kwargs: {"count": 0})
     monkeypatch.setattr(runner.scv1, "group_count", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr(runner, "px1_influenced_concept_ids", lambda _conn: set())
+    monkeypatch.setattr(runner, "px1_strict_influenced_concept_ids", lambda _conn: set())
+    monkeypatch.setattr(runner, "pixiv_all_influenced_concept_ids", lambda _conn: set())
 
     state = runner.build_source_concept_current_state(None, concepts, [], [], {})
 
@@ -311,6 +325,20 @@ def test_concepts_without_media_uses_visible_status_denominator(monkeypatch: pyt
     assert state["concepts_without_media_status_scope"] == "visible_statuses_active_or_needs_review"
     assert state["visible_status_source_concept_count"] == 2
     assert state["all_status_source_concept_count"] == 3
+
+
+def test_strict_px1_impact_excludes_non_px1_pixiv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runner, "strict_px1_source_metadata_record_ids", lambda _conn: {100, 101})
+    monkeypatch.setattr(runner, "concepts_with_source_metadata_record_ids", lambda _conn, _record_ids: {1, 2})
+    monkeypatch.setattr(runner, "pixiv_all_influenced_concept_ids", lambda _conn: {1, 2, 3, 4})
+
+    impact = runner.build_px1_evidence_impact(None, {"source_concept_delta": {"concepts_influenced_by_px1_evidence_after": 1692}})
+
+    assert impact["px1_slug"] == runner.PX1_SLUG
+    assert impact["px1_strict_influenced_concepts"] == 2
+    assert impact["pixiv_all_influenced_concepts"] == 4
+    assert impact["non_px1_pixiv_influenced_concepts"] == 2
+    assert impact["route_decision_px1_impact_metric"] == "px1_strict_influenced_concepts"
 
 
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
@@ -356,7 +384,7 @@ def test_review_pack_manifest_checksums_readme_and_directories_are_generated(mon
         "mutation_proof": summary["mutation_proof"],
         "transaction_readonly_proof": summary["transaction_readonly_proof"],
     }
-    samples = {filename: [{"stable_private_concept_ref": "concept_abc", "reason_bucket": filename}] for filename in runner.REVIEW_PACK_SAMPLE_FILES}
+    samples = {filename: [{"stable_private_concept_ref": "concept_ref_000001", "reason_bucket": filename}] for filename in runner.REVIEW_PACK_SAMPLE_FILES}
 
     pack = runner.generate_review_pack(tmp_path, summary, audit_data, samples)
     pack_dir = tmp_path / "chatgpt-review-pack"
@@ -382,8 +410,11 @@ def test_review_pack_manifest_checksums_readme_and_directories_are_generated(mon
     assert set(redaction_report["scanned_files"]) == set(manifest["included_files"])
     assert pack["redaction_scan_covers_final_file_set"] is True
     assert manifest["public_report_copy_source"] == "rendered_from_current_summary"
+    assert manifest["runtime_audit_git_sha"] == summary["runtime_audit_git_sha"]
+    assert manifest["report_provenance"]["public_report_generated_from_runtime_sha"] == summary["runtime_audit_git_sha"]
     assert copied_summary["generated_at"] == summary["generated_at"]
     assert "canonical_key_hash" not in "\n".join(path.read_text(encoding="utf-8") for path in (pack_dir / "review-samples").glob("*.jsonl"))
+    assert "concept_0123456789abcdef" not in "\n".join(path.read_text(encoding="utf-8") for path in (pack_dir / "review-samples").glob("*.jsonl"))
 
 
 def test_review_pack_redaction_scans_every_file(tmp_path: Path) -> None:
@@ -407,6 +438,10 @@ def test_final_route_decision_status_is_provisional_for_a1(tmp_path: Path) -> No
 
     assert summary["final_route_decision_status"] == "provisional_pending_chatgpt_pack_audit"
     assert summary["chatgpt_review_pack"]["upload_required_for_final_audit"] is True
+    assert summary["runtime_audit_git_sha"] == "abc123"
+    assert summary["public_report_generated_from_runtime_sha"] == "abc123"
+    assert summary["operational_result_reused_older_artifacts"] is False
+    assert "commit cannot truthfully contain its own final SHA" in summary["final_pr_head_sha_if_different"]
 
 
 def test_public_report_requires_user_upload_of_chatgpt_review_pack(tmp_path: Path) -> None:
@@ -416,3 +451,6 @@ def test_public_report_requires_user_upload_of_chatgpt_review_pack(tmp_path: Pat
     assert "upload the local" in report
     assert "before final route approval" in report
     assert "provisional_pending_chatgpt_pack_audit" in report
+    assert "Provenance / SHA boundary" in report
+    assert "Strict PX1-influenced concepts" in report
+    assert "All Pixiv-influenced concepts" in report

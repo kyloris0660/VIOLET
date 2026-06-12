@@ -44,9 +44,9 @@ PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / f"{PHASE_SLUG}.md"
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / f"{PHASE_SLUG}-summary.json"
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
 POLICY_DOC = ROOT / "docs" / "chatgpt-review-pack-policy.md"
+PX1_SLUG = "phase-4.5-px1-pixiv-metadata-dedup-dry-run"
 
 FINAL_ROUTE_DECISION_STATUS = "provisional_pending_chatgpt_pack_audit"
-PRIVATE_ID_SALT = "phase45-scv2-a1"
 VISIBLE_STATUSES = ("active", "needs_review")
 ACTIVE_STATUSES = ("active",)
 VISIBLE_OR_HIDDEN_STATUSES = ("active", "needs_review", "superseded", "rejected", "ambiguous", "weak", "hidden")
@@ -115,6 +115,7 @@ SUMMARY_REQUIRED_FIELDS = {
     "title",
     "branch",
     "generated_at",
+    "report_provenance",
     "db_identity",
     "transaction_readonly_proof",
     "durable_review_pack_policy",
@@ -198,6 +199,8 @@ MEDIA_FILENAME_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|j
 PRIVATE_JSON_KEY_RE = re.compile(
     r'"(?:media_id|concept_id|source_metadata_record_id|source_tag_observation_id|source_name_observation_id|assertion_id|raw_name|raw_tag|raw_input|filename|path|source_url)"\s*:'
 )
+OPAQUE_LABEL_REF_RE = re.compile(r"^label_ref_\d{6}$")
+FIXED_SALT_REF_RE = re.compile(r"\b(?:label|concept|media|source_metadata)_[0-9a-f]{16}\b", re.IGNORECASE)
 
 
 class A1BlockedError(RuntimeError):
@@ -253,8 +256,33 @@ def root_relative_or_name(path: Path) -> str:
 
 
 def stable_private_ref(kind: str, value: Any) -> str:
-    digest = hashlib.sha256(f"{PRIVATE_ID_SALT}:{kind}:{value}".encode("utf-8", errors="replace")).hexdigest()[:16]
-    return f"{kind}_{digest}"
+    digest = hashlib.sha256(f"{kind}:{value}".encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"{kind}_private_{digest}"
+
+
+class ReviewPackRefBuilder:
+    """Per-pack opaque refs; no raw mapping or reversible salt is written."""
+
+    def __init__(self) -> None:
+        self._refs: dict[str, dict[str, str]] = defaultdict(dict)
+        self._counts: Counter[str] = Counter()
+
+    def ref(self, kind: str, value: Any) -> str:
+        text_value = scv1.normalize_source_text(value) if kind == "label" else str(value or "").strip()
+        if not text_value:
+            return ""
+        if text_value not in self._refs[kind]:
+            self._counts[kind] += 1
+            self._refs[kind][text_value] = f"{kind}_ref_{self._counts[kind]:06d}"
+        return self._refs[kind][text_value]
+
+    def label(self, value: Any, *, allow_public_seed: bool = False) -> str:
+        text_value = scv1.normalize_source_text(value)
+        if not text_value:
+            return ""
+        if allow_public_seed and text_value in PUBLIC_SEED_LABEL_ALLOWLIST and not scan_text_for_review_pack_leaks(text_value, include_private_keys=False):
+            return text_value
+        return self.ref("label", text_value)
 
 
 def safe_label(value: Any, *, fallback: str = "[redacted]", allow_public_seed: bool = False) -> str:
@@ -263,7 +291,7 @@ def safe_label(value: Any, *, fallback: str = "[redacted]", allow_public_seed: b
         return ""
     if allow_public_seed and text_value in PUBLIC_SEED_LABEL_ALLOWLIST and not scan_text_for_review_pack_leaks(text_value, include_private_keys=False):
         return text_value
-    return f"{fallback}:{stable_private_ref('label', text_value)}"
+    return fallback
 
 
 def is_redacted_sample_label(value: Any, *, allow_public_seed: bool = False) -> bool:
@@ -272,7 +300,7 @@ def is_redacted_sample_label(value: Any, *, allow_public_seed: bool = False) -> 
         return True
     if allow_public_seed and text_value in PUBLIC_SEED_LABEL_ALLOWLIST:
         return True
-    return text_value.startswith("[redacted") and ":label_" in text_value
+    return text_value.startswith("[redacted") or bool(OPAQUE_LABEL_REF_RE.fullmatch(text_value))
 
 
 def sample_sequence_ref(bucket: str, index: int) -> str:
@@ -301,6 +329,10 @@ def scan_json_payload_for_review_pack_leaks(payload: Any, *, path: str = "$") ->
     elif isinstance(payload, list):
         for index, item in enumerate(payload):
             findings.extend(scan_json_payload_for_review_pack_leaks(item, path=f"{path}[{index}]"))
+    elif isinstance(payload, str):
+        match = FIXED_SALT_REF_RE.search(payload)
+        if match:
+            findings.append({"type": "fixed_salt_or_hash_ref", "match": f"{path}:{match.group(0)}"})
     return findings
 
 
@@ -505,7 +537,8 @@ def build_source_concept_current_state(
 ) -> dict[str, Any]:
     by_status = Counter(str(row.get("status") or "<null>") for row in concepts)
     hidden = {status: by_status.get(status, 0) for status in ("rejected", "ambiguous", "superseded", "weak", "hidden")}
-    px1_ids = px1_influenced_concept_ids(conn)
+    px1_strict_ids = px1_strict_influenced_concept_ids(conn)
+    pixiv_all_ids = pixiv_all_influenced_concept_ids(conn)
     visible_with_media = {
         int(row["id"])
         for row in concepts
@@ -547,7 +580,11 @@ def build_source_concept_current_state(
         "source_concept_evidence_total": len(evidence),
         "source_concept_search_index_count_by_status": scv1.group_count(conn, "blombooru_source_concept_search_index", "status"),
         "source_concept_search_index_total": scv1.count_table(conn, "blombooru_source_concept_search_index").get("count"),
-        "concepts_influenced_by_px1_evidence": len(px1_ids),
+        "concepts_influenced_by_px1_evidence": len(px1_strict_ids),
+        "concepts_influenced_by_px1_evidence_scope": f"strict PX1 SourceMetadataRecord run_label={PX1_SLUG}",
+        "concepts_influenced_by_strict_px1_evidence": len(px1_strict_ids),
+        "concepts_influenced_by_all_pixiv_evidence": len(pixiv_all_ids),
+        "concepts_influenced_by_non_px1_pixiv_evidence": len(pixiv_all_ids - px1_strict_ids),
         "concepts_with_media": len(visible_with_media),
         "concepts_with_media_status_scope": "visible_statuses_active_or_needs_review",
         "concepts_without_media": max(len(visible_ids) - len(visible_with_media), 0),
@@ -592,7 +629,7 @@ def alias_count_by_role_status_provider(conn: Connection) -> list[dict[str, Any]
     )
 
 
-def px1_influenced_concept_ids(conn: Connection) -> set[int]:
+def pixiv_all_influenced_concept_ids(conn: Connection) -> set[int]:
     if not scv1.table_exists(conn, "blombooru_source_concept_evidence") or not scv1.table_exists(conn, "blombooru_source_metadata_records"):
         return set()
     rows = scv1.rows_dict(
@@ -606,6 +643,46 @@ def px1_influenced_concept_ids(conn: Connection) -> set[int]:
         """,
     )
     return {int(row["concept_id"]) for row in rows if row.get("concept_id") is not None}
+
+
+def strict_px1_source_metadata_record_ids(conn: Connection, px1_slug: str = PX1_SLUG) -> set[int]:
+    if not scv1.table_exists(conn, "blombooru_source_metadata_records"):
+        return set()
+    if not scv1.column_exists(conn, "blombooru_source_metadata_records", "run_label"):
+        return set()
+    rows = scv1.rows_dict(
+        conn,
+        """
+        SELECT id
+        FROM blombooru_source_metadata_records
+        WHERE LOWER(COALESCE(provider, '')) = 'pixiv'
+          AND run_label = :px1_slug
+        """,
+        {"px1_slug": px1_slug},
+    )
+    return {int(row["id"]) for row in rows if row.get("id") is not None}
+
+
+def concepts_with_source_metadata_record_ids(conn: Connection, source_metadata_record_ids: Iterable[int]) -> set[int]:
+    ids = sorted({int(value) for value in source_metadata_record_ids})
+    if not ids or not scv1.table_exists(conn, "blombooru_source_concept_evidence"):
+        return set()
+    rows = rows_dict_expanding(
+        conn,
+        """
+        SELECT DISTINCT concept_id
+        FROM blombooru_source_concept_evidence
+        WHERE concept_id IS NOT NULL
+          AND source_metadata_record_id IN :source_metadata_record_ids
+        """,
+        {"source_metadata_record_ids": ids},
+        expanding=("source_metadata_record_ids",),
+    )
+    return {int(row["concept_id"]) for row in rows if row.get("concept_id") is not None}
+
+
+def px1_strict_influenced_concept_ids(conn: Connection) -> set[int]:
+    return concepts_with_source_metadata_record_ids(conn, strict_px1_source_metadata_record_ids(conn))
 
 
 def alias_group_counts(aliases: Sequence[Mapping[str, Any]]) -> dict[str, int]:
@@ -929,11 +1006,19 @@ def build_search_seed_symmetry_audit(conn: Connection) -> dict[str, Any]:
 
 
 def build_px1_evidence_impact(conn: Connection, r1_summary: Mapping[str, Any]) -> dict[str, Any]:
-    px1_ids = px1_influenced_concept_ids(conn)
+    strict_record_ids = strict_px1_source_metadata_record_ids(conn)
+    px1_strict_ids = concepts_with_source_metadata_record_ids(conn, strict_record_ids)
+    pixiv_all_ids = pixiv_all_influenced_concept_ids(conn)
     r1_delta = r1_summary.get("source_concept_delta") or {}
     px1_check = r1_summary.get("px1_source_metadata_check") or {}
     return {
-        "current_px1_influenced_concepts": len(px1_ids),
+        "px1_slug": PX1_SLUG,
+        "px1_filter_scope": "strict SourceMetadataRecord filter: provider='pixiv' and run_label equals px1_slug",
+        "px1_source_metadata_record_count_strict": len(strict_record_ids),
+        "px1_strict_influenced_concepts": len(px1_strict_ids),
+        "pixiv_all_influenced_concepts": len(pixiv_all_ids),
+        "non_px1_pixiv_influenced_concepts": len(pixiv_all_ids - px1_strict_ids),
+        "route_decision_px1_impact_metric": "px1_strict_influenced_concepts",
         "r1_summary_concepts_influenced_by_px1_evidence_after": r1_delta.get("concepts_influenced_by_px1_evidence_after"),
         "r1_summary_concepts_newly_influenced_by_px1_evidence_current_head_rerun": r1_delta.get("concepts_newly_influenced_by_px1_evidence"),
         "px1_records": px1_check.get("px1_source_metadata_records"),
@@ -1245,15 +1330,15 @@ def decision_for_option(route: Mapping[str, Any], option_key: str, *, status_key
     }
 
 
-def sample_gap_rows(gap_samples: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def sample_gap_rows(gap_samples: Sequence[Mapping[str, Any]], refs: ReviewPackRefBuilder) -> list[dict[str, Any]]:
     rows = []
     for row in gap_samples:
         concept_value = row.get("concept_id")
         rows.append(
             {
-                "stable_private_concept_ref": stable_private_ref("concept", concept_value) if concept_value else "",
+                "stable_private_concept_ref": refs.ref("concept", concept_value) if concept_value else "",
                 "reason_bucket": row.get("bucket"),
-                "display_label": safe_label(row.get("sample"), fallback="[redacted sample]"),
+                "display_label": refs.label(row.get("sample")),
                 "evidence_count": row.get("count"),
                 "status": row.get("status"),
                 "recommended_action": "review resolver/alias linkage before truth promotion",
@@ -1263,14 +1348,14 @@ def sample_gap_rows(gap_samples: Sequence[Mapping[str, Any]]) -> list[dict[str, 
     return rows
 
 
-def sample_needs_review_rows(needs_samples: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def sample_needs_review_rows(needs_samples: Sequence[Mapping[str, Any]], refs: ReviewPackRefBuilder) -> list[dict[str, Any]]:
     rows = []
     for row in needs_samples:
         rows.append(
             {
-                "stable_private_concept_ref": stable_private_ref("concept", row.get("concept_id")),
+                "stable_private_concept_ref": refs.ref("concept", row.get("concept_id")),
                 "status": "needs_review",
-                "display_label": safe_label(row.get("display"), fallback="[redacted concept]"),
+                "display_label": refs.label(row.get("display")),
                 "media_count": row.get("media_count"),
                 "evidence_count": row.get("evidence_count"),
                 "alias_count": row.get("alias_count"),
@@ -1282,12 +1367,12 @@ def sample_needs_review_rows(needs_samples: Sequence[Mapping[str, Any]]) -> list
     return rows
 
 
-def sample_search_rows(search_audit: Mapping[str, Any]) -> list[dict[str, Any]]:
+def sample_search_rows(search_audit: Mapping[str, Any], refs: ReviewPackRefBuilder) -> list[dict[str, Any]]:
     rows = []
     for row in search_audit.get("private_examples", []):
         rows.append(
             {
-                "search_seed_label": safe_label(row.get("seed_label"), fallback="[redacted seed]", allow_public_seed=True),
+                "search_seed_label": refs.label(row.get("seed_label"), allow_public_seed=True),
                 "reason_bucket": row.get("reason_bucket"),
                 "matched": row.get("matched"),
                 "active_matched": row.get("active_matched"),
@@ -1296,7 +1381,7 @@ def sample_search_rows(search_audit: Mapping[str, Any]) -> list[dict[str, Any]]:
                     "visible_media_count": row.get("visible_media_count"),
                     "active_media_count": row.get("active_media_count"),
                 },
-                "stable_private_concept_refs": row.get("stable_private_concept_refs", []),
+                "stable_private_concept_refs": [refs.ref("concept", value) for value in row.get("stable_private_concept_refs", [])],
                 "asymmetric_reason": row.get("reason_bucket"),
                 "recommended_action": "fix alias/search symmetry before expansion or bridge",
                 "why_this_sample_matters": "Unmatched seeds are counted as asymmetry instead of being silently ignored.",
@@ -1305,8 +1390,10 @@ def sample_search_rows(search_audit: Mapping[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def sample_px1_influenced_concepts(conn: Connection, limit: int = 80) -> list[dict[str, Any]]:
+def sample_px1_influenced_concepts(conn: Connection, refs: ReviewPackRefBuilder, limit: int = 80) -> list[dict[str, Any]]:
     if not scv1.table_exists(conn, "blombooru_source_concept_evidence") or not scv1.table_exists(conn, "blombooru_source_metadata_records"):
+        return []
+    if not scv1.column_exists(conn, "blombooru_source_metadata_records", "run_label"):
         return []
     rows = scv1.rows_dict(
         conn,
@@ -1321,14 +1408,16 @@ def sample_px1_influenced_concepts(conn: Connection, limit: int = 80) -> list[di
         JOIN blombooru_source_metadata_records r ON r.id = e.source_metadata_record_id
         JOIN blombooru_source_concepts c ON c.id = e.concept_id
         WHERE LOWER(COALESCE(r.provider, '')) = 'pixiv'
+          AND r.run_label = :px1_slug
         GROUP BY e.concept_id
         ORDER BY evidence_count DESC, e.concept_id ASC
         LIMIT {int(limit)}
         """,
+        {"px1_slug": PX1_SLUG},
     )
     return [
         {
-            "stable_private_concept_ref": stable_private_ref("concept", row.get("concept_id")),
+            "stable_private_concept_ref": refs.ref("concept", row.get("concept_id")),
             "provider": "pixiv",
             "status": row.get("status"),
             "role": row.get("concept_type_hint"),
@@ -1343,7 +1432,15 @@ def sample_px1_influenced_concepts(conn: Connection, limit: int = 80) -> list[di
     ]
 
 
-def sample_unlinked_source_rows(conn: Connection, table_name: str, key_column: str, label_column: str, bucket: str, limit: int = 100) -> list[dict[str, Any]]:
+def sample_unlinked_source_rows(
+    conn: Connection,
+    table_name: str,
+    key_column: str,
+    label_column: str,
+    bucket: str,
+    refs: ReviewPackRefBuilder,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
     if not scv1.table_exists(conn, table_name) or not scv1.column_exists(conn, table_name, key_column):
         return []
     visible_alias_keys = {
@@ -1374,7 +1471,7 @@ def sample_unlinked_source_rows(conn: Connection, table_name: str, key_column: s
             {
                 "provider": row.get("provider"),
                 "sample_ref": sample_sequence_ref(bucket, len(samples) + 1),
-                "display_label": safe_label(row.get("label") or key_value, fallback="[redacted source value]"),
+                "display_label": refs.label(row.get("label") or key_value),
                 "evidence_count": int(row.get("count") or 0),
                 "reason_bucket": bucket,
                 "recommended_action": "link or intentionally exclude from SourceConcept alias path",
@@ -1386,7 +1483,7 @@ def sample_unlinked_source_rows(conn: Connection, table_name: str, key_column: s
     return samples
 
 
-def sample_same_alias_split_rows(conn: Connection, limit: int = 100) -> list[dict[str, Any]]:
+def sample_same_alias_split_rows(conn: Connection, refs: ReviewPackRefBuilder, limit: int = 100) -> list[dict[str, Any]]:
     if not scv1.table_exists(conn, "blombooru_source_concept_aliases"):
         return []
     rows = scv1.rows_dict(
@@ -1405,7 +1502,7 @@ def sample_same_alias_split_rows(conn: Connection, limit: int = 100) -> list[dic
     return [
         {
             "sample_ref": sample_sequence_ref("same_alias_split", index),
-            "display_label": safe_label(row.get("alias_key"), fallback="[redacted alias key]"),
+            "display_label": refs.label(row.get("alias_key")),
             "reason_bucket": "same_normalized_alias_key_split_across_multiple_concepts",
             "result_counts": {"concept_count": int(row.get("concept_count") or 0), "alias_count": int(row.get("alias_count") or 0)},
             "recommended_action": "resolver merge/supersede review",
@@ -1415,7 +1512,7 @@ def sample_same_alias_split_rows(conn: Connection, limit: int = 100) -> list[dic
     ]
 
 
-def sample_same_display_context_split_rows(conn: Connection, limit: int = 100) -> list[dict[str, Any]]:
+def sample_same_display_context_split_rows(conn: Connection, refs: ReviewPackRefBuilder, limit: int = 100) -> list[dict[str, Any]]:
     aliases = scv1.load_aliases(conn)
     groups: dict[str, set[int]] = defaultdict(set)
     labels: dict[str, str] = {}
@@ -1435,7 +1532,7 @@ def sample_same_display_context_split_rows(conn: Connection, limit: int = 100) -
         rows.append(
             {
                 "sample_ref": sample_sequence_ref("same_display_context_split", len(rows) + 1),
-                "display_label": safe_label(labels.get(key), fallback="[redacted display]"),
+                "display_label": refs.label(labels.get(key)),
                 "reason_bucket": "same_display_name_split_across_contexts",
                 "result_counts": {"concept_count": len(ids)},
                 "recommended_action": "context-aware merge or split review",
@@ -1492,17 +1589,19 @@ def review_samples(
     gap: Mapping[str, Any],
     needs: Mapping[str, Any],
 ) -> dict[str, list[dict[str, Any]]]:
+    refs = ReviewPackRefBuilder()
     return {
-        "gap-bucket-samples.jsonl": sample_gap_rows(gap_samples)[:250],
-        "search-seed-asymmetry-samples.jsonl": sample_search_rows(search_audit)[:250],
-        "needs-review-samples.jsonl": sample_needs_review_rows(needs_samples)[:250],
-        "px1-influenced-concept-samples.jsonl": sample_px1_influenced_concepts(conn),
+        "gap-bucket-samples.jsonl": sample_gap_rows(gap_samples, refs)[:250],
+        "search-seed-asymmetry-samples.jsonl": sample_search_rows(search_audit, refs)[:250],
+        "needs-review-samples.jsonl": sample_needs_review_rows(needs_samples, refs)[:250],
+        "px1-influenced-concept-samples.jsonl": sample_px1_influenced_concepts(conn, refs),
         "source-tag-unlinked-samples.jsonl": sample_unlinked_source_rows(
             conn,
             "blombooru_source_tag_observations",
             "canonical_tag_key",
             "raw_tag",
             "source_tag_present_no_source_concept_alias",
+            refs,
         ),
         "source-assertion-unlinked-samples.jsonl": sample_unlinked_source_rows(
             conn,
@@ -1510,9 +1609,10 @@ def review_samples(
             "canonical_name_key",
             "raw_input",
             "source_assertion_present_not_connected",
+            refs,
         ),
-        "same-alias-split-samples.jsonl": sample_same_alias_split_rows(conn),
-        "same-display-context-split-samples.jsonl": sample_same_display_context_split_rows(conn),
+        "same-alias-split-samples.jsonl": sample_same_alias_split_rows(conn, refs),
+        "same-display-context-split-samples.jsonl": sample_same_display_context_split_rows(conn, refs),
         "route-decision-evidence-samples.jsonl": route_decision_evidence_samples(route, gap, search_audit, needs),
     }
 
@@ -1639,6 +1739,12 @@ def build_review_pack_manifest(
         "generated_at": utc_now_iso(),
         "git_branch": summary.get("branch"),
         "git_sha": summary.get("db_identity", {}).get("git_sha"),
+        "report_provenance": summary.get("report_provenance"),
+        "runtime_audit_git_sha": summary.get("runtime_audit_git_sha"),
+        "runtime_audit_git_sha_scope": summary.get("runtime_audit_git_sha_scope"),
+        "final_pr_head_sha_if_different": summary.get("final_pr_head_sha_if_different"),
+        "public_report_generated_from_runtime_sha": summary.get("public_report_generated_from_runtime_sha"),
+        "operational_result_reused_older_artifacts": summary.get("operational_result_reused_older_artifacts"),
         "dirty_worktree_status": summary.get("validation", {}).get("dirty_worktree_status"),
         "db_identity_summary_redacted": summary.get("db_identity"),
         "command_used_to_generate_pack": summary.get("validation", {}).get("operational_audit_command"),
@@ -1655,7 +1761,7 @@ def build_review_pack_manifest(
         "redaction_scan_covers_final_file_set": bool(scan and scan_files == set(included_files)),
         "known_limitations": [
             "checksums.json self-hash is omitted to avoid self-referential checksum churn",
-            "sample display labels are private refs unless they are allowlisted public search seed labels",
+            "sample display labels use per-pack sequential opaque refs unless they are allowlisted public search seed labels",
         ],
     }
 
@@ -1728,8 +1834,8 @@ This pack supports an independent ChatGPT audit of Phase 4.5-SCV2-A1.
 
 Use the public report copy for the narrative conclusion, audit-data JSON files
 for machine-readable counts, and review-samples JSONL files for concrete
-sample-level checks. Samples are private-but-redacted: stable refs are opaque,
-not database IDs or local paths.
+sample-level checks. Samples are private-but-redacted: refs are per-pack
+opaque sequence IDs, not database IDs, reversible hashes, or local paths.
 
 Audit questions:
 
@@ -1751,9 +1857,11 @@ def private_field_policy() -> dict[str, Any]:
     return {
         "allowed_sample_fields": [
             "stable_private_concept_ref",
+            "stable_private_concept_refs",
             "stable_private_media_ref",
             "stable_private_source_metadata_ref",
             "sample_ref",
+            "search_seed_label",
             "role",
             "category",
             "status",
@@ -1767,6 +1875,7 @@ def private_field_policy() -> dict[str, Any]:
             "recommended_action",
             "why_this_sample_matters",
         ],
+        "opaque_ref_policy": "Uploadable samples use per-pack sequential refs such as label_ref_000001 and concept_ref_000001; raw mappings, salts, and fixed-salt hashes are not included.",
         "forbidden_fields": [
             "local absolute paths",
             "source root paths",
@@ -1898,15 +2007,27 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     needs = summary["needs_review_triage"]
     route = summary["route_decision_matrix"]
     pack = summary["chatgpt_review_pack"]
+    provenance = summary["report_provenance"]
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
         "## Summary",
         "",
         f"- Status: `{summary['final_route_decision_status']}`.",
-        f"- Branch/head: `{summary['branch']}` / `{summary['db_identity'].get('git_sha')}`.",
+        f"- Branch/runtime audit SHA: `{summary['branch']}` / `{provenance.get('runtime_audit_git_sha')}`.",
         f"- Recommendation: `{summary['recommended_next_phase']}`.",
         f"- Review pack required before final route approval: `{route.get('requires_external_pack_review')}`.",
+        "",
+        "## Provenance / SHA boundary",
+        "",
+        f"- Runtime audit git SHA: `{provenance.get('runtime_audit_git_sha')}`.",
+        f"- Runtime audit git SHA scope: {provenance.get('runtime_audit_git_sha_scope')}",
+        f"- Public report generated from runtime SHA: `{provenance.get('public_report_generated_from_runtime_sha')}`.",
+        f"- Final PR head SHA if different: `{provenance.get('final_pr_head_sha_if_different')}`.",
+        f"- Final PR head SHA scope: {provenance.get('final_pr_head_sha_if_different_scope')}",
+        f"- Operational result reused older artifacts: `{provenance.get('operational_result_reused_older_artifacts')}`.",
+        f"- Dirty worktree status at runtime: `{provenance.get('dirty_worktree_status')}`.",
+        "- If the final reviewed PR head differs from the runtime audit SHA, it is expected to be the later report/test/review-pack regeneration commit after this read-only audit.",
         "",
         "## Scope and non-goals",
         "",
@@ -1934,7 +2055,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Total SourceConcept: `{concepts.get('total_source_concepts')}`.",
         f"- By status: `{json.dumps(concepts.get('by_status'), ensure_ascii=False, sort_keys=True)}`.",
-        f"- PX1-influenced concepts: `{concepts.get('concepts_influenced_by_px1_evidence')}`.",
+        f"- Strict PX1-influenced concepts: `{concepts.get('concepts_influenced_by_strict_px1_evidence')}` (`{concepts.get('concepts_influenced_by_px1_evidence_scope')}`).",
+        f"- All Pixiv-influenced concepts: `{concepts.get('concepts_influenced_by_all_pixiv_evidence')}`; non-PX1 Pixiv-influenced concepts: `{concepts.get('concepts_influenced_by_non_px1_pixiv_evidence')}`.",
         f"- Duplicate/fragment candidate groups: `{concepts.get('duplicate_fragment_candidate_groups')}`.",
         "",
         "## Gap audit",
@@ -1958,7 +2080,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "## PX1 evidence impact",
         "",
-        f"- Current PX1-influenced concepts: `{summary['px1_evidence_impact'].get('current_px1_influenced_concepts')}`.",
+        f"- Strict PX1-influenced concepts: `{summary['px1_evidence_impact'].get('px1_strict_influenced_concepts')}` using `{summary['px1_evidence_impact'].get('px1_filter_scope')}`.",
+        f"- All Pixiv-influenced concepts: `{summary['px1_evidence_impact'].get('pixiv_all_influenced_concepts')}`.",
+        f"- Non-PX1 Pixiv-influenced concepts: `{summary['px1_evidence_impact'].get('non_px1_pixiv_influenced_concepts')}`.",
+        f"- Route decision PX1 impact metric: `{summary['px1_evidence_impact'].get('route_decision_px1_impact_metric')}`.",
         "- PX1 remains review-scoped evidence/backlog input, not active Entity or media_tags truth.",
         "",
         "## Comparison with SCV1/P0/E1/PX1/R1",
@@ -2183,11 +2308,19 @@ def build_summary(
     review_pack_info: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     review_pack_public = public_review_pack_summary(review_pack_info or {"generated": False, "upload_required_for_final_audit": True})
+    provenance = build_report_provenance(db_identity, validation)
     summary = {
         "phase": PHASE,
         "title": PHASE_TITLE,
         "branch": BRANCH,
         "generated_at": utc_now_iso(),
+        "report_provenance": provenance,
+        "runtime_audit_git_sha": provenance["runtime_audit_git_sha"],
+        "runtime_audit_git_sha_scope": provenance["runtime_audit_git_sha_scope"],
+        "final_pr_head_sha_if_different": provenance["final_pr_head_sha_if_different"],
+        "public_report_generated_from_runtime_sha": provenance["public_report_generated_from_runtime_sha"],
+        "operational_result_reused_older_artifacts": provenance["operational_result_reused_older_artifacts"],
+        "dirty_worktree_status": provenance["dirty_worktree_status"],
         "db_identity": public_db_identity(db_identity),
         "transaction_readonly_proof": transaction_proof,
         "durable_review_pack_policy": build_durable_review_pack_policy_summary(),
@@ -2265,6 +2398,21 @@ def validation_context(command_label: str) -> dict[str, Any]:
         "dirty_worktree_status": git_value(["git", "status", "--short"]),
         "python_executable": Path(sys.executable).name,
         "python_executable_path_redacted": True,
+    }
+
+
+def build_report_provenance(db_identity: Mapping[str, Any], validation: Mapping[str, Any]) -> dict[str, Any]:
+    runtime_sha = str(db_identity.get("git_sha") or "unavailable")
+    return {
+        "runtime_audit_git_sha": runtime_sha,
+        "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; if dirty_worktree_status is non-empty, the runtime also included the listed working-tree changes.",
+        "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report regeneration commit; a commit cannot truthfully contain its own final SHA.",
+        "final_pr_head_sha_if_different_scope": "If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later A1 report/test/review-pack regeneration commit, not a separate operational audit.",
+        "public_report_generated_from_runtime_sha": runtime_sha,
+        "operational_result_reused_older_artifacts": False,
+        "dirty_worktree_status": validation.get("dirty_worktree_status"),
+        "public_report_contains_runtime_result": True,
+        "committed_report_sha_boundary_note": "The committed report records the runtime audit SHA and may itself be committed by a later PR head.",
     }
 
 
