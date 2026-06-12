@@ -202,6 +202,66 @@ def test_mutation_proof_fails_on_forbidden_or_unexpected_writes() -> None:
     }
 
 
+def test_media_tags_same_row_provenance_update_changes_mutation_proof() -> None:
+    columns = ("media_id", "tag_id", "source", "confidence", "is_locked", "is_suggestion")
+    before_content = runner.content_fingerprint_for_rows(
+        [
+            {
+                "media_id": 1,
+                "tag_id": 2,
+                "source": "ai_wd",
+                "confidence": 0.91,
+                "is_locked": False,
+                "is_suggestion": True,
+            }
+        ],
+        columns,
+    )
+    after_content = runner.content_fingerprint_for_rows(
+        [
+            {
+                "media_id": 1,
+                "tag_id": 2,
+                "source": "manual",
+                "confidence": 1.0,
+                "is_locked": True,
+                "is_suggestion": False,
+            }
+        ],
+        columns,
+    )
+    before = {
+        "tables": {
+            "blombooru_media_tags": {
+                "status": "present",
+                "count": 1,
+                "fingerprint": before_content,
+                "content_fingerprint": before_content,
+                "content_fingerprint_columns": list(columns),
+            }
+        }
+    }
+    after = {
+        "tables": {
+            "blombooru_media_tags": {
+                "status": "present",
+                "count": 1,
+                "fingerprint": after_content,
+                "content_fingerprint": after_content,
+                "content_fingerprint_columns": list(columns),
+            }
+        }
+    }
+
+    proof = runner.compare_table_state(before, after)
+
+    assert before_content != after_content
+    assert proof["passed"] is False
+    assert proof["changed_tables"][0]["table"] == "blombooru_media_tags"
+    assert proof["changed_tables"][0]["content_fingerprint_changed"] is True
+    assert proof["forbidden_changed_tables"][0]["table"] == "blombooru_media_tags"
+
+
 def test_source_metadata_rows_are_read_only_inputs() -> None:
     before = {
         "tables": {
@@ -218,6 +278,65 @@ def test_source_metadata_rows_are_read_only_inputs() -> None:
 
     assert proof["passed"] is False
     assert proof["source_metadata_readonly_changed_tables"][0]["table"] == "blombooru_source_metadata_records"
+
+
+def test_finalize_transaction_commits_execute_and_rolls_back_dry_run() -> None:
+    class FakeTransaction:
+        def __init__(self) -> None:
+            self.actions: list[str] = []
+
+        def commit(self) -> None:
+            self.actions.append("commit")
+
+        def rollback(self) -> None:
+            self.actions.append("rollback")
+
+    execute_tx = FakeTransaction()
+    execute_result = runner.finalize_transaction(execute_tx, mode="execute", validation_passed=True)
+    dry_run_tx = FakeTransaction()
+    dry_run_result = runner.finalize_transaction(dry_run_tx, mode="dry_run", validation_passed=True)
+    failed_tx = FakeTransaction()
+    failed_result = runner.finalize_transaction(failed_tx, mode="execute", validation_passed=False)
+
+    assert execute_tx.actions == ["commit"]
+    assert execute_result["execute_transaction_committed"] is True
+    assert dry_run_tx.actions == ["rollback"]
+    assert dry_run_result["execute_transaction_committed"] is False
+    assert failed_tx.actions == ["rollback"]
+    assert failed_result["transaction_final_action"] == "rollback"
+
+
+def test_zip_directory_preserves_full_phase_slug_and_unrelated_bundle(tmp_path: Path) -> None:
+    output_dir = tmp_path / runner.PHASE_SLUG
+    output_dir.mkdir()
+    (output_dir / "artifact.json").write_text("{}", encoding="utf-8")
+    unrelated = tmp_path / "phase-4.zip"
+    unrelated.write_text("sentinel", encoding="utf-8")
+
+    zip_path = runner.zip_directory(output_dir)
+
+    assert zip_path.name == runner.PHASE_SLUG + ".zip"
+    assert zip_path.exists()
+    assert unrelated.read_text(encoding="utf-8") == "sentinel"
+
+
+def test_report_generation_metadata_records_runtime_sha_and_no_artifact_reuse() -> None:
+    metadata = runner.report_generation_metadata(
+        mode="execute",
+        db_identity_after={"git_branch": "branch-x", "git_sha": "sha-x"},
+    )
+
+    assert metadata["branch"] == "branch-x"
+    assert metadata["runtime_git_sha_used_for_execute"] == "sha-x"
+    assert metadata["operational_result_reused_older_artifacts"] is False
+    assert metadata["final_pr_head_sha_if_different"]
+
+
+def test_post_commit_count_mismatch_detection() -> None:
+    expected = {"total_source_concepts": 10, "active_concepts": 4}
+    actual = {"total_source_concepts": 10, "active_concepts": 5}
+
+    assert runner.mismatch_keys(expected, actual) == ["active_concepts"]
 
 
 def test_alias_gap_delta_calculation() -> None:

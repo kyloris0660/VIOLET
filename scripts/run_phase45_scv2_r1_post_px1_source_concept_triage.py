@@ -12,6 +12,7 @@ the SourceConcept tables listed in ALLOWED_WRITE_TABLES.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -106,14 +107,167 @@ REQUIRED_PRIVATE_ARTIFACTS = (
     "mutation-proof-before.json",
     "mutation-proof-after.json",
     "mutation-proof-delta.json",
+    "post-commit-verification.json",
     "public-redaction-check.txt",
 )
+
+CRITICAL_CONTENT_FINGERPRINT_COLUMNS: dict[str, tuple[str, ...]] = {
+    "blombooru_media_tags": (
+        "media_id",
+        "tag_id",
+        "source",
+        "confidence",
+        "is_locked",
+        "is_suggestion",
+    ),
+    "blombooru_media": (
+        "id",
+        "path",
+        "thumbnail_path",
+        "hash",
+        "source",
+        "content_class",
+    ),
+    "blombooru_entities": (
+        "id",
+        "type",
+        "canonical_name",
+        "normalized_key",
+        "status",
+        "updated_at",
+    ),
+    "blombooru_entity_aliases": (
+        "id",
+        "entity_id",
+        "alias",
+        "normalized_alias",
+        "alias_type",
+        "source",
+        "is_primary",
+        "needs_review",
+        "updated_at",
+    ),
+    "blombooru_entity_evidence": (
+        "id",
+        "provider",
+        "source_type",
+        "evidence_type",
+        "media_id",
+        "tag_id",
+        "entity_id",
+        "query_hash",
+        "payload_ref",
+        "privacy_redacted",
+    ),
+    "blombooru_media_entity_candidates": (
+        "id",
+        "media_id",
+        "entity_id",
+        "entity_type",
+        "candidate_name",
+        "score",
+        "status",
+        "generator",
+        "evidence_id",
+        "updated_at",
+    ),
+    "blombooru_media_entity_assignments": (
+        "id",
+        "media_id",
+        "entity_id",
+        "role",
+        "confidence",
+        "review_status",
+        "source",
+        "locked",
+        "created_from_candidate_id",
+        "evidence_id",
+        "updated_at",
+    ),
+    "blombooru_source_metadata_records": (
+        "id",
+        "provider",
+        "provider_run_id",
+        "run_label",
+        "provider_record_key",
+        "media_id",
+        "source_work_id",
+        "source_page_index",
+        "source_url",
+        "metadata_kind",
+        "data_type_label",
+        "status",
+        "retrieved_at",
+        "updated_at",
+    ),
+    "blombooru_source_tag_observations": (
+        "id",
+        "source_metadata_record_id",
+        "provider",
+        "observation_key",
+        "canonical_tag_key",
+        "source_tag_kind",
+        "source_category_raw",
+        "taxonomy_kb_id",
+        "status",
+        "updated_at",
+    ),
+    "blombooru_source_name_observations": (
+        "id",
+        "source_metadata_record_id",
+        "provider",
+        "observation_key",
+        "media_id",
+        "source_work_id",
+        "source_page_index",
+        "canonical_name_key",
+        "name_role",
+        "source_field",
+        "requires_review",
+        "status",
+        "updated_at",
+    ),
+    "blombooru_source_searchable_name_assertions": (
+        "id",
+        "provider",
+        "source_metadata_record_id",
+        "source_tag_observation_id",
+        "source_name_observation_id",
+        "assertion_key",
+        "canonical_name_key",
+        "asserted_role",
+        "status",
+        "confidence",
+        "confidence_score",
+        "requires_review",
+        "updated_at",
+    ),
+    "blombooru_source_metadata_evidence": (
+        "id",
+        "source_metadata_record_id",
+        "evidence_key",
+        "observation_type",
+        "observation_id",
+        "evidence_kind",
+        "evidence_strength",
+        "status",
+        "updated_at",
+    ),
+}
+
+CRITICAL_CONTENT_ORDER_COLUMNS: dict[str, tuple[str, ...]] = {
+    "blombooru_media_tags": ("media_id", "tag_id"),
+}
 
 SUMMARY_REQUIRED_FIELDS = {
     "phase",
     "title",
     "branch",
     "generated_at",
+    "execute_transaction_committed",
+    "post_commit_verification_passed",
+    "post_commit",
+    "report_generation",
     "db_identity_before",
     "db_identity_after",
     "post_px1_baseline",
@@ -166,7 +320,7 @@ def sha256_file(path: Path) -> str:
 
 
 def zip_directory(output_dir: Path) -> Path:
-    zip_path = output_dir.with_suffix(".zip")
+    zip_path = output_dir.with_name(output_dir.name + ".zip")
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -198,6 +352,49 @@ def table_columns(conn: Connection, table_name: str) -> set[str]:
         {"table_name": table_name},
     )
     return {str(row["column_name"]) for row in rows}
+
+
+def content_fingerprint_for_rows(rows: Iterable[Mapping[str, Any]], columns: Sequence[str]) -> str:
+    digest = hashlib.sha256()
+    for row in rows:
+        payload = [row.get(column) for column in columns]
+        digest.update(json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def table_content_fingerprint(conn: Connection, table_name: str, columns: set[str]) -> dict[str, Any] | None:
+    requested_columns = CRITICAL_CONTENT_FINGERPRINT_COLUMNS.get(table_name)
+    if not requested_columns:
+        return None
+    selected_columns = [column for column in requested_columns if column in columns]
+    if not selected_columns:
+        return None
+    order_columns = [
+        column
+        for column in CRITICAL_CONTENT_ORDER_COLUMNS.get(table_name, ("id",))
+        if column in columns
+    ]
+    if not order_columns:
+        order_columns = selected_columns[:1]
+    select_sql = ", ".join(scv1.qident(column) for column in selected_columns)
+    order_sql = ", ".join(scv1.qident(column) for column in order_columns)
+    row_count = 0
+    digest = hashlib.sha256()
+    result = conn.execute(text(f"SELECT {select_sql} FROM {scv1.qident(table_name)} ORDER BY {order_sql}"))
+    try:
+        for row in result.mappings():
+            payload = [row.get(column) for column in selected_columns]
+            digest.update(json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8"))
+            digest.update(b"\n")
+            row_count += 1
+    finally:
+        result.close()
+    return {
+        "content_fingerprint": digest.hexdigest(),
+        "content_fingerprint_columns": selected_columns,
+        "content_fingerprint_row_count": row_count,
+    }
 
 
 def list_blombooru_tables(conn: Connection) -> list[str]:
@@ -243,6 +440,9 @@ def table_fingerprint(conn: Connection, table_name: str) -> dict[str, Any]:
         "sum_id": row["sum_id"],
         "max_updated_at": row["max_updated_at"],
     }
+    content_fingerprint = table_content_fingerprint(conn, table_name, columns)
+    if content_fingerprint:
+        payload.update(content_fingerprint)
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
     return {"status": "present", **payload, "fingerprint": digest}
 
@@ -272,7 +472,12 @@ def compare_table_state(
         right = after_tables.get(table, {})
         if left.get("status") == "missing_table" and right.get("status") == "missing_table":
             continue
-        if left.get("count") != right.get("count") or left.get("fingerprint") != right.get("fingerprint"):
+        content_changed = (
+            left.get("content_fingerprint") != right.get("content_fingerprint")
+            if left.get("content_fingerprint") is not None or right.get("content_fingerprint") is not None
+            else False
+        )
+        if left.get("count") != right.get("count") or left.get("fingerprint") != right.get("fingerprint") or content_changed:
             changed.append(
                 {
                     "table": table,
@@ -282,6 +487,10 @@ def compare_table_state(
                     if left.get("count") is not None and right.get("count") is not None
                     else None,
                     "fingerprint_changed": left.get("fingerprint") != right.get("fingerprint"),
+                    "content_fingerprint_changed": content_changed,
+                    "content_fingerprint_columns": right.get("content_fingerprint_columns")
+                    or left.get("content_fingerprint_columns")
+                    or [],
                     "allowed": table in allowed,
                     "prompt_forbidden": table in prompt_forbidden,
                 }
@@ -807,6 +1016,80 @@ def public_private_artifacts(output_dir: Path, *, bundle_created: bool) -> dict[
     }
 
 
+def finalize_transaction(transaction: Any, *, mode: str, validation_passed: bool) -> dict[str, Any]:
+    if mode == "execute" and validation_passed:
+        transaction.commit()
+        return {
+            "execute_transaction_committed": True,
+            "transaction_final_action": "commit",
+            "transaction_finalized_at": utc_now_iso(),
+        }
+    transaction.rollback()
+    return {
+        "execute_transaction_committed": False,
+        "transaction_final_action": "rollback",
+        "transaction_finalized_at": utc_now_iso(),
+    }
+
+
+def source_concept_commit_counts(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "total_source_concepts": snapshot.get("total_source_concepts"),
+        "active_concepts": snapshot.get("active_concepts"),
+        "needs_review_concepts": snapshot.get("needs_review_concepts"),
+        "hidden_status_counts": snapshot.get("hidden_status_counts"),
+        "by_status": snapshot.get("by_status"),
+        "aliases_total": snapshot.get("aliases_total"),
+        "evidence_total": snapshot.get("evidence_total"),
+        "signal_links_total": snapshot.get("signal_links_total"),
+        "search_index_total": snapshot.get("search_index_total"),
+        "concepts_influenced_by_px1_evidence": snapshot.get("concepts_influenced_by_px1_evidence"),
+    }
+
+
+def mismatch_keys(expected: Mapping[str, Any], actual: Mapping[str, Any]) -> list[str]:
+    return [
+        key
+        for key in sorted(set(expected) | set(actual))
+        if expected.get(key) != actual.get(key)
+    ]
+
+
+def verify_post_commit_state(
+    conn: Connection,
+    env_identity: Mapping[str, Any],
+    *,
+    expected_source_after: Mapping[str, Any],
+    expected_table_state_after: Mapping[str, Any],
+) -> dict[str, Any]:
+    identity = db_identity(conn, env_identity, mode="post_commit_verify")
+    source_after, _concepts, _aliases, _evidence = source_concept_snapshot(conn)
+    table_state = build_table_state(conn)
+    actual_counts = source_concept_commit_counts(source_after)
+    expected_counts = source_concept_commit_counts(expected_source_after)
+    source_mismatches = mismatch_keys(expected_counts, actual_counts)
+    expected_allowed_counts = {
+        table: (expected_table_state_after.get("tables") or {}).get(table, {}).get("count")
+        for table in ALLOWED_WRITE_TABLES
+    }
+    actual_allowed_counts = {
+        table: (table_state.get("tables") or {}).get(table, {}).get("count")
+        for table in ALLOWED_WRITE_TABLES
+    }
+    allowed_table_mismatches = mismatch_keys(expected_allowed_counts, actual_allowed_counts)
+    return {
+        "checked_at": utc_now_iso(),
+        "passed": not source_mismatches and not allowed_table_mismatches,
+        "db_identity": public_db_identity(identity),
+        "source_concept_counts": actual_counts,
+        "expected_source_concept_counts": expected_counts,
+        "source_concept_mismatch_keys": source_mismatches,
+        "allowed_table_counts": actual_allowed_counts,
+        "expected_allowed_table_counts": expected_allowed_counts,
+        "allowed_table_mismatch_keys": allowed_table_mismatches,
+    }
+
+
 def seed_groups_from_db(conn: Connection) -> dict[str, list[str]]:
     groups = {key: list(values) for key, values in scv1.SEED_GROUPS.items()}
     px1_names = scv1.rows_dict(
@@ -1025,6 +1308,73 @@ def validate_summary_schema(summary: Mapping[str, Any]) -> dict[str, Any]:
     return {"passed": not missing, "missing_fields": missing, "required_fields": sorted(SUMMARY_REQUIRED_FIELDS)}
 
 
+def report_generation_metadata(*, mode: str, db_identity_after: Mapping[str, Any]) -> dict[str, Any]:
+    runtime_sha = db_identity_after.get("git_sha")
+    return {
+        "branch": db_identity_after.get("git_branch"),
+        "runtime_git_sha": runtime_sha,
+        "runtime_git_sha_used_for_execute": runtime_sha if mode == "execute" else None,
+        "runtime_git_sha_scope": "git rev-parse HEAD at runner execution",
+        "final_pr_head_sha_if_different": "reported in PR handoff after report refresh commit" if mode == "execute" else None,
+        "operational_result_reused_older_artifacts": False,
+        "report_generated_from_current_branch_head": True,
+    }
+
+
+def validate_public_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any]:
+    paths = [PUBLIC_REPORT_MD, PUBLIC_REPORT_JSON]
+    labels = [scv1.root_relative_or_name(path) for path in paths]
+    checked_at = utc_now_iso()
+    temp_dir = output_dir / "_public_report_staging"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_md = temp_dir / PUBLIC_REPORT_MD.name
+    temp_json = temp_dir / PUBLIC_REPORT_JSON.name
+    candidate = copy.deepcopy(summary)
+    candidate["public_redaction"] = {
+        "checked_at": checked_at,
+        "passed": True,
+        "public_paths": labels,
+        "findings": [],
+        "final_public_scan_after_public_fields_finalized": False,
+        "exact_private_paths_public": False,
+        "private_artifact_paths_public": False,
+        "policy": "pre-commit staging scan before execute transaction commit",
+    }
+    write_text(temp_md, public_report_markdown(candidate))
+    write_json(temp_json, candidate)
+    scan = scv1.scan_public_artifacts([temp_md, temp_json], checked_at=checked_at, public_path_labels=labels)
+    try:
+        temp_md.unlink(missing_ok=True)
+        temp_json.unlink(missing_ok=True)
+        temp_dir.rmdir()
+    except OSError:
+        pass
+    if not scan["passed"]:
+        failed = {
+            "checked_at": checked_at,
+            "passed": False,
+            "public_paths": labels,
+            "findings": scan["findings"],
+            "final_public_scan_after_public_fields_finalized": False,
+            "exact_private_paths_public": False,
+            "private_artifact_paths_public": False,
+            "policy": "pre-commit staging scan before execute transaction commit",
+        }
+        write_json(output_dir / "public-redaction-check.json", failed)
+        write_text(output_dir / "public-redaction-check.txt", json.dumps(failed, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        raise R1BlockedError(f"Public redaction pre-commit scan failed: {scan['findings']!r}")
+    return {
+        "checked_at": checked_at,
+        "passed": True,
+        "public_paths": labels,
+        "findings": [],
+        "final_public_scan_after_public_fields_finalized": False,
+        "exact_private_paths_public": False,
+        "private_artifact_paths_public": False,
+        "policy": "pre-commit staging scan before execute transaction commit",
+    }
+
+
 def public_report_markdown(summary: Mapping[str, Any]) -> str:
     before = summary["source_concept_before"]
     after = summary["source_concept_after"]
@@ -1037,6 +1387,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     mutation = summary["mutation_proof"]["delta"]
     search = summary["search_seed_symmetry"]["public_summary"]
     validation = summary["validation"]
+    post_commit = summary.get("post_commit") or {}
+    report_meta = summary.get("report_generation") or {}
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
@@ -1048,6 +1400,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Active SourceConcept before/after/delta: `{before.get('active_concepts')}` / `{after.get('active_concepts')}` / `{source_delta.get('active_source_concepts_delta')}`.",
         f"- needs_review SourceConcept before/after/delta: `{before.get('needs_review_concepts')}` / `{after.get('needs_review_concepts')}` / `{source_delta.get('needs_review_source_concepts_delta')}`.",
         f"- Concepts newly influenced by PX1 evidence: `{source_delta.get('concepts_newly_influenced_by_px1_evidence')}`.",
+        f"- Post-commit verification passed: `{post_commit.get('post_commit_verification_passed')}`.",
         "",
         "## Scope and non-goals",
         "",
@@ -1109,9 +1462,24 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "## Mutation proof",
         "",
         f"- Mutation proof passed: `{mutation.get('passed')}`.",
+        f"- Execute transaction committed: `{summary.get('execute_transaction_committed')}`.",
         f"- Allowed changed tables: `{json.dumps([row['table'] for row in mutation.get('allowed_changed_tables', [])], ensure_ascii=False)}`.",
         f"- Forbidden changed tables: `{json.dumps([row['table'] for row in mutation.get('forbidden_changed_tables', [])], ensure_ascii=False)}`.",
         f"- Source metadata read-only changed tables: `{json.dumps([row['table'] for row in mutation.get('source_metadata_readonly_changed_tables', [])], ensure_ascii=False)}`.",
+        "",
+        "## Post-commit verification",
+        "",
+        f"- Verification passed: `{post_commit.get('post_commit_verification_passed')}`.",
+        f"- Committed SourceConcept counts: `{json.dumps((post_commit.get('verification') or {}).get('source_concept_counts'), ensure_ascii=False, sort_keys=True)}`.",
+        f"- SourceConcept mismatch keys: `{json.dumps((post_commit.get('verification') or {}).get('source_concept_mismatch_keys'), ensure_ascii=False)}`.",
+        f"- Allowed table mismatch keys: `{json.dumps((post_commit.get('verification') or {}).get('allowed_table_mismatch_keys'), ensure_ascii=False)}`.",
+        "",
+        "## Report generation metadata",
+        "",
+        f"- Runtime git SHA: `{report_meta.get('runtime_git_sha')}`.",
+        f"- Runtime git SHA used for execute: `{report_meta.get('runtime_git_sha_used_for_execute')}`.",
+        f"- Final PR head SHA if different: `{report_meta.get('final_pr_head_sha_if_different')}`.",
+        f"- Operational result reused older artifacts: `{report_meta.get('operational_result_reused_older_artifacts')}`.",
         "",
         "## Public/private artifact boundary",
         "",
@@ -1163,7 +1531,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "- Artifact lifecycle: runner and tests are phase-scoped; public report/summary are public report and handoff artifacts; `.local_manifests` output is one-off ignored local artifact.",
         "- Phase boundary is appropriate: R1 consumes source-layer evidence and writes only SourceConcept resolver tables under explicit confirmation.",
         "- Remaining risks: SourceConcept gaps may move rather than vanish because PX1 adds much more review-scoped evidence; Entity bridge remains blocked until a later explicit preview/confirmation/audit design.",
-        "- No reviewer findings were fixed in this run; reviewer status is pending after PR creation.",
+        "- Reviewer fix loop addressed execute transaction commit, fresh post-commit verification, artifact bundle naming, report runtime-SHA metadata, and critical forbidden/read-only content fingerprints.",
         "- Recommended next step: review/merge R1 if accepted, then run SCV2-A1 as a post-expansion audit and route decision.",
     ]
     return "\n".join(lines) + "\n"
@@ -1252,12 +1620,16 @@ def build_summary(
     output_dir: Path,
     validation_commands: Sequence[str],
     dry_run_previously_completed: bool,
+    transaction_result: Mapping[str, Any] | None = None,
+    post_commit_verification: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     decision = build_decision_matrix(px1_check, source_delta, alias_delta, needs_delta, search_seed, {"delta": mutation_delta}, {"passed": True})
     validation = {
         "mode": mode,
         "dry_run_completed": mode == "dry_run" or dry_run_previously_completed,
         "execute_completed": mode == "execute",
+        "execute_transaction_committed": bool((transaction_result or {}).get("execute_transaction_committed")),
+        "post_commit_verification_passed": bool((post_commit_verification or {}).get("passed")),
         "commands": list(validation_commands),
         "browser_validation": "not_run_no_ui_runtime_change",
         "server_started": False,
@@ -1285,6 +1657,14 @@ def build_summary(
         "branch": BRANCH,
         "generated_at": utc_now_iso(),
         "mode": mode,
+        "execute_transaction_committed": bool((transaction_result or {}).get("execute_transaction_committed")),
+        "transaction": dict(transaction_result or {}),
+        "post_commit_verification_passed": bool((post_commit_verification or {}).get("passed")),
+        "post_commit": {
+            "post_commit_verification_passed": bool((post_commit_verification or {}).get("passed")),
+            "verification": post_commit_verification or {},
+        },
+        "report_generation": report_generation_metadata(mode=mode, db_identity_after=db_identity_after),
         "db_identity_before": public_db_identity(db_identity_before),
         "db_identity_after": public_db_identity(db_identity_after),
         "post_px1_baseline": baseline_after,
@@ -1371,6 +1751,7 @@ def write_private_artifacts(
     mutation_before: Mapping[str, Any],
     mutation_after: Mapping[str, Any],
     mutation_delta: Mapping[str, Any],
+    post_commit_verification: Mapping[str, Any] | None = None,
 ) -> None:
     payloads = {
         "db-identity-before.json": db_identity_before,
@@ -1393,6 +1774,7 @@ def write_private_artifacts(
         "mutation-proof-before.json": mutation_before,
         "mutation-proof-after.json": mutation_after,
         "mutation-proof-delta.json": mutation_delta,
+        "post-commit-verification.json": post_commit_verification or {},
     }
     for name, payload in payloads.items():
         write_json(output_dir / name, payload)
@@ -1415,9 +1797,15 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         pool_pre_ping=True,
         connect_args={"connect_timeout": 10, "options": "-c statement_timeout=600000"},
     )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False)
+    SessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        join_transaction_mode="create_savepoint",
+    )
     conn: Connection | None = None
     session: Session | None = None
+    transaction: Any | None = None
+    transaction_finished = False
     started = time.perf_counter()
     command_label = (
         f"python scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py --{mode.replace('_', '-')}"
@@ -1438,10 +1826,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         conn = engine.connect()
         if conn.dialect.name != "postgresql":
             raise R1BlockedError(f"R1 requires PostgreSQL, got {conn.dialect.name!r}")
+        transaction = conn.begin()
         if mode == "dry_run":
-            conn.exec_driver_sql("BEGIN TRANSACTION READ ONLY")
+            conn.exec_driver_sql("SET TRANSACTION READ ONLY")
         else:
-            conn.exec_driver_sql("SET statement_timeout = '600s'")
+            conn.exec_driver_sql("SET LOCAL statement_timeout = '600s'")
         db_identity_before = db_identity(conn, env_identity, mode=mode)
         mutation_before = build_table_state(conn)
         baseline_before = build_source_layer_baseline(conn)
@@ -1496,30 +1885,6 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         if not mutation_delta["passed"]:
             raise R1BlockedError(f"Unexpected DB mutation detected: {mutation_delta['unexpected_changed_tables']!r}")
         db_identity_after = db_identity(conn, env_identity, mode=mode)
-
-        write_private_artifacts(
-            output_dir,
-            db_identity_before=db_identity_before,
-            db_identity_after=db_identity_after,
-            baseline_before=baseline_before,
-            baseline_after=baseline_after,
-            px1_check=px1_check,
-            resolver_input=resolver_input,
-            resolver_ledger=resolver_ledger,
-            source_before=source_before,
-            source_after=source_after,
-            source_delta=source_delta,
-            alias_before=alias_before,
-            alias_after=alias_after,
-            alias_delta=alias_delta,
-            needs_before=needs_before,
-            needs_after=needs_after,
-            needs_delta=needs_delta,
-            search_seed=search_seed,
-            mutation_before=mutation_before,
-            mutation_after=mutation_after,
-            mutation_delta=mutation_delta,
-        )
         summary = build_summary(
             mode=mode,
             db_identity_before=db_identity_before,
@@ -1545,9 +1910,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             output_dir=output_dir,
             validation_commands=validation_commands,
             dry_run_previously_completed=dry_run_previously_completed,
+            transaction_result={"transaction_final_action": "pending_validation"},
+            post_commit_verification=None,
         )
         if args.write_public_report:
-            redaction = write_public_outputs(summary, output_dir)
+            redaction = validate_public_outputs(summary, output_dir)
             summary["public_redaction"] = redaction
             # Rebuild decision with actual redaction status.
             summary["decision_matrix"] = build_decision_matrix(
@@ -1560,27 +1927,109 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 redaction,
             )
             summary["recommended_next_phase"] = summary["decision_matrix"]["recommended_next_phase"]
-            write_public_outputs(summary, output_dir)
+
+        transaction_result = finalize_transaction(transaction, mode=mode, validation_passed=True)
+        transaction_finished = True
+        post_commit_verification: dict[str, Any] | None = None
+        if mode == "execute":
+            with engine.connect() as verify_conn:
+                verify_transaction = verify_conn.begin()
+                try:
+                    verify_conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+                    post_commit_verification = verify_post_commit_state(
+                        verify_conn,
+                        env_identity,
+                        expected_source_after=source_after,
+                        expected_table_state_after=mutation_after,
+                    )
+                finally:
+                    if verify_transaction.is_active:
+                        verify_transaction.rollback()
+            if not post_commit_verification.get("passed"):
+                raise R1BlockedError(f"Post-commit verification failed: {post_commit_verification!r}")
+
+        summary = build_summary(
+            mode=mode,
+            db_identity_before=db_identity_before,
+            db_identity_after=db_identity_after,
+            baseline_before=baseline_before,
+            baseline_after=baseline_after,
+            px1_check=px1_check,
+            resolver_input=resolver_input,
+            resolver_ledger=resolver_ledger,
+            source_before=source_before,
+            source_after=source_after,
+            source_delta=source_delta,
+            alias_before=alias_before,
+            alias_after=alias_after,
+            alias_delta=alias_delta,
+            needs_before=needs_before,
+            needs_after=needs_after,
+            needs_delta=needs_delta,
+            search_seed=search_seed,
+            mutation_before=mutation_before,
+            mutation_after=mutation_after,
+            mutation_delta=mutation_delta,
+            output_dir=output_dir,
+            validation_commands=validation_commands,
+            dry_run_previously_completed=dry_run_previously_completed,
+            transaction_result=transaction_result,
+            post_commit_verification=post_commit_verification,
+        )
+        write_private_artifacts(
+            output_dir,
+            db_identity_before=db_identity_before,
+            db_identity_after=db_identity_after,
+            baseline_before=baseline_before,
+            baseline_after=baseline_after,
+            px1_check=px1_check,
+            resolver_input=resolver_input,
+            resolver_ledger=resolver_ledger,
+            source_before=source_before,
+            source_after=source_after,
+            source_delta=source_delta,
+            alias_before=alias_before,
+            alias_after=alias_after,
+            alias_delta=alias_delta,
+            needs_before=needs_before,
+            needs_after=needs_after,
+            needs_delta=needs_delta,
+            search_seed=search_seed,
+            mutation_before=mutation_before,
+            mutation_after=mutation_after,
+            mutation_delta=mutation_delta,
+            post_commit_verification=post_commit_verification,
+        )
         zip_path = zip_directory(output_dir)
         summary["private_artifacts"] = public_private_artifacts(output_dir, bundle_created=zip_path.exists())
         if args.write_public_report:
+            redaction = write_public_outputs(summary, output_dir)
+            summary["public_redaction"] = redaction
+            summary["decision_matrix"] = build_decision_matrix(
+                px1_check,
+                source_delta,
+                alias_delta,
+                needs_delta,
+                search_seed,
+                {"delta": mutation_delta},
+                redaction,
+            )
+            summary["recommended_next_phase"] = summary["decision_matrix"]["recommended_next_phase"]
             write_public_outputs(summary, output_dir)
         write_json(output_dir / "checksums.json", build_artifact_checksums(output_dir))
         zip_directory(output_dir)
         if mode == "dry_run":
             write_text(dry_run_marker, f"completed_at={utc_now_iso()}\n")
-        if mode == "dry_run":
-            conn.exec_driver_sql("ROLLBACK")
         return summary
+    except Exception:
+        if transaction is not None and not transaction_finished and transaction.is_active:
+            transaction.rollback()
+            transaction_finished = True
+        raise
     finally:
         if session is not None:
             session.close()
         if conn is not None:
-            try:
-                if not conn.closed and mode == "dry_run":
-                    conn.exec_driver_sql("ROLLBACK")
-            except Exception:
-                pass
             conn.close()
         engine.dispose()
 
