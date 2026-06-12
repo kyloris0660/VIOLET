@@ -21,7 +21,7 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is post-R1 SourceConcept audit / route decision before any provider expansion, SourceConcept editing, or Entity truth work.
+The active route is an incident-governance hold after the post-R1 SourceConcept audit. No provider expansion, SourceConcept editing, Entity truth work, R2, PX1-B, Provider-2, or scale-up is approved while the pipeline fidelity incident remains unresolved.
 
 Current accepted state:
 
@@ -33,7 +33,7 @@ Current accepted state:
 - Phase 4.5-SCV2-E1 / PR #102 is merged: medium import plus eligible AI tag completion, ending at 3750 media and 3687/3687 eligible AI tag coverage.
 - Phase 4.5-PX1 / PR #103 is merged: bounded Pixiv/gallery-dl metadata extraction selected 500, succeeded 470, recorded 30 unavailable/private/deleted failures, wrote source-layer metadata/observations/assertions only, and found 0 exact duplicate dry-run groups.
 - Phase 4.5-SCV2-R1 / PR #104 is merged: PX1 evidence was consumed by SourceConcept triage, execute transactions were explicitly committed and post-commit verified on a fresh connection, mutation proof/public redaction passed, and only allowed SourceConcept resolver tables changed.
-- Phase 4.5-SCV2-A1 is current: read-only post-expansion audit, route decision, public report/summary, and a generated privacy-safe ChatGPT review pack for independent route audit.
+- Phase 4.5-SCV2-A1 is current: read-only post-expansion audit, route-decision evidence, public report/summary, and a generated privacy-safe ChatGPT review pack for independent audit. Its route approval is now blocked by INC1 pending R1R full-chain remediation and A1R rerun.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
 Current post-PX1 result:
@@ -43,17 +43,18 @@ Current post-PX1 result:
 - PX1 source searchable assertions are intentionally `needs_review` with `requires_review=true`; they are not `searchable_active`.
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
-- Current route: `SCV2-A1` post-expansion audit and route decision.
-- A1 final route approval is provisional pending ChatGPT review-pack audit. The durable policy lives in `docs/chatgpt-review-pack-policy.md`.
+- Current route: `SCV2-A1` post-expansion audit evidence plus INC1 pipeline fidelity remediation gate.
+- A1 final route approval is blocked pending R1R full SourceConcept pipeline replay/remediation and A1R rerun. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the A1 pack does not approve R2 during this incident.
 - PX1-B, DEDUP1, 5k/10k/full-library expansion, SourceConcept editing, and Entity bridge are not next.
 
 ## Near-Term Route
 
-1. Review and merge `SCV2-A1` if accepted.
-2. Upload the generated A1 ChatGPT review pack for independent audit before final route approval.
-3. Defer PX1-B until after A1/pack audit or a separate provider-policy decision.
-4. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
-5. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
+1. Review and merge the A1/INC1 governance fixes if accepted.
+2. Plan `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation` separately; do not implement it in A1/INC1.
+3. Rerun A1 as A1R after R1R before any final route approval.
+4. Defer PX1-B until after R1R+A1R or a separate provider-policy decision.
+5. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
+6. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
@@ -62,7 +63,7 @@ Explicit ordering:
 - SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
-- Review-pack-required route phases must use `provisional_pending_chatgpt_pack_audit` until the generated pack is independently audited.
+- Review-pack-required route phases normally use `provisional_pending_chatgpt_pack_audit` until the generated pack is independently audited, but pipeline fidelity incidents override that with `blocked_pending_pipeline_fidelity_remediation` until remediation and rerun evidence exist.
 
 ## Current Governance / Development Standards
 

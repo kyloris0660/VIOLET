@@ -46,7 +46,10 @@ DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
 POLICY_DOC = ROOT / "docs" / "chatgpt-review-pack-policy.md"
 PX1_SLUG = "phase-4.5-px1-pixiv-metadata-dedup-dry-run"
 
-FINAL_ROUTE_DECISION_STATUS = "provisional_pending_chatgpt_pack_audit"
+FINAL_ROUTE_DECISION_STATUS = "blocked_pending_pipeline_fidelity_remediation"
+PRE_INCIDENT_RUNNER_RECOMMENDATION = "SCV2-R2 targeted resolver/gap reduction"
+PIPELINE_FIDELITY_REMEDIATION_NEXT_PHASE = "Phase 4.5-SCV2-R1R full SourceConcept pipeline replay, then A1R route audit rerun"
+REVIEW_PACK_GENERATED_MARKER = ".violet-a1-generated-review-pack-marker.json"
 VISIBLE_STATUSES = ("active", "needs_review")
 ACTIVE_STATUSES = ("active",)
 VISIBLE_OR_HIDDEN_STATUSES = ("active", "needs_review", "superseded", "rejected", "ambiguous", "weak", "hidden")
@@ -82,6 +85,7 @@ R1_TRUSTED_TRANSITION = {
 REQUIRED_PRIVATE_ARTIFACTS = (
     "db-identity.json",
     "transaction-readonly-proof.json",
+    "db-snapshot-proof.json",
     "current-media-source-baseline.json",
     "source-metadata-coverage.json",
     "source-concept-current-state.json",
@@ -118,6 +122,8 @@ SUMMARY_REQUIRED_FIELDS = {
     "report_provenance",
     "db_identity",
     "transaction_readonly_proof",
+    "db_snapshot_proof",
+    "dirty_worktree",
     "durable_review_pack_policy",
     "current_baseline",
     "source_metadata_coverage",
@@ -246,6 +252,17 @@ def git_value(args: Sequence[str]) -> str:
         return subprocess.check_output(args, cwd=ROOT, text=True, encoding="utf-8", stderr=subprocess.DEVNULL).strip()
     except Exception:
         return "unavailable"
+
+
+def public_dirty_worktree_summary(raw_status: str) -> dict[str, Any]:
+    lines = [line for line in str(raw_status or "").splitlines() if line.strip()]
+    return {
+        "clean": not lines,
+        "dirty_count": len(lines),
+        "status_redacted": bool(lines),
+        "status_public": "clean" if not lines else f"redacted_dirty_entries:{len(lines)}",
+        "raw_status_available_private": bool(lines),
+    }
 
 
 def root_relative_or_name(path: Path) -> str:
@@ -377,6 +394,9 @@ def public_db_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
         "server_port": identity.get("server_port"),
         "transaction_read_only": identity.get("transaction_read_only"),
         "transaction_read_only_ok": identity.get("transaction_read_only_ok"),
+        "transaction_isolation": identity.get("transaction_isolation"),
+        "snapshot_id_present": bool(identity.get("snapshot_id_present")),
+        "snapshot_id_redacted": True,
         "git_branch": identity.get("git_branch"),
         "git_sha": identity.get("git_sha"),
         "python_executable": Path(str(identity.get("python_executable") or sys.executable)).name,
@@ -423,12 +443,54 @@ def compare_table_counts(before: Mapping[str, Any], after: Mapping[str, Any]) ->
 
 
 def transaction_readonly_proof(db_identity: Mapping[str, Any]) -> dict[str, Any]:
+    isolation = str(db_identity.get("transaction_isolation") or "").casefold()
+    stable_snapshot = isolation in {"repeatable read", "serializable"}
     return {
-        "passed": bool(db_identity.get("transaction_read_only_ok")),
+        "passed": bool(db_identity.get("transaction_read_only_ok")) and stable_snapshot and bool(db_identity.get("snapshot_id_present")),
         "transaction_read_only": db_identity.get("transaction_read_only"),
+        "transaction_isolation": db_identity.get("transaction_isolation"),
+        "snapshot_id_present": bool(db_identity.get("snapshot_id_present")),
+        "snapshot_id_redacted": True,
         "required": "on",
-        "enforced_by": "BEGIN TRANSACTION READ ONLY",
+        "required_isolation": "repeatable read or serializable",
+        "stable_snapshot": stable_snapshot,
+        "enforced_by": "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
         "no_execute_or_write_flags": True,
+    }
+
+
+def read_db_snapshot_proof(conn: Connection) -> dict[str, Any]:
+    row = scv1.rows_dict(
+        conn,
+        """
+        SELECT current_setting('transaction_isolation') AS transaction_isolation,
+               current_setting('transaction_read_only') AS transaction_read_only,
+               pg_current_snapshot()::text AS snapshot_id
+        """,
+    )[0]
+    isolation = str(row.get("transaction_isolation") or "").casefold()
+    snapshot_id = str(row.get("snapshot_id") or "")
+    return {
+        "transaction_isolation": row.get("transaction_isolation"),
+        "transaction_read_only": row.get("transaction_read_only"),
+        "snapshot_id_private": snapshot_id,
+        "snapshot_id_present": bool(snapshot_id),
+        "snapshot_id_redacted_public": True,
+        "stable_snapshot": isolation in {"repeatable read", "serializable"},
+        "required_isolation": "repeatable read or serializable",
+        "recorded_at": utc_now_iso(),
+    }
+
+
+def public_db_snapshot_proof(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "transaction_isolation": snapshot.get("transaction_isolation"),
+        "transaction_read_only": snapshot.get("transaction_read_only"),
+        "snapshot_id_present": bool(snapshot.get("snapshot_id_present")),
+        "snapshot_id_redacted": True,
+        "stable_snapshot": bool(snapshot.get("stable_snapshot")),
+        "required_isolation": snapshot.get("required_isolation", "repeatable read or serializable"),
+        "recorded_at": snapshot.get("recorded_at") or utc_now_iso(),
     }
 
 
@@ -581,7 +643,7 @@ def build_source_concept_current_state(
         "source_concept_search_index_count_by_status": scv1.group_count(conn, "blombooru_source_concept_search_index", "status"),
         "source_concept_search_index_total": scv1.count_table(conn, "blombooru_source_concept_search_index").get("count"),
         "concepts_influenced_by_px1_evidence": len(px1_strict_ids),
-        "concepts_influenced_by_px1_evidence_scope": f"strict PX1 SourceMetadataRecord run_label={PX1_SLUG}",
+        "concepts_influenced_by_px1_evidence_scope": f"strict PX1 SourceMetadataRecord provenance slug={PX1_SLUG}",
         "concepts_influenced_by_strict_px1_evidence": len(px1_strict_ids),
         "concepts_influenced_by_all_pixiv_evidence": len(pixiv_all_ids),
         "concepts_influenced_by_non_px1_pixiv_evidence": len(pixiv_all_ids - px1_strict_ids),
@@ -645,20 +707,36 @@ def pixiv_all_influenced_concept_ids(conn: Connection) -> set[int]:
     return {int(row["concept_id"]) for row in rows if row.get("concept_id") is not None}
 
 
-def strict_px1_source_metadata_record_ids(conn: Connection, px1_slug: str = PX1_SLUG) -> set[int]:
+def strict_px1_record_filter_sql(conn: Connection, alias: str = "r", px1_slug: str = PX1_SLUG) -> tuple[str | None, dict[str, Any]]:
     if not scv1.table_exists(conn, "blombooru_source_metadata_records"):
-        return set()
-    if not scv1.column_exists(conn, "blombooru_source_metadata_records", "run_label"):
+        return None, {}
+    provenance_terms = []
+    if scv1.column_exists(conn, "blombooru_source_metadata_records", "run_label"):
+        provenance_terms.append(f"{alias}.run_label = :px1_slug")
+    if scv1.column_exists(conn, "blombooru_source_metadata_records", "provider_run_id"):
+        provenance_terms.append(f"{alias}.provider_run_id = :px1_slug")
+        provenance_terms.append(f"{alias}.provider_run_id LIKE :px1_provider_run_prefix")
+    if not provenance_terms:
+        return None, {}
+    sql = (
+        f"LOWER(COALESCE({alias}.provider, '')) = 'pixiv' "
+        f"AND ({' OR '.join(provenance_terms)})"
+    )
+    return sql, {"px1_slug": px1_slug, "px1_provider_run_prefix": f"{px1_slug}%"}
+
+
+def strict_px1_source_metadata_record_ids(conn: Connection, px1_slug: str = PX1_SLUG) -> set[int]:
+    filter_sql, params = strict_px1_record_filter_sql(conn, alias="r", px1_slug=px1_slug)
+    if not filter_sql:
         return set()
     rows = scv1.rows_dict(
         conn,
-        """
-        SELECT id
-        FROM blombooru_source_metadata_records
-        WHERE LOWER(COALESCE(provider, '')) = 'pixiv'
-          AND run_label = :px1_slug
+        f"""
+        SELECT r.id
+        FROM blombooru_source_metadata_records r
+        WHERE {filter_sql}
         """,
-        {"px1_slug": px1_slug},
+        params,
     )
     return {int(row["id"]) for row in rows if row.get("id") is not None}
 
@@ -818,18 +896,24 @@ def build_gap_vs_scv1(current_gap: Mapping[str, Any], scv1_summary: Mapping[str,
 
 def build_dynamic_px1_seed_groups(conn: Connection) -> dict[str, list[str]]:
     groups: dict[str, list[str]] = {}
+    filter_sql, params = strict_px1_record_filter_sql(conn, alias="r")
+    if not filter_sql:
+        return groups
     if scv1.table_exists(conn, "blombooru_source_name_observations"):
         name_rows = scv1.rows_dict(
             conn,
             """
-            SELECT MIN(raw_name) AS label, canonical_name_key, name_role, COUNT(*) AS count
-            FROM blombooru_source_name_observations
-            WHERE provider = 'pixiv'
-              AND canonical_name_key IS NOT NULL
-            GROUP BY canonical_name_key, name_role
+            SELECT MIN(n.raw_name) AS label, n.canonical_name_key, n.name_role, COUNT(*) AS count
+            FROM blombooru_source_name_observations n
+            JOIN blombooru_source_metadata_records r ON r.id = n.source_metadata_record_id
+            WHERE {filter_sql}
+              AND LOWER(COALESCE(n.provider, '')) = 'pixiv'
+              AND n.canonical_name_key IS NOT NULL
+            GROUP BY n.canonical_name_key, n.name_role
             ORDER BY count DESC
             LIMIT 12
-            """,
+            """.format(filter_sql=filter_sql),
+            params,
         )
         groups["px1_high_frequency_source_names_private"] = [str(row.get("label") or row.get("canonical_name_key")) for row in name_rows[:8]]
         groups["px1_ambiguous_short_names_private"] = [
@@ -841,29 +925,35 @@ def build_dynamic_px1_seed_groups(conn: Connection) -> dict[str, list[str]]:
         tag_rows = scv1.rows_dict(
             conn,
             """
-            SELECT MIN(raw_tag) AS label, canonical_tag_key, COUNT(*) AS count
-            FROM blombooru_source_tag_observations
-            WHERE provider = 'pixiv'
-              AND canonical_tag_key IS NOT NULL
-            GROUP BY canonical_tag_key
+            SELECT MIN(t.raw_tag) AS label, t.canonical_tag_key, COUNT(*) AS count
+            FROM blombooru_source_tag_observations t
+            JOIN blombooru_source_metadata_records r ON r.id = t.source_metadata_record_id
+            WHERE {filter_sql}
+              AND LOWER(COALESCE(t.provider, '')) = 'pixiv'
+              AND t.canonical_tag_key IS NOT NULL
+            GROUP BY t.canonical_tag_key
             ORDER BY count DESC
             LIMIT 10
-            """,
+            """.format(filter_sql=filter_sql),
+            params,
         )
         groups["px1_high_frequency_source_tags_private"] = [str(row.get("label") or row.get("canonical_tag_key")) for row in tag_rows[:8]]
     if scv1.table_exists(conn, "blombooru_source_searchable_name_assertions"):
         assertion_rows = scv1.rows_dict(
             conn,
             """
-            SELECT MIN(COALESCE(asserted_name, raw_input)) AS label, canonical_name_key, asserted_role, COUNT(*) AS count
-            FROM blombooru_source_searchable_name_assertions
-            WHERE provider = 'pixiv'
-              AND asserted_role IN ('work_title', 'source_title', 'copyright', 'character', 'artist')
-              AND canonical_name_key IS NOT NULL
-            GROUP BY canonical_name_key, asserted_role
+            SELECT MIN(COALESCE(a.asserted_name, a.raw_input)) AS label, a.canonical_name_key, a.asserted_role, COUNT(*) AS count
+            FROM blombooru_source_searchable_name_assertions a
+            JOIN blombooru_source_metadata_records r ON r.id = a.source_metadata_record_id
+            WHERE {filter_sql}
+              AND LOWER(COALESCE(a.provider, '')) = 'pixiv'
+              AND a.asserted_role IN ('work_title', 'source_title', 'copyright', 'character', 'artist')
+              AND a.canonical_name_key IS NOT NULL
+            GROUP BY a.canonical_name_key, a.asserted_role
             ORDER BY count DESC
             LIMIT 10
-            """,
+            """.format(filter_sql=filter_sql),
+            params,
         )
         groups["px1_title_or_work_assertions_private"] = [str(row.get("label") or row.get("canonical_name_key")) for row in assertion_rows[:8]]
     return {key: [value for value in values if value] for key, values in groups.items() if values}
@@ -1013,7 +1103,7 @@ def build_px1_evidence_impact(conn: Connection, r1_summary: Mapping[str, Any]) -
     px1_check = r1_summary.get("px1_source_metadata_check") or {}
     return {
         "px1_slug": PX1_SLUG,
-        "px1_filter_scope": "strict SourceMetadataRecord filter: provider='pixiv' and run_label equals px1_slug",
+        "px1_filter_scope": "strict SourceMetadataRecord filter: provider='pixiv' and PX1 run_label/provider_run_id provenance matches px1_slug",
         "px1_source_metadata_record_count_strict": len(strict_record_ids),
         "px1_strict_influenced_concepts": len(px1_strict_ids),
         "pixiv_all_influenced_concepts": len(pixiv_all_ids),
@@ -1030,7 +1120,7 @@ def build_px1_evidence_impact(conn: Connection, r1_summary: Mapping[str, Any]) -
             "searchable_active": px1_check.get("px1_assertions_searchable_active"),
             "interpretation": "PX1 assertions are evidence/backlog input, not active truth.",
         },
-        "impact_interpretation": "PX1 materially expanded review-scoped evidence and SourceConcept influence, but did not make final route approval safe without sample-level review.",
+        "impact_interpretation": "PX1 materially expanded review-scoped evidence and SourceConcept influence, but does not make route approval safe during the INC1 pipeline fidelity incident.",
     }
 
 
@@ -1174,16 +1264,21 @@ def build_route_decision_matrix(
     metadata_pct = float(source_metadata.get("source_metadata_distinct_eligible_media_pct") or 0)
     resolver_dominant = total_gap > 0 or asym > 0 or needs > 500
     metadata_dominant = metadata_pct < 20.0 and not resolver_dominant
+    governance_blocker = "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval"
+    pre_incident_recommendation = PRE_INCIDENT_RUNNER_RECOMMENDATION if resolver_dominant else "PX1-B additional Pixiv metadata extraction"
     options = [
         route_option(
             "SCV2-R2 targeted resolver/gap reduction",
-            recommended=resolver_dominant,
+            recommended=False,
             priority="P1",
-            why=f"Current audit shows gap signals={total_gap}, asymmetric search groups={asym}, needs_review={needs}.",
-            blockers=["must stay source-layer only", "must not create Entity/media_tags truth"],
-            prerequisites=["focused resolver/gap tests", "read-only/dry-run first unless explicitly approved"],
-            expected_value="Reduce alias fragmentation and make search behavior more symmetric before larger data growth.",
-            risk="Low to medium if bounded to SourceConcept resolver/search evidence contracts.",
+            why=(
+                f"Pre-incident A1 signals favored resolver/gap work (gap signals={total_gap}, asymmetric search groups={asym}, "
+                f"needs_review={needs}), but route approval is blocked by the INC1 pipeline fidelity incident."
+            ),
+            blockers=[governance_blocker, "no route approval", "R2 must not start before R1R+A1R"],
+            prerequisites=["complete R1R full-chain replay/remediation", "rerun A1R route audit from R1R outputs"],
+            expected_value="Still a possible later path, but only after the full-chain evidence base is repaired.",
+            risk="High governance risk if started from invalid or incomplete R1/A1 route evidence.",
             writes_db=True,
             touches_truth_path=False,
             browser_validation_required=False,
@@ -1191,13 +1286,13 @@ def build_route_decision_matrix(
         ),
         route_option(
             "PX1-B additional Pixiv metadata extraction",
-            recommended=metadata_dominant,
+            recommended=False,
             priority="P2",
-            why=f"Metadata coverage is {metadata_pct}% distinct eligible media, but resolver/search gaps are still dominant={resolver_dominant}.",
-            blockers=["provider policy and budget required", "resolver gaps should not be the dominant bottleneck"],
-            prerequisites=["separate provider run approval", "cache/audit/rate-limit gates"],
-            expected_value="More source metadata if coverage is the bottleneck after resolver gaps are reduced.",
-            risk="Medium provider/privacy/accounting risk.",
+            why=f"Metadata coverage is {metadata_pct}% distinct eligible media, but all expansion/provider routes are blocked by INC1.",
+            blockers=[governance_blocker, "provider execution is out of scope", "PX1-B must not start before R1R+A1R"],
+            prerequisites=["complete R1R and A1R", "separate provider run approval only after route is revalidated"],
+            expected_value="Deferred until the route evidence base is valid again.",
+            risk="High process risk if used to bypass pipeline remediation.",
             writes_db=True,
             touches_truth_path=False,
             browser_validation_required=False,
@@ -1207,11 +1302,11 @@ def build_route_decision_matrix(
             "Provider-2-P0 taxonomy/alias enrichment metadata-only",
             recommended=False,
             priority="P2",
-            why=f"Source tag gap={source_tag_gap} and alias split gap={alias_split_gap} suggest resolver/taxonomy questions, but Provider-2 needs a separate P0 policy after A1/R2.",
-            blockers=["provider policy not yet approved", "resolver gap dominance not closed"],
-            prerequisites=["metadata-only provider design", "no image upload default", "privacy and budget policy"],
-            expected_value="Improve taxonomy/category/alias classification if Pixiv-only metadata cannot resolve gaps.",
-            risk="Medium provider and taxonomy drift risk.",
+            why=f"Source tag gap={source_tag_gap} and alias split gap={alias_split_gap} remain interesting, but Provider-2 is blocked by INC1.",
+            blockers=[governance_blocker, "provider policy not approved", "Provider-2 must not start before R1R+A1R"],
+            prerequisites=["complete R1R and A1R", "metadata-only provider design", "privacy and budget policy"],
+            expected_value="Deferred until route evidence is trustworthy.",
+            risk="High governance/provider risk if started during incident remediation.",
             writes_db=False,
             touches_truth_path=False,
             browser_validation_required=False,
@@ -1221,9 +1316,9 @@ def build_route_decision_matrix(
             "SCV2-E2 controlled scale-up import to about 6000-6500 media",
             recommended=False,
             priority="P3",
-            why="Scale-up would multiply current retrieval noise before resolver/search stability is proven.",
-            blockers=["run ledger prerequisite", "search/gap/needs_review thresholds not met"],
-            prerequisites=["Ingestion Run Ledger / Source Item State Ledger", "stable retrieval thresholds"],
+            why="Scale-up is blocked by quality gates and by the INC1 pipeline fidelity incident.",
+            blockers=[governance_blocker, "run ledger prerequisite", "search/gap/needs_review thresholds not met"],
+            prerequisites=["complete R1R and A1R", "Ingestion Run Ledger / Source Item State Ledger", "stable retrieval thresholds"],
             expected_value="More library coverage after quality gates are met.",
             risk="High if done before retrieval quality stabilizes.",
             writes_db=True,
@@ -1235,11 +1330,11 @@ def build_route_decision_matrix(
             "SourceConcept management/editing UI/design",
             recommended=False,
             priority="P2",
-            why="Manual correction may help later, but current dominant issue is automated resolver/gap reduction rather than UI processing.",
-            blockers=["must not assume exhaustive manual review", "needs audit/rollback design"],
-            prerequisites=["correction-oriented workflow design", "source-layer audit trail"],
-            expected_value="Targeted correction of high-impact clusters after resolver gaps narrow.",
-            risk="Medium product/workflow risk.",
+            why="Manual correction/UI work may help later, but incident remediation must first restore full-chain evidence.",
+            blockers=[governance_blocker, "must not assume exhaustive manual review", "needs audit/rollback design"],
+            prerequisites=["complete R1R and A1R", "correction-oriented workflow design", "source-layer audit trail"],
+            expected_value="Deferred targeted correction after the route evidence base is valid.",
+            risk="Medium product/workflow risk; high process risk if used as route bypass.",
             writes_db=True,
             touches_truth_path=False,
             browser_validation_required=True,
@@ -1249,9 +1344,9 @@ def build_route_decision_matrix(
             "Entity bridge preview",
             recommended=False,
             priority="P3",
-            why="Entity bridge remains blocked by search asymmetry, gap signals, and high needs_review volume.",
-            blockers=["current thresholds not met", "truth-path preview/manual confirmation design absent"],
-            prerequisites=["0 asymmetric required seed groups", "low needs_review/noise", "manual confirmation/audit/rollback guards"],
+            why="Entity bridge remains blocked by search asymmetry, gap signals, high needs_review volume, and INC1.",
+            blockers=[governance_blocker, "current thresholds not met", "truth-path preview/manual confirmation design absent"],
+            prerequisites=["complete R1R and A1R", "0 asymmetric required seed groups", "low needs_review/noise", "manual confirmation/audit/rollback guards"],
             expected_value="Eventually map source evidence into confirmed identity workflows.",
             risk="High truth pollution risk if premature.",
             writes_db=True,
@@ -1277,9 +1372,9 @@ def build_route_decision_matrix(
             "Full-library / 10k expansion",
             recommended=False,
             priority="P3",
-            why="Full-library expansion is blocked by current quality gates and ledger prerequisites.",
-            blockers=["retrieval quality unstable", "ledger prerequisite missing"],
-            prerequisites=["production ingestion ledger", "provider/source run ledger discipline", "stable retrieval thresholds"],
+            why="Full-library expansion is blocked by current quality gates, ledger prerequisites, and INC1.",
+            blockers=[governance_blocker, "retrieval quality unstable", "ledger prerequisite missing"],
+            prerequisites=["complete R1R and A1R", "production ingestion ledger", "provider/source run ledger discipline", "stable retrieval thresholds"],
             expected_value="Large-scale library coverage only after quality and recovery controls exist.",
             risk="High operational and noise amplification risk.",
             writes_db=True,
@@ -1288,11 +1383,16 @@ def build_route_decision_matrix(
             user_manual_approval_required=True,
         ),
     ]
-    recommended = "SCV2-R2 targeted resolver/gap reduction" if resolver_dominant else "PX1-B additional Pixiv metadata extraction"
     return {
-        "runner_report_recommendation": recommended,
-        "requires_external_pack_review": True,
+        "runner_report_recommendation": "blocked_pending_pipeline_fidelity_remediation",
+        "pre_incident_runner_recommendation": pre_incident_recommendation,
+        "recommended_next_phase": PIPELINE_FIDELITY_REMEDIATION_NEXT_PHASE,
+        "requires_external_pack_review": False,
         "final_route_decision_status": FINAL_ROUTE_DECISION_STATUS,
+        "governance_severity": "P0/P1 pipeline fidelity incident",
+        "route_approval_blocked": True,
+        "blocked_by_inc1": True,
+        "blocked_until": ["R1R full SourceConcept pipeline replay/remediation", "A1R rerun after R1R"],
         "options": options,
         "blocker_thresholds": blocker_thresholds,
         "decision_bias": {
@@ -1300,6 +1400,7 @@ def build_route_decision_matrix(
             "dedup1_not_useful": True,
             "scale_up_waits_for_quality": True,
             "px1_b_waits_if_resolver_gaps_dominate": resolver_dominant,
+            "all_routes_wait_for_pipeline_fidelity_remediation": True,
         },
     }
 
@@ -1393,7 +1494,8 @@ def sample_search_rows(search_audit: Mapping[str, Any], refs: ReviewPackRefBuild
 def sample_px1_influenced_concepts(conn: Connection, refs: ReviewPackRefBuilder, limit: int = 80) -> list[dict[str, Any]]:
     if not scv1.table_exists(conn, "blombooru_source_concept_evidence") or not scv1.table_exists(conn, "blombooru_source_metadata_records"):
         return []
-    if not scv1.column_exists(conn, "blombooru_source_metadata_records", "run_label"):
+    filter_sql, params = strict_px1_record_filter_sql(conn, alias="r")
+    if not filter_sql:
         return []
     rows = scv1.rows_dict(
         conn,
@@ -1407,13 +1509,12 @@ def sample_px1_influenced_concepts(conn: Connection, refs: ReviewPackRefBuilder,
         FROM blombooru_source_concept_evidence e
         JOIN blombooru_source_metadata_records r ON r.id = e.source_metadata_record_id
         JOIN blombooru_source_concepts c ON c.id = e.concept_id
-        WHERE LOWER(COALESCE(r.provider, '')) = 'pixiv'
-          AND r.run_label = :px1_slug
+        WHERE {filter_sql}
         GROUP BY e.concept_id
         ORDER BY evidence_count DESC, e.concept_id ASC
         LIMIT {int(limit)}
         """,
-        {"px1_slug": PX1_SLUG},
+        params,
     )
     return [
         {
@@ -1746,6 +1847,7 @@ def build_review_pack_manifest(
         "public_report_generated_from_runtime_sha": summary.get("public_report_generated_from_runtime_sha"),
         "operational_result_reused_older_artifacts": summary.get("operational_result_reused_older_artifacts"),
         "dirty_worktree_status": summary.get("validation", {}).get("dirty_worktree_status"),
+        "dirty_worktree": summary.get("dirty_worktree") or summary.get("validation", {}).get("dirty_worktree"),
         "db_identity_summary_redacted": summary.get("db_identity"),
         "command_used_to_generate_pack": summary.get("validation", {}).get("operational_audit_command"),
         "public_report_copy_source": "rendered_from_current_summary",
@@ -1839,17 +1941,20 @@ opaque sequence IDs, not database IDs, reversible hashes, or local paths.
 
 Audit questions:
 
-1. Does the evidence support the provisional route recommendation?
+1. Does the evidence support blocking route approval pending R1R plus A1R?
 2. Are unmatched search seeds counted as failures instead of ignored?
 3. Do gap buckets indicate resolver/gap reduction before PX1-B, Provider-2,
    Entity bridge, or scale-up?
 4. Are sample files privacy-safe while still reviewable?
-5. Are route blockers and thresholds conservative enough?
+5. Are route blockers and thresholds conservative enough under the INC1 incident?
 
 Do not infer confirmed Entity truth, confirmed assignments, or media_tags truth
 from this pack. It contains source-layer evidence only. The pack excludes raw
 local paths, originals, thumbnails, provider credentials, cookies, tokens, and
 unredacted database IDs.
+
+Uploading this pack does not approve R2. R2 remains blocked until R1R full-chain
+remediation and A1R rerun are complete.
 """
 
 
@@ -1892,19 +1997,47 @@ def private_field_policy() -> dict[str, Any]:
     }
 
 
+def path_is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def prepare_review_pack_dir(output_dir: Path) -> Path:
+    pack_dir = output_dir / "chatgpt-review-pack"
+    marker_path = pack_dir / REVIEW_PACK_GENERATED_MARKER
+    output_in_phase_root = path_is_relative_to(output_dir, DEFAULT_OUTPUT_DIR)
+    if pack_dir.exists():
+        if not output_in_phase_root and not marker_path.exists():
+            raise A1BlockedError(
+                "Refusing to remove existing chatgpt-review-pack outside the phase .local_manifests path without generated marker."
+            )
+        shutil.rmtree(pack_dir)
+    (pack_dir / "public-report-copy").mkdir(parents=True, exist_ok=True)
+    (pack_dir / "audit-data").mkdir(parents=True, exist_ok=True)
+    (pack_dir / "review-samples").mkdir(parents=True, exist_ok=True)
+    (pack_dir / "redaction").mkdir(parents=True, exist_ok=True)
+    write_json(
+        marker_path,
+        {
+            "phase": PHASE,
+            "generated_by": Path(__file__).name,
+            "safe_to_replace": True,
+            "created_at": utc_now_iso(),
+        },
+    )
+    return pack_dir
+
+
 def generate_review_pack(
     output_dir: Path,
     summary: Mapping[str, Any],
     audit_data: Mapping[str, Any],
     samples: Mapping[str, Sequence[Mapping[str, Any]]],
 ) -> dict[str, Any]:
-    pack_dir = output_dir / "chatgpt-review-pack"
-    if pack_dir.exists():
-        shutil.rmtree(pack_dir)
-    (pack_dir / "public-report-copy").mkdir(parents=True, exist_ok=True)
-    (pack_dir / "audit-data").mkdir(parents=True, exist_ok=True)
-    (pack_dir / "review-samples").mkdir(parents=True, exist_ok=True)
-    (pack_dir / "redaction").mkdir(parents=True, exist_ok=True)
+    pack_dir = prepare_review_pack_dir(output_dir)
 
     write_review_pack_public_report_copy(pack_dir, summary)
 
@@ -1921,6 +2054,7 @@ def generate_review_pack(
         "blocker-thresholds.json": "blocker_thresholds",
         "mutation-proof.json": "mutation_proof",
         "transaction-readonly-proof.json": "transaction_readonly_proof",
+        "db-snapshot-proof.json": "db_snapshot_proof",
     }
     for filename, key in audit_name_map.items():
         write_json(pack_dir / "audit-data" / filename, audit_data[key])
@@ -2008,6 +2142,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     route = summary["route_decision_matrix"]
     pack = summary["chatgpt_review_pack"]
     provenance = summary["report_provenance"]
+    dirty = summary.get("dirty_worktree") or {}
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
@@ -2015,8 +2150,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Status: `{summary['final_route_decision_status']}`.",
         f"- Branch/runtime audit SHA: `{summary['branch']}` / `{provenance.get('runtime_audit_git_sha')}`.",
-        f"- Recommendation: `{summary['recommended_next_phase']}`.",
-        f"- Review pack required before final route approval: `{route.get('requires_external_pack_review')}`.",
+        f"- Recommended next phase: `{summary['recommended_next_phase']}`.",
+        f"- Previous A1 runner recommendation before INC1 gate: `{summary.get('pre_incident_runner_recommendation')}`.",
+        f"- Route approval blocked by INC1/R1R/A1R remediation gate: `{route.get('route_approval_blocked')}`.",
+        "- No R2, PX1-B, Provider-2, scale-up, Entity bridge, or SourceConcept truth promotion is approved by A1.",
         "",
         "## Provenance / SHA boundary",
         "",
@@ -2026,7 +2163,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Final PR head SHA if different: `{provenance.get('final_pr_head_sha_if_different')}`.",
         f"- Final PR head SHA scope: {provenance.get('final_pr_head_sha_if_different_scope')}",
         f"- Operational result reused older artifacts: `{provenance.get('operational_result_reused_older_artifacts')}`.",
-        f"- Dirty worktree status at runtime: `{provenance.get('dirty_worktree_status')}`.",
+        f"- Dirty worktree clean at runtime: `{dirty.get('clean')}`; dirty entry count: `{dirty.get('dirty_count')}`; status filenames redacted: `{dirty.get('status_redacted')}`.",
         "- If the final reviewed PR head differs from the runtime audit SHA, it is expected to be the later report/test/review-pack regeneration commit after this read-only audit.",
         "",
         "## Scope and non-goals",
@@ -2037,7 +2174,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "## Durable ChatGPT review pack policy update",
         "",
         "- Added `docs/chatgpt-review-pack-policy.md`.",
-        f"- A1 recommendations remain `{FINAL_ROUTE_DECISION_STATUS}` until the user uploads the review pack to ChatGPT and receives independent audit.",
+        f"- A1 route approval remains `{FINAL_ROUTE_DECISION_STATUS}` until R1R full-chain remediation and A1R rerun are complete.",
         "",
         "## Current DB/source baseline",
         "",
@@ -2124,7 +2261,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             "",
             "## Recommended next phase",
             "",
-            f"`{summary['recommended_next_phase']}` is the runner recommendation and remains `{FINAL_ROUTE_DECISION_STATUS}` pending ChatGPT pack audit.",
+            f"`{summary['recommended_next_phase']}` is required before any route approval. The earlier A1 runner recommendation was `{summary.get('pre_incident_runner_recommendation')}`, but INC1 blocks using it as approval evidence.",
             "",
             "## ChatGPT independent review pack",
             "",
@@ -2132,8 +2269,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- Not committed: `{not pack.get('committed')}`.",
             f"- Zip path label: `{pack.get('zip_path_label')}`.",
             "- Exact private paths are not exposed in this public report.",
-            "- The user should upload the local `chatgpt-review-pack.zip` to ChatGPT before final route approval.",
-            "- Final route decision should be made only after reviewing both this PR/report and the review pack.",
+            "- The review pack remains useful for independent audit of the blocked A1 state.",
+            "- Uploading the pack does not approve R2; R2 remains blocked until R1R and A1R complete.",
             "",
             "## Validation",
             "",
@@ -2144,6 +2281,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             "## Mutation proof / read-only proof",
             "",
             f"- PostgreSQL transaction_read_only: `{summary['transaction_readonly_proof'].get('transaction_read_only')}`.",
+            f"- PostgreSQL transaction isolation: `{summary['db_snapshot_proof'].get('transaction_isolation')}`.",
+            f"- Stable snapshot proof present: `{summary['db_snapshot_proof'].get('snapshot_id_present')}` (snapshot id redacted in public artifacts).",
             f"- Mutation proof passed: `{summary['mutation_proof'].get('passed')}`.",
             f"- Changed forbidden tables: `{summary['mutation_proof'].get('changed_tables')}`.",
             "",
@@ -2157,8 +2296,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             "",
             "- Artifact lifecycle: A1 runner and focused tests are phase-scoped; policy doc is durable project policy; public report/summary are public report/handoff artifacts; `.local_manifests` outputs and review pack are one-off ignored local artifacts.",
             "- Phase boundary is appropriate: A1 answers the route question without executing another resolver/provider/import/truth phase.",
-            "- Remaining risks: the route recommendation is provisional until independent ChatGPT review pack audit completes.",
-            "- Recommended next step: review the PR and upload the generated review pack to ChatGPT before approving a final route.",
+            "- Remaining risks: A1/R1 evidence is invalid as full-chain route approval until R1R and A1R complete.",
+            "- Recommended next step: review this incident-governance fix, then plan R1R separately; do not start R2 from this A1 report.",
             "",
         ]
     )
@@ -2253,6 +2392,7 @@ def write_private_artifacts(
     *,
     db_identity: Mapping[str, Any],
     transaction_proof: Mapping[str, Any],
+    snapshot_proof: Mapping[str, Any],
     baseline: Mapping[str, Any],
     source_metadata: Mapping[str, Any],
     concepts: Mapping[str, Any],
@@ -2269,6 +2409,7 @@ def write_private_artifacts(
     payloads = {
         "db-identity.json": db_identity,
         "transaction-readonly-proof.json": transaction_proof,
+        "db-snapshot-proof.json": snapshot_proof,
         "current-media-source-baseline.json": baseline,
         "source-metadata-coverage.json": source_metadata,
         "source-concept-current-state.json": concepts,
@@ -2291,6 +2432,7 @@ def build_summary(
     *,
     db_identity: Mapping[str, Any],
     transaction_proof: Mapping[str, Any],
+    snapshot_proof: Mapping[str, Any] | None = None,
     baseline: Mapping[str, Any],
     source_metadata: Mapping[str, Any],
     concepts: Mapping[str, Any],
@@ -2321,8 +2463,10 @@ def build_summary(
         "public_report_generated_from_runtime_sha": provenance["public_report_generated_from_runtime_sha"],
         "operational_result_reused_older_artifacts": provenance["operational_result_reused_older_artifacts"],
         "dirty_worktree_status": provenance["dirty_worktree_status"],
+        "dirty_worktree": provenance["dirty_worktree"],
         "db_identity": public_db_identity(db_identity),
         "transaction_readonly_proof": transaction_proof,
+        "db_snapshot_proof": public_db_snapshot_proof(snapshot_proof or transaction_proof),
         "durable_review_pack_policy": build_durable_review_pack_policy_summary(),
         "current_baseline": baseline,
         "source_metadata_coverage": source_metadata,
@@ -2336,7 +2480,8 @@ def build_summary(
         "route_decision_matrix": route,
         "runner_report_recommendation": route.get("runner_report_recommendation"),
         "final_route_decision_status": route.get("final_route_decision_status"),
-        "recommended_next_phase": route.get("runner_report_recommendation"),
+        "recommended_next_phase": route.get("recommended_next_phase"),
+        "pre_incident_runner_recommendation": route.get("pre_incident_runner_recommendation"),
         "entity_bridge_blockers": entity_bridge_blockers(route, thresholds),
         "px1_b_decision": decision_for_option(route, "PX1-B", status_key="deferred_pending_r2_or_pack_audit"),
         "provider2_decision": decision_for_option(route, "Provider-2-P0", status_key="deferred_pending_resolver_gap_reduction"),
@@ -2389,13 +2534,19 @@ def public_gap_audit(gap: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validation_context(command_label: str) -> dict[str, Any]:
+    raw_dirty_status = git_value(["git", "status", "--short"])
+    dirty = public_dirty_worktree_summary(raw_dirty_status)
     return {
         "operational_audit_command": command_label,
         "operational_audit_result": "passed",
         "browser_validation": "not_run_no_ui_runtime_change",
         "server_started": False,
         "provider_network_attempted": False,
-        "dirty_worktree_status": git_value(["git", "status", "--short"]),
+        "dirty_worktree_status": dirty["status_public"],
+        "dirty_worktree": dirty,
+        "dirty_worktree_clean": dirty["clean"],
+        "dirty_worktree_entry_count": dirty["dirty_count"],
+        "dirty_worktree_status_redacted": dirty["status_redacted"],
         "python_executable": Path(sys.executable).name,
         "python_executable_path_redacted": True,
     }
@@ -2403,14 +2554,16 @@ def validation_context(command_label: str) -> dict[str, Any]:
 
 def build_report_provenance(db_identity: Mapping[str, Any], validation: Mapping[str, Any]) -> dict[str, Any]:
     runtime_sha = str(db_identity.get("git_sha") or "unavailable")
+    dirty = validation.get("dirty_worktree") or public_dirty_worktree_summary(validation.get("dirty_worktree_status") or "")
     return {
         "runtime_audit_git_sha": runtime_sha,
-        "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; if dirty_worktree_status is non-empty, the runtime also included the listed working-tree changes.",
+        "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; public dirty-worktree details are redacted to counts only.",
         "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report regeneration commit; a commit cannot truthfully contain its own final SHA.",
         "final_pr_head_sha_if_different_scope": "If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later A1 report/test/review-pack regeneration commit, not a separate operational audit.",
         "public_report_generated_from_runtime_sha": runtime_sha,
         "operational_result_reused_older_artifacts": False,
-        "dirty_worktree_status": validation.get("dirty_worktree_status"),
+        "dirty_worktree_status": dirty.get("status_public"),
+        "dirty_worktree": dirty,
         "public_report_contains_runtime_result": True,
         "committed_report_sha_boundary_note": "The committed report records the runtime audit SHA and may itself be committed by a later PR head.",
     }
@@ -2441,12 +2594,18 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
         conn = engine.connect()
         if conn.dialect.name != "postgresql":
             raise A1BlockedError(f"A1 requires PostgreSQL read-only transaction support, got {conn.dialect.name!r}.")
-        conn.exec_driver_sql("BEGIN TRANSACTION READ ONLY")
+        conn.exec_driver_sql("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL statement_timeout = '600s'")
-        db_identity = scv1.read_only_identity(conn, env_identity)
+        snapshot_proof = read_db_snapshot_proof(conn)
+        db_identity = {
+            **scv1.read_only_identity(conn, env_identity),
+            "transaction_isolation": snapshot_proof.get("transaction_isolation"),
+            "snapshot_id_private": snapshot_proof.get("snapshot_id_private"),
+            "snapshot_id_present": snapshot_proof.get("snapshot_id_present"),
+        }
         transaction_proof = transaction_readonly_proof(db_identity)
         if not transaction_proof["passed"]:
-            raise A1BlockedError("PostgreSQL transaction_read_only proof failed.")
+            raise A1BlockedError("PostgreSQL repeatable-read read-only snapshot proof failed.")
         before_counts = build_table_counts(conn)
 
         media = scv1.audit_media_coverage(conn)
@@ -2486,6 +2645,7 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
             output_dir,
             db_identity=db_identity,
             transaction_proof=transaction_proof,
+            snapshot_proof=snapshot_proof,
             baseline=baseline,
             source_metadata=source_metadata,
             concepts=source_concepts,
@@ -2503,6 +2663,7 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
         summary = build_summary(
             db_identity=db_identity,
             transaction_proof=transaction_proof,
+            snapshot_proof=snapshot_proof,
             baseline=baseline,
             source_metadata=source_metadata,
             concepts=source_concepts,
@@ -2536,6 +2697,7 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
             "blocker_thresholds": thresholds,
             "mutation_proof": mutation,
             "transaction_readonly_proof": transaction_proof,
+            "db_snapshot_proof": public_db_snapshot_proof(snapshot_proof),
         }
         pack_info = generate_review_pack(output_dir, summary, audit_data, sample_payloads)
         summary = build_summary(

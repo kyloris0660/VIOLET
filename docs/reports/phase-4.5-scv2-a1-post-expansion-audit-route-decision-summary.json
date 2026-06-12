@@ -9,10 +9,10 @@
   },
   "branch": "codex/phase45-scv2-a1-post-expansion-audit-route-decision",
   "chatgpt_review_pack": {
-    "checksum_count": 28,
+    "checksum_count": 30,
     "committed": false,
     "exact_local_zip_path_private": "[private local path omitted from committed public summary; provided in final delivery report]",
-    "file_count": 29,
+    "file_count": 31,
     "generated": true,
     "known_limitations": [
       "checksums.json self-hash is omitted to avoid self-referential checksum churn",
@@ -21,7 +21,7 @@
     "manifest_present": true,
     "redaction_passed": true,
     "redaction_scan_covers_final_file_set": true,
-    "redaction_scanned_file_count": 29,
+    "redaction_scanned_file_count": 31,
     "sample_files_present": true,
     "upload_required_for_final_audit": true,
     "zip_path_label": ".local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision/chatgpt-review-pack.zip"
@@ -66,16 +66,28 @@
       "urls_match": true
     },
     "git_branch": "codex/phase45-scv2-a1-post-expansion-audit-route-decision",
-    "git_sha": "d6cc8fcdf0e3552e013bd25120fd37e147d552bc",
+    "git_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
     "host": "localhost",
     "port": 5432,
     "python_executable": "python.exe",
     "python_executable_path_redacted": true,
-    "recorded_at": "2026-06-12T11:02:00Z",
+    "recorded_at": "2026-06-12T11:37:37Z",
     "server_port": 5432,
+    "snapshot_id_present": true,
+    "snapshot_id_redacted": true,
+    "transaction_isolation": "repeatable read",
     "transaction_read_only": "on",
     "transaction_read_only_ok": true,
     "violet_env": "development"
+  },
+  "db_snapshot_proof": {
+    "recorded_at": "2026-06-12T11:38:08Z",
+    "required_isolation": "repeatable read or serializable",
+    "snapshot_id_present": true,
+    "snapshot_id_redacted": true,
+    "stable_snapshot": true,
+    "transaction_isolation": "repeatable read",
+    "transaction_read_only": "on"
   },
   "dedup1_decision": {
     "blockers": [
@@ -86,9 +98,16 @@
     "status": "not_useful_zero_exact_duplicate_groups",
     "why": "PX1 exact duplicate dry-run groups remained zero."
   },
-  "dirty_worktree_status": "M scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py\n M tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py\n?? .claude/\n?? .codex/\n?? docs/reports/phase-3.2h.3-general-batchB-delivery.md\n?? docs/reports/phase-3.2h.4-general-final-delivery.md\n?? docs/reports/phase-3.2h.5-localization-closeout-audit.md\n?? docs/reports/phase-3.2i-tier500-browser-acceptance.md\n?? server_8012.log\n?? server_8012_3.2h.4.log\n?? server_8012_3.2j.2.log\n?? server_8014.log\n?? server_phase3.5_8012.err.log\n?? server_phase3.5_8012.out.log",
+  "dirty_worktree": {
+    "clean": false,
+    "dirty_count": 20,
+    "raw_status_available_private": true,
+    "status_public": "redacted_dirty_entries:20",
+    "status_redacted": true
+  },
+  "dirty_worktree_status": "redacted_dirty_entries:20",
   "durable_review_pack_policy": {
-    "decision_rule": "provisional_pending_chatgpt_pack_audit",
+    "decision_rule": "blocked_pending_pipeline_fidelity_remediation",
     "not_normally_required_for": [
       "small bugfix PRs",
       "docs-only cleanup with no route decision",
@@ -115,6 +134,7 @@
     "blocked": true,
     "route_option": {
       "blockers": [
+        "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
         "current thresholds not met",
         "truth-path preview/manual confirmation design absent"
       ],
@@ -122,6 +142,7 @@
       "expected_value": "Eventually map source evidence into confirmed identity workflows.",
       "key": "Entity bridge preview",
       "prerequisites": [
+        "complete R1R and A1R",
         "0 asymmetric required seed groups",
         "low needs_review/noise",
         "manual confirmation/audit/rollback guards"
@@ -131,7 +152,7 @@
       "risk": "High truth pollution risk if premature.",
       "touches_truth_path": true,
       "user_manual_approval_required": true,
-      "why": "Entity bridge remains blocked by search asymmetry, gap signals, and high needs_review volume.",
+      "why": "Entity bridge remains blocked by search asymmetry, gap signals, high needs_review volume, and INC1.",
       "writes_db": true
     },
     "thresholds": {
@@ -159,7 +180,7 @@
     ]
   },
   "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report regeneration commit; a commit cannot truthfully contain its own final SHA.",
-  "final_route_decision_status": "provisional_pending_chatgpt_pack_audit",
+  "final_route_decision_status": "blocked_pending_pipeline_fidelity_remediation",
   "gap_audit": {
     "gap_bucket_details": {
       "cjk_alias_without_english_romaji_sibling": {
@@ -412,7 +433,7 @@
     "scv1_total_gap_signals": 1571,
     "total_gap_delta": 3051
   },
-  "generated_at": "2026-06-12T11:02:35Z",
+  "generated_at": "2026-06-12T11:38:08Z",
   "mutation_proof": {
     "changed_tables": [],
     "checked_tables": [
@@ -452,7 +473,7 @@
       "blombooru_local_source_hints"
     ],
     "passed": true,
-    "recorded_at": "2026-06-12T11:02:33Z"
+    "recorded_at": "2026-06-12T11:38:07Z"
   },
   "needs_review_triage": {
     "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
@@ -469,6 +490,7 @@
   },
   "operational_result_reused_older_artifacts": false,
   "phase": "4.5-SCV2-A1",
+  "pre_incident_runner_recommendation": "SCV2-R2 targeted resolver/gap reduction",
   "private_artifacts": {
     "chatgpt_review_pack_generated": true,
     "committed": false,
@@ -476,6 +498,7 @@
     "existing_required_private_artifacts": [
       "db-identity.json",
       "transaction-readonly-proof.json",
+      "db-snapshot-proof.json",
       "current-media-source-baseline.json",
       "source-metadata-coverage.json",
       "source-concept-current-state.json",
@@ -496,6 +519,7 @@
     "required_private_artifacts": [
       "db-identity.json",
       "transaction-readonly-proof.json",
+      "db-snapshot-proof.json",
       "current-media-source-baseline.json",
       "source-metadata-coverage.json",
       "source-concept-current-state.json",
@@ -514,16 +538,17 @@
   },
   "provider2_decision": {
     "blockers": [
-      "provider policy not yet approved",
-      "resolver gap dominance not closed"
+      "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
+      "provider policy not approved",
+      "Provider-2 must not start before R1R+A1R"
     ],
     "priority": "P2",
     "recommended": false,
     "status": "deferred_pending_resolver_gap_reduction",
-    "why": "Source tag gap=947 and alias split gap=544 suggest resolver/taxonomy questions, but Provider-2 needs a separate P0 policy after A1/R2."
+    "why": "Source tag gap=947 and alias split gap=544 remain interesting, but Provider-2 is blocked by INC1."
   },
   "public_redaction": {
-    "checked_at": "2026-06-12T11:02:37Z",
+    "checked_at": "2026-06-12T11:38:11Z",
     "exact_private_paths_public": false,
     "final_public_scan_after_public_fields_finalized": true,
     "findings": [],
@@ -534,19 +559,20 @@
       "docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json"
     ]
   },
-  "public_report_generated_from_runtime_sha": "d6cc8fcdf0e3552e013bd25120fd37e147d552bc",
+  "public_report_generated_from_runtime_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
   "px1_b_decision": {
     "blockers": [
-      "provider policy and budget required",
-      "resolver gaps should not be the dominant bottleneck"
+      "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
+      "provider execution is out of scope",
+      "PX1-B must not start before R1R+A1R"
     ],
     "priority": "P2",
     "recommended": false,
     "status": "deferred_pending_r2_or_pack_audit",
-    "why": "Metadata coverage is 14.4% distinct eligible media, but resolver/search gaps are still dominant=True."
+    "why": "Metadata coverage is 14.4% distinct eligible media, but all expansion/provider routes are blocked by INC1."
   },
   "px1_evidence_impact": {
-    "impact_interpretation": "PX1 materially expanded review-scoped evidence and SourceConcept influence, but did not make final route approval safe without sample-level review.",
+    "impact_interpretation": "PX1 materially expanded review-scoped evidence and SourceConcept influence, but does not make route approval safe during the INC1 pipeline fidelity incident.",
     "non_px1_pixiv_influenced_concepts": 1818,
     "pixiv_all_influenced_concepts": 3510,
     "px1_assertions": null,
@@ -555,7 +581,7 @@
       "needs_review_requires_review": null,
       "searchable_active": null
     },
-    "px1_filter_scope": "strict SourceMetadataRecord filter: provider='pixiv' and run_label equals px1_slug",
+    "px1_filter_scope": "strict SourceMetadataRecord filter: provider='pixiv' and PX1 run_label/provider_run_id provenance matches px1_slug",
     "px1_names": null,
     "px1_records": null,
     "px1_slug": "phase-4.5-px1-pixiv-metadata-dedup-dry-run",
@@ -597,19 +623,31 @@
       "total_source_concepts_before": 4214
     }
   },
-  "recommended_next_phase": "SCV2-R2 targeted resolver/gap reduction",
+  "recommended_next_phase": "Phase 4.5-SCV2-R1R full SourceConcept pipeline replay, then A1R route audit rerun",
   "report_provenance": {
     "committed_report_sha_boundary_note": "The committed report records the runtime audit SHA and may itself be committed by a later PR head.",
-    "dirty_worktree_status": "M scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py\n M tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py\n?? .claude/\n?? .codex/\n?? docs/reports/phase-3.2h.3-general-batchB-delivery.md\n?? docs/reports/phase-3.2h.4-general-final-delivery.md\n?? docs/reports/phase-3.2h.5-localization-closeout-audit.md\n?? docs/reports/phase-3.2i-tier500-browser-acceptance.md\n?? server_8012.log\n?? server_8012_3.2h.4.log\n?? server_8012_3.2j.2.log\n?? server_8014.log\n?? server_phase3.5_8012.err.log\n?? server_phase3.5_8012.out.log",
+    "dirty_worktree": {
+      "clean": false,
+      "dirty_count": 20,
+      "raw_status_available_private": true,
+      "status_public": "redacted_dirty_entries:20",
+      "status_redacted": true
+    },
+    "dirty_worktree_status": "redacted_dirty_entries:20",
     "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report regeneration commit; a commit cannot truthfully contain its own final SHA.",
     "final_pr_head_sha_if_different_scope": "If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later A1 report/test/review-pack regeneration commit, not a separate operational audit.",
     "operational_result_reused_older_artifacts": false,
     "public_report_contains_runtime_result": true,
-    "public_report_generated_from_runtime_sha": "d6cc8fcdf0e3552e013bd25120fd37e147d552bc",
-    "runtime_audit_git_sha": "d6cc8fcdf0e3552e013bd25120fd37e147d552bc",
-    "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; if dirty_worktree_status is non-empty, the runtime also included the listed working-tree changes."
+    "public_report_generated_from_runtime_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
+    "runtime_audit_git_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
+    "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; public dirty-worktree details are redacted to counts only."
   },
   "route_decision_matrix": {
+    "blocked_by_inc1": true,
+    "blocked_until": [
+      "R1R full SourceConcept pipeline replay/remediation",
+      "A1R rerun after R1R"
+    ],
     "blocker_thresholds": {
       "entity_bridge": {
         "blocked": true,
@@ -671,76 +709,82 @@
       }
     },
     "decision_bias": {
+      "all_routes_wait_for_pipeline_fidelity_remediation": true,
       "dedup1_not_useful": true,
       "entity_bridge_blocked": true,
       "px1_b_waits_if_resolver_gaps_dominate": true,
       "scale_up_waits_for_quality": true
     },
-    "final_route_decision_status": "provisional_pending_chatgpt_pack_audit",
+    "final_route_decision_status": "blocked_pending_pipeline_fidelity_remediation",
+    "governance_severity": "P0/P1 pipeline fidelity incident",
     "options": [
       {
         "blockers": [
-          "must stay source-layer only",
-          "must not create Entity/media_tags truth"
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
+          "no route approval",
+          "R2 must not start before R1R+A1R"
         ],
         "browser_validation_required": false,
-        "expected_value": "Reduce alias fragmentation and make search behavior more symmetric before larger data growth.",
+        "expected_value": "Still a possible later path, but only after the full-chain evidence base is repaired.",
         "key": "SCV2-R2 targeted resolver/gap reduction",
         "prerequisites": [
-          "focused resolver/gap tests",
-          "read-only/dry-run first unless explicitly approved"
+          "complete R1R full-chain replay/remediation",
+          "rerun A1R route audit from R1R outputs"
         ],
         "priority": "P1",
-        "recommended": true,
-        "risk": "Low to medium if bounded to SourceConcept resolver/search evidence contracts.",
+        "recommended": false,
+        "risk": "High governance risk if started from invalid or incomplete R1/A1 route evidence.",
         "touches_truth_path": false,
         "user_manual_approval_required": true,
-        "why": "Current audit shows gap signals=4622, asymmetric search groups=10, needs_review=1809.",
+        "why": "Pre-incident A1 signals favored resolver/gap work (gap signals=4622, asymmetric search groups=10, needs_review=1809), but route approval is blocked by the INC1 pipeline fidelity incident.",
         "writes_db": true
       },
       {
         "blockers": [
-          "provider policy and budget required",
-          "resolver gaps should not be the dominant bottleneck"
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
+          "provider execution is out of scope",
+          "PX1-B must not start before R1R+A1R"
         ],
         "browser_validation_required": false,
-        "expected_value": "More source metadata if coverage is the bottleneck after resolver gaps are reduced.",
+        "expected_value": "Deferred until the route evidence base is valid again.",
         "key": "PX1-B additional Pixiv metadata extraction",
         "prerequisites": [
-          "separate provider run approval",
-          "cache/audit/rate-limit gates"
+          "complete R1R and A1R",
+          "separate provider run approval only after route is revalidated"
         ],
         "priority": "P2",
         "recommended": false,
-        "risk": "Medium provider/privacy/accounting risk.",
+        "risk": "High process risk if used to bypass pipeline remediation.",
         "touches_truth_path": false,
         "user_manual_approval_required": true,
-        "why": "Metadata coverage is 14.4% distinct eligible media, but resolver/search gaps are still dominant=True.",
+        "why": "Metadata coverage is 14.4% distinct eligible media, but all expansion/provider routes are blocked by INC1.",
         "writes_db": true
       },
       {
         "blockers": [
-          "provider policy not yet approved",
-          "resolver gap dominance not closed"
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
+          "provider policy not approved",
+          "Provider-2 must not start before R1R+A1R"
         ],
         "browser_validation_required": false,
-        "expected_value": "Improve taxonomy/category/alias classification if Pixiv-only metadata cannot resolve gaps.",
+        "expected_value": "Deferred until route evidence is trustworthy.",
         "key": "Provider-2-P0 taxonomy/alias enrichment metadata-only",
         "prerequisites": [
+          "complete R1R and A1R",
           "metadata-only provider design",
-          "no image upload default",
           "privacy and budget policy"
         ],
         "priority": "P2",
         "recommended": false,
-        "risk": "Medium provider and taxonomy drift risk.",
+        "risk": "High governance/provider risk if started during incident remediation.",
         "touches_truth_path": false,
         "user_manual_approval_required": true,
-        "why": "Source tag gap=947 and alias split gap=544 suggest resolver/taxonomy questions, but Provider-2 needs a separate P0 policy after A1/R2.",
+        "why": "Source tag gap=947 and alias split gap=544 remain interesting, but Provider-2 is blocked by INC1.",
         "writes_db": false
       },
       {
         "blockers": [
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
           "run ledger prerequisite",
           "search/gap/needs_review thresholds not met"
         ],
@@ -748,6 +792,7 @@
         "expected_value": "More library coverage after quality gates are met.",
         "key": "SCV2-E2 controlled scale-up import to about 6000-6500 media",
         "prerequisites": [
+          "complete R1R and A1R",
           "Ingestion Run Ledger / Source Item State Ledger",
           "stable retrieval thresholds"
         ],
@@ -756,31 +801,34 @@
         "risk": "High if done before retrieval quality stabilizes.",
         "touches_truth_path": false,
         "user_manual_approval_required": true,
-        "why": "Scale-up would multiply current retrieval noise before resolver/search stability is proven.",
+        "why": "Scale-up is blocked by quality gates and by the INC1 pipeline fidelity incident.",
         "writes_db": true
       },
       {
         "blockers": [
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
           "must not assume exhaustive manual review",
           "needs audit/rollback design"
         ],
         "browser_validation_required": true,
-        "expected_value": "Targeted correction of high-impact clusters after resolver gaps narrow.",
+        "expected_value": "Deferred targeted correction after the route evidence base is valid.",
         "key": "SourceConcept management/editing UI/design",
         "prerequisites": [
+          "complete R1R and A1R",
           "correction-oriented workflow design",
           "source-layer audit trail"
         ],
         "priority": "P2",
         "recommended": false,
-        "risk": "Medium product/workflow risk.",
+        "risk": "Medium product/workflow risk; high process risk if used as route bypass.",
         "touches_truth_path": false,
         "user_manual_approval_required": true,
-        "why": "Manual correction may help later, but current dominant issue is automated resolver/gap reduction rather than UI processing.",
+        "why": "Manual correction/UI work may help later, but incident remediation must first restore full-chain evidence.",
         "writes_db": true
       },
       {
         "blockers": [
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
           "current thresholds not met",
           "truth-path preview/manual confirmation design absent"
         ],
@@ -788,6 +836,7 @@
         "expected_value": "Eventually map source evidence into confirmed identity workflows.",
         "key": "Entity bridge preview",
         "prerequisites": [
+          "complete R1R and A1R",
           "0 asymmetric required seed groups",
           "low needs_review/noise",
           "manual confirmation/audit/rollback guards"
@@ -797,7 +846,7 @@
         "risk": "High truth pollution risk if premature.",
         "touches_truth_path": true,
         "user_manual_approval_required": true,
-        "why": "Entity bridge remains blocked by search asymmetry, gap signals, and high needs_review volume.",
+        "why": "Entity bridge remains blocked by search asymmetry, gap signals, high needs_review volume, and INC1.",
         "writes_db": true
       },
       {
@@ -821,6 +870,7 @@
       },
       {
         "blockers": [
+          "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
           "retrieval quality unstable",
           "ledger prerequisite missing"
         ],
@@ -828,6 +878,7 @@
         "expected_value": "Large-scale library coverage only after quality and recovery controls exist.",
         "key": "Full-library / 10k expansion",
         "prerequisites": [
+          "complete R1R and A1R",
           "production ingestion ledger",
           "provider/source run ledger discipline",
           "stable retrieval thresholds"
@@ -837,16 +888,19 @@
         "risk": "High operational and noise amplification risk.",
         "touches_truth_path": false,
         "user_manual_approval_required": true,
-        "why": "Full-library expansion is blocked by current quality gates and ledger prerequisites.",
+        "why": "Full-library expansion is blocked by current quality gates, ledger prerequisites, and INC1.",
         "writes_db": true
       }
     ],
-    "requires_external_pack_review": true,
-    "runner_report_recommendation": "SCV2-R2 targeted resolver/gap reduction"
+    "pre_incident_runner_recommendation": "SCV2-R2 targeted resolver/gap reduction",
+    "recommended_next_phase": "Phase 4.5-SCV2-R1R full SourceConcept pipeline replay, then A1R route audit rerun",
+    "requires_external_pack_review": false,
+    "route_approval_blocked": true,
+    "runner_report_recommendation": "blocked_pending_pipeline_fidelity_remediation"
   },
-  "runner_report_recommendation": "SCV2-R2 targeted resolver/gap reduction",
-  "runtime_audit_git_sha": "d6cc8fcdf0e3552e013bd25120fd37e147d552bc",
-  "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; if dirty_worktree_status is non-empty, the runtime also included the listed working-tree changes.",
+  "runner_report_recommendation": "blocked_pending_pipeline_fidelity_remediation",
+  "runtime_audit_git_sha": "93ae964563e9754569d56b547cbdb5a0c8a97994",
+  "runtime_audit_git_sha_scope": "git rev-parse HEAD at A1 read-only runner execution; public dirty-worktree details are redacted to counts only.",
   "safety": {
     "ai_tagging": false,
     "classification": false,
@@ -863,33 +917,34 @@
   },
   "scale_up_decision": {
     "blockers": [
+      "INC1 found R1 was deterministic-only; full-chain R1R plus A1R remediation is required before route approval",
       "run ledger prerequisite",
       "search/gap/needs_review thresholds not met"
     ],
     "priority": "P3",
     "recommended": false,
     "status": "blocked_quality_and_ledger_thresholds",
-    "why": "Scale-up would multiply current retrieval noise before resolver/search stability is proven."
+    "why": "Scale-up is blocked by quality gates and by the INC1 pipeline fidelity incident."
   },
   "search_seed_symmetry": {
     "aggregate": {
       "asymmetric_groups": 10,
       "asymmetry_reason_buckets": {
         "active_only_vs_needs_review_contrast": 5,
-        "concept_split": 33,
-        "hidden_or_superseded_raw_match": 35,
+        "concept_split": 30,
+        "hidden_or_superseded_raw_match": 31,
         "missing_alias_or_unmatched_seed": 10,
         "needs_review_not_included_in_active_search": 8,
         "unmatched_alias": 16
       },
       "groups_tested": 10,
-      "matched_seeds": 43,
+      "matched_seeds": 42,
       "media_result_overlap_metrics": {
-        "average_pairwise_jaccard": 0.19,
+        "average_pairwise_jaccard": 0.1862,
         "min_pairwise_jaccard": 0.0,
-        "pairwise_jaccard_count": 33
+        "pairwise_jaccard_count": 32
       },
-      "seeds_tested": 59,
+      "seeds_tested": 58,
       "symmetric_groups": 0,
       "unmatched_aliases_count_as_asymmetry": true,
       "unmatched_seeds": 16
@@ -1217,22 +1272,14 @@
       "px1_ambiguous_short_names_private": {
         "active_only_vs_include_needs_review_contrast": false,
         "asymmetry_reasons": {
-          "concept_split": 7,
-          "hidden_or_superseded_raw_match": 4,
+          "concept_split": 5,
+          "hidden_or_superseded_raw_match": 2,
           "missing_alias_or_unmatched_seed": 1,
           "unmatched_alias": 1
         },
-        "matched_seed_count": 7,
-        "seed_count": 8,
+        "matched_seed_count": 6,
+        "seed_count": 7,
         "seed_rows_public": [
-          {
-            "active_matched": true,
-            "active_media_count": 24,
-            "matched": true,
-            "matched_concept_count": 19,
-            "seed_label": "[redacted seed]",
-            "visible_media_count": 40
-          },
           {
             "active_matched": false,
             "active_media_count": 0,
@@ -1275,17 +1322,17 @@
           },
           {
             "active_matched": true,
-            "active_media_count": 4,
+            "active_media_count": 5,
             "matched": true,
-            "matched_concept_count": 15,
+            "matched_concept_count": 11,
             "seed_label": "[redacted seed]",
-            "visible_media_count": 9
+            "visible_media_count": 5
           },
           {
             "active_matched": true,
             "active_media_count": 5,
             "matched": true,
-            "matched_concept_count": 11,
+            "matched_concept_count": 1,
             "seed_label": "[redacted seed]",
             "visible_media_count": 5
           }
@@ -1297,22 +1344,14 @@
       "px1_high_frequency_source_names_private": {
         "active_only_vs_include_needs_review_contrast": false,
         "asymmetry_reasons": {
-          "concept_split": 7,
-          "hidden_or_superseded_raw_match": 5,
+          "concept_split": 6,
+          "hidden_or_superseded_raw_match": 3,
           "missing_alias_or_unmatched_seed": 1,
           "unmatched_alias": 1
         },
         "matched_seed_count": 7,
         "seed_count": 8,
         "seed_rows_public": [
-          {
-            "active_matched": true,
-            "active_media_count": 24,
-            "matched": true,
-            "matched_concept_count": 19,
-            "seed_label": "[redacted seed]",
-            "visible_media_count": 40
-          },
           {
             "active_matched": false,
             "active_media_count": 0,
@@ -1328,22 +1367,6 @@
             "matched_concept_count": 24,
             "seed_label": "[redacted seed]",
             "visible_media_count": 12
-          },
-          {
-            "active_matched": true,
-            "active_media_count": 10,
-            "matched": true,
-            "matched_concept_count": 2,
-            "seed_label": "[redacted seed]",
-            "visible_media_count": 10
-          },
-          {
-            "active_matched": true,
-            "active_media_count": 9,
-            "matched": true,
-            "matched_concept_count": 2,
-            "seed_label": "[redacted seed]",
-            "visible_media_count": 9
           },
           {
             "active_matched": true,
@@ -1363,11 +1386,35 @@
           },
           {
             "active_matched": true,
+            "active_media_count": 9,
+            "matched": true,
+            "matched_concept_count": 2,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 9
+          },
+          {
+            "active_matched": true,
             "active_media_count": 6,
             "matched": true,
             "matched_concept_count": 13,
             "seed_label": "[redacted seed]",
             "visible_media_count": 6
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 11,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
           }
         ],
         "symmetric": false,
@@ -1430,18 +1477,18 @@
           {
             "active_matched": false,
             "active_media_count": 0,
-            "matched": true,
-            "matched_concept_count": 1,
-            "seed_label": "[redacted seed]",
-            "visible_media_count": 1
-          },
-          {
-            "active_matched": false,
-            "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
             "seed_label": "[redacted seed]",
             "visible_media_count": 0
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 1
           },
           {
             "active_matched": false,
@@ -1555,7 +1602,7 @@
     "concepts_influenced_by_all_pixiv_evidence": 3510,
     "concepts_influenced_by_non_px1_pixiv_evidence": 1818,
     "concepts_influenced_by_px1_evidence": 1692,
-    "concepts_influenced_by_px1_evidence_scope": "strict PX1 SourceMetadataRecord run_label=phase-4.5-px1-pixiv-metadata-dedup-dry-run",
+    "concepts_influenced_by_px1_evidence_scope": "strict PX1 SourceMetadataRecord provenance slug=phase-4.5-px1-pixiv-metadata-dedup-dry-run",
     "concepts_influenced_by_strict_px1_evidence": 1692,
     "concepts_with_media": 2313,
     "concepts_with_media_status_scope": "visible_statuses_active_or_needs_review",
@@ -2582,15 +2629,30 @@
   },
   "title": "Post-expansion Audit, Route Decision, and Durable ChatGPT Review Pack Policy",
   "transaction_readonly_proof": {
-    "enforced_by": "BEGIN TRANSACTION READ ONLY",
+    "enforced_by": "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
     "no_execute_or_write_flags": true,
     "passed": true,
     "required": "on",
+    "required_isolation": "repeatable read or serializable",
+    "snapshot_id_present": true,
+    "snapshot_id_redacted": true,
+    "stable_snapshot": true,
+    "transaction_isolation": "repeatable read",
     "transaction_read_only": "on"
   },
   "validation": {
     "browser_validation": "not_run_no_ui_runtime_change",
-    "dirty_worktree_status": "M scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py\n M tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py\n?? .claude/\n?? .codex/\n?? docs/reports/phase-3.2h.3-general-batchB-delivery.md\n?? docs/reports/phase-3.2h.4-general-final-delivery.md\n?? docs/reports/phase-3.2h.5-localization-closeout-audit.md\n?? docs/reports/phase-3.2i-tier500-browser-acceptance.md\n?? server_8012.log\n?? server_8012_3.2h.4.log\n?? server_8012_3.2j.2.log\n?? server_8014.log\n?? server_phase3.5_8012.err.log\n?? server_phase3.5_8012.out.log",
+    "dirty_worktree": {
+      "clean": false,
+      "dirty_count": 20,
+      "raw_status_available_private": true,
+      "status_public": "redacted_dirty_entries:20",
+      "status_redacted": true
+    },
+    "dirty_worktree_clean": false,
+    "dirty_worktree_entry_count": 20,
+    "dirty_worktree_status": "redacted_dirty_entries:20",
+    "dirty_worktree_status_redacted": true,
     "operational_audit_command": "python scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py --output-dir .local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision --write-public-report --read-only --write-chatgpt-review-pack",
     "operational_audit_result": "passed",
     "provider_network_attempted": false,
@@ -2606,7 +2668,9 @@
         "chatgpt_review_pack",
         "current_baseline",
         "db_identity",
+        "db_snapshot_proof",
         "dedup1_decision",
+        "dirty_worktree",
         "durable_review_pack_policy",
         "entity_bridge_blockers",
         "final_route_decision_status",

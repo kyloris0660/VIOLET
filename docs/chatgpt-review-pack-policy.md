@@ -65,6 +65,15 @@ completes independent audit. A runner may recommend a next phase, but final
 route approval remains blocked by the pack audit unless the user explicitly
 waives that requirement.
 
+If a pipeline fidelity, provenance, privacy, or mutation-safety incident is
+open, the incident gate is stronger than the normal pack-audit gate. Public
+reports and summary JSON must use an explicit blocked status such as:
+
+`blocked_pending_pipeline_fidelity_remediation`
+
+until the required remediation and rerun evidence exist. Uploading a review
+pack does not approve the next route while the incident gate is active.
+
 ## Minimum Pack Shape
 
 Required packs should include:

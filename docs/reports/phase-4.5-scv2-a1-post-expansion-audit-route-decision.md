@@ -2,33 +2,22 @@
 
 ## Summary
 
-- Status: `provisional_pending_chatgpt_pack_audit`.
-- Branch/runtime audit SHA: `codex/phase45-scv2-a1-post-expansion-audit-route-decision` / `d6cc8fcdf0e3552e013bd25120fd37e147d552bc`.
-- Recommendation: `SCV2-R2 targeted resolver/gap reduction`.
-- Review pack required before final route approval: `True`.
+- Status: `blocked_pending_pipeline_fidelity_remediation`.
+- Branch/runtime audit SHA: `codex/phase45-scv2-a1-post-expansion-audit-route-decision` / `93ae964563e9754569d56b547cbdb5a0c8a97994`.
+- Recommended next phase: `Phase 4.5-SCV2-R1R full SourceConcept pipeline replay, then A1R route audit rerun`.
+- Previous A1 runner recommendation before INC1 gate: `SCV2-R2 targeted resolver/gap reduction`.
+- Route approval blocked by INC1/R1R/A1R remediation gate: `True`.
+- No R2, PX1-B, Provider-2, scale-up, Entity bridge, or SourceConcept truth promotion is approved by A1.
 
 ## Provenance / SHA boundary
 
-- Runtime audit git SHA: `d6cc8fcdf0e3552e013bd25120fd37e147d552bc`.
-- Runtime audit git SHA scope: git rev-parse HEAD at A1 read-only runner execution; if dirty_worktree_status is non-empty, the runtime also included the listed working-tree changes.
-- Public report generated from runtime SHA: `d6cc8fcdf0e3552e013bd25120fd37e147d552bc`.
+- Runtime audit git SHA: `93ae964563e9754569d56b547cbdb5a0c8a97994`.
+- Runtime audit git SHA scope: git rev-parse HEAD at A1 read-only runner execution; public dirty-worktree details are redacted to counts only.
+- Public report generated from runtime SHA: `93ae964563e9754569d56b547cbdb5a0c8a97994`.
 - Final PR head SHA if different: `reported by PR metadata/final delivery after the report regeneration commit; a commit cannot truthfully contain its own final SHA.`.
 - Final PR head SHA scope: If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later A1 report/test/review-pack regeneration commit, not a separate operational audit.
 - Operational result reused older artifacts: `False`.
-- Dirty worktree status at runtime: `M scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py
- M tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py
-?? .claude/
-?? .codex/
-?? docs/reports/phase-3.2h.3-general-batchB-delivery.md
-?? docs/reports/phase-3.2h.4-general-final-delivery.md
-?? docs/reports/phase-3.2h.5-localization-closeout-audit.md
-?? docs/reports/phase-3.2i-tier500-browser-acceptance.md
-?? server_8012.log
-?? server_8012_3.2h.4.log
-?? server_8012_3.2j.2.log
-?? server_8014.log
-?? server_phase3.5_8012.err.log
-?? server_phase3.5_8012.out.log`.
+- Dirty worktree clean at runtime: `False`; dirty entry count: `20`; status filenames redacted: `True`.
 - If the final reviewed PR head differs from the runtime audit SHA, it is expected to be the later report/test/review-pack regeneration commit after this read-only audit.
 
 ## Scope and non-goals
@@ -39,7 +28,7 @@
 ## Durable ChatGPT review pack policy update
 
 - Added `docs/chatgpt-review-pack-policy.md`.
-- A1 recommendations remain `provisional_pending_chatgpt_pack_audit` until the user uploads the review pack to ChatGPT and receives independent audit.
+- A1 route approval remains `blocked_pending_pipeline_fidelity_remediation` until R1R full-chain remediation and A1R rerun are complete.
 
 ## Current DB/source baseline
 
@@ -57,7 +46,7 @@
 
 - Total SourceConcept: `6094`.
 - By status: `{"active": 1078, "needs_review": 1809, "superseded": 3207}`.
-- Strict PX1-influenced concepts: `1692` (`strict PX1 SourceMetadataRecord run_label=phase-4.5-px1-pixiv-metadata-dedup-dry-run`).
+- Strict PX1-influenced concepts: `1692` (`strict PX1 SourceMetadataRecord provenance slug=phase-4.5-px1-pixiv-metadata-dedup-dry-run`).
 - All Pixiv-influenced concepts: `3510`; non-PX1 Pixiv-influenced concepts: `1818`.
 - Duplicate/fragment candidate groups: `1088`.
 
@@ -69,9 +58,9 @@
 
 ## Search seed symmetry audit
 
-- Groups / seeds / matched / unmatched: `10` / `59` / `43` / `16`.
+- Groups / seeds / matched / unmatched: `10` / `58` / `42` / `16`.
 - Symmetric / asymmetric groups: `0` / `10`.
-- Asymmetry reason buckets: `{"active_only_vs_needs_review_contrast": 5, "concept_split": 33, "hidden_or_superseded_raw_match": 35, "missing_alias_or_unmatched_seed": 10, "needs_review_not_included_in_active_search": 8, "unmatched_alias": 16}`.
+- Asymmetry reason buckets: `{"active_only_vs_needs_review_contrast": 5, "concept_split": 30, "hidden_or_superseded_raw_match": 31, "missing_alias_or_unmatched_seed": 10, "needs_review_not_included_in_active_search": 8, "unmatched_alias": 16}`.
 - Unmatched aliases are counted as asymmetry or explicit unmatched failures.
 
 ## needs_review triage audit
@@ -82,7 +71,7 @@
 
 ## PX1 evidence impact
 
-- Strict PX1-influenced concepts: `1692` using `strict SourceMetadataRecord filter: provider='pixiv' and run_label equals px1_slug`.
+- Strict PX1-influenced concepts: `1692` using `strict SourceMetadataRecord filter: provider='pixiv' and PX1 run_label/provider_run_id provenance matches px1_slug`.
 - All Pixiv-influenced concepts: `3510`.
 - Non-PX1 Pixiv-influenced concepts: `1818`.
 - Route decision PX1 impact metric: `px1_strict_influenced_concepts`.
@@ -95,14 +84,14 @@
 
 ## Route decision matrix
 
-- `SCV2-R2 targeted resolver/gap reduction`: priority `P1`, recommended `True`; writes DB `True`; truth path `False`; why: Current audit shows gap signals=4622, asymmetric search groups=10, needs_review=1809.
-- `PX1-B additional Pixiv metadata extraction`: priority `P2`, recommended `False`; writes DB `True`; truth path `False`; why: Metadata coverage is 14.4% distinct eligible media, but resolver/search gaps are still dominant=True.
-- `Provider-2-P0 taxonomy/alias enrichment metadata-only`: priority `P2`, recommended `False`; writes DB `False`; truth path `False`; why: Source tag gap=947 and alias split gap=544 suggest resolver/taxonomy questions, but Provider-2 needs a separate P0 policy after A1/R2.
-- `SCV2-E2 controlled scale-up import to about 6000-6500 media`: priority `P3`, recommended `False`; writes DB `True`; truth path `False`; why: Scale-up would multiply current retrieval noise before resolver/search stability is proven.
-- `SourceConcept management/editing UI/design`: priority `P2`, recommended `False`; writes DB `True`; truth path `False`; why: Manual correction may help later, but current dominant issue is automated resolver/gap reduction rather than UI processing.
-- `Entity bridge preview`: priority `P3`, recommended `False`; writes DB `True`; truth path `True`; why: Entity bridge remains blocked by search asymmetry, gap signals, and high needs_review volume.
+- `SCV2-R2 targeted resolver/gap reduction`: priority `P1`, recommended `False`; writes DB `True`; truth path `False`; why: Pre-incident A1 signals favored resolver/gap work (gap signals=4622, asymmetric search groups=10, needs_review=1809), but route approval is blocked by the INC1 pipeline fidelity incident.
+- `PX1-B additional Pixiv metadata extraction`: priority `P2`, recommended `False`; writes DB `True`; truth path `False`; why: Metadata coverage is 14.4% distinct eligible media, but all expansion/provider routes are blocked by INC1.
+- `Provider-2-P0 taxonomy/alias enrichment metadata-only`: priority `P2`, recommended `False`; writes DB `False`; truth path `False`; why: Source tag gap=947 and alias split gap=544 remain interesting, but Provider-2 is blocked by INC1.
+- `SCV2-E2 controlled scale-up import to about 6000-6500 media`: priority `P3`, recommended `False`; writes DB `True`; truth path `False`; why: Scale-up is blocked by quality gates and by the INC1 pipeline fidelity incident.
+- `SourceConcept management/editing UI/design`: priority `P2`, recommended `False`; writes DB `True`; truth path `False`; why: Manual correction/UI work may help later, but incident remediation must first restore full-chain evidence.
+- `Entity bridge preview`: priority `P3`, recommended `False`; writes DB `True`; truth path `True`; why: Entity bridge remains blocked by search asymmetry, gap signals, high needs_review volume, and INC1.
 - `DEDUP1 exact duplicate cleanup execution`: priority `P3`, recommended `False`; writes DB `True`; truth path `False`; why: PX1 exact duplicate dry-run groups remained zero.
-- `Full-library / 10k expansion`: priority `P3`, recommended `False`; writes DB `True`; truth path `False`; why: Full-library expansion is blocked by current quality gates and ledger prerequisites.
+- `Full-library / 10k expansion`: priority `P3`, recommended `False`; writes DB `True`; truth path `False`; why: Full-library expansion is blocked by current quality gates, ledger prerequisites, and INC1.
 
 ## Entity bridge blocker analysis
 
@@ -111,15 +100,15 @@
 
 ## PX1-B decision
 
-- `deferred_pending_r2_or_pack_audit`: Metadata coverage is 14.4% distinct eligible media, but resolver/search gaps are still dominant=True.
+- `deferred_pending_r2_or_pack_audit`: Metadata coverage is 14.4% distinct eligible media, but all expansion/provider routes are blocked by INC1.
 
 ## Provider-2 decision
 
-- `deferred_pending_resolver_gap_reduction`: Source tag gap=947 and alias split gap=544 suggest resolver/taxonomy questions, but Provider-2 needs a separate P0 policy after A1/R2.
+- `deferred_pending_resolver_gap_reduction`: Source tag gap=947 and alias split gap=544 remain interesting, but Provider-2 is blocked by INC1.
 
 ## Scale-up decision
 
-- `blocked_quality_and_ledger_thresholds`: Scale-up would multiply current retrieval noise before resolver/search stability is proven.
+- `blocked_quality_and_ledger_thresholds`: Scale-up is blocked by quality gates and by the INC1 pipeline fidelity incident.
 
 ## DEDUP1 decision
 
@@ -127,7 +116,7 @@
 
 ## Recommended next phase
 
-`SCV2-R2 targeted resolver/gap reduction` is the runner recommendation and remains `provisional_pending_chatgpt_pack_audit` pending ChatGPT pack audit.
+`Phase 4.5-SCV2-R1R full SourceConcept pipeline replay, then A1R route audit rerun` is required before any route approval. The earlier A1 runner recommendation was `SCV2-R2 targeted resolver/gap reduction`, but INC1 blocks using it as approval evidence.
 
 ## ChatGPT independent review pack
 
@@ -135,8 +124,8 @@
 - Not committed: `True`.
 - Zip path label: `.local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision/chatgpt-review-pack.zip`.
 - Exact private paths are not exposed in this public report.
-- The user should upload the local `chatgpt-review-pack.zip` to ChatGPT before final route approval.
-- Final route decision should be made only after reviewing both this PR/report and the review pack.
+- The review pack remains useful for independent audit of the blocked A1 state.
+- Uploading the pack does not approve R2; R2 remains blocked until R1R and A1R complete.
 
 ## Validation
 
@@ -147,6 +136,8 @@
 ## Mutation proof / read-only proof
 
 - PostgreSQL transaction_read_only: `on`.
+- PostgreSQL transaction isolation: `repeatable read`.
+- Stable snapshot proof present: `True` (snapshot id redacted in public artifacts).
 - Mutation proof passed: `True`.
 - Changed forbidden tables: `[]`.
 
@@ -160,5 +151,5 @@
 
 - Artifact lifecycle: A1 runner and focused tests are phase-scoped; policy doc is durable project policy; public report/summary are public report/handoff artifacts; `.local_manifests` outputs and review pack are one-off ignored local artifacts.
 - Phase boundary is appropriate: A1 answers the route question without executing another resolver/provider/import/truth phase.
-- Remaining risks: the route recommendation is provisional until independent ChatGPT review pack audit completes.
-- Recommended next step: review the PR and upload the generated review pack to ChatGPT before approving a final route.
+- Remaining risks: A1/R1 evidence is invalid as full-chain route approval until R1R and A1R complete.
+- Recommended next step: review this incident-governance fix, then plan R1R separately; do not start R2 from this A1 report.

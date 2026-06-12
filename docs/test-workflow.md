@@ -34,7 +34,10 @@ ChatGPT review pack unless the user/ChatGPT explicitly waives it. The pack must
 include a manifest, checksums, public report copy, audit-data JSON, review
 samples, and a redaction report that scans every file in the pack. Until the
 pack is uploaded for independent audit, the final route status should remain
-`provisional_pending_chatgpt_pack_audit`. See
+`provisional_pending_chatgpt_pack_audit`. If a pipeline fidelity incident is
+open, route approval must instead remain
+`blocked_pending_pipeline_fidelity_remediation` until remediation and rerun
+evidence exist. See
 `docs/chatgpt-review-pack-policy.md`.
 
 No-active-server preflight is mandatory before agent-started servers and
@@ -55,7 +58,7 @@ Use these first for current SourceConcept/documentation work:
 | SC2 SourceConcept search/evidence UI | `& "$PY" -m pytest tests/test_phase44p2r_f6_source_layer_search.py tests/test_phase45_sc2_source_concept_search_evidence_ui.py -v`; gated Playwright Edge E2E when UI/runtime behavior is in scope |
 | SCV1 expanded validation planning | Start read-only: coverage inventory, larger current-data samples, alias-gap analysis, `needs_review` clusters, redacted evidence review, and search-symmetry checks. Do not run imports/providers/LLMs/source enrichment without separate approval |
 | SCV2-P0 controlled medium expansion policy | `& "$PY" scripts/run_phase45_scv2_p0_controlled_medium_expansion_policy.py --output-dir ".local_manifests\phase-4.5-scv2-p0-controlled-medium-expansion-policy" --write-public-report --read-only`; `& "$PY" -m pytest tests/test_phase45_scv2_p0_controlled_medium_expansion_policy.py -v`; no server/browser/import/provider/AI jobs |
-| SCV2-A1 post-expansion audit / route decision | `& "$PY" scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py --output-dir ".local_manifests\phase-4.5-scv2-a1-post-expansion-audit-route-decision" --write-public-report --read-only --write-chatgpt-review-pack`; `& "$PY" -m pytest tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py -v`; no server/browser/import/provider/AI jobs. Final route approval remains `provisional_pending_chatgpt_pack_audit` until the generated ChatGPT review pack is independently audited |
+| SCV2-A1 post-expansion audit / route decision | `& "$PY" scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py --output-dir ".local_manifests\phase-4.5-scv2-a1-post-expansion-audit-route-decision" --write-public-report --read-only --write-chatgpt-review-pack`; `& "$PY" -m pytest tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py -v`; no server/browser/import/provider/AI jobs. During INC1, final route approval remains `blocked_pending_pipeline_fidelity_remediation`; R2/PX1-B/Provider-2/scale-up remain blocked until R1R+A1R complete |
 | Entity bridge / SourceConcept editing | Not covered by current validation. Must add preview, confirmation, audit, rollback/supersede, write guards, and no-truth-pollution tests before implementation |
 | Provider or full-library scale | Requires separate provider policy, privacy eligibility, budget/cache/audit gates, run ledger, and Phase 3.9-style source item ledger discipline before execution |
 

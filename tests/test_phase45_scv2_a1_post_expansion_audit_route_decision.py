@@ -27,6 +27,8 @@ def _fake_db_identity() -> dict:
         "server_port": 5432,
         "transaction_read_only": "on",
         "transaction_read_only_ok": True,
+        "transaction_isolation": "repeatable read",
+        "snapshot_id_present": True,
         "git_branch": runner.BRANCH,
         "git_sha": "abc123",
         "python_executable": "python.exe",
@@ -76,7 +78,18 @@ def _fake_summary(tmp_path: Path, review_pack_info: dict | None = None) -> dict:
     thresholds = {"entity_bridge": {"blocked": True}}
     return runner.build_summary(
         db_identity=_fake_db_identity(),
-        transaction_proof={"passed": True, "transaction_read_only": "on"},
+        transaction_proof={
+            "passed": True,
+            "transaction_read_only": "on",
+            "transaction_isolation": "repeatable read",
+            "snapshot_id_present": True,
+        },
+        snapshot_proof={
+            "transaction_read_only": "on",
+            "transaction_isolation": "repeatable read",
+            "snapshot_id_present": True,
+            "stable_snapshot": True,
+        },
         baseline={
             "total_media": 3750,
             "eligible_media": 3687,
@@ -118,6 +131,24 @@ def _fake_summary(tmp_path: Path, review_pack_info: dict | None = None) -> dict:
     )
 
 
+def _fake_audit_data(summary: dict) -> dict:
+    return {
+        "current_baseline": summary["current_baseline"],
+        "source_metadata_coverage": summary["source_metadata_coverage"],
+        "source_concept_current_state": summary["source_concept_current_state"],
+        "gap_audit": summary["gap_audit"],
+        "gap_vs_scv1": summary["gap_vs_scv1"],
+        "search_seed_symmetry": summary["search_seed_symmetry"],
+        "needs_review_triage": summary["needs_review_triage"],
+        "px1_evidence_impact": summary["px1_evidence_impact"],
+        "route_decision_matrix": summary["route_decision_matrix"],
+        "blocker_thresholds": {"entity_bridge": {"blocked": True}},
+        "mutation_proof": summary["mutation_proof"],
+        "transaction_readonly_proof": summary["transaction_readonly_proof"],
+        "db_snapshot_proof": summary["db_snapshot_proof"],
+    }
+
+
 def test_runner_is_read_only_only_and_has_no_execute_write_flags(tmp_path: Path) -> None:
     source = Path(runner.__file__).read_text(encoding="utf-8")
     parser = runner.build_parser()
@@ -141,6 +172,30 @@ def test_transaction_readonly_proof_is_required() -> None:
 
     assert proof["passed"] is False
     assert proof["required"] == "on"
+    assert proof["required_isolation"] == "repeatable read or serializable"
+
+
+def test_repeatable_read_readonly_snapshot_proof_is_required() -> None:
+    good = runner.transaction_readonly_proof(
+        {
+            "transaction_read_only": "on",
+            "transaction_read_only_ok": True,
+            "transaction_isolation": "repeatable read",
+            "snapshot_id_present": True,
+        }
+    )
+    weak = runner.transaction_readonly_proof(
+        {
+            "transaction_read_only": "on",
+            "transaction_read_only_ok": True,
+            "transaction_isolation": "read committed",
+            "snapshot_id_present": True,
+        }
+    )
+
+    assert good["passed"] is True
+    assert good["stable_snapshot"] is True
+    assert weak["passed"] is False
 
 
 def test_summary_json_required_fields(tmp_path: Path) -> None:
@@ -155,8 +210,11 @@ def test_summary_json_required_fields(tmp_path: Path) -> None:
 def test_route_decision_matrix_schema_and_defaults() -> None:
     route = _fake_route()
 
-    assert route["runner_report_recommendation"] == "SCV2-R2 targeted resolver/gap reduction"
-    assert route["requires_external_pack_review"] is True
+    assert route["runner_report_recommendation"] == "blocked_pending_pipeline_fidelity_remediation"
+    assert route["pre_incident_runner_recommendation"] == "SCV2-R2 targeted resolver/gap reduction"
+    assert route["recommended_next_phase"] == runner.PIPELINE_FIDELITY_REMEDIATION_NEXT_PHASE
+    assert route["requires_external_pack_review"] is False
+    assert route["route_approval_blocked"] is True
     assert route["final_route_decision_status"] == runner.FINAL_ROUTE_DECISION_STATUS
     for option in route["options"]:
         assert {
@@ -173,6 +231,7 @@ def test_route_decision_matrix_schema_and_defaults() -> None:
             "browser_validation_required",
             "user_manual_approval_required",
         }.issubset(option)
+        assert option["recommended"] is False
 
 
 def test_unmatched_aliases_count_as_asymmetric(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -341,6 +400,50 @@ def test_strict_px1_impact_excludes_non_px1_pixiv(monkeypatch: pytest.MonkeyPatc
     assert impact["route_decision_px1_impact_metric"] == "px1_strict_influenced_concepts"
 
 
+def test_dynamic_px1_seed_groups_use_strict_px1_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(runner.scv1, "table_exists", lambda _conn, _table: True)
+    monkeypatch.setattr(runner.scv1, "column_exists", lambda _conn, _table, _column: True)
+
+    def fake_rows_dict(_conn, sql, params=None):
+        captured.append((sql, dict(params or {})))
+        if "source_name_observations" in sql:
+            return [{"label": "px1 name", "canonical_name_key": "px1_name", "name_role": "character", "count": 5}]
+        if "source_tag_observations" in sql:
+            return [{"label": "px1 tag", "canonical_tag_key": "px1_tag", "count": 4}]
+        if "source_searchable_name_assertions" in sql:
+            return [{"label": "px1 title", "canonical_name_key": "px1_title", "asserted_role": "work_title", "count": 3}]
+        return []
+
+    monkeypatch.setattr(runner.scv1, "rows_dict", fake_rows_dict)
+
+    groups = runner.build_dynamic_px1_seed_groups(None)
+
+    assert groups["px1_high_frequency_source_names_private"] == ["px1 name"]
+    assert groups["px1_high_frequency_source_tags_private"] == ["px1 tag"]
+    assert groups["px1_title_or_work_assertions_private"] == ["px1 title"]
+    assert captured
+    for sql, params in captured:
+        assert "JOIN blombooru_source_metadata_records r" in sql
+        assert "r.run_label = :px1_slug" in sql
+        assert "r.provider_run_id" in sql
+        assert "WHERE provider = 'pixiv'" not in sql
+        assert params["px1_slug"] == runner.PX1_SLUG
+
+
+def test_public_dirty_worktree_status_is_redacted() -> None:
+    dirty = runner.public_dirty_worktree_summary("?? docs/private-file.md\n M scripts/secret.py")
+    provenance = runner.build_report_provenance(_fake_db_identity(), {"dirty_worktree": dirty})
+
+    assert dirty["clean"] is False
+    assert dirty["dirty_count"] == 2
+    assert dirty["status_redacted"] is True
+    assert "private-file" not in provenance["dirty_worktree_status"]
+    assert "secret.py" not in provenance["dirty_worktree_status"]
+    assert provenance["dirty_worktree_status"] == "redacted_dirty_entries:2"
+
+
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
@@ -359,6 +462,7 @@ def test_review_pack_policy_document_includes_required_categories() -> None:
     assert "Review Pack Recommended" in policy
     assert "Review Pack Not Normally Required" in policy
     assert "provisional_pending_chatgpt_pack_audit" in policy
+    assert "blocked_pending_pipeline_fidelity_remediation" in policy
     assert "route-decision phases" in policy
 
 
@@ -370,20 +474,7 @@ def test_review_pack_manifest_checksums_readme_and_directories_are_generated(mon
     monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", report_md)
     monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", report_json)
     summary = _fake_summary(tmp_path)
-    audit_data = {
-        "current_baseline": summary["current_baseline"],
-        "source_metadata_coverage": summary["source_metadata_coverage"],
-        "source_concept_current_state": summary["source_concept_current_state"],
-        "gap_audit": summary["gap_audit"],
-        "gap_vs_scv1": summary["gap_vs_scv1"],
-        "search_seed_symmetry": summary["search_seed_symmetry"],
-        "needs_review_triage": summary["needs_review_triage"],
-        "px1_evidence_impact": summary["px1_evidence_impact"],
-        "route_decision_matrix": summary["route_decision_matrix"],
-        "blocker_thresholds": {"entity_bridge": {"blocked": True}},
-        "mutation_proof": summary["mutation_proof"],
-        "transaction_readonly_proof": summary["transaction_readonly_proof"],
-    }
+    audit_data = _fake_audit_data(summary)
     samples = {filename: [{"stable_private_concept_ref": "concept_ref_000001", "reason_bucket": filename}] for filename in runner.REVIEW_PACK_SAMPLE_FILES}
 
     pack = runner.generate_review_pack(tmp_path, summary, audit_data, samples)
@@ -417,6 +508,33 @@ def test_review_pack_manifest_checksums_readme_and_directories_are_generated(mon
     assert "concept_0123456789abcdef" not in "\n".join(path.read_text(encoding="utf-8") for path in (pack_dir / "review-samples").glob("*.jsonl"))
 
 
+def test_review_pack_cleanup_refuses_unmarked_external_pack_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    report_md = tmp_path / "report.md"
+    report_json = tmp_path / "summary.json"
+    report_md.write_text("# Safe report\n", encoding="utf-8")
+    report_json.write_text('{"safe": true}\n', encoding="utf-8")
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", report_md)
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", report_json)
+    summary = _fake_summary(tmp_path)
+    audit_data = _fake_audit_data(summary)
+    samples = {filename: [{"stable_private_concept_ref": "concept_ref_000001", "reason_bucket": filename}] for filename in runner.REVIEW_PACK_SAMPLE_FILES}
+    pack_dir = tmp_path / "chatgpt-review-pack"
+    pack_dir.mkdir()
+    (pack_dir / "keep.txt").write_text("do not delete\n", encoding="utf-8")
+
+    with pytest.raises(runner.A1BlockedError, match="Refusing to remove existing chatgpt-review-pack"):
+        runner.generate_review_pack(tmp_path, summary, audit_data, samples)
+
+    assert (pack_dir / "keep.txt").exists()
+    (pack_dir / runner.REVIEW_PACK_GENERATED_MARKER).write_text('{"safe_to_replace": true}\n', encoding="utf-8")
+
+    pack = runner.generate_review_pack(tmp_path, summary, audit_data, samples)
+
+    assert pack["generated"] is True
+    assert not (pack_dir / "keep.txt").exists()
+    assert (pack_dir / runner.REVIEW_PACK_GENERATED_MARKER).exists()
+
+
 def test_review_pack_redaction_scans_every_file(tmp_path: Path) -> None:
     pack_dir = tmp_path / "pack"
     (pack_dir / "nested").mkdir(parents=True)
@@ -433,24 +551,30 @@ def test_review_pack_redaction_scans_every_file(tmp_path: Path) -> None:
     assert "display_label_raw_private_label" in finding_types
 
 
-def test_final_route_decision_status_is_provisional_for_a1(tmp_path: Path) -> None:
+def test_a1_route_approval_is_blocked_by_inc1_r1r_not_r2(tmp_path: Path) -> None:
     summary = _fake_summary(tmp_path)
 
-    assert summary["final_route_decision_status"] == "provisional_pending_chatgpt_pack_audit"
+    assert summary["final_route_decision_status"] == "blocked_pending_pipeline_fidelity_remediation"
+    assert summary["runner_report_recommendation"] == "blocked_pending_pipeline_fidelity_remediation"
+    assert summary["recommended_next_phase"] == runner.PIPELINE_FIDELITY_REMEDIATION_NEXT_PHASE
+    assert summary["pre_incident_runner_recommendation"] == "SCV2-R2 targeted resolver/gap reduction"
+    assert summary["route_decision_matrix"]["route_approval_blocked"] is True
+    assert not any(option["recommended"] for option in summary["route_decision_matrix"]["options"])
     assert summary["chatgpt_review_pack"]["upload_required_for_final_audit"] is True
     assert summary["runtime_audit_git_sha"] == "abc123"
     assert summary["public_report_generated_from_runtime_sha"] == "abc123"
     assert summary["operational_result_reused_older_artifacts"] is False
     assert "commit cannot truthfully contain its own final SHA" in summary["final_pr_head_sha_if_different"]
+    assert summary["db_snapshot_proof"]["transaction_isolation"] == "repeatable read"
 
 
 def test_public_report_requires_user_upload_of_chatgpt_review_pack(tmp_path: Path) -> None:
     summary = _fake_summary(tmp_path, review_pack_info={"generated": True, "redaction_passed": True})
     report = runner.public_report_markdown(summary)
 
-    assert "upload the local" in report
-    assert "before final route approval" in report
-    assert "provisional_pending_chatgpt_pack_audit" in report
+    assert "Uploading the pack does not approve R2" in report
+    assert "blocked_pending_pipeline_fidelity_remediation" in report
     assert "Provenance / SHA boundary" in report
     assert "Strict PX1-influenced concepts" in report
     assert "All Pixiv-influenced concepts" in report
+    assert "snapshot id redacted" in report

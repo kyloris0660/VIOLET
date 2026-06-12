@@ -31,7 +31,7 @@
 
 `SCV2-A1` - post-expansion SourceConcept audit and route decision after R1.
 
-R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resolver/triage, mutation proof and public redaction passed, and no truth-path/source-metadata writes occurred. A1 route recommendations are provisional until the generated ChatGPT review pack is uploaded and independently audited.
+R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident: R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval is therefore blocked pending R1R full-chain remediation and A1R rerun; the generated ChatGPT review pack remains audit evidence but does not approve R2.
 
 ## Current Known Observations / Validation Seeds
 
@@ -42,7 +42,7 @@ R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resol
 - R1's trusted transition moved SourceConcept counts from 4214 to 6094 total, 355 to 1078 active, and 760 to 1809 `needs_review`; 1692 concepts are now influenced by PX1 evidence. The final current-head execute rerun was idempotent over the already committed R1 state and verified post-commit counts at 6094 total / 1078 active / 1809 `needs_review`.
 - R1 alias gap deltas improved source assertion/source name/source tag/identity-tag gaps but increased total gap signals by 626 because PX1 added much more review-scoped evidence and fragmentation to triage.
 - R1 search seed symmetry checked 10 groups / 67 seeds / 49 matched seeds; all 10 groups remain asymmetric and should be reviewed in A1 before any truth bridge.
-- A1 review-pack-required route decisions use status `provisional_pending_chatgpt_pack_audit` until independent pack review completes.
+- A1 route approval now uses status `blocked_pending_pipeline_fidelity_remediation`: no R2, PX1-B, Provider-2, scale-up, Entity bridge, or SourceConcept truth promotion may start until R1R full-chain remediation and A1R rerun complete.
 
 ## Hard Non-Goals Without Explicit Approval
 
