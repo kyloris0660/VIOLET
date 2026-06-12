@@ -1,6 +1,6 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated after Phase 4.5-SCV2-R1 execute on `2026-06-11T23:58:17+08:00`.
+> Last updated after Phase 4.5-SCV2-R1 reviewer-fix execute/post-commit verification on `2026-06-12T11:28:47+08:00`.
 > Active PR branch: `codex/phase45-scv2-r1-post-px1-source-concept-triage`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
@@ -26,7 +26,7 @@
 - Phase 4.5-SCV2-P0 generated a read-only current-DB inventory and governed split for controlled medium expansion on branch `codex/phase45-scv2-p0-controlled-medium-expansion-policy`.
 - PR #102 / Phase 4.5-SCV2-E1 is merged. It expanded the library to 3750 media and completed eligible AI tag coverage without Pixiv/provider/SourceConcept resolver work.
 - PR #103 / Phase 4.5-PX1 is merged. It ran the bounded Pixiv/gallery-dl metadata extraction batch: 500 selected, 470 metadata successes, 30 unavailable/private/deleted failures, zero exact duplicate dry-run groups, and source-layer-only metadata/assertion writes.
-- Phase 4.5-SCV2-R1 has run dry-run and execute on branch `codex/phase45-scv2-r1-post-px1-source-concept-triage`. It consumed PX1 evidence into SourceConcept triage, wrote only allowed SourceConcept tables, and generated the R1 public report/summary.
+- Phase 4.5-SCV2-R1 has run dry-run and execute on branch `codex/phase45-scv2-r1-post-px1-source-concept-triage`. Its reviewer-fix rerun explicitly committed execute transactions, verified post-commit counts on a fresh connection, wrote only allowed SourceConcept tables, and regenerated the R1 public report/summary from current branch code.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
 - Historical details before SC1/SC2/SCV1/SCV2-P0/E1/PX1/R1 live in `docs/project-roadmap.md` and `docs/reports/`.
 
@@ -42,7 +42,7 @@ R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resol
 - Nahida seed matched 10 visible concept IDs and 33 media, so the immediate issue is not a single missing alias; it is broader alias fragmentation and `needs_review` noise.
 - PX1 post-E1 baseline recorded 3750 total media, 3687 eligible media, eligible AI tag coverage 3687/3687, 2287 Pixiv-like candidates, 500 selected metadata requests, 470 metadata successes, and zero exact duplicate dry-run groups.
 - PX1 source assertions are intentionally `needs_review` with `requires_review=true`; R1 may consume them as review-scoped SourceConcept input but must not promote them into active search truth or Entity/media_tags truth.
-- R1 SourceConcept counts moved from 4214 to 6094 total, 355 to 1078 active, and 760 to 1809 `needs_review`; 1692 concepts are now influenced by PX1 evidence.
+- R1's trusted transition moved SourceConcept counts from 4214 to 6094 total, 355 to 1078 active, and 760 to 1809 `needs_review`; 1692 concepts are now influenced by PX1 evidence. The final current-head execute rerun was idempotent over the already committed R1 state and verified post-commit counts at 6094 total / 1078 active / 1809 `needs_review`.
 - R1 alias gap deltas improved source assertion/source name/source tag/identity-tag gaps but increased total gap signals by 626 because PX1 added much more review-scoped evidence and fragmentation to triage.
 - R1 search seed symmetry checked 10 groups / 67 seeds / 49 matched seeds; all 10 groups remain asymmetric and should be reviewed in A1 before any truth bridge.
 

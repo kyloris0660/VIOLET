@@ -3,11 +3,12 @@
 ## Summary
 
 - Status: `target_met`.
-- Branch/head: `codex/phase45-scv2-r1-post-px1-source-concept-triage` / `20e31c160a4f95325d723bcb283cd745d906d50a`.
-- SourceConcept total before/after/delta: `4214` / `6094` / `1880`.
-- Active SourceConcept before/after/delta: `355` / `1078` / `723`.
-- needs_review SourceConcept before/after/delta: `760` / `1809` / `1049`.
-- Concepts newly influenced by PX1 evidence: `1692`.
+- Branch/head: `codex/phase45-scv2-r1-post-px1-source-concept-triage` / `8e24954760890cfe2a76670f1f6cd7440bfd44da`.
+- SourceConcept total before/after/delta: `6094` / `6094` / `0`.
+- Active SourceConcept before/after/delta: `1078` / `1078` / `0`.
+- needs_review SourceConcept before/after/delta: `1809` / `1809` / `0`.
+- Concepts newly influenced by PX1 evidence: `0`.
+- Post-commit verification passed: `True`.
 
 ## Scope and non-goals
 
@@ -42,22 +43,22 @@
 
 ## SourceConcept before/after
 
-- By status before: `{"active": 355, "needs_review": 760, "superseded": 3099}`.
+- By status before: `{"active": 1078, "needs_review": 1809, "superseded": 3207}`.
 - By status after: `{"active": 1078, "needs_review": 1809, "superseded": 3207}`.
-- Superseded/rejected/ambiguous before: `{"ambiguous": 0, "hidden": 0, "rejected": 0, "superseded": 3099, "weak": 0}`.
+- Superseded/rejected/ambiguous before: `{"ambiguous": 0, "hidden": 0, "rejected": 0, "superseded": 3207, "weak": 0}`.
 - Superseded/rejected/ambiguous after: `{"ambiguous": 0, "hidden": 0, "rejected": 0, "superseded": 3207, "weak": 0}`.
 - Search index by status after: `[{"count": 2532, "status": "active"}, {"count": 1908, "status": "needs_review"}, {"count": 4099, "status": "superseded"}]`.
 
 ## Alias gap before/after
 
-- Total gap signals before/after/delta: `3996` / `4622` / `626`.
-- Gap bucket delta: `{"cjk_alias_without_english_romaji_sibling": 1280, "danbooru_parenthetical_without_cjk_sibling": 55, "high_frequency_source_tag_or_name_unlinked": 0, "identity_tag_present_no_source_concept_alias": -79, "needs_review_cluster_with_no_active_alias_path": 117, "same_display_name_split_across_contexts": 368, "same_normalized_alias_key_split_across_multiple_concepts": 368, "source_assertion_present_not_connected": -656, "source_name_present_no_source_concept_alias": -656, "source_tag_present_no_source_concept_alias": -171}`.
+- Total gap signals before/after/delta: `4622` / `4622` / `0`.
+- Gap bucket delta: `{"cjk_alias_without_english_romaji_sibling": 0, "danbooru_parenthetical_without_cjk_sibling": 0, "high_frequency_source_tag_or_name_unlinked": 0, "identity_tag_present_no_source_concept_alias": 0, "needs_review_cluster_with_no_active_alias_path": 0, "same_display_name_split_across_contexts": 0, "same_normalized_alias_key_split_across_multiple_concepts": 0, "source_assertion_present_not_connected": 0, "source_name_present_no_source_concept_alias": 0, "source_tag_present_no_source_concept_alias": 0}`.
 - SCV1 historical baseline: total gap signals `1571`; source_tag gap `81`; source_assertion gap `22`; same normalized alias split `176`; same display/context split `176`; needs_review no active alias path `523`; identity tag gap `14`.
 
 ## needs_review triage before/after
 
-- Total needs_review concepts before/after/delta: `760` / `1809` / `1049`.
-- Triage numeric deltas: `{"needs_review_ai_only": 89, "needs_review_duplicate_or_fragment_candidate": 932, "needs_review_high_evidence_count": 38, "needs_review_sharing_alias_with_active": 932, "needs_review_with_cjk_alias": 761, "needs_review_with_media": 985, "needs_review_with_parenthetical_context": 42, "sample_count": 1000, "total_needs_review_concepts": 1049}`.
+- Total needs_review concepts before/after/delta: `1809` / `1809` / `0`.
+- Triage numeric deltas: `{"needs_review_ai_only": 0, "needs_review_duplicate_or_fragment_candidate": 0, "needs_review_high_evidence_count": 0, "needs_review_sharing_alias_with_active": 0, "needs_review_with_cjk_alias": 0, "needs_review_with_media": 0, "needs_review_with_parenthetical_context": 0, "sample_count": 0, "total_needs_review_concepts": 0}`.
 
 ## Search seed symmetry checks
 
@@ -69,9 +70,24 @@
 ## Mutation proof
 
 - Mutation proof passed: `True`.
+- Execute transaction committed: `True`.
 - Allowed changed tables: `["blombooru_source_concept_aliases", "blombooru_source_concept_evidence", "blombooru_source_concept_resolution_runs", "blombooru_source_concept_search_index", "blombooru_source_concept_signal_links", "blombooru_source_concept_signals", "blombooru_source_concepts"]`.
 - Forbidden changed tables: `[]`.
 - Source metadata read-only changed tables: `[]`.
+
+## Post-commit verification
+
+- Verification passed: `True`.
+- Committed SourceConcept counts: `{"active_concepts": 1078, "aliases_total": 8539, "by_status": {"active": 1078, "needs_review": 1809, "superseded": 3207}, "concepts_influenced_by_px1_evidence": 1692, "evidence_total": 15085, "hidden_status_counts": {"ambiguous": 0, "hidden": 0, "rejected": 0, "superseded": 3207, "weak": 0}, "needs_review_concepts": 1809, "search_index_total": 8539, "signal_links_total": 56127, "total_source_concepts": 6094}`.
+- SourceConcept mismatch keys: `[]`.
+- Allowed table mismatch keys: `[]`.
+
+## Report generation metadata
+
+- Runtime git SHA: `8e24954760890cfe2a76670f1f6cd7440bfd44da`.
+- Runtime git SHA used for execute: `8e24954760890cfe2a76670f1f6cd7440bfd44da`.
+- Final PR head SHA if different: `reported in PR handoff after report refresh commit`.
+- Operational result reused older artifacts: `False`.
 
 ## Public/private artifact boundary
 
@@ -123,5 +139,5 @@ PX1-B should wait until after A1 or remain deferred. R1 consumed the current bou
 - Artifact lifecycle: runner and tests are phase-scoped; public report/summary are public report and handoff artifacts; `.local_manifests` output is one-off ignored local artifact.
 - Phase boundary is appropriate: R1 consumes source-layer evidence and writes only SourceConcept resolver tables under explicit confirmation.
 - Remaining risks: SourceConcept gaps may move rather than vanish because PX1 adds much more review-scoped evidence; Entity bridge remains blocked until a later explicit preview/confirmation/audit design.
-- No reviewer findings were fixed in this run; reviewer status is pending after PR creation.
+- Reviewer fix loop addressed execute transaction commit, fresh post-commit verification, artifact bundle naming, report runtime-SHA metadata, and critical forbidden/read-only content fingerprints.
 - Recommended next step: review/merge R1 if accepted, then run SCV2-A1 as a post-expansion audit and route decision.
