@@ -1,0 +1,5054 @@
+{
+  "alias_gap_after": {
+    "gap_bucket_details": {
+      "cjk_alias_without_english_romaji_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 1647,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 2887
+      },
+      "danbooru_parenthetical_without_cjk_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 254,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 2887
+      },
+      "high_frequency_source_tag_or_name_unlinked": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 13,
+        "sample_limit": 25,
+        "sampled_missing_keys": 13,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 418
+      },
+      "identity_tag_present_no_source_concept_alias": {
+        "category_counts": {
+          "character": 320,
+          "general": 4225,
+          "meta": 4
+        },
+        "counts_are_full": true,
+        "excluded_category_counts": {
+          "general": 4225,
+          "meta": 4
+        },
+        "excluded_visual_or_meta_distinct_keys": 4229,
+        "identity_category_counts": {
+          "character": 320
+        },
+        "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+        "identity_eligible_distinct_keys": 320,
+        "missing_distinct_keys": 7,
+        "sample_limit": 30,
+        "sampled_missing_keys": 7,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 4549
+      },
+      "needs_review_cluster_with_no_active_alias_path": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 640,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1809
+      },
+      "same_display_name_split_across_contexts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 544,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1676
+      },
+      "same_normalized_alias_key_split_across_multiple_concepts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 544,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1679
+      },
+      "source_assertion_present_not_connected": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 24,
+        "sample_limit": 30,
+        "sampled_missing_keys": 24,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 929
+      },
+      "source_name_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 2,
+        "sample_limit": 30,
+        "sampled_missing_keys": 2,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1044
+      },
+      "source_tag_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 947,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1463
+      }
+    },
+    "gap_buckets": {
+      "cjk_alias_without_english_romaji_sibling": 1647,
+      "danbooru_parenthetical_without_cjk_sibling": 254,
+      "high_frequency_source_tag_or_name_unlinked": 13,
+      "identity_tag_present_no_source_concept_alias": 7,
+      "needs_review_cluster_with_no_active_alias_path": 640,
+      "same_display_name_split_across_contexts": 544,
+      "same_normalized_alias_key_split_across_multiple_concepts": 544,
+      "source_assertion_present_not_connected": 24,
+      "source_name_present_no_source_concept_alias": 2,
+      "source_tag_present_no_source_concept_alias": 947
+    },
+    "normal_tag_gap_policy": {
+      "bucket": "identity_tag_present_no_source_concept_alias",
+      "counts_are_full": true,
+      "excluded_visual_or_meta_tags": 4229,
+      "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+      "identity_eligible_normal_tags": 320,
+      "missing_identity_tags_without_source_concept_alias": 7,
+      "sampling_affects": "examples_only",
+      "table_present": true,
+      "total_normal_tags": 4549,
+      "visual_tags_counted_in_total_gap_signals": false
+    },
+    "recommended_next_fix_category": "source_concept_alias_resolver_improvement",
+    "total_gap_signals": 4622
+  },
+  "alias_gap_before": {
+    "gap_bucket_details": {
+      "cjk_alias_without_english_romaji_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 1647,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 2887
+      },
+      "danbooru_parenthetical_without_cjk_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 254,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 2887
+      },
+      "high_frequency_source_tag_or_name_unlinked": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 13,
+        "sample_limit": 25,
+        "sampled_missing_keys": 13,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 418
+      },
+      "identity_tag_present_no_source_concept_alias": {
+        "category_counts": {
+          "character": 320,
+          "general": 4225,
+          "meta": 4
+        },
+        "counts_are_full": true,
+        "excluded_category_counts": {
+          "general": 4225,
+          "meta": 4
+        },
+        "excluded_visual_or_meta_distinct_keys": 4229,
+        "identity_category_counts": {
+          "character": 320
+        },
+        "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+        "identity_eligible_distinct_keys": 320,
+        "missing_distinct_keys": 7,
+        "sample_limit": 30,
+        "sampled_missing_keys": 7,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 4549
+      },
+      "needs_review_cluster_with_no_active_alias_path": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 640,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1809
+      },
+      "same_display_name_split_across_contexts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 544,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1676
+      },
+      "same_normalized_alias_key_split_across_multiple_concepts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 544,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1679
+      },
+      "source_assertion_present_not_connected": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 24,
+        "sample_limit": 30,
+        "sampled_missing_keys": 24,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 929
+      },
+      "source_name_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 2,
+        "sample_limit": 30,
+        "sampled_missing_keys": 2,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1044
+      },
+      "source_tag_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 947,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1463
+      }
+    },
+    "gap_buckets": {
+      "cjk_alias_without_english_romaji_sibling": 1647,
+      "danbooru_parenthetical_without_cjk_sibling": 254,
+      "high_frequency_source_tag_or_name_unlinked": 13,
+      "identity_tag_present_no_source_concept_alias": 7,
+      "needs_review_cluster_with_no_active_alias_path": 640,
+      "same_display_name_split_across_contexts": 544,
+      "same_normalized_alias_key_split_across_multiple_concepts": 544,
+      "source_assertion_present_not_connected": 24,
+      "source_name_present_no_source_concept_alias": 2,
+      "source_tag_present_no_source_concept_alias": 947
+    },
+    "normal_tag_gap_policy": {
+      "bucket": "identity_tag_present_no_source_concept_alias",
+      "counts_are_full": true,
+      "excluded_visual_or_meta_tags": 4229,
+      "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+      "identity_eligible_normal_tags": 320,
+      "missing_identity_tags_without_source_concept_alias": 7,
+      "sampling_affects": "examples_only",
+      "table_present": true,
+      "total_normal_tags": 4549,
+      "visual_tags_counted_in_total_gap_signals": false
+    },
+    "recommended_next_fix_category": "source_concept_alias_resolver_improvement",
+    "total_gap_signals": 4622
+  },
+  "alias_gap_delta": {
+    "gap_bucket_delta": {
+      "cjk_alias_without_english_romaji_sibling": 0,
+      "danbooru_parenthetical_without_cjk_sibling": 0,
+      "high_frequency_source_tag_or_name_unlinked": 0,
+      "identity_tag_present_no_source_concept_alias": 0,
+      "needs_review_cluster_with_no_active_alias_path": 0,
+      "same_display_name_split_across_contexts": 0,
+      "same_normalized_alias_key_split_across_multiple_concepts": 0,
+      "source_assertion_present_not_connected": 0,
+      "source_name_present_no_source_concept_alias": 0,
+      "source_tag_present_no_source_concept_alias": 0
+    },
+    "improved_bucket_count": 0,
+    "regressed_bucket_count": 0,
+    "total_gap_signals_delta": 0,
+    "unchanged_bucket_count": 10
+  },
+  "artifact_lifecycle": {
+    ".local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage": "one-off local artifact / ignored output",
+    "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json": "public report / handoff / roadmap update",
+    "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md": "public report / handoff / roadmap update",
+    "scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py": "phase-scoped operational runner",
+    "tests/test_phase45_scv2_r1_post_px1_source_concept_triage.py": "phase-scoped validation test"
+  },
+  "baseline_delta": {
+    "media": {
+      "ai_jobs_by_status": {
+        "completed": 0
+      },
+      "classification_jobs_by_status": {
+        "completed": 0
+      },
+      "content_class_distribution": {
+        "anime": 0,
+        "non_anime": 0,
+        "unknown": 0
+      },
+      "eligible_ai_tag_provenance_pct": 0.0,
+      "eligible_media_count": 0,
+      "eligible_media_pct": 0.0,
+      "eligible_media_with_ai_tag_provenance": 0,
+      "eligible_media_without_ai_tag_provenance": 0,
+      "media_with_ai_tag_provenance": 0,
+      "media_with_ai_tag_provenance_pct": 0.0,
+      "media_with_any_tags": 0,
+      "media_with_any_tags_pct": 0.0,
+      "media_with_manual_or_locked_tags": 0,
+      "media_with_source_concept_evidence_or_links": 0,
+      "media_with_source_imported_provider_tag_provenance": 0,
+      "media_with_source_layer_signals": 0,
+      "media_without_ai_tags": 0,
+      "media_without_source_concept_evidence_or_links": 0,
+      "media_without_source_layer_signals": 0,
+      "tag_translation_jobs_by_status": {
+        "completed": 0,
+        "interrupted": 0,
+        "rate_limited": 0
+      },
+      "tags": {
+        "associations_by_source": {
+          "ai_wd": 0
+        },
+        "media_tag_associations": 0,
+        "proper_noun_tag_category_counts": {
+          "character": 0,
+          "general": 0,
+          "meta": 0
+        },
+        "total_tags": 0,
+        "translation": {
+          "by_category": {
+            "character": 0,
+            "general": 0,
+            "meta": 0
+          },
+          "by_source": {
+            "llm": 0,
+            "static": 0
+          },
+          "by_status": {
+            "translated": 0
+          },
+          "total": 0
+        }
+      },
+      "total_media": 0
+    },
+    "post_px1_snapshot": {
+      "eligible_ai_tag_provenance_pct": 0.0,
+      "eligible_media": 0,
+      "source_assertions_by_status": {
+        "needs_review": 0,
+        "rejected": 0,
+        "searchable_active": 0
+      },
+      "source_metadata_distinct_media_count": 0,
+      "source_metadata_records_total": 0,
+      "source_name_observations_by_provider": {
+        "danbooru": 0,
+        "gelbooru": 0,
+        "pixiv": 0,
+        "saucenao": 0
+      },
+      "source_tag_observations_by_provider": {
+        "danbooru": 0,
+        "gelbooru": 0,
+        "google_vision": 0,
+        "pixiv": 0,
+        "saucenao": 0
+      },
+      "total_media": 0
+    },
+    "source_layer": {
+      "f7a_candidate_coverage": {
+        "candidate_status_distribution": {
+          "active_candidate": 0,
+          "needs_review": 0
+        },
+        "candidates_by_provider": {
+          "local_media_tags": 0,
+          "pixiv": 0
+        },
+        "candidates_by_role": {
+          "artist_creator": 0,
+          "character": 0,
+          "person": 0,
+          "source_title": 0,
+          "unknown_name_like": 0,
+          "work_title": 0
+        },
+        "candidates_by_status": {
+          "active": 0
+        },
+        "candidates_linked_to_media": 0,
+        "distinct_media_with_candidates": 0,
+        "extraction_runs_by_status": {
+          "completed": 0
+        },
+        "record_verdicts_by_verdict": {
+          "extraction_error_terminal": 0,
+          "multiple_candidates_found": 0,
+          "name_candidate_found": 0
+        }
+      },
+      "provider_cache_by_provider": {
+        "saucenao": 0
+      },
+      "source_assertions_by_provider": {
+        "pixiv": 0,
+        "saucenao": 0
+      },
+      "source_assertions_by_status": {
+        "needs_review": 0,
+        "rejected": 0,
+        "searchable_active": 0
+      },
+      "source_assertions_linked_to_media": 0,
+      "source_metadata_distinct_eligible_media_count": 0,
+      "source_metadata_distinct_eligible_media_pct": 0.0,
+      "source_metadata_distinct_media_count": 0,
+      "source_metadata_distinct_media_pct": 0.0,
+      "source_metadata_records_linked_to_media": 0,
+      "source_metadata_records_total": 0,
+      "source_name_observations_by_provider": {
+        "danbooru": 0,
+        "gelbooru": 0,
+        "pixiv": 0,
+        "saucenao": 0
+      },
+      "source_name_observations_linked_to_media": 0,
+      "source_records": {
+        "by_provider": {
+          "danbooru": 0,
+          "gelbooru": 0,
+          "google_vision": 0,
+          "no_tag_provider": 0,
+          "pixiv": 0,
+          "saucenao": 0
+        },
+        "by_status": {
+          "observed": 0
+        },
+        "distinct_eligible_media": 0,
+        "distinct_eligible_media_pct": 0.0,
+        "distinct_media": 0,
+        "distinct_media_pct": 0.0,
+        "linked_to_media": 0,
+        "total_rows": 0
+      },
+      "source_tag_observations_by_provider": {
+        "danbooru": 0,
+        "gelbooru": 0,
+        "google_vision": 0,
+        "pixiv": 0,
+        "saucenao": 0
+      },
+      "source_tag_observations_linked_to_media": 0,
+      "table_counts": {
+        "blombooru_provider_cache": {
+          "count": 0
+        },
+        "blombooru_source_metadata_evidence": {
+          "count": 0
+        },
+        "blombooru_source_metadata_records": {
+          "count": 0
+        },
+        "blombooru_source_name_alias_candidates": {
+          "count": 0
+        },
+        "blombooru_source_name_candidate_extraction_runs": {
+          "count": 0
+        },
+        "blombooru_source_name_candidate_record_verdicts": {
+          "count": 0
+        },
+        "blombooru_source_name_candidates": {
+          "count": 0
+        },
+        "blombooru_source_name_observations": {
+          "count": 0
+        },
+        "blombooru_source_name_registry": {
+          "count": 0
+        },
+        "blombooru_source_searchable_name_assertions": {
+          "count": 0
+        },
+        "blombooru_source_tag_observations": {
+          "count": 0
+        },
+        "blombooru_source_tag_registry": {
+          "count": 0
+        }
+      }
+    }
+  },
+  "branch": "codex/phase45-scv2-r1-post-px1-source-concept-triage",
+  "db_identity_after": {
+    "connected_database": "blombooru",
+    "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "app_equivalent_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+      "database_file_settings_used": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "runner_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+      "settings_json_exists": true,
+      "urls_match": true,
+      "violet_env_source": "app_default"
+    },
+    "git_branch": "codex/phase45-scv2-r1-post-px1-source-concept-triage",
+    "git_sha": "8e24954760890cfe2a76670f1f6cd7440bfd44da",
+    "host": "localhost",
+    "mode": "execute",
+    "port": 5432,
+    "python_executable": "python.exe",
+    "recorded_at": "2026-06-12T03:28:29Z",
+    "server_port": 5432,
+    "transaction_read_only": "off",
+    "violet_env": "development"
+  },
+  "db_identity_before": {
+    "connected_database": "blombooru",
+    "database": "blombooru",
+    "db_resolution": {
+      "app_compatible": true,
+      "app_equivalent_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+      "database_file_settings_used": true,
+      "field_sources": {
+        "host": "settings_json",
+        "name": "settings_json",
+        "password": "settings_json_present",
+        "port": "settings_json",
+        "user": "settings_json"
+      },
+      "password_present": true,
+      "password_value_recorded": false,
+      "runner_matches_app_equivalent": true,
+      "runner_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+      "settings_json_exists": true,
+      "urls_match": true,
+      "violet_env_source": "app_default"
+    },
+    "git_branch": "codex/phase45-scv2-r1-post-px1-source-concept-triage",
+    "git_sha": "8e24954760890cfe2a76670f1f6cd7440bfd44da",
+    "host": "localhost",
+    "mode": "execute",
+    "port": 5432,
+    "python_executable": "python.exe",
+    "recorded_at": "2026-06-12T03:27:13Z",
+    "server_port": 5432,
+    "transaction_read_only": "off",
+    "violet_env": "development"
+  },
+  "decision_matrix": {
+    "answers": {
+      "dedup1_remains_not_useful": true,
+      "entity_bridge_remains_blocked": true,
+      "px1_b_recommended_after_a1_or_deferred": true,
+      "px1_b_recommended_before_a1": false,
+      "px1_evidence_consumed_by_source_concepts": true,
+      "r1_target_met": true,
+      "scv2_a1_should_start_next": true,
+      "what_must_not_happen_yet": [
+        "no Entity bridge",
+        "no confirmed assignments",
+        "no media_tags mutation",
+        "no PX1-B",
+        "no DEDUP1",
+        "no 5k/10k/full-library expansion"
+      ]
+    },
+    "metrics": {
+      "needs_review_concepts_delta": 0,
+      "search_seed_asymmetric_groups": 10,
+      "source_assertion_gap_delta": 0,
+      "source_tag_gap_delta": 0,
+      "total_gap_signals_delta": 0
+    },
+    "options": [
+      {
+        "key": "SCV2-A1_post_expansion_audit",
+        "reason": "R1 consumed PX1 evidence and produced mutation/redaction-safe before/after counts",
+        "recommended": true
+      },
+      {
+        "key": "PX1-B_more_provider_metadata",
+        "reason": "R1 already has a bounded PX1 batch to consume; additional provider extraction should wait for A1 route review",
+        "recommended": false
+      },
+      {
+        "key": "Entity_bridge",
+        "reason": "SourceConcept gaps and needs_review triage still require review; no truth promotion path is approved",
+        "recommended": false
+      },
+      {
+        "key": "DEDUP1",
+        "reason": "PX1 exact duplicate dry-run groups remain zero",
+        "recommended": false
+      }
+    ],
+    "recommended_next_phase": "SCV2-A1"
+  },
+  "execute_transaction_committed": true,
+  "generated_at": "2026-06-12T03:28:47Z",
+  "mode": "execute",
+  "mutation_proof": {
+    "after": {
+      "recorded_at": "2026-06-12T03:28:28Z"
+    },
+    "before": {
+      "recorded_at": "2026-06-12T03:27:13Z"
+    },
+    "delta": {
+      "allowed_changed_tables": [
+        {
+          "after": 8539,
+          "allowed": true,
+          "before": 8539,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_aliases"
+        },
+        {
+          "after": 15085,
+          "allowed": true,
+          "before": 15085,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_evidence"
+        },
+        {
+          "after": 12,
+          "allowed": true,
+          "before": 11,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 1,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_resolution_runs"
+        },
+        {
+          "after": 8539,
+          "allowed": true,
+          "before": 8539,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_search_index"
+        },
+        {
+          "after": 56127,
+          "allowed": true,
+          "before": 48030,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 8097,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_signal_links"
+        },
+        {
+          "after": 12635,
+          "allowed": true,
+          "before": 12635,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_signals"
+        },
+        {
+          "after": 6094,
+          "allowed": true,
+          "before": 6094,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concepts"
+        }
+      ],
+      "allowed_tables": [
+        "blombooru_source_concept_resolution_runs",
+        "blombooru_source_concept_signals",
+        "blombooru_source_concepts",
+        "blombooru_source_concept_aliases",
+        "blombooru_source_concept_evidence",
+        "blombooru_source_concept_signal_links",
+        "blombooru_source_concept_search_index"
+      ],
+      "changed_tables": [
+        {
+          "after": 8539,
+          "allowed": true,
+          "before": 8539,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_aliases"
+        },
+        {
+          "after": 15085,
+          "allowed": true,
+          "before": 15085,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_evidence"
+        },
+        {
+          "after": 12,
+          "allowed": true,
+          "before": 11,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 1,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_resolution_runs"
+        },
+        {
+          "after": 8539,
+          "allowed": true,
+          "before": 8539,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_search_index"
+        },
+        {
+          "after": 56127,
+          "allowed": true,
+          "before": 48030,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 8097,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_signal_links"
+        },
+        {
+          "after": 12635,
+          "allowed": true,
+          "before": 12635,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concept_signals"
+        },
+        {
+          "after": 6094,
+          "allowed": true,
+          "before": 6094,
+          "content_fingerprint_changed": false,
+          "content_fingerprint_columns": [],
+          "delta": 0,
+          "fingerprint_changed": true,
+          "prompt_forbidden": false,
+          "table": "blombooru_source_concepts"
+        }
+      ],
+      "forbidden_changed_tables": [],
+      "passed": true,
+      "prompt_forbidden_tables": [
+        "blombooru_media",
+        "blombooru_media_tags",
+        "blombooru_tags",
+        "blombooru_tag_translations",
+        "blombooru_tag_translation_jobs",
+        "blombooru_entities",
+        "blombooru_entity_aliases",
+        "blombooru_entity_evidence",
+        "blombooru_entity_external_identities",
+        "blombooru_entity_translations",
+        "blombooru_media_entity_candidates",
+        "blombooru_media_entity_assignments",
+        "blombooru_source_metadata_records",
+        "blombooru_source_tag_observations",
+        "blombooru_source_name_observations",
+        "blombooru_source_searchable_name_assertions",
+        "blombooru_source_metadata_evidence",
+        "blombooru_provider_cache",
+        "blombooru_scan_jobs",
+        "blombooru_scan_job_media",
+        "blombooru_ai_tag_jobs",
+        "blombooru_classification_jobs"
+      ],
+      "source_metadata_readonly_changed_tables": [],
+      "source_metadata_readonly_tables": [
+        "blombooru_source_metadata_records",
+        "blombooru_source_tag_observations",
+        "blombooru_source_name_observations",
+        "blombooru_source_searchable_name_assertions",
+        "blombooru_source_metadata_evidence"
+      ],
+      "unexpected_changed_tables": []
+    }
+  },
+  "needs_review_after": {
+    "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
+    "needs_review_ai_only": 307,
+    "needs_review_duplicate_or_fragment_candidate": 1169,
+    "needs_review_high_evidence_count": 122,
+    "needs_review_sharing_alias_with_active": 1169,
+    "needs_review_with_cjk_alias": 1092,
+    "needs_review_with_media": 1552,
+    "needs_review_with_parenthetical_context": 209,
+    "sample_count": 1385,
+    "top_reason_buckets": {},
+    "total_needs_review_concepts": 1809
+  },
+  "needs_review_before": {
+    "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
+    "needs_review_ai_only": 307,
+    "needs_review_duplicate_or_fragment_candidate": 1169,
+    "needs_review_high_evidence_count": 122,
+    "needs_review_sharing_alias_with_active": 1169,
+    "needs_review_with_cjk_alias": 1092,
+    "needs_review_with_media": 1552,
+    "needs_review_with_parenthetical_context": 209,
+    "sample_count": 1385,
+    "top_reason_buckets": {},
+    "total_needs_review_concepts": 1809
+  },
+  "needs_review_delta": {
+    "numeric_delta": {
+      "needs_review_ai_only": 0,
+      "needs_review_duplicate_or_fragment_candidate": 0,
+      "needs_review_high_evidence_count": 0,
+      "needs_review_sharing_alias_with_active": 0,
+      "needs_review_with_cjk_alias": 0,
+      "needs_review_with_media": 0,
+      "needs_review_with_parenthetical_context": 0,
+      "sample_count": 0,
+      "total_needs_review_concepts": 0
+    },
+    "total_needs_review_concepts_delta": 0
+  },
+  "phase": "4.5-SCV2-R1",
+  "post_commit": {
+    "post_commit_verification_passed": true,
+    "verification": {
+      "allowed_table_counts": {
+        "blombooru_source_concept_aliases": 8539,
+        "blombooru_source_concept_evidence": 15085,
+        "blombooru_source_concept_resolution_runs": 12,
+        "blombooru_source_concept_search_index": 8539,
+        "blombooru_source_concept_signal_links": 56127,
+        "blombooru_source_concept_signals": 12635,
+        "blombooru_source_concepts": 6094
+      },
+      "allowed_table_mismatch_keys": [],
+      "checked_at": "2026-06-12T03:28:47Z",
+      "db_identity": {
+        "connected_database": "blombooru",
+        "database": "blombooru",
+        "db_resolution": {
+          "app_compatible": true,
+          "app_equivalent_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+          "database_file_settings_used": true,
+          "field_sources": {
+            "host": "settings_json",
+            "name": "settings_json",
+            "password": "settings_json_present",
+            "port": "settings_json",
+            "user": "settings_json"
+          },
+          "password_present": true,
+          "password_value_recorded": false,
+          "runner_matches_app_equivalent": true,
+          "runner_url_without_password": "postgresql://postgres:***@localhost:5432/blombooru",
+          "settings_json_exists": true,
+          "urls_match": true,
+          "violet_env_source": "app_default"
+        },
+        "git_branch": "codex/phase45-scv2-r1-post-px1-source-concept-triage",
+        "git_sha": "8e24954760890cfe2a76670f1f6cd7440bfd44da",
+        "host": "localhost",
+        "mode": "post_commit_verify",
+        "port": 5432,
+        "python_executable": "python.exe",
+        "recorded_at": "2026-06-12T03:28:29Z",
+        "server_port": 5432,
+        "transaction_read_only": "on",
+        "violet_env": "development"
+      },
+      "expected_allowed_table_counts": {
+        "blombooru_source_concept_aliases": 8539,
+        "blombooru_source_concept_evidence": 15085,
+        "blombooru_source_concept_resolution_runs": 12,
+        "blombooru_source_concept_search_index": 8539,
+        "blombooru_source_concept_signal_links": 56127,
+        "blombooru_source_concept_signals": 12635,
+        "blombooru_source_concepts": 6094
+      },
+      "expected_source_concept_counts": {
+        "active_concepts": 1078,
+        "aliases_total": 8539,
+        "by_status": {
+          "active": 1078,
+          "needs_review": 1809,
+          "superseded": 3207
+        },
+        "concepts_influenced_by_px1_evidence": 1692,
+        "evidence_total": 15085,
+        "hidden_status_counts": {
+          "ambiguous": 0,
+          "hidden": 0,
+          "rejected": 0,
+          "superseded": 3207,
+          "weak": 0
+        },
+        "needs_review_concepts": 1809,
+        "search_index_total": 8539,
+        "signal_links_total": 56127,
+        "total_source_concepts": 6094
+      },
+      "passed": true,
+      "source_concept_counts": {
+        "active_concepts": 1078,
+        "aliases_total": 8539,
+        "by_status": {
+          "active": 1078,
+          "needs_review": 1809,
+          "superseded": 3207
+        },
+        "concepts_influenced_by_px1_evidence": 1692,
+        "evidence_total": 15085,
+        "hidden_status_counts": {
+          "ambiguous": 0,
+          "hidden": 0,
+          "rejected": 0,
+          "superseded": 3207,
+          "weak": 0
+        },
+        "needs_review_concepts": 1809,
+        "search_index_total": 8539,
+        "signal_links_total": 56127,
+        "total_source_concepts": 6094
+      },
+      "source_concept_mismatch_keys": []
+    }
+  },
+  "post_commit_verification_passed": true,
+  "post_px1_baseline": {
+    "generated_at": "2026-06-12T03:28:06Z",
+    "media": {
+      "ai_expansion_denominator_policy": "eligible_media",
+      "ai_jobs_by_status": {
+        "completed": 227
+      },
+      "classification_jobs_by_status": {
+        "completed": 29
+      },
+      "content_class_distribution": {
+        "anime": 3614,
+        "non_anime": 63,
+        "unknown": 73
+      },
+      "eligible_ai_tag_provenance_pct": 100.0,
+      "eligible_media_count": 3687,
+      "eligible_media_pct": 98.32,
+      "eligible_media_with_ai_tag_provenance": 3687,
+      "eligible_media_without_ai_tag_provenance": 0,
+      "eligible_policy": "content_class IN ('anime', 'unknown')",
+      "media_with_ai_tag_provenance": 3713,
+      "media_with_ai_tag_provenance_pct": 99.01,
+      "media_with_any_tags": 3713,
+      "media_with_any_tags_pct": 99.01,
+      "media_with_manual_or_locked_tags": 0,
+      "media_with_source_concept_evidence_or_links": 2212,
+      "media_with_source_imported_provider_tag_provenance": 0,
+      "media_with_source_layer_signals": 2264,
+      "media_without_ai_tags": 37,
+      "media_without_source_concept_evidence_or_links": 1538,
+      "media_without_source_layer_signals": 1486,
+      "tag_translation_jobs_by_status": {
+        "completed": 15,
+        "interrupted": 1,
+        "rate_limited": 1
+      },
+      "tags": {
+        "associations_by_source": {
+          "ai_wd": 196794
+        },
+        "media_tag_associations": 196794,
+        "proper_noun_tag_category_counts": {
+          "character": 320,
+          "general": 4225,
+          "meta": 4
+        },
+        "total_tags": 4549,
+        "translation": {
+          "by_category": {
+            "character": 77,
+            "general": 3651,
+            "meta": 4
+          },
+          "by_source": {
+            "llm": 3653,
+            "static": 79
+          },
+          "by_status": {
+            "translated": 3732
+          },
+          "total": 3732
+        }
+      },
+      "total_media": 3750
+    },
+    "post_px1_snapshot": {
+      "eligible_ai_tag_provenance_pct": 100.0,
+      "eligible_media": 3687,
+      "source_assertions_by_status": {
+        "needs_review": 923,
+        "rejected": 113,
+        "searchable_active": 182
+      },
+      "source_metadata_distinct_media_count": 531,
+      "source_metadata_records_total": 671,
+      "source_name_observations_by_provider": {
+        "danbooru": 66,
+        "gelbooru": 63,
+        "pixiv": 1154,
+        "saucenao": 94
+      },
+      "source_tag_observations_by_provider": {
+        "danbooru": 88,
+        "gelbooru": 63,
+        "google_vision": 2,
+        "pixiv": 4283,
+        "saucenao": 1
+      },
+      "total_media": 3750
+    },
+    "source_layer": {
+      "f7a_candidate_coverage": {
+        "candidate_status_distribution": {
+          "active_candidate": 495,
+          "needs_review": 408
+        },
+        "candidates_by_provider": {
+          "local_media_tags": 51,
+          "pixiv": 852
+        },
+        "candidates_by_role": {
+          "artist_creator": 143,
+          "character": 307,
+          "person": 33,
+          "source_title": 64,
+          "unknown_name_like": 250,
+          "work_title": 106
+        },
+        "candidates_by_status": {
+          "active": 903
+        },
+        "candidates_linked_to_media": 903,
+        "distinct_media_with_candidates": 62,
+        "extraction_runs_by_status": {
+          "completed": 2
+        },
+        "record_verdicts_by_verdict": {
+          "extraction_error_terminal": 5,
+          "multiple_candidates_found": 71,
+          "name_candidate_found": 36
+        }
+      },
+      "provider_cache_by_provider": {
+        "saucenao": 2
+      },
+      "source_assertions_by_provider": {
+        "pixiv": 1201,
+        "saucenao": 17
+      },
+      "source_assertions_by_status": {
+        "needs_review": 923,
+        "rejected": 113,
+        "searchable_active": 182
+      },
+      "source_assertions_linked_to_media": 1188,
+      "source_metadata_coverage_denominator_policy": "distinct_media",
+      "source_metadata_distinct_eligible_media_count": 531,
+      "source_metadata_distinct_eligible_media_pct": 14.4,
+      "source_metadata_distinct_media_count": 531,
+      "source_metadata_distinct_media_pct": 14.16,
+      "source_metadata_records_linked_to_media": 531,
+      "source_metadata_records_total": 671,
+      "source_name_observations_by_provider": {
+        "danbooru": 66,
+        "gelbooru": 63,
+        "pixiv": 1154,
+        "saucenao": 94
+      },
+      "source_name_observations_linked_to_media": 1044,
+      "source_records": {
+        "by_provider": {
+          "danbooru": 22,
+          "gelbooru": 21,
+          "google_vision": 1,
+          "no_tag_provider": 22,
+          "pixiv": 568,
+          "saucenao": 37
+        },
+        "by_status": {
+          "observed": 671
+        },
+        "coverage_denominator_policy": "distinct_media",
+        "distinct_eligible_media": 531,
+        "distinct_eligible_media_pct": 14.4,
+        "distinct_media": 531,
+        "distinct_media_pct": 14.16,
+        "linked_to_media": 531,
+        "total_rows": 671
+      },
+      "source_tag_observations_by_provider": {
+        "danbooru": 88,
+        "gelbooru": 63,
+        "google_vision": 2,
+        "pixiv": 4283,
+        "saucenao": 1
+      },
+      "source_tag_observations_linked_to_media": 4226,
+      "table_counts": {
+        "blombooru_provider_cache": {
+          "count": 2,
+          "status": "present"
+        },
+        "blombooru_source_metadata_evidence": {
+          "count": 4386,
+          "status": "present"
+        },
+        "blombooru_source_metadata_records": {
+          "count": 671,
+          "status": "present"
+        },
+        "blombooru_source_name_alias_candidates": {
+          "count": 45,
+          "status": "present"
+        },
+        "blombooru_source_name_candidate_extraction_runs": {
+          "count": 2,
+          "status": "present"
+        },
+        "blombooru_source_name_candidate_record_verdicts": {
+          "count": 112,
+          "status": "present"
+        },
+        "blombooru_source_name_candidates": {
+          "count": 903,
+          "status": "present"
+        },
+        "blombooru_source_name_observations": {
+          "count": 1377,
+          "status": "present"
+        },
+        "blombooru_source_name_registry": {
+          "count": 371,
+          "status": "present"
+        },
+        "blombooru_source_searchable_name_assertions": {
+          "count": 1218,
+          "status": "present"
+        },
+        "blombooru_source_tag_observations": {
+          "count": 4437,
+          "status": "present"
+        },
+        "blombooru_source_tag_registry": {
+          "count": 418,
+          "status": "present"
+        }
+      }
+    }
+  },
+  "private_artifacts": {
+    "exact_private_paths_public": false,
+    "private_artifact_bundle_created": true,
+    "private_artifact_bundle_format": "zip",
+    "private_artifact_count": 22,
+    "private_artifact_root_label": ".local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage",
+    "required_private_artifacts": [
+      "db-identity-before.json",
+      "db-identity-after.json",
+      "source-layer-baseline-before.json",
+      "source-layer-baseline-after.json",
+      "px1-source-metadata-presence-check.json",
+      "resolver-input-inventory.json",
+      "resolver-run-ledger.json",
+      "source-concept-before.json",
+      "source-concept-after.json",
+      "source-concept-delta.json",
+      "alias-gap-before.json",
+      "alias-gap-after.json",
+      "alias-gap-delta.json",
+      "needs-review-triage-before.json",
+      "needs-review-triage-after.json",
+      "needs-review-triage-delta.json",
+      "search-seed-symmetry-check.json",
+      "mutation-proof-before.json",
+      "mutation-proof-after.json",
+      "mutation-proof-delta.json",
+      "post-commit-verification.json",
+      "public-redaction-check.txt"
+    ]
+  },
+  "public_redaction": {
+    "checked_at": "2026-06-12T03:28:47Z",
+    "exact_private_paths_public": false,
+    "final_public_scan_after_public_fields_finalized": true,
+    "findings": [],
+    "passed": true,
+    "policy": "public Markdown/JSON are rendered to ignored staging files, scanned, then atomically replace tracked report paths",
+    "private_artifact_paths_public": false,
+    "public_paths": [
+      "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+      "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json"
+    ]
+  },
+  "px1_source_metadata_check": {
+    "assertions_by_status_requires_review": [
+      {
+        "count": 918,
+        "requires_review": true,
+        "status": "needs_review"
+      }
+    ],
+    "checked_at": "2026-06-12T03:27:15Z",
+    "checks": {
+      "assertions_are_review_scoped": true,
+      "assertions_minimum_met": true,
+      "assertions_not_searchable_active": true,
+      "metadata_evidence_minimum_met": true,
+      "metadata_records_minimum_met": true,
+      "name_observations_minimum_met": true,
+      "tag_observations_minimum_met": true
+    },
+    "counts": {
+      "assertion_needs_review_requires_review": 918,
+      "assertion_searchable_active": 0,
+      "distinct_media": 471,
+      "source_metadata_evidence": 3727,
+      "source_metadata_records": 471,
+      "source_name_observations": 918,
+      "source_searchable_name_assertions": 918,
+      "source_tag_observations": 3727
+    },
+    "expected_minimums": {
+      "source_metadata_evidence": 3727,
+      "source_metadata_records": 470,
+      "source_name_observations": 918,
+      "source_searchable_name_assertions": 918,
+      "source_tag_observations": 3727
+    },
+    "passed": true,
+    "px1_slug": "phase-4.5-px1-pixiv-metadata-dedup-dry-run"
+  },
+  "recommended_next_phase": "SCV2-A1",
+  "report_generation": {
+    "branch": "codex/phase45-scv2-r1-post-px1-source-concept-triage",
+    "final_pr_head_sha_if_different": "reported in PR handoff after report refresh commit",
+    "operational_result_reused_older_artifacts": false,
+    "report_generated_from_current_branch_head": true,
+    "runtime_git_sha": "8e24954760890cfe2a76670f1f6cd7440bfd44da",
+    "runtime_git_sha_scope": "git rev-parse HEAD at runner execution",
+    "runtime_git_sha_used_for_execute": "8e24954760890cfe2a76670f1f6cd7440bfd44da"
+  },
+  "resolver_input_inventory": {
+    "generated_at": "2026-06-12T03:27:35Z",
+    "px1_source_metadata_record_count": 471,
+    "resolver_adapter_accounting": {
+      "SourceMetadataEvidence": "read through source_metadata_record_id linkage and covered by PX1 presence/mutation proof; not written by R1",
+      "SourceMetadataRecord": "consumed via provider_structured_field signals from explicit title/artist/raw metadata fields",
+      "SourceNameObservation": "consumed via source_name_observation signals; requires_review rows stay needs_review",
+      "SourceSearchableNameAssertion": "consumed via source_assertion signals; needs_review rows stay review-scoped",
+      "SourceTagObservation": "consumed via source_tag_observation signals; general/meta tags stay rejected and do not enter concept buckets",
+      "media_tags": "consumed as normal_media_tag or ai_model_tag signals only for concept-eligible identity/category/parenthetical tags",
+      "source_name_candidates": "consumed as f7a_candidate signals when active"
+    },
+    "resolver_version": "source_concept_resolver_core_v2_graph",
+    "signal_summary": {
+      "px1_active_source_assertion_signal_count": 0,
+      "px1_assertions_included_only_as_review_scoped_input": true,
+      "px1_needs_review_source_assertion_signal_count": 902,
+      "px1_signal_counts_by_origin_status": [
+        {
+          "count": 1346,
+          "key": [
+            "provider_structured_field",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 902,
+          "key": [
+            "source_assertion",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 902,
+          "key": [
+            "source_name_observation",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 209,
+          "key": [
+            "source_tag_observation",
+            "active"
+          ]
+        },
+        {
+          "count": 3518,
+          "key": [
+            "source_tag_observation",
+            "rejected"
+          ]
+        }
+      ],
+      "px1_signal_counts_by_origin_trust_status": [
+        {
+          "count": 458,
+          "key": [
+            "provider_structured_field",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 888,
+          "key": [
+            "provider_structured_field",
+            "weak",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 902,
+          "key": [
+            "source_assertion",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 902,
+          "key": [
+            "source_name_observation",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 209,
+          "key": [
+            "source_tag_observation",
+            "medium",
+            "active"
+          ]
+        },
+        {
+          "count": 3518,
+          "key": [
+            "source_tag_observation",
+            "rejected",
+            "rejected"
+          ]
+        }
+      ],
+      "signal_counts_by_origin_provider_status": [
+        {
+          "count": 2605,
+          "key": [
+            "ai_model_tag",
+            "ai_wd",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 51,
+          "key": [
+            "f7a_candidate",
+            "local_media_tags",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 460,
+          "key": [
+            "f7a_candidate",
+            "pixiv",
+            "active"
+          ]
+        },
+        {
+          "count": 392,
+          "key": [
+            "f7a_candidate",
+            "pixiv",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 1551,
+          "key": [
+            "provider_structured_field",
+            "pixiv",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 100,
+          "key": [
+            "provider_structured_field",
+            "saucenao",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 88,
+          "key": [
+            "source_alias_candidate",
+            "pixiv_parenthetical_pattern",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 2,
+          "key": [
+            "source_alias_candidate",
+            "pixiv_provider_canonical",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 135,
+          "key": [
+            "source_assertion",
+            "pixiv",
+            "active"
+          ]
+        },
+        {
+          "count": 939,
+          "key": [
+            "source_assertion",
+            "pixiv",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 111,
+          "key": [
+            "source_assertion",
+            "pixiv",
+            "rejected"
+          ]
+        },
+        {
+          "count": 17,
+          "key": [
+            "source_assertion",
+            "saucenao",
+            "active"
+          ]
+        },
+        {
+          "count": 66,
+          "key": [
+            "source_name_observation",
+            "danbooru",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 63,
+          "key": [
+            "source_name_observation",
+            "gelbooru",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 86,
+          "key": [
+            "source_name_observation",
+            "pixiv",
+            "active"
+          ]
+        },
+        {
+          "count": 1052,
+          "key": [
+            "source_name_observation",
+            "pixiv",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 31,
+          "key": [
+            "source_name_observation",
+            "saucenao",
+            "active"
+          ]
+        },
+        {
+          "count": 63,
+          "key": [
+            "source_name_observation",
+            "saucenao",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 66,
+          "key": [
+            "source_tag_observation",
+            "danbooru",
+            "active"
+          ]
+        },
+        {
+          "count": 22,
+          "key": [
+            "source_tag_observation",
+            "danbooru",
+            "rejected"
+          ]
+        },
+        {
+          "count": 63,
+          "key": [
+            "source_tag_observation",
+            "gelbooru",
+            "active"
+          ]
+        },
+        {
+          "count": 2,
+          "key": [
+            "source_tag_observation",
+            "google_vision",
+            "rejected"
+          ]
+        },
+        {
+          "count": 267,
+          "key": [
+            "source_tag_observation",
+            "pixiv",
+            "active"
+          ]
+        },
+        {
+          "count": 4016,
+          "key": [
+            "source_tag_observation",
+            "pixiv",
+            "rejected"
+          ]
+        },
+        {
+          "count": 1,
+          "key": [
+            "source_tag_observation",
+            "saucenao",
+            "rejected"
+          ]
+        }
+      ],
+      "signal_counts_by_origin_status": [
+        {
+          "count": 2605,
+          "key": [
+            "ai_model_tag",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 460,
+          "key": [
+            "f7a_candidate",
+            "active"
+          ]
+        },
+        {
+          "count": 443,
+          "key": [
+            "f7a_candidate",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 1651,
+          "key": [
+            "provider_structured_field",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 90,
+          "key": [
+            "source_alias_candidate",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 152,
+          "key": [
+            "source_assertion",
+            "active"
+          ]
+        },
+        {
+          "count": 939,
+          "key": [
+            "source_assertion",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 111,
+          "key": [
+            "source_assertion",
+            "rejected"
+          ]
+        },
+        {
+          "count": 117,
+          "key": [
+            "source_name_observation",
+            "active"
+          ]
+        },
+        {
+          "count": 1244,
+          "key": [
+            "source_name_observation",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 396,
+          "key": [
+            "source_tag_observation",
+            "active"
+          ]
+        },
+        {
+          "count": 4041,
+          "key": [
+            "source_tag_observation",
+            "rejected"
+          ]
+        }
+      ],
+      "signal_counts_by_origin_trust_status": [
+        {
+          "count": 2383,
+          "key": [
+            "ai_model_tag",
+            "medium_ai",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 222,
+          "key": [
+            "ai_model_tag",
+            "weak",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 460,
+          "key": [
+            "f7a_candidate",
+            "medium",
+            "active"
+          ]
+        },
+        {
+          "count": 4,
+          "key": [
+            "f7a_candidate",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 4,
+          "key": [
+            "f7a_candidate",
+            "medium_ai",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 435,
+          "key": [
+            "f7a_candidate",
+            "weak",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 642,
+          "key": [
+            "provider_structured_field",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 1009,
+          "key": [
+            "provider_structured_field",
+            "weak",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 90,
+          "key": [
+            "source_alias_candidate",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 904,
+          "key": [
+            "source_assertion",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 111,
+          "key": [
+            "source_assertion",
+            "rejected",
+            "rejected"
+          ]
+        },
+        {
+          "count": 152,
+          "key": [
+            "source_assertion",
+            "strong",
+            "active"
+          ]
+        },
+        {
+          "count": 35,
+          "key": [
+            "source_assertion",
+            "weak",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 117,
+          "key": [
+            "source_name_observation",
+            "medium",
+            "active"
+          ]
+        },
+        {
+          "count": 1244,
+          "key": [
+            "source_name_observation",
+            "medium",
+            "needs_review"
+          ]
+        },
+        {
+          "count": 396,
+          "key": [
+            "source_tag_observation",
+            "medium",
+            "active"
+          ]
+        },
+        {
+          "count": 4041,
+          "key": [
+            "source_tag_observation",
+            "rejected",
+            "rejected"
+          ]
+        }
+      ],
+      "total_signals": 12249
+    }
+  },
+  "safety": {
+    "ai_tagging": false,
+    "allowed_write_tables": [
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_search_index"
+    ],
+    "classification": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "db_migration": false,
+    "db_write": true,
+    "entity_truth_or_media_tags": false,
+    "forbidden_write_tables": [
+      "blombooru_media",
+      "blombooru_media_tags",
+      "blombooru_tags",
+      "blombooru_tag_translations",
+      "blombooru_tag_translation_jobs",
+      "blombooru_entities",
+      "blombooru_entity_aliases",
+      "blombooru_entity_evidence",
+      "blombooru_entity_external_identities",
+      "blombooru_entity_translations",
+      "blombooru_media_entity_candidates",
+      "blombooru_media_entity_assignments",
+      "blombooru_source_metadata_records",
+      "blombooru_source_tag_observations",
+      "blombooru_source_name_observations",
+      "blombooru_source_searchable_name_assertions",
+      "blombooru_source_metadata_evidence",
+      "blombooru_provider_cache",
+      "blombooru_scan_jobs",
+      "blombooru_scan_job_media",
+      "blombooru_ai_tag_jobs",
+      "blombooru_classification_jobs"
+    ],
+    "localization_or_llm": false,
+    "media_import": false,
+    "provider_calls": false,
+    "source_icloud_storage_mutation": false,
+    "source_metadata_readonly_tables": [
+      "blombooru_source_metadata_records",
+      "blombooru_source_tag_observations",
+      "blombooru_source_name_observations",
+      "blombooru_source_searchable_name_assertions",
+      "blombooru_source_metadata_evidence"
+    ]
+  },
+  "search_seed_symmetry": {
+    "delta_from_before": {
+      "aggregate_delta": {
+        "asymmetric_groups": 0,
+        "groups_checked": 0,
+        "matched_seeds": 0,
+        "seeds_checked": 0,
+        "symmetric_groups": 0
+      },
+      "changed_group_count": 0,
+      "changed_groups": []
+    },
+    "public_summary": {
+      "asymmetric_groups": 10,
+      "groups_checked": 10,
+      "matched_seeds": 49,
+      "px1_sample_groups": [
+        "px1_high_frequency_source_names_private",
+        "px1_high_frequency_source_tags_private",
+        "px1_title_or_work_assertions_private",
+        "px1_ambiguous_short_names_private"
+      ],
+      "scv1_seed_groups_included": [
+        "nahida_prompt_and_doc1",
+        "kamisato_ayaka",
+        "nilou",
+        "barbara",
+        "mona",
+        "2b"
+      ],
+      "seeds_checked": 67
+    }
+  },
+  "source_concept_after": {
+    "active_concepts": 1078,
+    "ai_only_concept_count": 2022,
+    "alias_count_by_role_status_provider": [
+      {
+        "alias_role": "ai_model_tag",
+        "count": 1,
+        "provider": "ai_wd",
+        "status": "active"
+      },
+      {
+        "alias_role": "ai_model_tag",
+        "count": 338,
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "ai_model_tag",
+        "count": 1777,
+        "provider": "ai_wd",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 75,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 23,
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 284,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 72,
+        "provider": "local_media_tags",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 595,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 380,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 72,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 1007,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 3,
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 169,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 74,
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 92,
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 2,
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 77,
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 2,
+        "provider": "pixiv_provider_canonical",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 759,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 15,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 73,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 236,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 15,
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 821,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 85,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 16,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 1,
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 241,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 88,
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 66,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 72,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 88,
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 2,
+        "provider": "google_vision",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 467,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 1,
+        "provider": "saucenao",
+        "status": "superseded"
+      }
+    ],
+    "alias_count_per_concept": {
+      "average": 1.401,
+      "count": 6094,
+      "max": 11,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "aliases_total": 8539,
+    "by_concept_type_hint": {
+      "artist": 599,
+      "character": 2646,
+      "person": 61,
+      "source_title": 1252,
+      "unknown": 921,
+      "work": 615
+    },
+    "by_status": {
+      "active": 1078,
+      "needs_review": 1809,
+      "superseded": 3207
+    },
+    "concepts_by_evidence_origin_provider_source_kind": [
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 21,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.work_or_copyright",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 93,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 53,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "popularity_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 445,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "work_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 129,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_assertion",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 34,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_work_or_copyright",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 209,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 190,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "superseded",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 458,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "artist",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_tag_observation",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "normal_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 544,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "artist_name",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 469,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "raw_metadata_json.title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 48,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "artist",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 9,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "work_title",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 70,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "normal_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 16,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "popularity_marker",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 538,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "source_kind": "provider_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 46,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 13,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "work_title",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 94,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_name_observation",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 57,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_name_observation",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 9,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_artist_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 51,
+        "origin_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "title",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_artist_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 86,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_user_metadata",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 3518,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 108,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 56,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 44,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "source_kind": "alias_edge_target",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 44,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "source_kind": "alias_edge_source",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 10,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 22,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.creator",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 56,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_parenthetical_outer",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 32,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "artist_name",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_tag_observation",
+        "provider": "saucenao",
+        "source_kind": "provider_label",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 6,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "creator",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "artist",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 56,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_parenthetical_inner_work",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 27,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_characters",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "source_kind": "alias_edge_source",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_tag_observation",
+        "provider": "google_vision",
+        "source_kind": "generic_provider_label",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 458,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_user_metadata",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 222,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:character",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 445,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "provider_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 35,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "source_title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 58,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 95,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "general_descriptor",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 113,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "normal_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 57,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_artist",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 480,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.artist",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2383,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:character",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 148,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_assertion",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "source_kind": "alias_edge_target",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.characters",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 24,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_tag_observation",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 74,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "character",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 28,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_creator",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 18,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "provider_field",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "unknown",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 3,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_artist",
+        "status": "active",
+        "trust_tier": "medium"
+      }
+    ],
+    "concepts_influenced_by_px1_evidence": 1692,
+    "concepts_with_multiple_aliases": 1539,
+    "concepts_with_no_aliases": 0,
+    "concepts_with_no_evidence": 0,
+    "concepts_with_no_media": 3764,
+    "concepts_with_no_search_index": 0,
+    "evidence_count_by_type_status_provider": [
+      {
+        "count": 113,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "active"
+      },
+      {
+        "count": 2594,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "count": 3539,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "superseded"
+      },
+      {
+        "count": 304,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 51,
+        "evidence_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "count": 548,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 123,
+        "evidence_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "superseded"
+      },
+      {
+        "count": 1188,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 544,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 97,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 1007,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 3,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 207,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 100,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "count": 103,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "count": 90,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "superseded"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "superseded"
+      },
+      {
+        "count": 988,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 17,
+        "evidence_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 86,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 292,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 17,
+        "evidence_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 1113,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 93,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 25,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 1,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 387,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 96,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 159,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 108,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 88,
+        "evidence_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_tag_observation",
+        "provider": "google_vision",
+        "status": "superseded"
+      },
+      {
+        "count": 547,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 1,
+        "evidence_type": "source_tag_observation",
+        "provider": "saucenao",
+        "status": "superseded"
+      }
+    ],
+    "evidence_count_per_concept": {
+      "average": 2.475,
+      "count": 6094,
+      "max": 172,
+      "median": 1.0,
+      "min": 1,
+      "p90": 3,
+      "zero_count": 0
+    },
+    "evidence_total": 15085,
+    "hidden_status_counts": {
+      "ambiguous": 0,
+      "hidden": 0,
+      "rejected": 0,
+      "superseded": 3207,
+      "weak": 0
+    },
+    "link_count_per_concept": {
+      "average": 9.21,
+      "count": 6094,
+      "max": 868,
+      "median": 2.0,
+      "min": 1,
+      "p90": 19,
+      "zero_count": 0
+    },
+    "media_link_count_per_concept": {
+      "average": 0.823,
+      "count": 6094,
+      "max": 113,
+      "median": 0.0,
+      "min": 0,
+      "p90": 1,
+      "zero_count": 3764
+    },
+    "media_linked_concepts": 2330,
+    "needs_review_concepts": 1809,
+    "omitted_private_sample_sets": {
+      "duplicate_primary_display_name_groups": 50,
+      "high_evidence_count_concepts": 25,
+      "high_media_count_concepts": 25,
+      "px1_influenced_concept_ids_private": 500,
+      "same_alias_key_across_multiple_concepts": 100
+    },
+    "public_sample_policy": "aggregate_counts_only; raw names, alias keys, concept IDs, and sample rows stay in private artifacts",
+    "search_index_count_by_status": [
+      {
+        "count": 2532,
+        "status": "active"
+      },
+      {
+        "count": 1908,
+        "status": "needs_review"
+      },
+      {
+        "count": 4099,
+        "status": "superseded"
+      }
+    ],
+    "search_index_count_per_concept": {
+      "average": 1.401,
+      "count": 6094,
+      "max": 11,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "search_index_total": 8539,
+    "signal_count_by_origin_provider_status": [
+      {
+        "count": 2439,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 268,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 190,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "superseded",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 93,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 51,
+        "origin_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 460,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 384,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 544,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1007,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 98,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 88,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 135,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 904,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 35,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 111,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 17,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 86,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1052,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 31,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_tag_observation",
+        "provider": "google_vision",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 267,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4016,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_tag_observation",
+        "provider": "saucenao",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      }
+    ],
+    "signal_links_total": 56127,
+    "singleton_alias_concepts": 4555,
+    "source_title_only_concept_count": 0,
+    "total_source_concepts": 6094,
+    "weak_only_concept_count": 5771
+  },
+  "source_concept_before": {
+    "active_concepts": 1078,
+    "ai_only_concept_count": 2022,
+    "alias_count_by_role_status_provider": [
+      {
+        "alias_role": "ai_model_tag",
+        "count": 1,
+        "provider": "ai_wd",
+        "status": "active"
+      },
+      {
+        "alias_role": "ai_model_tag",
+        "count": 338,
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "ai_model_tag",
+        "count": 1777,
+        "provider": "ai_wd",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 75,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 23,
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 284,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 72,
+        "provider": "local_media_tags",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 595,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 380,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 72,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 1007,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 3,
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 169,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 74,
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 92,
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 2,
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 77,
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 2,
+        "provider": "pixiv_provider_canonical",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 759,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 15,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 73,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 236,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 15,
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 821,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 85,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 16,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 1,
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 241,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 88,
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 66,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 72,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 88,
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 2,
+        "provider": "google_vision",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 467,
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 1,
+        "provider": "saucenao",
+        "status": "superseded"
+      }
+    ],
+    "alias_count_per_concept": {
+      "average": 1.401,
+      "count": 6094,
+      "max": 11,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "aliases_total": 8539,
+    "by_concept_type_hint": {
+      "artist": 599,
+      "character": 2646,
+      "person": 61,
+      "source_title": 1252,
+      "unknown": 921,
+      "work": 615
+    },
+    "by_status": {
+      "active": 1078,
+      "needs_review": 1809,
+      "superseded": 3207
+    },
+    "concepts_by_evidence_origin_provider_source_kind": [
+      {
+        "count": 10,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 22,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.creator",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 56,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_parenthetical_outer",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 21,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.work_or_copyright",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 32,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "artist_name",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 93,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_tag_observation",
+        "provider": "saucenao",
+        "source_kind": "provider_label",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 6,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "creator",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 53,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "popularity_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 445,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "work_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 129,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_assertion",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "artist",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 56,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_parenthetical_inner_work",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 34,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_work_or_copyright",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 209,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 27,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_characters",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "source_kind": "alias_edge_source",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 190,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "superseded",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_tag_observation",
+        "provider": "google_vision",
+        "source_kind": "generic_provider_label",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 458,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "artist",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 458,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_user_metadata",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 222,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:character",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_tag_observation",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 445,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "provider_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 35,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "source_title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 544,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "artist_name",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "normal_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 469,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "raw_metadata_json.title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 48,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "artist",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 9,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "source_kind": "work_title",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 58,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "provider_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 95,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "general_descriptor",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 113,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "normal_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 70,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 2,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "normal_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 16,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "popularity_marker",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 538,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "title",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "source_kind": "provider_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 46,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 13,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "work_title",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 57,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_artist",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 94,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_name_observation",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 480,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.artist",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 57,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_name_observation",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 9,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_title",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2383,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:character",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_artist_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 148,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_assertion",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 51,
+        "origin_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "source_kind": "ai_model_tag",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "source_kind": "title",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 21,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "source_kind": "gelbooru_artist_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "source_kind": "alias_edge_target",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "source_kind": "raw_metadata_json.characters",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 86,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_user_metadata",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 24,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "source_tag_observation",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 3518,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 108,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "pixiv_tag",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 56,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "source_kind": "tag_category:general",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 74,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "character",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 28,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_creator",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "source_kind": "danbooru_character_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "source_kind": "pixiv_work_title_tag",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 44,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "source_kind": "alias_edge_target",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 18,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "source_kind": "provider_field",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "source_kind": "unknown",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 3,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "source_kind": "saucenao_artist",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 44,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "source_kind": "alias_edge_source",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      }
+    ],
+    "concepts_influenced_by_px1_evidence": 1692,
+    "concepts_with_multiple_aliases": 1539,
+    "concepts_with_no_aliases": 0,
+    "concepts_with_no_evidence": 0,
+    "concepts_with_no_media": 3764,
+    "concepts_with_no_search_index": 0,
+    "evidence_count_by_type_status_provider": [
+      {
+        "count": 113,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "active"
+      },
+      {
+        "count": 2594,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "count": 3539,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "superseded"
+      },
+      {
+        "count": 304,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 51,
+        "evidence_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "count": 548,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 123,
+        "evidence_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "superseded"
+      },
+      {
+        "count": 1188,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 544,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 97,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 1007,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 3,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 207,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 100,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "count": 103,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "count": 90,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "superseded"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "superseded"
+      },
+      {
+        "count": 988,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 17,
+        "evidence_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 86,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 292,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 17,
+        "evidence_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 1113,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 93,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 25,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 1,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 387,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 96,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "superseded"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 159,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 108,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 88,
+        "evidence_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "superseded"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_tag_observation",
+        "provider": "google_vision",
+        "status": "superseded"
+      },
+      {
+        "count": 547,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "superseded"
+      },
+      {
+        "count": 1,
+        "evidence_type": "source_tag_observation",
+        "provider": "saucenao",
+        "status": "superseded"
+      }
+    ],
+    "evidence_count_per_concept": {
+      "average": 2.475,
+      "count": 6094,
+      "max": 172,
+      "median": 1.0,
+      "min": 1,
+      "p90": 3,
+      "zero_count": 0
+    },
+    "evidence_total": 15085,
+    "hidden_status_counts": {
+      "ambiguous": 0,
+      "hidden": 0,
+      "rejected": 0,
+      "superseded": 3207,
+      "weak": 0
+    },
+    "link_count_per_concept": {
+      "average": 7.882,
+      "count": 6094,
+      "max": 868,
+      "median": 2.0,
+      "min": 1,
+      "p90": 15,
+      "zero_count": 0
+    },
+    "media_link_count_per_concept": {
+      "average": 0.823,
+      "count": 6094,
+      "max": 113,
+      "median": 0.0,
+      "min": 0,
+      "p90": 1,
+      "zero_count": 3764
+    },
+    "media_linked_concepts": 2330,
+    "needs_review_concepts": 1809,
+    "omitted_private_sample_sets": {
+      "duplicate_primary_display_name_groups": 50,
+      "high_evidence_count_concepts": 25,
+      "high_media_count_concepts": 25,
+      "px1_influenced_concept_ids_private": 500,
+      "same_alias_key_across_multiple_concepts": 100
+    },
+    "public_sample_policy": "aggregate_counts_only; raw names, alias keys, concept IDs, and sample rows stay in private artifacts",
+    "search_index_count_by_status": [
+      {
+        "count": 2532,
+        "status": "active"
+      },
+      {
+        "count": 1908,
+        "status": "needs_review"
+      },
+      {
+        "count": 4099,
+        "status": "superseded"
+      }
+    ],
+    "search_index_count_per_concept": {
+      "average": 1.401,
+      "count": 6094,
+      "max": 11,
+      "median": 1.0,
+      "min": 1,
+      "p90": 2,
+      "zero_count": 0
+    },
+    "search_index_total": 8539,
+    "signal_count_by_origin_provider_status": [
+      {
+        "count": 2439,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 268,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 190,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "superseded",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 93,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 51,
+        "origin_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 460,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium_ai"
+      },
+      {
+        "count": 384,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 544,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1007,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 1,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "superseded",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 98,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 88,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 135,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 904,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 35,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "weak"
+      },
+      {
+        "count": 111,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 17,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "active",
+        "trust_tier": "strong"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 86,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 1052,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 31,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "needs_review",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_tag_observation",
+        "provider": "google_vision",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 267,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      {
+        "count": 4016,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_tag_observation",
+        "provider": "saucenao",
+        "status": "rejected",
+        "trust_tier": "rejected"
+      }
+    ],
+    "signal_links_total": 48030,
+    "singleton_alias_concepts": 4555,
+    "source_title_only_concept_count": 0,
+    "total_source_concepts": 6094,
+    "weak_only_concept_count": 5771
+  },
+  "source_concept_delta": {
+    "active_source_concepts_delta": 0,
+    "concepts_influenced_by_px1_evidence_after": 1692,
+    "concepts_influenced_by_px1_evidence_before": 1692,
+    "concepts_influenced_by_px1_evidence_delta": 0,
+    "concepts_newly_influenced_by_px1_evidence": 0,
+    "needs_review_source_concepts_delta": 0,
+    "numeric_delta": {
+      "active_concepts": 0,
+      "ai_only_concept_count": 0,
+      "alias_count_per_concept": {
+        "average": 0.0,
+        "count": 0,
+        "max": 0,
+        "median": 0.0,
+        "min": 0,
+        "p90": 0,
+        "zero_count": 0
+      },
+      "aliases_total": 0,
+      "by_concept_type_hint": {
+        "artist": 0,
+        "character": 0,
+        "person": 0,
+        "source_title": 0,
+        "unknown": 0,
+        "work": 0
+      },
+      "by_status": {
+        "active": 0,
+        "needs_review": 0,
+        "superseded": 0
+      },
+      "concepts_influenced_by_px1_evidence": 0,
+      "concepts_with_multiple_aliases": 0,
+      "concepts_with_no_aliases": 0,
+      "concepts_with_no_evidence": 0,
+      "concepts_with_no_media": 0,
+      "concepts_with_no_search_index": 0,
+      "evidence_count_per_concept": {
+        "average": 0.0,
+        "count": 0,
+        "max": 0,
+        "median": 0.0,
+        "min": 0,
+        "p90": 0,
+        "zero_count": 0
+      },
+      "evidence_total": 0,
+      "hidden_status_counts": {
+        "ambiguous": 0,
+        "hidden": 0,
+        "rejected": 0,
+        "superseded": 0,
+        "weak": 0
+      },
+      "link_count_per_concept": {
+        "average": 1.328,
+        "count": 0,
+        "max": 0,
+        "median": 0.0,
+        "min": 0,
+        "p90": 4,
+        "zero_count": 0
+      },
+      "media_link_count_per_concept": {
+        "average": 0.0,
+        "count": 0,
+        "max": 0,
+        "median": 0.0,
+        "min": 0,
+        "p90": 0,
+        "zero_count": 0
+      },
+      "media_linked_concepts": 0,
+      "needs_review_concepts": 0,
+      "search_index_count_per_concept": {
+        "average": 0.0,
+        "count": 0,
+        "max": 0,
+        "median": 0.0,
+        "min": 0,
+        "p90": 0,
+        "zero_count": 0
+      },
+      "search_index_total": 0,
+      "signal_links_total": 8097,
+      "singleton_alias_concepts": 0,
+      "source_title_only_concept_count": 0,
+      "total_source_concepts": 0,
+      "weak_only_concept_count": 0
+    },
+    "px1_influenced_concepts_with_status_change_estimate": 19,
+    "total_source_concepts_delta": 0
+  },
+  "title": "Post-PX1 SourceConcept Resolver and Needs-Review Triage",
+  "transaction": {
+    "execute_transaction_committed": true,
+    "transaction_final_action": "commit",
+    "transaction_finalized_at": "2026-06-12T03:28:29Z"
+  },
+  "validation": {
+    "browser_validation": "not_run_no_ui_runtime_change",
+    "commands": [
+      "python scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py --dry-run --output-dir .local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage --write-public-report",
+      "python scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py --execute --output-dir .local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage --write-public-report --confirm-execution EXECUTE_PHASE45_SCV2_R1_SOURCE_CONCEPT_TRIAGE"
+    ],
+    "dry_run_completed": true,
+    "execute_completed": true,
+    "execute_transaction_committed": true,
+    "mode": "execute",
+    "no_provider_import_classification_ai_localization_entity": true,
+    "post_commit_verification_passed": true,
+    "provider_network_attempted": false,
+    "server_started": false,
+    "summary_schema": {
+      "missing_fields": [],
+      "passed": true,
+      "required_fields": [
+        "alias_gap_after",
+        "alias_gap_before",
+        "alias_gap_delta",
+        "artifact_lifecycle",
+        "branch",
+        "db_identity_after",
+        "db_identity_before",
+        "decision_matrix",
+        "execute_transaction_committed",
+        "generated_at",
+        "mutation_proof",
+        "needs_review_after",
+        "needs_review_before",
+        "needs_review_delta",
+        "phase",
+        "post_commit",
+        "post_commit_verification_passed",
+        "post_px1_baseline",
+        "private_artifacts",
+        "public_redaction",
+        "px1_source_metadata_check",
+        "recommended_next_phase",
+        "report_generation",
+        "resolver_input_inventory",
+        "safety",
+        "search_seed_symmetry",
+        "source_concept_after",
+        "source_concept_before",
+        "source_concept_delta",
+        "title",
+        "validation"
+      ]
+    }
+  }
+}
