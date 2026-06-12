@@ -177,6 +177,12 @@ SCV1_SEED_GROUPS = {
     "mona": ["Mona", "mona_(genshin_impact)", "\u30e2\u30ca", "\u9289\ue760\u3001\u5115"],
     "2b": ["2B", "2b_(nier_automata)", "\u30e8\u30eb\u30cf\u4e8c\u53f7B\u578b", "\u9289\u30e8\u3002\u5137\u9289\u5fd2\u4e8c\u53f7B\u5a9a"],
 }
+PUBLIC_SEED_LABEL_ALLOWLIST = frozenset(
+    scv1.normalize_source_text(seed)
+    for seeds in SCV1_SEED_GROUPS.values()
+    for seed in seeds
+    if scv1.normalize_source_text(seed)
+)
 
 SECRET_RE = re.compile(
     r"(?i)(bearer\s+[A-Za-z0-9._~+\-/]{8,}|"
@@ -251,19 +257,74 @@ def stable_private_ref(kind: str, value: Any) -> str:
     return f"{kind}_{digest}"
 
 
-def safe_label(value: Any, *, fallback: str = "[redacted]") -> str:
+def safe_label(value: Any, *, fallback: str = "[redacted]", allow_public_seed: bool = False) -> str:
     text_value = scv1.normalize_source_text(value)
     if not text_value:
         return ""
-    if len(text_value) > 80:
-        return f"{fallback}:{stable_private_ref('label', text_value)}"
-    if scan_text_for_review_pack_leaks(text_value, include_private_keys=False):
-        return f"{fallback}:{stable_private_ref('label', text_value)}"
-    return text_value
+    if allow_public_seed and text_value in PUBLIC_SEED_LABEL_ALLOWLIST and not scan_text_for_review_pack_leaks(text_value, include_private_keys=False):
+        return text_value
+    return f"{fallback}:{stable_private_ref('label', text_value)}"
 
 
-def safe_hash(value: Any) -> str:
-    return hashlib.sha256(str(value or "").encode("utf-8", errors="replace")).hexdigest()[:16]
+def is_redacted_sample_label(value: Any, *, allow_public_seed: bool = False) -> bool:
+    text_value = scv1.normalize_source_text(value)
+    if not text_value:
+        return True
+    if allow_public_seed and text_value in PUBLIC_SEED_LABEL_ALLOWLIST:
+        return True
+    return text_value.startswith("[redacted") and ":label_" in text_value
+
+
+def sample_sequence_ref(bucket: str, index: int) -> str:
+    return f"{bucket}_{index:03d}"
+
+
+def forbid_review_pack_raw_label_field(key: str, value: Any) -> str | None:
+    if key == "display_label" and not is_redacted_sample_label(value):
+        return "display_label_raw_private_label"
+    if key == "search_seed_label" and not is_redacted_sample_label(value, allow_public_seed=True):
+        return "search_seed_label_raw_private_label"
+    return None
+
+
+def scan_json_payload_for_review_pack_leaks(payload: Any, *, path: str = "$") -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    if isinstance(payload, Mapping):
+        for key, value in payload.items():
+            key_text = str(key)
+            if key_text == "canonical_key_hash":
+                findings.append({"type": "unsalted_or_dictionary_attackable_key_hash", "match": path})
+            label_finding = forbid_review_pack_raw_label_field(key_text, value)
+            if label_finding:
+                findings.append({"type": label_finding, "match": f"{path}.{key_text}"})
+            findings.extend(scan_json_payload_for_review_pack_leaks(value, path=f"{path}.{key_text}"))
+    elif isinstance(payload, list):
+        for index, item in enumerate(payload):
+            findings.extend(scan_json_payload_for_review_pack_leaks(item, path=f"{path}[{index}]"))
+    return findings
+
+
+def scan_json_file_for_review_pack_leaks(path: Path) -> list[dict[str, str]]:
+    suffix = path.suffix.lower()
+    findings: list[dict[str, str]] = []
+    if suffix == ".json":
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return [{"type": "invalid_json_in_review_pack", "match": f"{path.name}:{exc.lineno}"}]
+        return scan_json_payload_for_review_pack_leaks(payload)
+    if suffix == ".jsonl":
+        for line_number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                findings.append({"type": "invalid_jsonl_in_review_pack", "match": f"{path.name}:{line_number}:{exc.colno}"})
+                continue
+            for finding in scan_json_payload_for_review_pack_leaks(payload):
+                findings.append({**finding, "match": f"line {line_number}:{finding['match']}"})
+    return findings
 
 
 def rows_dict_expanding(conn: Connection, sql: str, params: Mapping[str, Any], expanding: Sequence[str]) -> list[dict[str, Any]]:
@@ -451,6 +512,7 @@ def build_source_concept_current_state(
         if row.get("status") in VISIBLE_STATUSES and len(scv1.concept_media_set_for_ids(conn, [int(row["id"])])) > 0
     }
     all_ids = {int(row["id"]) for row in concepts}
+    visible_ids = {int(row["id"]) for row in concepts if row.get("status") in VISIBLE_STATUSES}
     alias_groups = alias_group_counts(aliases)
     active_needs_alias = active_needs_review_alias_overlap(aliases, concepts)
     undermerge_groups = alias_groups["same_alias_key_group_count"] + alias_groups["same_display_name_group_count"]
@@ -487,7 +549,11 @@ def build_source_concept_current_state(
         "source_concept_search_index_total": scv1.count_table(conn, "blombooru_source_concept_search_index").get("count"),
         "concepts_influenced_by_px1_evidence": len(px1_ids),
         "concepts_with_media": len(visible_with_media),
-        "concepts_without_media": max(len(all_ids) - len(visible_with_media), 0),
+        "concepts_with_media_status_scope": "visible_statuses_active_or_needs_review",
+        "concepts_without_media": max(len(visible_ids) - len(visible_with_media), 0),
+        "concepts_without_media_status_scope": "visible_statuses_active_or_needs_review",
+        "all_status_source_concept_count": len(all_ids),
+        "visible_status_source_concept_count": len(visible_ids),
         "concepts_with_only_weak_ai_general_evidence": weak_ai_general,
         "active_concepts_sharing_aliases_with_needs_review": active_needs_alias["active_concepts_sharing_aliases_with_needs_review"],
         "needs_review_concepts_sharing_aliases_with_active": active_needs_alias["needs_review_concepts_sharing_aliases_with_active"],
@@ -761,7 +827,7 @@ def evaluate_seed_groups(conn: Connection, seed_groups: Mapping[str, Sequence[st
             seed_rows.append(
                 {
                     "seed_label_private": seed,
-                    "seed_label_public": safe_label(seed, fallback="[redacted seed]"),
+                    "seed_label_public": safe_label(seed, fallback="[redacted seed]", allow_public_seed=True),
                     "matched": bool(visible_ids),
                     "active_matched": bool(active_ids),
                     "matched_concept_count": len(visible_ids),
@@ -1221,7 +1287,7 @@ def sample_search_rows(search_audit: Mapping[str, Any]) -> list[dict[str, Any]]:
     for row in search_audit.get("private_examples", []):
         rows.append(
             {
-                "search_seed_label": safe_label(row.get("seed_label"), fallback="[redacted seed]"),
+                "search_seed_label": safe_label(row.get("seed_label"), fallback="[redacted seed]", allow_public_seed=True),
                 "reason_bucket": row.get("reason_bucket"),
                 "matched": row.get("matched"),
                 "active_matched": row.get("active_matched"),
@@ -1307,7 +1373,7 @@ def sample_unlinked_source_rows(conn: Connection, table_name: str, key_column: s
         samples.append(
             {
                 "provider": row.get("provider"),
-                "canonical_key_hash": safe_hash(key_value),
+                "sample_ref": sample_sequence_ref(bucket, len(samples) + 1),
                 "display_label": safe_label(row.get("label") or key_value, fallback="[redacted source value]"),
                 "evidence_count": int(row.get("count") or 0),
                 "reason_bucket": bucket,
@@ -1338,14 +1404,14 @@ def sample_same_alias_split_rows(conn: Connection, limit: int = 100) -> list[dic
     )
     return [
         {
-            "canonical_key_hash": safe_hash(row.get("alias_key")),
+            "sample_ref": sample_sequence_ref("same_alias_split", index),
             "display_label": safe_label(row.get("alias_key"), fallback="[redacted alias key]"),
             "reason_bucket": "same_normalized_alias_key_split_across_multiple_concepts",
             "result_counts": {"concept_count": int(row.get("concept_count") or 0), "alias_count": int(row.get("alias_count") or 0)},
             "recommended_action": "resolver merge/supersede review",
             "why_this_sample_matters": "A single normalized alias key maps to multiple visible concepts.",
         }
-        for row in rows
+        for index, row in enumerate(rows, start=1)
     ]
 
 
@@ -1368,7 +1434,7 @@ def sample_same_display_context_split_rows(conn: Connection, limit: int = 100) -
             continue
         rows.append(
             {
-                "canonical_key_hash": safe_hash(key),
+                "sample_ref": sample_sequence_ref("same_display_context_split", len(rows) + 1),
                 "display_label": safe_label(labels.get(key), fallback="[redacted display]"),
                 "reason_bucket": "same_display_name_split_across_contexts",
                 "result_counts": {"concept_count": len(ids)},
@@ -1469,7 +1535,7 @@ def scan_text_for_review_pack_leaks(text_value: str, *, include_private_keys: bo
     return findings
 
 
-def scan_review_pack_directory(pack_dir: Path) -> dict[str, Any]:
+def scan_review_pack_directory(pack_dir: Path, *, checked_at: str | None = None) -> dict[str, Any]:
     findings = []
     scanned_files = []
     allowed_matches = {"chatgpt-review-pack.zip"}
@@ -1483,13 +1549,16 @@ def scan_review_pack_directory(pack_dir: Path) -> dict[str, Any]:
             if finding.get("type") == "media_filename_like" and finding.get("match") in allowed_matches:
                 continue
             findings.append({"path": rel, **finding})
+        for finding in scan_json_file_for_review_pack_leaks(path):
+            findings.append({"path": rel, **finding})
     return {
-        "checked_at": utc_now_iso(),
+        "checked_at": checked_at or utc_now_iso(),
         "passed": not findings,
         "scanned_file_count": len(scanned_files),
         "scanned_files": scanned_files,
         "findings": findings,
-        "policy": "scan every review-pack file before zip creation",
+        "final_file_set_scanned": True,
+        "policy": "scan every final review-pack file before zip creation, including manifest, checksums, redaction report, public report copy, audit data, and samples",
     }
 
 
@@ -1518,6 +1587,129 @@ def build_pack_checksums(pack_dir: Path) -> dict[str, str]:
     return checksums
 
 
+def list_pack_files(pack_dir: Path) -> list[str]:
+    return [str(path.relative_to(pack_dir)).replace("\\", "/") for path in sorted(pack_dir.rglob("*")) if path.is_file()]
+
+
+def pack_row_counts(pack_dir: Path, included_files: Sequence[str]) -> dict[str, int | None]:
+    return {
+        rel: row_count_for_file(pack_dir / rel)
+        for rel in included_files
+        if (pack_dir / rel).suffix.lower() in {".json", ".jsonl"}
+    }
+
+
+def write_review_pack_public_report_copy(pack_dir: Path, summary: Mapping[str, Any]) -> None:
+    write_text(pack_dir / "public-report-copy" / PUBLIC_REPORT_MD.name, public_report_markdown(dict(summary)))
+    write_json(pack_dir / "public-report-copy" / PUBLIC_REPORT_JSON.name, dict(summary))
+    assert_fresh_report_copy_matches_summary(pack_dir, summary)
+
+
+def assert_fresh_report_copy_matches_summary(pack_dir: Path, summary: Mapping[str, Any]) -> None:
+    json_path = pack_dir / "public-report-copy" / PUBLIC_REPORT_JSON.name
+    md_path = pack_dir / "public-report-copy" / PUBLIC_REPORT_MD.name
+    if not json_path.exists() or not md_path.exists():
+        raise A1BlockedError("ChatGPT review pack public-report-copy is missing current report files.")
+    try:
+        copied_summary = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise A1BlockedError(f"ChatGPT review pack public summary copy is invalid JSON: {exc}") from exc
+    if copied_summary.get("generated_at") != summary.get("generated_at"):
+        raise A1BlockedError("ChatGPT review pack public summary copy is stale.")
+    if copied_summary.get("phase") != summary.get("phase"):
+        raise A1BlockedError("ChatGPT review pack public summary copy is for the wrong phase.")
+    expected_pack = summary.get("chatgpt_review_pack") or {}
+    copied_pack = copied_summary.get("chatgpt_review_pack") or {}
+    for key in ("generated", "file_count", "checksum_count", "redaction_scan_covers_final_file_set"):
+        if expected_pack.get(key) != copied_pack.get(key):
+            raise A1BlockedError(f"ChatGPT review pack public summary copy has stale chatgpt_review_pack.{key}.")
+
+
+def build_review_pack_manifest(
+    pack_dir: Path,
+    summary: Mapping[str, Any],
+    *,
+    scan: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    included_files = list_pack_files(pack_dir)
+    checksum_count = len([rel for rel in included_files if rel != "checksums.json"])
+    scan_files = set(scan.get("scanned_files", [])) if scan else set()
+    return {
+        "phase": PHASE,
+        "generated_at": utc_now_iso(),
+        "git_branch": summary.get("branch"),
+        "git_sha": summary.get("db_identity", {}).get("git_sha"),
+        "dirty_worktree_status": summary.get("validation", {}).get("dirty_worktree_status"),
+        "db_identity_summary_redacted": summary.get("db_identity"),
+        "command_used_to_generate_pack": summary.get("validation", {}).get("operational_audit_command"),
+        "public_report_copy_source": "rendered_from_current_summary",
+        "public_report_copy_generated_at": summary.get("generated_at"),
+        "included_files": included_files,
+        "file_count": len(included_files),
+        "checksum_file_path": "checksums.json",
+        "checksum_count": checksum_count,
+        "row_counts": pack_row_counts(pack_dir, included_files),
+        "private_fields_are_present": False,
+        "redaction_status": "passed" if scan and scan.get("passed") else "pending",
+        "redaction_scanned_file_count": scan.get("scanned_file_count") if scan else None,
+        "redaction_scan_covers_final_file_set": bool(scan and scan_files == set(included_files)),
+        "known_limitations": [
+            "checksums.json self-hash is omitted to avoid self-referential checksum churn",
+            "sample display labels are private refs unless they are allowlisted public search seed labels",
+        ],
+    }
+
+
+def finalize_review_pack_metadata(pack_dir: Path, summary: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, str], dict[str, Any]]:
+    checked_at = utc_now_iso()
+    write_json(pack_dir / "manifest.json", {"phase": PHASE, "redaction_status": "pending"})
+    write_json(pack_dir / "checksums.json", {})
+    pending_scan = {
+        "checked_at": checked_at,
+        "passed": None,
+        "scanned_file_count": 0,
+        "scanned_files": [],
+        "findings": [],
+        "final_file_set_scanned": False,
+        "policy": "placeholder before final review-pack redaction scan",
+    }
+    write_json(pack_dir / "redaction" / "redaction-report.json", pending_scan)
+    write_text(pack_dir / "redaction" / "public-redaction-check.txt", json.dumps(pending_scan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+
+    scan: dict[str, Any] | None = None
+    manifest: dict[str, Any] = {}
+    checksums: dict[str, str] = {}
+    for _ in range(3):
+        manifest = build_review_pack_manifest(pack_dir, summary, scan=scan)
+        write_json(pack_dir / "manifest.json", manifest)
+        checksums = build_pack_checksums(pack_dir)
+        write_json(pack_dir / "checksums.json", checksums)
+        scan = scan_review_pack_directory(pack_dir, checked_at=checked_at)
+        write_json(pack_dir / "redaction" / "redaction-report.json", scan)
+        write_text(pack_dir / "redaction" / "public-redaction-check.txt", json.dumps(scan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        if not scan["passed"]:
+            raise A1BlockedError(f"ChatGPT review pack redaction failed: {scan['findings']!r}")
+
+    assert scan is not None
+    manifest = build_review_pack_manifest(pack_dir, summary, scan=scan)
+    write_json(pack_dir / "manifest.json", manifest)
+    checksums = build_pack_checksums(pack_dir)
+    write_json(pack_dir / "checksums.json", checksums)
+    final_scan = scan_review_pack_directory(pack_dir, checked_at=checked_at)
+    if not final_scan["passed"]:
+        write_json(pack_dir / "redaction" / "redaction-report.json", final_scan)
+        write_text(pack_dir / "redaction" / "public-redaction-check.txt", json.dumps(final_scan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        raise A1BlockedError(f"Final ChatGPT review pack redaction failed: {final_scan['findings']!r}")
+    if set(final_scan["scanned_files"]) != set(list_pack_files(pack_dir)):
+        final_scan = {**final_scan, "passed": False, "findings": final_scan["findings"] + [{"type": "final_file_set_not_scanned", "match": "review-pack"}]}
+        write_json(pack_dir / "redaction" / "redaction-report.json", final_scan)
+        write_text(pack_dir / "redaction" / "public-redaction-check.txt", json.dumps(final_scan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        raise A1BlockedError("Final ChatGPT review pack redaction scan did not cover the final file set.")
+    if manifest["checksum_count"] != len(checksums):
+        raise A1BlockedError("Review-pack manifest checksum_count does not match checksums.json.")
+    return manifest, checksums, final_scan
+
+
 def zip_review_pack(pack_dir: Path) -> Path:
     zip_path = pack_dir.with_suffix(".zip")
     if zip_path.exists():
@@ -1536,7 +1728,7 @@ This pack supports an independent ChatGPT audit of Phase 4.5-SCV2-A1.
 
 Use the public report copy for the narrative conclusion, audit-data JSON files
 for machine-readable counts, and review-samples JSONL files for concrete
-sample-level checks. Samples are private-but-redacted: stable refs are hashes,
+sample-level checks. Samples are private-but-redacted: stable refs are opaque,
 not database IDs or local paths.
 
 Audit questions:
@@ -1561,11 +1753,11 @@ def private_field_policy() -> dict[str, Any]:
             "stable_private_concept_ref",
             "stable_private_media_ref",
             "stable_private_source_metadata_ref",
+            "sample_ref",
             "role",
             "category",
             "status",
             "provider",
-            "canonical_key_hash",
             "display_label",
             "evidence_count",
             "media_count",
@@ -1605,10 +1797,7 @@ def generate_review_pack(
     (pack_dir / "review-samples").mkdir(parents=True, exist_ok=True)
     (pack_dir / "redaction").mkdir(parents=True, exist_ok=True)
 
-    if PUBLIC_REPORT_MD.exists():
-        shutil.copy2(PUBLIC_REPORT_MD, pack_dir / "public-report-copy" / PUBLIC_REPORT_MD.name)
-    if PUBLIC_REPORT_JSON.exists():
-        shutil.copy2(PUBLIC_REPORT_JSON, pack_dir / "public-report-copy" / PUBLIC_REPORT_JSON.name)
+    write_review_pack_public_report_copy(pack_dir, summary)
 
     audit_name_map = {
         "current-baseline.json": "current_baseline",
@@ -1631,58 +1820,7 @@ def generate_review_pack(
     write_json(pack_dir / "redaction" / "private-field-policy.json", private_field_policy())
     write_text(pack_dir / "README_FOR_CHATGPT_REVIEW.md", review_pack_readme())
 
-    included_files = []
-    for path in sorted(pack_dir.rglob("*")):
-        if path.is_file():
-            rel = str(path.relative_to(pack_dir)).replace("\\", "/")
-            included_files.append(rel)
-    row_counts = {
-        rel: row_count_for_file(pack_dir / rel)
-        for rel in included_files
-        if (pack_dir / rel).suffix.lower() in {".json", ".jsonl"}
-    }
-    manifest = {
-        "phase": PHASE,
-        "generated_at": utc_now_iso(),
-        "git_branch": summary.get("branch"),
-        "git_sha": summary.get("db_identity", {}).get("git_sha"),
-        "dirty_worktree_status": summary.get("validation", {}).get("dirty_worktree_status"),
-        "db_identity_summary_redacted": summary.get("db_identity"),
-        "command_used_to_generate_pack": summary.get("validation", {}).get("operational_audit_command"),
-        "included_files": included_files,
-        "row_counts": row_counts,
-        "private_fields_are_present": False,
-        "redaction_status": "pending",
-        "checksum_file_path": "checksums.json",
-        "known_limitations": [
-            "checksums.json self-hash is omitted to avoid self-referential checksum churn",
-            "sample labels are redacted when path-like, filename-like, secret-like, too long, or private-looking",
-        ],
-    }
-    write_json(pack_dir / "manifest.json", manifest)
-    checksums = build_pack_checksums(pack_dir)
-    write_json(pack_dir / "checksums.json", checksums)
-    scan = scan_review_pack_directory(pack_dir)
-    if not scan["passed"]:
-        write_json(pack_dir / "redaction" / "redaction-report.json", scan)
-        write_text(pack_dir / "redaction" / "public-redaction-check.txt", json.dumps(scan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-        raise A1BlockedError(f"ChatGPT review pack redaction failed: {scan['findings']!r}")
-    write_json(pack_dir / "redaction" / "redaction-report.json", scan)
-    write_text(pack_dir / "redaction" / "public-redaction-check.txt", json.dumps(scan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-
-    included_files = [str(path.relative_to(pack_dir)).replace("\\", "/") for path in sorted(pack_dir.rglob("*")) if path.is_file()]
-    manifest["included_files"] = included_files
-    manifest["file_count"] = len(included_files)
-    manifest["row_counts"] = {
-        rel: row_count_for_file(pack_dir / rel)
-        for rel in included_files
-        if (pack_dir / rel).suffix.lower() in {".json", ".jsonl"}
-    }
-    manifest["redaction_status"] = "passed"
-    manifest["checksum_count"] = len(checksums)
-    write_json(pack_dir / "manifest.json", manifest)
-    checksums = build_pack_checksums(pack_dir)
-    write_json(pack_dir / "checksums.json", checksums)
+    manifest, checksums, scan = finalize_review_pack_metadata(pack_dir, summary)
     zip_path = zip_review_pack(pack_dir)
     return {
         "generated": True,
@@ -1691,7 +1829,7 @@ def generate_review_pack(
         "zip_path_label": ".local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision/chatgpt-review-pack.zip",
         "exact_local_zip_path_private": str(zip_path),
         "committed": False,
-        "file_count": len(included_files),
+        "file_count": manifest["file_count"],
         "checksum_count": len(checksums),
         "redaction_passed": True,
         "manifest_present": (pack_dir / "manifest.json").exists(),
@@ -1699,6 +1837,8 @@ def generate_review_pack(
         "known_limitations": manifest["known_limitations"],
         "upload_required_for_final_audit": True,
         "redaction_report": scan,
+        "redaction_scanned_file_count": scan["scanned_file_count"],
+        "redaction_scan_covers_final_file_set": scan["final_file_set_scanned"],
     }
 
 
@@ -1714,6 +1854,8 @@ def public_review_pack_summary(pack_info: Mapping[str, Any]) -> dict[str, Any]:
         "file_count": pack_info.get("file_count"),
         "checksum_count": pack_info.get("checksum_count"),
         "redaction_passed": pack_info.get("redaction_passed"),
+        "redaction_scanned_file_count": pack_info.get("redaction_scanned_file_count"),
+        "redaction_scan_covers_final_file_set": pack_info.get("redaction_scan_covers_final_file_set"),
         "manifest_present": pack_info.get("manifest_present"),
         "sample_files_present": pack_info.get("sample_files_present"),
         "known_limitations": list(pack_info.get("known_limitations", [])),
@@ -2271,6 +2413,9 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
             write_public_outputs(summary, output_dir)
         pack_info = generate_review_pack(output_dir, summary, audit_data, sample_payloads)
         summary["chatgpt_review_pack"] = public_review_pack_summary(pack_info)
+        pack_info = generate_review_pack(output_dir, summary, audit_data, sample_payloads)
+        summary["chatgpt_review_pack"] = public_review_pack_summary(pack_info)
+        assert_fresh_report_copy_matches_summary(pack_info["pack_dir"], summary)
         if args.write_public_report:
             write_public_outputs(summary, output_dir)
         write_json(output_dir / "summary-private-copy.json", {**summary, "chatgpt_review_pack_private": {**pack_info, "pack_dir": str(pack_info["pack_dir"]), "zip_path": str(pack_info["zip_path"])}})

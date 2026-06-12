@@ -267,6 +267,52 @@ def test_review_pack_redaction_catches_paths_ids_tokens_and_filenames() -> None:
     assert "media_filename_like" in finding_types
 
 
+def test_review_pack_labels_are_private_refs_except_allowlisted_public_seed_labels() -> None:
+    raw_short_source_label = "miku"
+    public_seed_label = "Nahida"
+
+    assert runner.safe_label(raw_short_source_label, fallback="[redacted source value]") != raw_short_source_label
+    assert runner.safe_label(raw_short_source_label, fallback="[redacted source value]").startswith("[redacted source value]:label_")
+    assert runner.safe_label(public_seed_label, fallback="[redacted seed]", allow_public_seed=True) == public_seed_label
+
+    findings = runner.scan_json_payload_for_review_pack_leaks(
+        {
+            "display_label": raw_short_source_label,
+            "search_seed_label": raw_short_source_label,
+            "canonical_key_hash": "abcdef1234567890",
+        }
+    )
+    finding_types = {item["type"] for item in findings}
+
+    assert "display_label_raw_private_label" in finding_types
+    assert "search_seed_label_raw_private_label" in finding_types
+    assert "unsalted_or_dictionary_attackable_key_hash" in finding_types
+    assert runner.scan_json_payload_for_review_pack_leaks({"search_seed_label": public_seed_label}) == []
+
+
+def test_concepts_without_media_uses_visible_status_denominator(monkeypatch: pytest.MonkeyPatch) -> None:
+    concepts = [
+        {"id": 1, "status": "active"},
+        {"id": 2, "status": "needs_review"},
+        {"id": 3, "status": "superseded"},
+    ]
+
+    monkeypatch.setattr(runner.scv1, "concept_media_set_for_ids", lambda _conn, ids: {10} if ids == [1] else set())
+    monkeypatch.setattr(runner, "rows_by_keys", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(runner, "alias_count_by_role_status_provider", lambda _conn: [])
+    monkeypatch.setattr(runner.scv1, "count_table", lambda *_args, **_kwargs: {"count": 0})
+    monkeypatch.setattr(runner.scv1, "group_count", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(runner, "px1_influenced_concept_ids", lambda _conn: set())
+
+    state = runner.build_source_concept_current_state(None, concepts, [], [], {})
+
+    assert state["concepts_with_media"] == 1
+    assert state["concepts_without_media"] == 1
+    assert state["concepts_without_media_status_scope"] == "visible_statuses_active_or_needs_review"
+    assert state["visible_status_source_concept_count"] == 2
+    assert state["all_status_source_concept_count"] == 3
+
+
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
@@ -326,6 +372,18 @@ def test_review_pack_manifest_checksums_readme_and_directories_are_generated(mon
     assert (pack_dir / "redaction").is_dir()
     assert pack["sample_files_present"] is True
     assert pack["zip_path"].exists()
+    manifest = json.loads((pack_dir / "manifest.json").read_text(encoding="utf-8"))
+    checksums = json.loads((pack_dir / "checksums.json").read_text(encoding="utf-8"))
+    redaction_report = json.loads((pack_dir / "redaction" / "redaction-report.json").read_text(encoding="utf-8"))
+    copied_summary = json.loads((pack_dir / "public-report-copy" / report_json.name).read_text(encoding="utf-8"))
+
+    assert manifest["checksum_count"] == len(checksums)
+    assert pack["checksum_count"] == len(checksums)
+    assert set(redaction_report["scanned_files"]) == set(manifest["included_files"])
+    assert pack["redaction_scan_covers_final_file_set"] is True
+    assert manifest["public_report_copy_source"] == "rendered_from_current_summary"
+    assert copied_summary["generated_at"] == summary["generated_at"]
+    assert "canonical_key_hash" not in "\n".join(path.read_text(encoding="utf-8") for path in (pack_dir / "review-samples").glob("*.jsonl"))
 
 
 def test_review_pack_redaction_scans_every_file(tmp_path: Path) -> None:
@@ -333,12 +391,15 @@ def test_review_pack_redaction_scans_every_file(tmp_path: Path) -> None:
     (pack_dir / "nested").mkdir(parents=True)
     (pack_dir / "safe.json").write_text('{"ok": true}\n', encoding="utf-8")
     (pack_dir / "nested" / "unsafe.json").write_text(r'{"path": "C:\Users\kyloris\Pictures\private.png"}', encoding="utf-8")
+    (pack_dir / "nested" / "unsafe-label.jsonl").write_text('{"display_label": "miku"}\n', encoding="utf-8")
 
     scan = runner.scan_review_pack_directory(pack_dir)
+    finding_types = {item["type"] for item in scan["findings"]}
 
-    assert scan["scanned_file_count"] == 2
+    assert scan["scanned_file_count"] == 3
     assert scan["passed"] is False
     assert any(item["path"] == "nested/unsafe.json" for item in scan["findings"])
+    assert "display_label_raw_private_label" in finding_types
 
 
 def test_final_route_decision_status_is_provisional_for_a1(tmp_path: Path) -> None:

@@ -16,10 +16,12 @@
     "generated": true,
     "known_limitations": [
       "checksums.json self-hash is omitted to avoid self-referential checksum churn",
-      "sample labels are redacted when path-like, filename-like, secret-like, too long, or private-looking"
+      "sample display labels are private refs unless they are allowlisted public search seed labels"
     ],
     "manifest_present": true,
     "redaction_passed": true,
+    "redaction_scan_covers_final_file_set": true,
+    "redaction_scanned_file_count": 29,
     "sample_files_present": true,
     "upload_required_for_final_audit": true,
     "zip_path_label": ".local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision/chatgpt-review-pack.zip"
@@ -64,12 +66,12 @@
       "urls_match": true
     },
     "git_branch": "codex/phase45-scv2-a1-post-expansion-audit-route-decision",
-    "git_sha": "e48b6d446f59916cd68bfa53557bd94d8c87c68c",
+    "git_sha": "a99ca54797655a0faf6495e2df4694e10d1dcdd9",
     "host": "localhost",
     "port": 5432,
     "python_executable": "python.exe",
     "python_executable_path_redacted": true,
-    "recorded_at": "2026-06-12T07:52:01Z",
+    "recorded_at": "2026-06-12T10:39:55Z",
     "server_port": 5432,
     "transaction_read_only": "on",
     "transaction_read_only_ok": true,
@@ -408,7 +410,7 @@
     "scv1_total_gap_signals": 1571,
     "total_gap_delta": 3051
   },
-  "generated_at": "2026-06-12T07:52:31Z",
+  "generated_at": "2026-06-12T10:40:24Z",
   "mutation_proof": {
     "changed_tables": [],
     "checked_tables": [
@@ -448,7 +450,7 @@
       "blombooru_local_source_hints"
     ],
     "passed": true,
-    "recorded_at": "2026-06-12T07:52:30Z"
+    "recorded_at": "2026-06-12T10:40:23Z"
   },
   "needs_review_triage": {
     "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
@@ -518,7 +520,7 @@
     "why": "Source tag gap=947 and alias split gap=544 suggest resolver/taxonomy questions, but Provider-2 needs a separate P0 policy after A1/R2."
   },
   "public_redaction": {
-    "checked_at": "2026-06-12T07:52:31Z",
+    "checked_at": "2026-06-12T10:40:27Z",
     "exact_private_paths_public": false,
     "final_public_scan_after_public_fields_finalized": true,
     "findings": [],
@@ -1205,7 +1207,7 @@
             "active_media_count": 24,
             "matched": true,
             "matched_concept_count": 19,
-            "seed_label": "原神",
+            "seed_label": "[redacted seed]:label_733564c4a7cf2332",
             "visible_media_count": 40
           },
           {
@@ -1213,7 +1215,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "☞☜",
+            "seed_label": "[redacted seed]:label_322dc0d9c3433680",
             "visible_media_count": 0
           },
           {
@@ -1221,7 +1223,7 @@
             "active_media_count": 11,
             "matched": true,
             "matched_concept_count": 24,
-            "seed_label": "无题",
+            "seed_label": "[redacted seed]:label_62783f0489fdbfe6",
             "visible_media_count": 12
           },
           {
@@ -1229,7 +1231,7 @@
             "active_media_count": 8,
             "matched": true,
             "matched_concept_count": 17,
-            "seed_label": "キサキ",
+            "seed_label": "[redacted seed]:label_2cd11f6cd9ccc085",
             "visible_media_count": 8
           },
           {
@@ -1237,7 +1239,7 @@
             "active_media_count": 7,
             "matched": true,
             "matched_concept_count": 18,
-            "seed_label": ":D",
+            "seed_label": "[redacted seed]:label_30b833015b1b94d4",
             "visible_media_count": 9
           },
           {
@@ -1245,7 +1247,7 @@
             "active_media_count": 6,
             "matched": true,
             "matched_concept_count": 13,
-            "seed_label": "プラナ",
+            "seed_label": "[redacted seed]:label_c5a1cb3409a1717b",
             "visible_media_count": 6
           },
           {
@@ -1253,7 +1255,7 @@
             "active_media_count": 4,
             "matched": true,
             "matched_concept_count": 15,
-            "seed_label": "甘雨",
+            "seed_label": "[redacted seed]:label_cf87cf163a087cda",
             "visible_media_count": 9
           },
           {
@@ -1261,7 +1263,7 @@
             "active_media_count": 5,
             "matched": true,
             "matched_concept_count": 11,
-            "seed_label": "無題",
+            "seed_label": "[redacted seed]:label_4d680c8d95d0b65e",
             "visible_media_count": 5
           }
         ],
@@ -1285,7 +1287,7 @@
             "active_media_count": 24,
             "matched": true,
             "matched_concept_count": 19,
-            "seed_label": "原神",
+            "seed_label": "[redacted seed]:label_733564c4a7cf2332",
             "visible_media_count": 40
           },
           {
@@ -1293,7 +1295,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "☞☜",
+            "seed_label": "[redacted seed]:label_322dc0d9c3433680",
             "visible_media_count": 0
           },
           {
@@ -1301,7 +1303,7 @@
             "active_media_count": 11,
             "matched": true,
             "matched_concept_count": 24,
-            "seed_label": "无题",
+            "seed_label": "[redacted seed]:label_62783f0489fdbfe6",
             "visible_media_count": 12
           },
           {
@@ -1309,7 +1311,7 @@
             "active_media_count": 10,
             "matched": true,
             "matched_concept_count": 2,
-            "seed_label": "Feint",
+            "seed_label": "[redacted seed]:label_0e2a068429063577",
             "visible_media_count": 10
           },
           {
@@ -1317,7 +1319,7 @@
             "active_media_count": 9,
             "matched": true,
             "matched_concept_count": 2,
-            "seed_label": "SWKL:D",
+            "seed_label": "[redacted seed]:label_4c9e0fe3366982db",
             "visible_media_count": 9
           },
           {
@@ -1325,7 +1327,7 @@
             "active_media_count": 8,
             "matched": true,
             "matched_concept_count": 17,
-            "seed_label": "キサキ",
+            "seed_label": "[redacted seed]:label_2cd11f6cd9ccc085",
             "visible_media_count": 8
           },
           {
@@ -1333,7 +1335,7 @@
             "active_media_count": 7,
             "matched": true,
             "matched_concept_count": 18,
-            "seed_label": ":D",
+            "seed_label": "[redacted seed]:label_30b833015b1b94d4",
             "visible_media_count": 9
           },
           {
@@ -1341,7 +1343,7 @@
             "active_media_count": 6,
             "matched": true,
             "matched_concept_count": 13,
-            "seed_label": "プラナ",
+            "seed_label": "[redacted seed]:label_c5a1cb3409a1717b",
             "visible_media_count": 6
           }
         ],
@@ -1367,7 +1369,7 @@
             "active_media_count": 24,
             "matched": true,
             "matched_concept_count": 19,
-            "seed_label": "原神",
+            "seed_label": "[redacted seed]:label_733564c4a7cf2332",
             "visible_media_count": 40
           },
           {
@@ -1375,7 +1377,7 @@
             "active_media_count": 0,
             "matched": true,
             "matched_concept_count": 1,
-            "seed_label": "女の子",
+            "seed_label": "[redacted seed]:label_0acb8551523d98e9",
             "visible_media_count": 1
           },
           {
@@ -1383,7 +1385,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "ブルーアーカイブ",
+            "seed_label": "[redacted seed]:label_01c6fa4beb9aea09",
             "visible_media_count": 0
           },
           {
@@ -1391,7 +1393,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "R-18",
+            "seed_label": "[redacted seed]:label_2b47bfee9dab8220",
             "visible_media_count": 0
           },
           {
@@ -1399,7 +1401,7 @@
             "active_media_count": 3,
             "matched": true,
             "matched_concept_count": 4,
-            "seed_label": "GenshinImpact",
+            "seed_label": "[redacted seed]:label_01d8e4831f3702e6",
             "visible_media_count": 3
           },
           {
@@ -1407,7 +1409,7 @@
             "active_media_count": 0,
             "matched": true,
             "matched_concept_count": 1,
-            "seed_label": "おっぱい",
+            "seed_label": "[redacted seed]:label_5daff93fcca6d2cf",
             "visible_media_count": 1
           },
           {
@@ -1415,7 +1417,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "ブルアカ",
+            "seed_label": "[redacted seed]:label_6b13d597fb74f1ae",
             "visible_media_count": 0
           },
           {
@@ -1423,7 +1425,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "原神10000users入り",
+            "seed_label": "[redacted seed]:label_14d45069c929db37",
             "visible_media_count": 0
           }
         ],
@@ -1447,7 +1449,7 @@
             "active_media_count": 0,
             "matched": false,
             "matched_concept_count": 0,
-            "seed_label": "☞☜",
+            "seed_label": "[redacted seed]:label_322dc0d9c3433680",
             "visible_media_count": 0
           },
           {
@@ -1455,7 +1457,7 @@
             "active_media_count": 11,
             "matched": true,
             "matched_concept_count": 24,
-            "seed_label": "无题",
+            "seed_label": "[redacted seed]:label_62783f0489fdbfe6",
             "visible_media_count": 12
           },
           {
@@ -1463,7 +1465,7 @@
             "active_media_count": 8,
             "matched": true,
             "matched_concept_count": 17,
-            "seed_label": "キサキ",
+            "seed_label": "[redacted seed]:label_2cd11f6cd9ccc085",
             "visible_media_count": 8
           },
           {
@@ -1471,7 +1473,7 @@
             "active_media_count": 9,
             "matched": true,
             "matched_concept_count": 2,
-            "seed_label": "SWKL:D",
+            "seed_label": "[redacted seed]:label_4c9e0fe3366982db",
             "visible_media_count": 9
           },
           {
@@ -1479,7 +1481,7 @@
             "active_media_count": 7,
             "matched": true,
             "matched_concept_count": 18,
-            "seed_label": ":D",
+            "seed_label": "[redacted seed]:label_30b833015b1b94d4",
             "visible_media_count": 9
           },
           {
@@ -1487,7 +1489,7 @@
             "active_media_count": 6,
             "matched": true,
             "matched_concept_count": 13,
-            "seed_label": "プラナ",
+            "seed_label": "[redacted seed]:label_c5a1cb3409a1717b",
             "visible_media_count": 6
           },
           {
@@ -1495,7 +1497,7 @@
             "active_media_count": 5,
             "matched": true,
             "matched_concept_count": 1,
-            "seed_label": "爱东东不爱画生肉",
+            "seed_label": "[redacted seed]:label_49d8fdba340dfb0d",
             "visible_media_count": 5
           },
           {
@@ -1503,7 +1505,7 @@
             "active_media_count": 5,
             "matched": true,
             "matched_concept_count": 1,
-            "seed_label": "若葉 ◆タベストリー発売中!",
+            "seed_label": "[redacted seed]:label_8e47f71a35e18e21",
             "visible_media_count": 5
           }
         ],
@@ -1520,6 +1522,7 @@
   "source_concept_current_state": {
     "active": 1078,
     "active_concepts_sharing_aliases_with_needs_review": 498,
+    "all_status_source_concept_count": 6094,
     "ambiguous": 0,
     "by_status": {
       "active": 1078,
@@ -1528,8 +1531,10 @@
     },
     "concepts_influenced_by_px1_evidence": 3510,
     "concepts_with_media": 2313,
+    "concepts_with_media_status_scope": "visible_statuses_active_or_needs_review",
     "concepts_with_only_weak_ai_general_evidence": 2077,
-    "concepts_without_media": 3781,
+    "concepts_without_media": 574,
+    "concepts_without_media_status_scope": "visible_statuses_active_or_needs_review",
     "context_conflict_groups": 544,
     "duplicate_fragment_candidate_groups": 1088,
     "hidden": 0,
@@ -2235,6 +2240,7 @@
     "superseded": 3207,
     "total_source_concepts": 6094,
     "undermerge_risk_groups": 1088,
+    "visible_status_source_concept_count": 2887,
     "weak": 0
   },
   "source_metadata_coverage": {
@@ -2557,7 +2563,7 @@
   },
   "validation": {
     "browser_validation": "not_run_no_ui_runtime_change",
-    "dirty_worktree_status": "M docs/current-handoff.md\n M docs/project-roadmap.md\n M docs/test-workflow.md\n?? .claude/\n?? .codex/\n?? docs/chatgpt-review-pack-policy.md\n?? docs/reports/phase-3.2h.3-general-batchB-delivery.md\n?? docs/reports/phase-3.2h.4-general-final-delivery.md\n?? docs/reports/phase-3.2h.5-localization-closeout-audit.md\n?? docs/reports/phase-3.2i-tier500-browser-acceptance.md\n?? docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json\n?? docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision.md\n?? scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py\n?? server_8012.log\n?? server_8012_3.2h.4.log\n?? server_8012_3.2j.2.log\n?? server_8014.log\n?? server_phase3.5_8012.err.log\n?? server_phase3.5_8012.out.log\n?? tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py",
+    "dirty_worktree_status": "M scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py\n M tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py\n?? .claude/\n?? .codex/\n?? docs/reports/phase-3.2h.3-general-batchB-delivery.md\n?? docs/reports/phase-3.2h.4-general-final-delivery.md\n?? docs/reports/phase-3.2h.5-localization-closeout-audit.md\n?? docs/reports/phase-3.2i-tier500-browser-acceptance.md\n?? server_8012.log\n?? server_8012_3.2h.4.log\n?? server_8012_3.2j.2.log\n?? server_8014.log\n?? server_phase3.5_8012.err.log\n?? server_phase3.5_8012.out.log",
     "operational_audit_command": "python scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py --output-dir .local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision --write-public-report --read-only --write-chatgpt-review-pack",
     "operational_audit_result": "passed",
     "provider_network_attempted": false,

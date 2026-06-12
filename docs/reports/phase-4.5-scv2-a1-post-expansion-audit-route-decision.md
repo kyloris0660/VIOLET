@@ -3,7 +3,7 @@
 ## Summary
 
 - Status: `provisional_pending_chatgpt_pack_audit`.
-- Branch/head: `codex/phase45-scv2-a1-post-expansion-audit-route-decision` / `e48b6d446f59916cd68bfa53557bd94d8c87c68c`.
+- Branch/head: `codex/phase45-scv2-a1-post-expansion-audit-route-decision` / `a99ca54797655a0faf6495e2df4694e10d1dcdd9`.
 - Recommendation: `SCV2-R2 targeted resolver/gap reduction`.
 - Review pack required before final route approval: `True`.
 
