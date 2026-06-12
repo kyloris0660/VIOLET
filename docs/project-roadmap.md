@@ -32,7 +32,8 @@ Current accepted state:
 - Phase 4.5-SCV2-P0 is merged: read-only current-DB media/Pixiv-like/source metadata inventory, AI tag continuity policy, medium expansion target/buffer, E1/PX1/R1/A1 split, ledger schemas, safety gates, and public/private artifact boundary.
 - Phase 4.5-SCV2-E1 / PR #102 is merged: medium import plus eligible AI tag completion, ending at 3750 media and 3687/3687 eligible AI tag coverage.
 - Phase 4.5-PX1 / PR #103 is merged: bounded Pixiv/gallery-dl metadata extraction selected 500, succeeded 470, recorded 30 unavailable/private/deleted failures, wrote source-layer metadata/observations/assertions only, and found 0 exact duplicate dry-run groups.
-- Phase 4.5-SCV2-R1 has run dry-run and execute on branch `codex/phase45-scv2-r1-post-px1-source-concept-triage`: PX1 evidence was consumed by SourceConcept triage, execute transactions are explicitly committed and post-commit verified on a fresh connection, mutation proof/public redaction passed, and only allowed SourceConcept resolver tables changed.
+- Phase 4.5-SCV2-R1 / PR #104 is merged: PX1 evidence was consumed by SourceConcept triage, execute transactions were explicitly committed and post-commit verified on a fresh connection, mutation proof/public redaction passed, and only allowed SourceConcept resolver tables changed.
+- Phase 4.5-SCV2-A1 is current: read-only post-expansion audit, route decision, public report/summary, and a generated privacy-safe ChatGPT review pack for independent route audit.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
 Current post-PX1 result:
@@ -42,24 +43,26 @@ Current post-PX1 result:
 - PX1 source searchable assertions are intentionally `needs_review` with `requires_review=true`; they are not `searchable_active`.
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
-- Recommended next route: `SCV2-A1` post-expansion audit and route decision.
+- Current route: `SCV2-A1` post-expansion audit and route decision.
+- A1 final route approval is provisional pending ChatGPT review-pack audit. The durable policy lives in `docs/chatgpt-review-pack-policy.md`.
 - PX1-B, DEDUP1, 5k/10k/full-library expansion, SourceConcept editing, and Entity bridge are not next.
 
 ## Near-Term Route
 
-1. Review and merge `SCV2-R1` if accepted.
-2. After R1 merge, run `SCV2-A1` as the post-expansion audit and route decision.
-3. Defer PX1-B until after A1 or a separate provider-policy decision.
+1. Review and merge `SCV2-A1` if accepted.
+2. Upload the generated A1 ChatGPT review pack for independent audit before final route approval.
+3. Defer PX1-B until after A1/pack audit or a separate provider-policy decision.
 4. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
 5. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
-- Controlled medium import/AI continuity, PX1, and R1 are complete for this route; A1 is the next audit/decision step.
+- Controlled medium import/AI continuity, PX1, and R1 are complete for this route; A1 is the current audit/decision step.
 - Alias resolver improvement still comes before Entity bridge or promotion.
 - SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
+- Review-pack-required route phases must use `provisional_pending_chatgpt_pack_audit` until the generated pack is independently audited.
 
 ## Current Governance / Development Standards
 
@@ -69,6 +72,7 @@ Explicit ordering:
 - Docs-only stages use `git diff --check`, JSON validation, Python identity if Python is used, and focused doc consistency tests when present. They do not need pytest/E2E/browser/server validation unless they touch code, runtime, or UI.
 - UI/runtime changes require real browser validation with a controlled test server and identity preflight.
 - Broad provider/source/full-library work must wait for run-ledger discipline and explicit approval.
+- Route-decision and large-data audit phases require a privacy-safe ChatGPT review pack unless explicitly waived; see `docs/chatgpt-review-pack-policy.md`.
 
 Detailed historical standards remain below under development standards; older phase reports remain archival.
 
@@ -849,6 +853,7 @@ Fixed crash during scan import when files with certain Unicode characters in the
 - Phase 4.5-SCV2-E1 / PR #102 is complete. It expanded to 3750 media and restored eligible AI tag coverage to 3687/3687 without provider or SourceConcept resolver work.
 - Phase 4.5-PX1 / PR #103 is complete. It produced a bounded Pixiv source metadata batch for R1: 470 metadata successes, 3727 tag observations, 918 name observations/assertions, 3727 metadata evidence rows, all new PX1 assertions review-scoped, and 0 exact duplicate dry-run groups.
 - Phase 4.5-SCV2-R1 generated `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md` and `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json`: dry-run and execute passed, execute transaction commit/post-commit verification passed, PX1 evidence influenced 1692 SourceConcepts, public redaction passed, and only allowed SourceConcept tables changed.
+- Phase 4.5-SCV2-A1 adds `docs/chatgpt-review-pack-policy.md` and generates a read-only post-expansion audit/report/review pack. Its route recommendation is provisional until the user uploads the generated pack to ChatGPT for independent audit.
 
 ### Phase GOV-2 - Documentation Alignment and Workflow Weight Reduction
 

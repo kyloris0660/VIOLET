@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated after Phase 4.5-SCV2-R1 reviewer-fix execute/post-commit verification on `2026-06-12T11:28:47+08:00`.
-> Active PR branch: `codex/phase45-scv2-r1-post-px1-source-concept-triage`.
+> Last updated for Phase 4.5-SCV2-A1 implementation on `2026-06-12`.
+> Active PR branch: `codex/phase45-scv2-a1-post-expansion-audit-route-decision`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,22 +11,19 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Current PR | Phase 4.5-SCV2-R1 post-PX1 SourceConcept triage |
-| Baseline main | PR #103 / PX1 merge commit `20e31c1` or later |
+| Current PR | Phase 4.5-SCV2-A1 post-expansion audit / route decision |
+| Baseline main | PR #104 / R1 merge commit `e48b6d4` or later |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | `.\venv\Scripts\python.exe` |
 
 ## Current Accepted State
 
-- PR #96 / Phase 4.5-SC1 is merged. It delivered the multi-source SourceConcept resolver core: source signals, aliases, evidence, links, search-preview rows, run ledger, readiness checks, and no-truth-write validation.
-- PR #97 / Phase 4.5-SC2-P0 is merged. It documented the post-SC1 handoff and SC2 plan.
-- PR #98 / Phase 4.5-SC2 is merged. It delivered SourceConcept search expansion, media-detail chips/grouping, evidence preview, `needs_review` source-layer search behavior, and disabled/no-op promotion preview.
-- PR #99 / Phase 4.5-DOC1-R1 is merged. It restructured docs and classified guard debt.
-- PR #100 / Phase 4.5-SCV1 is merged. It generated a read-only current-DB coverage audit, search symmetry check, alias-gap analysis, `needs_review` cluster analysis, redaction proof, and decision matrix.
+- PR #96, PR #97, PR #98, PR #99, and PR #100 are merged: SC1 delivered the SourceConcept resolver core, SC2-P0 planned SC2, SC2 added search/evidence UI, DOC1 restructured docs, and Phase 4.5-SCV1 generated a read-only coverage/search/gap audit.
 - Phase 4.5-SCV2-P0 generated a read-only current-DB inventory and governed split for controlled medium expansion on branch `codex/phase45-scv2-p0-controlled-medium-expansion-policy`.
 - PR #102 / Phase 4.5-SCV2-E1 is merged. It expanded the library to 3750 media and completed eligible AI tag coverage without Pixiv/provider/SourceConcept resolver work.
 - PR #103 / Phase 4.5-PX1 is merged. It ran the bounded Pixiv/gallery-dl metadata extraction batch: 500 selected, 470 metadata successes, 30 unavailable/private/deleted failures, zero exact duplicate dry-run groups, and source-layer-only metadata/assertion writes.
-- Phase 4.5-SCV2-R1 has run dry-run and execute on branch `codex/phase45-scv2-r1-post-px1-source-concept-triage`. Its reviewer-fix rerun explicitly committed execute transactions, verified post-commit counts on a fresh connection, wrote only allowed SourceConcept tables, and regenerated the R1 public report/summary from current branch code.
+- PR #104 / Phase 4.5-SCV2-R1 is merged. It consumed PX1 evidence through SourceConcept triage, committed execute transactions, verified post-commit counts on a fresh connection, wrote only allowed SourceConcept tables, and regenerated the R1 public report/summary from current branch code.
+- Phase 4.5-SCV2-A1 is the current branch. It adds a read-only post-expansion audit runner, a public A1 report/summary, and durable ChatGPT review pack policy for independent route-decision audit.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
 - Historical details before SC1/SC2/SCV1/SCV2-P0/E1/PX1/R1 live in `docs/project-roadmap.md` and `docs/reports/`.
 
@@ -34,7 +31,7 @@
 
 `SCV2-A1` - post-expansion SourceConcept audit and route decision after R1.
 
-R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resolver/triage, mutation proof and public redaction passed, and no truth-path/source-metadata writes occurred. The next step is not more provider extraction, broader import, DEDUP1, or Entity bridge.
+R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resolver/triage, mutation proof and public redaction passed, and no truth-path/source-metadata writes occurred. A1 route recommendations are provisional until the generated ChatGPT review pack is uploaded and independently audited.
 
 ## Current Known Observations / Validation Seeds
 
@@ -45,6 +42,7 @@ R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resol
 - R1's trusted transition moved SourceConcept counts from 4214 to 6094 total, 355 to 1078 active, and 760 to 1809 `needs_review`; 1692 concepts are now influenced by PX1 evidence. The final current-head execute rerun was idempotent over the already committed R1 state and verified post-commit counts at 6094 total / 1078 active / 1809 `needs_review`.
 - R1 alias gap deltas improved source assertion/source name/source tag/identity-tag gaps but increased total gap signals by 626 because PX1 added much more review-scoped evidence and fragmentation to triage.
 - R1 search seed symmetry checked 10 groups / 67 seeds / 49 matched seeds; all 10 groups remain asymmetric and should be reviewed in A1 before any truth bridge.
+- A1 review-pack-required route decisions use status `provisional_pending_chatgpt_pack_audit` until independent pack review completes.
 
 ## Hard Non-Goals Without Explicit Approval
 
@@ -83,3 +81,5 @@ R1 target was met: PX1 source-layer evidence was consumed by SourceConcept resol
 - E1 report: `docs/reports/phase-4.5-scv2-e1-medium-import-ai-tag-completion.md`.
 - PX1 report: `docs/reports/phase-4.5-px1-pixiv-metadata-dedup-dry-run.md`.
 - R1 report: `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md`.
+- A1 report: `docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision.md`.
+- ChatGPT review pack policy: `docs/chatgpt-review-pack-policy.md`.
