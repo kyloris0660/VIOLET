@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -119,6 +121,32 @@ def test_public_json_redaction_allows_redacted_dirty_status() -> None:
     assert findings == []
 
 
+def test_public_json_redaction_scans_key_names_and_key_value_context() -> None:
+    findings = runner.scan_public_payload_for_leaks(
+        {
+            r"C:\private\raw-key": "key names are scanned",
+            "audit": {"source_path": r"D:\private\library\image.png"},
+            "auth": {"api_key": "sk-rawsecret12345"},
+        }
+    )
+    finding_types = {item["type"] for item in findings}
+
+    assert "public_json_key_text_leak" in finding_types
+    assert "public_json_key_value_context_leak" in finding_types
+    assert "public_json_sensitive_key_unredacted" in finding_types
+
+
+def test_public_json_redaction_allows_safe_public_path_labels() -> None:
+    findings = runner.scan_public_payload_for_leaks(
+        {
+            "zip_path_label": ".local_manifests/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity/out.zip",
+            "dirty_worktree_status": "clean",
+        }
+    )
+
+    assert findings == []
+
+
 def test_summary_json_required_fields_exist() -> None:
     assert runner.PUBLIC_REPORT_JSON.exists(), "Run the INC1 runner before validation."
     summary = json.loads(runner.PUBLIC_REPORT_JSON.read_text(encoding="utf-8"))
@@ -135,3 +163,45 @@ def test_public_redaction_catches_local_paths_and_secrets() -> None:
 
     assert result["passed"] is False
     assert result["finding_count"] >= 1
+
+
+def test_public_redaction_catches_broadened_local_path_shapes() -> None:
+    leak_examples = [
+        r"D:\library\private.png",
+        r"\\nas-host\share\private.png",
+        "file:///Users/example/private.png",
+        "/Users/example/private.png",
+        "/home/example/private.png",
+        "/mnt/nas/private.png",
+        "/Volumes/Archive/private.png",
+    ]
+
+    for leak in leak_examples:
+        result = runner.scan_public_text_for_leaks(f"public payload leaked {leak}")
+        assert result["passed"] is False, leak
+
+
+def test_write_public_report_fails_before_writing_when_blocking_artifacts_missing(tmp_path: Path) -> None:
+    summary = {
+        "missing_artifacts": [
+            {
+                "artifact": ".local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage/resolver-run-ledger.json",
+                "classification": "blocking",
+            }
+        ]
+    }
+    output_dir = tmp_path / "phase-output"
+
+    with pytest.raises(RuntimeError, match="blocking private artifacts"):
+        runner.write_outputs(summary, output_dir, write_public_report=True)
+
+    assert not output_dir.exists()
+
+
+def test_external_output_dir_is_rejected_before_writing(tmp_path: Path) -> None:
+    external_output_dir = tmp_path / "outside-phase-root"
+
+    with pytest.raises(RuntimeError, match="Refusing --output-dir outside"):
+        runner.resolve_output_dir(external_output_dir)
+
+    assert not external_output_dir.exists()

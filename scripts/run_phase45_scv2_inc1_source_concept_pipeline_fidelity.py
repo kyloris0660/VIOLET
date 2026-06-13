@@ -101,13 +101,48 @@ SUMMARY_REQUIRED_FIELDS = {
 }
 
 PUBLIC_LEAK_PATTERNS = (
-    re.compile(r"[A-Za-z]:\\Users\\", re.IGNORECASE),
-    re.compile(r"\\\\[A-Za-z0-9_.-]+\\"),
+    re.compile(r"(?<![A-Za-z])[A-Z]:[\\/][^\s\"'<>|]+", re.IGNORECASE),
+    re.compile(r"\\\\[A-Za-z0-9_.-]+\\[^\s\"'<>|]+", re.IGNORECASE),
+    re.compile(r"file://[^\s\"'<>]+", re.IGNORECASE),
+    re.compile(
+        r"(?:^|[\s\"'=(:])/(?:Users|home|mnt|media|Volumes|storage|nas|srv|data|net|run/media)(?:/|$)[^\s\"'<>]*",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bsk-[A-Za-z0-9_-]{10,}"),
     re.compile(r"\bBearer\s+[A-Za-z0-9._-]+", re.IGNORECASE),
     re.compile(r"Authorization\s*:", re.IGNORECASE),
     re.compile(r"(api[_-]?key|secret|password)\s*[:=]\s*[^,\s]+", re.IGNORECASE),
 )
+
+SENSITIVE_PUBLIC_JSON_KEY_RE = re.compile(
+    r"(^|_)(absolute_path|local_path|root_path|source_root|file_uri|source_url|raw_filename|filename|path)($|_)",
+    re.IGNORECASE,
+)
+SECRET_PUBLIC_JSON_KEY_RE = re.compile(
+    r"(^|_)(api[_-]?key|token|password|secret|authorization|cookie)($|_)",
+    re.IGNORECASE,
+)
+
+SAFE_PUBLIC_CONTEXT_PREFIXES = (
+    "docs/",
+    "scripts/",
+    "tests/",
+    ".local_manifests/",
+    "phase-",
+    "redacted",
+    "[redacted",
+    "[external path redacted]",
+)
+
+SAFE_PUBLIC_CONTEXT_VALUES = {
+    "",
+    "clean",
+    "none",
+    "null",
+    "n/a",
+    "not_applicable",
+    "unavailable",
+}
 
 
 def public_dirty_worktree_summary(raw_status: str) -> dict[str, Any]:
@@ -124,6 +159,32 @@ def public_dirty_worktree_summary(raw_status: str) -> dict[str, Any]:
 def repo_path(path: Path) -> str:
     resolved = path if path.is_absolute() else ROOT / path
     return resolved.resolve().relative_to(ROOT.resolve()).as_posix()
+
+
+def safe_public_path_label(path: Path) -> str:
+    try:
+        return repo_path(path)
+    except ValueError:
+        return "[external path redacted]"
+
+
+def is_within_path(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def resolve_output_dir(output_dir: Path) -> Path:
+    resolved = (output_dir if output_dir.is_absolute() else ROOT / output_dir).resolve()
+    allowed_root = DEFAULT_OUTPUT_DIR.resolve()
+    if resolved != allowed_root and not is_within_path(resolved, allowed_root):
+        raise RuntimeError(
+            "Refusing --output-dir outside the phase .local_manifests root before writing: "
+            f"{safe_public_path_label(resolved)}"
+        )
+    return resolved
 
 
 def now_utc() -> str:
@@ -185,16 +246,64 @@ def scan_public_text_for_leaks(text: str) -> dict[str, Any]:
     return {"passed": not findings, "finding_count": len(findings), "findings": findings[:10]}
 
 
+def is_safe_public_context_value(text: str) -> bool:
+    normalized = str(text or "").strip()
+    folded = normalized.casefold()
+    return folded in SAFE_PUBLIC_CONTEXT_VALUES or any(
+        normalized.startswith(prefix) for prefix in SAFE_PUBLIC_CONTEXT_PREFIXES
+    )
+
+
+def iter_string_values(payload: Any, *, path: str) -> Sequence[tuple[str, str]]:
+    values: list[tuple[str, str]] = []
+    if isinstance(payload, Mapping):
+        for key, value in payload.items():
+            values.extend(iter_string_values(value, path=f"{path}.{key}"))
+    elif isinstance(payload, list):
+        for index, item in enumerate(payload):
+            values.extend(iter_string_values(item, path=f"{path}[{index}]"))
+    elif isinstance(payload, str):
+        values.append((path, payload))
+    return values
+
+
+def scan_sensitive_json_context(key_text: str, value: Any, *, path: str) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    is_path_like_key = bool(SENSITIVE_PUBLIC_JSON_KEY_RE.search(key_text))
+    is_secret_key = bool(SECRET_PUBLIC_JSON_KEY_RE.search(key_text))
+    if not is_path_like_key and not is_secret_key:
+        return findings
+
+    for value_path, text in iter_string_values(value, path=path):
+        scan = scan_public_text_for_leaks(text)
+        findings.extend(
+            {
+                "type": "public_json_key_value_context_leak",
+                "match": f"{value_path}:{key_text}:{item}",
+            }
+            for item in scan["findings"]
+        )
+        if is_secret_key and text.strip() and not is_safe_public_context_value(text):
+            findings.append({"type": "public_json_sensitive_key_unredacted", "match": value_path})
+    return findings
+
+
 def scan_public_payload_for_leaks(payload: Any, *, path: str = "$") -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     if isinstance(payload, Mapping):
         for key, value in payload.items():
             key_text = str(key)
             child_path = f"{path}.{key_text}"
+            key_scan = scan_public_text_for_leaks(key_text)
+            findings.extend(
+                {"type": "public_json_key_text_leak", "match": f"{child_path}:{item}"}
+                for item in key_scan["findings"]
+            )
             if key_text == "dirty_worktree_status":
                 status = str(value or "")
                 if status not in {"", "clean"} and not status.startswith("redacted_dirty_entries:"):
                     findings.append({"type": "raw_dirty_worktree_status", "match": child_path})
+            findings.extend(scan_sensitive_json_context(key_text, value, path=child_path))
             findings.extend(scan_public_payload_for_leaks(value, path=child_path))
     elif isinstance(payload, list):
         for index, item in enumerate(payload):
@@ -1140,7 +1249,29 @@ def write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def blocking_missing_artifacts(summary: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    return [
+        item
+        for item in summary.get("missing_artifacts", [])
+        if isinstance(item, Mapping) and item.get("classification") == "blocking"
+    ]
+
+
+def enforce_public_report_artifact_gate(summary: Mapping[str, Any]) -> None:
+    blocking = blocking_missing_artifacts(summary)
+    if not blocking:
+        return
+    artifacts = ", ".join(str(item.get("artifact", "unknown")) for item in blocking)
+    raise RuntimeError(
+        "Refusing --write-public-report because blocking private artifacts are missing; "
+        f"incident conclusion remains artifact-gated. Missing: {artifacts}"
+    )
+
+
 def write_outputs(summary: dict[str, Any], output_dir: Path, write_public_report: bool) -> dict[str, Any]:
+    if write_public_report:
+        enforce_public_report_artifact_gate(summary)
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     report_text = render_public_report(summary)
@@ -1193,7 +1324,7 @@ def write_outputs(summary: dict[str, Any], output_dir: Path, write_public_report
     return {
         "public_report": repo_path(PUBLIC_REPORT_MD),
         "summary_json": repo_path(PUBLIC_REPORT_JSON),
-        "private_output_dir": repo_path(output_dir),
+        "private_output_dir": safe_public_path_label(output_dir),
         "public_redaction": redaction,
         "summary_schema": summary["validation"]["summary_schema"],
     }
@@ -1205,8 +1336,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--write-public-report", action="store_true")
     args = parser.parse_args(argv)
 
+    output_dir = resolve_output_dir(args.output_dir)
     summary = build_summary()
-    result = write_outputs(summary, args.output_dir, write_public_report=args.write_public_report)
+    result = write_outputs(summary, output_dir, write_public_report=args.write_public_report)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
