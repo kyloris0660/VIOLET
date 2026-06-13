@@ -14,11 +14,11 @@ INC1 confirms a pipeline fidelity incident. SC1 established and actually ran bou
 
 ## Provenance
 
-- Runtime audit git SHA: `40bf685f66f7fd38851b9bb0e7f4818144c5a4c0`.
+- Runtime audit git SHA: `12249162d47988875c7e2ce4588b0450b3dc6f01`.
 - Runtime audit SHA scope: git rev-parse HEAD when the INC1 read-only file-artifact investigation runner executed.
-- Public report generated from runtime SHA: `40bf685f66f7fd38851b9bb0e7f4818144c5a4c0`.
+- Public report generated from runtime SHA: `12249162d47988875c7e2ce4588b0450b3dc6f01`.
 - Final PR head SHA if different: `reported by PR metadata/final delivery after the report-generation commit; a commit cannot truthfully contain its own final SHA.`.
-- Dirty worktree clean at runtime: `False`; dirty entry count: `12`; status filenames redacted: `True`.
+- Dirty worktree clean at runtime: `False`; dirty entry count: `14`; status filenames redacted: `True`.
 
 ## Incident Statement
 

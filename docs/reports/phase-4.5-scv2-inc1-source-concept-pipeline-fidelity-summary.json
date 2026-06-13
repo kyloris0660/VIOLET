@@ -42,26 +42,26 @@
   "branch": "codex/phase45-scv2-inc1-source-concept-pipeline-fidelity",
   "dirty_worktree": {
     "clean": false,
-    "dirty_count": 12,
+    "dirty_count": 14,
     "raw_status_available_private": true,
-    "status_public": "redacted_dirty_entries:12",
+    "status_public": "redacted_dirty_entries:14",
     "status_redacted": true
   },
-  "dirty_worktree_status": "redacted_dirty_entries:12",
+  "dirty_worktree_status": "redacted_dirty_entries:14",
   "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report-generation commit; a commit cannot truthfully contain its own final SHA.",
-  "generated_at": "2026-06-12T11:42:09Z",
+  "generated_at": "2026-06-13T12:43:16Z",
   "git": {
     "base_branch_sha": "c27d14b2c81e1ed09f8407178c1a61c425301d0a",
     "current_branch": "codex/phase45-scv2-inc1-source-concept-pipeline-fidelity",
     "dirty_worktree": {
       "clean": false,
-      "dirty_count": 12,
+      "dirty_count": 14,
       "raw_status_available_private": true,
-      "status_public": "redacted_dirty_entries:12",
+      "status_public": "redacted_dirty_entries:14",
       "status_redacted": true
     },
-    "dirty_worktree_status": "redacted_dirty_entries:12",
-    "head_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
+    "dirty_worktree_status": "redacted_dirty_entries:14",
+    "head_sha": "12249162d47988875c7e2ce4588b0450b3dc6f01",
     "origin_main_sha": "e48b6d446f59916cd68bfa53557bd94d8c87c68c"
   },
   "impacts": {
@@ -375,7 +375,7 @@
       "exists": true
     }
   ],
-  "public_report_generated_from_runtime_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
+  "public_report_generated_from_runtime_sha": "12249162d47988875c7e2ce4588b0450b3dc6f01",
   "r1_actual_pipeline": {
     "adapter_accounting": {
       "SourceMetadataEvidence": "read through source_metadata_record_id linkage and covered by PX1 presence/mutation proof; not written by R1",
@@ -1218,20 +1218,20 @@
   "report_provenance": {
     "dirty_worktree": {
       "clean": false,
-      "dirty_count": 12,
+      "dirty_count": 14,
       "raw_status_available_private": true,
-      "status_public": "redacted_dirty_entries:12",
+      "status_public": "redacted_dirty_entries:14",
       "status_redacted": true
     },
-    "dirty_worktree_status": "redacted_dirty_entries:12",
+    "dirty_worktree_status": "redacted_dirty_entries:14",
     "final_pr_head_sha_if_different": "reported by PR metadata/final delivery after the report-generation commit; a commit cannot truthfully contain its own final SHA.",
     "final_pr_head_sha_if_different_scope": "If the final PR head differs from runtime_audit_git_sha, the difference is expected to be the later committed report/summary artifact regeneration.",
     "operational_result_reused_older_artifacts": false,
-    "public_report_generated_from_runtime_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
-    "runtime_audit_git_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
+    "public_report_generated_from_runtime_sha": "12249162d47988875c7e2ce4588b0450b3dc6f01",
+    "runtime_audit_git_sha": "12249162d47988875c7e2ce4588b0450b3dc6f01",
     "runtime_audit_git_sha_scope": "git rev-parse HEAD when the INC1 read-only file-artifact investigation runner executed."
   },
-  "runtime_audit_git_sha": "40bf685f66f7fd38851b9bb0e7f4818144c5a4c0",
+  "runtime_audit_git_sha": "12249162d47988875c7e2ce4588b0450b3dc6f01",
   "safety": {
     "no_classification_ai_localization_llm_calls": true,
     "no_db_writes": true,
