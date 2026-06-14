@@ -191,6 +191,12 @@ The following durable core areas stay strict and must not be weakened:
 8. Broad or repeated provider runs, which require run ledger discipline.
 9. E2E delivery when E2E is in scope: 0 failures required; skipped tests must be explicitly gated and reported.
 
+### Executable phase contract rule
+
+Every phase that claims completion must declare an executable phase contract. The contract check must pass before any report, summary, PR body, or final delivery can claim `target_met`, `route_approved`, `full_chain_completed`, or `safe_to_merge`.
+
+Documentation, prompt memory, reviewer attention, and narrative reports are not sufficient gates. Executable contracts are mandatory for any phase involving DB writes, provider calls, LLM calls, route decisions, review packs, source metadata, Entity bridge, destructive operations, scale-up, or any reusable pipeline output that later phases rely on. If no matching contract exists, create or extend the contract first, add focused tests for fail-closed behavior, and only then run the phase.
+
 ### Artifact lifecycle classification
 
 Every new script, tool, report, or generated artifact must be classified in the PR body or final report:

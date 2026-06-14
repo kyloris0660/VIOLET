@@ -1,0 +1,98 @@
+{
+  "pipeline_contract": {
+    "contract_id": "source_concept_full_chain_contract_v1",
+    "status": "full_chain_completed",
+    "claims": {
+      "full_chain_complete": true
+    }
+  },
+  "required_stages": [
+    "source_signal_adapter_inventory",
+    "media_tags_adapter",
+    "source_metadata_record_structured_field_adapter",
+    "source_tag_observation_adapter",
+    "source_name_observation_adapter",
+    "source_searchable_name_assertion_adapter",
+    "source_name_candidate_f7a_adapter",
+    "provider_cache_adapter_or_zero_eligible_proof",
+    "deterministic_blocking_key_generation",
+    "deterministic_edge_graph_generation",
+    "context_compatibility",
+    "alias_component_context_equivalence",
+    "union_component_resolution",
+    "bounded_llm_pair_adjudication_planning",
+    "llm_pair_selection",
+    "llm_provider_availability_check",
+    "llm_judgment_execution_or_blocked_before_write",
+    "llm_judgment_count",
+    "llm_cache_accounting",
+    "llm_decisions_recorded_source_layer_only",
+    "persistence_allowed_source_concept_tables",
+    "mutation_proof",
+    "post_commit_verification",
+    "validation_pack_review_pack"
+  ],
+  "executed_stages": [
+    "source_signal_adapter_inventory",
+    "media_tags_adapter",
+    "source_metadata_record_structured_field_adapter",
+    "source_tag_observation_adapter",
+    "source_name_observation_adapter",
+    "source_searchable_name_assertion_adapter",
+    "source_name_candidate_f7a_adapter",
+    "provider_cache_adapter_or_zero_eligible_proof",
+    "deterministic_blocking_key_generation",
+    "deterministic_edge_graph_generation",
+    "context_compatibility",
+    "alias_component_context_equivalence",
+    "union_component_resolution",
+    "bounded_llm_pair_adjudication_planning",
+    "llm_pair_selection",
+    "llm_provider_availability_check",
+    "llm_judgment_execution_or_blocked_before_write",
+    "llm_judgment_count",
+    "llm_cache_accounting",
+    "llm_decisions_recorded_source_layer_only",
+    "persistence_allowed_source_concept_tables",
+    "mutation_proof",
+    "post_commit_verification",
+    "validation_pack_review_pack"
+  ],
+  "missing_required_stages": [],
+  "full_chain_fidelity_passed": true,
+  "deterministic_stage_summary": {
+    "resolver_version": "source_concept_resolver_core_v2_graph",
+    "edge_graph_generated": true
+  },
+  "llm_adjudication_plan": {
+    "required": true,
+    "status": "ready",
+    "eligible_pair_count": 20,
+    "selected_pair_count": 20,
+    "max_calls": 300,
+    "budget_usd": 50.0,
+    "projected_budget_usd": 0.1
+  },
+  "llm_adjudication_used": true,
+  "llm_judgment_count": 20,
+  "llm_max_calls": 300,
+  "llm_budget_usd": 50.0,
+  "llm_provider_mode": "primary_openai",
+  "llm_cache_summary": {
+    "cache_enabled": true,
+    "cache_hits": 0,
+    "cache_misses": 20
+  },
+  "mutation_proof": {
+    "passed": true,
+    "forbidden_changed_tables": [],
+    "unexpected_changed_tables": []
+  },
+  "post_commit_verification": {
+    "passed": true
+  },
+  "review_pack": {
+    "generated": true
+  },
+  "conclusion": "full_chain_completed"
+}
