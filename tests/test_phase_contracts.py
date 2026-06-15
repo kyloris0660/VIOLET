@@ -46,6 +46,7 @@ def _source_concept_summary(**overrides: object) -> dict:
         "llm_cache_summary": {"cache_enabled": True, "cache_hits": 0, "cache_misses": 12},
         "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": []},
         "post_commit_verification": {"passed": True},
+        "validation_pack": {"generated": True},
         "review_pack": {"generated": True},
         "conclusion": "full_chain_completed",
     }
@@ -116,6 +117,61 @@ def test_source_concept_full_chain_fails_zero_judgments_when_completion_claimed(
     assert "source_concept_zero_llm_judgments_full_chain" in _error_codes(result)
 
 
+def test_source_concept_full_chain_fails_required_false_with_eligible_pairs() -> None:
+    summary = _source_concept_summary()
+    summary["llm_adjudication_plan"] = {
+        **summary["llm_adjudication_plan"],
+        "required": False,
+        "eligible_pair_count": 12,
+        "selected_pair_count": 12,
+    }
+
+    result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+    assert result.passed is False
+    assert "source_concept_llm_required_opt_out_with_eligible_pairs" in _error_codes(result)
+
+
+def test_source_concept_full_chain_fails_eligible_pair_count_over_max_calls() -> None:
+    summary = _source_concept_summary()
+    summary["llm_adjudication_plan"] = {
+        **summary["llm_adjudication_plan"],
+        "eligible_pair_count": 301,
+        "selected_pair_count": 300,
+        "max_calls": 300,
+    }
+
+    result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+    assert result.passed is False
+    assert "source_concept_llm_call_cap_exceeded" in _error_codes(result)
+
+
+def test_source_concept_full_chain_fails_selected_pair_count_over_max_calls() -> None:
+    summary = _source_concept_summary()
+    summary["llm_adjudication_plan"] = {
+        **summary["llm_adjudication_plan"],
+        "eligible_pair_count": 12,
+        "selected_pair_count": 301,
+        "max_calls": 300,
+    }
+
+    result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+    assert result.passed is False
+    assert "source_concept_llm_selected_call_cap_exceeded" in _error_codes(result)
+
+
+def test_source_concept_full_chain_fails_missing_validation_pack() -> None:
+    summary = _source_concept_summary()
+    summary.pop("validation_pack")
+
+    result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+    assert result.passed is False
+    assert "source_concept_required_proof_missing" in _error_codes(result)
+
+
 def test_source_concept_deterministic_only_allowed_only_without_completion_claim() -> None:
     executed = [
         stage
@@ -160,6 +216,52 @@ def test_route_audit_blocks_route_approval_if_upstream_pipeline_incomplete() -> 
     assert "route_approval_upstream_incomplete" in _error_codes(result)
 
 
+def test_route_audit_fails_blocked_status_with_route_approved_true() -> None:
+    summary = _route_audit_summary(
+        route_approved=True,
+        upstream_pipeline_contract={"passed": True, "full_chain_fidelity_passed": True},
+    )
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "route_approval_blocked_or_provisional_status" in _error_codes(result)
+
+
+def test_route_audit_fails_mutation_proof_false() -> None:
+    summary = _route_audit_summary(mutation_proof={"passed": False, "changed_tables": []})
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "route_audit_mutation_proof_failed" in _error_codes(result)
+
+
+def test_route_audit_fails_forbidden_mutation_tables() -> None:
+    summary = _route_audit_summary(
+        mutation_proof={"passed": True, "forbidden_changed_tables": ["blombooru_media_tags"], "unexpected_changed_tables": []}
+    )
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "route_audit_mutation_forbidden_table_changed" in _error_codes(result)
+
+
+def test_route_audit_fails_route_approved_without_review_pack() -> None:
+    summary = _route_audit_summary(
+        final_route_decision_status="route_approved",
+        route_approved=True,
+        upstream_pipeline_contract={"passed": True, "full_chain_fidelity_passed": True},
+    )
+    summary.pop("chatgpt_review_pack")
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "route_audit_route_approval_missing_review_pack" in _error_codes(result)
+
+
 def test_review_pack_contract_fails_missing_manifest_checksum_redaction_scan() -> None:
     result = check_phase_contract("review_pack_contract_v1", {"review_pack": {"generated": True}})
 
@@ -189,6 +291,31 @@ def test_public_redaction_contract_catches_markdown_and_json_leaks() -> None:
     assert any(error.code.startswith("public_redaction_") for error in result.errors)
 
 
+def test_public_redaction_contract_catches_bare_filenames_in_markdown() -> None:
+    result = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "sample IMG_1234.JPG leaked"})
+
+    assert result.passed is False
+    assert "public_redaction_bare_filename" in _error_codes(result)
+
+
+def test_public_redaction_contract_catches_sensitive_filename_json_keys() -> None:
+    result = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"raw_filename": "IMG_1234.JPG"}})
+
+    assert result.passed is False
+    codes = _error_codes(result)
+    assert "public_redaction_bare_filename" in codes
+    assert "public_redaction_private_provenance_value_unredacted" in codes
+
+
+def test_public_redaction_contract_catches_sensitive_public_urls_unless_redacted() -> None:
+    leaked = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"source_url": "https://example.invalid/post/1"}})
+    redacted = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"source_url": "[redacted]"}})
+
+    assert leaked.passed is False
+    assert "public_redaction_private_provenance_value_unredacted" in _error_codes(leaked)
+    assert redacted.passed is True
+
+
 def test_public_redaction_contract_catches_secret_key_names_and_token_formats() -> None:
     summary = {"public_json_payload": {"api_key": "sk-testsecret12345", "auth": "Authorization: Bearer abcdefghijk"}}
 
@@ -198,6 +325,19 @@ def test_public_redaction_contract_catches_secret_key_names_and_token_formats() 
     codes = _error_codes(result)
     assert "public_redaction_secret_key_name_with_unredacted_value" in codes
     assert "public_redaction_common_secret_or_token" in codes
+
+
+def test_public_redaction_contract_catches_bare_token_formats() -> None:
+    leaks = [
+        "ghp_abcdefghijklmnopqrstuvwxyz123456",
+        "github_pat_abcdefghijklmnopqrstuvwxyz123456",
+        "xoxb-1234567890-abcdefghijk",
+    ]
+
+    for leak in leaks:
+        result = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": f"token {leak}"})
+        assert result.passed is False, leak
+        assert "public_redaction_common_secret_or_token" in _error_codes(result)
 
 
 def test_public_redaction_contract_catches_private_path_shapes() -> None:
@@ -211,7 +351,10 @@ def test_public_redaction_contract_catches_private_path_shapes() -> None:
         "/Volumes/Archive/private.png",
         "/tmp/private.png",
         "/workspace/private.png",
+        "/workspace/VIOLET/.env",
         "/opt/private.png",
+        "/var/private.png",
+        "/tmp/private/file.png",
     ]
 
     for leak in leaks:
@@ -235,6 +378,13 @@ def test_mutation_safety_contract_fails_unexpected_forbidden_table_changes() -> 
     assert "mutation_unexpected_table_changed" in _error_codes(result)
 
 
+def test_mutation_safety_contract_fails_false_passed_without_table_deltas() -> None:
+    result = check_phase_contract("mutation_safety_contract_v1", {"mutation_proof": {"passed": False, "changed_tables": []}})
+
+    assert result.passed is False
+    assert "mutation_proof_failed" in _error_codes(result)
+
+
 def test_artifact_lifecycle_contract_distinguishes_public_and_private_artifacts() -> None:
     good = {
         "artifact_lifecycle": {
@@ -256,6 +406,61 @@ def test_artifact_lifecycle_contract_distinguishes_public_and_private_artifacts(
     result = check_phase_contract("artifact_lifecycle_contract_v1", bad)
     assert result.passed is False
     assert "private_artifact_committed" in _error_codes(result)
+
+
+def test_artifact_lifecycle_contract_requires_public_redaction_evidence() -> None:
+    missing_redaction = {
+        "artifact_lifecycle": {
+            "artifacts": [{"path": "docs/reports/gov3.md", "classification": "public report/handoff", "committed": True}]
+        }
+    }
+    redacted = {
+        "artifact_lifecycle": {
+            "artifacts": [
+                {"path": "docs/reports/gov3.md", "classification": "public report/handoff", "committed": True, "redacted": True}
+            ]
+        }
+    }
+
+    missing_result = check_phase_contract("artifact_lifecycle_contract_v1", missing_redaction)
+    redacted_result = check_phase_contract("artifact_lifecycle_contract_v1", redacted)
+
+    assert missing_result.passed is False
+    assert "public_artifact_redaction_evidence_missing" in _error_codes(missing_result)
+    assert redacted_result.passed is True
+
+
+def test_postgres_db_contract_rejects_nested_password_fields() -> None:
+    summary = {
+        "db_identity": {
+            "db_resolution": {
+                "runner_matches_app_equivalent": True,
+                "password_value_recorded": False,
+                "password": "secret-db-password",
+            }
+        }
+    }
+
+    result = check_phase_contract("postgres_db_contract_v1", summary)
+
+    assert result.passed is False
+    assert "db_secret_field_recorded" in _error_codes(result)
+
+
+def test_postgres_db_contract_allows_password_presence_boolean_without_value() -> None:
+    summary = {
+        "db_identity": {
+            "db_resolution": {
+                "runner_matches_app_equivalent": True,
+                "password_present": True,
+                "password_value_recorded": False,
+            }
+        }
+    }
+
+    result = check_phase_contract("postgres_db_contract_v1", summary)
+
+    assert result.passed is True
 
 
 def test_destructive_operation_contract_fails_without_explicit_approval() -> None:

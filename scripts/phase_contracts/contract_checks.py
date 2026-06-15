@@ -20,14 +20,17 @@ WINDOWS_PATH_RE = re.compile(r"(?i)\b[A-Z]:\\[^\s\"'<>|]+")
 UNC_PATH_RE = re.compile(r"\\\\[^\\\s\"'<>|]+\\[^\\\s\"'<>|]+")
 FILE_URI_RE = re.compile(r"(?i)\bfile://[^\s\"'<>]+")
 POSIX_PRIVATE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])/(home|Users|mnt|Volumes|tmp|workspace|opt|var/folders)(/[^\s\"'<>]*)?",
+    r"(?<![A-Za-z0-9_.-])/(home|Users|mnt|Volumes|tmp|workspace|opt|var)(/[^\s\"'<>]*)?",
+)
+POSIX_GENERIC_LOCAL_PATH_RE = re.compile(
+    r"(?<![:/A-Za-z0-9_.-])/(?!/)(?:[A-Za-z0-9._-]+/)+[A-Za-z0-9._-]+(?:\.[A-Za-z0-9]{1,8})?"
 )
 TOKEN_RE = re.compile(
-    r"(?i)(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{8,}|xoxb-[A-Za-z0-9-]{8,}|Authorization\s*:|Bearer\s+[A-Za-z0-9._-]{8,})"
+    r"(?i)(sk-[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,}|xoxb-[A-Za-z0-9-]{4,}|Authorization\s*:|Bearer\s+[A-Za-z0-9._-]{4,})"
 )
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
-    r"(?i)(source_root|source_path|local_path|original_path|filename|file_name|raw_filename|raw_label|private_label|provider_credential)"
+    r"(?i)(raw_filename|filename|file_name|source_url|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
 FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)\b")
 
@@ -243,6 +246,7 @@ def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dic
         ("unc_local_path", UNC_PATH_RE),
         ("file_uri", FILE_URI_RE),
         ("posix_private_path", POSIX_PRIVATE_PATH_RE),
+        ("posix_local_path", POSIX_GENERIC_LOCAL_PATH_RE),
         ("common_secret_or_token", TOKEN_RE),
     )
     for code, pattern in checks:
@@ -257,10 +261,14 @@ def scan_public_payload(payload: Any) -> list[dict[str, str]]:
     for path, kind, text in _iter_json_strings(payload):
         findings.extend(_redaction_findings_for_text(text, path, kind=kind))
         key_name = path.rsplit(".", 1)[-1]
+        if not _safe_redacted(text):
+            match = FILENAME_VALUE_RE.search(text)
+            if match:
+                findings.append({"code": "bare_filename", "path": path, "kind": kind, "match": match.group(0)[:160]})
         if kind == "value" and SECRET_KEY_NAME_RE.search(key_name) and not _safe_redacted(text):
             findings.append({"code": "secret_key_name_with_unredacted_value", "path": path, "kind": kind, "match": key_name})
         if kind == "value" and PRIVATE_PROVENANCE_KEY_RE.search(key_name):
-            if not _safe_redacted(text) and (FILENAME_VALUE_RE.search(text) or _redaction_findings_for_text(text, path, kind=kind)):
+            if not _safe_redacted(text):
                 findings.append({"code": "private_provenance_value_unredacted", "path": path, "kind": kind, "match": key_name})
         if kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
             # Key names are not automatically failures; values decide whether a
@@ -291,13 +299,47 @@ def _check_postgres_db(_contract: PhaseContract, summary: Mapping[str, Any], res
         result.fail("db_identity_not_object", "db_identity must be an object.", path="db_identity")
         return
     resolution = identity.get("db_resolution") if isinstance(identity.get("db_resolution"), Mapping) else {}
-    if _as_bool(resolution.get("password_value_recorded")) or any("password" == str(key).casefold() for key in identity):
+    secret_findings = _db_secret_findings(identity, path="db_identity")
+    if _as_bool(resolution.get("password_value_recorded")) or secret_findings:
         result.fail("db_password_recorded", "DB password values must never be recorded.", path="db_identity")
+        for finding in secret_findings:
+            result.fail("db_secret_field_recorded", "DB identity contains a nested password/secret-looking value.", path=finding["path"], actual=finding["key"])
     if not _as_bool(resolution.get("runner_matches_app_equivalent") or resolution.get("urls_match") or identity.get("app_compatible")):
         result.fail("db_url_equivalence_not_proven", "Expected app-compatible DB URL equivalence was not proven.", path="db_identity.db_resolution")
     destructive = _get(summary, "destructive_operation", {})
     if isinstance(destructive, Mapping) and _as_bool(destructive.get("executed")):
         result.fail("destructive_operation_without_contract", "Destructive operations require destructive_operation_contract_v1.", path="destructive_operation")
+
+
+def _db_secret_findings(payload: Any, *, path: str) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    if isinstance(payload, Mapping):
+        for key, value in payload.items():
+            key_text = str(key)
+            key_path = f"{path}.{key_text}"
+            folded = key_text.casefold()
+            secret_key = SECRET_KEY_NAME_RE.search(key_text) or "credential" in folded
+            boolean_secret_marker = isinstance(value, bool) and (
+                folded in {"password_present", "password_configured", "password_required", "password_value_recorded"}
+                or folded.endswith("_present")
+                or folded.endswith("_recorded")
+            )
+            if secret_key:
+                if folded == "password_value_recorded" and _as_bool(value):
+                    findings.append({"path": key_path, "key": key_text})
+                elif boolean_secret_marker:
+                    pass
+                elif not _safe_redacted(value):
+                    findings.append({"path": key_path, "key": key_text})
+            if not isinstance(value, bool):
+                findings.extend(_db_secret_findings(value, path=key_path))
+    elif isinstance(payload, list):
+        for index, item in enumerate(payload):
+            findings.extend(_db_secret_findings(item, path=f"{path}[{index}]"))
+    elif isinstance(payload, str):
+        if re.search(r"(?i)(password|pwd)\s*[:=]\s*[^;\s]+", payload) or re.search(r"://[^/\s:@]+:[^@\s/]+@", payload):
+            findings.append({"path": path, "key": "string_contains_db_secret"})
+    return findings
 
 
 def _check_required_boolean_paths(
@@ -397,17 +439,36 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
     if isinstance(explicit_missing, list) and explicit_missing and full_chain_claimed:
         result.fail("source_concept_explicit_missing_stages", "Full-chain completion cannot have missing_required_stages.", path="missing_required_stages", expected=[], actual=explicit_missing)
 
-    llm_required = _as_bool(_get(summary, "llm_adjudication_plan.required", True))
+    plan = _get(summary, "llm_adjudication_plan", {})
+    plan_mapping = plan if isinstance(plan, Mapping) else {}
+    llm_required = _as_bool(plan_mapping.get("required", True))
     llm_used = _as_bool(_get(summary, "llm_adjudication_used", False))
     judgment_count = _as_int(_get(summary, "llm_judgment_count", 0))
-    zero_eligible = _as_bool(_get(summary, "llm_adjudication_plan.zero_eligible_proof", False))
-    if full_chain_claimed and llm_required:
-        if not llm_used and not zero_eligible:
+    zero_eligible = _as_bool(plan_mapping.get("zero_eligible_proof", False))
+    eligible = _as_int(plan_mapping.get("eligible_pair_count", plan_mapping.get("selected_block_count", 0)))
+    max_calls = _as_int(plan_mapping.get("max_calls", _get(summary, "llm_max_calls", 0)))
+    selected = _as_int(plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0)))
+    budget = _as_float(plan_mapping.get("budget_usd", _get(summary, "llm_budget_usd", 0.0)))
+    projected = _as_float(plan_mapping.get("projected_budget_usd", plan_mapping.get("projected_cost_usd", 0.0)))
+    approved_overage = _as_bool(plan_mapping.get("explicit_over_budget_or_call_cap_approval"))
+    blocked_status = status.startswith("full_chain_blocked")
+    eligible_pairs_exist = eligible > 0
+    llm_evidence_required = full_chain_claimed and not zero_eligible and (eligible_pairs_exist or llm_required)
+    if full_chain_claimed and eligible_pairs_exist and not zero_eligible and not llm_required:
+        result.fail(
+            "source_concept_llm_required_opt_out_with_eligible_pairs",
+            "Full-chain completion cannot mark LLM adjudication not required when eligible pairs exist.",
+            path="llm_adjudication_plan.required",
+            expected=True,
+            actual=llm_required,
+        )
+    if llm_evidence_required:
+        if not llm_used and not blocked_status:
             result.fail("source_concept_llm_required_missing", "Full-chain SourceConcept replay cannot silently skip LLM adjudication.", path="llm_adjudication_used", expected=True, actual=llm_used)
-        if judgment_count <= 0 and not zero_eligible:
+        if judgment_count <= 0:
             result.fail("source_concept_zero_llm_judgments_full_chain", "Full-chain completion requires LLM judgments or explicit zero-eligible proof.", path="llm_judgment_count", expected="> 0", actual=judgment_count)
-        if not _as_bool(_get(summary, "full_chain_fidelity_passed", False)):
-            result.fail("source_concept_fidelity_not_passed", "Full-chain completion requires full_chain_fidelity_passed=true.", path="full_chain_fidelity_passed")
+    if full_chain_claimed and not _as_bool(_get(summary, "full_chain_fidelity_passed", False)):
+        result.fail("source_concept_fidelity_not_passed", "Full-chain completion requires full_chain_fidelity_passed=true.", path="full_chain_fidelity_passed")
 
     if status == "deterministic_only" and (result.target_met_claimed or result.route_approved or result.full_chain_complete_claimed):
         result.fail("deterministic_only_claimed_completion", "deterministic_only summaries must not claim target_met, route_approved, or full_chain_complete.", path="pipeline_contract.status")
@@ -416,16 +477,11 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
         if result.target_met_claimed or result.route_approved or result.full_chain_complete_claimed:
             result.fail("blocked_status_claimed_completion", "Blocked/inconclusive full-chain summaries must not claim completion or approval.", path="pipeline_contract.status")
 
-    plan = _get(summary, "llm_adjudication_plan", {})
-    if isinstance(plan, Mapping):
-        eligible = _as_int(plan.get("eligible_pair_count", plan.get("selected_block_count", 0)))
-        max_calls = _as_int(plan.get("max_calls", _get(summary, "llm_max_calls", 0)))
-        selected = _as_int(plan.get("selected_pair_count", plan.get("selected_block_count", 0)))
-        budget = _as_float(plan.get("budget_usd", _get(summary, "llm_budget_usd", 0.0)))
-        projected = _as_float(plan.get("projected_budget_usd", plan.get("projected_cost_usd", 0.0)))
-        approved_overage = _as_bool(plan.get("explicit_over_budget_or_call_cap_approval"))
-        if full_chain_claimed and max_calls > 0 and eligible > max_calls and selected <= max_calls and not approved_overage:
-            result.fail("source_concept_llm_call_cap_truncated", "Eligible LLM pairs exceed max_calls; full-chain completion cannot silently truncate without approval.", path="llm_adjudication_plan")
+    if plan_mapping:
+        if full_chain_claimed and eligible > max_calls and not approved_overage:
+            result.fail("source_concept_llm_call_cap_exceeded", "Eligible LLM pairs exceed max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_adjudication_plan")
+        if full_chain_claimed and selected > max_calls and not approved_overage:
+            result.fail("source_concept_llm_selected_call_cap_exceeded", "Selected LLM pairs exceed max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_adjudication_plan")
         if full_chain_claimed and budget >= 0 and projected > budget and not approved_overage:
             result.fail("source_concept_llm_budget_exceeded", "Projected LLM budget exceeds approved budget; phase must block/request approval.", path="llm_adjudication_plan")
 
@@ -433,9 +489,9 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
         _check_required_boolean_paths(
             summary,
             result,
-            ("mutation_proof.passed", "post_commit_verification.passed", "review_pack.generated"),
+            ("mutation_proof.passed", "post_commit_verification.passed", "validation_pack.generated", "review_pack.generated"),
             code="source_concept_required_proof_missing",
-            message="Full-chain SourceConcept completion requires mutation, post-commit, and review-pack proof.",
+            message="Full-chain SourceConcept completion requires mutation, post-commit, validation-pack, and review-pack proof.",
         )
 
 
@@ -508,14 +564,37 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
     status = result.status or "unknown"
     result.details["route_decision_status"] = status
     result.details["route_approved"] = result.route_approved
+    status_folded = status.casefold()
     if result.route_approved and not upstream_ok:
         result.fail("route_approval_upstream_incomplete", "Route approval cannot proceed while upstream pipeline contract is failed or incomplete.", path="upstream_pipeline_contract")
-    if "blocked" in status or "provisional" in status:
+    if result.route_approved and ("blocked" in status_folded or "provisional" in status_folded):
+        result.fail("route_approval_blocked_or_provisional_status", "Route approval cannot be claimed while final_route_decision_status is blocked/provisional.", path="final_route_decision_status", actual=status)
+    if "blocked" in status_folded or "provisional" in status_folded:
         result.details["route_blocked_not_approved"] = True
+    mutation = _get(summary, "mutation_proof", {})
+    if not isinstance(mutation, Mapping):
+        result.fail("route_audit_mutation_proof_not_object", "Route audit mutation_proof must be an object.", path="mutation_proof")
+    else:
+        mutation_passed = _as_bool(mutation.get("passed"))
+        if _has(summary, "mutation_proof.passed") and not mutation_passed:
+            result.fail("route_audit_mutation_proof_failed", "Route audit fails when mutation_proof.passed=false.", path="mutation_proof.passed", expected=True, actual=mutation.get("passed"))
+        if result.route_approved and not mutation_passed:
+            result.fail("route_audit_route_approval_without_mutation_proof", "Route approval requires mutation_proof.passed=true.", path="mutation_proof.passed", expected=True, actual=mutation.get("passed"))
+        forbidden_names, unexpected_names = _mutation_table_violations(mutation)
+        if forbidden_names:
+            result.fail("route_audit_mutation_forbidden_table_changed", "Route audit detected forbidden table changes.", path="mutation_proof.forbidden_changed_tables", actual=forbidden_names)
+        if unexpected_names:
+            result.fail("route_audit_mutation_unexpected_table_changed", "Route audit detected unexpected table changes.", path="mutation_proof.unexpected_changed_tables", actual=unexpected_names)
     review_pack = _get(summary, "chatgpt_review_pack", _get(summary, "review_pack", {}))
-    if isinstance(review_pack, Mapping) and review_pack:
-        if not (_as_bool(review_pack.get("generated")) or _as_bool(review_pack.get("manifest_present"))):
-            result.fail("route_audit_review_pack_missing", "Route-decision phases require a review pack unless explicitly waived.", path="chatgpt_review_pack")
+    waiver = _get(summary, "route_audit_review_pack_waiver", _get(summary, "review_pack_waiver", {}))
+    waiver_ok = isinstance(waiver, Mapping) and _as_bool(waiver.get("contract_approved")) and _as_bool(waiver.get("explicit"))
+    review_pack_present = isinstance(review_pack, Mapping) and bool(review_pack) and (
+        _as_bool(review_pack.get("generated")) or _as_bool(review_pack.get("manifest_present"))
+    )
+    if isinstance(review_pack, Mapping) and review_pack and not review_pack_present:
+        result.fail("route_audit_review_pack_missing", "Route-decision phases require a review pack unless explicitly waived.", path="chatgpt_review_pack")
+    if result.route_approved and not review_pack_present and not waiver_ok:
+        result.fail("route_audit_route_approval_missing_review_pack", "Route-approved summaries require review pack proof unless a contract-approved waiver is present.", path="chatgpt_review_pack")
 
 
 def _check_public_redaction(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
@@ -539,6 +618,18 @@ def _check_mutation_safety(_contract: PhaseContract, summary: Mapping[str, Any],
     if not isinstance(proof, Mapping):
         result.fail("mutation_proof_not_object", "mutation_proof must be an object.", path="mutation_proof")
         return
+    if _has(summary, "mutation_proof.passed") and not _as_bool(proof.get("passed")):
+        result.fail("mutation_proof_failed", "mutation_proof.passed=false fails mutation safety immediately.", path="mutation_proof.passed", expected=True, actual=proof.get("passed"))
+    forbidden_names, unexpected_names = _mutation_table_violations(proof)
+    if forbidden_names:
+        result.fail("mutation_forbidden_table_changed", "Forbidden table changes were detected.", path="mutation_proof.forbidden_changed_tables", actual=forbidden_names)
+    if unexpected_names:
+        result.fail("mutation_unexpected_table_changed", "Unexpected table changes were detected.", path="mutation_proof.unexpected_changed_tables", actual=unexpected_names)
+    if _as_bool(_get(summary, "destructive_operation.executed", False)) and not _as_bool(_get(summary, "destructive_operation.contract_passed", False)):
+        result.fail("mutation_destructive_without_contract", "Destructive operation executed without destructive contract proof.", path="destructive_operation")
+
+
+def _mutation_table_violations(proof: Mapping[str, Any]) -> tuple[list[str], list[str]]:
     delta = proof.get("delta") if isinstance(proof.get("delta"), Mapping) else proof
     forbidden = delta.get("forbidden_changed_tables") or []
     unexpected = delta.get("unexpected_changed_tables") or []
@@ -552,12 +643,7 @@ def _check_mutation_safety(_contract: PhaseContract, summary: Mapping[str, Any],
                 forbidden_names.append(name)
             if row.get("allowed") is False and name not in unexpected_names:
                 unexpected_names.append(name)
-    if forbidden_names:
-        result.fail("mutation_forbidden_table_changed", "Forbidden table changes were detected.", path="mutation_proof.forbidden_changed_tables", actual=forbidden_names)
-    if unexpected_names:
-        result.fail("mutation_unexpected_table_changed", "Unexpected table changes were detected.", path="mutation_proof.unexpected_changed_tables", actual=unexpected_names)
-    if _as_bool(_get(summary, "destructive_operation.executed", False)) and not _as_bool(_get(summary, "destructive_operation.contract_passed", False)):
-        result.fail("mutation_destructive_without_contract", "Destructive operation executed without destructive contract proof.", path="destructive_operation")
+    return forbidden_names, unexpected_names
 
 
 def _table_names(rows: Any) -> list[str]:
@@ -594,13 +680,15 @@ def _check_artifact_lifecycle(_contract: PhaseContract, summary: Mapping[str, An
         classification = str(artifact.get("classification") or artifact.get("lifecycle") or "").casefold()
         path = str(artifact.get("path") or artifact.get("name") or "artifact")
         committed = _as_bool(artifact.get("committed"))
-        redacted = _as_bool(artifact.get("redacted", True))
         if ("private" in classification or "one-off local" in classification) and committed:
             result.fail("private_artifact_committed", "Private/local artifacts must not be committed.", path=path)
         if "review pack" in classification and committed:
             result.fail("review_pack_committed", "Review packs must not be committed.", path=path)
-        if "public report" in classification and not redacted:
-            result.fail("public_artifact_not_redacted", "Public report/handoff artifacts must be redacted.", path=path)
+        if "public report" in classification or "handoff" in classification:
+            if "redacted" not in artifact:
+                result.fail("public_artifact_redaction_evidence_missing", "Public report/handoff artifacts require explicit redaction evidence.", path=path)
+            elif not _as_bool(artifact.get("redacted")):
+                result.fail("public_artifact_not_redacted", "Public report/handoff artifacts must be redacted.", path=path)
 
 
 def _check_destructive_operation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:

@@ -16,6 +16,12 @@ The implementation adds:
 - durable guidance updates in `AGENTS.md`, `docs/current-handoff.md`,
   `docs/project-roadmap.md`, and `docs/test-workflow.md`.
 
+PR #108 follow-up tightened the contracts to fail closed for current-head
+blockers: SourceConcept full-chain LLM opt-out, LLM call caps, validation-pack
+proof, route-audit approval contradictions, mutation proof failures, public
+bare filenames/URLs/tokens/paths, nested DB secrets, and public artifact
+redaction evidence.
+
 GOV3 does not run R1R, A1R, R2, providers, LLM, import, classification, AI
 tagging, localization, Entity bridge, DB writes, or storage/source mutation.
 
@@ -125,14 +131,23 @@ The contract distinguishes:
 
 It fails if a phase claims full-chain completion while LLM adjudication is
 required but missing, while `llm_judgment_count=0` without zero-eligible proof,
-or while required stages are absent.
+or while required stages are absent. It also fails if a full-chain summary sets
+`llm_adjudication_plan.required=false` while eligible LLM pairs exist, if
+eligible or selected pair counts exceed `max_calls` without explicit
+over-budget/call-cap approval, if `full_chain_fidelity_passed` is not true, or
+if validation-pack evidence is missing.
 
 ## Public redaction contract
 
 `public_redaction_contract_v1` scans public JSON and Markdown keys and values.
 It fails on common tokens, secret-looking unredacted key names, Windows paths,
 UNC paths, `file://` URIs, private POSIX roots, and source/private provenance
-values such as raw filenames or source paths.
+values such as raw filenames or source paths. It also fails on bare filename
+values in public Markdown/JSON, sensitive URL/path keys such as `source_url` or
+`thumbnail_url` unless explicitly redacted, bare `ghp_`, `github_pat_`, `xoxb-`,
+`sk-`, `Bearer`, or `Authorization` tokens, and local/private POSIX paths such
+as `/workspace`, `/tmp`, `/opt`, `/var`, `/home`, `/Users`, `/mnt`, and
+`/Volumes`.
 
 ## Review pack contract
 
@@ -145,20 +160,28 @@ fixed-salt hash markers and raw/private labels.
 
 `route_audit_contract_v1` requires read-only stable snapshot proof and blocks
 route approval when an upstream pipeline contract is failed, deterministic-only,
-or incomplete. Existing A1 remains blocked, not route-approved.
+or incomplete. It fails if `route_approved=true` appears with a blocked or
+provisional final status, if `mutation_proof.passed=false`, if forbidden or
+unexpected mutation tables are recorded, or if a route-approved summary lacks a
+review pack without a contract-approved waiver. Existing A1 remains blocked,
+not route-approved.
 
 ## Mutation safety contract
 
 `mutation_safety_contract_v1` checks allowlist/denylist proof, forbidden table
 changes, unexpected table changes, and destructive-operation gating. It is a
 summary-level gate for future write phases; GOV3 itself performs no writes.
+`mutation_proof.passed=false` fails immediately even when no table deltas are
+listed.
 
 ## Artifact lifecycle contract
 
 `artifact_lifecycle_contract_v1` distinguishes production, durable validation,
 reusable validation, phase-scoped, one-off local/private, and public
 report/handoff artifacts. It fails if private artifacts or review packs are
-committed, or if public report artifacts are not redacted.
+committed, or if public report artifacts are not redacted. Public
+report/handoff artifacts must now provide explicit `redacted=true` evidence;
+missing redaction evidence fails instead of defaulting to pass.
 
 ## R1R prerequisites
 
@@ -198,7 +221,7 @@ GOV3 validation passed:
 - `scripts/check_python_env.py --expected-python "$PY"`
 - `py_compile` for the checker and tests
 - `pytest tests/test_phase_contracts.py tests/test_phase45_doc1_documentation_state.py -v`
-  - result: 21 passed
+  - result: 37 passed
 - `json.tool` for this GOV3 summary
 - contract checker examples:
   - A1 summary with `route_audit_contract_v1`: exit 0, passed=true,
@@ -206,6 +229,10 @@ GOV3 validation passed:
   - INC1 summary with `public_redaction_contract_v1`: exit 0, passed=true
   - mock passing SourceConcept full-chain fixture: exit 0, passed=true
   - mock deterministic-only fixture: exit 1 as expected, passed=false
+  - temporary P1 negative fixtures for LLM opt-out, selected-pair call cap,
+    missing validation pack, blocked route approval, failed mutation proof,
+    bare filename redaction, nested DB password, and missing public redaction
+    evidence: exit 1 as expected
 
 No browser validation is required because GOV3 does not change UI/runtime files.
 

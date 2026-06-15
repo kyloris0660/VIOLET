@@ -1,7 +1,7 @@
 {
   "phase": "Phase 4.5-GOV3",
   "title": "Executable Pipeline Contracts and Phase Gates",
-  "generated_at": "2026-06-14T20:22:04+08:00",
+  "generated_at": "2026-06-15T15:24:05+08:00",
   "branch": "codex/phase45-gov3-executable-pipeline-contracts",
   "incident_context": {
     "inc1_conclusion": "llm_stage_missing_incident",
@@ -41,12 +41,21 @@
       "full_chain_inconclusive_missing_artifacts"
     ],
     "fails_if_full_chain_claim_skips_llm": true,
-    "fails_if_full_chain_claim_has_zero_llm_judgments_without_zero_eligible_proof": true
+    "fails_if_full_chain_claim_has_zero_llm_judgments_without_zero_eligible_proof": true,
+    "fails_if_required_false_with_eligible_pairs": true,
+    "fails_if_eligible_pair_count_exceeds_max_calls_without_explicit_approval": true,
+    "fails_if_selected_pair_count_exceeds_max_calls_without_explicit_approval": true,
+    "requires_full_chain_fidelity_passed": true,
+    "requires_validation_pack_for_full_chain_completion": true
   },
   "route_audit_contract": {
     "contract_id": "route_audit_contract_v1",
     "requires_read_only_stable_snapshot": true,
-    "blocks_route_approval_if_upstream_pipeline_incomplete": true
+    "blocks_route_approval_if_upstream_pipeline_incomplete": true,
+    "fails_route_approved_with_blocked_or_provisional_status": true,
+    "fails_mutation_proof_passed_false": true,
+    "fails_forbidden_or_unexpected_mutation_tables": true,
+    "route_approved_requires_review_pack_or_contract_approved_waiver": true
   },
   "review_pack_contract": {
     "contract_id": "review_pack_contract_v1",
@@ -60,12 +69,28 @@
     "scans_json_values": true,
     "scans_markdown_text": true,
     "detects_common_tokens": true,
-    "detects_local_paths": true
+    "detects_local_paths": true,
+    "detects_bare_filenames_in_public_text_and_json_values": true,
+    "sensitive_public_keys_require_redaction": [
+      "raw_filename",
+      "filename",
+      "source_url",
+      "original_url",
+      "thumbnail_url",
+      "source_path",
+      "local_path",
+      "source_root",
+      "provider_url",
+      "private_url"
+    ],
+    "detects_bare_github_slack_openai_tokens": true,
+    "detects_generic_posix_local_paths": true
   },
   "mutation_safety_contract": {
     "contract_id": "mutation_safety_contract_v1",
     "requires_table_allowlist_denylist_proof": true,
     "fails_forbidden_or_unexpected_table_changes": true,
+    "fails_mutation_proof_passed_false": true,
     "destructive_operations_require_destructive_contract": true
   },
   "artifact_lifecycle_contract": {
@@ -79,7 +104,14 @@
       "public report/handoff"
     ],
     "private_artifacts_must_not_be_committed": true,
-    "public_artifacts_must_be_redacted": true
+    "public_artifacts_must_be_redacted": true,
+    "public_report_handoff_requires_explicit_redacted_true": true
+  },
+  "postgres_db_contract": {
+    "contract_id": "postgres_db_contract_v1",
+    "recursively_rejects_nested_password_or_secret_values": true,
+    "allows_password_present_boolean_without_password_value": true,
+    "requires_db_url_equivalence_proof": true
   },
   "destructive_operation_contract": {
     "contract_id": "destructive_operation_contract_v1",
@@ -109,17 +141,26 @@
     "coverage": [
       "registry contains required contracts",
       "SourceConcept full-chain LLM missing failures",
+      "SourceConcept full-chain LLM required=false eligible-pair failures",
+      "SourceConcept full-chain eligible/selected call-cap failures",
+      "SourceConcept full-chain validation-pack proof failures",
       "route audit upstream pipeline blocking",
+      "route audit blocked/provisional approval contradiction blocking",
+      "route audit mutation-proof and review-pack blocking",
       "review pack manifest/checksum/redaction failures",
       "public redaction leak detection",
+      "public redaction bare filenames, sensitive URL keys, bare tokens, and POSIX local paths",
       "mutation safety table changes",
+      "mutation safety mutation_proof.passed=false failure",
       "artifact lifecycle public/private boundary",
+      "artifact lifecycle explicit public redaction evidence",
+      "PostgreSQL nested password rejection and safe password-present booleans",
       "destructive operation approval gates",
       "Entity bridge preview/manual/audit/rollback gates",
       "existing A1/INC1 remain blocked/not route-approved",
       "mock R1R full-chain pass/fail fixtures"
     ],
-    "result": "21 passed"
+    "result": "37 passed"
   },
   "validation": {
     "browser_validation": "not_required_no_ui_runtime_change",
@@ -153,7 +194,8 @@
       "mock_full_chain_contract_exit_code": 0,
       "mock_full_chain_contract_passed": true,
       "mock_deterministic_only_contract_exit_code": 1,
-      "mock_deterministic_only_contract_failed_as_expected": true
+      "mock_deterministic_only_contract_failed_as_expected": true,
+      "p1_negative_contract_fixtures_failed_as_expected": true
     }
   },
   "next_phase_recommendation": {

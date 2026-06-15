@@ -91,6 +91,9 @@
   "post_commit_verification": {
     "passed": true
   },
+  "validation_pack": {
+    "generated": true
+  },
   "review_pack": {
     "generated": true
   },
