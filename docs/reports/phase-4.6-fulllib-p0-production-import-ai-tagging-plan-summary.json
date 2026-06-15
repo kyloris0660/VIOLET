@@ -1,0 +1,336 @@
+{
+  "phase": "4.6-FULLLIB-P0",
+  "title": "Production Full-Library Import and AI Tagging Plan",
+  "generated_at": "2026-06-15T22:38:41+08:00",
+  "branch": "codex/phase46-fulllib-p0-production-import-ai-tagging-plan",
+  "phase_type": "plan_only_contract_mapping",
+  "writes_db": false,
+  "runs_import": false,
+  "runs_ai_tagging": false,
+  "runs_provider": false,
+  "runs_llm": false,
+  "runs_sourceconcept": false,
+  "production_utility_track": {
+    "enabled": true,
+    "scope": [
+      "full-library inventory",
+      "safe production import",
+      "content classification",
+      "AI tagging",
+      "usable local search and browse"
+    ],
+    "non_truth_scope": "AI tags are search/provenance signals, not Entity truth or confirmed assignments."
+  },
+  "sourceconcept_provider_track_separated": {
+    "separated": true,
+    "blocked_items_not_started": [
+      "R1R",
+      "A1R",
+      "R2",
+      "Provider-2",
+      "PX1-B",
+      "SourceConcept resolver",
+      "Entity bridge"
+    ],
+    "reason": "INC1 invalidates old R1/A1 route approval; production utility can proceed without provider/SourceConcept truth promotion."
+  },
+  "gov3_contracts_required_for_e1": [
+    "python_env_contract_v1",
+    "postgres_db_contract_v1",
+    "media_import_contract_v1",
+    "classification_contract_v1",
+    "ai_tagging_contract_v1",
+    "mutation_safety_contract_v1",
+    "artifact_lifecycle_contract_v1",
+    "public_redaction_contract_v1"
+  ],
+  "production_db_plan": {
+    "recommended_database": "violet_library_prod",
+    "environment": "production",
+    "requires_explicit_violet_env": true,
+    "requires_explicit_storage_root": true,
+    "requires_backup_before_execute": true,
+    "db_identity_contract": "postgres_db_contract_v1",
+    "must_not_share_sourceconcept_provider_dev_db": true
+  },
+  "development_db_plan": {
+    "current_development_database": "blombooru",
+    "future_optional_database": "violet_dev",
+    "purpose": "development and experimental SourceConcept/provider work",
+    "must_not_be_used_for_production_utility_execution": true
+  },
+  "source_root_policy": {
+    "read_only": true,
+    "public_paths_forbidden": true,
+    "cloud_recall_default": "block_and_defer",
+    "cloud_aware_copy_requires_separate_approval": true,
+    "gate": "SourceIngestionGate.evaluate_path_source"
+  },
+  "app_storage_policy": {
+    "dedicated_production_storage_root_required": true,
+    "allowed_writes": [
+      "new imported originals under app-managed storage",
+      "new thumbnails for newly imported media",
+      "temporary files created by the current item before final rename"
+    ],
+    "forbidden_writes": [
+      "source roots",
+      "iCloud roots",
+      "test storage",
+      "repo accidental storage",
+      "existing app-managed originals",
+      "existing thumbnails",
+      "cache cleanup"
+    ]
+  },
+  "inventory_dry_run_plan": {
+    "required_before_execute": true,
+    "writes_db": false,
+    "reads_file_bytes_only_after_source_gate": true,
+    "outputs": [
+      "inventory-candidates.jsonl",
+      "duplicate-skipped.jsonl",
+      "candidate-summary.json",
+      "public aggregate summary"
+    ],
+    "structural_blockers_stop": true
+  },
+  "batch_import_plan": {
+    "batching_required": true,
+    "dry_run_first": true,
+    "copy_policy": "temp-first inside app-managed storage, verify hash, then DB insert",
+    "media_source_policy": "safe production source label, not raw file URI",
+    "commit_policy": "per-item or small transaction batch after file and DB state are coherent"
+  },
+  "classification_plan": {
+    "scope": "newly imported media unless explicit production backfill is approved",
+    "eligible_for_ai_tagging": [
+      "anime",
+      "unknown"
+    ],
+    "ineligible_for_ai_tagging": [
+      "non_anime",
+      "unsupported classes"
+    ],
+    "contract": "classification_contract_v1",
+    "source_storage_mutation_forbidden": true
+  },
+  "ai_tagging_plan": {
+    "scope": "classification-eligible media only",
+    "local_model_only": true,
+    "network_model_download_forbidden": true,
+    "disable_localization_side_effects": true,
+    "preserve_manual_locked_tags": true,
+    "contract": "ai_tagging_contract_v1"
+  },
+  "ai_tag_reuse_plan": {
+    "keyed_by_media_id": false,
+    "primary_key": "content_sha256",
+    "compatibility_key": "existing Media.hash md5",
+    "requires_model_threshold_match": true,
+    "export_format": "private JSONL, optionally compressed",
+    "strategy": "reuse compatible fingerprint rows before local inference; record reused/newly_inferred/deferred in AI ledger"
+  },
+  "media_fingerprint_policy": {
+    "primary": "content_sha256",
+    "compatibility": "md5 stored in Media.hash",
+    "additional_fields": [
+      "file_size",
+      "width",
+      "height",
+      "duration",
+      "mime_type",
+      "file_type"
+    ],
+    "db_migration_required_for_e1": false,
+    "future_db_sha256_column_useful": true
+  },
+  "allowed_tables_for_e1": [
+    "blombooru_media",
+    "blombooru_tags",
+    "blombooru_media_tags",
+    "blombooru_classification_jobs",
+    "blombooru_ai_tag_jobs"
+  ],
+  "forbidden_tables_for_e1": [
+    "blombooru_entities",
+    "blombooru_entity_aliases",
+    "blombooru_entity_external_identities",
+    "blombooru_entity_evidence",
+    "blombooru_media_entity_candidates",
+    "blombooru_media_entity_assignments",
+    "blombooru_entity_translations",
+    "blombooru_external_sources",
+    "blombooru_provider_cache",
+    "blombooru_negative_lookup_cache",
+    "blombooru_source_metadata_records",
+    "blombooru_source_tag_observations",
+    "blombooru_source_tag_registry",
+    "blombooru_source_name_observations",
+    "blombooru_source_name_registry",
+    "blombooru_source_name_alias_candidates",
+    "blombooru_source_metadata_evidence",
+    "blombooru_source_searchable_name_assertions",
+    "blombooru_source_name_candidate_extraction_runs",
+    "blombooru_source_name_candidate_record_verdicts",
+    "blombooru_source_name_candidates",
+    "blombooru_source_concept_resolution_runs",
+    "blombooru_source_concept_signals",
+    "blombooru_source_concepts",
+    "blombooru_source_concept_aliases",
+    "blombooru_source_concept_evidence",
+    "blombooru_source_concept_signal_links",
+    "blombooru_source_concept_search_index",
+    "blombooru_tag_translations",
+    "blombooru_tag_translation_jobs",
+    "blombooru_external_tag_category_lookup_cache",
+    "blombooru_pixiv_tag_taxonomy_kb",
+    "blombooru_pixiv_tag_alias_kb"
+  ],
+  "forbidden_operations": [
+    "full-library import during P0",
+    "DB write during P0",
+    "classification during P0",
+    "AI tagging during P0",
+    "provider/Pixiv/gallery-dl/SauceNAO/Google",
+    "LLM",
+    "SourceConcept resolver",
+    "R1R",
+    "A1R",
+    "R2",
+    "Entity truth mutation",
+    "source metadata mutation",
+    "SourceConcept table mutation",
+    "source/iCloud/app-storage mutation during P0",
+    "cleanup/delete/reset/drop/truncate",
+    "push main",
+    "merge"
+  ],
+  "ledger_design": {
+    "private_ledgers": [
+      "inventory-candidates.jsonl",
+      "duplicate-skipped.jsonl",
+      "import-item-ledger.jsonl",
+      "classification-ledger.jsonl",
+      "ai-tagging-ledger.jsonl",
+      "ai-tag-export.jsonl",
+      "batch-summary.jsonl",
+      "run-summary.json"
+    ],
+    "public_artifacts": [
+      "aggregate report markdown",
+      "aggregate summary json",
+      "optional review pack"
+    ],
+    "supports_resume_retry_backfill": true,
+    "public_artifacts_use_safe_labels_only": true
+  },
+  "failure_budget_policy": {
+    "structural_blockers": [
+      "DB identity mismatch",
+      "source root / storage root confusion",
+      "unsafe app-managed storage",
+      "target path escape",
+      "unexpected DB mutation",
+      "source/iCloud mutation",
+      "public report redaction failure",
+      "ledger schema failure"
+    ],
+    "per_item_failures": [
+      "unsupported extension",
+      "corrupt file",
+      "unreadable file",
+      "duplicate",
+      "cloud unavailable",
+      "timeout",
+      "AI tagging failed for one item"
+    ],
+    "default_batch_budget": {
+      "max_item_failures": 20,
+      "max_failure_rate": 0.05,
+      "max_consecutive_failures": 10,
+      "max_same_reason_failures": 20
+    }
+  },
+  "resume_retry_policy": {
+    "ledger_driven": true,
+    "requires_same_db_storage_code_source_model_contract_identity": true,
+    "duplicates_not_retried_as_failures": true,
+    "cloud_unavailable_deferred_for_backfill": true,
+    "ai_reuse_records_reused_newly_inferred_deferred": true
+  },
+  "existing_tool_assessment": {
+    "sufficient_as_components": true,
+    "sufficient_unchanged_for_fulllib_e1": false,
+    "reusable_components": [
+      "SourceIngestionGate",
+      "media_processor",
+      "thumbnail_generator",
+      "classification job service",
+      "AI tagging job service",
+      "E1 runner ledger/redaction/mutation proof patterns",
+      "GOV3 contract checker"
+    ],
+    "needs_new_or_adapted_runner": true
+  },
+  "gaps_before_e1": [
+    "approve P0 plan",
+    "create/adapt FULLLIB runner with production DB/storage gates",
+    "align summary fields with GOV3 contracts",
+    "validate ledger schemas",
+    "define backup/recovery proof",
+    "implement or explicitly defer AI tag fingerprint export/reuse",
+    "add focused safety tests",
+    "decide review_pack_contract_v1 requirement or waiver"
+  ],
+  "rollback_decision": {
+    "rollback_old_r1_a1_now": false,
+    "reason": "R1 is historical deterministic source-layer output and A1 is read-only audit evidence; destructive rollback adds more risk than value."
+  },
+  "r1_a1_status": {
+    "r1_historical_source_layer_output": true,
+    "a1_read_only_audit_evidence": true,
+    "old_r1_a1_can_approve_r2": false,
+    "r1r_a1r_should_supersede": true
+  },
+  "next_phase_recommendation": {
+    "recommended_phase": "FULLLIB-E1",
+    "requires_p0_approval": true,
+    "r1r_a1r_deferred_unless_reprioritized": true,
+    "fulllib_e1_forbidden_tracks": [
+      "provider",
+      "LLM",
+      "SourceConcept",
+      "Entity",
+      "R1R",
+      "A1R",
+      "R2"
+    ]
+  },
+  "validation": {
+    "p0_required_commands": [
+      "git diff --check",
+      "git diff --cached --check",
+      "scripts/check_python_env.py --expected-python <repo venv python>",
+      "python -m json.tool docs/reports/phase-4.6-fulllib-p0-production-import-ai-tagging-plan-summary.json",
+      "python -m pytest tests/test_phase45_doc1_documentation_state.py -v"
+    ],
+    "browser_validation_required": false,
+    "db_validation_required_for_p0": false
+  },
+  "safety": {
+    "no_push_main": true,
+    "no_merge": true,
+    "no_db_write": true,
+    "no_import": true,
+    "no_classification": true,
+    "no_ai_tagging": true,
+    "no_provider": true,
+    "no_llm": true,
+    "no_sourceconcept": true,
+    "no_entity_truth_or_media_tags_mutation": true,
+    "no_source_metadata_mutation": true,
+    "no_source_icloud_storage_mutation": true,
+    "no_cleanup_delete_reset_drop_truncate": true
+  }
+}

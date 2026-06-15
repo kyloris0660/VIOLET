@@ -21,7 +21,7 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is an incident-governance hold after the post-R1 SourceConcept audit. No provider expansion, SourceConcept editing, Entity truth work, R2, PX1-B, Provider-2, or scale-up is approved while the pipeline fidelity incident remains unresolved.
+The active route is now split into a production utility track and a SourceConcept/provider/entity track. Production utility planning may proceed for safe full-library import, classification, AI tagging, and usable local search/browse value. Provider expansion, SourceConcept editing, Entity truth work, R2, PX1-B, and Provider-2 remain blocked while the pipeline fidelity incident is unresolved.
 
 Current accepted state:
 
@@ -33,9 +33,11 @@ Current accepted state:
 - Phase 4.5-SCV2-E1 / PR #102 is merged: medium import plus eligible AI tag completion, ending at 3750 media and 3687/3687 eligible AI tag coverage.
 - Phase 4.5-PX1 / PR #103 is merged: bounded Pixiv/gallery-dl metadata extraction selected 500, succeeded 470, recorded 30 unavailable/private/deleted failures, wrote source-layer metadata/observations/assertions only, and found 0 exact duplicate dry-run groups.
 - Phase 4.5-SCV2-R1 / PR #104 is merged: PX1 evidence was consumed by SourceConcept triage, execute transactions were explicitly committed and post-commit verified on a fresh connection, mutation proof/public redaction passed, and only allowed SourceConcept resolver tables changed.
-- Phase 4.5-SCV2-A1 / PR #105 is merged: read-only post-expansion audit, route-decision evidence, public report/summary, and a generated privacy-safe ChatGPT review pack for independent audit. Its route approval is blocked by INC1 pending executable contract hardening, R1R full-chain remediation, and A1R rerun.
+- Phase 4.5-SCV2-A1 / PR #105 is merged: read-only post-expansion audit, route-decision evidence, public report/summary, and a generated privacy-safe ChatGPT review pack for independent audit. Its route approval is blocked by INC1 pending R1R full-chain remediation and A1R rerun.
 - Phase 4.5-SCV2-INC1 is available on `main` via PR #107: it confirmed `llm_stage_missing_incident`, SC1 used bounded LLM adjudication, and R1 did not.
-- Phase 4.5-GOV3 is current: executable phase contracts and phase gates before any R1R/A1R/R2 work.
+- PR #108 / Phase 4.5-GOV3 is merged: executable phase contracts and phase gates are now the baseline governance rule before completion, route approval, or safe handoff claims.
+- Issue #109 tracks GOV3.1 hardening debt. It does not block plan-only production utility planning, but later route approval, `safe_to_merge`, or high-risk review-pack proof must account for the relevant issue class.
+- Phase 4.6-FULLLIB-P0 is current: plan-only contract mapping for a production utility full-library import, classification, AI tagging, and AI tag reuse track.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
 Current post-PX1 result:
@@ -45,18 +47,23 @@ Current post-PX1 result:
 - PX1 source searchable assertions are intentionally `needs_review` with `requires_review=true`; they are not `searchable_active`.
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
-- Current route: `GOV3` executable contract hardening, then R1R full SourceConcept pipeline replay/remediation, then A1R route audit rerun.
-- A1 final route approval is blocked pending GOV3, R1R, and A1R. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the A1 pack does not approve R2 during this incident.
-- PX1-B, DEDUP1, 5k/10k/full-library expansion, SourceConcept editing, and Entity bridge are not next.
+- Current route is split into two tracks:
+  1. Production utility: FULLLIB-P0, then approved FULLLIB-E1 for production DB/app-storage isolated import, classification, AI tagging, and local search/browse value.
+  2. SourceConcept/provider/entity: R1R full SourceConcept pipeline replay/remediation, then A1R route audit rerun, then any R2/Provider-2/Entity bridge decision.
+- A1 final route approval remains blocked pending R1R and A1R. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the A1 pack does not approve R2 during this incident.
+- Old R1/A1 evidence must not approve R2. R1/A1 should not be destructively rolled back; R1R/A1R should supersede/remediate with contract-shaped outputs.
+- PX1-B, DEDUP1, SourceConcept editing, and Entity bridge are not part of the production utility FULLLIB-E1 track.
 
 ## Near-Term Route
 
-1. Review and merge GOV3 executable phase contracts if accepted.
-2. Plan `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation` separately under `source_concept_full_chain_contract_v1`; do not implement it in GOV3.
-3. Rerun A1 as A1R under `route_audit_contract_v1` after R1R before any final route approval.
-4. Defer PX1-B until after R1R+A1R or a separate provider-policy decision.
-5. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
-6. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
+1. Review and approve `Phase 4.6-FULLLIB-P0` if the production utility split is accepted.
+2. Start `FULLLIB-E1` only after P0 approval. FULLLIB-E1 must not run provider, LLM, SourceConcept, Entity, R1R, A1R, or R2.
+3. Keep R1R/A1R important but separate unless the project owner explicitly reprioritizes the SourceConcept/provider track.
+4. Plan `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation` separately under `source_concept_full_chain_contract_v1` when that track resumes.
+5. Rerun A1 as A1R under `route_audit_contract_v1` after R1R before any final route approval.
+6. Defer PX1-B until after R1R+A1R or a separate provider-policy decision.
+7. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
+8. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
@@ -64,7 +71,7 @@ Explicit ordering:
 - Alias resolver improvement still comes before Entity bridge or promotion.
 - SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
-- Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and broad/full-library scale require separate policy, budget, ledger, and approval.
+- Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and any non-FULLLIB production utility scale-up require separate policy, budget, ledger, and approval.
 - Review-pack-required route phases normally use `provisional_pending_chatgpt_pack_audit` until the generated pack is independently audited, but pipeline fidelity incidents override that with `blocked_pending_pipeline_fidelity_remediation` until remediation and rerun evidence exist.
 
 ## Current Governance / Development Standards
