@@ -151,13 +151,12 @@ recorded.
 
 `public_redaction_contract_v1` scans public JSON and Markdown keys and values.
 It fails on common tokens, secret-looking unredacted key names, Windows paths,
-UNC paths, `file://` URIs, private POSIX roots, and source/private provenance
-values such as raw filenames or source paths. It also fails on bare filename
-values in public Markdown/JSON, sensitive URL/path keys such as `source_url` or
+UNC paths, file-scheme URIs, private POSIX filesystem roots, and source/private
+provenance values such as raw filenames or source paths. It also fails on bare
+filename values in public Markdown/JSON, sensitive URL/path keys such as `source_url` or
 `thumbnail_url` unless explicitly redacted, bare `ghp_`, `github_pat_`, `xoxb-`,
-`sk-`, `Bearer`, or `Authorization` tokens, and local/private POSIX paths such
-as `/workspace`, `/tmp`, `/opt`, `/var`, `/home`, `/Users`, `/mnt`, and
-`/Volumes`. Nested public JSON values inherit private provenance context from
+`sk-`, `Bearer`, or `Authorization` tokens, and local/private POSIX filesystem
+locations. Nested public JSON values inherit private provenance context from
 ancestor keys such as `source_url` or `raw_filename`; descendant scalar values
 must be explicitly redacted.
 
@@ -254,6 +253,48 @@ No P2/P3 findings are intentionally deferred in this closure sweep. Remaining
 limitations are adoption work for future runners; they do not allow R1R/A1R
 route approval bypass because route approval now requires executable upstream
 contract proof.
+
+## Latest reviewer closure
+
+The latest reviewer pass against head `3cac039ad0` found remaining permissive
+edges in diagnostics and proof handling. This closure fixes the same
+fail-closed model consistently:
+
+- Public redaction diagnostics now sanitize sensitive JSON keys before they
+  appear in result paths or stdout JSON. Tests:
+  `test_public_redaction_contract_sanitizes_sensitive_json_key_paths`,
+  `test_public_redaction_contract_does_not_echo_sensitive_matches`.
+- Public redaction still catches local/private filesystem paths, tokens,
+  filenames, and private provenance values, but no longer treats ordinary
+  public API route text as a local path by default. Tests:
+  `test_public_redaction_contract_allows_public_api_route_text`,
+  `test_public_redaction_contract_catches_private_path_shapes`.
+- Secret and private-provenance context now applies to non-string scalar
+  values. Tests:
+  `test_public_redaction_contract_scans_sensitive_non_string_values`,
+  `test_public_redaction_contract_propagates_secret_parent_context`.
+- Route audits now require `mutation_proof.passed=true` for all route audits,
+  including blocked/not-approved audits. Tests:
+  `test_route_audit_requires_positive_mutation_proof_for_blocked_routes`,
+  `test_route_audit_fails_mutation_proof_false`.
+- Route approval now requires complete review-pack proof; `generated=true`
+  alone is insufficient, and public report copies must be current/fresh or
+  rendered/generated from the current summary. Tests:
+  `test_route_audit_route_approved_requires_complete_review_pack_proof`,
+  `test_review_pack_public_report_copy_must_be_current`.
+- SourceConcept full-chain completion now rejects partial LLM pair resolution:
+  selected pairs must be covered by judgments, cached decisions, or explicit
+  skipped-pair accounting. Test:
+  `test_source_concept_full_chain_rejects_partial_llm_pair_resolution`.
+- Forbidden stages with `executed=true` fail even when their status text is
+  `skipped` or `blocked`. Test:
+  `test_forbidden_stage_executed_true_fails_even_with_negative_status`.
+
+No P2/P3 items are intentionally deferred in this latest closure. Remaining
+future work is adoption inside R1R/A1R runners after GOV3 merges; the current
+contracts do not allow deterministic-only upstream evidence, missing mutation
+proof, weak review-pack proof, or unsafe public redaction diagnostics to approve
+R1R/A1R route decisions.
 
 ## R1R prerequisites
 

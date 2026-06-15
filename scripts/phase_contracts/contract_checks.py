@@ -22,12 +22,10 @@ FILE_URI_RE = re.compile(r"(?i)\bfile://[^\s\"'<>]+")
 POSIX_PRIVATE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_.-])/(home|Users|mnt|Volumes|tmp|workspace|opt|var)(/[^\s\"'<>]*)?",
 )
-POSIX_GENERIC_LOCAL_PATH_RE = re.compile(
-    r"(?<![:/A-Za-z0-9_.-])/(?!/)(?:[A-Za-z0-9._-]+/)+[A-Za-z0-9._-]+(?:\.[A-Za-z0-9]{1,8})?"
-)
 TOKEN_RE = re.compile(
     r"(?i)(sk-[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,}|xoxb-[A-Za-z0-9-]{4,}|Authorization\s*:|Bearer\s+[A-Za-z0-9._-]{4,})"
 )
+HTTP_URL_RE = re.compile(r"(?i)\bhttps?://[^\s\"'<>]+")
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
 SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer|credential)")
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
@@ -288,11 +286,29 @@ def _executed_stage_names(summary: Mapping[str, Any]) -> set[str]:
 
 def _check_forbidden_stages(contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     executed = _executed_stage_names(summary)
-    forbidden_present = sorted(stage for stage in contract.forbidden_stages if stage in executed or _as_bool(_get(summary, stage, False)))
+    forbidden_present = sorted(stage for stage in contract.forbidden_stages if _forbidden_stage_present(summary, executed, stage))
     result.details["executed_stages"] = sorted(executed)
     result.details["forbidden_stages_present"] = forbidden_present
     for stage in forbidden_present:
         result.fail("forbidden_stage_executed", f"Forbidden stage {stage!r} is present/executed.", path=stage)
+
+
+def _forbidden_stage_present(summary: Mapping[str, Any], executed: set[str], stage: str) -> bool:
+    if stage in executed or _as_bool(_get(summary, stage, False)):
+        return True
+    for path in ("stages", "pipeline_contract.stages"):
+        value = _get(summary, path)
+        if isinstance(value, Mapping) and stage in value:
+            stage_value = value[stage]
+            if isinstance(stage_value, Mapping):
+                if _as_bool(stage_value.get("executed")):
+                    return True
+                status = str(stage_value.get("status", "")).casefold()
+                if status in POSITIVE_STAGE_STATUSES:
+                    return True
+            elif _as_bool(stage_value):
+                return True
+    return False
 
 
 def _missing_required_stages(contract: PhaseContract, summary: Mapping[str, Any]) -> list[str]:
@@ -329,18 +345,47 @@ def _safe_redacted(value: Any) -> bool:
     return text.startswith("redacted_") or text.startswith("[redacted") or text.endswith("_redacted")
 
 
-def _iter_json_strings(payload: Any, path: str = "$") -> Iterable[tuple[str, str, str]]:
+def _format_json_path(parent: str, segment: str | int) -> str:
+    if isinstance(segment, int):
+        return f"{parent}[{segment}]"
+    return f"{parent}.{segment}"
+
+
+def _diagnostic_key_segment(key_text: str) -> str:
+    if _key_needs_redaction_in_path(key_text):
+        return "[redacted-key]"
+    return key_text
+
+
+def _key_needs_redaction_in_path(key_text: str) -> bool:
+    if not key_text:
+        return False
+    if WINDOWS_PATH_RE.search(key_text) or UNC_PATH_RE.search(key_text) or FILE_URI_RE.search(key_text):
+        return True
+    if POSIX_PRIVATE_PATH_RE.search(key_text) or TOKEN_RE.search(key_text) or HTTP_URL_RE.search(key_text):
+        return True
+    return FILENAME_VALUE_RE.search(key_text) is not None
+
+
+def _iter_json_values(payload: Any, raw_path: str = "$", display_path: str = "$") -> Iterable[tuple[str, str, str, Any]]:
     if isinstance(payload, Mapping):
         for key, value in payload.items():
             key_text = str(key)
-            child = f"{path}.{key_text}"
-            yield child, "key", key_text
-            yield from _iter_json_strings(value, child)
+            child_raw = _format_json_path(raw_path, key_text)
+            child_display = _format_json_path(display_path, _diagnostic_key_segment(key_text))
+            yield child_raw, child_display, "key", key_text
+            if isinstance(value, (Mapping, list)) and not value and (
+                _path_has_secret_context(child_raw) or _path_has_private_provenance_context(child_raw)
+            ):
+                yield child_raw, child_display, "empty_container", value
+            yield from _iter_json_values(value, child_raw, child_display)
     elif isinstance(payload, list):
         for index, item in enumerate(payload):
-            yield from _iter_json_strings(item, f"{path}[{index}]")
-    elif isinstance(payload, str):
-        yield path, "value", payload
+            child = _format_json_path(raw_path, index)
+            child_display = _format_json_path(display_path, index)
+            yield from _iter_json_values(item, child, child_display)
+    elif isinstance(payload, (str, int, float, bool)) or payload is None:
+        yield raw_path, display_path, "value", payload
 
 
 def _path_has_private_provenance_context(path: str) -> bool:
@@ -362,14 +407,13 @@ def _redacted_match_payload(code: str, raw: str) -> dict[str, str | int]:
     }
 
 
-def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
+def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
     checks = (
         ("windows_local_path", WINDOWS_PATH_RE),
         ("unc_local_path", UNC_PATH_RE),
         ("file_uri", FILE_URI_RE),
         ("posix_private_path", POSIX_PRIVATE_PATH_RE),
-        ("posix_local_path", POSIX_GENERIC_LOCAL_PATH_RE),
         ("common_secret_or_token", TOKEN_RE),
     )
     for code, pattern in checks:
@@ -381,27 +425,30 @@ def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dic
     return findings
 
 
-def scan_public_payload(payload: Any) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
-    for path, kind, text in _iter_json_strings(payload):
-        findings.extend(_redaction_findings_for_text(text, path, kind=kind))
-        key_name = path.rsplit(".", 1)[-1]
-        if not _safe_redacted(text):
+def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for raw_path, display_path, kind, value in _iter_json_values(payload):
+        text = value if isinstance(value, str) else None
+        if text is not None:
+            findings.extend(_redaction_findings_for_text(text, display_path, kind=kind))
+        key_name = raw_path.rsplit(".", 1)[-1]
+        if text is not None and not _safe_redacted(text):
             match = FILENAME_VALUE_RE.search(text)
             if match:
-                finding = {"path": path, "kind": kind}
+                finding = {"path": display_path, "kind": kind}
                 finding.update(_redacted_match_payload("bare_filename", match.group(0)))
                 findings.append(finding)
-        if kind == "value" and _path_has_secret_context(path) and not _safe_redacted(text):
-            finding = {"path": path, "kind": kind}
+        secret_context = kind in {"value", "empty_container"} and _path_has_secret_context(raw_path)
+        provenance_context = kind in {"value", "empty_container"} and _path_has_private_provenance_context(raw_path)
+        if secret_context and not _safe_redacted(value):
+            finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
             findings.append(finding)
-        if kind == "value" and _path_has_private_provenance_context(path):
-            if not _safe_redacted(text):
-                finding = {"path": path, "kind": kind}
-                finding.update(_redacted_match_payload("private_provenance_value_unredacted", text))
-                findings.append(finding)
-        if kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
+        if provenance_context and not _safe_redacted(value):
+            finding = {"path": display_path, "kind": kind}
+            finding.update(_redacted_match_payload("private_provenance_value_unredacted", key_name))
+            findings.append(finding)
+        if text is not None and kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
             # Key names are not automatically failures; values decide whether a
             # public field is unsafe. Path-like key text is still caught above.
             continue
@@ -653,6 +700,13 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
             result.fail("source_concept_llm_selected_call_cap_exceeded", "Selected LLM pairs exceed max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_adjudication_plan")
         if full_chain_claimed and judgment_count > max_calls and not approved_overage:
             result.fail("source_concept_llm_judgment_call_cap_exceeded", "LLM judgment count exceeds max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_judgment_count", expected=f"<= {max_calls}", actual=judgment_count)
+        if full_chain_claimed and selected > 0 and not _llm_selected_pairs_resolved(summary, selected, judgment_count):
+            result.fail(
+                "source_concept_llm_selected_pairs_not_resolved",
+                "Full-chain completion requires proof that every selected LLM pair was judged, cached, or explicitly skipped.",
+                path="llm_adjudication_plan.selected_pair_count",
+                expected=f"resolved >= {selected}",
+            )
         if full_chain_claimed and budget >= 0 and projected > budget and not approved_overage:
             result.fail("source_concept_llm_budget_exceeded", "Projected LLM budget exceeds approved budget; phase must block/request approval.", path="llm_adjudication_plan")
 
@@ -690,6 +744,22 @@ def _zero_eligible_reason_present(plan: Mapping[str, Any]) -> bool:
     return False
 
 
+def _llm_selected_pairs_resolved(summary: Mapping[str, Any], selected: int, judgment_count: int) -> bool:
+    resolved = _get(summary, "llm_resolved_pair_count", MISSING)
+    if resolved is not MISSING and _as_int(resolved, default=-1) >= selected:
+        return True
+    cached = _get(summary, "llm_cached_decision_count", MISSING)
+    if cached is MISSING:
+        cached = _get(summary, "llm_cache_summary.cached_decision_count", MISSING)
+    skipped = _get(summary, "llm_skipped_with_explicit_reason_count", MISSING)
+    has_additional_accounting = cached is not MISSING or skipped is not MISSING
+    cached_count = _as_int(cached, default=0) if cached is not MISSING else 0
+    skipped_count = _as_int(skipped, default=0) if skipped is not MISSING else 0
+    if has_additional_accounting:
+        return judgment_count + cached_count + skipped_count >= selected
+    return judgment_count >= selected
+
+
 def _check_review_pack(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     pack = _get(summary, "review_pack", MISSING)
     if pack is MISSING:
@@ -697,38 +767,49 @@ def _check_review_pack(_contract: PhaseContract, summary: Mapping[str, Any], res
     if not isinstance(pack, Mapping):
         result.fail("review_pack_missing", "review_pack/chatgpt_review_pack object is required.", path="review_pack")
         return
+    _check_review_pack_proof(pack, result, path_prefix="review_pack", require_zip=True)
+    if _contains_private_review_pack_label(summary):
+        result.fail("review_pack_private_label_leak", "Review pack contains reversible fixed-salt hashes or raw/private labels.", path="review_pack")
+
+
+def _check_review_pack_proof(pack: Mapping[str, Any], result: ContractCheckResult, *, path_prefix: str, require_zip: bool) -> None:
     required_true = {
         "manifest_present": "manifest.json must exist.",
         "checksums_present": "checksums.json must exist.",
         "redaction_passed": "Review pack redaction scan must pass.",
         "redaction_scan_covers_final_file_set": "Final redaction scan must cover the final file set.",
-        "zip_generated": "Review pack zip must be generated.",
         "not_committed": "Review pack zip/directory must not be committed.",
     }
+    if require_zip:
+        required_true["zip_generated"] = "Review pack zip must be generated."
+    if not (_as_bool(pack.get("generated")) or _as_bool(pack.get("manifest_present"))):
+        result.fail(
+            "review_pack_generated_or_manifest_missing",
+            "Review pack proof requires generated=true or manifest_present=true.",
+            path=path_prefix,
+            expected=True,
+        )
     for key, message in required_true.items():
         if not _as_bool(pack.get(key)):
-            result.fail("review_pack_required_flag_missing", message, path=f"review_pack.{key}", expected=True, actual=pack.get(key))
+            result.fail("review_pack_required_flag_missing", message, path=f"{path_prefix}.{key}", expected=True, actual=pack.get(key))
     checksum_count = _as_int(pack.get("checksum_count", 0), default=-1)
     manifest = pack.get("manifest") if isinstance(pack.get("manifest"), Mapping) else {}
     manifest_checksum_count = _as_int(manifest.get("checksum_count", pack.get("manifest_checksum_count", checksum_count)), default=checksum_count)
     if checksum_count < 1:
-        result.fail("review_pack_checksum_count_missing", "Review pack checksum count must be positive.", path="review_pack.checksum_count")
+        result.fail("review_pack_checksum_count_missing", "Review pack checksum count must be positive.", path=f"{path_prefix}.checksum_count")
     if manifest_checksum_count != checksum_count:
-        result.fail("review_pack_checksum_count_mismatch", "Manifest checksum_count must match checksums.json count.", path="review_pack.checksum_count", expected=manifest_checksum_count, actual=checksum_count)
+        result.fail("review_pack_checksum_count_mismatch", "Manifest checksum_count must match checksums.json count.", path=f"{path_prefix}.checksum_count", expected=manifest_checksum_count, actual=checksum_count)
     public_copy_ok = any(
         _as_bool(pack.get(key))
         for key in (
-            "public_report_copy_present",
             "public_report_copy_fresh",
             "public_report_copy_rendered_from_current_summary",
             "public_report_copy_current",
-            "public_report_copy_generated",
+            "public_report_copy_generated_from_current_summary",
         )
     )
     if not public_copy_ok:
-        result.fail("review_pack_public_report_copy_missing", "Review pack requires public-report-copy proof.", path="review_pack.public_report_copy")
-    if _contains_private_review_pack_label(summary):
-        result.fail("review_pack_private_label_leak", "Review pack contains reversible fixed-salt hashes or raw/private labels.", path="review_pack")
+        result.fail("review_pack_public_report_copy_missing", "Review pack requires current public-report-copy proof.", path=f"{path_prefix}.public_report_copy")
 
 
 def _contains_private_review_pack_label(payload: Any) -> bool:
@@ -785,10 +866,8 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
         result.fail("route_audit_mutation_proof_not_object", "Route audit mutation_proof must be an object.", path="mutation_proof")
     else:
         mutation_passed = _as_bool(mutation.get("passed"))
-        if _has(summary, "mutation_proof.passed") and not mutation_passed:
-            result.fail("route_audit_mutation_proof_failed", "Route audit fails when mutation_proof.passed=false.", path="mutation_proof.passed", expected=True, actual=mutation.get("passed"))
-        if result.route_approved and not mutation_passed:
-            result.fail("route_audit_route_approval_without_mutation_proof", "Route approval requires mutation_proof.passed=true.", path="mutation_proof.passed", expected=True, actual=mutation.get("passed"))
+        if not mutation_passed:
+            result.fail("route_audit_mutation_proof_failed", "Route audits require mutation_proof.passed=true.", path="mutation_proof.passed", expected=True, actual=mutation.get("passed"))
         forbidden_names, unexpected_names = _mutation_table_violations(mutation)
         if forbidden_names:
             result.fail("route_audit_mutation_forbidden_table_changed", "Route audit detected forbidden table changes.", path="mutation_proof.forbidden_changed_tables", actual=forbidden_names)
@@ -797,13 +876,14 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
     review_pack = _get(summary, "chatgpt_review_pack", _get(summary, "review_pack", {}))
     waiver = _get(summary, "route_audit_review_pack_waiver", _get(summary, "review_pack_waiver", {}))
     waiver_ok = isinstance(waiver, Mapping) and _as_bool(waiver.get("contract_approved")) and _as_bool(waiver.get("explicit"))
-    review_pack_present = isinstance(review_pack, Mapping) and bool(review_pack) and (
-        _as_bool(review_pack.get("generated")) or _as_bool(review_pack.get("manifest_present"))
-    )
-    if isinstance(review_pack, Mapping) and review_pack and not review_pack_present:
-        result.fail("route_audit_review_pack_missing", "Route-decision phases require a review pack unless explicitly waived.", path="chatgpt_review_pack")
+    review_pack_present = isinstance(review_pack, Mapping) and bool(review_pack)
     if result.route_approved and not review_pack_present and not waiver_ok:
         result.fail("route_audit_route_approval_missing_review_pack", "Route-approved summaries require review pack proof unless a contract-approved waiver is present.", path="chatgpt_review_pack")
+    elif result.route_approved and review_pack_present:
+        before = len(result.errors)
+        _check_review_pack_proof(review_pack, result, path_prefix="chatgpt_review_pack", require_zip=False)
+        if len(result.errors) > before:
+            result.fail("route_audit_route_approval_incomplete_review_pack", "Route approval requires complete review-pack proof, not generated=true alone.", path="chatgpt_review_pack")
 
 
 def _check_route_approved_source_concept_upstream(upstream: Mapping[str, Any], result: ContractCheckResult) -> None:

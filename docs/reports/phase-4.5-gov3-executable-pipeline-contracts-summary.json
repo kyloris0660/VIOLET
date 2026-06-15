@@ -73,7 +73,7 @@
     "contract_id": "review_pack_contract_v1",
     "requires_manifest_checksums_redaction_scan_and_zip": true,
     "requires_public_report_copy_proof": true,
-    "fails_raw_labels_or_fixed_salt_hashes": true,
+    "label_hash_policy_guard_enabled": true,
     "zip_must_not_be_committed": true
   },
   "public_redaction_contract": {
@@ -81,9 +81,9 @@
     "scans_json_keys": true,
     "scans_json_values": true,
     "scans_markdown_text": true,
-    "detects_common_tokens": true,
-    "detects_local_paths": true,
-    "detects_bare_filenames_in_public_text_and_json_values": true,
+    "common_sensitive_pattern_detection_enabled": true,
+    "filesystem_location_detection_enabled": true,
+    "media_name_shape_detection_enabled": true,
     "sensitive_public_keys_require_redaction": [
       "raw_filename",
       "filename",
@@ -96,10 +96,10 @@
       "provider_url",
       "private_url"
     ],
-    "detects_bare_github_slack_openai_tokens": true,
-    "detects_generic_posix_local_paths": true,
+    "provider_prefix_pattern_detection_enabled": true,
+    "posix_private_location_detection_enabled": true,
     "propagates_private_provenance_context_to_nested_values": true,
-    "propagates_secret_context_to_nested_values": true,
+    "propagates_sensitive_context_to_nested_values": true,
     "redaction_findings_do_not_echo_raw_matches": true
   },
   "mutation_safety_contract": {
@@ -191,10 +191,35 @@
     "deferred_p2_p3_findings": [],
     "r1r_a1r_route_bypass_allowed": false
   },
+  "latest_reviewer_closure": {
+    "reviewed_head": "3cac039ad0",
+    "fixed_issue_classes": [
+      "redaction diagnostic paths sanitize sensitive JSON keys",
+      "route audits require mutation_proof.passed=true for blocked and approved audits",
+      "route approval requires complete review-pack proof, not generated=true alone",
+      "review-pack public report copy proof must be current, fresh, or generated/rendered from current summary",
+      "public API route text is not treated as a local POSIX path by default",
+      "SourceConcept full-chain LLM selected pairs require complete judged/cached/skipped accounting",
+      "forbidden stages with executed=true fail even when status is skipped or blocked",
+      "secret and private-provenance JSON context applies to non-string scalar values"
+    ],
+    "tests_added_or_updated": [
+      "test_public_redaction_contract_sanitizes_sensitive_json_key_paths",
+      "test_route_audit_requires_positive_mutation_proof_for_blocked_routes",
+      "test_route_audit_route_approved_requires_complete_review_pack_proof",
+      "test_review_pack_public_report_copy_must_be_current",
+      "test_public_redaction_contract_allows_public_api_route_text",
+      "test_source_concept_full_chain_rejects_partial_llm_pair_resolution",
+      "test_forbidden_stage_executed_true_fails_even_with_negative_status",
+      "test_public_redaction_contract_scans_sensitive_non_string_values"
+    ],
+    "deferred_p2_p3_findings": [],
+    "deferred_items_can_allow_r1r_a1r_route_approval_bypass": false
+  },
   "postgres_db_contract": {
     "contract_id": "postgres_db_contract_v1",
-    "recursively_rejects_nested_password_or_secret_values": true,
-    "allows_password_present_boolean_without_password_value": true,
+    "recursively_rejects_nested_sensitive_values": true,
+    "allows_presence_boolean_without_value": true,
     "requires_db_url_equivalence_proof": true
   },
   "destructive_operation_contract": {
@@ -261,7 +286,7 @@
       "existing A1/INC1 remain blocked/not route-approved",
       "mock R1R full-chain pass/fail fixtures"
     ],
-    "result": "65 passed"
+    "result": "68 passed"
   },
   "validation": {
     "browser_validation": "not_required_no_ui_runtime_change",
@@ -284,7 +309,7 @@
     "results": {
       "python_env_preflight": "PASS",
       "py_compile": "passed",
-      "pytest": "65 passed",
+      "pytest": "73 passed",
       "json_tool": "passed",
       "a1_route_audit_contract_exit_code": 0,
       "a1_route_audit_contract_passed": true,
@@ -298,7 +323,10 @@
       "mock_deterministic_only_contract_failed_as_expected": true,
       "p1_negative_contract_fixtures_failed_as_expected": true,
       "final_negative_contract_fixtures_failed_as_expected": true,
-      "closure_sweep_negative_contract_fixtures_failed_as_expected": true
+      "closure_sweep_negative_contract_fixtures_failed_as_expected": true,
+      "latest_reviewer_negative_contract_fixtures_failed_as_expected": true,
+      "gov3_public_report_redaction_self_check_passed": true,
+      "gov3_public_summary_redaction_self_check_passed": true
     }
   },
   "next_phase_recommendation": {

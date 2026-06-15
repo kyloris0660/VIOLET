@@ -65,7 +65,7 @@ def _route_audit_summary(**overrides: object) -> dict:
             "snapshot_id_present": True,
         },
         "mutation_proof": {"passed": True, "changed_tables": []},
-        "chatgpt_review_pack": {"generated": True},
+        "chatgpt_review_pack": _complete_review_pack_proof(),
         "pipeline_contract": {"contract_id": "route_audit_contract_v1"},
         "upstream_pipeline_contract": {"passed": False, "full_chain_fidelity_passed": False},
     }
@@ -86,20 +86,25 @@ def _route_full_chain_upstream(**overrides: object) -> dict:
     return upstream
 
 
-def _review_pack_summary(**pack_overrides: object) -> dict:
+def _complete_review_pack_proof(**overrides: object) -> dict:
     pack = {
+        "generated": True,
         "manifest_present": True,
         "checksums_present": True,
         "checksum_count": 3,
         "manifest_checksum_count": 3,
         "redaction_passed": True,
         "redaction_scan_covers_final_file_set": True,
-        "public_report_copy_fresh": True,
+        "public_report_copy_current": True,
         "zip_generated": True,
         "not_committed": True,
     }
-    pack.update(pack_overrides)
-    return {"review_pack": pack}
+    pack.update(overrides)
+    return pack
+
+
+def _review_pack_summary(**pack_overrides: object) -> dict:
+    return {"review_pack": _complete_review_pack_proof(**pack_overrides)}
 
 
 def _error_codes(result) -> set[str]:
@@ -296,6 +301,25 @@ def test_source_concept_full_chain_fails_judgment_count_over_max_calls_unless_ap
     assert approved_result.passed is True
 
 
+def test_source_concept_full_chain_rejects_partial_llm_pair_resolution() -> None:
+    partial = _source_concept_summary(llm_judgment_count=1)
+    complete = _source_concept_summary(llm_judgment_count=12)
+    cached = _source_concept_summary(llm_judgment_count=10, llm_cache_summary={"cached_decision_count": 2})
+    missing_cache = _source_concept_summary(llm_judgment_count=10)
+
+    partial_result = check_phase_contract("source_concept_full_chain_contract_v1", partial)
+    complete_result = check_phase_contract("source_concept_full_chain_contract_v1", complete)
+    cached_result = check_phase_contract("source_concept_full_chain_contract_v1", cached)
+    missing_cache_result = check_phase_contract("source_concept_full_chain_contract_v1", missing_cache)
+
+    assert partial_result.passed is False
+    assert "source_concept_llm_selected_pairs_not_resolved" in _error_codes(partial_result)
+    assert complete_result.passed is True
+    assert cached_result.passed is True
+    assert missing_cache_result.passed is False
+    assert "source_concept_llm_selected_pairs_not_resolved" in _error_codes(missing_cache_result)
+
+
 def test_source_concept_full_chain_fails_missing_llm_counters() -> None:
     missing_eligible = _source_concept_summary()
     missing_eligible["llm_adjudication_plan"] = dict(missing_eligible["llm_adjudication_plan"])
@@ -418,6 +442,27 @@ def test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_m
     assert "blocked_status_claimed_completion" in _error_codes(result)
 
 
+def test_forbidden_stage_executed_true_fails_even_with_negative_status() -> None:
+    provider = check_phase_contract(
+        "source_concept_full_chain_contract_v1",
+        {"stages": {"provider_enrichment_call": {"executed": True, "status": "skipped"}}},
+    )
+    upload = check_phase_contract(
+        "source_concept_full_chain_contract_v1",
+        {"stages": {"image_upload": {"executed": True, "status": "blocked"}}},
+    )
+    not_executed = check_phase_contract(
+        "source_concept_full_chain_contract_v1",
+        {"stages": {"image_upload": {"executed": False, "status": "skipped"}}},
+    )
+
+    assert provider.passed is False
+    assert "forbidden_stage_executed" in _error_codes(provider)
+    assert upload.passed is False
+    assert "forbidden_stage_executed" in _error_codes(upload)
+    assert "forbidden_stage_executed" not in _error_codes(not_executed)
+
+
 def test_route_audit_blocks_route_approval_if_upstream_pipeline_incomplete() -> None:
     summary = _route_audit_summary(final_route_decision_status="route_approved", route_approved=True)
 
@@ -492,6 +537,18 @@ def test_route_audit_fails_mutation_proof_false() -> None:
     assert "route_audit_mutation_proof_failed" in _error_codes(result)
 
 
+def test_route_audit_requires_positive_mutation_proof_for_blocked_routes() -> None:
+    empty = check_phase_contract("route_audit_contract_v1", _route_audit_summary(mutation_proof={}))
+    changed_only = check_phase_contract("route_audit_contract_v1", _route_audit_summary(mutation_proof={"changed_tables": []}))
+    passed = check_phase_contract("route_audit_contract_v1", _route_audit_summary(mutation_proof={"passed": True, "changed_tables": []}))
+
+    assert empty.passed is False
+    assert "route_audit_mutation_proof_failed" in _error_codes(empty)
+    assert changed_only.passed is False
+    assert "route_audit_mutation_proof_failed" in _error_codes(changed_only)
+    assert passed.passed is True
+
+
 def test_route_audit_fails_forbidden_mutation_tables() -> None:
     summary = _route_audit_summary(
         mutation_proof={"passed": True, "forbidden_changed_tables": ["blombooru_media_tags"], "unexpected_changed_tables": []}
@@ -515,6 +572,28 @@ def test_route_audit_fails_route_approved_without_review_pack() -> None:
 
     assert result.passed is False
     assert "route_audit_route_approval_missing_review_pack" in _error_codes(result)
+
+
+def test_route_audit_route_approved_requires_complete_review_pack_proof() -> None:
+    generated_only = _route_audit_summary(
+        final_route_decision_status="route_approved",
+        route_approved=True,
+        upstream_pipeline_contract=_route_full_chain_upstream(),
+        chatgpt_review_pack={"generated": True},
+    )
+    complete = _route_audit_summary(
+        final_route_decision_status="route_approved",
+        route_approved=True,
+        upstream_pipeline_contract=_route_full_chain_upstream(),
+        chatgpt_review_pack=_complete_review_pack_proof(),
+    )
+
+    generated_only_result = check_phase_contract("route_audit_contract_v1", generated_only)
+    complete_result = check_phase_contract("route_audit_contract_v1", complete)
+
+    assert generated_only_result.passed is False
+    assert "route_audit_route_approval_incomplete_review_pack" in _error_codes(generated_only_result)
+    assert complete_result.passed is True
 
 
 def test_route_audit_fails_route_approved_with_deterministic_only_upstream() -> None:
@@ -579,12 +658,41 @@ def test_review_pack_contract_fails_missing_manifest_checksum_redaction_scan() -
 
 
 def test_review_pack_contract_fails_missing_public_report_copy_proof() -> None:
-    summary = _review_pack_summary(public_report_copy_fresh=False)
+    summary = _review_pack_summary(
+        public_report_copy_current=False,
+        public_report_copy_fresh=False,
+        public_report_copy_rendered_from_current_summary=False,
+        public_report_copy_generated_from_current_summary=False,
+    )
 
     result = check_phase_contract("review_pack_contract_v1", summary)
 
     assert result.passed is False
     assert "review_pack_public_report_copy_missing" in _error_codes(result)
+
+
+def test_review_pack_public_report_copy_must_be_current() -> None:
+    present_only = _review_pack_summary(
+        public_report_copy_present=True,
+        public_report_copy_current=False,
+        public_report_copy_fresh=False,
+        public_report_copy_rendered_from_current_summary=False,
+        public_report_copy_generated_from_current_summary=False,
+    )
+    current = _review_pack_summary(public_report_copy_present=True, public_report_copy_current=True)
+    rendered = _review_pack_summary(
+        public_report_copy_current=False,
+        public_report_copy_rendered_from_current_summary=True,
+    )
+
+    present_only_result = check_phase_contract("review_pack_contract_v1", present_only)
+    current_result = check_phase_contract("review_pack_contract_v1", current)
+    rendered_result = check_phase_contract("review_pack_contract_v1", rendered)
+
+    assert present_only_result.passed is False
+    assert "review_pack_public_report_copy_missing" in _error_codes(present_only_result)
+    assert current_result.passed is True
+    assert rendered_result.passed is True
 
 
 def test_review_pack_contract_fails_fixed_salt_hashes_or_raw_labels() -> None:
@@ -633,6 +741,28 @@ def test_public_redaction_contract_does_not_echo_sensitive_matches() -> None:
         assert "[redacted-match]" in serialized
 
 
+def test_public_redaction_contract_sanitizes_sensitive_json_key_paths() -> None:
+    payloads = [
+        {r"C:\Users\name\secret.png": "value"},
+        {"/tmp/private/file.png": "value"},
+        {"IMG_1234.JPG": "value"},
+        {"source_url": {"https://example.com/source/123": "value"}},
+    ]
+    leaks = [
+        r"C:\Users\name\secret.png",
+        "/tmp/private/file.png",
+        "IMG_1234.JPG",
+        "https://example.com/source/123",
+    ]
+
+    for payload, leak in zip(payloads, leaks):
+        result = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": payload})
+        serialized = _serialized_result(result)
+        assert result.passed is False, leak
+        assert leak not in serialized
+        assert "[redacted-key]" in serialized or "[redacted-match]" in serialized
+
+
 def test_public_redaction_contract_catches_sensitive_filename_json_keys() -> None:
     result = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"raw_filename": "IMG_1234.JPG"}})
 
@@ -648,6 +778,37 @@ def test_public_redaction_contract_catches_sensitive_public_urls_unless_redacted
 
     assert leaked.passed is False
     assert "public_redaction_private_provenance_value_unredacted" in _error_codes(leaked)
+    assert redacted.passed is True
+
+
+def test_public_redaction_contract_allows_public_api_route_text() -> None:
+    api_route = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "GET /api/admin/media"})
+    generic_route = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "/foo/bar"})
+    provenance_route = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"source_path": "/foo/bar"}})
+    tmp_path = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "/tmp/private/file.png"})
+    workspace_path = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "/workspace/VIOLET/.env"})
+
+    assert api_route.passed is True
+    assert generic_route.passed is True
+    assert provenance_route.passed is False
+    assert "public_redaction_private_provenance_value_unredacted" in _error_codes(provenance_route)
+    assert tmp_path.passed is False
+    assert workspace_path.passed is False
+
+
+def test_public_redaction_contract_scans_sensitive_non_string_values() -> None:
+    api_key_number = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"api_key": 123456}})
+    password_bool = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"password": True}})
+    source_url_number = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"source_url": 123456}})
+    redacted = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"api_key": "[redacted]"}})
+
+    assert api_key_number.passed is False
+    assert "public_redaction_secret_key_name_with_unredacted_value" in _error_codes(api_key_number)
+    assert "123456" not in _serialized_result(api_key_number)
+    assert password_bool.passed is False
+    assert "public_redaction_secret_key_name_with_unredacted_value" in _error_codes(password_bool)
+    assert source_url_number.passed is False
+    assert "public_redaction_private_provenance_value_unredacted" in _error_codes(source_url_number)
     assert redacted.passed is True
 
 
