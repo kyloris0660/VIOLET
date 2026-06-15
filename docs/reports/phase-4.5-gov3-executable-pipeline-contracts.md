@@ -202,6 +202,59 @@ missing redaction evidence fails instead of defaulting to pass.
 Review-pack classifications are normalized across `review pack`, `review_pack`,
 and `review-pack`.
 
+## Final fail-closed closure sweep
+
+The recurring failure class was permissive helper behavior: ambiguous route
+status, generic completion claims, missing counters, blocked stage states,
+empty proof artifacts, raw redaction matches, and non-list mutation violations
+could be interpreted as sufficient proof. GOV3 now enforces these code-level
+invariants:
+
+- All completion/approval claims are equivalent for blocking purposes:
+  `target_met`, `route_approved`, `full_chain_complete`,
+  `full_chain_completed`, and `safe_to_merge` cannot appear on deterministic,
+  blocked, provisional, or inconclusive evidence. Tests:
+  `test_source_concept_deterministic_only_fails_safe_to_merge_claim`,
+  `test_source_concept_blocked_or_inconclusive_fails_safe_to_merge_claim`,
+  `test_route_audit_inconclusive_status_cannot_claim_route_approved`.
+- Route status is route-derived first, and route approval requires full
+  SourceConcept upstream contract proof with `passed=true`,
+  `full_chain_completed`, fidelity passed, and explicit
+  `missing_required_stages=[]`. Tests:
+  `test_route_audit_route_status_takes_priority_over_pipeline_status`,
+  `test_route_audit_requires_upstream_contract_passed_and_missing_stages_list`,
+  `test_route_audit_allows_route_approved_with_full_chain_upstream`.
+- Required SourceConcept stages count only positive completion states; blocked,
+  skipped, missing, failed, inconclusive, or not-run stages do not satisfy
+  full-chain completion. Tests:
+  `test_source_concept_blocked_required_stage_does_not_count_as_completed`,
+  `test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_merge`.
+- Public redaction findings never echo raw matches in result details, failure
+  `actual`, or stdout JSON; nested secret/private-provenance parent keys carry
+  to descendant scalar values. Tests:
+  `test_public_redaction_contract_does_not_echo_sensitive_matches`,
+  `test_public_redaction_contract_propagates_secret_parent_context`,
+  `test_public_redaction_contract_propagates_private_provenance_context`.
+- Full-chain LLM counters are explicit positive proof. Missing
+  `eligible_pair_count`, `selected_pair_count`, or `llm_judgment_count` fails;
+  zero-eligible proof must be internally consistent. Tests:
+  `test_source_concept_full_chain_fails_missing_llm_counters`,
+  `test_source_concept_zero_eligible_proof_requires_consistent_counters`.
+- Mutation table violations fail whether encoded as strings, dicts, or lists,
+  and mutation safety requires `mutation_proof.passed=true`. Tests:
+  `test_mutation_safety_contract_fails_non_list_table_violations`,
+  `test_mutation_safety_contract_requires_positive_passed_proof`.
+- Artifact lifecycle and required proof fields are normalized and positive:
+  review-pack/public-report variants are recognized, public artifacts require
+  `redacted=true`, and required ledgers/proofs cannot be null or empty. Tests:
+  `test_artifact_lifecycle_contract_normalizes_public_classification`,
+  `test_required_artifact_and_ledger_fields_must_be_non_empty`.
+
+No P2/P3 findings are intentionally deferred in this closure sweep. Remaining
+limitations are adoption work for future runners; they do not allow R1R/A1R
+route approval bypass because route approval now requires executable upstream
+contract proof.
+
 ## R1R prerequisites
 
 R1R must not start until GOV3 is merged. After GOV3:
@@ -240,7 +293,7 @@ GOV3 validation passed:
 - `scripts/check_python_env.py --expected-python "$PY"`
 - `py_compile` for the checker and tests
 - `pytest tests/test_phase_contracts.py tests/test_phase45_doc1_documentation_state.py -v`
-  - result: 50 passed
+  - result: 65 passed
 - `json.tool` for this GOV3 summary
 - contract checker examples:
   - A1 summary with `route_audit_contract_v1`: exit 0, passed=true,
@@ -255,6 +308,11 @@ GOV3 validation passed:
   - final negative fixtures for missing/invalid zero-eligible proof,
     `llm_judgment_count > max_calls`, deterministic-only upstream route
     approval, empty mutation proof, and nested private-provenance values:
+    exit 1 as expected
+  - closure sweep negative fixtures for `safe_to_merge` claims, route status
+    precedence, blocked/skipped stages, sanitized redaction output, missing LLM
+    counters, inconsistent zero-eligible proof, non-list mutation violations,
+    normalized artifact classifications, and empty required ledgers/proofs:
     exit 1 as expected
 
 No browser validation is required because GOV3 does not change UI/runtime files.

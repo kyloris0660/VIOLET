@@ -29,10 +29,22 @@ TOKEN_RE = re.compile(
     r"(?i)(sk-[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,}|xoxb-[A-Za-z0-9-]{4,}|Authorization\s*:|Bearer\s+[A-Za-z0-9._-]{4,})"
 )
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
+SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer|credential)")
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
-    r"(?i)(raw_filename|filename|file_name|source_url|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
+    r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
 FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)\b")
+
+POSITIVE_STAGE_STATUSES = {"passed", "pass", "complete", "completed", "executed", "success", "succeeded"}
+NEGATIVE_STAGE_STATUSES = {"blocked", "blocked_before_write", "inconclusive", "skipped", "missing", "failed", "fail", "not_run"}
+REQUIRED_NON_EMPTY_PROOF_FIELDS = {
+    "request_ledger",
+    "failure_ledger",
+    "import_ledger",
+    "validation_pack",
+    "review_pack",
+    "public_report_copy",
+}
 
 REDACTED_VALUES = {
     "",
@@ -134,12 +146,12 @@ def _is_mapping(value: Any) -> bool:
 
 def _contract_status(summary: Mapping[str, Any]) -> str | None:
     for path in (
+        "final_route_decision_status",
+        "route_decision.status",
         "pipeline_contract.status",
         "pipeline_contract.contract_status",
         "contract_status",
         "full_chain_status",
-        "final_route_decision_status",
-        "route_decision.status",
         "conclusion",
     ):
         value = _get(summary, path)
@@ -162,10 +174,20 @@ def _claim(summary: Mapping[str, Any], key: str) -> bool:
 
 
 def _route_approved(summary: Mapping[str, Any]) -> bool:
-    status = _contract_status(summary)
-    if status and status.casefold() in {"route_approved", "approved", "approved_to_proceed"}:
-        return True
+    for path in ("final_route_decision_status", "route_decision.status"):
+        status = _get(summary, path)
+        if status is not MISSING and status is not None and str(status).casefold() in {"route_approved", "approved", "approved_to_proceed"}:
+            return True
     return _claim(summary, "route_approved") or _claim(summary, "approved")
+
+
+def _completion_or_approval_claimed(result: ContractCheckResult) -> bool:
+    return (
+        result.target_met_claimed
+        or result.route_approved
+        or result.full_chain_complete_claimed
+        or result.safe_to_merge_claimed
+    )
 
 
 def _declared_contract_id(summary: Mapping[str, Any]) -> Any:
@@ -207,6 +229,33 @@ def _check_required_fields(contract: PhaseContract, summary: Mapping[str, Any], 
             f"Required summary field {path!r} is missing.",
             path=path,
         )
+    for path in contract.required_summary_fields:
+        if path in missing or not _requires_non_empty_proof(path):
+            continue
+        value = _get(summary, path)
+        if _empty_proof_value(value):
+            result.fail(
+                "empty_required_artifact_or_proof",
+                f"Required artifact/proof field {path!r} must not be empty.",
+                path=path,
+            )
+
+
+def _requires_non_empty_proof(path: str) -> bool:
+    leaf = path.rsplit(".", 1)[-1]
+    return leaf in REQUIRED_NON_EMPTY_PROOF_FIELDS
+
+
+def _empty_proof_value(value: Any) -> bool:
+    if value is MISSING or value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    if isinstance(value, Mapping):
+        return len(value) == 0
+    if isinstance(value, (list, tuple, set)):
+        return len(value) == 0
+    return False
 
 
 def _executed_stage_names(summary: Mapping[str, Any]) -> set[str]:
@@ -221,12 +270,18 @@ def _executed_stage_names(summary: Mapping[str, Any]) -> set[str]:
         value = _get(summary, path)
         if isinstance(value, Mapping):
             for stage, stage_value in value.items():
-                if _as_bool(stage_value):
-                    names.add(str(stage))
-                elif isinstance(stage_value, Mapping) and (
-                    _as_bool(stage_value.get("executed"))
-                    or str(stage_value.get("status", "")).casefold() in {"passed", "complete", "completed", "blocked_before_write"}
-                ):
+                if isinstance(stage_value, Mapping):
+                    status = str(stage_value.get("status", "")).casefold()
+                    if status in NEGATIVE_STAGE_STATUSES:
+                        continue
+                    if (
+                        status in POSITIVE_STAGE_STATUSES
+                        or _as_bool(stage_value.get("executed"))
+                        or _as_bool(stage_value.get("passed"))
+                        or _as_bool(stage_value.get("completed"))
+                    ):
+                        names.add(str(stage))
+                elif _as_bool(stage_value):
                     names.add(str(stage))
     return names
 
@@ -249,7 +304,20 @@ def _missing_required_stages(contract: PhaseContract, summary: Mapping[str, Any]
     if isinstance(explicit_missing, list):
         missing.update(str(stage) for stage in explicit_missing)
     missing.update(stage for stage in contract.required_stages if stage not in executed)
+    missing.update(stage for stage in _non_completed_stage_names(summary) if stage in contract.required_stages)
     return sorted(missing)
+
+
+def _non_completed_stage_names(summary: Mapping[str, Any]) -> set[str]:
+    names: set[str] = set()
+    for path in ("stages", "pipeline_contract.stages"):
+        value = _get(summary, path)
+        if not isinstance(value, Mapping):
+            continue
+        for stage, stage_value in value.items():
+            if isinstance(stage_value, Mapping) and str(stage_value.get("status", "")).casefold() in NEGATIVE_STAGE_STATUSES:
+                names.add(str(stage))
+    return names
 
 
 def _safe_redacted(value: Any) -> bool:
@@ -280,6 +348,20 @@ def _path_has_private_provenance_context(path: str) -> bool:
     return any(PRIVATE_PROVENANCE_KEY_RE.search(segment) for segment in segments)
 
 
+def _path_has_secret_context(path: str) -> bool:
+    segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
+    return any(SECRET_CONTEXT_KEY_RE.search(segment) for segment in segments)
+
+
+def _redacted_match_payload(code: str, raw: str) -> dict[str, str | int]:
+    return {
+        "code": code,
+        "match": "[redacted-match]",
+        "match_category": code,
+        "match_length": len(raw),
+    }
+
+
 def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     checks = (
@@ -293,7 +375,9 @@ def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dic
     for code, pattern in checks:
         match = pattern.search(text)
         if match:
-            findings.append({"code": code, "path": path, "kind": kind, "match": match.group(0)[:160]})
+            finding = {"path": path, "kind": kind}
+            finding.update(_redacted_match_payload(code, match.group(0)))
+            findings.append(finding)
     return findings
 
 
@@ -305,12 +389,18 @@ def scan_public_payload(payload: Any) -> list[dict[str, str]]:
         if not _safe_redacted(text):
             match = FILENAME_VALUE_RE.search(text)
             if match:
-                findings.append({"code": "bare_filename", "path": path, "kind": kind, "match": match.group(0)[:160]})
-        if kind == "value" and SECRET_KEY_NAME_RE.search(key_name) and not _safe_redacted(text):
-            findings.append({"code": "secret_key_name_with_unredacted_value", "path": path, "kind": kind, "match": key_name})
+                finding = {"path": path, "kind": kind}
+                finding.update(_redacted_match_payload("bare_filename", match.group(0)))
+                findings.append(finding)
+        if kind == "value" and _path_has_secret_context(path) and not _safe_redacted(text):
+            finding = {"path": path, "kind": kind}
+            finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
+            findings.append(finding)
         if kind == "value" and _path_has_private_provenance_context(path):
             if not _safe_redacted(text):
-                findings.append({"code": "private_provenance_value_unredacted", "path": path, "kind": kind, "match": path})
+                finding = {"path": path, "kind": kind}
+                finding.update(_redacted_match_payload("private_provenance_value_unredacted", text))
+                findings.append(finding)
         if kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
             # Key names are not automatically failures; values decide whether a
             # public field is unsafe. Path-like key text is still caught above.
@@ -484,10 +574,12 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
     plan_mapping = plan if isinstance(plan, Mapping) else {}
     llm_required = _as_bool(plan_mapping.get("required", True))
     llm_used = _as_bool(_get(summary, "llm_adjudication_used", False))
+    llm_judgment_count_recorded = _has(summary, "llm_judgment_count")
     judgment_count = _as_int(_get(summary, "llm_judgment_count", 0))
     zero_eligible = _zero_eligible_proof_passed(plan_mapping)
     zero_eligible_reason_present = _zero_eligible_reason_present(plan_mapping)
     eligible_pair_count_recorded = "eligible_pair_count" in plan_mapping
+    selected_pair_count_recorded = "selected_pair_count" in plan_mapping
     eligible = _as_int(plan_mapping.get("eligible_pair_count", plan_mapping.get("selected_block_count", 0)))
     max_calls = _as_int(plan_mapping.get("max_calls", _get(summary, "llm_max_calls", 0)))
     selected = _as_int(plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0)))
@@ -496,12 +588,35 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
     approved_overage = _as_bool(plan_mapping.get("explicit_over_budget_or_call_cap_approval"))
     blocked_status = status.startswith("full_chain_blocked")
     eligible_pairs_exist = eligible > 0
-    valid_zero_eligible_proof = zero_eligible and eligible_pair_count_recorded and eligible == 0 and zero_eligible_reason_present
+    valid_zero_eligible_proof = (
+        zero_eligible
+        and eligible_pair_count_recorded
+        and selected_pair_count_recorded
+        and llm_judgment_count_recorded
+        and eligible == 0
+        and selected == 0
+        and judgment_count == 0
+        and zero_eligible_reason_present
+    )
     llm_evidence_required = full_chain_claimed and not valid_zero_eligible_proof
+    if full_chain_claimed:
+        required_counters = (
+            ("eligible_pair_count", eligible_pair_count_recorded, "llm_adjudication_plan.eligible_pair_count"),
+            ("selected_pair_count", selected_pair_count_recorded, "llm_adjudication_plan.selected_pair_count"),
+            ("llm_judgment_count", llm_judgment_count_recorded, "llm_judgment_count"),
+        )
+        for counter_name, recorded, counter_path in required_counters:
+            if not recorded:
+                result.fail(
+                    "source_concept_missing_llm_counter",
+                    "Full-chain completion requires explicit LLM pair and judgment counters.",
+                    path=counter_path,
+                    expected=counter_name,
+                )
     if full_chain_claimed and zero_eligible and not valid_zero_eligible_proof:
         result.fail(
             "source_concept_zero_eligible_proof_incomplete",
-            "Zero-eligible LLM proof requires zero_eligible_proof=true, explicit eligible_pair_count=0, and a reason.",
+            "Zero-eligible LLM proof requires zero_eligible_proof=true, eligible_pair_count=0, selected_pair_count=0, llm_judgment_count=0, and a reason.",
             path="llm_adjudication_plan.zero_eligible_proof",
         )
     if full_chain_claimed and not llm_required and not valid_zero_eligible_proof:
@@ -521,12 +636,12 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
     if full_chain_claimed and not _as_bool(_get(summary, "full_chain_fidelity_passed", False)):
         result.fail("source_concept_fidelity_not_passed", "Full-chain completion requires full_chain_fidelity_passed=true.", path="full_chain_fidelity_passed")
 
-    if status == "deterministic_only" and (result.target_met_claimed or result.route_approved or result.full_chain_complete_claimed):
-        result.fail("deterministic_only_claimed_completion", "deterministic_only summaries must not claim target_met, route_approved, or full_chain_complete.", path="pipeline_contract.status")
+    if status == "deterministic_only" and _completion_or_approval_claimed(result):
+        result.fail("deterministic_only_claimed_completion", "deterministic_only summaries must not claim target_met, route_approved, full_chain_complete, or safe_to_merge.", path="pipeline_contract.status")
 
     if status.startswith("full_chain_blocked") or status == "full_chain_inconclusive_missing_artifacts":
-        if result.target_met_claimed or result.route_approved or result.full_chain_complete_claimed:
-            result.fail("blocked_status_claimed_completion", "Blocked/inconclusive full-chain summaries must not claim completion or approval.", path="pipeline_contract.status")
+        if _completion_or_approval_claimed(result):
+            result.fail("blocked_status_claimed_completion", "Blocked/inconclusive full-chain summaries must not claim completion, approval, or safe_to_merge.", path="pipeline_contract.status")
 
     if plan_mapping:
         plan_status = str(plan_mapping.get("status", "")).casefold()
@@ -652,7 +767,7 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
     upstream = _get(summary, "upstream_pipeline_contract", {})
     if not isinstance(upstream, Mapping):
         upstream = {}
-    upstream_ok = _as_bool(upstream.get("passed")) or _as_bool(upstream.get("full_chain_fidelity_passed"))
+    upstream_ok = _as_bool(upstream.get("passed"))
     status = result.status or "unknown"
     result.details["route_decision_status"] = status
     result.details["route_approved"] = result.route_approved
@@ -661,9 +776,9 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
         result.fail("route_approval_upstream_incomplete", "Route approval cannot proceed while upstream pipeline contract is failed or incomplete.", path="upstream_pipeline_contract")
     if result.route_approved:
         _check_route_approved_source_concept_upstream(upstream, result)
-    if result.route_approved and ("blocked" in status_folded or "provisional" in status_folded):
-        result.fail("route_approval_blocked_or_provisional_status", "Route approval cannot be claimed while final_route_decision_status is blocked/provisional.", path="final_route_decision_status", actual=status)
-    if "blocked" in status_folded or "provisional" in status_folded:
+    if result.route_approved and ("blocked" in status_folded or "provisional" in status_folded or "inconclusive" in status_folded):
+        result.fail("route_approval_blocked_or_provisional_status", "Route approval cannot be claimed while final_route_decision_status is blocked/provisional/inconclusive.", path="final_route_decision_status", actual=status)
+    if "blocked" in status_folded or "provisional" in status_folded or "inconclusive" in status_folded:
         result.details["route_blocked_not_approved"] = True
     mutation = _get(summary, "mutation_proof", {})
     if not isinstance(mutation, Mapping):
@@ -714,9 +829,13 @@ def _check_route_approved_source_concept_upstream(upstream: Mapping[str, Any], r
         )
     if status_folded in {"deterministic_only", "full_chain_blocked_llm_unavailable", "full_chain_blocked_budget", "full_chain_inconclusive_missing_artifacts"} or "blocked" in status_folded or "inconclusive" in status_folded:
         result.fail("route_approval_upstream_blocked_or_deterministic", "Route approval cannot use deterministic-only, blocked, or inconclusive upstream evidence.", path="upstream_pipeline_contract.status", actual=status)
+    if not _as_bool(upstream.get("passed")):
+        result.fail("route_approval_upstream_contract_not_passed", "Route approval requires upstream pipeline contract passed=true.", path="upstream_pipeline_contract.passed", expected=True, actual=upstream.get("passed"))
     if not _as_bool(upstream.get("full_chain_fidelity_passed")):
         result.fail("route_approval_upstream_fidelity_not_passed", "Route approval requires upstream full_chain_fidelity_passed=true.", path="upstream_pipeline_contract.full_chain_fidelity_passed")
-    if isinstance(missing, list) and missing:
+    if not isinstance(missing, list):
+        result.fail("route_approval_upstream_missing_required_stages_absent", "Route approval requires upstream missing_required_stages to be explicitly recorded as [].", path="upstream_pipeline_contract.missing_required_stages", expected=[])
+    elif missing:
         result.fail("route_approval_upstream_missing_required_stages", "Route approval requires no upstream missing_required_stages.", path="upstream_pipeline_contract.missing_required_stages", expected=[], actual=missing)
 
 
@@ -771,7 +890,13 @@ def _mutation_table_violations(proof: Mapping[str, Any]) -> tuple[list[str], lis
 
 def _table_names(rows: Any) -> list[str]:
     names: list[str] = []
-    if isinstance(rows, list):
+    if isinstance(rows, str):
+        if rows.strip():
+            names.append(rows)
+    elif isinstance(rows, Mapping):
+        if rows:
+            names.append(str(rows.get("table") or rows.get("name") or rows))
+    elif isinstance(rows, list):
         for row in rows:
             if isinstance(row, Mapping):
                 names.append(str(row.get("table") or row.get("name") or row))
@@ -804,11 +929,11 @@ def _check_artifact_lifecycle(_contract: PhaseContract, summary: Mapping[str, An
         normalized_classification = classification.replace("_", " ").replace("-", " ")
         path = str(artifact.get("path") or artifact.get("name") or "artifact")
         committed = _as_bool(artifact.get("committed"))
-        if ("private" in classification or "one-off local" in classification) and committed:
+        if ("private" in normalized_classification or "one off local" in normalized_classification) and committed:
             result.fail("private_artifact_committed", "Private/local artifacts must not be committed.", path=path)
         if "review pack" in normalized_classification and committed:
             result.fail("review_pack_committed", "Review packs must not be committed.", path=path)
-        if "public report" in classification or "handoff" in classification:
+        if "public report" in normalized_classification or "public handoff" in normalized_classification:
             if "redacted" not in artifact:
                 result.fail("public_artifact_redaction_evidence_missing", "Public report/handoff artifacts require explicit redaction evidence.", path=path)
             elif not _as_bool(artifact.get("redacted")):

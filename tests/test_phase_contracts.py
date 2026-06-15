@@ -106,6 +106,10 @@ def _error_codes(result) -> set[str]:
     return {error.code for error in result.errors}
 
 
+def _serialized_result(result) -> str:
+    return json.dumps(result.to_dict(), sort_keys=True)
+
+
 def test_registry_contains_all_required_contracts() -> None:
     registered = {contract.contract_id for contract in list_contracts()}
 
@@ -144,6 +148,38 @@ def test_source_concept_full_chain_fails_required_false_with_eligible_pairs() ->
 
     assert result.passed is False
     assert "source_concept_llm_required_opt_out_with_eligible_pairs" in _error_codes(result)
+
+
+def test_source_concept_deterministic_only_fails_safe_to_merge_claim() -> None:
+    summary = _source_concept_summary(
+        pipeline_contract={"contract_id": "source_concept_full_chain_contract_v1", "status": "deterministic_only"},
+        safe_to_merge=True,
+        full_chain_fidelity_passed=False,
+        llm_adjudication_used=False,
+        llm_judgment_count=0,
+        llm_provider_mode="not_applicable_deterministic_only",
+    )
+
+    result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+    assert result.passed is False
+    assert "deterministic_only_claimed_completion" in _error_codes(result)
+
+
+def test_source_concept_blocked_or_inconclusive_fails_safe_to_merge_claim() -> None:
+    for status in ("full_chain_blocked_llm_unavailable", "full_chain_inconclusive_missing_artifacts"):
+        summary = _source_concept_summary(
+            pipeline_contract={"contract_id": "source_concept_full_chain_contract_v1", "status": status},
+            safe_to_merge=True,
+            full_chain_fidelity_passed=False,
+            llm_adjudication_used=False,
+            llm_judgment_count=0,
+        )
+
+        result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+        assert result.passed is False
+        assert "blocked_status_claimed_completion" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_required_false_with_eligible_omitted_without_zero_proof() -> None:
@@ -260,6 +296,56 @@ def test_source_concept_full_chain_fails_judgment_count_over_max_calls_unless_ap
     assert approved_result.passed is True
 
 
+def test_source_concept_full_chain_fails_missing_llm_counters() -> None:
+    missing_eligible = _source_concept_summary()
+    missing_eligible["llm_adjudication_plan"] = dict(missing_eligible["llm_adjudication_plan"])
+    missing_eligible["llm_adjudication_plan"].pop("eligible_pair_count")
+    missing_selected = _source_concept_summary()
+    missing_selected["llm_adjudication_plan"] = dict(missing_selected["llm_adjudication_plan"])
+    missing_selected["llm_adjudication_plan"].pop("selected_pair_count")
+    missing_judgments = _source_concept_summary()
+    missing_judgments.pop("llm_judgment_count")
+
+    for summary in (missing_eligible, missing_selected, missing_judgments):
+        result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+        assert result.passed is False
+        assert "source_concept_missing_llm_counter" in _error_codes(result)
+
+
+def test_source_concept_zero_eligible_proof_requires_consistent_counters() -> None:
+    selected_nonzero = _source_concept_summary(llm_adjudication_used=False, llm_judgment_count=0)
+    selected_nonzero["llm_adjudication_plan"] = {
+        **selected_nonzero["llm_adjudication_plan"],
+        "required": False,
+        "eligible_pair_count": 0,
+        "selected_pair_count": 1,
+        "zero_eligible_proof": True,
+        "zero_eligible_reason": "No eligible pairs.",
+    }
+    judgments_nonzero = _source_concept_summary(llm_adjudication_used=False, llm_judgment_count=1)
+    judgments_nonzero["llm_adjudication_plan"] = {
+        **judgments_nonzero["llm_adjudication_plan"],
+        "required": False,
+        "eligible_pair_count": 0,
+        "selected_pair_count": 0,
+        "zero_eligible_proof": True,
+        "zero_eligible_reason": "No eligible pairs.",
+    }
+    no_reason = _source_concept_summary(llm_adjudication_used=False, llm_judgment_count=0)
+    no_reason["llm_adjudication_plan"] = {
+        **no_reason["llm_adjudication_plan"],
+        "required": False,
+        "eligible_pair_count": 0,
+        "selected_pair_count": 0,
+        "zero_eligible_proof": True,
+    }
+
+    for summary in (selected_nonzero, judgments_nonzero, no_reason):
+        result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+        assert result.passed is False
+        assert "source_concept_zero_eligible_proof_incomplete" in _error_codes(result)
+
+
 def test_source_concept_full_chain_fails_missing_validation_pack() -> None:
     summary = _source_concept_summary()
     summary.pop("validation_pack")
@@ -304,6 +390,34 @@ def test_source_concept_deterministic_only_allowed_only_without_completion_claim
     assert "deterministic_only_claimed_completion" in _error_codes(blocked)
 
 
+def test_source_concept_blocked_required_stage_does_not_count_as_completed() -> None:
+    for stage_status in ("blocked_before_write", "skipped"):
+        summary = _source_concept_summary(
+            stages={"llm_provider_availability_check": {"status": stage_status}},
+        )
+
+        result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+        assert result.passed is False
+        assert "source_concept_required_stage_missing" in _error_codes(result)
+
+
+def test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_merge() -> None:
+    summary = _source_concept_summary(
+        pipeline_contract={"contract_id": "source_concept_full_chain_contract_v1", "status": "full_chain_blocked_llm_unavailable"},
+        safe_to_merge=True,
+        stages={"llm_provider_availability_check": {"status": "blocked_before_write"}},
+        full_chain_fidelity_passed=False,
+        llm_adjudication_used=False,
+        llm_judgment_count=0,
+    )
+
+    result = check_phase_contract("source_concept_full_chain_contract_v1", summary)
+
+    assert result.passed is False
+    assert "blocked_status_claimed_completion" in _error_codes(result)
+
+
 def test_route_audit_blocks_route_approval_if_upstream_pipeline_incomplete() -> None:
     summary = _route_audit_summary(final_route_decision_status="route_approved", route_approved=True)
 
@@ -312,6 +426,49 @@ def test_route_audit_blocks_route_approval_if_upstream_pipeline_incomplete() -> 
     assert result.passed is False
     assert result.route_approved is True
     assert "route_approval_upstream_incomplete" in _error_codes(result)
+
+
+def test_route_audit_route_status_takes_priority_over_pipeline_status() -> None:
+    summary = _route_audit_summary(
+        pipeline_contract={"contract_id": "route_audit_contract_v1", "status": "passed"},
+        final_route_decision_status="route_approved",
+        upstream_pipeline_contract=_route_full_chain_upstream(status="deterministic_only"),
+    )
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.route_approved is True
+    assert result.status == "route_approved"
+    assert result.passed is False
+    assert "route_approval_upstream_blocked_or_deterministic" in _error_codes(result)
+
+
+def test_route_audit_route_status_approval_requires_review_pack_even_with_pipeline_passed() -> None:
+    summary = _route_audit_summary(
+        pipeline_contract={"contract_id": "route_audit_contract_v1", "status": "passed"},
+        final_route_decision_status="route_approved",
+        upstream_pipeline_contract=_route_full_chain_upstream(),
+    )
+    summary.pop("chatgpt_review_pack")
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.route_approved is True
+    assert result.passed is False
+    assert "route_audit_route_approval_missing_review_pack" in _error_codes(result)
+
+
+def test_route_audit_inconclusive_status_cannot_claim_route_approved() -> None:
+    summary = _route_audit_summary(
+        final_route_decision_status="inconclusive_missing_artifacts",
+        route_approved=True,
+        upstream_pipeline_contract=_route_full_chain_upstream(),
+    )
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "route_approval_blocked_or_provisional_status" in _error_codes(result)
 
 
 def test_route_audit_fails_blocked_status_with_route_approved_true() -> None:
@@ -387,6 +544,32 @@ def test_route_audit_allows_route_approved_with_full_chain_upstream() -> None:
     assert result.route_approved is True
 
 
+def test_route_audit_requires_upstream_contract_passed_and_missing_stages_list() -> None:
+    passed_false = _route_audit_summary(
+        final_route_decision_status="route_approved",
+        route_approved=True,
+        upstream_pipeline_contract=_route_full_chain_upstream(passed=False, full_chain_fidelity_passed=True),
+    )
+    missing_absent = _route_audit_summary(
+        final_route_decision_status="route_approved",
+        route_approved=True,
+        upstream_pipeline_contract={
+            "contract_id": "source_concept_full_chain_contract_v1",
+            "passed": True,
+            "status": "full_chain_completed",
+            "full_chain_fidelity_passed": True,
+        },
+    )
+
+    passed_false_result = check_phase_contract("route_audit_contract_v1", passed_false)
+    missing_absent_result = check_phase_contract("route_audit_contract_v1", missing_absent)
+
+    assert passed_false_result.passed is False
+    assert "route_approval_upstream_contract_not_passed" in _error_codes(passed_false_result)
+    assert missing_absent_result.passed is False
+    assert "route_approval_upstream_missing_required_stages_absent" in _error_codes(missing_absent_result)
+
+
 def test_review_pack_contract_fails_missing_manifest_checksum_redaction_scan() -> None:
     result = check_phase_contract("review_pack_contract_v1", {"review_pack": {"generated": True}})
 
@@ -432,6 +615,24 @@ def test_public_redaction_contract_catches_bare_filenames_in_markdown() -> None:
     assert "public_redaction_bare_filename" in _error_codes(result)
 
 
+def test_public_redaction_contract_does_not_echo_sensitive_matches() -> None:
+    leaks = [
+        "ghp_abcdefghijklmnopqrstuvwxyz123456",
+        "github_pat_abcdefghijklmnopqrstuvwxyz123456",
+        "xoxb-1234567890-abcdefghijk",
+        r"C:\Users\name\secret.png",
+        "/tmp/private/file.png",
+        "IMG_1234.JPG",
+    ]
+
+    for leak in leaks:
+        result = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": f"leak {leak}"})
+        serialized = _serialized_result(result)
+        assert result.passed is False, leak
+        assert leak not in serialized
+        assert "[redacted-match]" in serialized
+
+
 def test_public_redaction_contract_catches_sensitive_filename_json_keys() -> None:
     result = check_phase_contract("public_redaction_contract_v1", {"public_json_payload": {"raw_filename": "IMG_1234.JPG"}})
 
@@ -470,6 +671,22 @@ def test_public_redaction_contract_propagates_private_provenance_context() -> No
     assert leaked_filename.passed is False
     assert "public_redaction_private_provenance_value_unredacted" in _error_codes(leaked_filename)
     assert "public_redaction_bare_filename" in _error_codes(leaked_filename)
+
+
+def test_public_redaction_contract_propagates_secret_parent_context() -> None:
+    leaked = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"public_json_payload": {"api_key": {"value": "internal-prod-key"}}},
+    )
+    redacted = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"public_json_payload": {"api_key": {"value": "[redacted]"}}},
+    )
+
+    assert leaked.passed is False
+    assert "public_redaction_secret_key_name_with_unredacted_value" in _error_codes(leaked)
+    assert "internal-prod-key" not in _serialized_result(leaked)
+    assert redacted.passed is True
 
 
 def test_public_redaction_contract_catches_secret_key_names_and_token_formats() -> None:
@@ -553,6 +770,22 @@ def test_mutation_safety_contract_requires_positive_passed_proof() -> None:
     assert passed.passed is True
 
 
+def test_mutation_safety_contract_fails_non_list_table_violations() -> None:
+    forbidden_string = check_phase_contract(
+        "mutation_safety_contract_v1",
+        {"mutation_proof": {"passed": True, "forbidden_changed_tables": "media_tags"}},
+    )
+    unexpected_dict = check_phase_contract(
+        "mutation_safety_contract_v1",
+        {"mutation_proof": {"passed": True, "unexpected_changed_tables": {"table": "media_tags"}}},
+    )
+
+    assert forbidden_string.passed is False
+    assert "mutation_forbidden_table_changed" in _error_codes(forbidden_string)
+    assert unexpected_dict.passed is False
+    assert "mutation_unexpected_table_changed" in _error_codes(unexpected_dict)
+
+
 def test_artifact_lifecycle_contract_distinguishes_public_and_private_artifacts() -> None:
     good = {
         "artifact_lifecycle": {
@@ -608,6 +841,22 @@ def test_artifact_lifecycle_contract_normalizes_review_pack_classification() -> 
         assert "review_pack_committed" in _error_codes(result)
 
 
+def test_artifact_lifecycle_contract_normalizes_public_classification() -> None:
+    for classification in ("public_report", "public-report", "public handoff", "public_handoff", "public-handoff"):
+        result = check_phase_contract(
+            "artifact_lifecycle_contract_v1",
+            {"artifact_lifecycle": {"artifacts": [{"path": "docs/reports/gov3.md", "classification": classification, "committed": True}]}},
+        )
+        assert result.passed is False
+        assert "public_artifact_redaction_evidence_missing" in _error_codes(result)
+
+    passed = check_phase_contract(
+        "artifact_lifecycle_contract_v1",
+        {"artifact_lifecycle": {"artifacts": [{"path": "docs/reports/gov3.md", "classification": "public report", "committed": True, "redacted": True}]}},
+    )
+    assert passed.passed is True
+
+
 def test_required_summary_fields_do_not_accept_null_values() -> None:
     result = check_phase_contract(
         "python_env_contract_v1",
@@ -638,6 +887,43 @@ def test_claimed_completion_requires_matching_contract_id() -> None:
 
     assert result.passed is False
     assert "claimed_completion_contract_id_mismatch" in _error_codes(result)
+
+
+def test_required_artifact_and_ledger_fields_must_be_non_empty() -> None:
+    source_metadata_base = {
+        "provider_policy": {"explicitly_approved": True},
+        "provider_identity": {"no_secret_logging": True},
+        "request_ledger": {"entry_count": 1},
+        "failure_ledger": {"entry_count": 0, "zero_failure_reason": "No provider calls failed."},
+        "cache_retry_rate_limit_accounting": {"passed": True},
+        "source_metadata_write_allowlist": {"passed": True},
+        "entity_truth_proof": {"no_entity_truth": True},
+        "media_tags_mutation_proof": {"no_media_tags_mutation": True},
+        "image_upload_policy": {"uploaded_images": False},
+        "public_private_artifact_boundary": {"passed": True},
+    }
+    empty_request = {**source_metadata_base, "request_ledger": {}}
+    empty_failure = {**source_metadata_base, "failure_ledger": {}}
+    media_import_null = {
+        "source_root_safety_proof": {"passed": True},
+        "staging_root_safety_proof": {"passed": True},
+        "import_ledger": None,
+        "media_counts": {"before": 0, "after": 0},
+        "duplicate_path_leak_proof": {"passed": True},
+        "mutation_proof": {"passed": True},
+        "rollback_recovery_notes": "No import run.",
+    }
+    media_import_empty = {**media_import_null, "import_ledger": {}}
+
+    empty_request_result = check_phase_contract("source_metadata_contract_v1", empty_request)
+    empty_failure_result = check_phase_contract("source_metadata_contract_v1", empty_failure)
+    null_import_result = check_phase_contract("media_import_contract_v1", media_import_null)
+    empty_import_result = check_phase_contract("media_import_contract_v1", media_import_empty)
+
+    assert "empty_required_artifact_or_proof" in _error_codes(empty_request_result)
+    assert "empty_required_artifact_or_proof" in _error_codes(empty_failure_result)
+    assert "missing_required_summary_field" in _error_codes(null_import_result)
+    assert "empty_required_artifact_or_proof" in _error_codes(empty_import_result)
 
 
 def test_postgres_db_contract_rejects_nested_password_fields() -> None:

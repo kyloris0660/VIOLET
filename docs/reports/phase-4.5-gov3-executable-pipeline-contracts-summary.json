@@ -1,7 +1,7 @@
 {
   "phase": "Phase 4.5-GOV3",
   "title": "Executable Pipeline Contracts and Phase Gates",
-  "generated_at": "2026-06-15T16:08:48+08:00",
+  "generated_at": "2026-06-15T19:47:41+08:00",
   "branch": "codex/phase45-gov3-executable-pipeline-contracts",
   "incident_context": {
     "inc1_conclusion": "llm_stage_missing_incident",
@@ -48,6 +48,10 @@
     "fails_if_eligible_pair_count_exceeds_max_calls_without_explicit_approval": true,
     "fails_if_selected_pair_count_exceeds_max_calls_without_explicit_approval": true,
     "fails_if_llm_judgment_count_exceeds_max_calls_without_explicit_approval": true,
+    "requires_explicit_llm_pair_and_judgment_counters": true,
+    "zero_eligible_proof_requires_eligible_selected_and_judgment_counts_zero": true,
+    "blocked_or_skipped_required_stages_do_not_count_as_completed": true,
+    "safe_to_merge_claims_blocked_for_deterministic_or_blocked_status": true,
     "requires_full_chain_fidelity_passed": true,
     "requires_validation_pack_for_full_chain_completion": true
   },
@@ -60,7 +64,10 @@
     "fails_forbidden_or_unexpected_mutation_tables": true,
     "route_approved_requires_review_pack_or_contract_approved_waiver": true,
     "route_approved_requires_sourceconcept_full_chain_upstream": true,
-    "route_approved_rejects_deterministic_only_blocked_or_inconclusive_upstream": true
+    "route_approved_rejects_deterministic_only_blocked_or_inconclusive_upstream": true,
+    "route_status_fields_take_priority_over_generic_pipeline_status": true,
+    "route_approved_requires_upstream_contract_passed_true": true,
+    "route_approved_requires_explicit_empty_upstream_missing_required_stages": true
   },
   "review_pack_contract": {
     "contract_id": "review_pack_contract_v1",
@@ -91,13 +98,16 @@
     ],
     "detects_bare_github_slack_openai_tokens": true,
     "detects_generic_posix_local_paths": true,
-    "propagates_private_provenance_context_to_nested_values": true
+    "propagates_private_provenance_context_to_nested_values": true,
+    "propagates_secret_context_to_nested_values": true,
+    "redaction_findings_do_not_echo_raw_matches": true
   },
   "mutation_safety_contract": {
     "contract_id": "mutation_safety_contract_v1",
     "requires_table_allowlist_denylist_proof": true,
     "requires_mutation_proof_passed_true": true,
     "fails_forbidden_or_unexpected_table_changes": true,
+    "fails_non_list_forbidden_or_unexpected_table_violation_fields": true,
     "fails_mutation_proof_passed_false": true,
     "destructive_operations_require_destructive_contract": true
   },
@@ -114,11 +124,72 @@
     "private_artifacts_must_not_be_committed": true,
     "public_artifacts_must_be_redacted": true,
     "public_report_handoff_requires_explicit_redacted_true": true,
-    "normalizes_review_pack_classification_variants": true
+    "normalizes_review_pack_classification_variants": true,
+    "normalizes_public_report_and_handoff_classification_variants": true
   },
   "generic_contract_checker": {
     "claimed_completion_requires_matching_contract_id": true,
-    "required_fields_must_be_present_and_non_null": true
+    "required_fields_must_be_present_and_non_null": true,
+    "required_artifact_and_ledger_proof_fields_must_be_non_empty": true
+  },
+  "final_fail_closed_closure_sweep": {
+    "recurring_failure_class": "Permissive helper defaults treated ambiguous status, missing proof, blocked stages, raw redaction matches, non-list mutation deltas, and empty artifacts as sufficient evidence.",
+    "code_level_invariants": [
+      {
+        "invariant": "All completion and approval claims, including safe_to_merge, are blocked for deterministic-only, blocked, provisional, or inconclusive evidence.",
+        "tests": [
+          "test_source_concept_deterministic_only_fails_safe_to_merge_claim",
+          "test_source_concept_blocked_or_inconclusive_fails_safe_to_merge_claim",
+          "test_route_audit_inconclusive_status_cannot_claim_route_approved"
+        ]
+      },
+      {
+        "invariant": "Route approval derives route status before generic pipeline status and requires upstream SourceConcept full-chain contract proof with passed=true and missing_required_stages=[].",
+        "tests": [
+          "test_route_audit_route_status_takes_priority_over_pipeline_status",
+          "test_route_audit_requires_upstream_contract_passed_and_missing_stages_list",
+          "test_route_audit_allows_route_approved_with_full_chain_upstream"
+        ]
+      },
+      {
+        "invariant": "Blocked, skipped, missing, failed, inconclusive, or not-run stages do not satisfy full-chain completion.",
+        "tests": [
+          "test_source_concept_blocked_required_stage_does_not_count_as_completed",
+          "test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_merge"
+        ]
+      },
+      {
+        "invariant": "Public redaction findings never echo raw matches and secret/private-provenance context propagates to nested values.",
+        "tests": [
+          "test_public_redaction_contract_does_not_echo_sensitive_matches",
+          "test_public_redaction_contract_propagates_secret_parent_context",
+          "test_public_redaction_contract_propagates_private_provenance_context"
+        ]
+      },
+      {
+        "invariant": "Full-chain LLM counters are explicit and zero-eligible proof requires internally consistent zero counters plus reason.",
+        "tests": [
+          "test_source_concept_full_chain_fails_missing_llm_counters",
+          "test_source_concept_zero_eligible_proof_requires_consistent_counters"
+        ]
+      },
+      {
+        "invariant": "Mutation violations fail as strings, dicts, or lists, and mutation safety requires passed=true.",
+        "tests": [
+          "test_mutation_safety_contract_fails_non_list_table_violations",
+          "test_mutation_safety_contract_requires_positive_passed_proof"
+        ]
+      },
+      {
+        "invariant": "Artifact lifecycle classifications are normalized and required ledgers/proofs cannot be null or empty.",
+        "tests": [
+          "test_artifact_lifecycle_contract_normalizes_public_classification",
+          "test_required_artifact_and_ledger_fields_must_be_non_empty"
+        ]
+      }
+    ],
+    "deferred_p2_p3_findings": [],
+    "r1r_a1r_route_bypass_allowed": false
   },
   "postgres_db_contract": {
     "contract_id": "postgres_db_contract_v1",
@@ -158,10 +229,14 @@
       "SourceConcept full-chain missing/invalid zero-eligible proof failures",
       "SourceConcept full-chain eligible/selected call-cap failures",
       "SourceConcept full-chain judgment-count call-cap failures",
+      "SourceConcept full-chain missing LLM counters and blocked/skipped stage failures",
+      "SourceConcept safe_to_merge blocking for deterministic/blocked/inconclusive statuses",
       "SourceConcept full-chain validation-pack proof failures",
       "route audit upstream pipeline blocking",
       "route audit deterministic-only upstream blocking",
       "route audit full-chain upstream approval positive case",
+      "route audit route-status priority over generic pipeline status",
+      "route audit upstream passed=true and explicit empty missing-stage proof",
       "route audit blocked/provisional approval contradiction blocking",
       "route audit mutation-proof and review-pack blocking",
       "review pack manifest/checksum/redaction failures",
@@ -169,20 +244,24 @@
       "public redaction leak detection",
       "public redaction bare filenames, sensitive URL keys, bare tokens, and POSIX local paths",
       "public redaction nested private provenance context",
+      "public redaction secret parent context and no raw match echo",
       "mutation safety table changes",
       "mutation safety mutation_proof.passed=false failure",
       "mutation safety empty/missing/passed proof cases",
+      "mutation safety non-list forbidden/unexpected table violations",
       "artifact lifecycle public/private boundary",
       "artifact lifecycle explicit public redaction evidence",
       "artifact lifecycle review pack classification normalization",
+      "artifact lifecycle public report/handoff classification normalization",
       "generic completion contract-id and non-null required-field gates",
+      "generic required ledger/artifact non-empty proof gates",
       "PostgreSQL nested password rejection and safe password-present booleans",
       "destructive operation approval gates",
       "Entity bridge preview/manual/audit/rollback gates",
       "existing A1/INC1 remain blocked/not route-approved",
       "mock R1R full-chain pass/fail fixtures"
     ],
-    "result": "50 passed"
+    "result": "65 passed"
   },
   "validation": {
     "browser_validation": "not_required_no_ui_runtime_change",
@@ -205,7 +284,7 @@
     "results": {
       "python_env_preflight": "PASS",
       "py_compile": "passed",
-      "pytest": "50 passed",
+      "pytest": "65 passed",
       "json_tool": "passed",
       "a1_route_audit_contract_exit_code": 0,
       "a1_route_audit_contract_passed": true,
@@ -218,7 +297,8 @@
       "mock_deterministic_only_contract_exit_code": 1,
       "mock_deterministic_only_contract_failed_as_expected": true,
       "p1_negative_contract_fixtures_failed_as_expected": true,
-      "final_negative_contract_fixtures_failed_as_expected": true
+      "final_negative_contract_fixtures_failed_as_expected": true,
+      "closure_sweep_negative_contract_fixtures_failed_as_expected": true
     }
   },
   "next_phase_recommendation": {
