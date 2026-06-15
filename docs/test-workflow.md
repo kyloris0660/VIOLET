@@ -47,6 +47,22 @@ start a server.
 If any Python/runtime code changes occur during a docs-only stage, stop and
 explain why before continuing.
 
+### Executable Phase Contract Gate
+
+Every phase that claims `target_met`, `route_approved`, `full_chain_completed`,
+or `safe_to_merge` must write a summary that declares a registered executable
+contract and passes the checker:
+
+```powershell
+& "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>
+```
+
+Use `--list-contracts` to inspect registered contracts. For route-decision
+phases, run the route-audit contract on the final summary and keep approval
+blocked if the upstream pipeline contract is failed, deterministic-only, or
+incomplete. For public reports and review packs, run the redaction/review-pack
+contracts before treating the artifacts as deliverable.
+
 ## Current Active Validation Entry Points
 
 Use these first for current SourceConcept/documentation work:
@@ -59,6 +75,7 @@ Use these first for current SourceConcept/documentation work:
 | SCV1 expanded validation planning | Start read-only: coverage inventory, larger current-data samples, alias-gap analysis, `needs_review` clusters, redacted evidence review, and search-symmetry checks. Do not run imports/providers/LLMs/source enrichment without separate approval |
 | SCV2-P0 controlled medium expansion policy | `& "$PY" scripts/run_phase45_scv2_p0_controlled_medium_expansion_policy.py --output-dir ".local_manifests\phase-4.5-scv2-p0-controlled-medium-expansion-policy" --write-public-report --read-only`; `& "$PY" -m pytest tests/test_phase45_scv2_p0_controlled_medium_expansion_policy.py -v`; no server/browser/import/provider/AI jobs |
 | SCV2-A1 post-expansion audit / route decision | `& "$PY" scripts/run_phase45_scv2_a1_post_expansion_audit_route_decision.py --output-dir ".local_manifests\phase-4.5-scv2-a1-post-expansion-audit-route-decision" --write-public-report --read-only --write-chatgpt-review-pack`; `& "$PY" -m pytest tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py -v`; no server/browser/import/provider/AI jobs. During INC1, final route approval remains `blocked_pending_pipeline_fidelity_remediation`; R2/PX1-B/Provider-2/scale-up remain blocked until R1R+A1R complete |
+| GOV3 executable pipeline contracts | `& "$PY" -m pytest tests/test_phase_contracts.py tests/test_phase45_doc1_documentation_state.py -v`; `& "$PY" scripts/check_phase_contract.py --list-contracts`; run `route_audit_contract_v1` on A1 summary, `public_redaction_contract_v1` on INC1 summary, and `source_concept_full_chain_contract_v1` on passing/failing mock fixtures. No server/browser/import/provider/LLM/DB writes |
 | Entity bridge / SourceConcept editing | Not covered by current validation. Must add preview, confirmation, audit, rollback/supersede, write guards, and no-truth-pollution tests before implementation |
 | Provider or full-library scale | Requires separate provider policy, privacy eligibility, budget/cache/audit gates, run ledger, and Phase 3.9-style source item ledger discipline before execution |
 

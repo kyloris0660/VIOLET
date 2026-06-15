@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated for Phase 4.5-SCV2-A1 implementation on `2026-06-12`.
-> Active PR branch: `codex/phase45-scv2-a1-post-expansion-audit-route-decision`.
+> Last updated for Phase 4.5-GOV3 startup on `2026-06-14`.
+> Active PR branch: `codex/phase45-gov3-executable-pipeline-contracts`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,8 +11,8 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Current PR | Phase 4.5-SCV2-A1 post-expansion audit / route decision |
-| Baseline main | PR #104 / R1 merge commit `e48b6d4` or later |
+| Current PR | Phase 4.5-GOV3 executable pipeline contracts |
+| Baseline main | PR #105 plus INC1 transplant PR #107 / `7c90a50` or later |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | `.\venv\Scripts\python.exe` |
 
@@ -23,15 +23,17 @@
 - PR #102 / Phase 4.5-SCV2-E1 is merged. It expanded the library to 3750 media and completed eligible AI tag coverage without Pixiv/provider/SourceConcept resolver work.
 - PR #103 / Phase 4.5-PX1 is merged. It ran the bounded Pixiv/gallery-dl metadata extraction batch: 500 selected, 470 metadata successes, 30 unavailable/private/deleted failures, zero exact duplicate dry-run groups, and source-layer-only metadata/assertion writes.
 - PR #104 / Phase 4.5-SCV2-R1 is merged. It consumed PX1 evidence through SourceConcept triage, committed execute transactions, verified post-commit counts on a fresh connection, wrote only allowed SourceConcept tables, and regenerated the R1 public report/summary from current branch code.
-- Phase 4.5-SCV2-A1 is the current branch. It adds a read-only post-expansion audit runner, a public A1 report/summary, and durable ChatGPT review pack policy for independent route-decision audit.
+- PR #105 / Phase 4.5-SCV2-A1 is merged. It added a read-only post-expansion audit runner, a public A1 report/summary, and durable ChatGPT review pack policy for independent route-decision audit.
+- PR #107 transplanted the final INC1 report/summary/runner/tests onto `main` after PR #106 was merged into the stacked A1 branch instead of `main`. INC1 is now available from `main`.
+- Phase 4.5-GOV3 is the current branch. It adds executable phase contracts and a reusable contract checker before R1R/A1R/R2 may proceed.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
 - Historical details before SC1/SC2/SCV1/SCV2-P0/E1/PX1/R1 live in `docs/project-roadmap.md` and `docs/reports/`.
 
 ## Current Route
 
-`SCV2-A1` - post-expansion SourceConcept audit and route decision after R1.
+`GOV3` - executable pipeline contracts and phase gates.
 
-R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident: R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval is therefore blocked pending R1R full-chain remediation and A1R rerun; the generated ChatGPT review pack remains audit evidence but does not approve R2.
+R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident: R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval is therefore blocked pending GOV3 executable contract hardening, R1R full-chain remediation, and A1R rerun; the generated ChatGPT review pack remains audit evidence but does not approve R2.
 
 ## Current Known Observations / Validation Seeds
 
@@ -56,6 +58,7 @@ R1 target was met for deterministic/source-layer triage evidence, but INC1 ident
 ## Active Governance Reminders
 
 - GOV-2 is active: prefer executable guards, focused tests, DB constraints, validation runners, and runtime assertions over repeated long policy text.
+- GOV3 adds the durable rule that phase completion claims require executable phase contracts. Contract checks must pass before `target_met`, `route_approved`, `full_chain_completed`, or `safe_to_merge` can be claimed.
 - Durable core remains strict: DB/migrations, provider-neutral evidence contracts, Entity/evidence/candidate/assignment lifecycle, provider privacy/budget gates, source/iCloud safety, and in-scope E2E pass requirements.
 - Docs-only work should use docs/JSON/static checks and should not start servers or browser validation unless code/runtime/UI changes are made.
 - Reviewer feedback is a handoff point. Do not auto-fix reviewer comments after the requested stop line without explicit bounded-fix authorization.
@@ -63,6 +66,7 @@ R1 target was met for deterministic/source-layer triage evidence, but INC1 ident
 ## Validation Starting Points
 
 - Python identity: `& "$PY" scripts/check_python_env.py --expected-python "$PY"`.
+- GOV3 contract checker: `& "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>`.
 - SCV1 runner: `& "$PY" scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir ".local_manifests\phase-4.5-scv1-source-concept-coverage-audit" --write-public-report --read-only`.
 - SCV2-R1 runner: `& "$PY" scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py --dry-run --output-dir ".local_manifests\phase-4.5-scv2-r1-post-px1-source-concept-triage" --write-public-report`, then execute only with `--confirm-execution EXECUTE_PHASE45_SCV2_R1_SOURCE_CONCEPT_TRIAGE`.
 - Scope-based test selection: `docs/test-workflow.md`.
@@ -72,14 +76,6 @@ R1 target was met for deterministic/source-layer triage evidence, but INC1 ident
 
 ## Links
 
-- Active roadmap and standards: `docs/project-roadmap.md`.
-- DOC1 report: `docs/reports/phase-4.5-doc1-post-sc2-documentation-consolidation.md`.
-- SC1 report: `docs/reports/phase-4.5-sc1-source-concept-resolver-core.md`.
-- SC2 report: `docs/reports/phase-4.5-sc2-source-concept-search-evidence-ui.md`.
-- SCV1 report: `docs/reports/phase-4.5-scv1-source-concept-coverage-audit.md`.
-- SCV2-P0 report: `docs/reports/phase-4.5-scv2-p0-controlled-medium-expansion-policy.md`.
-- E1 report: `docs/reports/phase-4.5-scv2-e1-medium-import-ai-tag-completion.md`.
-- PX1 report: `docs/reports/phase-4.5-px1-pixiv-metadata-dedup-dry-run.md`.
-- R1 report: `docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md`.
-- A1 report: `docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision.md`.
-- ChatGPT review pack policy: `docs/chatgpt-review-pack-policy.md`.
+Use `docs/project-roadmap.md` for phase history and standards. Current report links:
+SC1, SC2, SCV1, SCV2-P0, E1, PX1, R1, A1, INC1, and GOV3 live under
+`docs/reports/`; review-pack policy is `docs/chatgpt-review-pack-policy.md`.

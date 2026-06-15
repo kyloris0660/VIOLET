@@ -1,0 +1,359 @@
+{
+  "phase": "Phase 4.5-GOV3",
+  "title": "Executable Pipeline Contracts and Phase Gates",
+  "generated_at": "2026-06-15T19:47:41+08:00",
+  "branch": "codex/phase45-gov3-executable-pipeline-contracts",
+  "incident_context": {
+    "inc1_conclusion": "llm_stage_missing_incident",
+    "sc1_llm_adjudication_used": true,
+    "sc1_llm_judgment_count": 300,
+    "sc1_llm_max_calls": 300,
+    "r1_llm_adjudication_used": false,
+    "r1_llm_judgment_count": 0,
+    "r1_missing_reason": "llm_adjudication_not_requested",
+    "old_r1_a1_cannot_approve_r2": true
+  },
+  "contracts_added": [
+    "python_env_contract_v1",
+    "postgres_db_contract_v1",
+    "media_import_contract_v1",
+    "classification_contract_v1",
+    "ai_tagging_contract_v1",
+    "localization_contract_v1",
+    "source_metadata_contract_v1",
+    "source_concept_full_chain_contract_v1",
+    "review_pack_contract_v1",
+    "route_audit_contract_v1",
+    "public_redaction_contract_v1",
+    "mutation_safety_contract_v1",
+    "artifact_lifecycle_contract_v1",
+    "destructive_operation_contract_v1",
+    "entity_truth_bridge_contract_v1"
+  ],
+  "source_concept_full_chain_contract": {
+    "contract_id": "source_concept_full_chain_contract_v1",
+    "required_before_r1r": true,
+    "distinguishes_statuses": [
+      "deterministic_only",
+      "full_chain_completed",
+      "full_chain_blocked_llm_unavailable",
+      "full_chain_blocked_budget",
+      "full_chain_inconclusive_missing_artifacts"
+    ],
+    "fails_if_full_chain_claim_skips_llm": true,
+    "fails_if_full_chain_claim_has_zero_llm_judgments_without_zero_eligible_proof": true,
+    "fails_if_required_false_with_eligible_pairs": true,
+    "fails_if_required_false_without_valid_zero_eligible_proof": true,
+    "zero_eligible_completion_requires_explicit_eligible_pair_count_zero_and_reason": true,
+    "fails_if_eligible_pair_count_exceeds_max_calls_without_explicit_approval": true,
+    "fails_if_selected_pair_count_exceeds_max_calls_without_explicit_approval": true,
+    "fails_if_llm_judgment_count_exceeds_max_calls_without_explicit_approval": true,
+    "requires_explicit_llm_pair_and_judgment_counters": true,
+    "zero_eligible_proof_requires_eligible_selected_and_judgment_counts_zero": true,
+    "blocked_or_skipped_required_stages_do_not_count_as_completed": true,
+    "safe_to_merge_claims_blocked_for_deterministic_or_blocked_status": true,
+    "requires_full_chain_fidelity_passed": true,
+    "requires_validation_pack_for_full_chain_completion": true
+  },
+  "route_audit_contract": {
+    "contract_id": "route_audit_contract_v1",
+    "requires_read_only_stable_snapshot": true,
+    "blocks_route_approval_if_upstream_pipeline_incomplete": true,
+    "fails_route_approved_with_blocked_or_provisional_status": true,
+    "fails_mutation_proof_passed_false": true,
+    "fails_forbidden_or_unexpected_mutation_tables": true,
+    "route_approved_requires_review_pack_or_contract_approved_waiver": true,
+    "route_approved_requires_sourceconcept_full_chain_upstream": true,
+    "route_approved_rejects_deterministic_only_blocked_or_inconclusive_upstream": true,
+    "route_status_fields_take_priority_over_generic_pipeline_status": true,
+    "route_approved_requires_upstream_contract_passed_true": true,
+    "route_approved_requires_explicit_empty_upstream_missing_required_stages": true
+  },
+  "review_pack_contract": {
+    "contract_id": "review_pack_contract_v1",
+    "requires_manifest_checksums_redaction_scan_and_zip": true,
+    "requires_public_report_copy_proof": true,
+    "label_hash_policy_guard_enabled": true,
+    "zip_must_not_be_committed": true
+  },
+  "public_redaction_contract": {
+    "contract_id": "public_redaction_contract_v1",
+    "scans_json_keys": true,
+    "scans_json_values": true,
+    "scans_markdown_text": true,
+    "common_sensitive_pattern_detection_enabled": true,
+    "filesystem_location_detection_enabled": true,
+    "media_name_shape_detection_enabled": true,
+    "sensitive_public_keys_require_redaction": [
+      "raw_filename",
+      "filename",
+      "source_url",
+      "original_url",
+      "thumbnail_url",
+      "source_path",
+      "local_path",
+      "source_root",
+      "provider_url",
+      "private_url"
+    ],
+    "provider_prefix_pattern_detection_enabled": true,
+    "posix_private_location_detection_enabled": true,
+    "propagates_private_provenance_context_to_nested_values": true,
+    "propagates_sensitive_context_to_nested_values": true,
+    "redaction_findings_do_not_echo_raw_matches": true
+  },
+  "mutation_safety_contract": {
+    "contract_id": "mutation_safety_contract_v1",
+    "requires_table_allowlist_denylist_proof": true,
+    "requires_mutation_proof_passed_true": true,
+    "fails_forbidden_or_unexpected_table_changes": true,
+    "fails_non_list_forbidden_or_unexpected_table_violation_fields": true,
+    "fails_mutation_proof_passed_false": true,
+    "destructive_operations_require_destructive_contract": true
+  },
+  "artifact_lifecycle_contract": {
+    "contract_id": "artifact_lifecycle_contract_v1",
+    "classifications": [
+      "production",
+      "durable validation",
+      "reusable validation",
+      "phase-scoped",
+      "one-off local/private",
+      "public report/handoff"
+    ],
+    "private_artifacts_must_not_be_committed": true,
+    "public_artifacts_must_be_redacted": true,
+    "public_report_handoff_requires_explicit_redacted_true": true,
+    "normalizes_review_pack_classification_variants": true,
+    "normalizes_public_report_and_handoff_classification_variants": true
+  },
+  "generic_contract_checker": {
+    "claimed_completion_requires_matching_contract_id": true,
+    "required_fields_must_be_present_and_non_null": true,
+    "required_artifact_and_ledger_proof_fields_must_be_non_empty": true
+  },
+  "final_fail_closed_closure_sweep": {
+    "recurring_failure_class": "Permissive helper defaults treated ambiguous status, missing proof, blocked stages, raw redaction matches, non-list mutation deltas, and empty artifacts as sufficient evidence.",
+    "code_level_invariants": [
+      {
+        "invariant": "All completion and approval claims, including safe_to_merge, are blocked for deterministic-only, blocked, provisional, or inconclusive evidence.",
+        "tests": [
+          "test_source_concept_deterministic_only_fails_safe_to_merge_claim",
+          "test_source_concept_blocked_or_inconclusive_fails_safe_to_merge_claim",
+          "test_route_audit_inconclusive_status_cannot_claim_route_approved"
+        ]
+      },
+      {
+        "invariant": "Route approval derives route status before generic pipeline status and requires upstream SourceConcept full-chain contract proof with passed=true and missing_required_stages=[].",
+        "tests": [
+          "test_route_audit_route_status_takes_priority_over_pipeline_status",
+          "test_route_audit_requires_upstream_contract_passed_and_missing_stages_list",
+          "test_route_audit_allows_route_approved_with_full_chain_upstream"
+        ]
+      },
+      {
+        "invariant": "Blocked, skipped, missing, failed, inconclusive, or not-run stages do not satisfy full-chain completion.",
+        "tests": [
+          "test_source_concept_blocked_required_stage_does_not_count_as_completed",
+          "test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_merge"
+        ]
+      },
+      {
+        "invariant": "Public redaction findings never echo raw matches and secret/private-provenance context propagates to nested values.",
+        "tests": [
+          "test_public_redaction_contract_does_not_echo_sensitive_matches",
+          "test_public_redaction_contract_propagates_secret_parent_context",
+          "test_public_redaction_contract_propagates_private_provenance_context"
+        ]
+      },
+      {
+        "invariant": "Full-chain LLM counters are explicit and zero-eligible proof requires internally consistent zero counters plus reason.",
+        "tests": [
+          "test_source_concept_full_chain_fails_missing_llm_counters",
+          "test_source_concept_zero_eligible_proof_requires_consistent_counters"
+        ]
+      },
+      {
+        "invariant": "Mutation violations fail as strings, dicts, or lists, and mutation safety requires passed=true.",
+        "tests": [
+          "test_mutation_safety_contract_fails_non_list_table_violations",
+          "test_mutation_safety_contract_requires_positive_passed_proof"
+        ]
+      },
+      {
+        "invariant": "Artifact lifecycle classifications are normalized and required ledgers/proofs cannot be null or empty.",
+        "tests": [
+          "test_artifact_lifecycle_contract_normalizes_public_classification",
+          "test_required_artifact_and_ledger_fields_must_be_non_empty"
+        ]
+      }
+    ],
+    "deferred_p2_p3_findings": [],
+    "r1r_a1r_route_bypass_allowed": false
+  },
+  "latest_reviewer_closure": {
+    "reviewed_head": "3cac039ad0",
+    "fixed_issue_classes": [
+      "redaction diagnostic paths sanitize sensitive JSON keys",
+      "route audits require mutation_proof.passed=true for blocked and approved audits",
+      "route approval requires complete review-pack proof, not generated=true alone",
+      "review-pack public report copy proof must be current, fresh, or generated/rendered from current summary",
+      "public API route text is not treated as a local POSIX path by default",
+      "SourceConcept full-chain LLM selected pairs require complete judged/cached/skipped accounting",
+      "forbidden stages with executed=true fail even when status is skipped or blocked",
+      "secret and private-provenance JSON context applies to non-string scalar values"
+    ],
+    "tests_added_or_updated": [
+      "test_public_redaction_contract_sanitizes_sensitive_json_key_paths",
+      "test_route_audit_requires_positive_mutation_proof_for_blocked_routes",
+      "test_route_audit_route_approved_requires_complete_review_pack_proof",
+      "test_review_pack_public_report_copy_must_be_current",
+      "test_public_redaction_contract_allows_public_api_route_text",
+      "test_source_concept_full_chain_rejects_partial_llm_pair_resolution",
+      "test_forbidden_stage_executed_true_fails_even_with_negative_status",
+      "test_public_redaction_contract_scans_sensitive_non_string_values"
+    ],
+    "deferred_p2_p3_findings": [],
+    "deferred_items_can_allow_r1r_a1r_route_approval_bypass": false
+  },
+  "postgres_db_contract": {
+    "contract_id": "postgres_db_contract_v1",
+    "recursively_rejects_nested_sensitive_values": true,
+    "allows_presence_boolean_without_value": true,
+    "requires_db_url_equivalence_proof": true
+  },
+  "destructive_operation_contract": {
+    "contract_id": "destructive_operation_contract_v1",
+    "blocking_contract": true,
+    "requires_explicit_user_approval": true,
+    "requires_dry_run_first": true,
+    "requires_backup_recovery_plan": true,
+    "requires_exact_target_set": true,
+    "forbids_broad_wildcard_deletion": true
+  },
+  "entity_truth_bridge_contract": {
+    "contract_id": "entity_truth_bridge_contract_v1",
+    "requires_route_approval": true,
+    "requires_preview_manual_audit_rollback_and_write_guards": true,
+    "blocks_direct_sourceconcept_to_entity_truth_promotion": true
+  },
+  "command_line_checker": {
+    "path": "scripts/check_phase_contract.py",
+    "supports_list_contracts": true,
+    "supports_explain": true,
+    "outputs_json": true,
+    "exits_nonzero_on_failure": true
+  },
+  "tests": {
+    "test_file": "tests/test_phase_contracts.py",
+    "fixture_dir": "tests/fixtures/phase_contracts",
+    "coverage": [
+      "registry contains required contracts",
+      "SourceConcept full-chain LLM missing failures",
+      "SourceConcept full-chain LLM required=false eligible-pair failures",
+      "SourceConcept full-chain missing/invalid zero-eligible proof failures",
+      "SourceConcept full-chain eligible/selected call-cap failures",
+      "SourceConcept full-chain judgment-count call-cap failures",
+      "SourceConcept full-chain missing LLM counters and blocked/skipped stage failures",
+      "SourceConcept safe_to_merge blocking for deterministic/blocked/inconclusive statuses",
+      "SourceConcept full-chain validation-pack proof failures",
+      "route audit upstream pipeline blocking",
+      "route audit deterministic-only upstream blocking",
+      "route audit full-chain upstream approval positive case",
+      "route audit route-status priority over generic pipeline status",
+      "route audit upstream passed=true and explicit empty missing-stage proof",
+      "route audit blocked/provisional approval contradiction blocking",
+      "route audit mutation-proof and review-pack blocking",
+      "review pack manifest/checksum/redaction failures",
+      "review pack public-report-copy proof failures",
+      "public redaction leak detection",
+      "public redaction bare filenames, sensitive URL keys, bare tokens, and POSIX local paths",
+      "public redaction nested private provenance context",
+      "public redaction secret parent context and no raw match echo",
+      "mutation safety table changes",
+      "mutation safety mutation_proof.passed=false failure",
+      "mutation safety empty/missing/passed proof cases",
+      "mutation safety non-list forbidden/unexpected table violations",
+      "artifact lifecycle public/private boundary",
+      "artifact lifecycle explicit public redaction evidence",
+      "artifact lifecycle review pack classification normalization",
+      "artifact lifecycle public report/handoff classification normalization",
+      "generic completion contract-id and non-null required-field gates",
+      "generic required ledger/artifact non-empty proof gates",
+      "PostgreSQL nested password rejection and safe password-present booleans",
+      "destructive operation approval gates",
+      "Entity bridge preview/manual/audit/rollback gates",
+      "existing A1/INC1 remain blocked/not route-approved",
+      "mock R1R full-chain pass/fail fixtures"
+    ],
+    "result": "68 passed"
+  },
+  "validation": {
+    "browser_validation": "not_required_no_ui_runtime_change",
+    "db_written": false,
+    "provider_called": false,
+    "llm_called": false,
+    "server_started": false,
+    "commands": [
+      "git diff --check",
+      "git diff --cached --check",
+      "scripts/check_python_env.py --expected-python \"$PY\"",
+      "python -m py_compile scripts/check_phase_contract.py tests/test_phase_contracts.py",
+      "python -m pytest tests/test_phase_contracts.py tests/test_phase45_doc1_documentation_state.py -v",
+      "python -m json.tool docs/reports/phase-4.5-gov3-executable-pipeline-contracts-summary.json",
+      "scripts/check_phase_contract.py --contract route_audit_contract_v1 --summary docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json",
+      "scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json",
+      "scripts/check_phase_contract.py --contract source_concept_full_chain_contract_v1 --summary tests/fixtures/phase_contracts/mock_source_concept_full_chain_pass.json",
+      "scripts/check_phase_contract.py --contract source_concept_full_chain_contract_v1 --summary tests/fixtures/phase_contracts/mock_source_concept_deterministic_only_fail.json"
+    ],
+    "results": {
+      "python_env_preflight": "PASS",
+      "py_compile": "passed",
+      "pytest": "73 passed",
+      "json_tool": "passed",
+      "a1_route_audit_contract_exit_code": 0,
+      "a1_route_audit_contract_passed": true,
+      "a1_route_approved": false,
+      "a1_route_status": "blocked_pending_pipeline_fidelity_remediation",
+      "inc1_public_redaction_contract_exit_code": 0,
+      "inc1_public_redaction_contract_passed": true,
+      "mock_full_chain_contract_exit_code": 0,
+      "mock_full_chain_contract_passed": true,
+      "mock_deterministic_only_contract_exit_code": 1,
+      "mock_deterministic_only_contract_failed_as_expected": true,
+      "p1_negative_contract_fixtures_failed_as_expected": true,
+      "final_negative_contract_fixtures_failed_as_expected": true,
+      "closure_sweep_negative_contract_fixtures_failed_as_expected": true,
+      "latest_reviewer_negative_contract_fixtures_failed_as_expected": true,
+      "gov3_public_report_redaction_self_check_passed": true,
+      "gov3_public_summary_redaction_self_check_passed": true
+    }
+  },
+  "next_phase_recommendation": {
+    "do_not_rerun_media_import_classification_ai_tagging_localization_unless_contract_audit_finds_invalid": true,
+    "start_from_source_tag_source_metadata_boundary": true,
+    "verify_existing_inputs_under_source_metadata_contract_v1": true,
+    "run_r1r_under_source_concept_full_chain_contract_v1": true,
+    "then_run_a1r_under_route_audit_contract_v1": true,
+    "old_r1_a1_evidence_cannot_approve_r2": true
+  },
+  "safety": {
+    "no_push_main": true,
+    "no_merge": true,
+    "no_r1r_a1r_r2": true,
+    "no_db_write": true,
+    "no_provider_pixiv_gallery_dl_saucenao_google": true,
+    "no_llm": true,
+    "no_import_classification_ai_localization": true,
+    "no_entity_truth_or_media_tags_mutation": true,
+    "no_source_metadata_or_sourceconcept_table_mutation": true,
+    "no_source_icloud_storage_mutation": true,
+    "no_cleanup_delete_reset_drop_truncate": true
+  },
+  "remaining_blockers": [
+    "GOV3 must be reviewed and merged before R1R starts",
+    "R1R full-chain replay/remediation remains blocked until source_concept_full_chain_contract_v1 is available on main",
+    "A1R remains blocked until R1R outputs exist",
+    "R2/PX1-B/Provider-2/scale-up remain blocked until A1R route audit passes"
+  ]
+}
