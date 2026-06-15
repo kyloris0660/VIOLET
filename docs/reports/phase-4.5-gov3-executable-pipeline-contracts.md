@@ -20,7 +20,12 @@ PR #108 follow-up tightened the contracts to fail closed for current-head
 blockers: SourceConcept full-chain LLM opt-out, LLM call caps, validation-pack
 proof, route-audit approval contradictions, mutation proof failures, public
 bare filenames/URLs/tokens/paths, nested DB secrets, and public artifact
-redaction evidence.
+redaction evidence. The final bounded fix also requires valid zero-eligible
+proof before skipping LLM evidence, checks `llm_judgment_count` against
+`max_calls`, rejects deterministic-only upstream route approvals, requires
+positive mutation proof, propagates private provenance context to nested JSON
+values, requires public-report-copy proof in review packs, and blocks claimed
+completion/approval summaries that do not declare the checked contract id.
 
 GOV3 does not run R1R, A1R, R2, providers, LLM, import, classification, AI
 tagging, localization, Entity bridge, DB writes, or storage/source mutation.
@@ -136,6 +141,11 @@ or while required stages are absent. It also fails if a full-chain summary sets
 eligible or selected pair counts exceed `max_calls` without explicit
 over-budget/call-cap approval, if `full_chain_fidelity_passed` is not true, or
 if validation-pack evidence is missing.
+`required=false` alone never skips LLM checks for `full_chain_completed`; the
+only zero-judgment path requires `zero_eligible_proof=true`, explicit
+`eligible_pair_count=0`, and a recorded reason. `llm_judgment_count` must also
+stay within `max_calls` unless explicit over-budget/call-cap approval is
+recorded.
 
 ## Public redaction contract
 
@@ -147,13 +157,16 @@ values in public Markdown/JSON, sensitive URL/path keys such as `source_url` or
 `thumbnail_url` unless explicitly redacted, bare `ghp_`, `github_pat_`, `xoxb-`,
 `sk-`, `Bearer`, or `Authorization` tokens, and local/private POSIX paths such
 as `/workspace`, `/tmp`, `/opt`, `/var`, `/home`, `/Users`, `/mnt`, and
-`/Volumes`.
+`/Volumes`. Nested public JSON values inherit private provenance context from
+ancestor keys such as `source_url` or `raw_filename`; descendant scalar values
+must be explicitly redacted.
 
 ## Review pack contract
 
 `review_pack_contract_v1` requires manifest/checksum/redaction proof, checksum
 count consistency, final-file-set redaction coverage, current public report
-copy proof, zip generation, and not-committed status. It fails on reversible
+copy proof, zip generation, and not-committed status. Public-report-copy proof
+is required as executable evidence, not a prose note. It fails on reversible
 fixed-salt hash markers and raw/private labels.
 
 ## Route audit contract
@@ -164,15 +177,19 @@ or incomplete. It fails if `route_approved=true` appears with a blocked or
 provisional final status, if `mutation_proof.passed=false`, if forbidden or
 unexpected mutation tables are recorded, or if a route-approved summary lacks a
 review pack without a contract-approved waiver. Existing A1 remains blocked,
-not route-approved.
+not route-approved. Route-approved summaries must use upstream
+`source_concept_full_chain_contract_v1` evidence with status
+`full_chain_completed`, `full_chain_fidelity_passed=true`, and no missing
+required stages; deterministic-only, blocked, or inconclusive upstream evidence
+cannot approve a route.
 
 ## Mutation safety contract
 
 `mutation_safety_contract_v1` checks allowlist/denylist proof, forbidden table
 changes, unexpected table changes, and destructive-operation gating. It is a
 summary-level gate for future write phases; GOV3 itself performs no writes.
-`mutation_proof.passed=false` fails immediately even when no table deltas are
-listed.
+`mutation_proof.passed` must be explicitly true. Empty objects, missing
+`passed`, or `passed=false` fail even when no table deltas are listed.
 
 ## Artifact lifecycle contract
 
@@ -182,6 +199,8 @@ report/handoff artifacts. It fails if private artifacts or review packs are
 committed, or if public report artifacts are not redacted. Public
 report/handoff artifacts must now provide explicit `redacted=true` evidence;
 missing redaction evidence fails instead of defaulting to pass.
+Review-pack classifications are normalized across `review pack`, `review_pack`,
+and `review-pack`.
 
 ## R1R prerequisites
 
@@ -221,7 +240,7 @@ GOV3 validation passed:
 - `scripts/check_python_env.py --expected-python "$PY"`
 - `py_compile` for the checker and tests
 - `pytest tests/test_phase_contracts.py tests/test_phase45_doc1_documentation_state.py -v`
-  - result: 37 passed
+  - result: 50 passed
 - `json.tool` for this GOV3 summary
 - contract checker examples:
   - A1 summary with `route_audit_contract_v1`: exit 0, passed=true,
@@ -233,6 +252,10 @@ GOV3 validation passed:
     missing validation pack, blocked route approval, failed mutation proof,
     bare filename redaction, nested DB password, and missing public redaction
     evidence: exit 1 as expected
+  - final negative fixtures for missing/invalid zero-eligible proof,
+    `llm_judgment_count > max_calls`, deterministic-only upstream route
+    approval, empty mutation proof, and nested private-provenance values:
+    exit 1 as expected
 
 No browser validation is required because GOV3 does not change UI/runtime files.
 

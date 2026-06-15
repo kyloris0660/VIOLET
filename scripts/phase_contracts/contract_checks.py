@@ -66,6 +66,7 @@ def check_phase_contract(contract_id: str, summary: Mapping[str, Any]) -> Contra
     result.full_chain_complete_claimed = _claim(summary, "full_chain_complete") or _claim(summary, "full_chain_completed")
     result.safe_to_merge_claimed = _claim(summary, "safe_to_merge")
 
+    _check_claimed_contract_id(contract, summary, result)
     _check_required_fields(contract, summary, result)
     _check_forbidden_stages(contract, summary, result)
 
@@ -92,6 +93,11 @@ def _get(payload: Any, path: str, default: Any = MISSING) -> Any:
 
 def _has(payload: Any, path: str) -> bool:
     return _get(payload, path, MISSING) is not MISSING
+
+
+def _has_non_null(payload: Any, path: str) -> bool:
+    value = _get(payload, path, MISSING)
+    return value is not MISSING and value is not None
 
 
 def _as_bool(value: Any) -> bool:
@@ -162,8 +168,38 @@ def _route_approved(summary: Mapping[str, Any]) -> bool:
     return _claim(summary, "route_approved") or _claim(summary, "approved")
 
 
+def _declared_contract_id(summary: Mapping[str, Any]) -> Any:
+    for path in ("pipeline_contract.contract_id", "contract_id", "contract.contract_id"):
+        value = _get(summary, path, MISSING)
+        if value is not MISSING and value is not None:
+            return value
+    return MISSING
+
+
+def _check_claimed_contract_id(contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    if not (result.target_met_claimed or result.route_approved or result.full_chain_complete_claimed or result.safe_to_merge_claimed):
+        return
+    declared = _declared_contract_id(summary)
+    if declared is MISSING:
+        result.fail(
+            "claimed_completion_missing_contract_id",
+            "Summaries claiming completion, approval, or safe_to_merge must declare the executable contract id.",
+            path="pipeline_contract.contract_id",
+            expected=contract.contract_id,
+        )
+        return
+    if str(declared) != contract.contract_id:
+        result.fail(
+            "claimed_completion_contract_id_mismatch",
+            "Summary contract id does not match the requested executable contract.",
+            path="pipeline_contract.contract_id",
+            expected=contract.contract_id,
+            actual=declared,
+        )
+
+
 def _check_required_fields(contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
-    missing = [path for path in contract.required_summary_fields if not _has(summary, path)]
+    missing = [path for path in contract.required_summary_fields if not _has_non_null(summary, path)]
     result.details["missing_required_summary_fields"] = missing
     for path in missing:
         result.fail(
@@ -239,6 +275,11 @@ def _iter_json_strings(payload: Any, path: str = "$") -> Iterable[tuple[str, str
         yield path, "value", payload
 
 
+def _path_has_private_provenance_context(path: str) -> bool:
+    segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
+    return any(PRIVATE_PROVENANCE_KEY_RE.search(segment) for segment in segments)
+
+
 def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     checks = (
@@ -267,9 +308,9 @@ def scan_public_payload(payload: Any) -> list[dict[str, str]]:
                 findings.append({"code": "bare_filename", "path": path, "kind": kind, "match": match.group(0)[:160]})
         if kind == "value" and SECRET_KEY_NAME_RE.search(key_name) and not _safe_redacted(text):
             findings.append({"code": "secret_key_name_with_unredacted_value", "path": path, "kind": kind, "match": key_name})
-        if kind == "value" and PRIVATE_PROVENANCE_KEY_RE.search(key_name):
+        if kind == "value" and _path_has_private_provenance_context(path):
             if not _safe_redacted(text):
-                findings.append({"code": "private_provenance_value_unredacted", "path": path, "kind": kind, "match": key_name})
+                findings.append({"code": "private_provenance_value_unredacted", "path": path, "kind": kind, "match": path})
         if kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
             # Key names are not automatically failures; values decide whether a
             # public field is unsafe. Path-like key text is still caught above.
@@ -444,7 +485,9 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
     llm_required = _as_bool(plan_mapping.get("required", True))
     llm_used = _as_bool(_get(summary, "llm_adjudication_used", False))
     judgment_count = _as_int(_get(summary, "llm_judgment_count", 0))
-    zero_eligible = _as_bool(plan_mapping.get("zero_eligible_proof", False))
+    zero_eligible = _zero_eligible_proof_passed(plan_mapping)
+    zero_eligible_reason_present = _zero_eligible_reason_present(plan_mapping)
+    eligible_pair_count_recorded = "eligible_pair_count" in plan_mapping
     eligible = _as_int(plan_mapping.get("eligible_pair_count", plan_mapping.get("selected_block_count", 0)))
     max_calls = _as_int(plan_mapping.get("max_calls", _get(summary, "llm_max_calls", 0)))
     selected = _as_int(plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0)))
@@ -453,11 +496,19 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
     approved_overage = _as_bool(plan_mapping.get("explicit_over_budget_or_call_cap_approval"))
     blocked_status = status.startswith("full_chain_blocked")
     eligible_pairs_exist = eligible > 0
-    llm_evidence_required = full_chain_claimed and not zero_eligible and (eligible_pairs_exist or llm_required)
-    if full_chain_claimed and eligible_pairs_exist and not zero_eligible and not llm_required:
+    valid_zero_eligible_proof = zero_eligible and eligible_pair_count_recorded and eligible == 0 and zero_eligible_reason_present
+    llm_evidence_required = full_chain_claimed and not valid_zero_eligible_proof
+    if full_chain_claimed and zero_eligible and not valid_zero_eligible_proof:
         result.fail(
-            "source_concept_llm_required_opt_out_with_eligible_pairs",
-            "Full-chain completion cannot mark LLM adjudication not required when eligible pairs exist.",
+            "source_concept_zero_eligible_proof_incomplete",
+            "Zero-eligible LLM proof requires zero_eligible_proof=true, explicit eligible_pair_count=0, and a reason.",
+            path="llm_adjudication_plan.zero_eligible_proof",
+        )
+    if full_chain_claimed and not llm_required and not valid_zero_eligible_proof:
+        code = "source_concept_llm_required_opt_out_with_eligible_pairs" if eligible_pairs_exist else "source_concept_llm_required_opt_out_without_zero_eligible_proof"
+        result.fail(
+            code,
+            "Full-chain completion cannot mark LLM adjudication not required without explicit zero-eligible proof.",
             path="llm_adjudication_plan.required",
             expected=True,
             actual=llm_required,
@@ -478,10 +529,15 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
             result.fail("blocked_status_claimed_completion", "Blocked/inconclusive full-chain summaries must not claim completion or approval.", path="pipeline_contract.status")
 
     if plan_mapping:
+        plan_status = str(plan_mapping.get("status", "")).casefold()
+        if full_chain_claimed and plan_status in {"unavailable", "blocked", "blocked_llm_unavailable", "over_budget", "blocked_budget"}:
+            result.fail("source_concept_completed_with_blocked_llm_plan", "LLM unavailable/over-budget plans must use blocked status, not full_chain_completed.", path="llm_adjudication_plan.status", actual=plan_mapping.get("status"))
         if full_chain_claimed and eligible > max_calls and not approved_overage:
             result.fail("source_concept_llm_call_cap_exceeded", "Eligible LLM pairs exceed max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_adjudication_plan")
         if full_chain_claimed and selected > max_calls and not approved_overage:
             result.fail("source_concept_llm_selected_call_cap_exceeded", "Selected LLM pairs exceed max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_adjudication_plan")
+        if full_chain_claimed and judgment_count > max_calls and not approved_overage:
+            result.fail("source_concept_llm_judgment_call_cap_exceeded", "LLM judgment count exceeds max_calls; full-chain completion cannot proceed without explicit approval.", path="llm_judgment_count", expected=f"<= {max_calls}", actual=judgment_count)
         if full_chain_claimed and budget >= 0 and projected > budget and not approved_overage:
             result.fail("source_concept_llm_budget_exceeded", "Projected LLM budget exceeds approved budget; phase must block/request approval.", path="llm_adjudication_plan")
 
@@ -493,6 +549,30 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
             code="source_concept_required_proof_missing",
             message="Full-chain SourceConcept completion requires mutation, post-commit, validation-pack, and review-pack proof.",
         )
+
+
+def _zero_eligible_proof_passed(plan: Mapping[str, Any]) -> bool:
+    proof = plan.get("zero_eligible_proof")
+    if isinstance(proof, Mapping):
+        return _as_bool(proof.get("passed") or proof.get("valid") or proof.get("explicit"))
+    return _as_bool(proof)
+
+
+def _zero_eligible_reason_present(plan: Mapping[str, Any]) -> bool:
+    proof = plan.get("zero_eligible_proof")
+    values: list[Any] = [
+        plan.get("zero_eligible_reason"),
+        plan.get("zero_eligible_proof_reason"),
+        plan.get("zero_eligible_explanation"),
+    ]
+    if isinstance(proof, Mapping):
+        values.extend([proof.get("reason"), proof.get("explanation"), proof.get("evidence")])
+    for value in values:
+        if isinstance(value, str) and value.strip() and not _safe_redacted(value):
+            return True
+        if isinstance(value, Mapping) and value:
+            return True
+    return False
 
 
 def _check_review_pack(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
@@ -520,6 +600,18 @@ def _check_review_pack(_contract: PhaseContract, summary: Mapping[str, Any], res
         result.fail("review_pack_checksum_count_missing", "Review pack checksum count must be positive.", path="review_pack.checksum_count")
     if manifest_checksum_count != checksum_count:
         result.fail("review_pack_checksum_count_mismatch", "Manifest checksum_count must match checksums.json count.", path="review_pack.checksum_count", expected=manifest_checksum_count, actual=checksum_count)
+    public_copy_ok = any(
+        _as_bool(pack.get(key))
+        for key in (
+            "public_report_copy_present",
+            "public_report_copy_fresh",
+            "public_report_copy_rendered_from_current_summary",
+            "public_report_copy_current",
+            "public_report_copy_generated",
+        )
+    )
+    if not public_copy_ok:
+        result.fail("review_pack_public_report_copy_missing", "Review pack requires public-report-copy proof.", path="review_pack.public_report_copy")
     if _contains_private_review_pack_label(summary):
         result.fail("review_pack_private_label_leak", "Review pack contains reversible fixed-salt hashes or raw/private labels.", path="review_pack")
 
@@ -567,6 +659,8 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
     status_folded = status.casefold()
     if result.route_approved and not upstream_ok:
         result.fail("route_approval_upstream_incomplete", "Route approval cannot proceed while upstream pipeline contract is failed or incomplete.", path="upstream_pipeline_contract")
+    if result.route_approved:
+        _check_route_approved_source_concept_upstream(upstream, result)
     if result.route_approved and ("blocked" in status_folded or "provisional" in status_folded):
         result.fail("route_approval_blocked_or_provisional_status", "Route approval cannot be claimed while final_route_decision_status is blocked/provisional.", path="final_route_decision_status", actual=status)
     if "blocked" in status_folded or "provisional" in status_folded:
@@ -597,6 +691,35 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
         result.fail("route_audit_route_approval_missing_review_pack", "Route-approved summaries require review pack proof unless a contract-approved waiver is present.", path="chatgpt_review_pack")
 
 
+def _check_route_approved_source_concept_upstream(upstream: Mapping[str, Any], result: ContractCheckResult) -> None:
+    contract_id = upstream.get("contract_id")
+    status = str(upstream.get("status") or upstream.get("pipeline_status") or upstream.get("contract_status") or "")
+    status_folded = status.casefold()
+    missing = upstream.get("missing_required_stages")
+    if contract_id != "source_concept_full_chain_contract_v1":
+        result.fail(
+            "route_approval_missing_source_concept_full_chain_contract",
+            "Route approval requires upstream SourceConcept full-chain contract evidence.",
+            path="upstream_pipeline_contract.contract_id",
+            expected="source_concept_full_chain_contract_v1",
+            actual=contract_id,
+        )
+    if status != "full_chain_completed":
+        result.fail(
+            "route_approval_upstream_not_full_chain_completed",
+            "Route approval requires upstream status full_chain_completed.",
+            path="upstream_pipeline_contract.status",
+            expected="full_chain_completed",
+            actual=status or None,
+        )
+    if status_folded in {"deterministic_only", "full_chain_blocked_llm_unavailable", "full_chain_blocked_budget", "full_chain_inconclusive_missing_artifacts"} or "blocked" in status_folded or "inconclusive" in status_folded:
+        result.fail("route_approval_upstream_blocked_or_deterministic", "Route approval cannot use deterministic-only, blocked, or inconclusive upstream evidence.", path="upstream_pipeline_contract.status", actual=status)
+    if not _as_bool(upstream.get("full_chain_fidelity_passed")):
+        result.fail("route_approval_upstream_fidelity_not_passed", "Route approval requires upstream full_chain_fidelity_passed=true.", path="upstream_pipeline_contract.full_chain_fidelity_passed")
+    if isinstance(missing, list) and missing:
+        result.fail("route_approval_upstream_missing_required_stages", "Route approval requires no upstream missing_required_stages.", path="upstream_pipeline_contract.missing_required_stages", expected=[], actual=missing)
+
+
 def _check_public_redaction(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     payloads: list[Any] = []
     if _has(summary, "public_json_payload"):
@@ -618,8 +741,8 @@ def _check_mutation_safety(_contract: PhaseContract, summary: Mapping[str, Any],
     if not isinstance(proof, Mapping):
         result.fail("mutation_proof_not_object", "mutation_proof must be an object.", path="mutation_proof")
         return
-    if _has(summary, "mutation_proof.passed") and not _as_bool(proof.get("passed")):
-        result.fail("mutation_proof_failed", "mutation_proof.passed=false fails mutation safety immediately.", path="mutation_proof.passed", expected=True, actual=proof.get("passed"))
+    if not _as_bool(proof.get("passed")):
+        result.fail("mutation_proof_failed", "mutation_safety_contract_v1 requires mutation_proof.passed=true.", path="mutation_proof.passed", expected=True, actual=proof.get("passed"))
     forbidden_names, unexpected_names = _mutation_table_violations(proof)
     if forbidden_names:
         result.fail("mutation_forbidden_table_changed", "Forbidden table changes were detected.", path="mutation_proof.forbidden_changed_tables", actual=forbidden_names)
@@ -678,11 +801,12 @@ def _check_artifact_lifecycle(_contract: PhaseContract, summary: Mapping[str, An
         return
     for artifact in artifacts:
         classification = str(artifact.get("classification") or artifact.get("lifecycle") or "").casefold()
+        normalized_classification = classification.replace("_", " ").replace("-", " ")
         path = str(artifact.get("path") or artifact.get("name") or "artifact")
         committed = _as_bool(artifact.get("committed"))
         if ("private" in classification or "one-off local" in classification) and committed:
             result.fail("private_artifact_committed", "Private/local artifacts must not be committed.", path=path)
-        if "review pack" in classification and committed:
+        if "review pack" in normalized_classification and committed:
             result.fail("review_pack_committed", "Review packs must not be committed.", path=path)
         if "public report" in classification or "handoff" in classification:
             if "redacted" not in artifact:
