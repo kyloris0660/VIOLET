@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated for Phase 4.5-GOV3 startup on `2026-06-14`.
-> Active PR branch: `codex/phase45-gov3-executable-pipeline-contracts`.
+> Last updated for Phase 4.6-FULLLIB-P0 startup on `2026-06-15`.
+> Active PR branch: `codex/phase46-fulllib-p0-production-import-ai-tagging-plan`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,8 +11,8 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Current PR | Phase 4.5-GOV3 executable pipeline contracts |
-| Baseline main | PR #105 plus INC1 transplant PR #107 / `7c90a50` or later |
+| Current PR | Phase 4.6-FULLLIB-P0 production import / AI tagging plan |
+| Baseline main | PR #108 / GOV3 merge `6615053` or later |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | `.\venv\Scripts\python.exe` |
 
@@ -25,15 +25,17 @@
 - PR #104 / Phase 4.5-SCV2-R1 is merged. It consumed PX1 evidence through SourceConcept triage, committed execute transactions, verified post-commit counts on a fresh connection, wrote only allowed SourceConcept tables, and regenerated the R1 public report/summary from current branch code.
 - PR #105 / Phase 4.5-SCV2-A1 is merged. It added a read-only post-expansion audit runner, a public A1 report/summary, and durable ChatGPT review pack policy for independent route-decision audit.
 - PR #107 transplanted the final INC1 report/summary/runner/tests onto `main` after PR #106 was merged into the stacked A1 branch instead of `main`. INC1 is now available from `main`.
-- Phase 4.5-GOV3 is the current branch. It adds executable phase contracts and a reusable contract checker before R1R/A1R/R2 may proceed.
+- PR #108 / Phase 4.5-GOV3 is merged. Executable phase contracts and the reusable contract checker are now the baseline governance rule.
+- Issue #109 tracks GOV3.1 hardening debt. It does not block plan-only FULLLIB-P0, but later route approval, `safe_to_merge`, or high-risk review-pack proof must account for the relevant issue class.
+- Phase 4.6-FULLLIB-P0 is the current plan-only branch. It maps safe full-library production import, classification, AI tagging, and AI tag reuse for the production utility track.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
 - Historical details before SC1/SC2/SCV1/SCV2-P0/E1/PX1/R1 live in `docs/project-roadmap.md` and `docs/reports/`.
 
 ## Current Route
 
-`GOV3` - executable pipeline contracts and phase gates.
+`FULLLIB-P0` - production utility full-library import / AI tagging plan and contract mapping.
 
-R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident: R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval is therefore blocked pending GOV3 executable contract hardening, R1R full-chain remediation, and A1R rerun; the generated ChatGPT review pack remains audit evidence but does not approve R2.
+The roadmap is split into two tracks. Production utility may plan full-library import, classification, AI tagging, and local search/browse value under GOV3 contracts. SourceConcept/provider/entity work remains separate: R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident because R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval remains blocked pending R1R full-chain remediation and A1R rerun; old R1/A1 evidence must not approve R2.
 
 ## Current Known Observations / Validation Seeds
 
@@ -51,14 +53,15 @@ R1 target was met for deterministic/source-layer triage evidence, but INC1 ident
 - No push to `main`; agents do not merge PRs.
 - No further DB migration, DB import, DB write, cleanup, drop, truncate, or destructive operation without explicit approval. R1's completed execute writes were limited to the allowed SourceConcept resolver tables.
 - No provider/gallery-dl/Pixiv/SauceNAO/Google/source enrichment run unless a later phase explicitly approves it.
-- No LLM, AI tagging, classification, localization, background jobs, or full-library validation.
+- No LLM, AI tagging execution, classification execution, localization, background jobs, or full-library import/validation during FULLLIB-P0.
 - No source/iCloud/staging/app-managed storage mutation.
 - No Entity Resolver, similarity/clustering, SourceConcept editing, Entity bridge, promotion, confirmed assignment, trusted Entity creation, or `media_tags` mutation.
 
 ## Active Governance Reminders
 
 - GOV-2 is active: prefer executable guards, focused tests, DB constraints, validation runners, and runtime assertions over repeated long policy text.
-- GOV3 adds the durable rule that phase completion claims require executable phase contracts. Contract checks must pass before `target_met`, `route_approved`, `full_chain_completed`, or `safe_to_merge` can be claimed.
+- GOV3 is the durable rule that phase completion claims require executable phase contracts. Contract checks must pass before `target_met`, `route_approved`, `full_chain_completed`, or `safe_to_merge` can be claimed.
+- FULLLIB-E1 should use at least `python_env_contract_v1`, `postgres_db_contract_v1`, `media_import_contract_v1`, `classification_contract_v1`, `ai_tagging_contract_v1`, `mutation_safety_contract_v1`, `artifact_lifecycle_contract_v1`, and `public_redaction_contract_v1`.
 - Durable core remains strict: DB/migrations, provider-neutral evidence contracts, Entity/evidence/candidate/assignment lifecycle, provider privacy/budget gates, source/iCloud safety, and in-scope E2E pass requirements.
 - Docs-only work should use docs/JSON/static checks and should not start servers or browser validation unless code/runtime/UI changes are made.
 - Reviewer feedback is a handoff point. Do not auto-fix reviewer comments after the requested stop line without explicit bounded-fix authorization.
@@ -67,6 +70,7 @@ R1 target was met for deterministic/source-layer triage evidence, but INC1 ident
 
 - Python identity: `& "$PY" scripts/check_python_env.py --expected-python "$PY"`.
 - GOV3 contract checker: `& "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>`.
+- FULLLIB-P0 report: `docs/reports/phase-4.6-fulllib-p0-production-import-ai-tagging-plan.md`.
 - SCV1 runner: `& "$PY" scripts/run_phase45_scv1_source_concept_coverage_audit.py --output-dir ".local_manifests\phase-4.5-scv1-source-concept-coverage-audit" --write-public-report --read-only`.
 - SCV2-R1 runner: `& "$PY" scripts/run_phase45_scv2_r1_post_px1_source_concept_triage.py --dry-run --output-dir ".local_manifests\phase-4.5-scv2-r1-post-px1-source-concept-triage" --write-public-report`, then execute only with `--confirm-execution EXECUTE_PHASE45_SCV2_R1_SOURCE_CONCEPT_TRIAGE`.
 - Scope-based test selection: `docs/test-workflow.md`.
