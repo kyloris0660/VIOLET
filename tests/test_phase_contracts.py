@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -202,7 +204,16 @@ def test_dynamic_library_sync_contract_rejects_auto_production_writes() -> None:
     assert "dynamic_sync_auto_writes_enabled" in _error_codes(result)
 
 
-def test_dynamic_library_sync_contract_rejects_media_id_only_identity_and_proper_noun_gap() -> None:
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "media_id only",
+        "uuid",
+        "relative_path only",
+        "source_root_id only",
+    ],
+)
+def test_dynamic_library_sync_contract_rejects_missing_source_identity_components(identity: str) -> None:
     summary = _dynamic_sync_summary(
         dynamic_sync={
             "schema": {
@@ -213,13 +224,20 @@ def test_dynamic_library_sync_contract_rejects_media_id_only_identity_and_proper
                     "blombooru_dynamic_sync_run_items",
                 ]
             },
-            "identity": {"source_item_identity": "media_id only"},
+            "identity": {"source_item_identity": identity},
             "default_off_policy": {"auto_sync_enabled": False, "manual_sync_enabled": False},
             "threshold": {"default": 100},
             "pending_counts": {"visible": True},
             "dry_run_no_import": True,
             "source_root_safety": {"passed": True},
         },
+    )
+    result = check_phase_contract("dynamic_library_sync_contract_v1", summary)
+    assert "dynamic_sync_missing_source_identity_components" in _error_codes(result)
+
+
+def test_dynamic_library_sync_contract_rejects_proper_noun_gap() -> None:
+    summary = _dynamic_sync_summary(
         proper_noun_safeguards={
             "preserved": True,
             "worker_excludes_proper_nouns": False,
@@ -228,7 +246,6 @@ def test_dynamic_library_sync_contract_rejects_media_id_only_identity_and_proper
     )
     result = check_phase_contract("dynamic_library_sync_contract_v1", summary)
     codes = _error_codes(result)
-    assert "dynamic_sync_media_id_only_identity" in codes
     assert "dynamic_sync_required_proof_failed" in codes
 
 

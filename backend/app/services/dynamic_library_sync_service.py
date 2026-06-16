@@ -161,25 +161,44 @@ def serialize_source_root(root: DynamicSourceRoot) -> Dict[str, Any]:
     }
 
 
-def _iter_source_files(root_path: Path, *, max_files: Optional[int]) -> Iterable[Path]:
-    seen = 0
+def _iter_source_files(root_path: Path) -> Iterable[Path]:
     for dirpath, dirnames, filenames in os.walk(root_path):
         dirnames[:] = [d for d in dirnames if d not in {".git", "__pycache__", "venv"}]
         for filename in sorted(filenames):
             yield Path(dirpath) / filename
-            seen += 1
-            if max_files is not None and seen >= max_files:
-                return
 
 
-def _metadata_for_path(path: Path) -> Dict[str, Any]:
-    stat = path.stat()
+def _metadata_for_path(path: Path, *, follow_symlinks: bool = True) -> Dict[str, Any]:
+    stat = path.stat() if follow_symlinks else path.lstat()
     return {
         "file_size": stat.st_size,
         "mtime": stat.st_mtime,
         "mtime_ns": getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000)),
         "suffix": path.suffix.lower(),
     }
+
+
+def _relative_identity_and_preflight_reason(root_path: Path, file_path: Path) -> tuple[str, Optional[str]]:
+    try:
+        rel = _normalize_relative_path(file_path.relative_to(root_path))
+    except ValueError:
+        rel = file_path.name
+        return rel, "path_escape"
+
+    if file_path.is_symlink():
+        return rel, "symlink"
+
+    try:
+        root_resolved = root_path.resolve()
+        file_resolved = file_path.resolve()
+        file_resolved.relative_to(root_resolved)
+    except ValueError:
+        return rel, "path_escape"
+    except OSError as exc:
+        return rel, f"stat_error: {exc}"
+    except RuntimeError:
+        return rel, "path_escape"
+    return rel, None
 
 
 def _apply_item_state(
@@ -242,11 +261,12 @@ def _record_file_observation(
     *,
     root: DynamicSourceRoot,
     run: DynamicSyncRun,
+    root_path: Path,
     file_path: Path,
     now: datetime,
     hydrated_only: bool,
 ) -> str:
-    rel = _normalize_relative_path(file_path.resolve().relative_to(Path(root.root_path).resolve()))
+    rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, file_path)
     rel_hash = _hash_text(rel.lower())
     item = (
         db.query(DynamicSourceItem)
@@ -278,17 +298,28 @@ def _record_file_observation(
         }
 
     try:
-        reason = _is_scannable_file(file_path, hydrated_only=hydrated_only)
-        metadata = _metadata_for_path(file_path)
+        reason = preflight_reason or _is_scannable_file(file_path, hydrated_only=hydrated_only)
+        metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
     except OSError as exc:
         metadata = {}
         reason = f"stat_error: {exc}"
 
     eligible = reason is None
+    requeue_from_deferred = (
+        not is_new
+        and eligible
+        and (
+            item.import_status == "deferred"
+            or item.source_status in {"deferred", "failed", "missing"}
+            or item.sync_state in {"deferred", "failed", "missing"}
+        )
+    )
     if not eligible:
         state = "failed" if str(reason).startswith("stat_error") else "deferred"
     elif is_new:
         state = "new"
+    elif requeue_from_deferred:
+        state = "changed" if item.media_id else "new"
     elif item.file_size != metadata.get("file_size") or item.mtime_ns != metadata.get("mtime_ns"):
         state = "changed"
     elif item.import_status == "pending" and item.sync_state in {"new", "changed"}:
@@ -402,11 +433,20 @@ def run_update_check(
         for root in roots:
             root_path = validate_source_root_path(root.root_path)
             root_counts = {key: 0 for key in counts}
-            for file_path in _iter_source_files(root_path, max_files=max_files):
+            partial_scan = False
+            missing_reconciliation_skipped = False
+            missing_reconciliation_reason = None
+            for file_path in _iter_source_files(root_path):
+                if max_files is not None and root_counts["total_seen"] >= max_files:
+                    partial_scan = True
+                    missing_reconciliation_skipped = True
+                    missing_reconciliation_reason = "max_files_cap"
+                    break
                 state = _record_file_observation(
                     db,
                     root=root,
                     run=run,
+                    root_path=root_path,
                     file_path=file_path,
                     now=now,
                     hydrated_only=hydrated_only,
@@ -418,7 +458,9 @@ def run_update_check(
                     counts[key] += 1
                     root_counts[key] += 1
 
-            missing = _mark_missing_items(db, root=root, run=run, now=now)
+            missing = 0
+            if not missing_reconciliation_skipped:
+                missing = _mark_missing_items(db, root=root, run=run, now=now)
             counts["missing_items"] += missing
             root_counts["missing_items"] += missing
             root.last_checked_at = now
@@ -426,6 +468,9 @@ def run_update_check(
                 "root_id": root.id,
                 "label": root.label,
                 "path_hash": root.root_path_hash,
+                "partial_scan": partial_scan,
+                "missing_reconciliation_skipped": missing_reconciliation_skipped,
+                "missing_reconciliation_reason": missing_reconciliation_reason,
                 "counts": root_counts,
             })
 
@@ -444,6 +489,7 @@ def run_update_check(
         run.finished_at = _utcnow()
         run.summary_json = {
             "root_summaries": root_summaries,
+            "partial_scan": any(root_summary["partial_scan"] for root_summary in root_summaries),
             "pending_summary": pending,
             "s1_no_import_performed": True,
         }
@@ -649,6 +695,8 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
         warnings.append("manual_pending_sync_execution_disabled_by_default")
     if not ai_localization["tag_localization"]["gap_summary"]["worker_excludes_proper_nouns"]:
         blockers.append("background_translation_categories_include_proper_nouns")
+    if ai_localization["tag_localization"]["gap_summary"]["unreviewed_proper_noun_llm_aliases"] > 0:
+        blockers.append("unreviewed_proper_noun_llm_aliases_present")
 
     return {
         "production_settings": {

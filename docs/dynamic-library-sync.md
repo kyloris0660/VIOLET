@@ -33,6 +33,13 @@ S1 update checks do not import media, copy files, compute content hashes by
 default, run classification, run AI tagging, call providers, call LLMs, mutate
 SourceConcept, mutate Entity tables, or touch source files.
 
+When an update check is capped with `max_files`, the run is explicitly partial.
+Partial root scans record `partial_scan=true`,
+`missing_reconciliation_skipped=true`, and
+`missing_reconciliation_reason=max_files_cap` in the root summary. Partial
+checks do not mark unseen tracked items as missing; only complete root scans may
+perform missing reconciliation.
+
 ## Pending count calculation
 
 Pending state is DB-backed and does not depend on `.local_manifests`.
@@ -125,12 +132,23 @@ last sync run, status, and deferred/failure reason fields. This enables:
 - rechecking unchanged pending files without duplicate source item rows;
 - detecting changed files before import;
 - marking previously seen files as missing when they disappear;
-- retrying deferred items after cloud hydration or operator action;
+- retrying deferred, failed, or missing items after cloud hydration or operator
+  action, even when size and mtime did not change;
 - backfilling classification, AI tagging, and localization status after S2/S3
   runs.
 
 Per-item failures are visible and do not automatically block all future checks.
 Large or automated imports should still use failure budgets and GOV3 contracts.
+
+Symlinks and resolved path escapes are item-level deferred states for S1
+metadata checks. They record safe reasons such as `symlink` or `path_escape`,
+remain ineligible for import, and do not crash the whole update check or corrupt
+missing reconciliation for unrelated items.
+
+Long-running update checks currently execute through the admin API path. Before
+large-root production checks or S3 automation, this should move to an
+offloaded/background job model so the FastAPI event loop is not occupied by
+large filesystem walks.
 
 ## S2 and S3 expectations
 
@@ -138,6 +156,10 @@ S2 should run only after explicit approval and after S1 readiness is reviewed.
 It should execute the approved baseline full import, classification, AI tagging,
 and tag localization chain with production DB/storage identity, backup proof,
 dry-run proof, public redaction checks, and relevant GOV3 contracts.
+
+S2 readiness is blocked when unreviewed LLM-generated proper-noun aliases are
+present. Those aliases require manual/static trusted handling or reviewed Entity
+Alias Resolver output before they can influence Chinese search behavior.
 
 S3 should add daily/incremental automation and hardening only after S2 baseline
 state is validated. Any automatic production write must be opt-in, visibly

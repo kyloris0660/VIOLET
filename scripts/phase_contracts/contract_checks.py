@@ -1074,11 +1074,18 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
         )
 
     identity = str(_get(summary, "dynamic_sync.identity.source_item_identity", "")).casefold()
-    if "media_id" in identity and ("source_root" not in identity or "relative_path_hash" not in identity):
+    missing_identity_components = [
+        component
+        for component in ("source_root_id", "relative_path_hash")
+        if component not in identity
+    ]
+    if missing_identity_components:
         result.fail(
-            "dynamic_sync_media_id_only_identity",
-            "Incremental sync identity must not rely on media_id alone.",
+            "dynamic_sync_missing_source_identity_components",
+            "Incremental sync identity must explicitly declare source_root_id and relative_path_hash.",
             path="dynamic_sync.identity.source_item_identity",
+            expected="source_root_id + relative_path_hash",
+            actual=_get(summary, "dynamic_sync.identity.source_item_identity", None),
         )
 
     if _as_bool(_get(summary, "dynamic_sync.default_off_policy.auto_sync_enabled", False)):

@@ -17,7 +17,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import Base, migrate_add_dynamic_library_sync_tables  # noqa: E402
 from app.enums import TagCategoryEnum  # noqa: E402
-from app.models import DynamicSourceItem, DynamicSyncRun, Media, Tag  # noqa: E402
+from app.models import DynamicSourceItem, DynamicSyncRun, Media, Tag, TagTranslation  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as service  # noqa: E402
 
@@ -128,6 +128,98 @@ def test_update_check_detects_changed_and_missing_items(db, tmp_path):
     assert summary["pending_deferred"] >= 3
 
 
+def test_capped_update_check_skips_missing_reconciliation(db, tmp_path):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    for name in ["a.jpg", "b.jpg", "c.jpg"]:
+        (source_root / name).write_bytes(name.encode("utf-8"))
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    service.run_update_check(db, root_ids=[root.id])
+
+    capped = service.run_update_check(db, root_ids=[root.id], max_files=1)
+    root_summary = capped["summary"]["root_summaries"][0]
+
+    assert capped["missing_items"] == 0
+    assert root_summary["partial_scan"] is True
+    assert root_summary["missing_reconciliation_skipped"] is True
+    assert root_summary["missing_reconciliation_reason"] == "max_files_cap"
+    assert root_summary["counts"]["total_seen"] == 1
+    assert capped["pending_summary"]["pending_new"] == 3
+    assert capped["pending_summary"]["pending_deferred"] == 0
+
+    items = db.query(DynamicSourceItem).all()
+    assert len(items) == 3
+    assert {item.source_status for item in items} == {"available"}
+    assert {item.import_status for item in items} == {"pending"}
+    assert "missing" not in {item.sync_state for item in items}
+
+
+def test_deferred_item_requeues_when_it_becomes_eligible_with_same_metadata(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "retry.jpg").write_bytes(b"same bytes")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    calls = {"count": 0}
+
+    def fake_scannable(_file_path, *, hydrated_only=True):
+        calls["count"] += 1
+        return "cloud_placeholder" if calls["count"] == 1 else None
+
+    monkeypatch.setattr(service, "_is_scannable_file", fake_scannable)
+
+    first = service.run_update_check(db, root_ids=[root.id])
+    assert first["deferred_items"] == 1
+    item = db.query(DynamicSourceItem).one()
+    assert item.import_status == "deferred"
+    first_size = item.file_size
+    first_mtime_ns = item.mtime_ns
+
+    second = service.run_update_check(db, root_ids=[root.id])
+    db.refresh(item)
+
+    assert second["new_items"] == 1
+    assert item.file_size == first_size
+    assert item.mtime_ns == first_mtime_ns
+    assert item.source_status == "available"
+    assert item.import_status == "pending"
+    assert item.classification_status == "waiting_import"
+    assert item.ai_tagging_status == "waiting_import"
+    assert item.localization_status == "waiting_ai_tags"
+    assert item.deferred_reason is None
+    assert second["pending_summary"]["pending_new"] == 1
+    assert second["pending_summary"]["pending_deferred"] == 0
+
+
+def test_path_escape_is_item_level_deferred_without_missing_corruption(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "normal.jpg").write_bytes(b"normal")
+    (source_root / "escape.jpg").write_bytes(b"escape")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    original_identity = service._relative_identity_and_preflight_reason
+
+    def fake_identity(root_path, file_path):
+        if file_path.name == "escape.jpg":
+            return "escape.jpg", "path_escape"
+        return original_identity(root_path, file_path)
+
+    monkeypatch.setattr(service, "_relative_identity_and_preflight_reason", fake_identity)
+
+    result = service.run_update_check(db, root_ids=[root.id])
+    items = {item.relative_path: item for item in db.query(DynamicSourceItem).all()}
+
+    assert result["failed_items"] == 0
+    assert result["missing_items"] == 0
+    assert result["new_items"] == 1
+    assert result["deferred_items"] == 1
+    assert items["normal.jpg"].import_status == "pending"
+    assert items["escape.jpg"].import_status == "deferred"
+    assert items["escape.jpg"].deferred_reason == "path_escape"
+    assert items["escape.jpg"].source_status == "deferred"
+
+
 def test_threshold_default_100_and_override(db, tmp_path, monkeypatch):
     monkeypatch.setenv("DYNAMIC_LIBRARY_SYNC_THRESHOLD", "100")
     source_root = tmp_path / "source"
@@ -181,6 +273,34 @@ def test_readiness_reports_ai_to_localization_chain_without_running_llm(db, tmp_
     assert readiness["ai_localization_readiness"]["tag_localization"]["gap_summary"]["worker_excludes_proper_nouns"] is True
     assert readiness["production_settings"]["auto_sync_enabled"] is False
     assert readiness["production_settings"]["manual_sync_enabled"] is False
+
+
+def test_readiness_blocks_unreviewed_proper_noun_llm_aliases(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_CATEGORIES", "general,meta")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+    db.add(
+        TagTranslation(
+            canonical_name="phase47_unreviewed_character_alias",
+            language="zh-CN",
+            display_name="未审核角色",
+            category="character",
+            source="llm",
+            status="translated",
+            needs_review=True,
+        )
+    )
+    db.commit()
+
+    readiness = service.get_production_readiness(db)
+
+    assert "unreviewed_proper_noun_llm_aliases_present" in readiness["blockers_before_s2"]
+    assert readiness["s2_ready"] is False
 
 
 def test_admin_api_register_check_pending_and_fail_closed_sync(client, tmp_path, monkeypatch):

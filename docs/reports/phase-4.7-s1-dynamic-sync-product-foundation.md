@@ -17,6 +17,8 @@ Implemented:
   status.
 - Manual check-for-updates and dry-run update check.
 - Pending new/changed/deferred counts and threshold status.
+- Explicit partial scan state for capped checks, with missing reconciliation
+  skipped on capped roots.
 - Default threshold policy: `100`.
 - Default-off policy for unattended production writes and S1 manual sync
   execution.
@@ -110,6 +112,10 @@ mtime, mtime_ns, optional content hash, first/last seen, last checked, imported
 media id, import/classification/AI/localization status, deferred/failure reason,
 and the last sync run id.
 
+The executable contract now fails unless public S1 summaries declare both
+`source_root_id` and `relative_path_hash` as the source item identity
+components.
+
 ## 7. Manual update flow
 
 The S1 flow is metadata-only:
@@ -120,11 +126,22 @@ The S1 flow is metadata-only:
 4. Walk hydrated scannable files only.
 5. Upsert source item state.
 6. Record per-run item observations with `action='record_only'`.
-7. Mark disappeared historical items as missing.
+7. For complete root scans only, mark disappeared historical items as missing.
 8. Update pending counts and threshold warning.
 
 No media import, copy, classification, AI tagging, LLM translation, provider
 call, SourceConcept mutation, Entity mutation, or source/iCloud mutation occurs.
+
+Capped update checks are partial scans. When `max_files` stops a root scan, the
+root summary records `partial_scan=true`,
+`missing_reconciliation_skipped=true`, and
+`missing_reconciliation_reason=max_files_cap`. Unseen tracked items beyond the
+cap are not marked `missing` or `deferred`.
+
+Deferred, failed, or missing items that become eligible again are requeued for
+pending import even if file size and mtime did not change. Symlinks and resolved
+path escapes are recorded as item-level deferred states with safe reasons such
+as `symlink` or `path_escape`.
 
 ## 8. Threshold policy
 
@@ -221,10 +238,9 @@ Passed:
 - `git diff --cached --check`
 - `scripts/check_python_env.py --expected-python <repo-venv-python>`
 - `python -m py_compile <changed_python_files>`
-- `pytest tests/test_dynamic_library_sync.py -v` -> 8 passed
-- `pytest tests/test_phase_contracts.py -v` -> 71 passed
+- `pytest tests/test_dynamic_library_sync.py tests/test_phase_contracts.py -v` -> 87 passed
 - `pytest tests/test_phase46_fulllib_e1a_runner_dryrun.py tests/test_phase45_doc1_documentation_state.py -v` -> 39 passed
-- `pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v` -> 122 passed
+- `pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v` -> 130 passed
 - `npx playwright test tests/e2e/admin-content.spec.ts --project=edge` -> 6 passed
 
 Real browser validation:
@@ -237,6 +253,9 @@ Real browser validation:
   button, AI/localization readiness, proper-noun safeguard text.
 - Browser console errors: `0`.
 - Test server was stopped after validation.
+- Reviewer fix note: no UI files changed after the original browser validation,
+  so targeted browser validation was not rerun for the current-head backend and
+  contract fixes.
 
 ## 15. Remaining blockers before S2
 
@@ -246,6 +265,10 @@ Real browser validation:
 - Baseline import dry-run and safety contract proof.
 - Localization provider/worker settings reviewed before any LLM batch.
 - Proper-noun alias route remains manual/static/reviewed only.
+- Update checks should move off the FastAPI event loop before large-root or
+  automated S3 use.
+- Broader proper-noun search alias hardening remains deferred unless a small
+  S2/S3 change explicitly scopes it.
 
 ## 16. Safety confirmation
 

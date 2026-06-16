@@ -30,6 +30,8 @@
     },
     "identity": {
       "source_item_identity": "source_root_id + relative_path_hash; media_id is only a post-import link",
+      "contract_requires_source_root_id": true,
+      "contract_requires_relative_path_hash": true,
       "media_id_only_identity": false,
       "content_hash_supported_when_computed": true
     },
@@ -71,6 +73,11 @@
       "source_roots_list_register": true,
       "check_for_updates": true,
       "run_dry_run": true,
+      "partial_scan_state_explicit": true,
+      "capped_scans_skip_missing_reconciliation": true,
+      "missing_reconciliation_skip_reason": "max_files_cap",
+      "deferred_failed_missing_requeue_supported": true,
+      "symlink_path_escape_item_deferred": true,
       "sync_pending_prepared": true,
       "sync_pending_executes_import": false
     }
@@ -116,6 +123,7 @@
       "static",
       "reviewed_entity_alias_resolver"
     ],
+    "readiness_blocks_unreviewed_proper_noun_llm_aliases": true,
     "confirmed_assignment_creation": false
   },
   "production_readiness_for_s2": {
@@ -131,7 +139,13 @@
       "take production DB/storage identity and backup proof before execution",
       "explicitly approve baseline import and manual pending sync execution",
       "enable and verify LLM/background translation settings for S2 if translation execution is required",
+      "clear or review unreviewed proper-noun LLM aliases before S2 localization/search readiness",
       "run S2 dry-run and public redaction checks before production writes"
+    ],
+    "deferred_to_s2_s3": [
+      "move large update checks off the FastAPI event loop",
+      "background/offloaded job model for long checks and automation",
+      "broader proper-noun search alias hardening beyond the S1 blocker"
     ]
   },
   "validation": {
@@ -163,14 +177,9 @@
         "result": "passed"
       },
       {
-        "command": "pytest tests/test_dynamic_library_sync.py -v",
+        "command": "pytest tests/test_dynamic_library_sync.py tests/test_phase_contracts.py -v",
         "result": "passed",
-        "tests": "8 passed"
-      },
-      {
-        "command": "pytest tests/test_phase_contracts.py -v",
-        "result": "passed",
-        "tests": "71 passed"
+        "tests": "87 passed"
       },
       {
         "command": "pytest tests/test_phase46_fulllib_e1a_runner_dryrun.py tests/test_phase45_doc1_documentation_state.py -v",
@@ -180,7 +189,7 @@
       {
         "command": "pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v",
         "result": "passed",
-        "tests": "122 passed"
+        "tests": "130 passed"
       },
       {
         "command": "npx playwright test tests/e2e/admin-content.spec.ts --project=edge",
@@ -204,7 +213,9 @@
         "proper-noun safeguard text visible"
       ],
       "console_errors": 0,
-      "test_server_stopped": true
+      "test_server_stopped": true,
+      "reviewer_fix_ui_changed": false,
+      "reviewer_fix_browser_rerun_required": false
     }
   },
   "safety": {
