@@ -1,348 +1,65 @@
 {
-  "ai_tag_coverage": {
-    "after": "not_run",
-    "before": "not_run"
-  },
-  "ai_tag_fingerprint_reuse_plan": {
-    "compatibility_key": "Media.hash md5",
-    "primary_key": "content_sha256",
-    "private_export_required_before_reuse": true,
-    "reuse_requires_model_threshold_match": true
-  },
-  "ai_tagging_plan": {
-    "local_wd_tagger_only": true,
-    "localization_side_effects_disabled_for_e1b": [
-      "AI_TAGGING_AUTO_LOCALIZATION=false",
-      "TAG_TRANSLATION_BACKGROUND_ENABLED=false",
-      "TAG_TRANSLATION_AUTO_ENABLED=false",
-      "TAG_TRANSLATION_LLM_ENABLED=false"
-    ],
-    "network_model_download_forbidden": true,
-    "run_in_e1a": false
-  },
-  "artifact_lifecycle": {
-    "artifacts": [
-      {
-        "classification": "phase-scoped operational runner",
-        "committed": true,
-        "path": "scripts/run_phase46_fulllib_e1_production_import_ai_tagging.py"
-      },
-      {
-        "classification": "one-off local/private",
-        "committed": false,
-        "path": "private ledgers under ignored output directory"
-      },
-      {
-        "classification": "public report/handoff",
-        "committed": true,
-        "path": "docs/reports/phase-4.6-fulllib-e1a-runner-dryrun.md",
-        "redacted": true
-      },
-      {
-        "classification": "public report/handoff",
-        "committed": true,
-        "path": "docs/reports/phase-4.6-fulllib-e1a-runner-dryrun-summary.json",
-        "redacted": true
-      }
-    ]
-  },
   "batch_plan": {
     "batch_size": 2,
     "dry_run_only": true,
-    "execute_confirmation_required": "EXECUTE_PHASE46_FULLLIB_E1_PRODUCTION_IMPORT_AI_TAGGING",
-    "planned_batch_count": 1,
-    "planned_unique_candidate_count": 2
+    "planned_batch_count": 1
   },
-  "branch": "codex/phase46-fulllib-e1a-runner-dryrun",
-  "browser_validation_e1b": {
-    "required_checks": [
-      "imported media appears in gallery",
-      "thumbnails load",
-      "media detail page opens",
-      "AI tags display",
-      "tag search returns imported media",
-      "localized tag display works where translations exist",
-      "no broken images",
-      "no private local source paths exposed in UI",
-      "server identity is correct"
-    ],
-    "required_for_e1b_completion": true,
-    "run_in_e1a": false
-  },
-  "classification_jobs_by_status": {},
-  "classification_plan": {
-    "eligible_for_ai_tagging": [
-      "anime",
-      "unknown"
-    ],
-    "future_scope": "newly imported media only unless separately approved",
-    "run_in_e1a": false,
-    "source_storage_mutation_forbidden": true
-  },
-  "content_class_distribution": {
-    "after": {},
-    "before": {}
-  },
-  "contract_mapping": {
-    "contracts": [
-      "python_env_contract_v1",
-      "postgres_db_contract_v1",
-      "media_import_contract_v1",
-      "classification_contract_v1",
-      "ai_tagging_contract_v1",
-      "mutation_safety_contract_v1",
-      "artifact_lifecycle_contract_v1",
-      "public_redaction_contract_v1"
-    ],
-    "e1a_completion_claims": {
-      "ai_tagging_target_met": false,
-      "classification_target_met": false,
-      "import_target_met": false,
-      "safe_to_merge": false
-    }
-  },
+  "contracts_mapped_for_e1b": [
+    "python_env_contract_v1",
+    "postgres_db_contract_v1",
+    "media_import_contract_v1",
+    "classification_contract_v1",
+    "ai_tagging_contract_v1",
+    "mutation_safety_contract_v1",
+    "artifact_lifecycle_contract_v1",
+    "public_redaction_contract_v1"
+  ],
   "current_head_reviewer_fix": {
+    "actual_public_json_artifact_contract_scanned": true,
     "actual_public_json_artifact_redaction_scanned": true,
     "app_settings_path_uses_env_or_dotenv_storage_root": true,
     "db_identity_does_not_overclaim_app_equivalence": true,
     "db_url_construction_uses_sqlalchemy_url_create_for_fields": true,
+    "inventory_only_rows_not_import_ready": true,
     "metadata_access_failures_ledgered": true,
+    "posix_venv_symlink_hardening": "fixed_lexical_path_compare",
+    "public_json_limited_to_scanned_projection": true,
     "python_preflight_failure_aborts_before_artifacts": true,
     "python_preflight_repo_compatible": true,
+    "raw_production_storage_root_must_be_absolute": true,
     "report_provenance_truthful_for_uncommitted_generation": true,
     "source_traversal_errors_fail_closed": true,
     "streamed_traversal_honors_max_files": true,
+    "supported_media_extension_redaction_covered": true,
     "violet_env_production_required": true
   },
-  "db_identity": {
-    "database": "violet_library_prod",
-    "db_connection_attempted": false,
-    "db_resolution": {
-      "app_compatible": true,
-      "app_equivalence_proven": true,
-      "app_equivalence_status": "proven_match",
-      "app_settings_resolution": {
-        "field_sources": {
-          "database": "settings_json",
-          "host": "settings_json",
-          "password": "settings_json_present",
-          "port": "settings_json",
-          "username": "settings_json"
-        },
-        "identity": {
-          "database": "violet_library_prod",
-          "host": "localhost",
-          "password_present": true,
-          "password_value_recorded": false,
-          "port": 5432,
-          "username_present": true
-        },
-        "password_value_recorded": false,
-        "settings_json_detected": true,
-        "settings_path_recorded": false,
-        "status": "resolved_without_connection",
-        "storage_root_source": "process_env"
-      },
-      "field_sources": {
-        "database": "cli",
-        "host": "cli",
-        "password": "cli_present",
-        "port": "cli",
-        "username": "cli"
-      },
-      "full_url_recorded": false,
-      "password_present": true,
-      "password_value_recorded": false,
-      "runner_matches_app_equivalent": true,
-      "urls_match": true
-    },
-    "db_write_attempted": false,
-    "host": "localhost",
-    "identity_source": "cli_production_db_url",
-    "password_present": true,
-    "password_value_recorded": false,
-    "port": 5432,
-    "production_env_required_for_e1b_execute": true,
-    "recorded_at": "2026-06-16T08:02:36Z",
-    "username_recorded": true,
-    "violet_env": "production",
-    "violet_env_source": "process_env"
+  "final_current_head_redaction_artifact_fix": {
+    "actual_public_json_artifact_contract_scanned": true,
+    "inventory_only_rows_import_ready": false,
+    "media_extension_redaction_covers_supported_types": true,
+    "posix_venv_symlink_hardening": "fixed_lexical_path_compare",
+    "public_json_limited_to_scanned_projection": true,
+    "raw_production_storage_root_must_be_absolute": true
   },
-  "duplicate_deferred_unsupported_summary": {
-    "deferred_count": 1,
-    "duplicate_count": 1,
-    "existing_production_db_duplicates_checked": false,
-    "hash_failures": 0,
-    "hash_reads_attempted": 3,
-    "reason_counts": {
-      "duplicate_by_content_sha256": 1,
-      "unsupported_extension": 1,
-      "zero_byte": 1
-    },
-    "unique_import_candidates": 2,
-    "unsupported_count": 1,
-    "unsupported_or_deferred_ledger_rows": 2
-  },
-  "eligible_denominator": 0,
-  "eligible_media_denominator": 0,
-  "future_execution_plan": {
-    "db_write_executed": false,
-    "execute_confirmation_required": "EXECUTE_PHASE46_FULLLIB_E1_PRODUCTION_IMPORT_AI_TAGGING",
-    "full_import_executed": false,
-    "remaining_blockers_before_e1b_execute": [
-      "approved_real_production_source_input_set",
-      "approved_production_storage_root",
-      "non_mutating_production_db_connection_proof",
-      "backup_recovery_proof",
-      "offline_model_preflight",
-      "fresh_e1b_dry_run_ledgers",
-      "contract_checks",
-      "explicit_execute_approval"
-    ],
-    "requires_backup_recovery_before_execute": true,
-    "requires_fresh_e1b_dry_run": true
-  },
-  "generated_at": "2026-06-16T08:02:37Z",
-  "import_ledger": {
-    "present": false,
-    "reason": "E1a writes inventory and batch ledgers only; import-item ledger starts in E1b execute."
-  },
-  "inventory_results": {
-    "deferred_count": 1,
+  "inventory": {
+    "deferred": 1,
+    "duplicates": 1,
     "eligible_before_duplicate_check": 3,
-    "extension_counts": {
-      ".gif": 1,
-      ".jpg": 2,
-      ".png": 1,
-      ".txt": 1
-    },
-    "inventory_only": false,
-    "max_files": 5,
     "max_files_reached": true,
-    "reason_counts": {
-      "unsupported_extension": 1,
-      "zero_byte": 1
-    },
-    "source_label_counts": {
-      "input_1": 5
-    },
     "supported_candidates": 4,
     "total_files_seen": 5,
-    "unsupported_count": 1
-  },
-  "job_status_accounting": {},
-  "localization_handling": {
-    "db_localization_architecture_inspected": true,
-    "llm_translation_run": false,
-    "new_ai_tags_have_chinese_immediately": "only_if_existing_static_or_db_translation_exists",
-    "optional_later_phase": "FULLLIB-L1 localization backfill",
-    "post_ai_tagging_gap_report_required": true,
-    "static_json_inspected": true
-  },
-  "manual_truth_overwrite_proof": {
-    "ai_tagging_executed": false,
-    "passed": true
-  },
-  "media_counts": {
-    "after": "not_connected_in_e1a",
-    "before": "not_connected_in_e1a",
-    "db_write": false
+    "unique_import_candidates": 2,
+    "unsupported": 1
   },
   "mode": "dry_run",
-  "model_provenance": {
-    "network_download": false,
-    "status": "not_checked_in_e1a"
-  },
-  "mutation_proof": {
-    "ai_tagging_executed": false,
-    "app_storage_mutation": false,
-    "changed_tables": [],
-    "classification_executed": false,
-    "db_write_attempted": false,
-    "forbidden_changed_tables": [],
-    "passed": true,
-    "provider_llm_sourceconcept_entity_executed": false,
-    "source_icloud_mutation": false,
-    "unexpected_changed_tables": []
-  },
+  "parallel_feature_development_paused": true,
   "phase": "4.6-FULLLIB-E1a",
-  "private_artifacts": {
-    "artifact_names": [
-      "inventory-candidates.jsonl",
-      "duplicate-skipped.jsonl",
-      "unsupported-or-deferred.jsonl",
-      "batch-plan.jsonl",
-      "run-summary-private.json",
-      "public-redaction-check.json"
-    ],
-    "private_paths_committed": false,
-    "raw_paths_private_only": true
-  },
-  "production_storage_identity": {
-    "app_storage_mutation": false,
-    "configured": true,
-    "exists": true,
-    "icloud_or_cloud_hint": false,
-    "is_absolute": true,
-    "network_or_nas_path": false,
-    "originals_subdir_label": "production_storage/media/original",
-    "overlaps_source_inputs": false,
-    "overlaps_test_storage": false,
-    "path_redacted": true,
-    "source_overlap_labels": [],
-    "test_storage_overlap_labels": [],
-    "thumbnails_subdir_label": "production_storage/media/thumbnails",
-    "under_repo": false,
-    "write_attempted": false
-  },
-  "public_json_payload": {
-    "batch_plan": {
-      "batch_size": 2,
-      "dry_run_only": true,
-      "planned_batch_count": 1
-    },
-    "contracts_mapped_for_e1b": [
-      "python_env_contract_v1",
-      "postgres_db_contract_v1",
-      "media_import_contract_v1",
-      "classification_contract_v1",
-      "ai_tagging_contract_v1",
-      "mutation_safety_contract_v1",
-      "artifact_lifecycle_contract_v1",
-      "public_redaction_contract_v1"
-    ],
-    "inventory": {
-      "deferred": 1,
-      "duplicates": 1,
-      "eligible_before_duplicate_check": 3,
-      "supported_candidates": 4,
-      "total_files_seen": 5,
-      "unique_import_candidates": 2,
-      "unsupported": 1
-    },
-    "mode": "dry_run",
-    "parallel_feature_development_paused": true,
-    "phase": "4.6-FULLLIB-E1a",
-    "public_report_redacted": true,
-    "safety_public": {
-      "app_storage_mutation": false,
-      "db_write": false,
-      "paths_redacted": true,
-      "provider_or_llm": false,
-      "source_inputs_read_only": true,
-      "source_mutation": false,
-      "sourceconcept_or_entity": false
-    },
-    "status": "dry_run_completed",
-    "title": "Production Full-Library Runner and Dry-Run Proof"
-  },
-  "public_markdown_text": "# Phase 4.6-FULLLIB-E1a Production Runner Dry-Run Proof\n\n## 1. Summary\n\nE1a added and ran a dry-run-only production FULLLIB runner. The run inspected a bounded local input set, wrote private inventory ledgers, generated a future batch plan, and produced this privacy-safe public report. It did not execute import, classification, AI tagging, provider, LLM, SourceConcept, Entity, DB write, app-storage write, source write, server start, or browser validation.\n\n## 2. Current state\n\nPR #108 / GOV3 and PR #110 / FULLLIB-P0 are merged into `main`. This branch starts the implementation track for production utility work while keeping the SourceConcept/provider/entity track paused.\n\n## 3. Current-head reviewer fix\n\nThis current-head fix streams source traversal and stops at `--max-files`, keeps repo-compatible Python preflight layouts, prevents DB identity overclaiming against app settings resolution, ledgers metadata access failures as deferred rows, records truthful worktree report provenance, and uses SQLAlchemy field-based URL construction for DB passwords with reserved characters.\n\n## 4. Latest current-head reviewer fix\n\nThe latest current-head fix redaction-scans the actual public JSON artifact before writing it, requires explicit `VIOLET_ENV=production`, aborts on Python preflight failure before artifacts, resolves app settings through env-or-dotenv storage-root precedence, and fails closed on source traversal errors.\n\n## 5. Parallel feature development\n\nParallel feature development is intentionally paused during FULLLIB. R1R, A1R, R2, SourceConcept, provider, and Entity work remain out of scope unless explicitly resumed later.\n\n## 6. Runner design\n\nThe runner is a phase-scoped operational runner. In E1a it supports `--dry-run`, `--inventory-only`, `--output-dir`, `--write-public-report`, `--source-root`, `--production-db-url`, `--production-storage-root`, `--max-files`, and `--batch-size`. Execute mode is present only as a future guard and requires the exact confirmation phrase before it is rejected as not implemented in E1a.\n\n## 7. Source root safety\n\nInput locations are protected as read-only. The dry-run rejects missing inputs, repo overlap, production storage overlap, test storage overlap, output overlap, network/NAS paths, and unsafe output placement. Public artifacts redact all local paths and source names.\n\n## 8. Production DB/storage identity design\n\nE1a validates the intended production DB configuration without connecting or writing. The accepted production database name is `violet_library_prod`. App-equivalence status is `proven_match` and `urls_match=True`; E1a does not claim app equivalence unless settings/env/CLI resolution actually match. Production storage is validated as an explicit, non-overlapping app-managed storage root; E1a does not create directories or write files there.\n\n## 9. Inventory dry-run results\n\n- Files seen: 5\n- Supported candidates: 4\n- Eligible before duplicate check: 3\n- Unique future import candidates: 2\n- Max files reached: True\n\n## 10. Duplicate/deferred/unsupported summary\n\n- Duplicate items: 1\n- Unsupported items: 1\n- Deferred items: 1\n- Hash failures: 0\n\n## 11. Batch plan\n\n- Planned batches: 1\n- Batch size: 2\n- Planned unique candidates: 2\n- Dry-run only: true\n\n## 12. Future import execution plan\n\nE1b must run a fresh inventory dry-run against approved production inputs, verify production DB/storage identity, prove backups and recovery, then import only gate-allowed unique candidates in bounded batches after explicit execute approval.\n\n## 13. Future classification plan\n\nClassification remains a post-import E1b stage for newly imported media only. It must record job accounting and content-class distribution before/after without source or storage mutation beyond the approved import outputs.\n\n## 14. Future AI tagging plan\n\nAI tagging remains a post-classification E1b stage for eligible imported media only. It must use the local WD tagger, preserve manual/locked tags, disable localization side effects, and record model provenance and coverage.\n\n## 15. AI tag fingerprint reuse/export plan\n\nFuture reuse should key by `content_sha256`, compatible MD5, file size, media dimensions, model identity, tagger code identity, and thresholds. Compatible exports may replay tags through existing tag-service semantics; policy mismatches must defer or infer locally.\n\n## 16. Localization handling\n\nNo LLM translation ran. Existing display behavior is DB/static localization first and canonical tag fallback otherwise. Newly generated AI tags will display Chinese names immediately only when existing static or DB translations cover them. E1b should emit a post-AI-tagging localization gap report; an optional later `FULLLIB-L1` can backfill translations under a separate approval.\n\n## 17. Browser validation requirement for E1b\n\nE1b is not complete until controlled browser/gallery validation passes, even if UI code is unchanged. It must verify imported media in gallery, thumbnails load, detail page opens, AI tags display, tag search returns imported media, localized tag display works where translations exist, no broken images appear, no private local source paths are exposed, and server identity is correct.\n\n## 18. Contract mapping\n\nE1b mapping: `python_env_contract_v1`, `postgres_db_contract_v1`, `media_import_contract_v1`, `classification_contract_v1`, `ai_tagging_contract_v1`, `mutation_safety_contract_v1`, `artifact_lifecycle_contract_v1`, `public_redaction_contract_v1`. E1a does not claim import, classification, or AI tagging target completion.\n\n## 19. Safety proof\n\nThe dry-run wrote only private ledgers under the chosen output directory and public report artifacts under `docs/reports`. It did not write DB, source, iCloud, app-managed storage, provider caches, SourceConcept tables, Entity truth, localization tables, or `media_tags`.\n\n## 20. Validation commands and results\n\n- `python.exe scripts/run_phase46_fulllib_e1_production_import_ai_tagging.py --dry-run [paths redacted]`: passed\n- `no DB connection attempted by E1a runner`: passed\n- `no source/app-storage write attempted by E1a runner`: passed\n\n## 21. Remaining blockers before E1b execute\n\nE1b still needs:\n\n- `approved_real_production_source_input_set`\n- `approved_production_storage_root`\n- `non_mutating_production_db_connection_proof`\n- `backup_recovery_proof`\n- `offline_model_preflight`\n- `fresh_e1b_dry_run_ledgers`\n- `contract_checks`\n- `explicit_execute_approval`\n\n## 22. Recommended E1b prompt outline\n\nStart from latest `main`, stay on the production utility track, run no provider/LLM/SourceConcept/Entity stages, verify production DB/storage identity, run fresh inventory dry-run, prove backups and contracts, then stop before execute unless the prompt includes `EXECUTE_PHASE46_FULLLIB_E1_PRODUCTION_IMPORT_AI_TAGGING`. If execute is approved, import in bounded batches, classify, AI tag, run real browser/gallery validation, generate public/private artifacts, push PR, comment `@codex review`, and stop.\n",
   "public_redaction": {
+    "actual_public_json_artifact_contract_scanned": true,
     "actual_public_json_artifact_scanned": true,
     "checked_payloads": [
-      "public_json_payload",
-      "public_markdown_text",
-      "actual_public_json_artifact"
+      "actual_public_json_artifact",
+      "public_markdown_text"
     ],
     "contract_error_count": 0,
     "contract_passed": true,
@@ -350,190 +67,16 @@
     "passed": true,
     "pattern_finding_count": 0
   },
-  "python_env": {
-    "accepted_repo_venv_layouts": [
-      "venv/Scripts/python.exe",
-      "venv/bin/python",
-      ".venv/Scripts/python.exe",
-      ".venv/bin/python"
-    ],
-    "check_python_env_passed": true,
-    "executable_path_redacted": true,
-    "expected_python_checked": true,
-    "full_executable_path_private_only": true,
-    "public_executable_name": "python.exe",
-    "repo_local_venv_expected": true
-  },
-  "report_generation_git_state": {
-    "base_head_sha": "aa93b9e5135547a09c41c2e471d27264fc4cec99",
-    "dirty_tree_at_generation": true,
-    "final_pr_head_sha_claimed": false,
-    "generated_before_commit": true,
-    "generated_from_worktree": true,
-    "proof_reproducibility_note": "Public artifacts are generated from the working tree before the final fix commit; use the committed PR head plus this provenance object rather than treating base_head_sha as final.",
-    "status_paths_recorded": false,
-    "tracked_dirty_tree_at_generation": true,
-    "untracked_entries_present_at_generation": true
-  },
-  "run_id": "fulllib-e1a-latest-current-head-fix",
-  "safety_proof": {
-    "no_ai_tagging": true,
-    "no_classification": true,
-    "no_cleanup_delete_reset_drop_truncate": true,
-    "no_db_write": true,
-    "no_entity_truth": true,
-    "no_import": true,
-    "no_llm": true,
-    "no_merge": true,
-    "no_provider": true,
-    "no_push_main": true,
-    "no_source_icloud_storage_mutation": true,
-    "no_source_metadata_mutation": true,
-    "no_sourceconcept": true
-  },
-  "source_root_safety_proof": {
-    "blockers": [],
-    "input_count": 1,
-    "inputs": [
-      {
-        "exists": true,
-        "icloud_or_cloud_hint": false,
-        "is_dir": true,
-        "network_or_nas_path": false,
-        "overlaps_output_dir": false,
-        "overlaps_production_storage": false,
-        "overlaps_test_storage": false,
-        "path_redacted": true,
-        "read_only_policy": true,
-        "source_label": "input_1",
-        "test_storage_overlap_labels": [],
-        "under_repo": false,
-        "write_attempted": false
-      }
-    ],
-    "passed": true,
-    "source_mutation_detected": false,
-    "source_paths_redacted": true,
-    "source_roots_read_only": true
-  },
-  "staging_root_safety_proof": {
-    "passed": true,
-    "reason": "E1a does not stage or copy; E1b must provide staging/app-storage proof before execute.",
-    "staging_copy_executed": false,
-    "staging_root_configured": false
+  "public_report_redacted": true,
+  "safety_public": {
+    "app_storage_mutation": false,
+    "db_write": false,
+    "paths_redacted": true,
+    "provider_or_llm": false,
+    "source_inputs_read_only": true,
+    "source_mutation": false,
+    "sourceconcept_or_entity": false
   },
   "status": "dry_run_completed",
-  "title": "Production Full-Library Runner and Dry-Run Proof",
-  "validation": {
-    "browser_validation": "not_run_e1a_dry_run_only_no_execute_smoke",
-    "commands": {
-      "no DB connection attempted by E1a runner": "passed",
-      "no source/app-storage write attempted by E1a runner": "passed",
-      "python.exe scripts/run_phase46_fulllib_e1_production_import_ai_tagging.py --dry-run [paths redacted]": "passed"
-    },
-    "ledger_schema": [
-      {
-        "ledger": "inventory-candidates.jsonl",
-        "missing_rows": [],
-        "passed": true,
-        "required_fields": [
-          "candidate_id",
-          "candidate_state",
-          "deferred_reason",
-          "eligible_for_duplicate_check",
-          "eligible_for_future_db_import",
-          "extension",
-          "file_size_bytes",
-          "private_filename_sha256",
-          "private_source_ref",
-          "run_id",
-          "safe_label",
-          "source_gate",
-          "source_label",
-          "supported_extension"
-        ],
-        "row_count": 5
-      },
-      {
-        "ledger": "duplicate-skipped.jsonl",
-        "missing_rows": [],
-        "passed": true,
-        "required_fields": [
-          "candidate_id",
-          "duplicate_of_candidate_id",
-          "duplicate_reason",
-          "eligible_for_future_db_import",
-          "hash_algorithm",
-          "run_id",
-          "safe_label"
-        ],
-        "row_count": 1
-      },
-      {
-        "ledger": "unsupported-or-deferred.jsonl",
-        "missing_rows": [],
-        "passed": true,
-        "required_fields": [
-          "candidate_id",
-          "eligible_for_future_db_import",
-          "reason",
-          "reason_category",
-          "run_id",
-          "safe_label"
-        ],
-        "row_count": 2
-      },
-      {
-        "ledger": "batch-plan.jsonl",
-        "missing_rows": [],
-        "passed": true,
-        "required_fields": [
-          "batch_id",
-          "batch_index",
-          "candidate_count",
-          "candidate_ids",
-          "dry_run_only",
-          "planned_stages",
-          "requires_e1b_execute_approval",
-          "run_id"
-        ],
-        "row_count": 1
-      }
-    ],
-    "summary_schema": {
-      "missing_fields": [],
-      "passed": true,
-      "required_fields": [
-        "ai_tag_fingerprint_reuse_plan",
-        "ai_tagging_plan",
-        "artifact_lifecycle",
-        "batch_plan",
-        "branch",
-        "browser_validation_e1b",
-        "classification_plan",
-        "contract_mapping",
-        "current_head_reviewer_fix",
-        "db_identity",
-        "duplicate_deferred_unsupported_summary",
-        "future_execution_plan",
-        "generated_at",
-        "inventory_results",
-        "localization_handling",
-        "mode",
-        "phase",
-        "production_storage_identity",
-        "public_json_payload",
-        "public_markdown_text",
-        "public_redaction",
-        "python_env",
-        "report_generation_git_state",
-        "safety_proof",
-        "source_root_safety_proof",
-        "staging_root_safety_proof",
-        "status",
-        "title",
-        "validation"
-      ]
-    }
-  }
+  "title": "Production Full-Library Runner and Dry-Run Proof"
 }

@@ -74,16 +74,20 @@ def test_dry_run_writes_private_ledgers_and_public_report(tmp_path, monkeypatch)
         assert (output_dir / name).exists()
 
     public_summary = json.loads((tmp_path / "public-summary.json").read_text(encoding="utf-8"))
+    private_summary = json.loads((output_dir / "run-summary-private.json").read_text(encoding="utf-8"))
     assert public_summary["status"] == "dry_run_completed"
-    assert public_summary["db_identity"]["password_value_recorded"] is False
-    assert public_summary["db_identity"]["db_resolution"]["password_value_recorded"] is False
+    assert "db_identity" not in public_summary
+    assert private_summary["db_identity"]["password_value_recorded"] is False
+    assert private_summary["db_identity"]["db_resolution"]["password_value_recorded"] is False
     assert public_summary["public_redaction"]["passed"] is True
+    assert public_summary["public_redaction"]["actual_public_json_artifact_contract_scanned"] is True
     assert "head_sha" not in public_summary
-    assert public_summary["report_generation_git_state"]["generated_from_worktree"] is True
-    assert public_summary["report_generation_git_state"]["generated_before_commit"] is True
-    assert public_summary["duplicate_deferred_unsupported_summary"]["duplicate_count"] == 1
-    assert public_summary["duplicate_deferred_unsupported_summary"]["unsupported_count"] == 1
-    assert public_summary["duplicate_deferred_unsupported_summary"]["deferred_count"] == 1
+    assert "report_generation_git_state" not in public_summary
+    assert private_summary["report_generation_git_state"]["generated_from_worktree"] is True
+    assert private_summary["report_generation_git_state"]["generated_before_commit"] is True
+    assert public_summary["inventory"]["duplicates"] == 1
+    assert public_summary["inventory"]["unsupported"] == 1
+    assert public_summary["inventory"]["deferred"] == 1
     assert "first.jpg" not in (tmp_path / "public-report.md").read_text(encoding="utf-8")
     assert str(source_root) not in (tmp_path / "public-summary.json").read_text(encoding="utf-8")
 
@@ -107,6 +111,32 @@ def test_output_dir_inside_source_root_is_rejected(tmp_path, monkeypatch):
 
     code = e1a.main(make_args(tmp_path, source_root, storage_root, output_dir=source_root / "out"))
     assert code == 2
+
+
+def test_relative_production_storage_root_is_rejected_before_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    args = make_args(tmp_path, source_root, tmp_path / "storage")
+    storage_flag_index = args.index("--production-storage-root") + 1
+    args[storage_flag_index] = "prod-storage"
+
+    code = e1a.main(args)
+
+    assert code == 2
+    assert not (tmp_path / "out").exists()
+
+
+def test_absolute_production_storage_root_passes_when_safe(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    seed_source_tree(source_root)
+
+    code = e1a.main(make_args(tmp_path, source_root, storage_root))
+
+    assert code == 0
 
 
 def test_execute_confirmation_string_is_required(tmp_path, monkeypatch):
@@ -185,7 +215,12 @@ def test_public_redaction_rejects_raw_media_filename(tmp_path, monkeypatch):
     [
         r"C:\Users\private\Pictures\secret",
         "private_image.jpg",
+        "private_movie.avi",
+        "private_video.mkv",
+        "private_scan.tiff",
         "sk-testtoken12345",
+        "github_pat_secret12345",
+        "https://example.invalid/private/source",
     ],
 )
 def test_public_redaction_scans_actual_written_json_before_public_artifacts(tmp_path, monkeypatch, bad_run_id):
@@ -221,15 +256,42 @@ def test_redaction_check_reports_actual_public_json_artifact_coverage(tmp_path, 
     summary = e1a.run_dry_run(
         e1a.build_parser().parse_args(make_args(tmp_path, source_root, storage_root))
     )
+    artifact = e1a.public_payload(summary)
     redaction = e1a.run_redaction_check(
         summary,
         summary["public_markdown_text"],
-        public_json_artifact=summary,
+        public_json_artifact=artifact,
     )
 
     assert redaction["passed"] is True
     assert redaction["actual_public_json_artifact_scanned"] is True
     assert "actual_public_json_artifact" in redaction["checked_payloads"]
+
+
+def test_redaction_contract_receives_actual_public_json_artifact(monkeypatch):
+    captured = {}
+
+    class FakeContractResult:
+        def to_dict(self):
+            return {"passed": True, "errors": []}
+
+    def fake_check_phase_contract(contract_id, payload):
+        captured["contract_id"] = contract_id
+        captured["payload"] = payload
+        return FakeContractResult()
+
+    monkeypatch.setattr(e1a, "check_phase_contract", fake_check_phase_contract)
+    summary = {
+        "public_json_payload": {"old_projection": True},
+    }
+    artifact = {"actual_artifact_sentinel": "public_safe"}
+
+    redaction = e1a.run_redaction_check(summary, "clean markdown", public_json_artifact=artifact)
+
+    assert redaction["passed"] is True
+    assert captured["contract_id"] == "public_redaction_contract_v1"
+    assert captured["payload"]["public_json_payload"] == artifact
+    assert captured["payload"]["public_json_payload"] != summary["public_json_payload"]
 
 
 def test_violet_env_must_be_production_for_db_identity():
@@ -288,6 +350,30 @@ def test_batch_plan_schema_and_batching(tmp_path, monkeypatch):
     assert batch_rows[0]["requires_e1b_execute_approval"] is True
 
 
+def test_inventory_only_candidates_are_not_future_import_eligible(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    seed_source_tree(source_root)
+
+    summary = e1a.run_dry_run(
+        e1a.build_parser().parse_args([*make_args(tmp_path, source_root, storage_root), "--inventory-only"])
+    )
+    candidate_rows = [
+        json.loads(line)
+        for line in (tmp_path / "out" / "inventory-candidates.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    import_ready_rows = [row for row in candidate_rows if row.get("eligible_for_future_db_import")]
+
+    assert import_ready_rows == []
+    assert any(row["candidate_state"] == "requires_hash_and_duplicate_check" for row in candidate_rows)
+    assert {row["hash_read_status"] for row in candidate_rows if row["supported_extension"]} == {"not_read_inventory_only"}
+    assert summary["batch_plan"]["planned_unique_candidate_count"] == 0
+    assert summary["batch_plan"]["planned_batch_count"] == 0
+
+
 def test_streamed_traversal_honors_max_files_without_consuming_all_descendants(tmp_path, monkeypatch):
     monkeypatch.setenv("VIOLET_ENV", "production")
     source_root = tmp_path / "source"
@@ -327,6 +413,23 @@ def test_repo_python_preflight_accepts_documented_windows_and_posix_layouts(tmp_
     assert e1a.build_python_env(tmp_path / ".venv" / "bin" / "python", root=tmp_path)["check_python_env_passed"] is True
     assert e1a.build_python_env(tmp_path / "system" / "python.exe", root=tmp_path)["check_python_env_passed"] is False
     assert e1a.build_python_env(Path(sys.executable))["executable_path_redacted"] is True
+
+
+def test_repo_python_preflight_does_not_accept_symlink_target_base_python(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    venv_python = root / "venv" / "bin" / "python"
+    base_python = tmp_path / "base" / "python"
+    shared_target = tmp_path / "shared-python-target"
+
+    def fake_realpath(value):
+        if str(value) in {str(venv_python), str(base_python)}:
+            return str(shared_target)
+        return str(value)
+
+    monkeypatch.setattr(e1a.os.path, "realpath", fake_realpath)
+
+    assert e1a.is_repo_python_executable(venv_python, root=root) is True
+    assert e1a.is_repo_python_executable(base_python, root=root) is False
 
 
 def test_invalid_python_preflight_blocks_before_artifacts(tmp_path, monkeypatch):
