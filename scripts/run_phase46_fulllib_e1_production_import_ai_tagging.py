@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = ROOT / "backend"
@@ -49,6 +49,12 @@ PHASE_SLUG = "phase-4.6-fulllib-e1a-runner-dryrun"
 BRANCH = "codex/phase46-fulllib-e1a-runner-dryrun"
 CONFIRM_PHRASE = "EXECUTE_PHASE46_FULLLIB_E1_PRODUCTION_IMPORT_AI_TAGGING"
 RECOMMENDED_PRODUCTION_DB = "violet_library_prod"
+REPO_PYTHON_CANDIDATES = (
+    Path("venv") / "Scripts" / "python.exe",
+    Path("venv") / "bin" / "python",
+    Path(".venv") / "Scripts" / "python.exe",
+    Path(".venv") / "bin" / "python",
+)
 
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / f"{PHASE_SLUG}.md"
@@ -132,8 +138,10 @@ SUMMARY_REQUIRED_FIELDS = {
     "title",
     "generated_at",
     "branch",
+    "report_generation_git_state",
     "status",
     "mode",
+    "current_head_reviewer_fix",
     "python_env",
     "db_identity",
     "production_storage_identity",
@@ -225,8 +233,50 @@ def git_value(args: Sequence[str]) -> str:
     return completed.stdout.strip()
 
 
+def git_check_clean(args: Sequence[str]) -> bool | None:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    return None
+
+
+def build_report_generation_git_state() -> dict[str, Any]:
+    tracked_clean = git_check_clean(["diff", "--quiet", "--"])
+    staged_clean = git_check_clean(["diff", "--cached", "--quiet", "--"])
+    status_text = git_value(["status", "--short"])
+    status_available = status_text != "unavailable"
+    dirty_tree = bool(status_text.strip()) if status_available else None
+    tracked_dirty = None if tracked_clean is None or staged_clean is None else not (tracked_clean and staged_clean)
+    return {
+        "generated_from_worktree": True,
+        "generated_before_commit": True,
+        "base_head_sha": git_value(["rev-parse", "HEAD"]),
+        "dirty_tree_at_generation": dirty_tree,
+        "tracked_dirty_tree_at_generation": tracked_dirty,
+        "untracked_entries_present_at_generation": bool(status_text.strip()) if status_available else None,
+        "status_paths_recorded": False,
+        "final_pr_head_sha_claimed": False,
+        "proof_reproducibility_note": (
+            "Public artifacts are generated from the working tree before the final fix commit; "
+            "use the committed PR head plus this provenance object rather than treating base_head_sha as final."
+        ),
+    }
+
+
 def resolve_path(path: Path) -> Path:
     return path.expanduser().resolve(strict=False)
+
+
+def normalized_path_key(path: Path) -> str:
+    return os.path.normcase(os.path.realpath(str(path)))
 
 
 def path_within_or_same(child: Path, parent: Path) -> bool:
@@ -324,53 +374,203 @@ def read_dotenv_values(path: Path = ROOT / ".env") -> dict[str, str]:
     return values
 
 
-def env_or_dotenv(key: str, dotenv: Mapping[str, str], default: str = "") -> tuple[str, str]:
-    env_value = os.getenv(key)
+def env_or_dotenv(
+    key: str,
+    dotenv: Mapping[str, str],
+    default: str = "",
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    env = environ if environ is not None else os.environ
+    env_value = env.get(key)
     if env_value not in (None, ""):
-        return env_value, "process_env"
+        return str(env_value), "process_env"
     dotenv_value = dotenv.get(key)
     if dotenv_value not in (None, ""):
         return str(dotenv_value), ".env"
     return default, "default"
 
 
-def resolve_production_db_identity(raw_db_url: str | None) -> dict[str, Any]:
-    dotenv = read_dotenv_values()
-    violet_env, violet_env_source = env_or_dotenv("VIOLET_ENV", dotenv, "development")
-    if str(violet_env).casefold() == "test" or os.getenv("TEST_DATABASE_URL"):
-        raise FulllibE1aBlockedError("production_db_identity_rejects_test_environment")
+def sqlalchemy_url_from_fields(*, username: str, password: str, host: str, port: str | int, database: str) -> URL:
+    return URL.create(
+        drivername="postgresql",
+        username=username,
+        password=password,
+        host=host,
+        port=int(port),
+        database=database,
+    )
 
+
+def safe_url_identity(url: URL) -> dict[str, Any]:
+    return {
+        "host": url.host or "localhost",
+        "port": int(url.port or 5432),
+        "database": str(url.database or ""),
+        "username_present": bool(url.username),
+        "password_present": bool(url.password),
+        "password_value_recorded": False,
+    }
+
+
+def urls_equivalent(left: URL, right: URL) -> bool:
+    return (
+        (left.host or "localhost") == (right.host or "localhost")
+        and int(left.port or 5432) == int(right.port or 5432)
+        and str(left.database or "") == str(right.database or "")
+        and (left.username or "") == (right.username or "")
+        and (left.password or "") == (right.password or "")
+    )
+
+
+def app_settings_json_path(*, environ: Mapping[str, str] | None = None) -> Path:
+    env = environ if environ is not None else os.environ
+    storage_root = str(env.get("VIOLET_STORAGE_ROOT", "")).strip()
+    if storage_root:
+        return Path(storage_root) / "data" / "settings.json"
+    return ROOT / "data" / "settings.json"
+
+
+def read_json_object(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {"__read_error__": True}
+    return value if isinstance(value, dict) else {"__read_error__": True}
+
+
+def _file_or_env_database_field(
+    file_database: Mapping[str, Any],
+    key: str,
+    env_key: str,
+    dotenv: Mapping[str, str],
+    default: str | int,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    file_value = file_database.get(key)
+    if file_value not in (None, ""):
+        return str(file_value), "settings_json"
+    env_value, env_source = env_or_dotenv(env_key, dotenv, str(default), environ=environ)
+    return str(env_value), env_source
+
+
+def resolve_app_database_identity(
+    *,
+    dotenv: Mapping[str, str],
+    environ: Mapping[str, str] | None = None,
+    settings_path: Path | None = None,
+) -> tuple[URL | None, dict[str, Any]]:
+    path = settings_path or app_settings_json_path(environ=environ)
+    settings_json = read_json_object(path)
+    if settings_json.get("__read_error__"):
+        return None, {
+            "status": "unknown_settings_json_unreadable",
+            "settings_json_detected": path.exists(),
+            "settings_path_recorded": False,
+            "password_value_recorded": False,
+        }
+
+    file_database_raw = settings_json.get("database", {})
+    file_database = file_database_raw if isinstance(file_database_raw, Mapping) else {}
+    field_sources: dict[str, str] = {}
+    host, field_sources["host"] = _file_or_env_database_field(file_database, "host", "POSTGRES_HOST", dotenv, "db", environ=environ)
+    port, field_sources["port"] = _file_or_env_database_field(file_database, "port", "POSTGRES_PORT", dotenv, 5432, environ=environ)
+    database, field_sources["database"] = _file_or_env_database_field(file_database, "name", "POSTGRES_DB", dotenv, "blombooru", environ=environ)
+    username, field_sources["username"] = _file_or_env_database_field(file_database, "user", "POSTGRES_USER", dotenv, "postgres", environ=environ)
+    password, password_source = _file_or_env_database_field(file_database, "password", "POSTGRES_PASSWORD", dotenv, "", environ=environ)
+    field_sources["password"] = f"{password_source}_{'present' if password else 'empty'}"
+    return sqlalchemy_url_from_fields(
+        username=username,
+        password=password,
+        host=host,
+        port=port,
+        database=database,
+    ), {
+        "status": "resolved_without_connection",
+        "settings_json_detected": path.exists(),
+        "settings_path_recorded": False,
+        "field_sources": field_sources,
+        "identity": safe_url_identity(sqlalchemy_url_from_fields(
+            username=username,
+            password=password,
+            host=host,
+            port=port,
+            database=database,
+        )),
+        "password_value_recorded": False,
+    }
+
+
+def resolve_runner_db_url(
+    raw_db_url: str | None,
+    *,
+    dotenv: Mapping[str, str],
+    environ: Mapping[str, str] | None = None,
+) -> tuple[URL, str, dict[str, str]]:
     if raw_db_url:
         url = make_url(raw_db_url)
-        source = "cli_production_db_url"
-        field_sources = {
+        return url, "cli_production_db_url", {
             "host": "cli",
             "port": "cli",
             "database": "cli",
             "username": "cli",
             "password": "cli_present" if url.password else "cli_empty",
         }
-    else:
-        host, host_source = env_or_dotenv("POSTGRES_HOST", dotenv, "localhost")
-        port, port_source = env_or_dotenv("POSTGRES_PORT", dotenv, "5432")
-        database, db_source = env_or_dotenv("POSTGRES_DB", dotenv, RECOMMENDED_PRODUCTION_DB)
-        username, user_source = env_or_dotenv("POSTGRES_USER", dotenv, "postgres")
-        password, password_source = env_or_dotenv("POSTGRES_PASSWORD", dotenv, "")
-        url = make_url(f"postgresql://{username}:{password}@{host}:{port}/{database}")
-        source = "env_or_dotenv_postgres_fields"
-        field_sources = {
-            "host": host_source,
-            "port": port_source,
-            "database": db_source,
-            "username": user_source,
-            "password": f"{password_source}_{'present' if password else 'empty'}",
-        }
+
+    host, host_source = env_or_dotenv("POSTGRES_HOST", dotenv, "localhost", environ=environ)
+    port, port_source = env_or_dotenv("POSTGRES_PORT", dotenv, "5432", environ=environ)
+    database, db_source = env_or_dotenv("POSTGRES_DB", dotenv, RECOMMENDED_PRODUCTION_DB, environ=environ)
+    username, user_source = env_or_dotenv("POSTGRES_USER", dotenv, "postgres", environ=environ)
+    password, password_source = env_or_dotenv("POSTGRES_PASSWORD", dotenv, "", environ=environ)
+    return sqlalchemy_url_from_fields(
+        username=username,
+        password=password,
+        host=host,
+        port=port,
+        database=database,
+    ), "env_or_dotenv_postgres_fields", {
+        "host": host_source,
+        "port": port_source,
+        "database": db_source,
+        "username": user_source,
+        "password": f"{password_source}_{'present' if password else 'empty'}",
+    }
+
+
+def resolve_production_db_identity(
+    raw_db_url: str | None,
+    *,
+    dotenv: Mapping[str, str] | None = None,
+    environ: Mapping[str, str] | None = None,
+    settings_path: Path | None = None,
+) -> dict[str, Any]:
+    env = environ if environ is not None else os.environ
+    dotenv_values = dotenv if dotenv is not None else read_dotenv_values()
+    violet_env, violet_env_source = env_or_dotenv("VIOLET_ENV", dotenv_values, "development", environ=env)
+    if str(violet_env).casefold() == "test" or env.get("TEST_DATABASE_URL"):
+        raise FulllibE1aBlockedError("production_db_identity_rejects_test_environment")
+
+    url, source, field_sources = resolve_runner_db_url(raw_db_url, dotenv=dotenv_values, environ=env)
+    app_url, app_resolution = resolve_app_database_identity(dotenv=dotenv_values, environ=env, settings_path=settings_path)
 
     database_name = str(url.database or "")
     if database_name != RECOMMENDED_PRODUCTION_DB:
         raise FulllibE1aBlockedError(f"production_db_name_must_be_{RECOMMENDED_PRODUCTION_DB}")
     if database_name in {"postgres", "template0", "template1", "blombooru", "blombooru_test"}:
         raise FulllibE1aBlockedError("production_db_identity_rejects_dev_or_system_db")
+
+    app_equivalence_proven = app_url is not None
+    urls_match = bool(app_url is not None and urls_equivalent(url, app_url))
+    runner_matches_app = bool(app_equivalence_proven and urls_match)
+    if not app_equivalence_proven:
+        app_equivalence_status = "unknown_e1b_blocker"
+    elif runner_matches_app:
+        app_equivalence_status = "proven_match"
+    else:
+        app_equivalence_status = "mismatch_e1b_blocker"
 
     return {
         "recorded_at": utc_now(),
@@ -387,10 +587,13 @@ def resolve_production_db_identity(raw_db_url: str | None) -> dict[str, Any]:
         "violet_env_source": violet_env_source,
         "production_env_required_for_e1b_execute": True,
         "db_resolution": {
-            "app_compatible": True,
-            "runner_matches_app_equivalent": True,
-            "urls_match": True,
+            "app_compatible": runner_matches_app,
+            "runner_matches_app_equivalent": runner_matches_app,
+            "urls_match": urls_match,
+            "app_equivalence_proven": app_equivalence_proven,
+            "app_equivalence_status": app_equivalence_status,
             "field_sources": field_sources,
+            "app_settings_resolution": app_resolution,
             "password_present": bool(url.password),
             "password_value_recorded": False,
             "full_url_recorded": False,
@@ -403,16 +606,30 @@ def validate_positive_int(value: int, name: str) -> None:
         raise FulllibE1aBlockedError(f"{name}_must_be_positive")
 
 
-def build_python_env() -> dict[str, Any]:
-    expected = ROOT / "venv" / "Scripts" / "python.exe"
-    actual = Path(sys.executable).resolve()
-    expected_checked = actual == expected.resolve(strict=False)
+def repo_python_candidates(root: Path = ROOT) -> list[Path]:
+    return [root / candidate for candidate in REPO_PYTHON_CANDIDATES]
+
+
+def is_repo_python_executable(executable: Path, *, root: Path = ROOT) -> bool:
+    actual_key = normalized_path_key(executable)
+    return any(actual_key == normalized_path_key(candidate) for candidate in repo_python_candidates(root))
+
+
+def build_python_env(executable: Path | None = None, *, root: Path = ROOT) -> dict[str, Any]:
+    actual = Path(executable or sys.executable)
+    expected_checked = is_repo_python_executable(actual, root=root)
     return {
         "expected_python_checked": expected_checked,
         "check_python_env_passed": expected_checked,
         "public_executable_name": actual.name,
         "executable_path_redacted": True,
         "repo_local_venv_expected": True,
+        "accepted_repo_venv_layouts": [
+            "venv/Scripts/python.exe",
+            "venv/bin/python",
+            ".venv/Scripts/python.exe",
+            ".venv/bin/python",
+        ],
         "full_executable_path_private_only": True,
     }
 
@@ -553,6 +770,23 @@ def classify_access_error(error: BaseException) -> str:
     return "unreadable_source"
 
 
+def metadata_failure_reason(error: BaseException, *, fallback: str) -> str:
+    reason = classify_access_error(error)
+    return fallback if reason == "unreadable_source" else reason
+
+
+def iter_source_entries(source_root: Path) -> Iterable[Path]:
+    return source_root.rglob("*")
+
+
+def is_file_entry(path: Path) -> bool:
+    return path.is_file()
+
+
+def stat_file(path: Path) -> os.stat_result:
+    return path.stat()
+
+
 def _hash_worker(path: str, conn: Any) -> None:
     try:
         md5 = hashlib.md5()
@@ -636,20 +870,68 @@ def inventory_source_roots(context: RuntimeContext) -> tuple[list[dict[str, Any]
 
     for source_idx, source_root in enumerate(context.source_roots, start=1):
         source_label = f"input_{source_idx}"
-        try:
-            entries = sorted((path for path in source_root.rglob("*")), key=lambda p: str(p).casefold())
-        except OSError:
-            reason_counts["source_walk_failed"] += 1
-            continue
-        for path in entries:
-            if next_index >= context.max_files:
-                max_files_reached = True
+        entries = iter(iter_source_entries(source_root))
+        while True:
+            try:
+                path = next(entries)
+            except StopIteration:
+                break
+            except OSError:
+                reason_counts["source_walk_failed"] += 1
                 break
             try:
-                if not path.is_file():
+                if not is_file_entry(path):
                     continue
-            except OSError:
-                reason_counts["stat_failed"] += 1
+            except OSError as exc:
+                next_index += 1
+                label = safe_label(next_index)
+                candidate_id = stable_candidate_id(context.run_id, next_index)
+                extension = path.suffix.lower()
+                reason = metadata_failure_reason(exc, fallback="metadata_access_failed")
+                extension_counts[extension or "<none>"] += 1
+                source_counts[source_label] += 1
+                reason_counts[reason] += 1
+                candidates.append(
+                    {
+                        "run_id": context.run_id,
+                        "candidate_id": candidate_id,
+                        "safe_label": label,
+                        "source_label": source_label,
+                        "private_source_ref": str(resolve_path(path)),
+                        "private_filename_sha256": sha256_text(path.name),
+                        "extension": extension or None,
+                        "file_kind": file_kind(extension),
+                        "file_size_bytes": None,
+                        "supported_extension": extension in SUPPORTED_EXTENSIONS,
+                        "source_gate": {
+                            "allowed": False,
+                            "blocked": True,
+                            "reason": reason,
+                            "safe_label": label,
+                            "path_recorded": False,
+                        },
+                        "candidate_state": "deferred",
+                        "deferred_reason": reason,
+                        "eligible_for_duplicate_check": False,
+                        "eligible_for_future_db_import": False,
+                        "hash": None,
+                        "content_sha256": None,
+                        "hash_read_status": "not_read_metadata_failed",
+                    }
+                )
+                unsupported_or_deferred.append(
+                    {
+                        "run_id": context.run_id,
+                        "candidate_id": candidate_id,
+                        "safe_label": label,
+                        "reason": reason,
+                        "reason_category": "deferred",
+                        "eligible_for_future_db_import": False,
+                    }
+                )
+                if next_index >= context.max_files:
+                    max_files_reached = True
+                    break
                 continue
             next_index += 1
             label = safe_label(next_index)
@@ -662,9 +944,9 @@ def inventory_source_roots(context: RuntimeContext) -> tuple[list[dict[str, Any]
             reason = None if supported else "unsupported_extension"
             size = 0
             try:
-                size = int(path.stat().st_size)
-            except OSError:
-                reason = reason or "stat_failed"
+                size = int(stat_file(path).st_size)
+            except OSError as exc:
+                reason = reason or metadata_failure_reason(exc, fallback="stat_failed")
             if supported and size == 0:
                 reason = reason or "zero_byte"
             if supported and size > max_bytes:
@@ -672,11 +954,22 @@ def inventory_source_roots(context: RuntimeContext) -> tuple[list[dict[str, Any]
             if supported and not path_within_or_same(path, source_root):
                 reason = reason or "path_escape"
 
-            gate = SourceIngestionGate.evaluate_path_source(
-                path,
-                safe_label=label,
-                hydration_policy_enabled=False,
-            ).to_public_dict()
+            try:
+                gate = SourceIngestionGate.evaluate_path_source(
+                    path,
+                    safe_label=label,
+                    hydration_policy_enabled=False,
+                ).to_public_dict()
+            except OSError as exc:
+                gate_reason = metadata_failure_reason(exc, fallback="metadata_access_failed")
+                reason = reason or gate_reason
+                gate = {
+                    "allowed": False,
+                    "blocked": True,
+                    "reason": gate_reason,
+                    "safe_label": label,
+                    "path_recorded": False,
+                }
             if supported and gate.get("blocked"):
                 reason = reason or str(gate.get("reason") or "source_gate_blocked")
 
@@ -714,6 +1007,9 @@ def inventory_source_roots(context: RuntimeContext) -> tuple[list[dict[str, Any]
                     }
                 )
             candidates.append(row)
+            if next_index >= context.max_files:
+                max_files_reached = True
+                break
         if max_files_reached:
             break
 
@@ -930,6 +1226,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     batch = summary["batch_plan"]
     contracts = ", ".join(f"`{item}`" for item in summary["contract_mapping"]["contracts"])
     validation_commands = "\n".join(f"- `{cmd}`: {result}" for cmd, result in summary["validation"]["commands"].items())
+    db_resolution = summary["db_identity"]["db_resolution"]
+    e1b_blockers = "\n".join(
+        f"- `{item}`" for item in summary["future_execution_plan"]["remaining_blockers_before_e1b_execute"]
+    )
     return f"""# Phase 4.6-FULLLIB-E1a Production Runner Dry-Run Proof
 
 ## 1. Summary
@@ -940,23 +1240,27 @@ E1a added and ran a dry-run-only production FULLLIB runner. The run inspected a 
 
 PR #108 / GOV3 and PR #110 / FULLLIB-P0 are merged into `main`. This branch starts the implementation track for production utility work while keeping the SourceConcept/provider/entity track paused.
 
-## 3. Parallel feature development
+## 3. Current-head reviewer fix
+
+This current-head fix streams source traversal and stops at `--max-files`, keeps repo-compatible Python preflight layouts, prevents DB identity overclaiming against app settings resolution, ledgers metadata access failures as deferred rows, records truthful worktree report provenance, and uses SQLAlchemy field-based URL construction for DB passwords with reserved characters.
+
+## 4. Parallel feature development
 
 Parallel feature development is intentionally paused during FULLLIB. R1R, A1R, R2, SourceConcept, provider, and Entity work remain out of scope unless explicitly resumed later.
 
-## 4. Runner design
+## 5. Runner design
 
 The runner is a phase-scoped operational runner. In E1a it supports `--dry-run`, `--inventory-only`, `--output-dir`, `--write-public-report`, `--source-root`, `--production-db-url`, `--production-storage-root`, `--max-files`, and `--batch-size`. Execute mode is present only as a future guard and requires the exact confirmation phrase before it is rejected as not implemented in E1a.
 
-## 5. Source root safety
+## 6. Source root safety
 
 Input locations are protected as read-only. The dry-run rejects missing inputs, repo overlap, production storage overlap, test storage overlap, output overlap, network/NAS paths, and unsafe output placement. Public artifacts redact all local paths and source names.
 
-## 6. Production DB/storage identity design
+## 7. Production DB/storage identity design
 
-E1a validates the intended production DB configuration without connecting or writing. The accepted production database name is `{RECOMMENDED_PRODUCTION_DB}`. Production storage is validated as an explicit, non-overlapping app-managed storage root; E1a does not create directories or write files there.
+E1a validates the intended production DB configuration without connecting or writing. The accepted production database name is `{RECOMMENDED_PRODUCTION_DB}`. App-equivalence status is `{db_resolution["app_equivalence_status"]}` and `urls_match={db_resolution["urls_match"]}`; E1a does not claim app equivalence unless settings/env/CLI resolution actually match. Production storage is validated as an explicit, non-overlapping app-managed storage root; E1a does not create directories or write files there.
 
-## 7. Inventory dry-run results
+## 8. Inventory dry-run results
 
 - Files seen: {inventory["total_files_seen"]}
 - Supported candidates: {inventory["supported_candidates"]}
@@ -964,61 +1268,63 @@ E1a validates the intended production DB configuration without connecting or wri
 - Unique future import candidates: {duplicate["unique_import_candidates"]}
 - Max files reached: {inventory["max_files_reached"]}
 
-## 8. Duplicate/deferred/unsupported summary
+## 9. Duplicate/deferred/unsupported summary
 
 - Duplicate items: {duplicate["duplicate_count"]}
 - Unsupported items: {duplicate["unsupported_count"]}
 - Deferred items: {duplicate["deferred_count"]}
 - Hash failures: {duplicate["hash_failures"]}
 
-## 9. Batch plan
+## 10. Batch plan
 
 - Planned batches: {batch["planned_batch_count"]}
 - Batch size: {batch["batch_size"]}
 - Planned unique candidates: {batch["planned_unique_candidate_count"]}
 - Dry-run only: true
 
-## 10. Future import execution plan
+## 11. Future import execution plan
 
 E1b must run a fresh inventory dry-run against approved production inputs, verify production DB/storage identity, prove backups and recovery, then import only gate-allowed unique candidates in bounded batches after explicit execute approval.
 
-## 11. Future classification plan
+## 12. Future classification plan
 
 Classification remains a post-import E1b stage for newly imported media only. It must record job accounting and content-class distribution before/after without source or storage mutation beyond the approved import outputs.
 
-## 12. Future AI tagging plan
+## 13. Future AI tagging plan
 
 AI tagging remains a post-classification E1b stage for eligible imported media only. It must use the local WD tagger, preserve manual/locked tags, disable localization side effects, and record model provenance and coverage.
 
-## 13. AI tag fingerprint reuse/export plan
+## 14. AI tag fingerprint reuse/export plan
 
 Future reuse should key by `content_sha256`, compatible MD5, file size, media dimensions, model identity, tagger code identity, and thresholds. Compatible exports may replay tags through existing tag-service semantics; policy mismatches must defer or infer locally.
 
-## 14. Localization handling
+## 15. Localization handling
 
 No LLM translation ran. Existing display behavior is DB/static localization first and canonical tag fallback otherwise. Newly generated AI tags will display Chinese names immediately only when existing static or DB translations cover them. E1b should emit a post-AI-tagging localization gap report; an optional later `FULLLIB-L1` can backfill translations under a separate approval.
 
-## 15. Browser validation requirement for E1b
+## 16. Browser validation requirement for E1b
 
 E1b is not complete until controlled browser/gallery validation passes, even if UI code is unchanged. It must verify imported media in gallery, thumbnails load, detail page opens, AI tags display, tag search returns imported media, localized tag display works where translations exist, no broken images appear, no private local source paths are exposed, and server identity is correct.
 
-## 16. Contract mapping
+## 17. Contract mapping
 
 E1b mapping: {contracts}. E1a does not claim import, classification, or AI tagging target completion.
 
-## 17. Safety proof
+## 18. Safety proof
 
 The dry-run wrote only private ledgers under the chosen output directory and public report artifacts under `docs/reports`. It did not write DB, source, iCloud, app-managed storage, provider caches, SourceConcept tables, Entity truth, localization tables, or `media_tags`.
 
-## 18. Validation commands and results
+## 19. Validation commands and results
 
 {validation_commands}
 
-## 19. Remaining blockers before E1b execute
+## 20. Remaining blockers before E1b execute
 
-E1b still needs an approved real production source input set, approved production storage root, non-mutating production DB connection proof, backup/recovery proof, offline model preflight, fresh dry-run ledgers, contract checks, and explicit execute approval.
+E1b still needs:
 
-## 20. Recommended E1b prompt outline
+{e1b_blockers}
+
+## 21. Recommended E1b prompt outline
 
 Start from latest `main`, stay on the production utility track, run no provider/LLM/SourceConcept/Entity stages, verify production DB/storage identity, run fresh inventory dry-run, prove backups and contracts, then stop before execute unless the prompt includes `{CONFIRM_PHRASE}`. If execute is approved, import in bounded batches, classify, AI tag, run real browser/gallery validation, generate public/private artifacts, push PR, comment `@codex review`, and stop.
 """
@@ -1077,15 +1383,35 @@ def build_summary(
         "existing_production_db_duplicates_checked": duplicate_summary.get("existing_production_db_duplicates_checked", False),
         "unsupported_or_deferred_ledger_rows": len(unsupported_or_deferred),
     }
+    e1b_blockers = [
+        "approved_real_production_source_input_set",
+        "approved_production_storage_root",
+        "non_mutating_production_db_connection_proof",
+        "backup_recovery_proof",
+        "offline_model_preflight",
+        "fresh_e1b_dry_run_ledgers",
+        "contract_checks",
+        "explicit_execute_approval",
+    ]
+    if not context.db_identity.get("db_resolution", {}).get("runner_matches_app_equivalent"):
+        e1b_blockers.append("app_db_equivalence_not_proven_or_mismatched")
     summary: dict[str, Any] = {
         "phase": PHASE,
         "title": PHASE_TITLE,
         "generated_at": utc_now(),
         "branch": git_value(["branch", "--show-current"]),
-        "head_sha": git_value(["rev-parse", "HEAD"]),
+        "report_generation_git_state": build_report_generation_git_state(),
         "status": "dry_run_completed",
         "mode": "dry_run",
         "run_id": context.run_id,
+        "current_head_reviewer_fix": {
+            "streamed_traversal_honors_max_files": True,
+            "python_preflight_repo_compatible": True,
+            "db_identity_does_not_overclaim_app_equivalence": True,
+            "metadata_access_failures_ledgered": True,
+            "report_provenance_truthful_for_uncommitted_generation": True,
+            "db_url_construction_uses_sqlalchemy_url_create_for_fields": True,
+        },
         "python_env": build_python_env(),
         "db_identity": context.db_identity,
         "production_storage_identity": dict(storage_identity),
@@ -1153,6 +1479,7 @@ def build_summary(
             "db_write_executed": False,
             "requires_backup_recovery_before_execute": True,
             "requires_fresh_e1b_dry_run": True,
+            "remaining_blockers_before_e1b_execute": e1b_blockers,
         },
         "classification_plan": {
             "run_in_e1a": False,
