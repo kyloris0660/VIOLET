@@ -423,9 +423,14 @@ def urls_equivalent(left: URL, right: URL) -> bool:
     )
 
 
-def app_settings_json_path(*, environ: Mapping[str, str] | None = None) -> Path:
-    env = environ if environ is not None else os.environ
-    storage_root = str(env.get("VIOLET_STORAGE_ROOT", "")).strip()
+def app_settings_json_path(
+    *,
+    environ: Mapping[str, str] | None = None,
+    dotenv: Mapping[str, str] | None = None,
+) -> Path:
+    dotenv_values = dotenv if dotenv is not None else read_dotenv_values()
+    storage_root, _source = env_or_dotenv("VIOLET_STORAGE_ROOT", dotenv_values, "", environ=environ)
+    storage_root = str(storage_root).strip()
     if storage_root:
         return Path(storage_root) / "data" / "settings.json"
     return ROOT / "data" / "settings.json"
@@ -463,13 +468,15 @@ def resolve_app_database_identity(
     environ: Mapping[str, str] | None = None,
     settings_path: Path | None = None,
 ) -> tuple[URL | None, dict[str, Any]]:
-    path = settings_path or app_settings_json_path(environ=environ)
+    path = settings_path or app_settings_json_path(environ=environ, dotenv=dotenv)
+    _storage_root_value, storage_root_source = env_or_dotenv("VIOLET_STORAGE_ROOT", dotenv, "", environ=environ)
     settings_json = read_json_object(path)
     if settings_json.get("__read_error__"):
         return None, {
             "status": "unknown_settings_json_unreadable",
             "settings_json_detected": path.exists(),
             "settings_path_recorded": False,
+            "storage_root_source": storage_root_source,
             "password_value_recorded": False,
         }
 
@@ -492,6 +499,7 @@ def resolve_app_database_identity(
         "status": "resolved_without_connection",
         "settings_json_detected": path.exists(),
         "settings_path_recorded": False,
+        "storage_root_source": storage_root_source,
         "field_sources": field_sources,
         "identity": safe_url_identity(sqlalchemy_url_from_fields(
             username=username,
@@ -550,8 +558,10 @@ def resolve_production_db_identity(
     env = environ if environ is not None else os.environ
     dotenv_values = dotenv if dotenv is not None else read_dotenv_values()
     violet_env, violet_env_source = env_or_dotenv("VIOLET_ENV", dotenv_values, "development", environ=env)
-    if str(violet_env).casefold() == "test" or env.get("TEST_DATABASE_URL"):
+    if env.get("TEST_DATABASE_URL"):
         raise FulllibE1aBlockedError("production_db_identity_rejects_test_environment")
+    if str(violet_env).casefold() != "production":
+        raise FulllibE1aBlockedError("violet_env_must_be_production_for_fulllib_e1a")
 
     url, source, field_sources = resolve_runner_db_url(raw_db_url, dotenv=dotenv_values, environ=env)
     app_url, app_resolution = resolve_app_database_identity(dotenv=dotenv_values, environ=env, settings_path=settings_path)
@@ -632,6 +642,13 @@ def build_python_env(executable: Path | None = None, *, root: Path = ROOT) -> di
         ],
         "full_executable_path_private_only": True,
     }
+
+
+def validate_python_env_or_block(executable: Path | None = None, *, root: Path = ROOT) -> dict[str, Any]:
+    python_env = build_python_env(executable, root=root)
+    if not python_env.get("check_python_env_passed"):
+        raise FulllibE1aBlockedError("python_env_preflight_failed")
+    return python_env
 
 
 def build_storage_identity(production_storage_root: Path, source_roots: Sequence[Path]) -> dict[str, Any]:
@@ -870,7 +887,11 @@ def inventory_source_roots(context: RuntimeContext) -> tuple[list[dict[str, Any]
 
     for source_idx, source_root in enumerate(context.source_roots, start=1):
         source_label = f"input_{source_idx}"
-        entries = iter(iter_source_entries(source_root))
+        try:
+            entries = iter(iter_source_entries(source_root))
+        except OSError:
+            reason_counts["source_walk_failed"] += 1
+            raise FulllibE1aBlockedError(f"source_traversal_failed:{source_label}") from None
         while True:
             try:
                 path = next(entries)
@@ -878,7 +899,7 @@ def inventory_source_roots(context: RuntimeContext) -> tuple[list[dict[str, Any]
                 break
             except OSError:
                 reason_counts["source_walk_failed"] += 1
-                break
+                raise FulllibE1aBlockedError(f"source_traversal_failed:{source_label}") from None
             try:
                 if not is_file_entry(path):
                     continue
@@ -1244,23 +1265,27 @@ PR #108 / GOV3 and PR #110 / FULLLIB-P0 are merged into `main`. This branch star
 
 This current-head fix streams source traversal and stops at `--max-files`, keeps repo-compatible Python preflight layouts, prevents DB identity overclaiming against app settings resolution, ledgers metadata access failures as deferred rows, records truthful worktree report provenance, and uses SQLAlchemy field-based URL construction for DB passwords with reserved characters.
 
-## 4. Parallel feature development
+## 4. Latest current-head reviewer fix
+
+The latest current-head fix redaction-scans the actual public JSON artifact before writing it, requires explicit `VIOLET_ENV=production`, aborts on Python preflight failure before artifacts, resolves app settings through env-or-dotenv storage-root precedence, and fails closed on source traversal errors.
+
+## 5. Parallel feature development
 
 Parallel feature development is intentionally paused during FULLLIB. R1R, A1R, R2, SourceConcept, provider, and Entity work remain out of scope unless explicitly resumed later.
 
-## 5. Runner design
+## 6. Runner design
 
 The runner is a phase-scoped operational runner. In E1a it supports `--dry-run`, `--inventory-only`, `--output-dir`, `--write-public-report`, `--source-root`, `--production-db-url`, `--production-storage-root`, `--max-files`, and `--batch-size`. Execute mode is present only as a future guard and requires the exact confirmation phrase before it is rejected as not implemented in E1a.
 
-## 6. Source root safety
+## 7. Source root safety
 
 Input locations are protected as read-only. The dry-run rejects missing inputs, repo overlap, production storage overlap, test storage overlap, output overlap, network/NAS paths, and unsafe output placement. Public artifacts redact all local paths and source names.
 
-## 7. Production DB/storage identity design
+## 8. Production DB/storage identity design
 
 E1a validates the intended production DB configuration without connecting or writing. The accepted production database name is `{RECOMMENDED_PRODUCTION_DB}`. App-equivalence status is `{db_resolution["app_equivalence_status"]}` and `urls_match={db_resolution["urls_match"]}`; E1a does not claim app equivalence unless settings/env/CLI resolution actually match. Production storage is validated as an explicit, non-overlapping app-managed storage root; E1a does not create directories or write files there.
 
-## 8. Inventory dry-run results
+## 9. Inventory dry-run results
 
 - Files seen: {inventory["total_files_seen"]}
 - Supported candidates: {inventory["supported_candidates"]}
@@ -1268,63 +1293,63 @@ E1a validates the intended production DB configuration without connecting or wri
 - Unique future import candidates: {duplicate["unique_import_candidates"]}
 - Max files reached: {inventory["max_files_reached"]}
 
-## 9. Duplicate/deferred/unsupported summary
+## 10. Duplicate/deferred/unsupported summary
 
 - Duplicate items: {duplicate["duplicate_count"]}
 - Unsupported items: {duplicate["unsupported_count"]}
 - Deferred items: {duplicate["deferred_count"]}
 - Hash failures: {duplicate["hash_failures"]}
 
-## 10. Batch plan
+## 11. Batch plan
 
 - Planned batches: {batch["planned_batch_count"]}
 - Batch size: {batch["batch_size"]}
 - Planned unique candidates: {batch["planned_unique_candidate_count"]}
 - Dry-run only: true
 
-## 11. Future import execution plan
+## 12. Future import execution plan
 
 E1b must run a fresh inventory dry-run against approved production inputs, verify production DB/storage identity, prove backups and recovery, then import only gate-allowed unique candidates in bounded batches after explicit execute approval.
 
-## 12. Future classification plan
+## 13. Future classification plan
 
 Classification remains a post-import E1b stage for newly imported media only. It must record job accounting and content-class distribution before/after without source or storage mutation beyond the approved import outputs.
 
-## 13. Future AI tagging plan
+## 14. Future AI tagging plan
 
 AI tagging remains a post-classification E1b stage for eligible imported media only. It must use the local WD tagger, preserve manual/locked tags, disable localization side effects, and record model provenance and coverage.
 
-## 14. AI tag fingerprint reuse/export plan
+## 15. AI tag fingerprint reuse/export plan
 
 Future reuse should key by `content_sha256`, compatible MD5, file size, media dimensions, model identity, tagger code identity, and thresholds. Compatible exports may replay tags through existing tag-service semantics; policy mismatches must defer or infer locally.
 
-## 15. Localization handling
+## 16. Localization handling
 
 No LLM translation ran. Existing display behavior is DB/static localization first and canonical tag fallback otherwise. Newly generated AI tags will display Chinese names immediately only when existing static or DB translations cover them. E1b should emit a post-AI-tagging localization gap report; an optional later `FULLLIB-L1` can backfill translations under a separate approval.
 
-## 16. Browser validation requirement for E1b
+## 17. Browser validation requirement for E1b
 
 E1b is not complete until controlled browser/gallery validation passes, even if UI code is unchanged. It must verify imported media in gallery, thumbnails load, detail page opens, AI tags display, tag search returns imported media, localized tag display works where translations exist, no broken images appear, no private local source paths are exposed, and server identity is correct.
 
-## 17. Contract mapping
+## 18. Contract mapping
 
 E1b mapping: {contracts}. E1a does not claim import, classification, or AI tagging target completion.
 
-## 18. Safety proof
+## 19. Safety proof
 
 The dry-run wrote only private ledgers under the chosen output directory and public report artifacts under `docs/reports`. It did not write DB, source, iCloud, app-managed storage, provider caches, SourceConcept tables, Entity truth, localization tables, or `media_tags`.
 
-## 19. Validation commands and results
+## 20. Validation commands and results
 
 {validation_commands}
 
-## 20. Remaining blockers before E1b execute
+## 21. Remaining blockers before E1b execute
 
 E1b still needs:
 
 {e1b_blockers}
 
-## 21. Recommended E1b prompt outline
+## 22. Recommended E1b prompt outline
 
 Start from latest `main`, stay on the production utility track, run no provider/LLM/SourceConcept/Entity stages, verify production DB/storage identity, run fresh inventory dry-run, prove backups and contracts, then stop before execute unless the prompt includes `{CONFIRM_PHRASE}`. If execute is approved, import in bounded batches, classify, AI tag, run real browser/gallery validation, generate public/private artifacts, push PR, comment `@codex review`, and stop.
 """
@@ -1339,14 +1364,24 @@ def scan_public_text(value: str) -> list[dict[str, str]]:
     return findings
 
 
-def run_redaction_check(summary: Mapping[str, Any], markdown_text: str) -> dict[str, Any]:
+def run_redaction_check(
+    summary: Mapping[str, Any],
+    markdown_text: str,
+    *,
+    public_json_artifact: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    artifact = public_json_artifact or summary
     payload = {
         "public_json_payload": summary["public_json_payload"],
         "public_markdown_text": markdown_text,
     }
     contract_result = check_phase_contract("public_redaction_contract_v1", payload).to_dict()
-    pattern_findings = scan_public_text(markdown_text) + scan_public_text(
-        json.dumps(summary["public_json_payload"], ensure_ascii=False, sort_keys=True)
+    public_payload_text = json.dumps(summary["public_json_payload"], ensure_ascii=False, sort_keys=True)
+    public_artifact_text = json.dumps(artifact, ensure_ascii=False, sort_keys=True, default=json_default)
+    pattern_findings = (
+        scan_public_text(markdown_text)
+        + scan_public_text(public_payload_text)
+        + scan_public_text(public_artifact_text)
     )
     return {
         "passed": bool(contract_result.get("passed")) and not pattern_findings,
@@ -1354,13 +1389,15 @@ def run_redaction_check(summary: Mapping[str, Any], markdown_text: str) -> dict[
         "contract_error_count": len(contract_result.get("errors") or []),
         "pattern_finding_count": len(pattern_findings),
         "findings_redacted": True,
-        "checked_payloads": ["public_json_payload", "public_markdown_text"],
+        "checked_payloads": ["public_json_payload", "public_markdown_text", "actual_public_json_artifact"],
+        "actual_public_json_artifact_scanned": True,
     }
 
 
 def build_summary(
     context: RuntimeContext,
     *,
+    python_env: Mapping[str, Any],
     storage_identity: Mapping[str, Any],
     source_safety: Mapping[str, Any],
     inventory_summary: Mapping[str, Any],
@@ -1411,8 +1448,13 @@ def build_summary(
             "metadata_access_failures_ledgered": True,
             "report_provenance_truthful_for_uncommitted_generation": True,
             "db_url_construction_uses_sqlalchemy_url_create_for_fields": True,
+            "actual_public_json_artifact_redaction_scanned": True,
+            "violet_env_production_required": True,
+            "python_preflight_failure_aborts_before_artifacts": True,
+            "app_settings_path_uses_env_or_dotenv_storage_root": True,
+            "source_traversal_errors_fail_closed": True,
         },
-        "python_env": build_python_env(),
+        "python_env": dict(python_env),
         "db_identity": context.db_identity,
         "production_storage_identity": dict(storage_identity),
         "source_root_safety_proof": dict(source_safety),
@@ -1589,15 +1631,25 @@ def build_summary(
 
 def write_public_outputs(summary: dict[str, Any]) -> dict[str, Any]:
     markdown_text = public_report_markdown(summary)
-    redaction = run_redaction_check(summary, markdown_text)
+    summary["public_json_payload"] = public_payload(summary)
+    summary["public_markdown_text"] = markdown_text
+    redaction = run_redaction_check(summary, markdown_text, public_json_artifact=summary)
     if not redaction["passed"]:
         raise FulllibE1aBlockedError("public_redaction_failed")
     summary["public_redaction"] = redaction
     summary["public_json_payload"] = public_payload(summary)
     summary["public_markdown_text"] = public_report_markdown(summary)
+    final_redaction = run_redaction_check(
+        summary,
+        summary["public_markdown_text"],
+        public_json_artifact=summary,
+    )
+    if not final_redaction["passed"]:
+        raise FulllibE1aBlockedError("public_redaction_failed")
+    summary["public_redaction"] = final_redaction
     write_text(PUBLIC_REPORT_MD, summary["public_markdown_text"])
     write_json(PUBLIC_REPORT_JSON, summary)
-    return redaction
+    return final_redaction
 
 
 def build_validation_commands(args: argparse.Namespace) -> dict[str, str]:
@@ -1618,6 +1670,7 @@ def run_dry_run(args: argparse.Namespace) -> dict[str, Any]:
     validate_positive_int(args.batch_size, "batch_size")
     validate_positive_int(args.hash_timeout_seconds, "hash_timeout_seconds")
     validate_positive_int(args.max_file_size_mb, "max_file_size_mb")
+    python_env = validate_python_env_or_block()
 
     source_roots = tuple(resolve_path(Path(raw)) for raw in args.source_root)
     production_storage_root = resolve_path(args.production_storage_root)
@@ -1645,11 +1698,11 @@ def run_dry_run(args: argparse.Namespace) -> dict[str, Any]:
     )
     assert_static_safety(storage_identity, source_safety)
 
-    context.output_dir.mkdir(parents=True, exist_ok=True)
     candidates, unsupported_or_deferred, inventory_summary = inventory_source_roots(context)
     duplicates, duplicate_summary = apply_hashes_and_duplicates(context, candidates, unsupported_or_deferred)
     batches, batch_summary = build_batch_plan(context, candidates)
 
+    context.output_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(context.output_dir / "inventory-candidates.jsonl", candidates)
     write_jsonl(context.output_dir / "duplicate-skipped.jsonl", duplicates)
     write_jsonl(context.output_dir / "unsupported-or-deferred.jsonl", unsupported_or_deferred)
@@ -1666,6 +1719,7 @@ def run_dry_run(args: argparse.Namespace) -> dict[str, Any]:
 
     summary = build_summary(
         context,
+        python_env=python_env,
         storage_identity=storage_identity,
         source_safety=source_safety,
         inventory_summary=inventory_summary,

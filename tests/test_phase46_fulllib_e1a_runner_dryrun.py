@@ -20,6 +20,7 @@ def make_args(
     *,
     output_dir: Path | None = None,
     max_files: int = 20,
+    run_id: str = "test-run",
 ) -> list[str]:
     return [
         "--dry-run",
@@ -36,7 +37,7 @@ def make_args(
         "--batch-size",
         "2",
         "--run-id",
-        "test-run",
+        run_id,
     ]
 
 
@@ -179,6 +180,93 @@ def test_public_redaction_rejects_raw_media_filename(tmp_path, monkeypatch):
     assert redaction["passed"] is False
 
 
+@pytest.mark.parametrize(
+    "bad_run_id",
+    [
+        r"C:\Users\private\Pictures\secret",
+        "private_image.jpg",
+        "sk-testtoken12345",
+    ],
+)
+def test_public_redaction_scans_actual_written_json_before_public_artifacts(tmp_path, monkeypatch, bad_run_id):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    public_report = tmp_path / "public-report.md"
+    public_summary = tmp_path / "public-summary.json"
+    monkeypatch.setattr(e1a, "PUBLIC_REPORT_MD", public_report)
+    monkeypatch.setattr(e1a, "PUBLIC_REPORT_JSON", public_summary)
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    seed_source_tree(source_root)
+
+    code = e1a.main(
+        [
+            *make_args(tmp_path, source_root, storage_root, run_id=bad_run_id),
+            "--write-public-report",
+        ]
+    )
+
+    assert code == 2
+    assert not public_report.exists()
+    assert not public_summary.exists()
+
+
+def test_redaction_check_reports_actual_public_json_artifact_coverage(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    seed_source_tree(source_root)
+
+    summary = e1a.run_dry_run(
+        e1a.build_parser().parse_args(make_args(tmp_path, source_root, storage_root))
+    )
+    redaction = e1a.run_redaction_check(
+        summary,
+        summary["public_markdown_text"],
+        public_json_artifact=summary,
+    )
+
+    assert redaction["passed"] is True
+    assert redaction["actual_public_json_artifact_scanned"] is True
+    assert "actual_public_json_artifact" in redaction["checked_payloads"]
+
+
+def test_violet_env_must_be_production_for_db_identity():
+    for environ in ({}, {"VIOLET_ENV": "development"}, {"VIOLET_ENV": "test"}):
+        with pytest.raises(e1a.FulllibE1aBlockedError):
+            e1a.resolve_production_db_identity(production_db_url(), dotenv={}, environ=environ)
+
+
+def test_violet_env_production_passes_when_other_identity_checks_pass(tmp_path):
+    settings_path = tmp_path / "storage" / "data" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": e1a.RECOMMENDED_PRODUCTION_DB,
+                    "user": "postgres",
+                    "password": "super-secret",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    identity = e1a.resolve_production_db_identity(
+        production_db_url(),
+        dotenv={},
+        environ={"VIOLET_ENV": "production"},
+        settings_path=settings_path,
+    )
+
+    assert identity["violet_env"] == "production"
+    assert identity["db_resolution"]["runner_matches_app_equivalent"] is True
+
+
 def test_batch_plan_schema_and_batching(tmp_path, monkeypatch):
     monkeypatch.setenv("VIOLET_ENV", "production")
     source_root = tmp_path / "source"
@@ -239,6 +327,40 @@ def test_repo_python_preflight_accepts_documented_windows_and_posix_layouts(tmp_
     assert e1a.build_python_env(tmp_path / ".venv" / "bin" / "python", root=tmp_path)["check_python_env_passed"] is True
     assert e1a.build_python_env(tmp_path / "system" / "python.exe", root=tmp_path)["check_python_env_passed"] is False
     assert e1a.build_python_env(Path(sys.executable))["executable_path_redacted"] is True
+
+
+def test_invalid_python_preflight_blocks_before_artifacts(tmp_path, monkeypatch):
+    with pytest.raises(e1a.FulllibE1aBlockedError):
+        e1a.validate_python_env_or_block(tmp_path / "system" / "python.exe", root=tmp_path)
+
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setattr(
+        e1a,
+        "build_python_env",
+        lambda executable=None, *, root=e1a.ROOT: {
+            "expected_python_checked": False,
+            "check_python_env_passed": False,
+            "public_executable_name": "python.exe",
+            "executable_path_redacted": True,
+            "repo_local_venv_expected": True,
+            "full_executable_path_private_only": True,
+        },
+    )
+    public_report = tmp_path / "public-report.md"
+    public_summary = tmp_path / "public-summary.json"
+    monkeypatch.setattr(e1a, "PUBLIC_REPORT_MD", public_report)
+    monkeypatch.setattr(e1a, "PUBLIC_REPORT_JSON", public_summary)
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    seed_source_tree(source_root)
+
+    code = e1a.main([*make_args(tmp_path, source_root, storage_root), "--write-public-report"])
+
+    assert code == 2
+    assert not (tmp_path / "out").exists()
+    assert not public_report.exists()
+    assert not public_summary.exists()
 
 
 def test_db_settings_mismatch_does_not_claim_app_equivalence(tmp_path):
@@ -316,6 +438,75 @@ def test_db_settings_env_cli_alignment_can_prove_equivalence_with_reserved_passw
     assert password not in json.dumps(identity, sort_keys=True)
 
 
+def write_db_settings(storage_root: Path, *, name: str, password: str = "super-secret") -> Path:
+    settings_path = storage_root / "data" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": name,
+                    "user": "postgres",
+                    "password": password,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return settings_path
+
+
+def test_app_settings_path_uses_dotenv_storage_root_when_process_env_absent(tmp_path):
+    dotenv_storage = tmp_path / "dotenv-storage"
+    write_db_settings(dotenv_storage, name=e1a.RECOMMENDED_PRODUCTION_DB)
+
+    identity = e1a.resolve_production_db_identity(
+        production_db_url(),
+        dotenv={"VIOLET_STORAGE_ROOT": str(dotenv_storage)},
+        environ={"VIOLET_ENV": "production"},
+    )
+
+    app_resolution = identity["db_resolution"]["app_settings_resolution"]
+    assert app_resolution["storage_root_source"] == ".env"
+    assert app_resolution["settings_json_detected"] is True
+    assert identity["db_resolution"]["runner_matches_app_equivalent"] is True
+
+
+def test_process_env_storage_root_overrides_dotenv_storage_root(tmp_path):
+    dotenv_storage = tmp_path / "dotenv-storage"
+    env_storage = tmp_path / "env-storage"
+    write_db_settings(dotenv_storage, name="blombooru")
+    write_db_settings(env_storage, name=e1a.RECOMMENDED_PRODUCTION_DB)
+
+    identity = e1a.resolve_production_db_identity(
+        production_db_url(),
+        dotenv={"VIOLET_STORAGE_ROOT": str(dotenv_storage)},
+        environ={"VIOLET_ENV": "production", "VIOLET_STORAGE_ROOT": str(env_storage)},
+    )
+
+    app_resolution = identity["db_resolution"]["app_settings_resolution"]
+    assert app_resolution["storage_root_source"] == "process_env"
+    assert app_resolution["settings_json_detected"] is True
+    assert identity["db_resolution"]["runner_matches_app_equivalent"] is True
+
+
+def test_dotenv_storage_root_mismatch_is_not_app_equivalent(tmp_path):
+    dotenv_storage = tmp_path / "dotenv-storage"
+    write_db_settings(dotenv_storage, name="blombooru")
+
+    identity = e1a.resolve_production_db_identity(
+        production_db_url(),
+        dotenv={"VIOLET_STORAGE_ROOT": str(dotenv_storage)},
+        environ={"VIOLET_ENV": "production"},
+    )
+
+    assert identity["db_resolution"]["runner_matches_app_equivalent"] is False
+    assert identity["db_resolution"]["urls_match"] is False
+    assert identity["db_resolution"]["app_equivalence_status"] == "mismatch_e1b_blocker"
+
+
 def test_metadata_access_failure_is_ledgered_as_deferred(tmp_path, monkeypatch):
     monkeypatch.setenv("VIOLET_ENV", "production")
     source_root = tmp_path / "source"
@@ -347,6 +538,25 @@ def test_metadata_access_failure_is_ledgered_as_deferred(tmp_path, monkeypatch):
     assert summary["duplicate_deferred_unsupported_summary"]["deferred_count"] == 1
     assert summary["duplicate_deferred_unsupported_summary"]["unsupported_or_deferred_ledger_rows"] == len(deferred_rows)
     assert summary["public_json_payload"]["inventory"]["deferred"] == len(deferred_rows)
+
+
+def test_source_traversal_oserror_fails_closed_without_ledgers(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    source_root.mkdir()
+    storage_root.mkdir()
+    output_dir = tmp_path / "out"
+
+    def broken_entries(_source_root: Path):
+        raise OSError("walk failed")
+        yield from ()
+
+    monkeypatch.setattr(e1a, "iter_source_entries", broken_entries)
+    code = e1a.main(make_args(tmp_path, source_root, storage_root, output_dir=output_dir))
+
+    assert code == 2
+    assert not output_dir.exists()
 
 
 def test_summary_provenance_object_replaces_misleading_head_sha(tmp_path, monkeypatch):
