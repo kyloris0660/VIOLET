@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, Enum, Float,
+from sqlalchemy import (JSON, BigInteger, Boolean, Column, DateTime, Enum, Float,
                         ForeignKey, Index, Integer, String, Table, Text,
                         UniqueConstraint)
 from sqlalchemy.orm import relationship
@@ -1229,6 +1229,131 @@ class NegativeLookupCache(Base):
     reason = Column(String(255), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DynamicSourceRoot(Base):
+    __tablename__ = 'blombooru_dynamic_source_roots'
+    __table_args__ = (
+        UniqueConstraint('root_path_hash', name='uq_dynamic_source_root_path_hash'),
+        Index('ix_dynamic_source_roots_active', 'is_active'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    label = Column(String(255), nullable=False)
+    root_path = Column(String(2000), nullable=False)
+    root_path_hash = Column(String(128), nullable=False, index=True)
+    source_type = Column(String(50), nullable=False, default='local_path', server_default='local_path')
+    is_active = Column(Boolean, nullable=False, default=True, server_default='true')
+    auto_sync_enabled = Column(Boolean, nullable=False, default=False, server_default='false')
+    sync_threshold = Column(Integer, nullable=False, default=100, server_default='100')
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DynamicSyncRun(Base):
+    __tablename__ = 'blombooru_dynamic_sync_runs'
+    __table_args__ = (
+        Index('ix_dynamic_sync_runs_status_created', 'status', 'created_at'),
+        Index('ix_dynamic_sync_runs_mode_status', 'mode', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_type = Column(String(50), nullable=False, default='check', server_default='check')
+    mode = Column(String(50), nullable=False, default='dry_run', server_default='dry_run')
+    status = Column(String(50), nullable=False, default='running', server_default='running', index=True)
+    dry_run = Column(Boolean, nullable=False, default=True, server_default='true')
+    threshold = Column(Integer, nullable=False, default=100, server_default='100')
+    threshold_reached = Column(Boolean, nullable=False, default=False, server_default='false')
+    roots_checked = Column(Integer, nullable=False, default=0, server_default='0')
+    total_seen = Column(Integer, nullable=False, default=0, server_default='0')
+    new_items = Column(Integer, nullable=False, default=0, server_default='0')
+    changed_items = Column(Integer, nullable=False, default=0, server_default='0')
+    unchanged_items = Column(Integer, nullable=False, default=0, server_default='0')
+    deferred_items = Column(Integer, nullable=False, default=0, server_default='0')
+    failed_items = Column(Integer, nullable=False, default=0, server_default='0')
+    missing_items = Column(Integer, nullable=False, default=0, server_default='0')
+    pending_import_items = Column(Integer, nullable=False, default=0, server_default='0')
+    summary_json = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DynamicSourceItem(Base):
+    __tablename__ = 'blombooru_dynamic_source_items'
+    __table_args__ = (
+        UniqueConstraint('source_root_id', 'relative_path_hash', name='uq_dynamic_source_item_root_relhash'),
+        Index('ix_dynamic_source_items_root_relhash', 'source_root_id', 'relative_path_hash'),
+        Index('ix_dynamic_source_items_content_hash', 'content_hash'),
+        Index('ix_dynamic_source_items_import_status', 'import_status'),
+        Index('ix_dynamic_source_items_classification_status', 'classification_status'),
+        Index('ix_dynamic_source_items_ai_tagging_status', 'ai_tagging_status'),
+        Index('ix_dynamic_source_items_localization_status', 'localization_status'),
+        Index('ix_dynamic_source_items_last_seen_run', 'last_seen_run_id'),
+        Index('ix_dynamic_source_items_media_id', 'media_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_root_id = Column(Integer, ForeignKey('blombooru_dynamic_source_roots.id', ondelete='CASCADE'), nullable=False, index=True)
+    relative_path = Column(String(2000), nullable=False)
+    relative_path_hash = Column(String(128), nullable=False, index=True)
+    file_size = Column(BigInteger, nullable=True)
+    mtime = Column(Float, nullable=True)
+    mtime_ns = Column(BigInteger, nullable=True)
+    content_hash = Column(String(128), nullable=True, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    source_status = Column(String(50), nullable=False, default='available', server_default='available', index=True)
+    sync_state = Column(String(50), nullable=False, default='new', server_default='new', index=True)
+    import_status = Column(String(50), nullable=False, default='pending', server_default='pending', index=True)
+    classification_status = Column(String(50), nullable=False, default='waiting_import', server_default='waiting_import', index=True)
+    ai_tagging_status = Column(String(50), nullable=False, default='waiting_import', server_default='waiting_import', index=True)
+    localization_status = Column(String(50), nullable=False, default='waiting_ai_tags', server_default='waiting_ai_tags', index=True)
+    failure_reason = Column(String(255), nullable=True, index=True)
+    deferred_reason = Column(String(255), nullable=True, index=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_checked_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_imported_at = Column(DateTime(timezone=True), nullable=True)
+    last_sync_run_id = Column(Integer, ForeignKey('blombooru_dynamic_sync_runs.id', ondelete='SET NULL'), nullable=True, index=True)
+    last_seen_run_id = Column(Integer, ForeignKey('blombooru_dynamic_sync_runs.id', ondelete='SET NULL'), nullable=True, index=True)
+    metadata_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    source_root = relationship('DynamicSourceRoot', backref='source_items')
+    media = relationship('Media')
+    last_sync_run = relationship('DynamicSyncRun', foreign_keys=[last_sync_run_id])
+    last_seen_run = relationship('DynamicSyncRun', foreign_keys=[last_seen_run_id])
+
+
+class DynamicSyncRunItem(Base):
+    __tablename__ = 'blombooru_dynamic_sync_run_items'
+    __table_args__ = (
+        UniqueConstraint('sync_run_id', 'source_item_id', name='uq_dynamic_sync_run_item'),
+        Index('ix_dynamic_sync_run_items_run_state', 'sync_run_id', 'item_state'),
+        Index('ix_dynamic_sync_run_items_item', 'source_item_id'),
+        Index('ix_dynamic_sync_run_items_import_eligible', 'eligible_for_db_import'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    sync_run_id = Column(Integer, ForeignKey('blombooru_dynamic_sync_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    source_item_id = Column(Integer, ForeignKey('blombooru_dynamic_source_items.id', ondelete='CASCADE'), nullable=False, index=True)
+    item_state = Column(String(50), nullable=False, index=True)
+    action = Column(String(50), nullable=False, default='record_only', server_default='record_only')
+    reason = Column(String(255), nullable=True)
+    eligible_for_db_import = Column(Boolean, nullable=False, default=False, server_default='false', index=True)
+    bytes_copied = Column(BigInteger, nullable=False, default=0, server_default='0')
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='SET NULL'), nullable=True, index=True)
+    previous_metadata_json = Column(JSON, nullable=True)
+    current_metadata_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    sync_run = relationship('DynamicSyncRun', backref='run_items')
+    source_item = relationship('DynamicSourceItem', backref='run_items')
+    media = relationship('Media')
 
 
 class ScanJobMedia(Base):

@@ -331,6 +331,29 @@ class AdminPanel {
         this._initHydratedOnlyDefault();
         this.loadScanHistory();
 
+        // Dynamic Library Sync (Phase 4.7-S1)
+        const dynamicSyncRefreshBtn = document.getElementById('dynamic-sync-refresh-btn');
+        if (dynamicSyncRefreshBtn) {
+            dynamicSyncRefreshBtn.addEventListener('click', () => this.loadDynamicSyncDashboard());
+        }
+        const dynamicSyncRegisterRootBtn = document.getElementById('dynamic-sync-register-root-btn');
+        if (dynamicSyncRegisterRootBtn) {
+            dynamicSyncRegisterRootBtn.addEventListener('click', () => this.registerDynamicSourceRoot());
+        }
+        const dynamicSyncCheckBtn = document.getElementById('dynamic-sync-check-btn');
+        if (dynamicSyncCheckBtn) {
+            dynamicSyncCheckBtn.addEventListener('click', () => this.runDynamicUpdateCheck());
+        }
+        const dynamicSyncDryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
+        if (dynamicSyncDryRunBtn) {
+            dynamicSyncDryRunBtn.addEventListener('click', () => this.runDynamicUpdateCheck());
+        }
+        const dynamicSyncPendingBtn = document.getElementById('dynamic-sync-sync-pending-btn');
+        if (dynamicSyncPendingBtn) {
+            dynamicSyncPendingBtn.addEventListener('click', () => this.syncDynamicPendingItems());
+        }
+        this.loadDynamicSyncDashboard();
+
         // AI Tagging buttons
         const aiTagRefreshBtn = document.getElementById('ai-tag-refresh-status');
         if (aiTagRefreshBtn) {
@@ -1780,6 +1803,221 @@ class AdminPanel {
             }
         } catch (err) {
             console.error('Failed to load scan history:', err);
+        }
+    }
+
+    // ---- Dynamic Library Sync (Phase 4.7-S1) ----
+
+    async loadDynamicSyncDashboard() {
+        const section = document.getElementById('dynamic-library-sync-section');
+        if (!section) return;
+        try {
+            const data = await app.apiCall('/api/admin/dynamic-library-sync', { method: 'GET' });
+            this._renderDynamicSyncDashboard(data);
+        } catch (e) {
+            const warning = document.getElementById('dynamic-sync-warning');
+            if (warning) {
+                warning.classList.remove('hidden');
+                warning.textContent = `Dynamic sync load failed: ${e.message || e}`;
+            }
+        }
+    }
+
+    _dynamicSyncT(key, fallback) {
+        return window.i18n ? window.i18n.t(key) : fallback;
+    }
+
+    _renderDynamicSyncDashboard(data) {
+        const pending = data.pending_summary || {};
+        const readiness = data.readiness || {};
+        const roots = data.source_roots || [];
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
+        setText('dynamic-sync-pending-new', pending.pending_new || 0);
+        setText('dynamic-sync-pending-changed', pending.pending_changed || 0);
+        setText('dynamic-sync-pending-deferred', pending.pending_deferred || 0);
+        setText('dynamic-sync-threshold', pending.threshold || 100);
+        const thresholdStatus = pending.threshold_reached
+            ? this._dynamicSyncT('admin.dynamic_library_sync.threshold_reached', 'Reached')
+            : this._dynamicSyncT('admin.dynamic_library_sync.threshold_clear', 'Clear');
+        setText('dynamic-sync-threshold-status', thresholdStatus);
+        const thresholdEl = document.getElementById('dynamic-sync-threshold-status');
+        if (thresholdEl) {
+            thresholdEl.classList.toggle('text-warning', !!pending.threshold_reached);
+            thresholdEl.classList.toggle('text-green-400', !pending.threshold_reached);
+        }
+
+        const warning = document.getElementById('dynamic-sync-warning');
+        const warnings = readiness.warnings || [];
+        const blockers = readiness.blockers_before_s2 || [];
+        if (warning) {
+            if (pending.threshold_reached || warnings.length || blockers.length) {
+                warning.classList.remove('hidden');
+                const parts = [];
+                if (pending.threshold_reached) parts.push(this._dynamicSyncT('admin.dynamic_library_sync.threshold_warning', 'Pending threshold reached.'));
+                if (blockers.length) parts.push(`Blockers: ${blockers.join(', ')}`);
+                if (warnings.length) parts.push(`Warnings: ${warnings.join(', ')}`);
+                warning.textContent = parts.join(' ');
+            } else {
+                warning.classList.add('hidden');
+                warning.textContent = '';
+            }
+        }
+
+        this._renderDynamicSyncRoots(roots);
+        this._renderDynamicSyncLastRun(data.last_sync_run);
+        this._renderDynamicSyncReadiness(readiness);
+        this._renderDynamicSyncAiLocalization(readiness.ai_localization_readiness || {});
+
+        const syncBtn = document.getElementById('dynamic-sync-sync-pending-btn');
+        const syncStatus = document.getElementById('dynamic-sync-sync-status');
+        const enabled = pending.manual_sync_execution_enabled && !pending.automatic_production_writes_enabled;
+        if (syncBtn) syncBtn.disabled = !enabled;
+        if (syncStatus) {
+            syncStatus.textContent = enabled
+                ? this._dynamicSyncT('admin.dynamic_library_sync.manual_sync_enabled', 'Manual sync execution is enabled.')
+                : this._dynamicSyncT('admin.dynamic_library_sync.manual_sync_disabled', 'Manual sync execution is disabled by default until an approved S2 run.');
+        }
+    }
+
+    _renderDynamicSyncRoots(roots) {
+        const tbody = document.getElementById('dynamic-sync-roots-tbody');
+        const empty = document.getElementById('dynamic-sync-roots-empty');
+        if (!tbody) return;
+        if (!roots.length) {
+            tbody.innerHTML = '';
+            if (empty) empty.classList.remove('hidden');
+            return;
+        }
+        if (empty) empty.classList.add('hidden');
+        tbody.innerHTML = roots.map(root => `
+            <tr class="border-b">
+                <td class="py-2 px-2 font-bold">${this.escapeHtml(root.label || '')}</td>
+                <td class="py-2 px-2 max-w-[360px] truncate" title="${this.escapeHtml(root.root_path || '')}">${this.escapeHtml(root.root_path || '')}</td>
+                <td class="py-2 px-2">${root.sync_threshold || 100}</td>
+                <td class="py-2 px-2">${root.last_checked_at ? new Date(root.last_checked_at).toLocaleString() : '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    _renderDynamicSyncLastRun(run) {
+        const el = document.getElementById('dynamic-sync-last-run');
+        if (!el) return;
+        if (!run) {
+            el.textContent = this._dynamicSyncT('admin.dynamic_library_sync.no_runs', 'No update checks have run yet.');
+            return;
+        }
+        el.textContent = `Last run #${run.id}: ${run.status}, seen=${run.total_seen}, new=${run.new_items}, changed=${run.changed_items}, deferred=${run.deferred_items}, finished=${run.finished_at || '-'}`;
+    }
+
+    _renderDynamicSyncReadiness(readiness) {
+        const el = document.getElementById('dynamic-sync-readiness');
+        if (!el) return;
+        const production = readiness.production_settings || {};
+        const blockers = readiness.blockers_before_s2 || [];
+        const warnings = readiness.warnings || [];
+        const badge = (value) => value
+            ? '<span class="text-green-400 font-bold">ON</span>'
+            : '<span class="text-red-400 font-bold">OFF</span>';
+        el.innerHTML = `
+            <div>VIOLET_ENV: <span class="font-bold">${this.escapeHtml(production.violet_env || '-')}</span></div>
+            <div>DB: <span class="font-bold">${this.escapeHtml(production.db_name || '-')}</span></div>
+            <div>Storage explicit: ${badge(!!production.storage_root_explicitly_set)}</div>
+            <div>Dynamic sync state: ${badge(!!readiness.dynamic_sync_state_ready)}</div>
+            <div>Manual update: ${badge(!!readiness.manual_update_ready)}</div>
+            <div>Auto production writes: ${badge(!!production.auto_sync_enabled)}</div>
+            <div>Manual sync execution: ${badge(!!production.manual_sync_enabled)}</div>
+            <div class="text-red-400">${blockers.length ? `Blockers: ${this.escapeHtml(blockers.join(', '))}` : ''}</div>
+            <div class="text-warning">${warnings.length ? `Warnings: ${this.escapeHtml(warnings.join(', '))}` : ''}</div>
+        `;
+    }
+
+    _renderDynamicSyncAiLocalization(readiness) {
+        const el = document.getElementById('dynamic-sync-ai-localization');
+        if (!el) return;
+        const ai = readiness.ai_tagging || {};
+        const tl = readiness.tag_localization || {};
+        const gap = tl.gap_summary || {};
+        const badge = (value) => value
+            ? '<span class="text-green-400 font-bold">ON</span>'
+            : '<span class="text-red-400 font-bold">OFF</span>';
+        el.innerHTML = `
+            <div>AI tagging: ${badge(!!ai.enabled)} <span class="text-secondary">model=${this.escapeHtml(ai.model_name || '-')}</span></div>
+            <div>AI -> localization: ${badge(!!ai.auto_tagging_localization_enabled)}</div>
+            <div>LLM translation: ${badge(!!tl.llm_enabled)} | Auto: ${badge(!!tl.auto_enabled)} | Worker: ${badge(!!tl.background_enabled)}</div>
+            <div>Worker categories: <span class="font-bold">${this.escapeHtml((tl.background_categories || []).join(', ') || '-')}</span></div>
+            <div>Gap: missing=${gap.missing || 0}, general/meta=${gap.general_meta_missing || 0}, proper nouns=${gap.proper_noun_missing || 0}, needs_review=${gap.needs_review || 0}</div>
+            <div>Proper-noun worker exclusion: ${badge(!!gap.worker_excludes_proper_nouns)}</div>
+            <div class="text-secondary">Chain: ${(readiness.integration_chain || []).map(step => this.escapeHtml(step)).join(' -> ')}</div>
+        `;
+    }
+
+    async registerDynamicSourceRoot() {
+        const pathEl = document.getElementById('dynamic-sync-root-path');
+        const labelEl = document.getElementById('dynamic-sync-root-label');
+        const errorEl = document.getElementById('dynamic-sync-root-error');
+        const path = pathEl ? pathEl.value.trim() : '';
+        const label = labelEl ? labelEl.value.trim() : '';
+        if (errorEl) {
+            errorEl.classList.add('hidden');
+            errorEl.textContent = '';
+        }
+        if (!path) {
+            if (errorEl) {
+                errorEl.classList.remove('hidden');
+                errorEl.textContent = this._dynamicSyncT('admin.dynamic_library_sync.path_required', 'Path is required.');
+            }
+            return;
+        }
+        try {
+            await app.apiCall('/api/admin/dynamic-library-sync/source-roots', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path, label: label || null }),
+            });
+            if (pathEl) pathEl.value = '';
+            if (labelEl) labelEl.value = '';
+            app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.root_registered', 'Source root registered.'), 'success');
+            this.loadDynamicSyncDashboard();
+        } catch (e) {
+            if (errorEl) {
+                errorEl.classList.remove('hidden');
+                errorEl.textContent = e.message || String(e);
+            }
+        }
+    }
+
+    async runDynamicUpdateCheck() {
+        const maxFilesEl = document.getElementById('dynamic-sync-max-files');
+        const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
+        const body = {
+            hydrated_only: hydratedEl ? hydratedEl.checked : true,
+        };
+        const maxFiles = maxFilesEl && maxFilesEl.value ? parseInt(maxFilesEl.value, 10) : null;
+        if (maxFiles) body.max_files = maxFiles;
+        try {
+            const result = await app.apiCall('/api/admin/dynamic-library-sync/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            app.showNotification(`Dynamic sync check #${result.id} completed`, 'success');
+            this.loadDynamicSyncDashboard();
+        } catch (e) {
+            app.showNotification(`Dynamic sync check failed: ${e.message || e}`, 'error');
+        }
+    }
+
+    async syncDynamicPendingItems() {
+        try {
+            await app.apiCall('/api/admin/dynamic-library-sync/sync-pending', { method: 'POST' });
+            app.showNotification('Pending sync started', 'success');
+        } catch (e) {
+            app.showNotification(`Sync pending blocked: ${e.message || e}`, 'error');
+            this.loadDynamicSyncDashboard();
         }
     }
 

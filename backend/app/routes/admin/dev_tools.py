@@ -189,6 +189,7 @@ async def get_config_diagnostics(
             "only_new": settings.AI_AUTO_TAG_AFTER_IMPORT_ONLY_NEW,
             "dry_run": settings.AI_AUTO_TAG_AFTER_IMPORT_DRY_RUN,
             "force_suggestions": settings.AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS,
+            "auto_localization": settings.AI_TAGGING_AUTO_LOCALIZATION,
         },
         "tag_localization": {
             "llm_enabled": settings.TAG_TRANSLATION_LLM_ENABLED,
@@ -206,6 +207,12 @@ async def get_config_diagnostics(
             "background_daily_limit": settings.TAG_TRANSLATION_BG_DAILY_LIMIT,
             "background_error_limit": settings.TAG_TRANSLATION_BG_ERROR_LIMIT,
             "background_priority": settings.TAG_TRANSLATION_BG_PRIORITY,
+            "background_categories": settings.TAG_TRANSLATION_BG_CATEGORIES,
+        },
+        "dynamic_library_sync": {
+            "threshold": settings.DYNAMIC_LIBRARY_SYNC_THRESHOLD,
+            "auto_sync_enabled": settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED,
+            "manual_sync_enabled": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED,
         },
         "paths": {
             "local_library_paths": [str(p) for p in settings.LOCAL_LIBRARY_PATHS],

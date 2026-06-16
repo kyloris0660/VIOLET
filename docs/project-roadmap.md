@@ -21,7 +21,15 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is now split into a production utility track and a SourceConcept/provider/entity track. Production utility planning may proceed for safe full-library import, classification, AI tagging, and usable local search/browse value. Provider expansion, SourceConcept editing, Entity truth work, R2, PX1-B, and Provider-2 remain blocked while the pipeline fidelity incident is unresolved.
+The active product route is now the Phase 4.7 dynamic library sync route. It is a normal product feature sequence, not a temporary runner-only branch. The source library updates daily, so V.I.O.L.E.T. must preserve durable DB-backed source/sync/import/classification/AI/localization state and expose it in Admin UI.
+
+The short-term roadmap is capped at three stages:
+
+1. **Phase 4.7-S1:** Dynamic Sync Foundation + Product UI + AI/Localization Readiness.
+2. **Phase 4.7-S2:** Baseline Full Import + Classification + AI Tagging + Tag Localization.
+3. **Phase 4.7-S3:** Incremental Sync Automation + Hardening.
+
+SourceConcept/provider/entity work remains a separate track. Provider expansion, SourceConcept editing, Entity truth work, R2, PX1-B, and Provider-2 remain blocked while the pipeline fidelity incident is unresolved. This does not block the product utility import/AI/localization route as long as it does not promote SourceConcept/Entity truth.
 
 Current accepted state:
 
@@ -37,7 +45,9 @@ Current accepted state:
 - Phase 4.5-SCV2-INC1 is available on `main` via PR #107: it confirmed `llm_stage_missing_incident`, SC1 used bounded LLM adjudication, and R1 did not.
 - PR #108 / Phase 4.5-GOV3 is merged: executable phase contracts and phase gates are now the baseline governance rule before completion, route approval, or safe handoff claims.
 - Issue #109 tracks GOV3.1 hardening debt. It does not block plan-only production utility planning, but later route approval, `safe_to_merge`, or high-risk review-pack proof must account for the relevant issue class.
-- Phase 4.6-FULLLIB-P0 is current: plan-only contract mapping for a production utility full-library import, classification, AI tagging, and AI tag reuse track.
+- PR #110 / Phase 4.6-FULLLIB-P0 is merged: plan-only contract mapping for a production utility full-library import, classification, AI tagging, and AI tag reuse track.
+- PR #111 / Phase 4.6-FULLLIB-E1a is merged: production full-library runner dry-run proof, no DB write/import, no source/app-storage mutation, no provider/LLM/SourceConcept/Entity execution.
+- Phase 4.7-S1 is current: durable dynamic sync state, manual update check, Admin UI, default-off production write policy, AI tagging readiness, tag localization readiness, and proper-noun safety proof.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
 Current post-PX1 result:
@@ -48,7 +58,7 @@ Current post-PX1 result:
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
 - Current route is split into two tracks:
-  1. Production utility: FULLLIB-P0, then approved FULLLIB-E1 for production DB/app-storage isolated import, classification, AI tagging, and local search/browse value.
+  1. Production utility: Phase 4.7-S1/S2/S3 for durable dynamic sync, baseline full import, classification, AI tagging, tag localization, then incremental automation.
   2. SourceConcept/provider/entity: R1R full SourceConcept pipeline replay/remediation, then A1R route audit rerun, then any R2/Provider-2/Entity bridge decision.
 - A1 final route approval remains blocked pending R1R and A1R. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the A1 pack does not approve R2 during this incident.
 - Old R1/A1 evidence must not approve R2. R1/A1 should not be destructively rolled back; R1R/A1R should supersede/remediate with contract-shaped outputs.
@@ -56,14 +66,15 @@ Current post-PX1 result:
 
 ## Near-Term Route
 
-1. Review and approve `Phase 4.6-FULLLIB-P0` if the production utility split is accepted.
-2. Start `FULLLIB-E1` only after P0 approval. FULLLIB-E1 must not run provider, LLM, SourceConcept, Entity, R1R, A1R, or R2.
-3. Keep R1R/A1R important but separate unless the project owner explicitly reprioritizes the SourceConcept/provider track.
-4. Plan `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation` separately under `source_concept_full_chain_contract_v1` when that track resumes.
-5. Rerun A1 as A1R under `route_audit_contract_v1` after R1R before any final route approval.
-6. Defer PX1-B until after R1R+A1R or a separate provider-policy decision.
-7. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
-8. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
+1. Complete `Phase 4.7-S1` with DB-backed dynamic sync state, Admin UI, readiness APIs, focused tests, real browser validation, and durable docs.
+2. Start `Phase 4.7-S2` only after S1 review/merge and explicit approval. S2 may run the approved baseline full import, classification, AI tagging, and tag localization chain, but must still avoid providers, SourceConcept, Entity bridge, R1R, A1R, and R2.
+3. Start `Phase 4.7-S3` only after S2 baseline state is validated. S3 handles incremental automation, scheduling, retry/backfill hardening, and any explicit opt-in auto-sync policy.
+4. Keep R1R/A1R important but separate unless the project owner explicitly reprioritizes the SourceConcept/provider track.
+5. Plan `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation` separately under `source_concept_full_chain_contract_v1` when that track resumes.
+6. Rerun A1 as A1R under `route_audit_contract_v1` after R1R before any final route approval.
+7. Defer PX1-B until after R1R+A1R or a separate provider-policy decision.
+8. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
+9. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
@@ -71,7 +82,10 @@ Explicit ordering:
 - Alias resolver improvement still comes before Entity bridge or promotion.
 - SourceConcept management/editing is a later source-layer phase, not SCV1 by default.
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
-- Provider/gallery-dl/Pixiv/SauceNAO/Google/LLM/source-enrichment runs and any non-FULLLIB production utility scale-up require separate policy, budget, ledger, and approval.
+- Provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment runs and any non-4.7 product utility scale-up require separate policy, budget, ledger, and approval.
+- Dynamic sync automatic production writes are disabled by default. Manual check-for-updates and pending counts are product behavior; threshold-triggered or unattended production writes require explicit user opt-in and visible config.
+- AI tagging and tag localization are one S2 execution chain: baseline import -> AI tagging job -> new tags collected -> `_schedule_localization` -> background worker / auto translate -> `blombooru_tag_translations` -> frontend Chinese display and trusted search aliases.
+- General/meta localization may use the background translation worker. Character/copyright/artist proper nouns require manual/static trusted aliases or reviewed Entity Alias Resolver output; unreviewed LLM aliases must not pollute Chinese search.
 - Review-pack-required route phases normally use `provisional_pending_chatgpt_pack_audit` until the generated pack is independently audited, but pipeline fidelity incidents override that with `blocked_pending_pipeline_fidelity_remediation` until remediation and rerun evidence exist.
 
 ## Current Governance / Development Standards
