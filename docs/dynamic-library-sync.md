@@ -33,12 +33,12 @@ S1 update checks do not import media, copy files, compute content hashes by
 default, run classification, run AI tagging, call providers, call LLMs, mutate
 SourceConcept, mutate Entity tables, or touch source files.
 
-When an update check is capped with `max_files`, the run is explicitly partial.
-Partial root scans record `partial_scan=true`,
-`missing_reconciliation_skipped=true`, and
-`missing_reconciliation_reason=max_files_cap` in the root summary. Partial
-checks do not mark unseen tracked items as missing; only complete root scans may
-perform missing reconciliation.
+`max_files` is an aggregate cap across all selected roots. When an update check
+is capped, affected root summaries are explicitly partial. Partial root scans
+record `partial_scan=true`, `missing_reconciliation_skipped=true`, and a safe
+reason such as `max_files_cap` or `source_walk_error`. Partial checks do not
+mark unseen tracked items as missing; only complete root scans may perform
+missing reconciliation.
 
 ## Pending count calculation
 
@@ -54,7 +54,11 @@ Pending state is DB-backed and does not depend on `.local_manifests`.
 - `total_pending`: `pending_import + pending_deferred`.
 
 Source item identity is `source_root_id + relative_path_hash`; `media_id` is a
-link after import, not the incremental sync identity.
+link after import, not the incremental sync identity. The relative path hash is
+computed from the case-preserving normalized relative path, so case-sensitive
+roots do not collapse `A.jpg` and `a.jpg` into one source item. This hash
+semantic is safe to set now because S1 has not been merged into production and
+no production dynamic sync state exists yet.
 
 ## Threshold policy
 
@@ -144,6 +148,11 @@ Symlinks and resolved path escapes are item-level deferred states for S1
 metadata checks. They record safe reasons such as `symlink` or `path_escape`,
 remain ineligible for import, and do not crash the whole update check or corrupt
 missing reconciliation for unrelated items.
+
+If a DB flush/commit fails during an update check, the service rolls back the
+failed transaction before marking the sync run as failed in a clean transaction.
+If the failed status itself cannot be persisted, the original exception is still
+re-raised and the persistence failure is logged.
 
 Long-running update checks currently execute through the admin API path. Before
 large-root production checks or S3 automation, this should move to an

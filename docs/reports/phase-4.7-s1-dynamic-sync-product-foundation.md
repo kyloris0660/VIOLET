@@ -19,6 +19,10 @@ Implemented:
 - Pending new/changed/deferred counts and threshold status.
 - Explicit partial scan state for capped checks, with missing reconciliation
   skipped on capped roots.
+- Explicit partial scan state for unreadable or skipped subtrees, with missing
+  reconciliation skipped on affected roots.
+- Case-preserving relative path identity for source item hashes.
+- Rollback-before-failed-status handling for update-check failures.
 - Default threshold policy: `100`.
 - Default-off policy for unattended production writes and S1 manual sync
   execution.
@@ -116,6 +120,11 @@ The executable contract now fails unless public S1 summaries declare both
 `source_root_id` and `relative_path_hash` as the source item identity
 components.
 
+`relative_path_hash` is computed from the case-preserving normalized relative
+path. This avoids merging distinct case-sensitive files such as `A.jpg` and
+`a.jpg`. The semantic change is safe because S1 has not been merged into
+production and no production dynamic sync state exists yet.
+
 ## 7. Manual update flow
 
 The S1 flow is metadata-only:
@@ -138,10 +147,20 @@ root summary records `partial_scan=true`,
 `missing_reconciliation_reason=max_files_cap`. Unseen tracked items beyond the
 cap are not marked `missing` or `deferred`.
 
+`max_files` is an aggregate cap across all selected roots. It is not interpreted
+as a per-root cap.
+
+Unreadable or temporarily unavailable subtrees are also partial scans. Affected
+root summaries record `missing_reconciliation_reason=source_walk_error` and do
+not run full-root missing reconciliation.
+
 Deferred, failed, or missing items that become eligible again are requeued for
 pending import even if file size and mtime did not change. Symlinks and resolved
 path escapes are recorded as item-level deferred states with safe reasons such
 as `symlink` or `path_escape`.
+
+If a DB write fails during update check processing, the service rolls back the
+failed transaction before marking the run `failed` in a clean transaction.
 
 ## 8. Threshold policy
 
@@ -238,9 +257,8 @@ Passed:
 - `git diff --cached --check`
 - `scripts/check_python_env.py --expected-python <repo-venv-python>`
 - `python -m py_compile <changed_python_files>`
-- `pytest tests/test_dynamic_library_sync.py tests/test_phase_contracts.py -v` -> 87 passed
 - `pytest tests/test_phase46_fulllib_e1a_runner_dryrun.py tests/test_phase45_doc1_documentation_state.py -v` -> 39 passed
-- `pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v` -> 130 passed
+- `pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v` -> 134 passed
 - `npx playwright test tests/e2e/admin-content.spec.ts --project=edge` -> 6 passed
 
 Real browser validation:
@@ -265,6 +283,7 @@ Real browser validation:
 - Baseline import dry-run and safety contract proof.
 - Localization provider/worker settings reviewed before any LLM batch.
 - Proper-noun alias route remains manual/static/reviewed only.
+- Localization gap COUNT-query optimization remains deferred.
 - Update checks should move off the FastAPI event loop before large-root or
   automated S3 use.
 - Broader proper-noun search alias hardening remains deferred unless a small

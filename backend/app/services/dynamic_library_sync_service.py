@@ -161,8 +161,12 @@ def serialize_source_root(root: DynamicSourceRoot) -> Dict[str, Any]:
     }
 
 
-def _iter_source_files(root_path: Path) -> Iterable[Path]:
-    for dirpath, dirnames, filenames in os.walk(root_path):
+def _iter_source_files(root_path: Path, *, walk_errors: Optional[List[str]] = None) -> Iterable[Path]:
+    def _on_walk_error(exc: OSError) -> None:
+        if walk_errors is not None:
+            walk_errors.append(type(exc).__name__ or "OSError")
+
+    for dirpath, dirnames, filenames in os.walk(root_path, onerror=_on_walk_error):
         dirnames[:] = [d for d in dirnames if d not in {".git", "__pycache__", "venv"}]
         for filename in sorted(filenames):
             yield Path(dirpath) / filename
@@ -267,7 +271,7 @@ def _record_file_observation(
     hydrated_only: bool,
 ) -> str:
     rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, file_path)
-    rel_hash = _hash_text(rel.lower())
+    rel_hash = _hash_text(rel)
     item = (
         db.query(DynamicSourceItem)
         .filter(
@@ -429,6 +433,7 @@ def run_update_check(
     }
     root_summaries: List[Dict[str, Any]] = []
 
+    run_id = run.id
     try:
         for root in roots:
             root_path = validate_source_root_path(root.root_path)
@@ -436,28 +441,38 @@ def run_update_check(
             partial_scan = False
             missing_reconciliation_skipped = False
             missing_reconciliation_reason = None
-            for file_path in _iter_source_files(root_path):
-                if max_files is not None and root_counts["total_seen"] >= max_files:
-                    partial_scan = True
-                    missing_reconciliation_skipped = True
-                    missing_reconciliation_reason = "max_files_cap"
-                    break
-                state = _record_file_observation(
-                    db,
-                    root=root,
-                    run=run,
-                    root_path=root_path,
-                    file_path=file_path,
-                    now=now,
-                    hydrated_only=hydrated_only,
-                )
-                counts["total_seen"] += 1
-                root_counts["total_seen"] += 1
-                key = f"{state}_items"
-                if key in counts:
-                    counts[key] += 1
-                    root_counts[key] += 1
+            walk_errors: List[str] = []
+            if max_files is not None and counts["total_seen"] >= max_files:
+                partial_scan = True
+                missing_reconciliation_skipped = True
+                missing_reconciliation_reason = "max_files_cap"
+            if not missing_reconciliation_skipped:
+                for file_path in _iter_source_files(root_path, walk_errors=walk_errors):
+                    if max_files is not None and counts["total_seen"] >= max_files:
+                        partial_scan = True
+                        missing_reconciliation_skipped = True
+                        missing_reconciliation_reason = "max_files_cap"
+                        break
+                    state = _record_file_observation(
+                        db,
+                        root=root,
+                        run=run,
+                        root_path=root_path,
+                        file_path=file_path,
+                        now=now,
+                        hydrated_only=hydrated_only,
+                    )
+                    counts["total_seen"] += 1
+                    root_counts["total_seen"] += 1
+                    key = f"{state}_items"
+                    if key in counts:
+                        counts[key] += 1
+                        root_counts[key] += 1
 
+            if walk_errors and missing_reconciliation_reason != "max_files_cap":
+                partial_scan = True
+                missing_reconciliation_skipped = True
+                missing_reconciliation_reason = "source_walk_error"
             missing = 0
             if not missing_reconciliation_skipped:
                 missing = _mark_missing_items(db, root=root, run=run, now=now)
@@ -471,6 +486,7 @@ def run_update_check(
                 "partial_scan": partial_scan,
                 "missing_reconciliation_skipped": missing_reconciliation_skipped,
                 "missing_reconciliation_reason": missing_reconciliation_reason,
+                "source_walk_error_count": len(walk_errors),
                 "counts": root_counts,
             })
 
@@ -490,6 +506,7 @@ def run_update_check(
         run.summary_json = {
             "root_summaries": root_summaries,
             "partial_scan": any(root_summary["partial_scan"] for root_summary in root_summaries),
+            "max_files_scope": "aggregate",
             "pending_summary": pending,
             "s1_no_import_performed": True,
         }
@@ -497,10 +514,24 @@ def run_update_check(
         return serialize_sync_run(run, pending_summary=pending)
     except Exception as exc:
         logger.exception("Dynamic library update check failed")
-        run.status = "failed"
-        run.error_message = str(exc)[:1000]
-        run.finished_at = _utcnow()
-        db.commit()
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Dynamic library update check rollback failed")
+        try:
+            failed_run = db.get(DynamicSyncRun, run_id) if run_id is not None else None
+            if failed_run is None:
+                failed_run = db.merge(run)
+            failed_run.status = "failed"
+            failed_run.error_message = str(exc)[:1000]
+            failed_run.finished_at = _utcnow()
+            db.commit()
+        except Exception:
+            logger.exception("Dynamic library update check failed status could not be persisted")
+            try:
+                db.rollback()
+            except Exception:
+                logger.exception("Dynamic library failed-status rollback failed")
         raise
 
 

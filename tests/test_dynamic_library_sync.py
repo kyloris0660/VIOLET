@@ -17,7 +17,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import Base, migrate_add_dynamic_library_sync_tables  # noqa: E402
 from app.enums import TagCategoryEnum  # noqa: E402
-from app.models import DynamicSourceItem, DynamicSyncRun, Media, Tag, TagTranslation  # noqa: E402
+from app.models import DynamicSourceItem, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, TagTranslation  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as service  # noqa: E402
 
@@ -155,6 +155,143 @@ def test_capped_update_check_skips_missing_reconciliation(db, tmp_path):
     assert "missing" not in {item.sync_state for item in items}
 
 
+def test_walk_error_skips_missing_reconciliation_for_unseen_descendants(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    subtree = source_root / "subtree"
+    subtree.mkdir(parents=True)
+    (source_root / "root.jpg").write_bytes(b"root")
+    (subtree / "tracked.jpg").write_bytes(b"tracked")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    service.run_update_check(db, root_ids=[root.id])
+
+    def fake_walk(path, onerror=None):
+        yield str(path), ["subtree"], ["root.jpg"]
+        if onerror is not None:
+            onerror(OSError("permission denied"))
+
+    monkeypatch.setattr(service.os, "walk", fake_walk)
+
+    result = service.run_update_check(db, root_ids=[root.id])
+    root_summary = result["summary"]["root_summaries"][0]
+    tracked = (
+        db.query(DynamicSourceItem)
+        .filter(DynamicSourceItem.relative_path == "subtree/tracked.jpg")
+        .one()
+    )
+
+    assert result["missing_items"] == 0
+    assert root_summary["partial_scan"] is True
+    assert root_summary["missing_reconciliation_skipped"] is True
+    assert root_summary["missing_reconciliation_reason"] == "source_walk_error"
+    assert root_summary["source_walk_error_count"] == 1
+    assert "subtree" not in str(root_summary)
+    assert tracked.source_status == "available"
+    assert tracked.import_status == "pending"
+    assert tracked.sync_state == "new"
+    assert result["pending_summary"]["pending_new"] == 2
+    assert result["pending_summary"]["pending_deferred"] == 0
+
+
+def test_case_preserving_relative_path_hash_disambiguates_case_variants(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "upper_fixture.jpg").write_bytes(b"upper")
+    (source_root / "lower_fixture.jpg").write_bytes(b"lower")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    original_identity = service._relative_identity_and_preflight_reason
+
+    def fake_identity(root_path, file_path):
+        if file_path.name == "upper_fixture.jpg":
+            return "A.jpg", None
+        if file_path.name == "lower_fixture.jpg":
+            return "a.jpg", None
+        return original_identity(root_path, file_path)
+
+    monkeypatch.setattr(service, "_relative_identity_and_preflight_reason", fake_identity)
+
+    first = service.run_update_check(db, root_ids=[root.id])
+    items = db.query(DynamicSourceItem).order_by(DynamicSourceItem.relative_path.asc()).all()
+    first_hashes = {item.relative_path: item.relative_path_hash for item in items}
+    first_run_items = (
+        db.query(DynamicSyncRunItem)
+        .filter(DynamicSyncRunItem.sync_run_id == first["id"])
+        .all()
+    )
+
+    assert first["new_items"] == 2
+    assert {item.relative_path for item in items} == {"A.jpg", "a.jpg"}
+    assert len({item.relative_path_hash for item in items}) == 2
+    assert len(first_run_items) == 2
+    assert len({item.source_item_id for item in first_run_items}) == 2
+
+    second = service.run_update_check(db, root_ids=[root.id])
+    assert db.query(DynamicSourceItem).count() == 2
+    assert {
+        item.relative_path: item.relative_path_hash
+        for item in db.query(DynamicSourceItem).all()
+    } == first_hashes
+    second_run_items = (
+        db.query(DynamicSyncRunItem)
+        .filter(DynamicSyncRunItem.sync_run_id == second["id"])
+        .all()
+    )
+    assert len(second_run_items) == 2
+    assert len({item.source_item_id for item in second_run_items}) == 2
+
+
+def test_max_files_is_aggregate_across_selected_roots(db, tmp_path):
+    root_a_path = tmp_path / "source_a"
+    root_b_path = tmp_path / "source_b"
+    root_a_path.mkdir()
+    root_b_path.mkdir()
+    for name in ["a1.jpg", "a2.jpg"]:
+        (root_a_path / name).write_bytes(name.encode("utf-8"))
+    for name in ["b1.jpg", "b2.jpg"]:
+        (root_b_path / name).write_bytes(name.encode("utf-8"))
+
+    root_a = service.register_source_root(db, path=root_a_path, label="a")
+    root_b = service.register_source_root(db, path=root_b_path, label="b")
+    result = service.run_update_check(db, root_ids=[root_a.id, root_b.id], max_files=2)
+    root_summaries = result["summary"]["root_summaries"]
+
+    assert result["total_seen"] == 2
+    assert db.query(DynamicSourceItem).count() == 2
+    assert root_summaries[0]["counts"]["total_seen"] == 2
+    assert root_summaries[1]["counts"]["total_seen"] == 0
+    assert root_summaries[1]["partial_scan"] is True
+    assert root_summaries[1]["missing_reconciliation_skipped"] is True
+    assert root_summaries[1]["missing_reconciliation_reason"] == "max_files_cap"
+    assert result["pending_summary"]["pending_new"] == 2
+    assert result["pending_summary"]["pending_deferred"] == 0
+
+
+def test_update_check_rolls_back_before_marking_failed_run(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "broken.jpg").write_bytes(b"broken")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    rollback_calls = []
+    original_rollback = db.rollback
+
+    def tracked_rollback():
+        rollback_calls.append(True)
+        original_rollback()
+
+    def fail_record(*args, **kwargs):
+        raise RuntimeError("simulated run item write failure")
+
+    monkeypatch.setattr(db, "rollback", tracked_rollback)
+    monkeypatch.setattr(service, "_record_file_observation", fail_record)
+
+    with pytest.raises(RuntimeError, match="simulated run item write failure"):
+        service.run_update_check(db, root_ids=[root.id])
+
+    run = db.query(DynamicSyncRun).one()
+    assert rollback_calls
+    assert run.status == "failed"
+    assert "simulated run item write failure" in run.error_message
+
+
 def test_deferred_item_requeues_when_it_becomes_eligible_with_same_metadata(db, tmp_path, monkeypatch):
     source_root = tmp_path / "source"
     source_root.mkdir()
@@ -288,7 +425,7 @@ def test_readiness_blocks_unreviewed_proper_noun_llm_aliases(db, tmp_path, monke
         TagTranslation(
             canonical_name="phase47_unreviewed_character_alias",
             language="zh-CN",
-            display_name="未审核角色",
+            display_name="unreviewed character",
             category="character",
             source="llm",
             status="translated",
