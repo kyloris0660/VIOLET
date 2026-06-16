@@ -1,0 +1,82 @@
+{
+  "batch_plan": {
+    "batch_size": 2,
+    "dry_run_only": true,
+    "planned_batch_count": 1
+  },
+  "contracts_mapped_for_e1b": [
+    "python_env_contract_v1",
+    "postgres_db_contract_v1",
+    "media_import_contract_v1",
+    "classification_contract_v1",
+    "ai_tagging_contract_v1",
+    "mutation_safety_contract_v1",
+    "artifact_lifecycle_contract_v1",
+    "public_redaction_contract_v1"
+  ],
+  "current_head_reviewer_fix": {
+    "actual_public_json_artifact_contract_scanned": true,
+    "actual_public_json_artifact_redaction_scanned": true,
+    "app_settings_path_uses_env_or_dotenv_storage_root": true,
+    "db_identity_does_not_overclaim_app_equivalence": true,
+    "db_url_construction_uses_sqlalchemy_url_create_for_fields": true,
+    "inventory_only_rows_not_import_ready": true,
+    "metadata_access_failures_ledgered": true,
+    "posix_venv_symlink_hardening": "fixed_lexical_path_compare",
+    "public_json_limited_to_scanned_projection": true,
+    "python_preflight_failure_aborts_before_artifacts": true,
+    "python_preflight_repo_compatible": true,
+    "raw_production_storage_root_must_be_absolute": true,
+    "report_provenance_truthful_for_uncommitted_generation": true,
+    "source_traversal_errors_fail_closed": true,
+    "streamed_traversal_honors_max_files": true,
+    "supported_media_extension_redaction_covered": true,
+    "violet_env_production_required": true
+  },
+  "final_current_head_redaction_artifact_fix": {
+    "actual_public_json_artifact_contract_scanned": true,
+    "inventory_only_rows_import_ready": false,
+    "media_extension_redaction_covers_supported_types": true,
+    "posix_venv_symlink_hardening": "fixed_lexical_path_compare",
+    "public_json_limited_to_scanned_projection": true,
+    "raw_production_storage_root_must_be_absolute": true
+  },
+  "inventory": {
+    "deferred": 1,
+    "duplicates": 1,
+    "eligible_before_duplicate_check": 3,
+    "max_files_reached": true,
+    "supported_candidates": 4,
+    "total_files_seen": 5,
+    "unique_import_candidates": 2,
+    "unsupported": 1
+  },
+  "mode": "dry_run",
+  "parallel_feature_development_paused": true,
+  "phase": "4.6-FULLLIB-E1a",
+  "public_redaction": {
+    "actual_public_json_artifact_contract_scanned": true,
+    "actual_public_json_artifact_scanned": true,
+    "checked_payloads": [
+      "actual_public_json_artifact",
+      "public_markdown_text"
+    ],
+    "contract_error_count": 0,
+    "contract_passed": true,
+    "findings_redacted": true,
+    "passed": true,
+    "pattern_finding_count": 0
+  },
+  "public_report_redacted": true,
+  "safety_public": {
+    "app_storage_mutation": false,
+    "db_write": false,
+    "paths_redacted": true,
+    "provider_or_llm": false,
+    "source_inputs_read_only": true,
+    "source_mutation": false,
+    "sourceconcept_or_entity": false
+  },
+  "status": "dry_run_completed",
+  "title": "Production Full-Library Runner and Dry-Run Proof"
+}
