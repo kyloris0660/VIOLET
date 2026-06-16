@@ -249,6 +249,19 @@ def test_dynamic_library_sync_contract_rejects_proper_noun_gap() -> None:
     assert "dynamic_sync_required_proof_failed" in codes
 
 
+def test_dynamic_library_sync_contract_rejects_completion_without_browser_passed() -> None:
+    summary = _dynamic_sync_summary(
+        validation={
+            "focused_tests_passed": True,
+            "browser_validation": {"status": "not_run"},
+        },
+    )
+
+    result = check_phase_contract("dynamic_library_sync_contract_v1", summary)
+
+    assert "dynamic_sync_browser_validation_not_passed" in _error_codes(result)
+
+
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:
     summary = _source_concept_summary(llm_adjudication_used=False)
 

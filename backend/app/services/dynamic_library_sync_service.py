@@ -41,7 +41,8 @@ def _hash_text(value: str) -> str:
 
 def _normalized_path_identity(path: Path) -> str:
     resolved = path.resolve()
-    return str(resolved).replace("\\", "/").rstrip("/").lower()
+    normalized = os.path.normcase(str(resolved))
+    return normalized.replace("\\", "/").rstrip("/")
 
 
 def _normalize_relative_path(path: Path) -> str:
@@ -348,6 +349,7 @@ def _record_file_observation(
 
 
 def _mark_missing_items(db: Session, *, root: DynamicSourceRoot, run: DynamicSyncRun, now: datetime) -> int:
+    db.flush()
     missing_items = (
         db.query(DynamicSourceItem)
         .filter(DynamicSourceItem.source_root_id == root.id)
@@ -402,7 +404,9 @@ def run_update_check(
 
     threshold = settings.DYNAMIC_LIBRARY_SYNC_THRESHOLD
     query = db.query(DynamicSourceRoot).filter(DynamicSourceRoot.is_active == True)
-    if root_ids:
+    if root_ids is not None:
+        if not root_ids:
+            raise ValueError("root_ids must not be empty; omit root_ids to scan all active roots")
         query = query.filter(DynamicSourceRoot.id.in_(root_ids))
     roots = query.order_by(DynamicSourceRoot.id.asc()).all()
     if not roots:
@@ -469,6 +473,7 @@ def run_update_check(
                         counts[key] += 1
                         root_counts[key] += 1
 
+            db.flush()
             if walk_errors and missing_reconciliation_reason != "max_files_cap":
                 partial_scan = True
                 missing_reconciliation_skipped = True
@@ -490,8 +495,9 @@ def run_update_check(
                 "counts": root_counts,
             })
 
-        pending = get_pending_summary(db)
-        threshold_reached = pending["threshold_reached"]
+        db.flush()
+        pending_counts = get_pending_summary(db)
+        threshold_reached = pending_counts["threshold_reached"]
         run.total_seen = counts["total_seen"]
         run.new_items = counts["new_items"]
         run.changed_items = counts["changed_items"]
@@ -499,10 +505,12 @@ def run_update_check(
         run.deferred_items = counts["deferred_items"]
         run.failed_items = counts["failed_items"]
         run.missing_items = counts["missing_items"]
-        run.pending_import_items = pending["pending_import"]
+        run.pending_import_items = pending_counts["pending_import"]
         run.threshold_reached = threshold_reached
         run.status = "completed"
         run.finished_at = _utcnow()
+        db.flush()
+        pending = get_pending_summary(db)
         run.summary_json = {
             "root_summaries": root_summaries,
             "partial_scan": any(root_summary["partial_scan"] for root_summary in root_summaries),

@@ -1131,6 +1131,21 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
         message="Dynamic sync S1 requires visible pending counts, no-import dry run, source safety, AI/localization readiness, proper-noun safeguards, and focused tests.",
     )
 
+    browser_status = str(_get(summary, "validation.browser_validation.status", "")).casefold()
+    if (
+        result.target_met_claimed
+        or result.route_approved
+        or result.full_chain_complete_claimed
+        or result.safe_to_merge_claimed
+    ) and browser_status != "passed":
+        result.fail(
+            "dynamic_sync_browser_validation_not_passed",
+            "Dynamic sync S1 completion claims require validation.browser_validation.status to be passed.",
+            path="validation.browser_validation.status",
+            expected="passed",
+            actual=_get(summary, "validation.browser_validation.status", None),
+        )
+
     forbidden_true_paths = (
         "safety.full_production_import",
         "safety.production_db_import",

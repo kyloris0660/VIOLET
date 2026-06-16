@@ -22,6 +22,12 @@ Implemented:
 - Explicit partial scan state for unreadable or skipped subtrees, with missing
   reconciliation skipped on affected roots.
 - Case-preserving relative path identity for source item hashes.
+- Platform-aware source root path identity for root hashes.
+- Explicit rejection for `root_ids=[]`; `root_ids=None` remains all active roots.
+- App-style `autoflush=False` safety: observed state is flushed before missing
+  reconciliation and pending snapshots.
+- Completed-run pending snapshots do not embed the just-finished run as
+  `running` with zero counts.
 - Rollback-before-failed-status handling for update-check failures.
 - Default threshold policy: `100`.
 - Default-off policy for unattended production writes and S1 manual sync
@@ -125,6 +131,12 @@ path. This avoids merging distinct case-sensitive files such as `A.jpg` and
 `a.jpg`. The semantic change is safe because S1 has not been merged into
 production and no production dynamic sync state exists yet.
 
+Source root path identity now uses platform-aware `os.path.normcase` over the
+resolved root path. This preserves distinct case paths on case-sensitive
+filesystems while keeping Windows/case-insensitive stability. This semantic
+change is safe because S1 has not been merged into production and no production
+dynamic sync state exists yet.
+
 ## 7. Manual update flow
 
 The S1 flow is metadata-only:
@@ -150,9 +162,18 @@ cap are not marked `missing` or `deferred`.
 `max_files` is an aggregate cap across all selected roots. It is not interpreted
 as a per-root cap.
 
+`root_ids=None` scans all active roots. `root_ids=[]` is rejected and never
+falls through to all roots. A non-empty root list scans only those active roots.
+
 Unreadable or temporarily unavailable subtrees are also partial scans. Affected
 root summaries record `missing_reconciliation_reason=source_walk_error` and do
 not run full-root missing reconciliation.
+
+Because the application DB session uses `autoflush=False`, observed source item
+and run-item state is explicitly flushed before missing reconciliation queries
+that depend on `last_seen_run_id`. Final run counts/status are assigned and
+flushed before the embedded pending snapshot is built, so the current run is not
+reported as `running` with zero counts inside its own summary.
 
 Deferred, failed, or missing items that become eligible again are requeued for
 pending import even if file size and mtime did not change. Symlinks and resolved
@@ -258,7 +279,7 @@ Passed:
 - `scripts/check_python_env.py --expected-python <repo-venv-python>`
 - `python -m py_compile <changed_python_files>`
 - `pytest tests/test_phase46_fulllib_e1a_runner_dryrun.py tests/test_phase45_doc1_documentation_state.py -v` -> 39 passed
-- `pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v` -> 134 passed
+- `pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v` -> 140 passed
 - `npx playwright test tests/e2e/admin-content.spec.ts --project=edge` -> 6 passed
 
 Real browser validation:
@@ -286,6 +307,7 @@ Real browser validation:
 - Localization gap COUNT-query optimization remains deferred.
 - Update checks should move off the FastAPI event loop before large-root or
   automated S3 use.
+- Full per-root threshold product redesign remains deferred.
 - Broader proper-noun search alias hardening remains deferred unless a small
   S2/S3 change explicitly scopes it.
 

@@ -34,6 +34,8 @@
       "contract_requires_relative_path_hash": true,
       "case_preserving_relative_path_hash": true,
       "lowercase_relative_path_hash_removed": true,
+      "source_root_identity_platform_normcase": true,
+      "case_sensitive_root_paths_do_not_collapse": true,
       "safe_to_change_hash_semantics_before_s1_merge": true,
       "media_id_only_identity": false,
       "content_hash_supported_when_computed": true
@@ -82,6 +84,11 @@
       "source_walk_errors_skip_missing_reconciliation": true,
       "source_walk_error_reason": "source_walk_error",
       "max_files_scope": "aggregate",
+      "explicit_empty_root_ids_rejected": true,
+      "root_ids_none_scans_all_active_roots": true,
+      "observations_flushed_before_missing_reconciliation": true,
+      "app_style_autoflush_false_supported": true,
+      "pending_snapshot_built_after_completed_run_flush": true,
       "deferred_failed_missing_requeue_supported": true,
       "symlink_path_escape_item_deferred": true,
       "failed_transaction_rollback_before_failed_status": true,
@@ -154,7 +161,7 @@
       "background/offloaded job model for long checks and automation",
       "broader proper-noun search alias hardening beyond the S1 blocker",
       "localization gap COUNT-query optimization",
-      "extra browser-validation contract hardening"
+      "full per-root threshold product redesign"
     ]
   },
   "validation": {
@@ -193,7 +200,7 @@
       {
         "command": "pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py tests/test_phase_contracts.py tests/test_server_startup_imports.py tests/test_config_precedence.py -v",
         "result": "passed",
-        "tests": "134 passed"
+        "tests": "140 passed"
       },
       {
         "command": "npx playwright test tests/e2e/admin-content.spec.ts --project=edge",
@@ -219,7 +226,8 @@
       "console_errors": 0,
       "test_server_stopped": true,
       "reviewer_fix_ui_changed": false,
-      "reviewer_fix_browser_rerun_required": false
+      "reviewer_fix_browser_rerun_required": false,
+      "contract_requires_passed_status_for_completion_claims": true
     }
   },
   "safety": {

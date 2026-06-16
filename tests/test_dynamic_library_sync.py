@@ -48,6 +48,31 @@ def db():
 
 
 @pytest.fixture()
+def app_style_db():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    session = Session()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+@pytest.fixture()
 def client(db):
     app = FastAPI()
     app.include_router(dynamic_routes.router, prefix="/api/admin")
@@ -109,6 +134,43 @@ def test_update_check_persists_pending_counts_and_repeated_runs_are_idempotent(d
     assert second["pending_summary"]["pending_deferred"] == 2
     assert db.query(DynamicSourceItem).count() == 4
     assert db.query(DynamicSyncRun).count() == 2
+
+
+def test_app_style_autoflush_false_flushes_observations_before_missing(app_style_db, tmp_path):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "fresh.jpg").write_bytes(b"fresh")
+    root = service.register_source_root(app_style_db, path=source_root, label="fixture")
+
+    result = service.run_update_check(app_style_db, root_ids=[root.id])
+    item = app_style_db.query(DynamicSourceItem).one()
+    run_items = app_style_db.query(DynamicSyncRunItem).all()
+
+    assert result["status"] == "completed"
+    assert result["new_items"] == 1
+    assert result["missing_items"] == 0
+    assert item.source_status == "available"
+    assert item.sync_state == "new"
+    assert item.last_seen_run_id == result["id"]
+    assert len(run_items) == 1
+    assert len({(run_item.sync_run_id, run_item.source_item_id) for run_item in run_items}) == 1
+
+
+def test_pending_snapshot_embeds_completed_current_run(app_style_db, tmp_path):
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    root = service.register_source_root(app_style_db, path=source_root, label="fixture")
+
+    result = service.run_update_check(app_style_db, root_ids=[root.id])
+    embedded = result["summary"]["pending_summary"]["last_sync_run"]
+
+    assert result["status"] == "completed"
+    assert embedded["id"] == result["id"]
+    assert embedded["status"] == "completed"
+    assert embedded["total_seen"] == result["total_seen"]
+    assert embedded["new_items"] == result["new_items"]
+    assert embedded["deferred_items"] == result["deferred_items"]
+    assert not (embedded["status"] == "running" and embedded["total_seen"] == 0)
 
 
 def test_update_check_detects_changed_and_missing_items(db, tmp_path):
@@ -265,6 +327,32 @@ def test_max_files_is_aggregate_across_selected_roots(db, tmp_path):
     assert result["pending_summary"]["pending_deferred"] == 0
 
 
+def test_root_id_selection_distinguishes_empty_none_and_specific(db, tmp_path):
+    root_a_path = tmp_path / "source_a"
+    root_b_path = tmp_path / "source_b"
+    root_a_path.mkdir()
+    root_b_path.mkdir()
+    (root_a_path / "a.jpg").write_bytes(b"a")
+    (root_b_path / "b.jpg").write_bytes(b"b")
+    root_a = service.register_source_root(db, path=root_a_path, label="a")
+    root_b = service.register_source_root(db, path=root_b_path, label="b")
+
+    with pytest.raises(ValueError, match="root_ids must not be empty"):
+        service.run_update_check(db, root_ids=[])
+    assert db.query(DynamicSyncRun).count() == 0
+    assert db.query(DynamicSourceItem).count() == 0
+
+    specific = service.run_update_check(db, root_ids=[root_a.id])
+    assert specific["total_seen"] == 1
+    assert [summary["root_id"] for summary in specific["summary"]["root_summaries"]] == [root_a.id]
+    assert db.query(DynamicSourceItem).count() == 1
+
+    all_active = service.run_update_check(db, root_ids=None)
+    assert all_active["total_seen"] == 2
+    assert [summary["root_id"] for summary in all_active["summary"]["root_summaries"]] == [root_a.id, root_b.id]
+    assert db.query(DynamicSourceItem).count() == 2
+
+
 def test_update_check_rolls_back_before_marking_failed_run(db, tmp_path, monkeypatch):
     source_root = tmp_path / "source"
     source_root.mkdir()
@@ -372,6 +460,45 @@ def test_threshold_default_100_and_override(db, tmp_path, monkeypatch):
 def test_source_root_safety_blocks_project_and_storage_paths(db, tmp_path):
     with pytest.raises(ValueError):
         service.register_source_root(db, path=ROOT, label="repo")
+
+
+def test_source_root_identity_preserves_case_when_platform_does(monkeypatch):
+    class FakePath:
+        def __init__(self, value):
+            self.value = value
+
+        def resolve(self):
+            return self
+
+        def __str__(self):
+            return self.value
+
+    monkeypatch.setattr(service.os.path, "normcase", lambda value: value)
+
+    upper = service._normalized_path_identity(FakePath("/data/CaseRoot"))
+    lower = service._normalized_path_identity(FakePath("/data/caseroot"))
+
+    assert upper != lower
+    assert service._hash_text(upper) != service._hash_text(lower)
+
+
+def test_source_root_identity_uses_platform_normcase_for_case_insensitive_paths(monkeypatch):
+    class FakePath:
+        def __init__(self, value):
+            self.value = value
+
+        def resolve(self):
+            return self
+
+        def __str__(self):
+            return self.value
+
+    monkeypatch.setattr(service.os.path, "normcase", lambda value: value.lower())
+
+    upper = service._normalized_path_identity(FakePath("C:/Data/CaseRoot/"))
+    lower = service._normalized_path_identity(FakePath("C:/Data/caseroot"))
+
+    assert upper == lower
 
 
 def test_localization_gap_and_proper_noun_safeguards(db, monkeypatch):

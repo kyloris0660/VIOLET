@@ -13,6 +13,12 @@ per-root threshold, and timestamps. Source roots must be external directories:
 they must not be filesystem roots, project code roots, app storage roots, or
 paths overlapping app-managed storage.
 
+Source root identity uses the resolved root path plus platform-aware
+`os.path.normcase` normalization. This preserves case on case-sensitive
+filesystems while retaining stable case-insensitive behavior on Windows-style
+filesystems. This hash semantic is safe to set now because S1 has not been
+merged into production and no production dynamic sync state exists yet.
+
 The Admin Content tab includes a Dynamic Library Sync panel for registering
 source roots and viewing configured roots. Public reports must not expose raw
 source paths; use labels and hashes instead.
@@ -39,6 +45,16 @@ record `partial_scan=true`, `missing_reconciliation_skipped=true`, and a safe
 reason such as `max_files_cap` or `source_walk_error`. Partial checks do not
 mark unseen tracked items as missing; only complete root scans may perform
 missing reconciliation.
+
+`root_ids=None` means all active roots. An explicit empty selection
+`root_ids=[]` is rejected instead of scanning all roots. Non-empty selections
+scan only the requested active roots.
+
+The application session uses `autoflush=False`, so update checks explicitly
+flush observed item and run-item state before missing reconciliation and before
+pending-count snapshots. The embedded pending snapshot for a just-finished run
+is built after final run counts/status are flushed, so it does not report the
+current run as `running` with zero counts.
 
 ## Pending count calculation
 
@@ -153,6 +169,10 @@ If a DB flush/commit fails during an update check, the service rolls back the
 failed transaction before marking the sync run as failed in a clean transaction.
 If the failed status itself cannot be persisted, the original exception is still
 re-raised and the persistence failure is logged.
+
+The executable dynamic sync contract also requires browser validation status to
+be `passed` before an S1 summary may claim `target_met` or another completion
+state.
 
 Long-running update checks currently execute through the admin API path. Before
 large-root production checks or S3 automation, this should move to an
