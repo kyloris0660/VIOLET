@@ -880,6 +880,7 @@
             <div class="surface p-2 border text-xs admin-content-sidebar" id="content-section-nav">
                 <a href="#media-management" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.media_management.title">媒体管理</a>
                 <a href="#local-library-scan" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.local_library_scan.title">本地图库扫描</a>
+                <a href="#dynamic-library-sync-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.dynamic_library_sync.title">动态图库同步</a>
                 <a href="#ai-tag-review-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tag_review.title">AI 标签审核</a>
                 <a href="#entity-metadata-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.entity_metadata.title">实体元数据</a>
                 <a href="#ai-tagging-jobs-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tagging_jobs.title">AI 打标任务</a>
@@ -1177,6 +1178,99 @@
                                 <tr><td colspan="7" class="p-3 text-center text-xs text-secondary">{{ t('admin.local_library_scan.no_scan_history') }}</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Library Sync Section -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="dynamic-library-sync-section">
+                <div class="flex items-center justify-between mb-4 pb-3 border-b">
+                    <h2 class="text-base font-bold" data-i18n="admin.dynamic_library_sync.title">动态图库同步</h2>
+                    <button id="dynamic-sync-refresh-btn" class="btn-dark text-xs px-3 py-1" data-i18n="admin.dynamic_library_sync.refresh">刷新</button>
+                </div>
+
+                <div id="dynamic-sync-warning" class="hidden border border-warning text-warning p-3 text-xs mb-4"></div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary" data-i18n="admin.dynamic_library_sync.pending_new">新增待处理</div>
+                        <div class="text-lg font-bold" id="dynamic-sync-pending-new">0</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary" data-i18n="admin.dynamic_library_sync.pending_changed">变更待处理</div>
+                        <div class="text-lg font-bold" id="dynamic-sync-pending-changed">0</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary" data-i18n="admin.dynamic_library_sync.pending_deferred">延期/失败</div>
+                        <div class="text-lg font-bold" id="dynamic-sync-pending-deferred">0</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary" data-i18n="admin.dynamic_library_sync.threshold">阈值</div>
+                        <div class="text-lg font-bold" id="dynamic-sync-threshold">100</div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="text-xs text-secondary" data-i18n="admin.dynamic_library_sync.threshold_status">阈值状态</div>
+                        <div class="text-sm font-bold" id="dynamic-sync-threshold-status">—</div>
+                    </div>
+                </div>
+
+                <div class="bg p-4 border mb-4">
+                    <h3 class="text-sm font-bold mb-3" data-i18n="admin.dynamic_library_sync.source_roots">Source roots</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+                        <input type="text" id="dynamic-sync-root-label" class="bg px-3 py-2 border text-xs sm:col-span-1" data-i18n-placeholder="admin.dynamic_library_sync.label_placeholder" placeholder="标签">
+                        <input type="text" id="dynamic-sync-root-path" class="bg px-3 py-2 border text-xs sm:col-span-2" data-i18n-placeholder="admin.dynamic_library_sync.path_placeholder" placeholder="绝对路径">
+                        <button id="dynamic-sync-register-root-btn" class="btn-primary text-xs px-3 py-2" data-i18n="admin.dynamic_library_sync.register_root">注册 root</button>
+                    </div>
+                    <div id="dynamic-sync-root-error" class="hidden text-xs text-red-400 mb-3"></div>
+                    <div id="dynamic-sync-roots-empty" class="text-xs text-secondary" data-i18n="admin.dynamic_library_sync.no_roots">尚未配置 source root。</div>
+                    <div class="overflow-x-auto border mt-3">
+                        <table class="bg w-full text-left border-collapse text-xs">
+                            <thead class="border-b">
+                                <tr class="text-secondary text-[10px]">
+                                    <th class="py-2 px-2 font-medium" data-i18n="admin.dynamic_library_sync.col_label">标签</th>
+                                    <th class="py-2 px-2 font-medium" data-i18n="admin.dynamic_library_sync.col_path">路径</th>
+                                    <th class="py-2 px-2 font-medium" data-i18n="admin.dynamic_library_sync.col_threshold">阈值</th>
+                                    <th class="py-2 px-2 font-medium" data-i18n="admin.dynamic_library_sync.col_last_checked">上次检查</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dynamic-sync-roots-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg p-4 border mb-4">
+                    <h3 class="text-sm font-bold mb-3" data-i18n="admin.dynamic_library_sync.manual_update">手动更新检查</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.max_files">最大文件数</label>
+                            <input type="number" id="dynamic-sync-max-files" min="1" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.max_files_placeholder" placeholder="留空不限制">
+                        </div>
+                        <label class="flex items-end gap-2 text-xs pb-2">
+                            <input type="checkbox" id="dynamic-sync-hydrated-only" class="w-4 h-4 accent-primary" checked>
+                            <span data-i18n="admin.dynamic_library_sync.hydrated_only">仅本地可读文件</span>
+                        </label>
+                        <button id="dynamic-sync-check-btn" class="btn-primary text-xs px-3 py-2 self-end" data-i18n="admin.dynamic_library_sync.check_updates">检查更新</button>
+                        <button id="dynamic-sync-dry-run-btn" class="btn-dark text-xs px-3 py-2 self-end" data-i18n="admin.dynamic_library_sync.run_dry_run">Run dry-run</button>
+                    </div>
+                    <div id="dynamic-sync-last-run" class="text-xs text-secondary"></div>
+                </div>
+
+                <div class="bg p-4 border mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold" data-i18n="admin.dynamic_library_sync.sync_pending">Sync pending items</h3>
+                        <button id="dynamic-sync-sync-pending-btn" class="btn-danger text-xs px-3 py-1" disabled data-i18n="admin.dynamic_library_sync.sync_pending_btn">同步待处理项</button>
+                    </div>
+                    <div id="dynamic-sync-sync-status" class="text-xs text-secondary"></div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div class="bg p-4 border">
+                        <h3 class="text-sm font-bold mb-3" data-i18n="admin.dynamic_library_sync.production_readiness">生产准备状态</h3>
+                        <div id="dynamic-sync-readiness" class="text-xs space-y-2"></div>
+                    </div>
+                    <div class="bg p-4 border">
+                        <h3 class="text-sm font-bold mb-3" data-i18n="admin.dynamic_library_sync.ai_localization_readiness">AI/本地化准备状态</h3>
+                        <div id="dynamic-sync-ai-localization" class="text-xs space-y-2"></div>
                     </div>
                 </div>
             </div>

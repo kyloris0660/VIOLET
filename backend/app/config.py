@@ -534,6 +534,27 @@ class Settings:
         return int(os.getenv("TAG_TRANSLATION_AUTO_MAX_ITEMS", "20"))
 
     @property
+    def DYNAMIC_LIBRARY_SYNC_THRESHOLD(self) -> int:
+        """Pending-item warning threshold for dynamic library sync."""
+        return int(os.getenv("DYNAMIC_LIBRARY_SYNC_THRESHOLD", "100"))
+
+    @property
+    def DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED(self) -> bool:
+        """Unattended production writes stay disabled unless explicitly enabled."""
+        val = os.getenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED(self) -> bool:
+        """Gate for manual pending-item import execution.
+
+        S1 exposes state and checks, but leaves production import execution
+        disabled by default for S2 approval.
+        """
+        val = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:
         raw = os.getenv("LOCAL_LIBRARY_PATHS", "")
         if not raw:

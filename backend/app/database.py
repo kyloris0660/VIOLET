@@ -214,6 +214,7 @@ def check_and_migrate_schema(engine):
         migrate_add_source_metadata_name_registry,
         migrate_add_source_name_candidate_extraction,
         migrate_add_source_concept_resolver_core,
+        migrate_add_dynamic_library_sync_tables,
     ]
     
     for migration in migrations:
@@ -1859,6 +1860,148 @@ def migrate_add_source_name_candidate_extraction(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_work_context ON blombooru_source_name_candidates(work_context_key)",
             "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_extraction_action ON blombooru_source_name_candidates(extraction_action)",
             "CREATE INDEX IF NOT EXISTS ix_source_name_candidate_rejection_reason ON blombooru_source_name_candidates(rejection_reason)",
+        ]
+        for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_dynamic_library_sync_tables(engine, inspector):
+    """Create durable dynamic library sync state tables (Phase 4.7-S1).
+
+    Additive only: this records source roots, per-source item state, check runs,
+    and per-run item observations. It does not import media or mutate source
+    files.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    big_int = 'INTEGER' if is_sqlite else 'BIGINT'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON' if not is_sqlite else 'JSON'
+    bool_false = '0' if is_sqlite else 'false'
+    bool_true = '1' if is_sqlite else 'true'
+
+    with engine.connect() as conn:
+        if 'blombooru_dynamic_source_roots' not in tables:
+            logger.info("Creating blombooru_dynamic_source_roots table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_dynamic_source_roots (
+                    id {pk_type},
+                    label VARCHAR(255) NOT NULL,
+                    root_path VARCHAR(2000) NOT NULL,
+                    root_path_hash VARCHAR(128) NOT NULL,
+                    source_type VARCHAR(50) NOT NULL DEFAULT 'local_path',
+                    is_active BOOLEAN NOT NULL DEFAULT {bool_true},
+                    auto_sync_enabled BOOLEAN NOT NULL DEFAULT {bool_false},
+                    sync_threshold INTEGER NOT NULL DEFAULT 100,
+                    notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_checked_at TIMESTAMP WITH TIME ZONE,
+                    CONSTRAINT uq_dynamic_source_root_path_hash UNIQUE (root_path_hash)
+                )
+            """))
+
+        if 'blombooru_dynamic_sync_runs' not in tables:
+            logger.info("Creating blombooru_dynamic_sync_runs table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_dynamic_sync_runs (
+                    id {pk_type},
+                    run_type VARCHAR(50) NOT NULL DEFAULT 'check',
+                    mode VARCHAR(50) NOT NULL DEFAULT 'dry_run',
+                    status VARCHAR(50) NOT NULL DEFAULT 'running',
+                    dry_run BOOLEAN NOT NULL DEFAULT {bool_true},
+                    threshold INTEGER NOT NULL DEFAULT 100,
+                    threshold_reached BOOLEAN NOT NULL DEFAULT {bool_false},
+                    roots_checked INTEGER NOT NULL DEFAULT 0,
+                    total_seen INTEGER NOT NULL DEFAULT 0,
+                    new_items INTEGER NOT NULL DEFAULT 0,
+                    changed_items INTEGER NOT NULL DEFAULT 0,
+                    unchanged_items INTEGER NOT NULL DEFAULT 0,
+                    deferred_items INTEGER NOT NULL DEFAULT 0,
+                    failed_items INTEGER NOT NULL DEFAULT 0,
+                    missing_items INTEGER NOT NULL DEFAULT 0,
+                    pending_import_items INTEGER NOT NULL DEFAULT 0,
+                    summary_json {json_type},
+                    error_message TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    started_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    finished_at TIMESTAMP WITH TIME ZONE
+                )
+            """))
+
+        if 'blombooru_dynamic_source_items' not in tables:
+            logger.info("Creating blombooru_dynamic_source_items table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_dynamic_source_items (
+                    id {pk_type},
+                    source_root_id INTEGER NOT NULL REFERENCES blombooru_dynamic_source_roots(id) ON DELETE CASCADE,
+                    relative_path VARCHAR(2000) NOT NULL,
+                    relative_path_hash VARCHAR(128) NOT NULL,
+                    file_size {big_int},
+                    mtime FLOAT,
+                    mtime_ns {big_int},
+                    content_hash VARCHAR(128),
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    source_status VARCHAR(50) NOT NULL DEFAULT 'available',
+                    sync_state VARCHAR(50) NOT NULL DEFAULT 'new',
+                    import_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                    classification_status VARCHAR(50) NOT NULL DEFAULT 'waiting_import',
+                    ai_tagging_status VARCHAR(50) NOT NULL DEFAULT 'waiting_import',
+                    localization_status VARCHAR(50) NOT NULL DEFAULT 'waiting_ai_tags',
+                    failure_reason VARCHAR(255),
+                    deferred_reason VARCHAR(255),
+                    first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_checked_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    last_imported_at TIMESTAMP WITH TIME ZONE,
+                    last_sync_run_id INTEGER REFERENCES blombooru_dynamic_sync_runs(id) ON DELETE SET NULL,
+                    last_seen_run_id INTEGER REFERENCES blombooru_dynamic_sync_runs(id) ON DELETE SET NULL,
+                    metadata_json {json_type},
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_dynamic_source_item_root_relhash UNIQUE (source_root_id, relative_path_hash)
+                )
+            """))
+
+        if 'blombooru_dynamic_sync_run_items' not in tables:
+            logger.info("Creating blombooru_dynamic_sync_run_items table...")
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_dynamic_sync_run_items (
+                    id {pk_type},
+                    sync_run_id INTEGER NOT NULL REFERENCES blombooru_dynamic_sync_runs(id) ON DELETE CASCADE,
+                    source_item_id INTEGER NOT NULL REFERENCES blombooru_dynamic_source_items(id) ON DELETE CASCADE,
+                    item_state VARCHAR(50) NOT NULL,
+                    action VARCHAR(50) NOT NULL DEFAULT 'record_only',
+                    reason VARCHAR(255),
+                    eligible_for_db_import BOOLEAN NOT NULL DEFAULT {bool_false},
+                    bytes_copied {big_int} NOT NULL DEFAULT 0,
+                    media_id INTEGER REFERENCES blombooru_media(id) ON DELETE SET NULL,
+                    previous_metadata_json {json_type},
+                    current_metadata_json {json_type},
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_dynamic_sync_run_item UNIQUE (sync_run_id, source_item_id)
+                )
+            """))
+
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_roots_active ON blombooru_dynamic_source_roots(is_active)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_root_relhash ON blombooru_dynamic_source_items(source_root_id, relative_path_hash)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_content_hash ON blombooru_dynamic_source_items(content_hash)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_import_status ON blombooru_dynamic_source_items(import_status)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_classification_status ON blombooru_dynamic_source_items(classification_status)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_ai_tagging_status ON blombooru_dynamic_source_items(ai_tagging_status)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_localization_status ON blombooru_dynamic_source_items(localization_status)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_last_seen_run ON blombooru_dynamic_source_items(last_seen_run_id)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_source_items_media_id ON blombooru_dynamic_source_items(media_id)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_sync_runs_status_created ON blombooru_dynamic_sync_runs(status, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_sync_runs_mode_status ON blombooru_dynamic_sync_runs(mode, status)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_sync_run_items_run_state ON blombooru_dynamic_sync_run_items(sync_run_id, item_state)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_sync_run_items_item ON blombooru_dynamic_sync_run_items(source_item_id)",
+            "CREATE INDEX IF NOT EXISTS ix_dynamic_sync_run_items_import_eligible ON blombooru_dynamic_sync_run_items(eligible_for_db_import)",
         ]
         for statement in index_statements:
             conn.execute(text(statement))

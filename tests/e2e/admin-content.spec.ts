@@ -16,6 +16,7 @@ test.describe('Admin Content Tab', () => {
     const sections = [
       'media-management',
       'local-library-scan',
+      'dynamic-library-sync-section',
       'ai-tag-review-section',
       'entity-metadata-section',
       'ai-tagging-jobs-section',
@@ -61,5 +62,15 @@ test.describe('Admin Content Tab', () => {
   test('no undefined or [object Object] in page content', async ({ page }) => {
     const body = await page.locator('body').innerText();
     expect(body).not.toContain('[object Object]');
+  });
+
+  test('dynamic library sync panel exposes default-off controls', async ({ page }) => {
+    await openContentSection(page, 'dynamic-library-sync-section');
+    await expect(page.locator('#dynamic-sync-pending-new')).toBeVisible();
+    await expect(page.locator('#dynamic-sync-threshold')).toHaveText(/100|\d+/);
+    await expect(page.locator('#dynamic-sync-check-btn')).toBeVisible();
+    await expect(page.locator('#dynamic-sync-dry-run-btn')).toBeVisible();
+    await expect(page.locator('#dynamic-sync-sync-pending-btn')).toBeDisabled();
+    await expect(page.locator('#dynamic-sync-ai-localization')).toBeVisible();
   });
 });

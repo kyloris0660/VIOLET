@@ -257,6 +257,12 @@ async def get_auto_tag_config(
         "auto_tag_dry_run": settings.AI_AUTO_TAG_AFTER_IMPORT_DRY_RUN,
         "auto_tag_force_suggestions": settings.AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS,
         "batch_max_items": settings.AI_TAGGING_BATCH_MAX_ITEMS,
+        "ai_tagging_auto_localization": settings.AI_TAGGING_AUTO_LOCALIZATION,
         "tag_translation_auto": settings.TAG_TRANSLATION_AUTO_ENABLED,
         "tag_translation_llm": settings.TAG_TRANSLATION_LLM_ENABLED,
+        "tag_translation_background": settings.TAG_TRANSLATION_BG_ENABLED,
+        "tag_translation_background_categories": settings.TAG_TRANSLATION_BG_CATEGORIES,
+        "tag_translation_background_daily_limit": settings.TAG_TRANSLATION_BG_DAILY_LIMIT,
+        "tag_translation_background_batch_size": settings.TAG_TRANSLATION_BG_BATCH_SIZE,
+        "tag_translation_background_max_per_run": settings.TAG_TRANSLATION_BG_MAX_PER_RUN,
     }

@@ -107,6 +107,58 @@ def _review_pack_summary(**pack_overrides: object) -> dict:
     return {"review_pack": _complete_review_pack_proof(**pack_overrides)}
 
 
+def _dynamic_sync_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "dynamic_library_sync_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True},
+        },
+        "dynamic_sync": {
+            "schema": {
+                "tables": [
+                    "blombooru_dynamic_source_roots",
+                    "blombooru_dynamic_source_items",
+                    "blombooru_dynamic_sync_runs",
+                    "blombooru_dynamic_sync_run_items",
+                ]
+            },
+            "identity": {"source_item_identity": "source_root_id + relative_path_hash"},
+            "default_off_policy": {"auto_sync_enabled": False, "manual_sync_enabled": False},
+            "threshold": {"default": 100},
+            "pending_counts": {"visible": True},
+            "dry_run_no_import": True,
+            "source_root_safety": {"passed": True},
+        },
+        "ai_localization": {
+            "chain_verified": True,
+            "ai_tagging_auto_localization_default_enabled": True,
+        },
+        "proper_noun_safeguards": {
+            "preserved": True,
+            "worker_excludes_proper_nouns": True,
+            "unreviewed_llm_aliases_excluded_from_search": True,
+        },
+        "validation": {
+            "focused_tests_passed": True,
+            "browser_validation": {"status": "passed"},
+        },
+        "safety": {
+            "full_production_import": False,
+            "production_db_import": False,
+            "full_ai_tagging_run": False,
+            "full_llm_localization_batch": False,
+            "provider_calls": False,
+            "sourceconcept_or_entity": False,
+            "source_icloud_mutation": False,
+            "destructive_cleanup": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _error_codes(result) -> set[str]:
     return {error.code for error in result.errors}
 
@@ -120,6 +172,64 @@ def test_registry_contains_all_required_contracts() -> None:
 
     assert set(REQUIRED_CONTRACT_IDS).issubset(registered)
     assert len(registered) >= 15
+
+
+def test_dynamic_library_sync_contract_accepts_s1_foundation_summary() -> None:
+    result = check_phase_contract("dynamic_library_sync_contract_v1", _dynamic_sync_summary())
+    assert result.passed is True
+
+
+def test_dynamic_library_sync_contract_rejects_auto_production_writes() -> None:
+    summary = _dynamic_sync_summary(
+        dynamic_sync={
+            "schema": {
+                "tables": [
+                    "blombooru_dynamic_source_roots",
+                    "blombooru_dynamic_source_items",
+                    "blombooru_dynamic_sync_runs",
+                    "blombooru_dynamic_sync_run_items",
+                ]
+            },
+            "identity": {"source_item_identity": "source_root_id + relative_path_hash"},
+            "default_off_policy": {"auto_sync_enabled": True, "manual_sync_enabled": False},
+            "threshold": {"default": 100},
+            "pending_counts": {"visible": True},
+            "dry_run_no_import": True,
+            "source_root_safety": {"passed": True},
+        }
+    )
+    result = check_phase_contract("dynamic_library_sync_contract_v1", summary)
+    assert "dynamic_sync_auto_writes_enabled" in _error_codes(result)
+
+
+def test_dynamic_library_sync_contract_rejects_media_id_only_identity_and_proper_noun_gap() -> None:
+    summary = _dynamic_sync_summary(
+        dynamic_sync={
+            "schema": {
+                "tables": [
+                    "blombooru_dynamic_source_roots",
+                    "blombooru_dynamic_source_items",
+                    "blombooru_dynamic_sync_runs",
+                    "blombooru_dynamic_sync_run_items",
+                ]
+            },
+            "identity": {"source_item_identity": "media_id only"},
+            "default_off_policy": {"auto_sync_enabled": False, "manual_sync_enabled": False},
+            "threshold": {"default": 100},
+            "pending_counts": {"visible": True},
+            "dry_run_no_import": True,
+            "source_root_safety": {"passed": True},
+        },
+        proper_noun_safeguards={
+            "preserved": True,
+            "worker_excludes_proper_nouns": False,
+            "unreviewed_llm_aliases_excluded_from_search": True,
+        },
+    )
+    result = check_phase_contract("dynamic_library_sync_contract_v1", summary)
+    codes = _error_codes(result)
+    assert "dynamic_sync_media_id_only_identity" in codes
+    assert "dynamic_sync_required_proof_failed" in codes
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

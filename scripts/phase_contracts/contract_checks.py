@@ -1056,6 +1056,89 @@ def _check_entity_truth_bridge(_contract: PhaseContract, summary: Mapping[str, A
             result.fail("entity_truth_bridge_gate_missing", message, path=f"entity_truth_bridge.{key}", expected=True, actual=bridge.get(key))
 
 
+def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    tables = _get(summary, "dynamic_sync.schema.tables", [])
+    required_tables = {
+        "blombooru_dynamic_source_roots",
+        "blombooru_dynamic_source_items",
+        "blombooru_dynamic_sync_runs",
+        "blombooru_dynamic_sync_run_items",
+    }
+    if not isinstance(tables, list) or not required_tables.issubset({str(item) for item in tables}):
+        result.fail(
+            "dynamic_sync_missing_schema_tables",
+            "Dynamic sync foundation requires all durable source/sync state tables.",
+            path="dynamic_sync.schema.tables",
+            expected=sorted(required_tables),
+            actual=tables,
+        )
+
+    identity = str(_get(summary, "dynamic_sync.identity.source_item_identity", "")).casefold()
+    if "media_id" in identity and ("source_root" not in identity or "relative_path_hash" not in identity):
+        result.fail(
+            "dynamic_sync_media_id_only_identity",
+            "Incremental sync identity must not rely on media_id alone.",
+            path="dynamic_sync.identity.source_item_identity",
+        )
+
+    if _as_bool(_get(summary, "dynamic_sync.default_off_policy.auto_sync_enabled", False)):
+        result.fail(
+            "dynamic_sync_auto_writes_enabled",
+            "Unattended automatic production writes must remain disabled by default in S1.",
+            path="dynamic_sync.default_off_policy.auto_sync_enabled",
+            expected=False,
+            actual=True,
+        )
+    if _as_bool(_get(summary, "dynamic_sync.default_off_policy.manual_sync_enabled", False)):
+        result.fail(
+            "dynamic_sync_manual_execution_enabled_without_s2",
+            "Manual pending sync execution must remain disabled by default in S1.",
+            path="dynamic_sync.default_off_policy.manual_sync_enabled",
+            expected=False,
+            actual=True,
+        )
+    if _as_int(_get(summary, "dynamic_sync.threshold.default", 0)) != 100:
+        result.fail(
+            "dynamic_sync_threshold_not_default_100",
+            "Dynamic sync threshold default must be 100.",
+            path="dynamic_sync.threshold.default",
+            expected=100,
+            actual=_get(summary, "dynamic_sync.threshold.default", None),
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "dynamic_sync.pending_counts.visible",
+            "dynamic_sync.dry_run_no_import",
+            "dynamic_sync.source_root_safety.passed",
+            "ai_localization.chain_verified",
+            "ai_localization.ai_tagging_auto_localization_default_enabled",
+            "proper_noun_safeguards.preserved",
+            "proper_noun_safeguards.worker_excludes_proper_nouns",
+            "proper_noun_safeguards.unreviewed_llm_aliases_excluded_from_search",
+            "validation.focused_tests_passed",
+        ),
+        code="dynamic_sync_required_proof_failed",
+        message="Dynamic sync S1 requires visible pending counts, no-import dry run, source safety, AI/localization readiness, proper-noun safeguards, and focused tests.",
+    )
+
+    forbidden_true_paths = (
+        "safety.full_production_import",
+        "safety.production_db_import",
+        "safety.full_ai_tagging_run",
+        "safety.full_llm_localization_batch",
+        "safety.provider_calls",
+        "safety.sourceconcept_or_entity",
+        "safety.source_icloud_mutation",
+        "safety.destructive_cleanup",
+    )
+    for path in forbidden_true_paths:
+        if _as_bool(_get(summary, path, False)):
+            result.fail("dynamic_sync_forbidden_execution", "S1 summary reports a forbidden execution path.", path=path, expected=False, actual=True)
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -1072,4 +1155,5 @@ CUSTOM_CHECKS = {
     "artifact_lifecycle": _check_artifact_lifecycle,
     "destructive_operation": _check_destructive_operation,
     "entity_truth_bridge": _check_entity_truth_bridge,
+    "dynamic_library_sync": _check_dynamic_library_sync,
 }
