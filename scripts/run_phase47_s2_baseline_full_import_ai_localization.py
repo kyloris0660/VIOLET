@@ -12,9 +12,12 @@ summary/report, then exits without executing later stages.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -63,6 +66,26 @@ DYNAMIC_SYNC_TABLES = (
     "blombooru_dynamic_sync_run_items",
 )
 
+DYNAMIC_SYNC_INDEX_PREFIXES = (
+    "ix_dynamic_source_roots_",
+    "ix_dynamic_source_items_",
+    "ix_dynamic_sync_runs_",
+    "ix_dynamic_sync_run_items_",
+)
+
+CLOUD_DEFERRED_REASONS = {
+    "cloud_offline",
+    "cloud_recall_on_open",
+    "cloud_recall_on_data_access",
+    "cloud_network_unavailable",
+    "cloud_hydration_failed",
+    "read_timeout",
+    "permission_denied",
+    "unreadable_source",
+}
+
+UNSUPPORTED_REASONS = {"unsupported_extension", "unsupported_file_type"}
+
 REQUIRED_PUBLIC_FIELDS = {
     "phase",
     "title",
@@ -72,6 +95,7 @@ REQUIRED_PUBLIC_FIELDS = {
     "status",
     "mode",
     "pipeline_contract",
+    "gate0",
     "readiness",
     "dynamic_sync_dry_run",
     "icloud_cloud_policy",
@@ -166,6 +190,395 @@ def output_dir_allowed(path: Path) -> bool:
     return completed.returncode == 0
 
 
+def is_root_like(path: Path) -> bool:
+    resolved = path.resolve()
+    if resolved.parent == resolved:
+        return True
+    anchor = Path(resolved.anchor) if resolved.anchor else None
+    return bool(anchor and resolved == anchor)
+
+
+def schema_snapshot(conn: Any) -> dict[str, Any]:
+    inspector = inspect(conn)
+    present = [table for table in DYNAMIC_SYNC_TABLES if inspector.has_table(table)]
+    missing = [table for table in DYNAMIC_SYNC_TABLES if table not in present]
+    indexes: dict[str, list[str]] = {}
+    for table in present:
+        try:
+            indexes[table] = sorted(index.get("name", "") for index in inspector.get_indexes(table) if index.get("name"))
+        except Exception:
+            indexes[table] = []
+    return {
+        "tables_present": present,
+        "tables_missing": missing,
+        "indexes_present": indexes,
+        "expected_index_prefixes": list(DYNAMIC_SYNC_INDEX_PREFIXES),
+    }
+
+
+def backup_operator_instructions(expected_db_name: str) -> list[str]:
+    return [
+        "Create a production PostgreSQL backup before schema setup.",
+        f"Recommended command: pg_dump --format=custom --dbname={expected_db_name} --file <private-backup-dir>/<timestamp>-{expected_db_name}.dump",
+        "Verify the dump command exits 0 and keep the dump path private.",
+        "Record a private JSON proof with dump filename, created_at, database name, command exit code, and recovery notes.",
+        "Rerun this S2 runner with --backup-proof-path <private-proof.json> --recovery-notes <operator recovery note>.",
+    ]
+
+
+def backup_proof_status(args: argparse.Namespace) -> dict[str, Any]:
+    proof_path = Path(args.backup_proof_path).resolve() if args.backup_proof_path else None
+    proof_exists = bool(proof_path and proof_path.exists())
+    return {
+        "proof_supplied": bool(proof_path),
+        "proof_exists": proof_exists,
+        "recovery_path_documented": bool(args.recovery_notes),
+        "path_redacted": True,
+        "private_path": str(proof_path) if proof_path else None,
+        "operator_instructions": backup_operator_instructions(args.expected_db_name) if not proof_exists else [],
+    }
+
+
+def create_backup_proof(args: argparse.Namespace) -> dict[str, Any]:
+    """Optionally run pg_dump and return private proof metadata."""
+    from app.config import settings
+
+    if not args.create_backup_proof:
+        return backup_proof_status(args)
+    if args.backup_proof_path and Path(args.backup_proof_path).exists():
+        return backup_proof_status(args)
+    if not args.backup_output_dir:
+        raise S2BlockedError("backup_output_dir_required_for_create_backup_proof")
+    output_dir = Path(args.backup_output_dir).resolve()
+    if not output_dir_allowed(output_dir):
+        raise S2BlockedError("backup_output_dir_must_be_repo_gitignored")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pg_dump = shutil.which("pg_dump")
+    if not pg_dump:
+        return {
+            **backup_proof_status(args),
+            "create_backup_attempted": True,
+            "created": False,
+            "failure_reason": "pg_dump_not_found",
+            "operator_instructions": backup_operator_instructions(args.expected_db_name),
+        }
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dump_path = output_dir / f"{timestamp}-{args.expected_db_name}.dump"
+    proof_path = output_dir / f"{timestamp}-{args.expected_db_name}-backup-proof.json"
+    env = os.environ.copy()
+    if settings.DATABASE_URL.password:
+        env["PGPASSWORD"] = settings.DATABASE_URL.password
+    cmd = [
+        pg_dump,
+        "--format=custom",
+        "--host",
+        settings.DATABASE_URL.host or "localhost",
+        "--port",
+        str(settings.DATABASE_URL.port or 5432),
+        "--username",
+        settings.DATABASE_URL.username or "postgres",
+        "--dbname",
+        settings.DATABASE_URL.database or args.expected_db_name,
+        "--file",
+        str(dump_path),
+    ]
+    completed = subprocess.run(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    proof = {
+        "created_at": utc_now(),
+        "database": args.expected_db_name,
+        "dump_file": str(dump_path),
+        "dump_file_exists": dump_path.exists(),
+        "pg_dump_exit_code": completed.returncode,
+        "pg_dump_stdout_present": bool(completed.stdout.strip()),
+        "pg_dump_stderr_present": bool(completed.stderr.strip()),
+        "command_redacted": "pg_dump --format=custom --host <redacted> --port <redacted> --username <redacted> --dbname <redacted> --file <private>",
+        "recovery_notes": args.recovery_notes,
+    }
+    write_json(proof_path, proof)
+    if completed.returncode != 0 or not dump_path.exists():
+        return {
+            **backup_proof_status(args),
+            "create_backup_attempted": True,
+            "created": False,
+            "failure_reason": "pg_dump_failed",
+            "operator_instructions": backup_operator_instructions(args.expected_db_name),
+        }
+    args.backup_proof_path = proof_path
+    return {
+        **backup_proof_status(args),
+        "create_backup_attempted": True,
+        "created": True,
+        "path_redacted": True,
+    }
+
+
+def ensure_dynamic_sync_schema(engine: Any, before: Mapping[str, Any]) -> dict[str, Any]:
+    """Run the existing S1 additive dynamic sync migration."""
+    from app import database
+
+    before_missing = list(before.get("tables_missing") or [])
+    with engine.connect() as conn:
+        base_tables = set(inspect(conn).get_table_names())
+        if "blombooru_media" not in base_tables:
+            return {
+                "status": "blocked",
+                "ran": False,
+                "path_used": "migrate_add_dynamic_library_sync_tables",
+                "tables_missing_before": before_missing,
+                "tables_missing_after": before_missing,
+                "blocker": "base_media_table_missing",
+                "additive_only": True,
+                "destructive_operations": [],
+            }
+    database.migrate_add_dynamic_library_sync_tables(engine, inspect(engine))
+    with engine.connect() as conn:
+        after = schema_snapshot(conn)
+    return {
+        "status": "completed" if not after["tables_missing"] else "failed",
+        "ran": True,
+        "path_used": "migrate_add_dynamic_library_sync_tables",
+        "tables_missing_before": before_missing,
+        "tables_present_before": list(before.get("tables_present") or []),
+        "tables_missing_after": after["tables_missing"],
+        "tables_present_after": after["tables_present"],
+        "indexes_present_after": after["indexes_present"],
+        "additive_only": True,
+        "destructive_operations": [],
+        "production_media_source_mutation": False,
+        "import_classification_ai_localization_executed": False,
+    }
+
+
+def validate_phase_source_root(path: Path, args: argparse.Namespace) -> dict[str, Any]:
+    from app.config import settings
+
+    issues: list[str] = []
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        issues.append("source_root_not_absolute")
+        resolved = candidate
+    else:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+            issues.append("source_root_resolve_failed")
+    if not resolved.exists():
+        issues.append("source_root_missing")
+    elif not resolved.is_dir():
+        issues.append("source_root_not_directory")
+    if candidate.is_absolute() and resolved.exists() and is_root_like(resolved):
+        issues.append("source_root_is_filesystem_root")
+    protected_paths = (
+        ("repo_code_root", settings.CODE_ROOT),
+        ("app_storage_root", settings.STORAGE_ROOT),
+        ("runner_output_dir", Path(args.output_dir)),
+    )
+    for label, protected in protected_paths:
+        if candidate.is_absolute() and paths_overlap(resolved, protected):
+            issues.append(f"source_root_overlaps_{label}")
+    test_storage = os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip()
+    if test_storage and candidate.is_absolute() and paths_overlap(resolved, Path(test_storage)):
+        issues.append("source_root_overlaps_test_storage_root")
+    hash_input = os.path.normcase(str(resolved)).replace("\\", "/")
+    return {
+        "valid": not issues,
+        "issues": issues,
+        "path_hash_prefix": hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:12],
+        "label": resolved.name if candidate.is_absolute() else "",
+        "path_redacted": True,
+        "private_path": str(resolved) if candidate.is_absolute() else str(candidate),
+    }
+
+
+def register_phase_source_roots(args: argparse.Namespace) -> dict[str, Any]:
+    if not args.source_root:
+        return {
+            "requested": False,
+            "registered_count": 0,
+            "validated_count": 0,
+            "failed_count": 0,
+            "roots": [],
+            "instructions": [
+                "Register at least one active dynamic source root with --register-source-root --source-root <path> --source-label <label>, or via the Admin UI/API.",
+                "Re-run readiness after registration; public reports expose only labels and root hashes.",
+            ],
+        }
+
+    validations = [validate_phase_source_root(Path(raw), args) for raw in args.source_root]
+    invalid = [item for item in validations if not item["valid"]]
+    if invalid or not args.register_source_root:
+        return {
+            "requested": True,
+            "registration_requested": bool(args.register_source_root),
+            "registered_count": 0,
+            "validated_count": sum(1 for item in validations if item["valid"]),
+            "failed_count": len(invalid),
+            "roots": [
+                {
+                    "label": item["label"],
+                    "path_hash_prefix": item["path_hash_prefix"],
+                    "valid": item["valid"],
+                    "issues": item["issues"],
+                    "path_redacted": True,
+                }
+                for item in validations
+            ],
+            "instructions": [] if invalid else ["Pass --register-source-root to register validated roots."],
+        }
+
+    from app import database
+    from app.services.dynamic_library_sync_service import register_source_root
+
+    database.init_engine()
+    db = database.SessionLocal()
+    registered: list[dict[str, Any]] = []
+    try:
+        for index, item in enumerate(validations):
+            label = args.source_label[index] if args.source_label and index < len(args.source_label) else item["label"]
+            root = register_source_root(
+                db,
+                path=item["private_path"],
+                label=label,
+                notes=f"Registered by {PHASE} readiness runner {args.run_id}",
+            )
+            registered.append(
+                {
+                    "id": root.id,
+                    "label": root.label,
+                    "path_hash_prefix": str(root.root_path_hash or "")[:12],
+                    "is_active": bool(root.is_active),
+                    "auto_sync_enabled": bool(root.auto_sync_enabled),
+                    "path_redacted": True,
+                }
+            )
+    finally:
+        db.close()
+    return {
+        "requested": True,
+        "registration_requested": True,
+        "registered_count": len(registered),
+        "validated_count": len(validations),
+        "failed_count": 0,
+        "roots": registered,
+        "instructions": [],
+    }
+
+
+def run_gate0_preparation(args: argparse.Namespace) -> dict[str, Any]:
+    from app.config import settings
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    schema_before = {"tables_present": [], "tables_missing": list(DYNAMIC_SYNC_TABLES), "indexes_present": {}}
+    schema_after = schema_before
+    schema_ensure = {
+        "status": "not_needed",
+        "ran": False,
+        "approved": bool(args.approve_schema_setup),
+        "path_used": None,
+        "tables_missing_before": list(DYNAMIC_SYNC_TABLES),
+        "tables_missing_after": list(DYNAMIC_SYNC_TABLES),
+        "additive_only": True,
+        "destructive_operations": [],
+    }
+    db_identity: dict[str, Any] = {}
+
+    if settings.VIOLET_ENV != "production":
+        blockers.append("VIOLET_ENV_not_production")
+
+    engine = create_engine(settings.DATABASE_URL)
+    try:
+        with engine.connect() as conn:
+            connected_database = conn.execute(text("SELECT current_database()")).scalar()
+            db_identity = safe_db_identity(settings.DATABASE_URL, connected_database=str(connected_database or ""))
+            db_identity["violet_env"] = settings.VIOLET_ENV
+            if str(connected_database or "") != args.expected_db_name:
+                blockers.append("production_db_name_mismatch")
+            schema_before = schema_snapshot(conn)
+            schema_after = schema_before
+    except Exception as exc:
+        blockers.append("production_db_identity_query_failed")
+        db_identity = {"error_type": type(exc).__name__, "password_value_recorded": False}
+
+    backup = create_backup_proof(args)
+    backup_public = {key: value for key, value in backup.items() if key != "private_path"}
+
+    if schema_before.get("tables_missing"):
+        if not backup.get("proof_exists"):
+            blockers.extend(["dynamic_sync_tables_missing", "backup_recovery_proof_missing", "schema_setup_requires_backup_proof"])
+            schema_ensure["status"] = "blocked_backup_required"
+        elif not args.approve_schema_setup:
+            blockers.extend(["dynamic_sync_tables_missing", "schema_setup_approval_missing"])
+            schema_ensure["status"] = "blocked_schema_approval_required"
+        elif "production_db_identity_query_failed" not in blockers and "production_db_name_mismatch" not in blockers:
+            schema_ensure = ensure_dynamic_sync_schema(engine, schema_before)
+            if schema_ensure.get("tables_missing_after"):
+                blockers.append("dynamic_sync_schema_ensure_failed")
+            with engine.connect() as conn:
+                schema_after = schema_snapshot(conn)
+        else:
+            schema_ensure["status"] = "blocked_db_identity"
+    else:
+        schema_ensure["tables_missing_before"] = []
+        schema_ensure["tables_missing_after"] = []
+
+    source_registration = {
+        "requested": False,
+        "registered_count": 0,
+        "validated_count": 0,
+        "failed_count": 0,
+        "roots": [],
+    }
+    if not schema_after.get("tables_missing"):
+        try:
+            source_registration = register_phase_source_roots(args)
+            if source_registration.get("failed_count"):
+                blockers.append("input_root_registration_failed")
+        except Exception as exc:
+            blockers.append("input_root_registration_failed")
+            source_registration = {
+                "requested": bool(args.source_root),
+                "registration_requested": bool(args.register_source_root),
+                "registered_count": 0,
+                "validated_count": 0,
+                "failed_count": 1,
+                "error_type": type(exc).__name__,
+                "roots": [],
+            }
+    elif args.source_root:
+        warnings.append("input_root_registration_skipped_until_schema_ready")
+
+    try:
+        engine.dispose()
+    except Exception:
+        pass
+
+    db_identity_public = {key: value for key, value in db_identity.items() if not key.startswith("password")}
+
+    return {
+        "status": "passed" if not blockers else "blocked",
+        "blockers": sorted(set(blockers)),
+        "warnings": sorted(set(warnings)),
+        "db_identity": db_identity_public,
+        "backup_recovery": backup_public,
+        "schema": {
+            "before": schema_before,
+            "after": schema_after,
+            "ensure": schema_ensure,
+        },
+        "input_root_registration": source_registration,
+        "safety": {
+            "additive_schema_only": True,
+            "drop_truncate_delete_reset": False,
+            "production_media_source_mutation": False,
+            "import_classification_ai_localization_executed": False,
+        },
+    }
+
+
 def public_python_env(expected_python: str | None) -> dict[str, Any]:
     expected = Path(expected_python).resolve() if expected_python else None
     actual = Path(sys.executable).resolve()
@@ -208,7 +621,7 @@ def paths_overlap(left: Path, right: Path) -> bool:
         return False
 
 
-def collect_readiness(args: argparse.Namespace) -> dict[str, Any]:
+def collect_readiness(args: argparse.Namespace, gate0: Mapping[str, Any] | None = None) -> dict[str, Any]:
     from app.config import settings
 
     blockers: list[str] = []
@@ -241,6 +654,9 @@ def collect_readiness(args: argparse.Namespace) -> dict[str, Any]:
         }
     }
     dynamic_schema = {"tables_present": [], "tables_missing": list(DYNAMIC_SYNC_TABLES)}
+    gate0 = gate0 or {}
+    blockers.extend(gate0.get("blockers", []) or [])
+    warnings.extend(gate0.get("warnings", []) or [])
     source_roots = {"active_count": 0, "registered_count": 0, "valid_count": 0, "root_hash_prefixes": []}
     active_jobs = {"classification": 0, "ai_tagging": 0, "translation": 0}
     localization_gap: dict[str, Any] = {}
@@ -283,7 +699,13 @@ def collect_readiness(args: argparse.Namespace) -> dict[str, Any]:
                     root_path = Path(str(row["root_path"]))
                     if not root_path.exists() or not root_path.is_dir():
                         continue
-                    if paths_overlap(root_path, settings.STORAGE_ROOT) or paths_overlap(root_path, settings.CODE_ROOT):
+                    test_storage = os.getenv("VIOLET_TEST_STORAGE_ROOT", "").strip()
+                    if (
+                        paths_overlap(root_path, settings.STORAGE_ROOT)
+                        or paths_overlap(root_path, settings.CODE_ROOT)
+                        or paths_overlap(root_path, Path(args.output_dir))
+                        or (test_storage and paths_overlap(root_path, Path(test_storage)))
+                    ):
                         unsafe_overlap_count += 1
                         continue
                     valid_count += 1
@@ -297,9 +719,9 @@ def collect_readiness(args: argparse.Namespace) -> dict[str, Any]:
                     "paths_redacted": True,
                 }
                 if not active_rows:
-                    blockers.append("no_active_dynamic_source_roots")
+                    blockers.append("no_active_dynamic_input_roots")
                 if valid_count != len(active_rows):
-                    blockers.append("active_source_roots_invalid_or_unsafe")
+                    blockers.append("active_dynamic_input_roots_invalid_or_unsafe")
             for key, table in {
                 "classification": "blombooru_classification_jobs",
                 "ai_tagging": "blombooru_ai_tag_jobs",
@@ -325,7 +747,8 @@ def collect_readiness(args: argparse.Namespace) -> dict[str, Any]:
         blockers.append("active_background_jobs_present")
     if settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED:
         blockers.append("automatic_production_sync_enabled")
-    if not args.backup_proof_path or not Path(args.backup_proof_path).exists():
+    backup = gate0.get("backup_recovery") or backup_proof_status(args)
+    if not backup.get("proof_exists"):
         blockers.append("backup_recovery_proof_missing")
     if not args.approve_llm_localization:
         blockers.append("llm_localization_operator_approval_missing")
@@ -395,12 +818,8 @@ def collect_readiness(args: argparse.Namespace) -> dict[str, Any]:
         "dynamic_schema": dynamic_schema,
         "source_roots": source_roots,
         "active_jobs": active_jobs,
-        "backup_recovery": {
-            "proof_supplied": bool(args.backup_proof_path),
-            "proof_exists": bool(args.backup_proof_path and Path(args.backup_proof_path).exists()),
-            "recovery_path_documented": bool(args.recovery_notes),
-            "path_redacted": True,
-        },
+        "gate0": gate0,
+        "backup_recovery": backup,
         "ai_model": ai_model,
         "llm_localization": {
             "operator_approved": bool(args.approve_llm_localization),
@@ -434,8 +853,127 @@ def blocked_stage(name: str, reason: str = "not_run_gate1") -> dict[str, Any]:
     }
 
 
-def build_summary(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dict[str, Any]:
-    status = "readiness_passed" if readiness.get("passed") else "blocked_gate1"
+def summarize_dynamic_sync_dry_run(raw: Mapping[str, Any], args: argparse.Namespace, readiness: Mapping[str, Any]) -> dict[str, Any]:
+    summary = raw.get("summary") or {}
+    pending = raw.get("pending_summary") or summary.get("pending_summary") or {}
+    root_summaries = []
+    reason_counts: Counter[str] = Counter()
+    for root in summary.get("root_summaries", []) or []:
+        root_summaries.append(
+            {
+                "root_id": root.get("root_id"),
+                "label": root.get("label"),
+                "path_hash_prefix": str(root.get("path_hash") or "")[:12],
+                "partial_scan": bool(root.get("partial_scan")),
+                "missing_reconciliation_skipped": bool(root.get("missing_reconciliation_skipped")),
+                "missing_reconciliation_reason": root.get("missing_reconciliation_reason"),
+                "source_walk_error_count": root.get("source_walk_error_count"),
+                "counts": root.get("counts") or {},
+                "paths_redacted": True,
+            }
+        )
+    # Reason-level counts are optional because the S1 service exposes only
+    # aggregate run serialization; future import ledgers retain item-level detail.
+    unsupported = sum(count for reason, count in reason_counts.items() if reason in UNSUPPORTED_REASONS)
+    cloud_only = sum(count for reason, count in reason_counts.items() if reason in CLOUD_DEFERRED_REASONS)
+    pending_import = int(raw.get("pending_import_items") or pending.get("pending_import") or 0)
+    batch_size = max(int(args.estimated_batch_size or 1), 1)
+    localization_gap = readiness.get("proper_noun_safeguards") or {}
+    return {
+        "stage": "dynamic_sync_dry_run",
+        "status": "completed" if raw.get("status") == "completed" else str(raw.get("status") or "unknown"),
+        "executed": True,
+        "target_met": False,
+        "dry_run": bool(raw.get("dry_run")),
+        "run_id": raw.get("id"),
+        "roots_checked": raw.get("roots_checked"),
+        "total_seen": int(raw.get("total_seen") or 0),
+        "pending_new": int(pending.get("pending_new") or raw.get("new_items") or 0),
+        "pending_changed": int(pending.get("pending_changed") or raw.get("changed_items") or 0),
+        "pending_deferred": int(pending.get("pending_deferred") or raw.get("deferred_items") or 0),
+        "unsupported": unsupported,
+        "failed": int(raw.get("failed_items") or 0),
+        "missing": int(raw.get("missing_items") or 0),
+        "cloud_only_or_icloud_unavailable": cloud_only,
+        "duplicates_checked": False,
+        "duplicates": None,
+        "threshold_reached": bool(raw.get("threshold_reached")),
+        "estimated_import_batches": int(math.ceil(pending_import / batch_size)) if pending_import else 0,
+        "estimated_ai_tagging_workload": pending_import,
+        "estimated_localization_workload": None,
+        "proper_noun_gap_needs_review": localization_gap.get("unreviewed_proper_noun_llm_aliases"),
+        "root_summaries": root_summaries,
+        "reason_counts": dict(reason_counts),
+        "paths_redacted": True,
+        "item_failures_recorded": True,
+        "no_import_copy_ai_or_llm": True,
+    }
+
+
+def run_fresh_dynamic_sync_dry_run(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dict[str, Any]:
+    from app import database
+    from app.services.dynamic_library_sync_service import run_update_check
+
+    database.init_engine()
+    db = database.SessionLocal()
+    try:
+        raw = run_update_check(
+            db,
+            max_files=args.dynamic_sync_max_files,
+            hydrated_only=True,
+        )
+        dry_run = summarize_dynamic_sync_dry_run(raw, args, readiness)
+        if raw.get("id"):
+            rows = db.execute(
+                text(
+                    """
+                    SELECT COALESCE(reason, item_state) AS reason, COUNT(*) AS count
+                    FROM blombooru_dynamic_sync_run_items
+                    WHERE sync_run_id = :run_id
+                    GROUP BY COALESCE(reason, item_state)
+                    """
+                ),
+                {"run_id": raw["id"]},
+            ).mappings().all()
+            reason_counts = {str(row["reason"]): int(row["count"]) for row in rows}
+            dry_run["reason_counts"] = reason_counts
+            dry_run["unsupported"] = sum(count for reason, count in reason_counts.items() if reason in UNSUPPORTED_REASONS)
+            dry_run["cloud_only_or_icloud_unavailable"] = sum(
+                count for reason, count in reason_counts.items() if reason in CLOUD_DEFERRED_REASONS
+            )
+        return dry_run
+    finally:
+        db.close()
+
+
+def status_for_state(args: argparse.Namespace, readiness: Mapping[str, Any], dry_run: Mapping[str, Any] | None) -> str:
+    blockers = set(readiness.get("blockers") or [])
+    if not readiness.get("passed"):
+        if "schema_setup_requires_backup_proof" in blockers:
+            return "blocked_schema_backup_required"
+        if "schema_setup_approval_missing" in blockers:
+            return "blocked_schema_approval_required"
+        if "no_active_dynamic_input_roots" in blockers:
+            return "blocked_source_roots"
+        return "blocked_gate1"
+    if dry_run and dry_run.get("executed"):
+        if args.execute:
+            return "dry_run_complete_execute_deferred_import_not_implemented"
+        return "dry_run_complete_execute_not_requested"
+    return "readiness_passed"
+
+
+def build_summary(
+    args: argparse.Namespace,
+    readiness: Mapping[str, Any],
+    dry_run: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    status = status_for_state(args, readiness, dry_run)
+    gate0 = readiness.get("gate0") or {}
+    dry_run_stage = dry_run or blocked_stage(
+        "dynamic_sync_dry_run",
+        "not_run_readiness_failed" if not readiness.get("passed") else "not_run_yet",
+    )
     summary = {
         "phase": PHASE,
         "title": PHASE_TITLE,
@@ -453,9 +991,13 @@ def build_summary(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dic
                 "full_chain_complete": False,
             },
             "gate1_stop_condition": not readiness.get("passed"),
+            "gate0_status": gate0.get("status"),
+            "fresh_dry_run_completed": bool(dry_run and dry_run.get("status") == "completed"),
+            "execute_requested": bool(args.execute),
         },
+        "gate0": gate0,
         "readiness": dict(readiness),
-        "dynamic_sync_dry_run": blocked_stage("dynamic_sync_dry_run"),
+        "dynamic_sync_dry_run": dry_run_stage,
         "icloud_cloud_policy": {
             "hydrated_only": True,
             "mass_icloud_download": False,
@@ -480,13 +1022,13 @@ def build_summary(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dic
             "proper_noun_unreviewed_aliases_trusted": False,
         },
         "proper_noun_review": {
-            "status": "not_run_gate1",
+            "status": "not_run_before_localization" if readiness.get("passed") else "not_run_gate1",
             "entity_truth_created": False,
             "confirmed_assignments_created": False,
             "unreviewed_llm_aliases_excluded_from_search": True,
         },
         "browser_validation": {
-            "status": "not_run_gate1",
+            "status": "not_run_before_execute" if readiness.get("passed") else "not_run_gate1",
             "server_started": False,
             "real_browser_validation_required_after_execute": True,
         },
@@ -507,7 +1049,9 @@ def build_summary(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dic
             "no_ai_tagging": True,
             "no_llm_call": True,
             "no_sourceconcept_entity_resolver_similarity": True,
-            "stopped_by_rule": "Gate 1 readiness proof failed" if not readiness.get("passed") else None,
+            "stopped_by_rule": None
+            if readiness.get("passed")
+            else "Gate 0/Gate 1 readiness proof failed before baseline execution",
         },
         "artifact_lifecycle": {
             "artifacts": [
@@ -542,17 +1086,36 @@ def build_summary(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dic
 
 def public_report_markdown(summary: Mapping[str, Any]) -> str:
     readiness = summary["readiness"]
+    gate0 = summary.get("gate0") or {}
+    schema_ensure = (gate0.get("schema") or {}).get("ensure") or {}
+    source_registration = gate0.get("input_root_registration") or {}
+    dry_run = summary.get("dynamic_sync_dry_run") or {}
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
         "## Summary",
         f"- Status: `{summary['status']}`.",
+        f"- Gate 0 status: `{gate0.get('status')}`.",
         f"- Gate 1 passed: `{readiness.get('passed')}`.",
         f"- Blockers: `{json.dumps(readiness.get('blockers', []), ensure_ascii=False)}`.",
-        f"- Dynamic sync dry-run: `{summary['dynamic_sync_dry_run']['status']}`.",
-        f"- Import/classification/AI/localization/browser validation: `not run before Gate 1 passes`.",
+        f"- Schema ensure ran: `{schema_ensure.get('ran')}`.",
+        f"- Backup proof supplied/existing: `{readiness.get('backup_recovery', {}).get('proof_supplied')}` / `{readiness.get('backup_recovery', {}).get('proof_exists')}`.",
+        f"- Source roots registered/valid: `{readiness.get('source_roots', {}).get('registered_count')}` / `{readiness.get('source_roots', {}).get('valid_count')}`.",
+        f"- Fresh dynamic sync dry-run: `{dry_run.get('status')}`.",
+        f"- Import/classification/AI/localization/browser execution: `not executed`.",
         "",
-        "## Readiness Proof",
+        "## Gate 0 Schema / Backup / Source Roots",
+        f"- Schema ensure status: `{schema_ensure.get('status')}`.",
+        f"- Migration path used: `{schema_ensure.get('path_used')}`.",
+        f"- Dynamic sync tables missing before: `{json.dumps(schema_ensure.get('tables_missing_before', []), ensure_ascii=False)}`.",
+        f"- Dynamic sync tables missing after: `{json.dumps(schema_ensure.get('tables_missing_after', []), ensure_ascii=False)}`.",
+        f"- Additive only: `{schema_ensure.get('additive_only')}`.",
+        f"- Drop/truncate/delete/reset: `{gate0.get('safety', {}).get('drop_truncate_delete_reset')}`.",
+        f"- Source root registration requested: `{source_registration.get('requested')}`.",
+        f"- Source root registration count: `{source_registration.get('registered_count')}`.",
+        f"- Public root paths redacted: `true`.",
+        "",
+        "## Gate 1 Readiness Proof",
         f"- Branch: `{summary['branch']}`.",
         f"- Head SHA: `{summary['head_sha']}`.",
         f"- Python env passed: `{readiness.get('python_env', {}).get('check_python_env_passed')}`.",
@@ -564,17 +1127,35 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- LLM localization operator-approved: `{readiness.get('llm_localization', {}).get('operator_approved')}`.",
         f"- Proper-noun search safeguard: `{readiness.get('proper_noun_safeguards', {}).get('search_alias_trust_policy')}`.",
         "",
-        "## Gate Result",
-        "- Gate 1 failed before any import, copy, classification, AI tagging, LLM call, or browser validation.",
-        "- No production migration was run by this S2 runner.",
-        "- Fresh dynamic sync dry-run was not run because the required S1 DB tables are absent.",
+        "## Fresh Dry-Run Proof",
+        f"- Dry-run executed: `{dry_run.get('executed')}`.",
+        f"- Total seen: `{dry_run.get('total_seen')}`.",
+        f"- Pending new: `{dry_run.get('pending_new')}`.",
+        f"- Pending changed: `{dry_run.get('pending_changed')}`.",
+        f"- Pending deferred: `{dry_run.get('pending_deferred')}`.",
+        f"- Unsupported: `{dry_run.get('unsupported')}`.",
+        f"- Failed: `{dry_run.get('failed')}`.",
+        f"- Missing: `{dry_run.get('missing')}`.",
+        f"- Cloud-only / iCloud unavailable: `{dry_run.get('cloud_only_or_icloud_unavailable')}`.",
+        f"- Estimated import batches: `{dry_run.get('estimated_import_batches')}`.",
+        f"- Estimated AI tagging workload: `{dry_run.get('estimated_ai_tagging_workload')}`.",
+        "",
+        "## Execution Result",
+        "- Full production import did not execute.",
+        "- Classification did not execute.",
+        "- AI tagging did not execute.",
+        "- LLM localization did not execute.",
+        "- Production post-import browser validation did not execute.",
         "",
         "## Public / Private Artifact Boundary",
         "- Public artifacts are aggregate-only and path-redacted.",
         "- Private ledgers are local under `.local_manifests/phase-4.7-s2-baseline-full-import-ai-localization/` and are not committed.",
         "",
         "## Required Next Step",
-        "- Apply/review the S1 dynamic sync schema migration and register active source roots, with backup/recovery proof, before retrying S2.",
+        "- If backup proof is missing, create a private PostgreSQL backup proof and rerun with `--backup-proof-path` plus recovery notes.",
+        "- If schema setup is pending, rerun with backup proof and `--approve-schema-setup` to use the existing dynamic sync migration path.",
+        "- If source roots are missing, register one or more valid roots with `--register-source-root --source-root <path> --source-label <label>` or the Admin UI/API.",
+        "- Only after readiness and fresh dry-run pass should full S2 import execution be considered.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -691,12 +1272,14 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
 def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     if args.execute and args.confirm_execution != CONFIRM_PHRASE:
         raise S2BlockedError("execute_confirmation_missing_or_wrong")
-    readiness = collect_readiness(args)
-    summary = build_summary(args, readiness)
+    gate0 = run_gate0_preparation(args)
+    readiness = collect_readiness(args, gate0=gate0)
+    dry_run: dict[str, Any] | None = None
+    if readiness.get("passed"):
+        dry_run = run_fresh_dynamic_sync_dry_run(args, readiness)
+    summary = build_summary(args, readiness, dry_run=dry_run)
     public_summary = write_outputs(args, summary)
-    if not readiness.get("passed"):
-        return public_summary
-    raise S2BlockedError("execute_path_not_reached_in_current_gate_state")
+    return public_summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -709,8 +1292,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-db-name", default="blombooru")
     parser.add_argument("--expected-storage-root", default="")
     parser.add_argument("--backup-proof-path", type=Path, default=None)
+    parser.add_argument("--create-backup-proof", action="store_true")
+    parser.add_argument("--backup-output-dir", type=Path, default=None)
     parser.add_argument("--recovery-notes", default="")
+    parser.add_argument("--approve-schema-setup", action="store_true")
     parser.add_argument("--approve-llm-localization", action="store_true")
+    parser.add_argument("--source-root", action="append", default=[])
+    parser.add_argument("--source-label", action="append", default=[])
+    parser.add_argument("--register-source-root", action="store_true")
+    parser.add_argument("--dynamic-sync-max-files", type=int, default=None)
+    parser.add_argument("--estimated-batch-size", type=int, default=100)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--write-public-report", action="store_true")
     parser.add_argument("--run-id", default="")
@@ -728,7 +1319,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=json_default))
-    return 0 if summary.get("status") != "blocked_gate1" else 2
+    return 2 if str(summary.get("status", "")).startswith("blocked") else 0
 
 
 if __name__ == "__main__":

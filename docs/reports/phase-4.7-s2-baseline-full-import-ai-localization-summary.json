@@ -32,14 +32,6 @@
   },
   "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
   "browser_validation": {
-    "local_read_only_contract": {
-      "browser": "edge",
-      "environment": "test",
-      "llm_calls": false,
-      "production_execution": false,
-      "result": "passed",
-      "tests": 2
-    },
     "real_browser_validation_required_after_execute": true,
     "server_started": false,
     "status": "not_run_gate1"
@@ -55,11 +47,108 @@
     "executed": false,
     "item_failures_recorded": false,
     "stage": "dynamic_sync_dry_run",
-    "status": "not_run_gate1",
+    "status": "not_run_readiness_failed",
     "target_met": false
   },
-  "generated_at": "2026-06-17T07:15:52Z",
-  "head_sha": "bf0b47f751ee",
+  "gate0": {
+    "backup_recovery": {
+      "operator_instructions": [
+        "Create a production PostgreSQL backup before schema setup.",
+        "Recommended command: pg_dump --format=custom --dbname=blombooru --file <private-backup-dir>/<timestamp>-blombooru.dump",
+        "Verify the dump command exits 0 and keep the dump path private.",
+        "Record a private JSON proof with dump filename, created_at, database name, command exit code, and recovery notes.",
+        "Rerun this S2 runner with --backup-proof-path <private-proof.json> --recovery-notes <operator recovery note>."
+      ],
+      "path_redacted": true,
+      "proof_exists": false,
+      "proof_supplied": false,
+      "recovery_path_documented": true
+    },
+    "blockers": [
+      "backup_recovery_proof_missing",
+      "dynamic_sync_tables_missing",
+      "schema_setup_requires_backup_proof"
+    ],
+    "db_identity": {
+      "connected_database": "blombooru",
+      "database": "blombooru",
+      "host": "localhost",
+      "port": 5432,
+      "username_present": true,
+      "violet_env": "production"
+    },
+    "input_root_registration": {
+      "failed_count": 0,
+      "registered_count": 0,
+      "requested": false,
+      "roots": [],
+      "validated_count": 0
+    },
+    "safety": {
+      "additive_schema_only": true,
+      "drop_truncate_delete_reset": false,
+      "import_classification_ai_localization_executed": false,
+      "production_media_source_mutation": false
+    },
+    "schema": {
+      "after": {
+        "expected_index_prefixes": [
+          "ix_dynamic_source_roots_",
+          "ix_dynamic_source_items_",
+          "ix_dynamic_sync_runs_",
+          "ix_dynamic_sync_run_items_"
+        ],
+        "indexes_present": {},
+        "tables_missing": [
+          "blombooru_dynamic_source_roots",
+          "blombooru_dynamic_source_items",
+          "blombooru_dynamic_sync_runs",
+          "blombooru_dynamic_sync_run_items"
+        ],
+        "tables_present": []
+      },
+      "before": {
+        "expected_index_prefixes": [
+          "ix_dynamic_source_roots_",
+          "ix_dynamic_source_items_",
+          "ix_dynamic_sync_runs_",
+          "ix_dynamic_sync_run_items_"
+        ],
+        "indexes_present": {},
+        "tables_missing": [
+          "blombooru_dynamic_source_roots",
+          "blombooru_dynamic_source_items",
+          "blombooru_dynamic_sync_runs",
+          "blombooru_dynamic_sync_run_items"
+        ],
+        "tables_present": []
+      },
+      "ensure": {
+        "additive_only": true,
+        "approved": false,
+        "destructive_operations": [],
+        "path_used": null,
+        "ran": false,
+        "status": "blocked_backup_required",
+        "tables_missing_after": [
+          "blombooru_dynamic_source_roots",
+          "blombooru_dynamic_source_items",
+          "blombooru_dynamic_sync_runs",
+          "blombooru_dynamic_sync_run_items"
+        ],
+        "tables_missing_before": [
+          "blombooru_dynamic_source_roots",
+          "blombooru_dynamic_source_items",
+          "blombooru_dynamic_sync_runs",
+          "blombooru_dynamic_sync_run_items"
+        ]
+      }
+    },
+    "status": "blocked",
+    "warnings": []
+  },
+  "generated_at": "2026-06-17T07:48:12Z",
+  "head_sha": "2c2721509ab2",
   "icloud_cloud_policy": {
     "cloud_only_files_deferred": true,
     "hydrated_only": true,
@@ -100,8 +189,11 @@
       "target_met": false
     },
     "contract_id": "phase47_s2_baseline_contract_v1",
+    "execute_requested": false,
+    "fresh_dry_run_completed": false,
+    "gate0_status": "blocked",
     "gate1_stop_condition": true,
-    "status": "blocked_gate1"
+    "status": "blocked_schema_backup_required"
   },
   "private_artifacts": {
     "paths_public": false,
@@ -159,6 +251,13 @@
       "remains_opt_in": true
     },
     "backup_recovery": {
+      "operator_instructions": [
+        "Create a production PostgreSQL backup before schema setup.",
+        "Recommended command: pg_dump --format=custom --dbname=blombooru --file <private-backup-dir>/<timestamp>-blombooru.dump",
+        "Verify the dump command exits 0 and keep the dump path private.",
+        "Record a private JSON proof with dump filename, created_at, database name, command exit code, and recovery notes.",
+        "Rerun this S2 runner with --backup-proof-path <private-proof.json> --recovery-notes <operator recovery note>."
+      ],
       "path_redacted": true,
       "proof_exists": false,
       "proof_supplied": false,
@@ -166,7 +265,8 @@
     },
     "blockers": [
       "backup_recovery_proof_missing",
-      "dynamic_sync_tables_missing"
+      "dynamic_sync_tables_missing",
+      "schema_setup_requires_backup_proof"
     ],
     "db_identity": {
       "connected_database": "blombooru",
@@ -192,7 +292,7 @@
     "git": {
       "based_on_origin_main": true,
       "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
-      "head_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae",
+      "head_sha": "2c2721509ab2c09cf96f9fde1b132262fefb14d8",
       "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae"
     },
     "input_root_counts": {
@@ -242,8 +342,8 @@
     "no_push_main": true,
     "no_source_icloud_mutation": true,
     "no_sourceconcept_entity_resolver_similarity": true,
-    "stopped_by_rule": "Gate 1 readiness proof failed"
+    "stopped_by_rule": "Gate 0/Gate 1 readiness proof failed before baseline execution"
   },
-  "status": "blocked_gate1",
+  "status": "blocked_schema_backup_required",
   "title": "Baseline Full Import, AI Tagging, and Tag Localization"
 }

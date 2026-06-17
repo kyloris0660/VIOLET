@@ -186,6 +186,15 @@ It should execute the approved baseline full import, classification, AI tagging,
 and tag localization chain with production DB/storage identity, backup proof,
 dry-run proof, public redaction checks, and relevant GOV3 contracts.
 
+S2 has a Gate 0 schema/readiness preparation step before Gate 1 execution
+readiness. If production has not yet run the S1 dynamic sync migration, the S2
+runner must first prove production DB identity, require private backup/recovery
+proof, and then reuse the existing additive dynamic sync migration path. Missing
+dynamic sync tables without backup proof are an actionable blocked state, not a
+completed S2 delivery. Source roots may be registered by CLI/Admin/API only
+after the schema is present, and public reports must expose only labels, counts,
+and hashes.
+
 S2 readiness is blocked when unreviewed LLM-generated proper-noun aliases are
 present. Those aliases require manual/static trusted handling or reviewed Entity
 Alias Resolver output before they can influence Chinese search behavior.

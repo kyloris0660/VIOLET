@@ -168,9 +168,19 @@ def _phase47_s2_summary(**overrides: object) -> dict:
             "status": "blocked_gate1",
             "claims": {"target_met": False, "safe_to_merge": False, "full_chain_complete": False},
         },
+        "gate0": {
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": False},
+            "schema": {
+                "ensure": {"status": "blocked_backup_required", "ran": False},
+                "after": {"tables_missing": ["blombooru_dynamic_source_roots"]},
+            },
+            "input_root_registration": {"registered_count": 0},
+        },
         "readiness": {
             "passed": False,
             "blockers": ["dynamic_sync_tables_missing"],
+            "llm_localization": {"operator_approved": True},
             "python_env": {"check_python_env_passed": True},
             "db_identity": {
                 "db_resolution": {
@@ -180,12 +190,13 @@ def _phase47_s2_summary(**overrides: object) -> dict:
             },
             "dynamic_schema": {"tables_missing": ["blombooru_dynamic_source_roots"]},
         },
-        "dynamic_sync_dry_run": {"status": "not_run_gate1"},
-        "import_results": {"status": "not_run_gate1"},
+        "dynamic_sync_dry_run": {"status": "not_run_gate1", "executed": False},
+        "import_results": {"status": "not_run_gate1", "executed": False},
         "classification_results": {"status": "not_run_gate1"},
         "ai_tagging_results": {"status": "not_run_gate1"},
         "localization_results": {
             "status": "not_run_gate1",
+            "llm_called": False,
             "proper_noun_unreviewed_aliases_trusted": False,
         },
         "proper_noun_review": {"unreviewed_llm_aliases_excluded_from_search": True},
@@ -236,6 +247,134 @@ def test_phase47_s2_contract_rejects_completion_claim_with_gate1_blocker() -> No
     result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
 
     assert "phase47_s2_completion_claimed_with_gate1_blocker" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_schema_ensure_without_backup() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": False},
+            "schema": {
+                "ensure": {"status": "completed", "ran": True},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 0},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_schema_ensure_without_backup_proof" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_missing_tables_after_schema_ensure() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": True},
+            "schema": {
+                "ensure": {"status": "failed", "ran": True},
+                "after": {"tables_missing": ["blombooru_dynamic_source_roots"]},
+            },
+            "input_root_registration": {"registered_count": 0},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_schema_tables_missing_after_ensure" in _error_codes(result)
+
+
+def test_phase47_s2_contract_accepts_readiness_passed_dry_run_complete_without_execute() -> None:
+    summary = _phase47_s2_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "dry_run_complete_execute_not_requested",
+            "claims": {"target_met": False, "safe_to_merge": False, "full_chain_complete": False},
+        },
+        gate0={
+            "status": "passed",
+            "backup_recovery": {"proof_exists": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 1},
+        },
+        readiness={
+            "passed": True,
+            "blockers": [],
+            "llm_localization": {"operator_approved": True},
+            "python_env": {"check_python_env_passed": True},
+            "db_identity": {"db_resolution": {"runner_matches_app_equivalent": True, "password_value_recorded": False}},
+            "dynamic_schema": {"tables_missing": []},
+        },
+        dynamic_sync_dry_run={"status": "completed", "executed": True},
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_phase47_s2_contract_rejects_import_without_dry_run_or_ledgers() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "passed",
+            "backup_recovery": {"proof_exists": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 1},
+        },
+        readiness={
+            "passed": True,
+            "blockers": [],
+            "llm_localization": {"operator_approved": True},
+            "python_env": {"check_python_env_passed": True},
+            "db_identity": {"db_resolution": {"runner_matches_app_equivalent": True, "password_value_recorded": False}},
+            "dynamic_schema": {"tables_missing": []},
+        },
+        dynamic_sync_dry_run={"status": "not_run", "executed": False},
+        import_results={"status": "completed", "executed": True},
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "phase47_s2_import_claimed_without_fresh_dry_run" in codes
+    assert "phase47_s2_import_missing_per_item_ledgers" in codes
+
+
+def test_phase47_s2_contract_rejects_llm_call_without_operator_approval() -> None:
+    summary = _phase47_s2_summary(
+        readiness={
+            "passed": False,
+            "blockers": ["llm_localization_operator_approval_missing"],
+            "llm_localization": {"operator_approved": False},
+            "python_env": {"check_python_env_passed": True},
+            "db_identity": {"db_resolution": {"runner_matches_app_equivalent": True, "password_value_recorded": False}},
+            "dynamic_schema": {"tables_missing": []},
+        },
+        localization_results={
+            "status": "completed",
+            "llm_called": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+        },
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_llm_called_without_operator_approval" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_missing_public_redaction() -> None:
+    summary = _phase47_s2_summary(public_redaction={"passed": False})
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_public_redaction_absent_or_failed" in _error_codes(result)
 
 
 def test_dynamic_library_sync_contract_accepts_s1_foundation_summary() -> None:

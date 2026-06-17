@@ -1163,9 +1163,25 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
 
 def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     readiness_passed = _as_bool(_get(summary, "readiness.passed", False))
+    schema_ensure_ran = _as_bool(_get(summary, "gate0.schema.ensure.ran", False))
+    schema_missing_after = _get(summary, "gate0.schema.after.tables_missing", [])
+    backup_exists = _as_bool(_get(summary, "gate0.backup_recovery.proof_exists", False))
+    dry_run_executed = _as_bool(_get(summary, "dynamic_sync_dry_run.executed", False))
+    dry_run_status = str(_get(summary, "dynamic_sync_dry_run.status", "")).casefold()
+    import_executed = _as_bool(_get(summary, "import_results.executed", False))
+    llm_called = _as_bool(_get(summary, "localization_results.llm_called", False))
+    llm_approved = _as_bool(_get(summary, "readiness.llm_localization.operator_approved", False))
     blockers = _get(summary, "readiness.blockers", [])
     if blockers is MISSING or blockers is None:
         blockers = []
+    if _get(summary, "public_redaction.passed", MISSING) is MISSING or not _as_bool(_get(summary, "public_redaction.passed", False)):
+        result.fail(
+            "phase47_s2_public_redaction_absent_or_failed",
+            "S2 public artifacts require an explicit passing redaction proof.",
+            path="public_redaction.passed",
+            expected=True,
+            actual=_get(summary, "public_redaction.passed", None),
+        )
     if readiness_passed and isinstance(blockers, list) and blockers:
         result.fail(
             "phase47_s2_readiness_passed_with_blockers",
@@ -1179,6 +1195,54 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             "phase47_s2_completion_claimed_with_gate1_blocker",
             "S2 cannot claim completion, route approval, or safe_to_merge when Gate 1 readiness failed.",
             path="readiness.passed",
+            expected=True,
+            actual=False,
+        )
+    if schema_ensure_ran and not backup_exists:
+        result.fail(
+            "phase47_s2_schema_ensure_without_backup_proof",
+            "S2 schema setup cannot run or be claimed without backup proof.",
+            path="gate0.backup_recovery.proof_exists",
+            expected=True,
+            actual=False,
+        )
+    if schema_ensure_ran and schema_missing_after:
+        result.fail(
+            "phase47_s2_schema_tables_missing_after_ensure",
+            "S2 schema ensure cannot pass while required dynamic sync tables remain missing.",
+            path="gate0.schema.after.tables_missing",
+            expected=[],
+            actual=schema_missing_after,
+        )
+    if import_executed and not backup_exists:
+        result.fail(
+            "phase47_s2_import_claimed_without_backup_proof",
+            "S2 import cannot be claimed without backup proof.",
+            path="gate0.backup_recovery.proof_exists",
+            expected=True,
+            actual=False,
+        )
+    if import_executed and not (dry_run_executed and dry_run_status in {"completed", "passed"}):
+        result.fail(
+            "phase47_s2_import_claimed_without_fresh_dry_run",
+            "S2 import cannot be claimed without a completed fresh dynamic sync dry-run.",
+            path="dynamic_sync_dry_run.status",
+            expected=["completed", "passed"],
+            actual=_get(summary, "dynamic_sync_dry_run.status", None),
+        )
+    if import_executed and not _as_bool(_get(summary, "import_results.per_item_ledgers_written", False)):
+        result.fail(
+            "phase47_s2_import_missing_per_item_ledgers",
+            "S2 import claims require per-item ledgers/failure accounting.",
+            path="import_results.per_item_ledgers_written",
+            expected=True,
+            actual=_get(summary, "import_results.per_item_ledgers_written", None),
+        )
+    if llm_called and not llm_approved:
+        result.fail(
+            "phase47_s2_llm_called_without_operator_approval",
+            "S2 LLM localization claims require explicit operator approval.",
+            path="readiness.llm_localization.operator_approved",
             expected=True,
             actual=False,
         )
