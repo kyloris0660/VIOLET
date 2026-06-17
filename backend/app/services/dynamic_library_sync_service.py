@@ -636,9 +636,9 @@ def get_localization_gap_summary(db: Session) -> Dict[str, Any]:
         db.query(func.count(TagTranslation.id))
         .filter(
             TagTranslation.language == "zh-CN",
-            TagTranslation.source == "llm",
+            TagTranslation.source.notin_(["manual", "static"]),
             TagTranslation.category.in_(list(PROPER_NOUN_CATEGORIES)),
-            TagTranslation.needs_review == True,
+            or_(TagTranslation.needs_review == True, TagTranslation.status != "reviewed"),
             TagTranslation.status != "rejected",
         )
         .scalar() or 0
@@ -657,7 +657,7 @@ def get_localization_gap_summary(db: Session) -> Dict[str, Any]:
         "proper_noun_policy": {
             "general_meta_worker_allowed": True,
             "proper_noun_llm_requires_review": True,
-            "search_alias_trust_sources": ["manual", "static"],
+            "search_alias_trust_sources": ["manual", "static", "operator_reviewed"],
             "entity_alias_resolver_separate": True,
         },
     }

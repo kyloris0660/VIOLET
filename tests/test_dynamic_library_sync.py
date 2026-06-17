@@ -516,7 +516,7 @@ def test_localization_gap_and_proper_noun_safeguards(db, monkeypatch):
     assert gap["proper_noun_missing"] >= 2
     assert gap["worker_excludes_proper_nouns"] is True
     assert gap["proper_noun_policy"]["proper_noun_llm_requires_review"] is True
-    assert gap["proper_noun_policy"]["search_alias_trust_sources"] == ["manual", "static"]
+    assert gap["proper_noun_policy"]["search_alias_trust_sources"] == ["manual", "static", "operator_reviewed"]
 
 
 def test_readiness_reports_ai_to_localization_chain_without_running_llm(db, tmp_path, monkeypatch):
@@ -557,6 +557,34 @@ def test_readiness_blocks_unreviewed_proper_noun_llm_aliases(db, tmp_path, monke
             source="llm",
             status="translated",
             needs_review=True,
+        )
+    )
+    db.commit()
+
+    readiness = service.get_production_readiness(db)
+
+    assert "unreviewed_proper_noun_llm_aliases_present" in readiness["blockers_before_s2"]
+    assert readiness["s2_ready"] is False
+
+
+def test_readiness_blocks_unreviewed_proper_noun_llm_alias_even_if_needs_review_false(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_CATEGORIES", "general,meta")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+    db.add(
+        TagTranslation(
+            canonical_name="phase47_unreviewed_character_alias_needs_review_false",
+            language="zh-CN",
+            display_name="unreviewed character false",
+            category="character",
+            source="llm",
+            status="translated",
+            needs_review=False,
         )
     )
     db.commit()

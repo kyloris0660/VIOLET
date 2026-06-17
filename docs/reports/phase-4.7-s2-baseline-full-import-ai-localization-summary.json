@@ -1,0 +1,249 @@
+{
+  "ai_tagging_results": {
+    "executed": false,
+    "item_failures_recorded": false,
+    "stage": "ai_tagging",
+    "status": "not_run_gate1",
+    "target_met": false
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "phase-scoped operational runner",
+        "committed": true,
+        "path": "scripts/run_phase47_s2_baseline_full_import_ai_localization.py"
+      },
+      {
+        "classification": "one-off local artifact / ignored output",
+        "committed": false,
+        "path": "private ledgers under ignored output directory"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/phase-4.7-s2-baseline-full-import-ai-localization.md"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/phase-4.7-s2-baseline-full-import-ai-localization-summary.json"
+      }
+    ]
+  },
+  "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
+  "browser_validation": {
+    "local_read_only_contract": {
+      "browser": "edge",
+      "environment": "test",
+      "llm_calls": false,
+      "production_execution": false,
+      "result": "passed",
+      "tests": 2
+    },
+    "real_browser_validation_required_after_execute": true,
+    "server_started": false,
+    "status": "not_run_gate1"
+  },
+  "classification_results": {
+    "executed": false,
+    "item_failures_recorded": false,
+    "stage": "classification",
+    "status": "not_run_gate1",
+    "target_met": false
+  },
+  "dynamic_sync_dry_run": {
+    "executed": false,
+    "item_failures_recorded": false,
+    "stage": "dynamic_sync_dry_run",
+    "status": "not_run_gate1",
+    "target_met": false
+  },
+  "generated_at": "2026-06-17T07:15:52Z",
+  "head_sha": "bf0b47f751ee",
+  "icloud_cloud_policy": {
+    "cloud_only_files_deferred": true,
+    "hydrated_only": true,
+    "mass_icloud_download": false,
+    "structured_reasons": [
+      "cloud_offline",
+      "cloud_recall_on_open",
+      "cloud_recall_on_data_access",
+      "cloud_network_unavailable",
+      "cloud_hydration_failed",
+      "read_timeout",
+      "permission_denied",
+      "unreadable_source"
+    ]
+  },
+  "import_results": {
+    "executed": false,
+    "item_failures_recorded": false,
+    "stage": "import",
+    "status": "not_run_gate1",
+    "target_met": false
+  },
+  "localization_results": {
+    "executed": false,
+    "item_failures_recorded": false,
+    "llm_called": false,
+    "proper_noun_unreviewed_aliases_trusted": false,
+    "stage": "localization",
+    "status": "not_run_gate1",
+    "target_met": false
+  },
+  "mode": "readiness",
+  "phase": "4.7-S2",
+  "pipeline_contract": {
+    "claims": {
+      "full_chain_complete": false,
+      "safe_to_merge": false,
+      "target_met": false
+    },
+    "contract_id": "phase47_s2_baseline_contract_v1",
+    "gate1_stop_condition": true,
+    "status": "blocked_gate1"
+  },
+  "private_artifacts": {
+    "paths_public": false,
+    "private_artifact_names": [
+      "readiness-proof.json",
+      "fresh-dynamic-sync-dry-run.json",
+      "import-item-ledger.jsonl",
+      "unsupported-or-deferred.jsonl",
+      "cloud-deferred.jsonl",
+      "batch-summary.jsonl",
+      "classification-ledger.jsonl",
+      "ai-tagging-ledger.jsonl",
+      "localization-ledger.jsonl",
+      "browser-validation.json",
+      "public-redaction-check.json",
+      "run-summary-private.json"
+    ],
+    "private_artifact_root_label": ".local_manifests/phase-4.7-s2-baseline-full-import-ai-localization",
+    "private_artifacts_committed": false
+  },
+  "proper_noun_review": {
+    "confirmed_assignments_created": false,
+    "entity_truth_created": false,
+    "status": "not_run_gate1",
+    "unreviewed_llm_aliases_excluded_from_search": true
+  },
+  "public_redaction": {
+    "checked_payloads": [
+      "public_json_payload",
+      "public_markdown_text"
+    ],
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true
+  },
+  "readiness": {
+    "ai_model": {
+      "available": true,
+      "checked": true,
+      "enabled": true,
+      "model_downloaded": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "network_download_required": false,
+      "thresholds": {
+        "batch_max_items": 10,
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "app_settings_db_identity_matches_execution_db": true,
+    "automatic_production_sync": {
+      "enabled": false,
+      "remains_opt_in": true
+    },
+    "backup_recovery": {
+      "path_redacted": true,
+      "proof_exists": false,
+      "proof_supplied": false,
+      "recovery_path_documented": true
+    },
+    "blockers": [
+      "backup_recovery_proof_missing",
+      "dynamic_sync_tables_missing"
+    ],
+    "db_identity": {
+      "connected_database": "blombooru",
+      "database": "blombooru",
+      "db_resolution": {
+        "expected_database": "blombooru",
+        "runner_matches_app_equivalent": true,
+        "urls_match": true
+      },
+      "host": "localhost",
+      "port": 5432,
+      "user_configured": true
+    },
+    "dynamic_schema": {
+      "tables_missing": [
+        "blombooru_dynamic_source_roots",
+        "blombooru_dynamic_source_items",
+        "blombooru_dynamic_sync_runs",
+        "blombooru_dynamic_sync_run_items"
+      ],
+      "tables_present": []
+    },
+    "git": {
+      "based_on_origin_main": true,
+      "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
+      "head_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae",
+      "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae"
+    },
+    "input_root_counts": {
+      "active_count": 0,
+      "registered_count": 0,
+      "root_hash_prefixes": [],
+      "valid_count": 0
+    },
+    "llm_localization": {
+      "auth_material_configured": true,
+      "base_url_configured": true,
+      "enabled": true,
+      "model_configured": true,
+      "operator_approved": true,
+      "provider": "openai_compatible",
+      "sensitive_values_recorded": false
+    },
+    "passed": false,
+    "production_storage": {
+      "explicitly_set": true,
+      "label": "app_storage",
+      "matches_expected": true,
+      "paths_redacted": true
+    },
+    "proper_noun_safeguards": {
+      "entity_truth_created": false,
+      "search_alias_trust_policy": "manual_static_or_operator_reviewed_only",
+      "unreviewed_proper_noun_llm_aliases": null,
+      "worker_excludes_proper_nouns": null
+    },
+    "python_env": {
+      "check_python_env_passed": true,
+      "executable_path_redacted": true,
+      "expected_python_checked": true,
+      "public_executable_name": "python.exe",
+      "python_version": "3.12.0"
+    },
+    "warnings": []
+  },
+  "safety": {
+    "no_ai_tagging": true,
+    "no_classification": true,
+    "no_cleanup_delete_reset_drop_truncate": true,
+    "no_db_import": true,
+    "no_llm_call": true,
+    "no_merge": true,
+    "no_push_main": true,
+    "no_source_icloud_mutation": true,
+    "no_sourceconcept_entity_resolver_similarity": true,
+    "stopped_by_rule": "Gate 1 readiness proof failed"
+  },
+  "status": "blocked_gate1",
+  "title": "Baseline Full Import, AI Tagging, and Tag Localization"
+}

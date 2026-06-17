@@ -161,6 +161,48 @@ def _dynamic_sync_summary(**overrides: object) -> dict:
     return summary
 
 
+def _phase47_s2_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "blocked_gate1",
+            "claims": {"target_met": False, "safe_to_merge": False, "full_chain_complete": False},
+        },
+        "readiness": {
+            "passed": False,
+            "blockers": ["dynamic_sync_tables_missing"],
+            "python_env": {"check_python_env_passed": True},
+            "db_identity": {
+                "db_resolution": {
+                    "runner_matches_app_equivalent": True,
+                    "password_value_recorded": False,
+                }
+            },
+            "dynamic_schema": {"tables_missing": ["blombooru_dynamic_source_roots"]},
+        },
+        "dynamic_sync_dry_run": {"status": "not_run_gate1"},
+        "import_results": {"status": "not_run_gate1"},
+        "classification_results": {"status": "not_run_gate1"},
+        "ai_tagging_results": {"status": "not_run_gate1"},
+        "localization_results": {
+            "status": "not_run_gate1",
+            "proper_noun_unreviewed_aliases_trusted": False,
+        },
+        "proper_noun_review": {"unreviewed_llm_aliases_excluded_from_search": True},
+        "browser_validation": {"status": "not_run_gate1"},
+        "private_artifacts": {"private_artifacts_committed": False},
+        "public_redaction": {"passed": True},
+        "safety": {
+            "no_source_icloud_mutation": True,
+            "no_cleanup_delete_reset_drop_truncate": True,
+        },
+        "artifact_lifecycle": {"artifacts": [{"path": "docs/reports/example.md"}]},
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _error_codes(result) -> set[str]:
     return {error.code for error in result.errors}
 
@@ -174,6 +216,26 @@ def test_registry_contains_all_required_contracts() -> None:
 
     assert set(REQUIRED_CONTRACT_IDS).issubset(registered)
     assert len(registered) >= 15
+
+
+def test_phase47_s2_contract_accepts_gate1_blocked_summary_without_completion_claim() -> None:
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", _phase47_s2_summary())
+
+    assert result.passed is True
+
+
+def test_phase47_s2_contract_rejects_completion_claim_with_gate1_blocker() -> None:
+    summary = _phase47_s2_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_completion_claimed_with_gate1_blocker" in _error_codes(result)
 
 
 def test_dynamic_library_sync_contract_accepts_s1_foundation_summary() -> None:

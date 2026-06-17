@@ -1161,6 +1161,64 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
             result.fail("dynamic_sync_forbidden_execution", "S1 summary reports a forbidden execution path.", path=path, expected=False, actual=True)
 
 
+def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    readiness_passed = _as_bool(_get(summary, "readiness.passed", False))
+    blockers = _get(summary, "readiness.blockers", [])
+    if blockers is MISSING or blockers is None:
+        blockers = []
+    if readiness_passed and isinstance(blockers, list) and blockers:
+        result.fail(
+            "phase47_s2_readiness_passed_with_blockers",
+            "Readiness cannot pass while blockers are present.",
+            path="readiness.blockers",
+            expected=[],
+            actual=blockers,
+        )
+    if not readiness_passed and _completion_or_approval_claimed(result):
+        result.fail(
+            "phase47_s2_completion_claimed_with_gate1_blocker",
+            "S2 cannot claim completion, route approval, or safe_to_merge when Gate 1 readiness failed.",
+            path="readiness.passed",
+            expected=True,
+            actual=False,
+        )
+    if _completion_or_approval_claimed(result):
+        expected_statuses = {
+            "dynamic_sync_dry_run.status": {"completed", "passed"},
+            "import_results.status": {"completed", "completed_with_item_failures_within_budget"},
+            "classification_results.status": {"completed", "completed_with_item_failures_within_budget"},
+            "ai_tagging_results.status": {"completed", "completed_with_item_failures_within_budget"},
+            "localization_results.status": {"completed", "completed_with_gap_visible"},
+            "browser_validation.status": {"passed"},
+        }
+        for path, allowed in expected_statuses.items():
+            value = str(_get(summary, path, "")).casefold()
+            if value not in allowed:
+                result.fail(
+                    "phase47_s2_required_stage_not_complete",
+                    "S2 completion claims require every baseline stage to complete or pass.",
+                    path=path,
+                    expected=sorted(allowed),
+                    actual=_get(summary, path, None),
+                )
+    if _as_bool(_get(summary, "localization_results.proper_noun_unreviewed_aliases_trusted", False)):
+        result.fail(
+            "phase47_s2_unreviewed_proper_noun_alias_trusted",
+            "Unreviewed proper-noun LLM aliases must not be trusted into Chinese search.",
+            path="localization_results.proper_noun_unreviewed_aliases_trusted",
+            expected=False,
+            actual=True,
+        )
+    forbidden_safety_paths = (
+        "safety.source_icloud_mutation",
+        "safety.cleanup_delete_reset_drop_truncate",
+        "safety.sourceconcept_entity_resolver_similarity",
+    )
+    for path in forbidden_safety_paths:
+        if _as_bool(_get(summary, path, False)):
+            result.fail("phase47_s2_forbidden_safety_flag", "S2 summary reports a forbidden safety flag.", path=path, expected=False, actual=True)
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -1178,4 +1236,5 @@ CUSTOM_CHECKS = {
     "destructive_operation": _check_destructive_operation,
     "entity_truth_bridge": _check_entity_truth_bridge,
     "dynamic_library_sync": _check_dynamic_library_sync,
+    "phase47_s2_baseline": _check_phase47_s2_baseline,
 }

@@ -16,6 +16,23 @@ _TAG_ZH_REVERSE = None
 _DB_ALIAS_CACHE = None
 _DB_ALIAS_CACHE_TIME = None
 
+PROPER_NOUN_CATEGORIES = {"character", "copyright", "artist"}
+TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES = {"manual", "static"}
+
+
+def _translation_alias_trusted_for_search(row) -> bool:
+    """Return whether a translation row may contribute zh search aliases."""
+
+    category = getattr(row, "category", None)
+    source = getattr(row, "source", None)
+    status = getattr(row, "status", None)
+    needs_review = bool(getattr(row, "needs_review", False))
+    if category not in PROPER_NOUN_CATEGORIES:
+        return True
+    if source in TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES:
+        return True
+    return status == "reviewed" and not needs_review
+
 
 def _load_zh_tag_reverse():
     """Load Chinese → English tag reverse mapping from static file."""
@@ -59,15 +76,11 @@ def _load_db_alias_cache():
                 .all()
             )
 
-            proper_noun_cats = {"character", "copyright", "artist"}
-            trusted_sources = {"manual", "static"}
-
             cache = {}
             source_priority = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
 
             for row in rows:
-                is_proper_noun = row.category in proper_noun_cats
-                if is_proper_noun and row.source not in trusted_sources and row.needs_review:
+                if not _translation_alias_trusted_for_search(row):
                     continue
 
                 key = row.display_name
