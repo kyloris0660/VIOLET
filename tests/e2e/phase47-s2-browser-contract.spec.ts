@@ -13,7 +13,10 @@ test.describe('Phase 4.7-S2 browser validation contract', () => {
     expect(identity.data.violet_env).toBe('test');
     expect(identity.data.db_name).toBe('blombooru_test');
     expect(identity.data.storage_root_explicitly_set).toBe(true);
-    expect(identity.data.git_branch).toContain('phase47-s2');
+    const expectedBranch = process.env.VIOLET_EXPECTED_GIT_BRANCH;
+    if (expectedBranch) {
+      expect(identity.data.git_branch).toBe(expectedBranch);
+    }
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');

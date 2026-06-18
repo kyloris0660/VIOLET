@@ -1166,9 +1166,13 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
     schema_ensure_ran = _as_bool(_get(summary, "gate0.schema.ensure.ran", False))
     schema_missing_after = _get(summary, "gate0.schema.after.tables_missing", [])
     backup_exists = _as_bool(_get(summary, "gate0.backup_recovery.proof_exists", False))
+    backup_valid = backup_exists and _as_bool(_get(summary, "gate0.backup_recovery.valid", False))
     dry_run_executed = _as_bool(_get(summary, "dynamic_sync_dry_run.executed", False))
     dry_run_status = str(_get(summary, "dynamic_sync_dry_run.status", "")).casefold()
     import_executed = _as_bool(_get(summary, "import_results.executed", False))
+    classification_executed = _as_bool(_get(summary, "classification_results.executed", False))
+    ai_tagging_executed = _as_bool(_get(summary, "ai_tagging_results.executed", False))
+    localization_executed = _as_bool(_get(summary, "localization_results.executed", False))
     llm_called = _as_bool(_get(summary, "localization_results.llm_called", False))
     llm_approved = _as_bool(_get(summary, "readiness.llm_localization.operator_approved", False))
     blockers = _get(summary, "readiness.blockers", [])
@@ -1182,6 +1186,44 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=True,
             actual=_get(summary, "public_redaction.passed", None),
         )
+    if _get(summary, "private_artifacts.private_artifacts_committed", MISSING) is MISSING or _as_bool(
+        _get(summary, "private_artifacts.private_artifacts_committed", False)
+    ):
+        result.fail(
+            "phase47_s2_private_artifacts_committed_or_missing",
+            "S2 private artifacts must be explicitly reported as not committed.",
+            path="private_artifacts.private_artifacts_committed",
+            expected=False,
+            actual=_get(summary, "private_artifacts.private_artifacts_committed", None),
+        )
+    required_true_safety_paths = (
+        "safety.no_source_icloud_mutation",
+        "safety.no_cleanup_delete_reset_drop_truncate",
+    )
+    for path in required_true_safety_paths:
+        if not _as_bool(_get(summary, path, False)):
+            result.fail(
+                "phase47_s2_required_safety_flag_missing_or_false",
+                "S2 safety proof field must be true.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path, None),
+            )
+    conditional_no_execution_flags = (
+        (not import_executed, "safety.no_db_import"),
+        (not classification_executed, "safety.no_classification"),
+        (not ai_tagging_executed, "safety.no_ai_tagging"),
+        (not localization_executed and not llm_called, "safety.no_llm_call"),
+    )
+    for required, path in conditional_no_execution_flags:
+        if required and not _as_bool(_get(summary, path, False)):
+            result.fail(
+                "phase47_s2_missing_no_execution_safety_flag",
+                "S2 summaries that do not claim a stage executed must explicitly prove the matching no-execution safety flag.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path, None),
+            )
     if readiness_passed and isinstance(blockers, list) and blockers:
         result.fail(
             "phase47_s2_readiness_passed_with_blockers",
@@ -1198,13 +1240,13 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=True,
             actual=False,
         )
-    if schema_ensure_ran and not backup_exists:
+    if schema_ensure_ran and not backup_valid:
         result.fail(
-            "phase47_s2_schema_ensure_without_backup_proof",
-            "S2 schema setup cannot run or be claimed without backup proof.",
-            path="gate0.backup_recovery.proof_exists",
+            "phase47_s2_schema_ensure_without_valid_backup_proof",
+            "S2 schema setup cannot run or be claimed without valid backup proof.",
+            path="gate0.backup_recovery.valid",
             expected=True,
-            actual=False,
+            actual=_get(summary, "gate0.backup_recovery.valid", None),
         )
     if schema_ensure_ran and schema_missing_after:
         result.fail(
@@ -1214,13 +1256,13 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=[],
             actual=schema_missing_after,
         )
-    if import_executed and not backup_exists:
+    if import_executed and not backup_valid:
         result.fail(
-            "phase47_s2_import_claimed_without_backup_proof",
-            "S2 import cannot be claimed without backup proof.",
-            path="gate0.backup_recovery.proof_exists",
+            "phase47_s2_import_claimed_without_valid_backup_proof",
+            "S2 import cannot be claimed without valid backup proof.",
+            path="gate0.backup_recovery.valid",
             expected=True,
-            actual=False,
+            actual=_get(summary, "gate0.backup_recovery.valid", None),
         )
     if import_executed and not (dry_run_executed and dry_run_status in {"completed", "passed"}):
         result.fail(
@@ -1265,6 +1307,39 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
                     expected=sorted(allowed),
                     actual=_get(summary, path, None),
                 )
+        required_full_execution_flags = (
+            ("dynamic_sync_dry_run.executed", True),
+            ("import_results.executed", True),
+            ("import_results.per_item_ledgers_written", True),
+            ("classification_results.executed", True),
+            ("ai_tagging_results.executed", True),
+            ("browser_validation.status", "passed"),
+        )
+        for path, expected in required_full_execution_flags:
+            actual = _get(summary, path, None)
+            if expected == "passed":
+                ok = str(actual).casefold() == "passed"
+            else:
+                ok = _as_bool(actual) is expected
+            if not ok:
+                result.fail(
+                    "phase47_s2_full_completion_missing_executed_proof",
+                    "Full S2 completion claims require executed proof for every baseline stage.",
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                )
+        localization_gap_reported = _as_bool(_get(summary, "localization_results.gap_report_generated", False)) or str(
+            _get(summary, "localization_results.status", "")
+        ).casefold() == "completed_with_gap_visible"
+        if not (localization_executed or localization_gap_reported):
+            result.fail(
+                "phase47_s2_full_completion_missing_localization_or_gap_report",
+                "Full S2 completion requires localization execution or an explicit localization gap report.",
+                path="localization_results",
+                expected="executed or gap_report_generated",
+                actual=_get(summary, "localization_results", None),
+            )
     if _as_bool(_get(summary, "localization_results.proper_noun_unreviewed_aliases_trusted", False)):
         result.fail(
             "phase47_s2_unreviewed_proper_noun_alias_trusted",

@@ -21,7 +21,8 @@ merged into production and no production dynamic sync state exists yet.
 
 The Admin Content tab includes a Dynamic Library Sync panel for registering
 source roots and viewing configured roots. Public reports must not expose raw
-source paths; use labels and hashes instead.
+source paths or deterministic source-root hash prefixes; use aggregate counts
+and run-local opaque labels instead.
 
 ## Manual update flow
 
@@ -191,13 +192,21 @@ readiness. If production has not yet run the S1 dynamic sync migration, the S2
 runner must first prove production DB identity, require private backup/recovery
 proof, and then reuse the existing additive dynamic sync migration path. Missing
 dynamic sync tables without backup proof are an actionable blocked state, not a
-completed S2 delivery. Source roots may be registered by CLI/Admin/API only
-after the schema is present, and public reports must expose only labels, counts,
-and hashes.
+completed S2 delivery. Backup proof must validate the expected/actual database
+name, successful backup command exit code, dump file existence and non-empty
+state, creation time, and recovery notes before schema setup can run.
 
-S2 readiness is blocked when unreviewed LLM-generated proper-noun aliases are
-present. Those aliases require manual/static trusted handling or reviewed Entity
-Alias Resolver output before they can influence Chinese search behavior.
+Source roots may be registered by CLI/Admin/API, or from configured
+`LOCAL_LIBRARY_PATHS` when the runner is explicitly asked to register roots.
+Registration is allowed only after production env, DB identity, storage identity,
+and dynamic sync schema gates are clean. Public reports must expose only
+aggregate counts, non-sensitive labels, and run-local opaque root labels.
+
+S2 readiness reports unreviewed LLM-generated proper-noun aliases separately.
+Those aliases require manual/static trusted handling or reviewed Entity Alias
+Resolver output before they can influence Chinese search behavior. If the search
+trust policy excludes unreviewed LLM proper-noun aliases, the gap remains visible
+but does not by itself block the dry-run gate.
 
 S3 should add daily/incremental automation and hardening only after S2 baseline
 state is validated. Any automatic production write must be opt-in, visibly

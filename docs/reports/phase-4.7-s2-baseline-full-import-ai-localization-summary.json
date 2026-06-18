@@ -3,7 +3,7 @@
     "executed": false,
     "item_failures_recorded": false,
     "stage": "ai_tagging",
-    "status": "not_run_gate1",
+    "status": "not_run_execute_not_requested",
     "target_met": false
   },
   "artifact_lifecycle": {
@@ -34,41 +34,81 @@
   "browser_validation": {
     "real_browser_validation_required_after_execute": true,
     "server_started": false,
-    "status": "not_run_gate1"
+    "status": "not_run_before_execute"
   },
   "classification_results": {
     "executed": false,
     "item_failures_recorded": false,
     "stage": "classification",
-    "status": "not_run_gate1",
+    "status": "not_run_execute_not_requested",
     "target_met": false
   },
   "dynamic_sync_dry_run": {
-    "executed": false,
-    "item_failures_recorded": false,
+    "cloud_only_or_icloud_unavailable": 0,
+    "dry_run": true,
+    "duplicates": null,
+    "duplicates_checked": false,
+    "estimated_ai_tagging_workload": 81,
+    "estimated_import_batches": 1,
+    "estimated_localization_workload": null,
+    "executed": true,
+    "failed": 0,
+    "item_failures_recorded": true,
+    "missing": 0,
+    "no_import_copy_ai_or_llm": true,
+    "paths_redacted": true,
+    "pending_changed": 0,
+    "pending_deferred": 0,
+    "pending_new": 81,
+    "proper_noun_gap_needs_review": 77,
+    "reason_counts": {
+      "new": 81
+    },
+    "root_summaries": [
+      {
+        "counts": {
+          "changed_items": 0,
+          "deferred_items": 0,
+          "failed_items": 0,
+          "missing_items": 0,
+          "new_items": 81,
+          "total_seen": 81,
+          "unchanged_items": 0
+        },
+        "missing_reconciliation_reason": null,
+        "missing_reconciliation_skipped": false,
+        "partial_scan": false,
+        "paths_redacted": true,
+        "run_local_root_label": "root-1",
+        "source_walk_error_count": 0
+      }
+    ],
+    "roots_checked": 1,
+    "run_id": 3,
     "stage": "dynamic_sync_dry_run",
-    "status": "not_run_readiness_failed",
-    "target_met": false
+    "status": "completed",
+    "target_met": false,
+    "threshold_reached": false,
+    "total_seen": 81,
+    "unsupported": 0
   },
   "gate0": {
     "backup_recovery": {
-      "operator_instructions": [
-        "Create a production PostgreSQL backup before schema setup.",
-        "Recommended command: pg_dump --format=custom --dbname=blombooru --file <private-backup-dir>/<timestamp>-blombooru.dump",
-        "Verify the dump command exits 0 and keep the dump path private.",
-        "Record a private JSON proof with dump filename, created_at, database name, command exit code, and recovery notes.",
-        "Rerun this S2 runner with --backup-proof-path <private-proof.json> --recovery-notes <operator recovery note>."
-      ],
+      "actual_database_matches": true,
+      "backup_command_exit_code_zero": true,
+      "created_at_present": true,
+      "dump_file_exists": true,
+      "dump_file_non_empty": true,
+      "expected_database_matches": true,
+      "operator_instructions": [],
       "path_redacted": true,
-      "proof_exists": false,
-      "proof_supplied": false,
-      "recovery_path_documented": true
+      "proof_exists": true,
+      "proof_supplied": true,
+      "recovery_path_documented": true,
+      "valid": true,
+      "validation_error_codes": []
     },
-    "blockers": [
-      "backup_recovery_proof_missing",
-      "dynamic_sync_tables_missing",
-      "schema_setup_requires_backup_proof"
-    ],
+    "blockers": [],
     "db_identity": {
       "connected_database": "blombooru",
       "database": "blombooru",
@@ -79,10 +119,23 @@
     },
     "input_root_registration": {
       "failed_count": 0,
-      "registered_count": 0,
-      "requested": false,
-      "roots": [],
-      "validated_count": 0
+      "input_source": "LOCAL_LIBRARY_PATHS",
+      "instructions": [],
+      "registered_count": 1,
+      "registration_requested": true,
+      "requested": true,
+      "roots": [
+        {
+          "auto_sync_enabled": false,
+          "is_active": true,
+          "issues": null,
+          "label": "phase47-s2-root-1",
+          "path_redacted": true,
+          "run_local_label": "root-1",
+          "valid": null
+        }
+      ],
+      "validated_count": 1
     },
     "safety": {
       "additive_schema_only": true,
@@ -92,63 +145,48 @@
     },
     "schema": {
       "after": {
-        "expected_index_prefixes": [
-          "ix_dynamic_source_roots_",
-          "ix_dynamic_source_items_",
-          "ix_dynamic_sync_runs_",
-          "ix_dynamic_sync_run_items_"
-        ],
-        "indexes_present": {},
-        "tables_missing": [
-          "blombooru_dynamic_source_roots",
-          "blombooru_dynamic_source_items",
-          "blombooru_dynamic_sync_runs",
-          "blombooru_dynamic_sync_run_items"
-        ],
-        "tables_present": []
+        "index_count_total": 17,
+        "tables_missing": [],
+        "tables_missing_count": 0,
+        "tables_present_count": 4
       },
       "before": {
-        "expected_index_prefixes": [
-          "ix_dynamic_source_roots_",
-          "ix_dynamic_source_items_",
-          "ix_dynamic_sync_runs_",
-          "ix_dynamic_sync_run_items_"
-        ],
-        "indexes_present": {},
-        "tables_missing": [
-          "blombooru_dynamic_source_roots",
-          "blombooru_dynamic_source_items",
-          "blombooru_dynamic_sync_runs",
-          "blombooru_dynamic_sync_run_items"
-        ],
-        "tables_present": []
+        "index_count_total": 17,
+        "tables_missing": [],
+        "tables_missing_count": 0,
+        "tables_present_count": 4
       },
       "ensure": {
         "additive_only": true,
-        "approved": false,
+        "approved": true,
         "destructive_operations": [],
+        "import_classification_ai_localization_executed": null,
         "path_used": null,
+        "production_media_source_mutation": null,
         "ran": false,
-        "status": "blocked_backup_required",
-        "tables_missing_after": [
-          "blombooru_dynamic_source_roots",
-          "blombooru_dynamic_source_items",
-          "blombooru_dynamic_sync_runs",
-          "blombooru_dynamic_sync_run_items"
-        ],
-        "tables_missing_before": [
-          "blombooru_dynamic_source_roots",
-          "blombooru_dynamic_source_items",
-          "blombooru_dynamic_sync_runs",
-          "blombooru_dynamic_sync_run_items"
-        ]
+        "status": "not_needed",
+        "tables_missing_after": [],
+        "tables_missing_after_count": 0,
+        "tables_missing_before_count": 0
       }
     },
-    "status": "blocked",
+    "status": "passed",
+    "storage_identity": {
+      "explicitly_set": true,
+      "matches_expected": true,
+      "paths_redacted": true
+    },
     "warnings": []
   },
-  "generated_at": "2026-06-17T07:48:12Z",
-  "head_sha": "2c2721509ab2",
+  "schema_preparation_history": {
+    "corrective_pass_schema_ensure_observed": true,
+    "final_verification_schema_ensure_status": "not_needed",
+    "migration_path_used": "migrate_add_dynamic_library_sync_tables",
+    "public_report_redacted": true,
+    "tables_missing_after_count": 0
+  },
+  "generated_at": "2026-06-18T04:48:01Z",
+  "head_sha": "1a1bbd6f7ec3",
   "icloud_cloud_policy": {
     "cloud_only_files_deferred": true,
     "hydrated_only": true,
@@ -168,7 +206,7 @@
     "executed": false,
     "item_failures_recorded": false,
     "stage": "import",
-    "status": "not_run_gate1",
+    "status": "not_run_execute_not_requested",
     "target_met": false
   },
   "localization_results": {
@@ -177,7 +215,7 @@
     "llm_called": false,
     "proper_noun_unreviewed_aliases_trusted": false,
     "stage": "localization",
-    "status": "not_run_gate1",
+    "status": "not_run_execute_not_requested",
     "target_met": false
   },
   "mode": "readiness",
@@ -189,11 +227,12 @@
       "target_met": false
     },
     "contract_id": "phase47_s2_baseline_contract_v1",
+    "execute_confirmation_present": false,
     "execute_requested": false,
-    "fresh_dry_run_completed": false,
-    "gate0_status": "blocked",
-    "gate1_stop_condition": true,
-    "status": "blocked_schema_backup_required"
+    "fresh_dry_run_completed": true,
+    "gate0_status": "passed",
+    "gate1_stop_condition": false,
+    "status": "dry_run_complete_execute_not_requested"
   },
   "private_artifacts": {
     "paths_public": false,
@@ -217,7 +256,7 @@
   "proper_noun_review": {
     "confirmed_assignments_created": false,
     "entity_truth_created": false,
-    "status": "not_run_gate1",
+    "status": "not_run_before_localization",
     "unreviewed_llm_aliases_excluded_from_search": true
   },
   "public_redaction": {
@@ -251,23 +290,21 @@
       "remains_opt_in": true
     },
     "backup_recovery": {
-      "operator_instructions": [
-        "Create a production PostgreSQL backup before schema setup.",
-        "Recommended command: pg_dump --format=custom --dbname=blombooru --file <private-backup-dir>/<timestamp>-blombooru.dump",
-        "Verify the dump command exits 0 and keep the dump path private.",
-        "Record a private JSON proof with dump filename, created_at, database name, command exit code, and recovery notes.",
-        "Rerun this S2 runner with --backup-proof-path <private-proof.json> --recovery-notes <operator recovery note>."
-      ],
+      "actual_database_matches": true,
+      "backup_command_exit_code_zero": true,
+      "created_at_present": true,
+      "dump_file_exists": true,
+      "dump_file_non_empty": true,
+      "expected_database_matches": true,
+      "operator_instructions": [],
       "path_redacted": true,
-      "proof_exists": false,
-      "proof_supplied": false,
-      "recovery_path_documented": true
+      "proof_exists": true,
+      "proof_supplied": true,
+      "recovery_path_documented": true,
+      "valid": true,
+      "validation_error_codes": []
     },
-    "blockers": [
-      "backup_recovery_proof_missing",
-      "dynamic_sync_tables_missing",
-      "schema_setup_requires_backup_proof"
-    ],
+    "blockers": [],
     "db_identity": {
       "connected_database": "blombooru",
       "database": "blombooru",
@@ -281,36 +318,37 @@
       "user_configured": true
     },
     "dynamic_schema": {
-      "tables_missing": [
-        "blombooru_dynamic_source_roots",
-        "blombooru_dynamic_source_items",
-        "blombooru_dynamic_sync_runs",
-        "blombooru_dynamic_sync_run_items"
-      ],
-      "tables_present": []
+      "tables_missing": [],
+      "tables_missing_count": 0,
+      "tables_present_count": 4
     },
     "git": {
       "based_on_origin_main": true,
       "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
-      "head_sha": "2c2721509ab2c09cf96f9fde1b132262fefb14d8",
+      "head_sha": "1a1bbd6f7ec3c519ff30e3b08cf1108704710337",
       "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae"
     },
     "input_root_counts": {
-      "active_count": 0,
-      "registered_count": 0,
-      "root_hash_prefixes": [],
-      "valid_count": 0
+      "active_count": 1,
+      "auto_sync_enabled_count": 0,
+      "paths_redacted": true,
+      "registered_count": 1,
+      "unsafe_overlap_count": 0,
+      "valid_count": 1
     },
     "llm_localization": {
       "auth_material_configured": true,
+      "auto_enabled": true,
+      "background_enabled": true,
       "base_url_configured": true,
       "enabled": true,
       "model_configured": true,
       "operator_approved": true,
       "provider": "openai_compatible",
+      "provider_configured": true,
       "sensitive_values_recorded": false
     },
-    "passed": false,
+    "passed": true,
     "production_storage": {
       "explicitly_set": true,
       "label": "app_storage",
@@ -320,8 +358,9 @@
     "proper_noun_safeguards": {
       "entity_truth_created": false,
       "search_alias_trust_policy": "manual_static_or_operator_reviewed_only",
-      "unreviewed_proper_noun_llm_aliases": null,
-      "worker_excludes_proper_nouns": null
+      "unreviewed_llm_aliases_excluded_from_search": true,
+      "unreviewed_proper_noun_llm_aliases": 77,
+      "worker_excludes_proper_nouns": true
     },
     "python_env": {
       "check_python_env_passed": true,
@@ -342,8 +381,8 @@
     "no_push_main": true,
     "no_source_icloud_mutation": true,
     "no_sourceconcept_entity_resolver_similarity": true,
-    "stopped_by_rule": "Gate 0/Gate 1 readiness proof failed before baseline execution"
+    "stopped_by_rule": null
   },
-  "status": "blocked_schema_backup_required",
+  "status": "dry_run_complete_execute_not_requested",
   "title": "Baseline Full Import, AI Tagging, and Tag Localization"
 }
