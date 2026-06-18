@@ -584,6 +584,18 @@ def test_execute_after_dry_run_blocks_when_import_execution_not_implemented(tmp_
             "estimated_import_batches": 1,
             "estimated_ai_tagging_workload": 1,
             "item_failures_recorded": True,
+            "source_scope_check": {
+                "passed": True,
+                "status": "passed",
+                "expected_min_items": 1,
+                "total_seen": 1,
+            },
+            "cloud_deferred_threshold_check": {
+                "passed": True,
+                "status": "passed",
+                "cloud_deferred_count": 0,
+                "total_seen": 1,
+            },
         }
 
     monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
@@ -611,6 +623,124 @@ def test_execute_after_dry_run_blocks_when_import_execution_not_implemented(tmp_
     assert summary["import_results"]["executed"] is False
 
 
+def test_execute_stops_at_source_scope_mismatch_before_import(tmp_path, monkeypatch):
+    def fake_dry_run(_args, _readiness):
+        return {
+            "stage": "dynamic_sync_dry_run",
+            "status": "completed",
+            "executed": True,
+            "target_met": False,
+            "dry_run": True,
+            "total_seen": 81,
+            "pending_new": 81,
+            "pending_changed": 0,
+            "pending_deferred": 0,
+            "unsupported": 0,
+            "failed": 0,
+            "missing": 0,
+            "cloud_only_or_icloud_unavailable": 0,
+            "estimated_import_batches": 1,
+            "estimated_ai_tagging_workload": 81,
+            "item_failures_recorded": True,
+            "source_scope_check": {
+                "passed": False,
+                "status": "source_scope_mismatch",
+                "expected_min_items": 30000,
+                "total_seen": 81,
+            },
+            "cloud_deferred_threshold_check": {
+                "passed": True,
+                "status": "passed",
+                "cloud_deferred_count": 0,
+                "total_seen": 81,
+            },
+        }
+
+    monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
+    monkeypatch.setattr(s2, "PUBLIC_REPORT_JSON", tmp_path / "public.json")
+    monkeypatch.setattr(s2, "output_dir_allowed", lambda _path: True)
+    monkeypatch.setattr(s2, "run_gate0_preparation", lambda _args: _passed_readiness()["gate0"])
+    monkeypatch.setattr(s2, "collect_readiness", lambda _args, gate0=None: _passed_readiness(gate0=gate0))
+    monkeypatch.setattr(s2, "run_fresh_dynamic_sync_dry_run", fake_dry_run)
+
+    args = s2.build_parser().parse_args(
+        [
+            "--execute",
+            "--confirm-execution",
+            s2.CONFIRM_PHRASE,
+            "--output-dir",
+            str(tmp_path / "private"),
+            "--write-public-report",
+        ]
+    )
+    args.run_id = "test-run"
+    summary = s2.run_pipeline(args)
+
+    assert summary["status"] == "source_scope_mismatch"
+    assert summary["dynamic_sync_dry_run"]["source_scope_check"]["passed"] is False
+    assert summary["import_results"]["status"] == "not_run_source_scope_mismatch"
+    assert summary["safety"]["no_db_import"] is True
+
+
+def test_cloud_deferred_threshold_stops_before_import(tmp_path, monkeypatch):
+    def fake_dry_run(_args, _readiness):
+        return {
+            "stage": "dynamic_sync_dry_run",
+            "status": "completed",
+            "executed": True,
+            "target_met": False,
+            "dry_run": True,
+            "total_seen": 12000,
+            "pending_new": 9000,
+            "pending_changed": 0,
+            "pending_deferred": 3000,
+            "unsupported": 0,
+            "failed": 0,
+            "missing": 0,
+            "cloud_only_or_icloud_unavailable": 1500,
+            "estimated_import_batches": 90,
+            "estimated_ai_tagging_workload": 9000,
+            "item_failures_recorded": True,
+            "source_scope_check": {
+                "passed": True,
+                "status": "passed",
+                "expected_min_items": 10000,
+                "total_seen": 12000,
+            },
+            "cloud_deferred_threshold_check": {
+                "passed": False,
+                "status": "cloud_deferred_threshold_exceeded",
+                "cloud_deferred_count": 1500,
+                "total_seen": 12000,
+                "max_items": 1000,
+                "max_rate": 0.10,
+            },
+        }
+
+    monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
+    monkeypatch.setattr(s2, "PUBLIC_REPORT_JSON", tmp_path / "public.json")
+    monkeypatch.setattr(s2, "output_dir_allowed", lambda _path: True)
+    monkeypatch.setattr(s2, "run_gate0_preparation", lambda _args: _passed_readiness()["gate0"])
+    monkeypatch.setattr(s2, "collect_readiness", lambda _args, gate0=None: _passed_readiness(gate0=gate0))
+    monkeypatch.setattr(s2, "run_fresh_dynamic_sync_dry_run", fake_dry_run)
+
+    args = s2.build_parser().parse_args(
+        [
+            "--execute",
+            "--confirm-execution",
+            s2.CONFIRM_PHRASE,
+            "--output-dir",
+            str(tmp_path / "private"),
+        ]
+    )
+    args.run_id = "test-run"
+    summary = s2.run_pipeline(args)
+
+    assert summary["status"] == "cloud_deferred_threshold_exceeded"
+    assert summary["import_results"]["status"] == "not_run_cloud_deferred_threshold_exceeded"
+    assert summary["safety"]["no_source_icloud_mutation"] is True
+
+
 def test_dynamic_sync_dry_run_summary_uses_run_local_root_labels_only():
     args = s2.build_parser().parse_args(["--readiness"])
     raw = {
@@ -635,6 +765,68 @@ def test_dynamic_sync_dry_run_summary_uses_run_local_root_labels_only():
     assert "abcdef" not in encoded
     assert "private-family-photos" not in encoded
     assert summary["root_summaries"][0]["run_local_root_label"] == "root-1"
+
+
+def test_public_summary_omits_source_root_labels_and_private_ledgers(tmp_path, monkeypatch):
+    monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
+    monkeypatch.setattr(s2, "PUBLIC_REPORT_JSON", tmp_path / "public.json")
+    monkeypatch.setattr(s2, "output_dir_allowed", lambda _path: True)
+    args = s2.build_parser().parse_args(["--readiness", "--output-dir", str(tmp_path / "private"), "--write-public-report"])
+    args.run_id = "test-run"
+    readiness = _passed_readiness()
+    readiness["gate0"]["input_root_registration"] = {
+        "requested": True,
+        "input_source": "cli",
+        "registration_requested": True,
+        "replace_source_roots": True,
+        "registered_count": 1,
+        "validated_count": 1,
+        "failed_count": 0,
+        "deactivated_other_active_count": 1,
+        "roots": [
+            {
+                "run_local_label": "root-1",
+                "label": "private-production-label",
+                "valid": True,
+                "is_active": True,
+                "auto_sync_enabled": False,
+                "path_redacted": True,
+            }
+        ],
+    }
+    dry_run = {
+        "stage": "dynamic_sync_dry_run",
+        "status": "completed",
+        "executed": True,
+        "target_met": False,
+        "dry_run": True,
+        "total_seen": 2,
+        "pending_new": 2,
+        "pending_changed": 0,
+        "pending_deferred": 0,
+        "unsupported": 0,
+        "failed": 0,
+        "missing": 0,
+        "cloud_only_or_icloud_unavailable": 0,
+        "estimated_import_batches": 1,
+        "estimated_ai_tagging_workload": 2,
+        "item_failures_recorded": True,
+        "source_scope_check": {"passed": True, "status": "passed", "expected_min_items": 1, "total_seen": 2},
+        "cloud_deferred_threshold_check": {"passed": True, "status": "passed", "cloud_deferred_count": 0, "total_seen": 2},
+        "private_ledgers": {
+            "unsupported_or_deferred_rows": [{"reason": "cloud_offline", "path_private_or_omitted": True}],
+            "cloud_deferred_rows": [{"reason": "cloud_offline", "path_private_or_omitted": True}],
+            "batch_summary_rows": [{"reason": "cloud_offline", "count": 1}],
+        },
+    }
+    summary = s2.build_summary(args, readiness, dry_run=dry_run)
+    public_summary = s2.write_outputs(args, summary)
+    encoded = json.dumps(public_summary, sort_keys=True)
+
+    assert "private-production-label" not in encoded
+    assert "private_ledgers" not in encoded
+    assert public_summary["gate0"]["input_root_registration"]["roots"][0]["run_local_label"] == "root-1"
+    assert (tmp_path / "private" / "cloud-deferred.jsonl").read_text(encoding="utf-8").strip()
 
 
 def test_public_redaction_rejects_paths_and_tokens():

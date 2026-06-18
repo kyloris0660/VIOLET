@@ -1,24 +1,23 @@
 # 4.7-S2 Baseline Full Import, AI Tagging, and Tag Localization
 
 ## Summary
-- Status: `dry_run_complete_execute_not_requested`.
+- Status: `cloud_deferred_threshold_exceeded`.
 - Gate 0 status: `passed`.
 - Gate 1 passed: `True`.
 - Blockers: `[]`.
 - Schema ensure ran: `False`.
-- Schema preparation history: initial corrective run observed the existing additive dynamic sync migration path creating the required schema; final verification run is idempotent and reports `not_needed`.
 - Backup proof supplied/existing/valid: `True` / `True` / `True`.
-- Source roots registered/valid: `1` / `1`.
+- Source roots registered/valid: `2` / `1`.
 - Fresh dynamic sync dry-run: `completed`.
-- Execute confirmation present: `False`.
+- Source scope check: `passed`.
+- Cloud deferred threshold: `cloud_deferred_threshold_exceeded`.
+- Execute confirmation present: `True`.
 - Import/classification/AI/localization/browser execution: `not executed`.
 - Full S2 target met / safe to merge claim: `false` / `false`.
 
 ## Gate 0 Schema / Backup / Source Roots
 - Schema ensure status: `not_needed`.
 - Migration path used: `None`.
-- Corrective-pass schema ensure observed: `true`.
-- Corrective-pass migration path used: `migrate_add_dynamic_library_sync_tables`.
 - Dynamic sync tables missing before count: `0`.
 - Dynamic sync tables missing after count: `0`.
 - Additive only: `True`.
@@ -29,7 +28,7 @@
 
 ## Gate 1 Readiness Proof
 - Branch: `codex/phase47-s2-baseline-full-import-ai-localization`.
-- Head SHA: `1a1bbd6f7ec3`.
+- Head SHA: `17510742d25e`.
 - Python env passed: `True`.
 - DB identity matched app settings: `True`.
 - Dynamic sync missing table count: `0`.
@@ -41,16 +40,19 @@
 
 ## Fresh Dry-Run Proof
 - Dry-run executed: `True`.
-- Total seen: `81`.
-- Pending new: `81`.
+- Total seen: `39625`.
+- Source scope expected minimum: `30000`.
+- Source scope passed: `True`.
+- Pending new: `11688`.
 - Pending changed: `0`.
-- Pending deferred: `0`.
-- Unsupported: `0`.
+- Pending deferred: `28018`.
+- Unsupported: `4398`.
 - Failed: `0`.
 - Missing: `0`.
-- Cloud-only / iCloud unavailable: `0`.
-- Estimated import batches: `1`.
-- Estimated AI tagging workload: `81`.
+- Cloud-only / iCloud unavailable: `23619`.
+- Cloud deferred threshold passed: `False`.
+- Estimated import batches: `117`.
+- Estimated AI tagging workload: `11688`.
 
 ## Execution Result
 - Full production import did not execute.
@@ -67,4 +69,6 @@
 - If backup proof is missing, create a private PostgreSQL backup proof and rerun with `--backup-proof-path` plus recovery notes.
 - If schema setup is pending, rerun with backup proof and `--approve-schema-setup` to use the existing dynamic sync migration path.
 - If source roots are missing, register one or more valid roots with `--register-source-root --source-root <path> --source-label <label>` or the Admin UI/API.
-- Review the fresh dry-run counts, then rerun with `--execute --confirm-execution EXECUTE_PHASE47_S2_BASELINE_FULL_IMPORT_AI_TAG_LOCALIZATION` only when the operator intentionally approves production import/classification/AI/localization execution.
+- If `source_scope_check.status` is `source_scope_mismatch`, correct the approved source root before any import.
+- If `cloud_deferred_threshold_check.status` is `cloud_deferred_threshold_exceeded`, perform a separately approved bounded iCloud hydration/backfill pass, then rerun fresh dry-run before import.
+- Rerun with `--execute --confirm-execution EXECUTE_PHASE47_S2_BASELINE_FULL_IMPORT_AI_TAG_LOCALIZATION` only after readiness, source scope, and cloud-deferred thresholds all pass.

@@ -3,7 +3,7 @@
     "executed": false,
     "item_failures_recorded": false,
     "stage": "ai_tagging",
-    "status": "not_run_execute_not_requested",
+    "status": "not_run_cloud_deferred_threshold_exceeded",
     "target_met": false
   },
   "artifact_lifecycle": {
@@ -40,16 +40,25 @@
     "executed": false,
     "item_failures_recorded": false,
     "stage": "classification",
-    "status": "not_run_execute_not_requested",
+    "status": "not_run_cloud_deferred_threshold_exceeded",
     "target_met": false
   },
   "dynamic_sync_dry_run": {
-    "cloud_only_or_icloud_unavailable": 0,
+    "cloud_deferred_threshold_check": {
+      "cloud_deferred_count": 23619,
+      "cloud_deferred_rate": 0.5960630914826498,
+      "max_items": 1000,
+      "max_rate": 0.1,
+      "passed": false,
+      "status": "cloud_deferred_threshold_exceeded",
+      "total_seen": 39625
+    },
+    "cloud_only_or_icloud_unavailable": 23619,
     "dry_run": true,
     "duplicates": null,
     "duplicates_checked": false,
-    "estimated_ai_tagging_workload": 81,
-    "estimated_import_batches": 1,
+    "estimated_ai_tagging_workload": 11688,
+    "estimated_import_batches": 117,
     "estimated_localization_workload": null,
     "executed": true,
     "failed": 0,
@@ -58,21 +67,24 @@
     "no_import_copy_ai_or_llm": true,
     "paths_redacted": true,
     "pending_changed": 0,
-    "pending_deferred": 0,
-    "pending_new": 81,
+    "pending_deferred": 28018,
+    "pending_new": 11688,
     "proper_noun_gap_needs_review": 77,
     "reason_counts": {
-      "new": 81
+      "cloud_placeholder": 23619,
+      "hidden": 1,
+      "new": 11607,
+      "unsupported_extension": 4398
     },
     "root_summaries": [
       {
         "counts": {
           "changed_items": 0,
-          "deferred_items": 0,
+          "deferred_items": 28018,
           "failed_items": 0,
           "missing_items": 0,
-          "new_items": 81,
-          "total_seen": 81,
+          "new_items": 11607,
+          "total_seen": 39625,
           "unchanged_items": 0
         },
         "missing_reconciliation_reason": null,
@@ -84,13 +96,20 @@
       }
     ],
     "roots_checked": 1,
-    "run_id": 3,
+    "run_id": 5,
+    "source_scope_check": {
+      "expected_min_items": 30000,
+      "expected_scale": "tens_of_thousands_roughly_30k_plus",
+      "passed": true,
+      "status": "passed",
+      "total_seen": 39625
+    },
     "stage": "dynamic_sync_dry_run",
     "status": "completed",
     "target_met": false,
-    "threshold_reached": false,
-    "total_seen": 81,
-    "unsupported": 0
+    "threshold_reached": true,
+    "total_seen": 39625,
+    "unsupported": 4398
   },
   "gate0": {
     "backup_recovery": {
@@ -118,18 +137,19 @@
       "violet_env": "production"
     },
     "input_root_registration": {
+      "deactivated_other_active_count": 0,
       "failed_count": 0,
-      "input_source": "LOCAL_LIBRARY_PATHS",
+      "input_source": "cli",
       "instructions": [],
       "registered_count": 1,
       "registration_requested": true,
+      "replace_other_active_inputs": true,
       "requested": true,
       "roots": [
         {
           "auto_sync_enabled": false,
           "is_active": true,
           "issues": null,
-          "label": "phase47-s2-root-1",
           "path_redacted": true,
           "run_local_label": "root-1",
           "valid": null
@@ -178,21 +198,15 @@
     },
     "warnings": []
   },
-  "schema_preparation_history": {
-    "corrective_pass_schema_ensure_observed": true,
-    "final_verification_schema_ensure_status": "not_needed",
-    "migration_path_used": "migrate_add_dynamic_library_sync_tables",
-    "public_report_redacted": true,
-    "tables_missing_after_count": 0
-  },
-  "generated_at": "2026-06-18T04:48:01Z",
-  "head_sha": "1a1bbd6f7ec3",
+  "generated_at": "2026-06-18T05:23:27Z",
+  "head_sha": "17510742d25e",
   "icloud_cloud_policy": {
     "cloud_only_files_deferred": true,
     "hydrated_only": true,
     "mass_icloud_download": false,
     "structured_reasons": [
       "cloud_offline",
+      "cloud_placeholder",
       "cloud_recall_on_open",
       "cloud_recall_on_data_access",
       "cloud_network_unavailable",
@@ -206,7 +220,7 @@
     "executed": false,
     "item_failures_recorded": false,
     "stage": "import",
-    "status": "not_run_execute_not_requested",
+    "status": "not_run_cloud_deferred_threshold_exceeded",
     "target_met": false
   },
   "localization_results": {
@@ -215,10 +229,10 @@
     "llm_called": false,
     "proper_noun_unreviewed_aliases_trusted": false,
     "stage": "localization",
-    "status": "not_run_execute_not_requested",
+    "status": "not_run_cloud_deferred_threshold_exceeded",
     "target_met": false
   },
-  "mode": "readiness",
+  "mode": "execute_requested",
   "phase": "4.7-S2",
   "pipeline_contract": {
     "claims": {
@@ -226,13 +240,15 @@
       "safe_to_merge": false,
       "target_met": false
     },
+    "cloud_deferred_threshold_passed": false,
     "contract_id": "phase47_s2_baseline_contract_v1",
-    "execute_confirmation_present": false,
-    "execute_requested": false,
+    "execute_confirmation_present": true,
+    "execute_requested": true,
     "fresh_dry_run_completed": true,
     "gate0_status": "passed",
     "gate1_stop_condition": false,
-    "status": "dry_run_complete_execute_not_requested"
+    "source_scope_passed": true,
+    "status": "cloud_deferred_threshold_exceeded"
   },
   "private_artifacts": {
     "paths_public": false,
@@ -325,14 +341,14 @@
     "git": {
       "based_on_origin_main": true,
       "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
-      "head_sha": "1a1bbd6f7ec3c519ff30e3b08cf1108704710337",
+      "head_sha": "17510742d25ed59e35525f01e8f0dd3e4ac8a10e",
       "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae"
     },
     "input_root_counts": {
       "active_count": 1,
       "auto_sync_enabled_count": 0,
       "paths_redacted": true,
-      "registered_count": 1,
+      "registered_count": 2,
       "unsafe_overlap_count": 0,
       "valid_count": 1
     },
@@ -381,8 +397,8 @@
     "no_push_main": true,
     "no_source_icloud_mutation": true,
     "no_sourceconcept_entity_resolver_similarity": true,
-    "stopped_by_rule": null
+    "stopped_by_rule": "Cloud-only or unavailable candidates exceeded the approved S2 threshold"
   },
-  "status": "dry_run_complete_execute_not_requested",
+  "status": "cloud_deferred_threshold_exceeded",
   "title": "Baseline Full Import, AI Tagging, and Tag Localization"
 }

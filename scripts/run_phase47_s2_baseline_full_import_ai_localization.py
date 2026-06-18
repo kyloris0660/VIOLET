@@ -74,6 +74,7 @@ DYNAMIC_SYNC_INDEX_PREFIXES = (
 )
 
 CLOUD_DEFERRED_REASONS = {
+    "cloud_placeholder",
     "cloud_offline",
     "cloud_recall_on_open",
     "cloud_recall_on_data_access",
@@ -85,6 +86,10 @@ CLOUD_DEFERRED_REASONS = {
 }
 
 UNSUPPORTED_REASONS = {"unsupported_extension", "unsupported_file_type"}
+
+DEFAULT_EXPECTED_SOURCE_MIN_ITEMS = 30000
+DEFAULT_CLOUD_DEFERRED_MAX_ITEMS = 1000
+DEFAULT_CLOUD_DEFERRED_MAX_RATE = 0.10
 
 REQUIRED_PUBLIC_FIELDS = {
     "phase",
@@ -536,11 +541,14 @@ def register_phase_source_roots(args: argparse.Namespace) -> dict[str, Any]:
         }
 
     from app import database
+    from app.models import DynamicSourceRoot
     from app.services.dynamic_library_sync_service import register_source_root
 
     database.init_engine()
     db = database.SessionLocal()
     registered: list[dict[str, Any]] = []
+    deactivated_count = 0
+    deactivated_labels: list[str] = []
     try:
         for index, item in enumerate(validations):
             label = args.source_label[index] if args.source_label and index < len(args.source_label) else f"phase47-s2-root-{index + 1}"
@@ -550,6 +558,10 @@ def register_phase_source_roots(args: argparse.Namespace) -> dict[str, Any]:
                 label=label,
                 notes=f"Registered by {PHASE} readiness runner {args.run_id}",
             )
+            root.auto_sync_enabled = False
+            root.is_active = True
+            db.commit()
+            db.refresh(root)
             registered.append(
                 {
                     "id": root.id,
@@ -560,14 +572,33 @@ def register_phase_source_roots(args: argparse.Namespace) -> dict[str, Any]:
                     "path_redacted": True,
                 }
             )
+        if args.replace_source_roots:
+            registered_ids = {int(root["id"]) for root in registered}
+            stale_roots = (
+                db.query(DynamicSourceRoot)
+                .filter(DynamicSourceRoot.is_active == True)
+                .filter(~DynamicSourceRoot.id.in_(registered_ids))
+                .order_by(DynamicSourceRoot.id.asc())
+                .all()
+            )
+            for stale_root in stale_roots:
+                stale_root.is_active = False
+                stale_root.auto_sync_enabled = False
+                deactivated_count += 1
+                deactivated_labels.append(f"inactive-root-{deactivated_count}")
+            if stale_roots:
+                db.commit()
     finally:
         db.close()
     return {
         "requested": True,
         "input_source": input_source,
         "registration_requested": True,
+        "replace_source_roots": bool(args.replace_source_roots),
         "registered_count": len(registered),
         "validated_count": len(validations),
+        "deactivated_other_active_count": deactivated_count,
+        "deactivated_other_active_labels": deactivated_labels,
         "failed_count": 0,
         "roots": registered,
         "instructions": [],
@@ -1083,6 +1114,119 @@ def summarize_dynamic_sync_dry_run(raw: Mapping[str, Any], args: argparse.Namesp
     }
 
 
+def dry_run_scope_check(args: argparse.Namespace, dry_run: Mapping[str, Any]) -> dict[str, Any]:
+    total_seen = int(dry_run.get("total_seen") or 0)
+    expected_min = max(int(args.expected_source_min_items or 0), 0)
+    passed = expected_min <= 0 or total_seen >= expected_min
+    return {
+        "passed": passed,
+        "status": "passed" if passed else "source_scope_mismatch",
+        "expected_min_items": expected_min,
+        "total_seen": total_seen,
+        "expected_scale": "tens_of_thousands_roughly_30k_plus",
+    }
+
+
+def dry_run_cloud_threshold_check(args: argparse.Namespace, dry_run: Mapping[str, Any]) -> dict[str, Any]:
+    total_seen = int(dry_run.get("total_seen") or 0)
+    cloud_count = int(dry_run.get("cloud_only_or_icloud_unavailable") or 0)
+    max_items = max(int(args.cloud_deferred_max_items or 0), 0)
+    max_rate = max(float(args.cloud_deferred_max_rate or 0), 0.0)
+    rate = (cloud_count / total_seen) if total_seen else 0.0
+    count_ok = max_items <= 0 or cloud_count <= max_items
+    rate_ok = max_rate <= 0 or rate <= max_rate
+    passed = count_ok and rate_ok
+    return {
+        "passed": passed,
+        "status": "passed" if passed else "cloud_deferred_threshold_exceeded",
+        "cloud_deferred_count": cloud_count,
+        "total_seen": total_seen,
+        "cloud_deferred_rate": rate,
+        "max_items": max_items,
+        "max_rate": max_rate,
+    }
+
+
+def export_dynamic_sync_dry_run_ledgers(db: Any, run_id: int | None) -> dict[str, Any]:
+    if not run_id:
+        return {
+            "unsupported_or_deferred_rows": [],
+            "cloud_deferred_rows": [],
+            "batch_summary_rows": [],
+            "exported_run_id": None,
+            "paths_private": True,
+        }
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                ri.id AS run_item_id,
+                ri.item_state AS item_state,
+                ri.action AS action,
+                ri.reason AS reason,
+                ri.eligible_for_db_import AS eligible_for_db_import,
+                ri.bytes_copied AS bytes_copied,
+                si.id AS source_item_id,
+                si.import_status AS import_status,
+                si.classification_status AS classification_status,
+                si.ai_tagging_status AS ai_tagging_status,
+                si.localization_status AS localization_status,
+                si.failure_reason AS failure_reason,
+                si.deferred_reason AS deferred_reason,
+                si.file_size AS file_size
+            FROM blombooru_dynamic_sync_run_items ri
+            JOIN blombooru_dynamic_source_items si ON si.id = ri.source_item_id
+            WHERE ri.sync_run_id = :run_id
+            ORDER BY ri.id ASC
+            """
+        ),
+        {"run_id": run_id},
+    ).mappings().all()
+    unsupported_or_deferred_rows: list[dict[str, Any]] = []
+    cloud_deferred_rows: list[dict[str, Any]] = []
+    summary_counter: Counter[str] = Counter()
+    for index, row in enumerate(rows, start=1):
+        reason = str(row["reason"] or row["deferred_reason"] or row["failure_reason"] or row["item_state"] or "")
+        state = str(row["item_state"] or "")
+        summary_counter[reason or state or "unknown"] += 1
+        ledger_row = {
+            "run_item_label": f"run-item-{index}",
+            "source_item_label": f"source-item-{row['source_item_id']}",
+            "item_state": state,
+            "action": row["action"],
+            "reason": reason,
+            "import_status": row["import_status"],
+            "classification_status": row["classification_status"],
+            "ai_tagging_status": row["ai_tagging_status"],
+            "localization_status": row["localization_status"],
+            "eligible_for_db_import": bool(row["eligible_for_db_import"]),
+            "bytes_copied": int(row["bytes_copied"] or 0),
+            "file_size": row["file_size"],
+            "path_private_or_omitted": True,
+        }
+        if reason in UNSUPPORTED_REASONS or reason in CLOUD_DEFERRED_REASONS or state in {"deferred", "failed", "missing"}:
+            unsupported_or_deferred_rows.append(ledger_row)
+        if reason in CLOUD_DEFERRED_REASONS:
+            cloud_deferred_rows.append(ledger_row)
+    batch_summary_rows = [
+        {
+            "stage": "dynamic_sync_dry_run",
+            "run_id": run_id,
+            "reason": reason,
+            "count": count,
+            "paths_private_or_omitted": True,
+        }
+        for reason, count in sorted(summary_counter.items())
+    ]
+    return {
+        "unsupported_or_deferred_rows": unsupported_or_deferred_rows,
+        "cloud_deferred_rows": cloud_deferred_rows,
+        "batch_summary_rows": batch_summary_rows,
+        "exported_run_id": run_id,
+        "paths_private": True,
+    }
+
+
 def run_fresh_dynamic_sync_dry_run(args: argparse.Namespace, readiness: Mapping[str, Any]) -> dict[str, Any]:
     from app import database
     from app.services.dynamic_library_sync_service import run_update_check
@@ -1114,6 +1258,11 @@ def run_fresh_dynamic_sync_dry_run(args: argparse.Namespace, readiness: Mapping[
             dry_run["cloud_only_or_icloud_unavailable"] = sum(
                 count for reason, count in reason_counts.items() if reason in CLOUD_DEFERRED_REASONS
             )
+            dry_run["private_ledgers"] = export_dynamic_sync_dry_run_ledgers(db, int(raw["id"]))
+        else:
+            dry_run["private_ledgers"] = export_dynamic_sync_dry_run_ledgers(db, None)
+        dry_run["source_scope_check"] = dry_run_scope_check(args, dry_run)
+        dry_run["cloud_deferred_threshold_check"] = dry_run_cloud_threshold_check(args, dry_run)
         return dry_run
     finally:
         db.close()
@@ -1130,6 +1279,12 @@ def status_for_state(args: argparse.Namespace, readiness: Mapping[str, Any], dry
             return "blocked_source_roots"
         return "blocked_gate1"
     if dry_run and dry_run.get("executed"):
+        source_scope = dry_run.get("source_scope_check") or {}
+        if source_scope and not source_scope.get("passed", True):
+            return "source_scope_mismatch"
+        cloud_threshold = dry_run.get("cloud_deferred_threshold_check") or {}
+        if cloud_threshold and not cloud_threshold.get("passed", True):
+            return "cloud_deferred_threshold_exceeded"
         if args.execute:
             return "blocked_execute_import_not_implemented"
         return "dry_run_complete_execute_not_requested"
@@ -1146,10 +1301,18 @@ def build_summary(
     stopped_by_rule = None
     if not readiness.get("passed"):
         stopped_by_rule = "Gate 0/Gate 1 readiness proof failed before baseline execution"
+    elif status == "source_scope_mismatch":
+        stopped_by_rule = "Fresh dynamic sync dry-run total_seen is below the approved full-library production scope"
+    elif status == "cloud_deferred_threshold_exceeded":
+        stopped_by_rule = "Cloud-only or unavailable candidates exceeded the approved S2 threshold"
     elif status == "blocked_execute_import_not_implemented":
         stopped_by_rule = "Execute requested after dry-run, but import/classification/AI/localization execution is not implemented"
     if not readiness.get("passed"):
         post_readiness_stage_reason = "not_run_gate1"
+    elif status == "source_scope_mismatch":
+        post_readiness_stage_reason = "not_run_source_scope_mismatch"
+    elif status == "cloud_deferred_threshold_exceeded":
+        post_readiness_stage_reason = "not_run_cloud_deferred_threshold_exceeded"
     elif args.execute:
         post_readiness_stage_reason = "not_run_execute_import_not_implemented"
     else:
@@ -1177,6 +1340,10 @@ def build_summary(
             "gate1_stop_condition": not readiness.get("passed"),
             "gate0_status": gate0.get("status"),
             "fresh_dry_run_completed": bool(dry_run and dry_run.get("status") == "completed"),
+            "source_scope_passed": bool((dry_run or {}).get("source_scope_check", {}).get("passed", False)),
+            "cloud_deferred_threshold_passed": bool(
+                (dry_run or {}).get("cloud_deferred_threshold_check", {}).get("passed", False)
+            ),
             "execute_requested": bool(args.execute),
             "execute_confirmation_present": bool(args.execute and args.confirm_execution == CONFIRM_PHRASE),
         },
@@ -1189,6 +1356,7 @@ def build_summary(
             "cloud_only_files_deferred": True,
             "structured_reasons": [
                 "cloud_offline",
+                "cloud_placeholder",
                 "cloud_recall_on_open",
                 "cloud_recall_on_data_access",
                 "cloud_network_unavailable",
@@ -1285,6 +1453,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Backup proof supplied/existing/valid: `{readiness.get('backup_recovery', {}).get('proof_supplied')}` / `{readiness.get('backup_recovery', {}).get('proof_exists')}` / `{readiness.get('backup_recovery', {}).get('valid')}`.",
         f"- Source roots registered/valid: `{readiness.get('source_roots', {}).get('registered_count')}` / `{readiness.get('source_roots', {}).get('valid_count')}`.",
         f"- Fresh dynamic sync dry-run: `{dry_run.get('status')}`.",
+        f"- Source scope check: `{(dry_run.get('source_scope_check') or {}).get('status')}`.",
+        f"- Cloud deferred threshold: `{(dry_run.get('cloud_deferred_threshold_check') or {}).get('status')}`.",
         f"- Execute confirmation present: `{summary.get('pipeline_contract', {}).get('execute_confirmation_present')}`.",
         f"- Import/classification/AI/localization/browser execution: `not executed`.",
         f"- Full S2 target met / safe to merge claim: `false` / `false`.",
@@ -1315,6 +1485,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "## Fresh Dry-Run Proof",
         f"- Dry-run executed: `{dry_run.get('executed')}`.",
         f"- Total seen: `{dry_run.get('total_seen')}`.",
+        f"- Source scope expected minimum: `{(dry_run.get('source_scope_check') or {}).get('expected_min_items')}`.",
+        f"- Source scope passed: `{(dry_run.get('source_scope_check') or {}).get('passed')}`.",
         f"- Pending new: `{dry_run.get('pending_new')}`.",
         f"- Pending changed: `{dry_run.get('pending_changed')}`.",
         f"- Pending deferred: `{dry_run.get('pending_deferred')}`.",
@@ -1322,6 +1494,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Failed: `{dry_run.get('failed')}`.",
         f"- Missing: `{dry_run.get('missing')}`.",
         f"- Cloud-only / iCloud unavailable: `{dry_run.get('cloud_only_or_icloud_unavailable')}`.",
+        f"- Cloud deferred threshold passed: `{(dry_run.get('cloud_deferred_threshold_check') or {}).get('passed')}`.",
         f"- Estimated import batches: `{dry_run.get('estimated_import_batches')}`.",
         f"- Estimated AI tagging workload: `{dry_run.get('estimated_ai_tagging_workload')}`.",
         "",
@@ -1340,7 +1513,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "- If backup proof is missing, create a private PostgreSQL backup proof and rerun with `--backup-proof-path` plus recovery notes.",
         "- If schema setup is pending, rerun with backup proof and `--approve-schema-setup` to use the existing dynamic sync migration path.",
         "- If source roots are missing, register one or more valid roots with `--register-source-root --source-root <path> --source-label <label>` or the Admin UI/API.",
-        f"- Review the fresh dry-run counts, then rerun with `--execute --confirm-execution {CONFIRM_PHRASE}` only when the operator intentionally approves production import/classification/AI/localization execution.",
+        "- If `source_scope_check.status` is `source_scope_mismatch`, correct the approved source root before any import.",
+        "- If `cloud_deferred_threshold_check.status` is `cloud_deferred_threshold_exceeded`, perform a separately approved bounded iCloud hydration/backfill pass, then rerun fresh dry-run before import.",
+        f"- Rerun with `--execute --confirm-execution {CONFIRM_PHRASE}` only after readiness, source scope, and cloud-deferred thresholds all pass.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1378,16 +1553,14 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
 
     write_json(output_dir / "readiness-proof.json", summary["readiness"])
     write_json(output_dir / "fresh-dynamic-sync-dry-run.json", summary["dynamic_sync_dry_run"])
-    for name in (
-        "import-item-ledger.jsonl",
-        "unsupported-or-deferred.jsonl",
-        "cloud-deferred.jsonl",
-        "batch-summary.jsonl",
-        "classification-ledger.jsonl",
-        "ai-tagging-ledger.jsonl",
-        "localization-ledger.jsonl",
-    ):
-        write_jsonl(output_dir / name, [])
+    dry_run_ledgers = (summary.get("dynamic_sync_dry_run") or {}).get("private_ledgers") or {}
+    write_jsonl(output_dir / "import-item-ledger.jsonl", [])
+    write_jsonl(output_dir / "unsupported-or-deferred.jsonl", dry_run_ledgers.get("unsupported_or_deferred_rows") or [])
+    write_jsonl(output_dir / "cloud-deferred.jsonl", dry_run_ledgers.get("cloud_deferred_rows") or [])
+    write_jsonl(output_dir / "batch-summary.jsonl", dry_run_ledgers.get("batch_summary_rows") or [])
+    write_jsonl(output_dir / "classification-ledger.jsonl", [])
+    write_jsonl(output_dir / "ai-tagging-ledger.jsonl", [])
+    write_jsonl(output_dir / "localization-ledger.jsonl", [])
     write_json(output_dir / "browser-validation.json", summary["browser_validation"])
 
     public_markdown = public_report_markdown(summary)
@@ -1446,13 +1619,14 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
             "requested": source_registration.get("requested"),
             "input_source": source_registration.get("input_source"),
             "registration_requested": source_registration.get("registration_requested"),
+            "replace_other_active_inputs": source_registration.get("replace_source_roots"),
             "registered_count": source_registration.get("registered_count"),
             "validated_count": source_registration.get("validated_count"),
             "failed_count": source_registration.get("failed_count"),
+            "deactivated_other_active_count": source_registration.get("deactivated_other_active_count"),
             "roots": [
                 {
                     "run_local_label": root.get("run_local_label"),
-                    "label": root.get("label"),
                     "valid": root.get("valid"),
                     "issues": root.get("issues"),
                     "is_active": root.get("is_active"),
@@ -1465,12 +1639,18 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
         },
         "safety": gate0.get("safety"),
     }
+    public_dry_run = {
+        key: value
+        for key, value in (summary.get("dynamic_sync_dry_run") or {}).items()
+        if key not in {"private_ledgers"}
+    }
     public_summary = {
         key: value
         for key, value in summary.items()
         if key not in {"readiness"} or key == "readiness"
     }
     public_summary["gate0"] = public_gate0
+    public_summary["dynamic_sync_dry_run"] = public_dry_run
     public_summary["readiness"] = {
         "passed": summary["readiness"].get("passed"),
         "blockers": summary["readiness"].get("blockers"),
@@ -1581,7 +1761,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-root", action="append", default=[])
     parser.add_argument("--source-label", action="append", default=[])
     parser.add_argument("--register-source-root", action="store_true")
+    parser.add_argument("--replace-source-roots", action="store_true")
     parser.add_argument("--dynamic-sync-max-files", type=int, default=None)
+    parser.add_argument("--expected-source-min-items", type=int, default=DEFAULT_EXPECTED_SOURCE_MIN_ITEMS)
+    parser.add_argument("--cloud-deferred-max-items", type=int, default=DEFAULT_CLOUD_DEFERRED_MAX_ITEMS)
+    parser.add_argument("--cloud-deferred-max-rate", type=float, default=DEFAULT_CLOUD_DEFERRED_MAX_RATE)
     parser.add_argument("--estimated-batch-size", type=int, default=100)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--write-public-report", action="store_true")
@@ -1600,7 +1784,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=json_default))
-    return 2 if str(summary.get("status", "")).startswith("blocked") else 0
+    stop_statuses = {"source_scope_mismatch", "cloud_deferred_threshold_exceeded"}
+    status = str(summary.get("status", ""))
+    return 2 if status.startswith("blocked") or status in stop_statuses else 0
 
 
 if __name__ == "__main__":
