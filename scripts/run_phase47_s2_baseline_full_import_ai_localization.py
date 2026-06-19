@@ -12,6 +12,7 @@ summary/report, then exits without executing later stages.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import math
 import os
@@ -47,6 +48,7 @@ PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / f"{PHASE_SLUG}-summary.json"
 PRIVATE_LEDGER_NAMES = (
     "readiness-proof.json",
     "fresh-dynamic-sync-dry-run.json",
+    "hydration-ledger.jsonl",
     "import-item-ledger.jsonl",
     "unsupported-or-deferred.jsonl",
     "cloud-deferred.jsonl",
@@ -73,23 +75,65 @@ DYNAMIC_SYNC_INDEX_PREFIXES = (
     "ix_dynamic_sync_run_items_",
 )
 
-CLOUD_DEFERRED_REASONS = {
-    "cloud_placeholder",
-    "cloud_offline",
-    "cloud_recall_on_open",
-    "cloud_recall_on_data_access",
-    "cloud_network_unavailable",
+CLOUD_FAILURE_REASONS = {
     "cloud_hydration_failed",
+    "cloud_network_unavailable",
     "read_timeout",
     "permission_denied",
     "unreadable_source",
 }
 
+HYDRATION_WORKLOAD_REASONS = {
+    "cloud_placeholder",
+    "cloud_offline",
+    "cloud_recall_on_open",
+    "cloud_recall_on_data_access",
+    "cloud_only",
+    "recall_required",
+    "needs_hydration",
+}
+
+CLOUD_DEFERRED_REASONS = HYDRATION_WORKLOAD_REASONS | CLOUD_FAILURE_REASONS
 UNSUPPORTED_REASONS = {"unsupported_extension", "unsupported_file_type"}
+SIDECAR_EXTENSIONS = {
+    ".aae",
+    ".xmp",
+    ".json",
+    ".xml",
+    ".txt",
+    ".db",
+    ".ini",
+    ".plist",
+    ".thm",
+    ".icloud",
+}
+DESIRED_UNSUPPORTED_MEDIA_EXTENSIONS = {
+    ".heic",
+    ".heif",
+    ".dng",
+    ".raw",
+    ".cr2",
+    ".nef",
+    ".arw",
+    ".rw2",
+    ".orf",
+    ".raf",
+    ".mov",
+    ".mp4",
+    ".webm",
+    ".avi",
+    ".mkv",
+}
 
 DEFAULT_EXPECTED_SOURCE_MIN_ITEMS = 30000
-DEFAULT_CLOUD_DEFERRED_MAX_ITEMS = 1000
-DEFAULT_CLOUD_DEFERRED_MAX_RATE = 0.10
+DEFAULT_HYDRATION_FAILURE_MAX_ITEMS = 1000
+DEFAULT_HYDRATION_FAILURE_MAX_RATE = 0.10
+DEFAULT_IMPORT_FAILURE_MAX_ITEMS = 50
+DEFAULT_IMPORT_FAILURE_MAX_RATE = 0.01
+DEFAULT_AI_FAILURE_MAX_ITEMS = 100
+DEFAULT_AI_FAILURE_MAX_RATE = 0.02
+DEFAULT_LOCALIZATION_FAILURE_MAX_ITEMS = 500
+DEFAULT_LOCALIZATION_FAILURE_MAX_RATE = 0.05
 
 REQUIRED_PUBLIC_FIELDS = {
     "phase",
@@ -161,6 +205,12 @@ def write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> int:
     return count
 
 
+def append_jsonl(path: Path, row: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True, default=json_default) + "\n")
+
+
 def git_value(args: Sequence[str]) -> str:
     completed = subprocess.run(
         ["git", *args],
@@ -192,6 +242,22 @@ def output_dir_allowed(path: Path) -> bool:
     if any(part.lower() in protected_names for part in resolved.parts):
         return False
     return True
+
+
+def prepare_private_output_dir(args: argparse.Namespace) -> Path:
+    output_dir = args.output_dir.resolve()
+    if not output_dir_allowed(output_dir):
+        raise S2BlockedError("unsafe_output_dir_must_be_phase_private_artifact_dir")
+    root_inputs, _root_input_source = phase_source_root_inputs(args)
+    for raw_root in root_inputs:
+        try:
+            overlaps_source_root = paths_overlap(output_dir, Path(raw_root))
+        except Exception:
+            overlaps_source_root = False
+        if overlaps_source_root:
+            raise S2BlockedError("unsafe_output_dir_overlaps_source_root")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
 
 
 def is_root_like(path: Path) -> bool:
@@ -1099,6 +1165,8 @@ def summarize_dynamic_sync_dry_run(raw: Mapping[str, Any], args: argparse.Namesp
         "failed": int(raw.get("failed_items") or 0),
         "missing": int(raw.get("missing_items") or 0),
         "cloud_only_or_icloud_unavailable": cloud_only,
+        "hydration_workload_count": cloud_only,
+        "actual_cloud_failure_count": 0,
         "duplicates_checked": False,
         "duplicates": None,
         "threshold_reached": bool(raw.get("threshold_reached")),
@@ -1127,23 +1195,20 @@ def dry_run_scope_check(args: argparse.Namespace, dry_run: Mapping[str, Any]) ->
     }
 
 
-def dry_run_cloud_threshold_check(args: argparse.Namespace, dry_run: Mapping[str, Any]) -> dict[str, Any]:
+def dry_run_hydration_workload_check(args: argparse.Namespace, dry_run: Mapping[str, Any]) -> dict[str, Any]:
     total_seen = int(dry_run.get("total_seen") or 0)
-    cloud_count = int(dry_run.get("cloud_only_or_icloud_unavailable") or 0)
-    max_items = max(int(args.cloud_deferred_max_items or 0), 0)
-    max_rate = max(float(args.cloud_deferred_max_rate or 0), 0.0)
-    rate = (cloud_count / total_seen) if total_seen else 0.0
-    count_ok = max_items <= 0 or cloud_count <= max_items
-    rate_ok = max_rate <= 0 or rate <= max_rate
-    passed = count_ok and rate_ok
+    workload_count = int(dry_run.get("hydration_workload_count") or dry_run.get("cloud_only_or_icloud_unavailable") or 0)
+    failure_count = int(dry_run.get("actual_cloud_failure_count") or 0)
+    rate = (workload_count / total_seen) if total_seen else 0.0
     return {
-        "passed": passed,
-        "status": "passed" if passed else "cloud_deferred_threshold_exceeded",
-        "cloud_deferred_count": cloud_count,
+        "passed": True,
+        "status": "hydration_workload_recorded",
+        "hydration_workload_count": workload_count,
+        "actual_failure_count": failure_count,
         "total_seen": total_seen,
-        "cloud_deferred_rate": rate,
-        "max_items": max_items,
-        "max_rate": max_rate,
+        "hydration_workload_rate": rate,
+        "counts_as_failure": False,
+        "failure_threshold_applies_after_attempt": True,
     }
 
 
@@ -1258,17 +1323,1037 @@ def run_fresh_dynamic_sync_dry_run(args: argparse.Namespace, readiness: Mapping[
             dry_run["cloud_only_or_icloud_unavailable"] = sum(
                 count for reason, count in reason_counts.items() if reason in CLOUD_DEFERRED_REASONS
             )
+            dry_run["hydration_workload_count"] = sum(
+                count for reason, count in reason_counts.items() if reason in HYDRATION_WORKLOAD_REASONS
+            )
+            dry_run["actual_cloud_failure_count"] = sum(
+                count for reason, count in reason_counts.items() if reason in CLOUD_FAILURE_REASONS
+            )
             dry_run["private_ledgers"] = export_dynamic_sync_dry_run_ledgers(db, int(raw["id"]))
         else:
             dry_run["private_ledgers"] = export_dynamic_sync_dry_run_ledgers(db, None)
         dry_run["source_scope_check"] = dry_run_scope_check(args, dry_run)
-        dry_run["cloud_deferred_threshold_check"] = dry_run_cloud_threshold_check(args, dry_run)
+        dry_run["hydration_workload_check"] = dry_run_hydration_workload_check(args, dry_run)
         return dry_run
     finally:
         db.close()
 
 
-def status_for_state(args: argparse.Namespace, readiness: Mapping[str, Any], dry_run: Mapping[str, Any] | None) -> str:
+def failure_threshold_exceeded(failures: int, attempted: int, *, max_items: int, max_rate: float) -> bool:
+    if max_items >= 0 and failures > max_items:
+        return True
+    if attempted > 0 and max_rate >= 0 and (failures / attempted) > max_rate:
+        return True
+    return False
+
+
+def failure_threshold_payload(failures: int, attempted: int, *, max_items: int, max_rate: float) -> dict[str, Any]:
+    rate = (failures / attempted) if attempted else 0.0
+    return {
+        "attempted": attempted,
+        "failed": failures,
+        "failure_rate": rate,
+        "max_items": max_items,
+        "max_rate": max_rate,
+        "threshold_exceeded": failure_threshold_exceeded(
+            failures,
+            attempted,
+            max_items=max_items,
+            max_rate=max_rate,
+        ),
+    }
+
+
+def unsupported_kind_for_suffix(suffix: str, reason: str | None = None) -> str:
+    lowered = suffix.casefold()
+    if reason == "hidden":
+        return "hidden_metadata"
+    if lowered in SIDECAR_EXTENSIONS:
+        return "sidecar_or_metadata"
+    if lowered in DESIRED_UNSUPPORTED_MEDIA_EXTENSIONS:
+        return "desired_media_support_gap"
+    if not lowered:
+        return "no_extension"
+    return "unsupported_non_media_or_unknown"
+
+
+def source_item_safe_label(source_item_id: int) -> str:
+    return f"source-item-{source_item_id}"
+
+
+def media_safe_label(media_id: int | None) -> str | None:
+    return f"media-{media_id}" if media_id else None
+
+
+def _resolve_source_item_path(root_path: Path, relative_path: str) -> Path:
+    candidate = (root_path / relative_path).resolve()
+    root_resolved = root_path.resolve()
+    candidate.relative_to(root_resolved)
+    return candidate
+
+
+def query_latest_source_items(db: Any, dry_run: Mapping[str, Any]) -> tuple[list[Any], dict[int, Path]]:
+    from app.models import DynamicSourceItem, DynamicSourceRoot
+
+    latest_run_id = dry_run.get("run_id")
+    roots = (
+        db.query(DynamicSourceRoot)
+        .filter(DynamicSourceRoot.is_active == True)
+        .order_by(DynamicSourceRoot.id.asc())
+        .all()
+    )
+    root_paths = {root.id: Path(root.root_path).resolve() for root in roots}
+    query = (
+        db.query(DynamicSourceItem)
+        .filter(DynamicSourceItem.source_root_id.in_(root_paths.keys()))
+        .order_by(DynamicSourceItem.id.asc())
+    )
+    if latest_run_id:
+        query = query.filter(DynamicSourceItem.last_seen_run_id == int(latest_run_id))
+    return query.all(), root_paths
+
+
+def ensure_import_disk_safety(items: Sequence[Any], root_paths: Mapping[int, Path]) -> dict[str, Any]:
+    from app.config import settings
+    from app.utils.local_library_scanner import SUPPORTED_EXTENSIONS
+
+    known_candidate_bytes = 0
+    candidate_count = 0
+    for item in items:
+        suffix = Path(item.relative_path).suffix.casefold()
+        reason = item.deferred_reason or item.failure_reason
+        if suffix not in SUPPORTED_EXTENSIONS:
+            continue
+        if reason and reason not in HYDRATION_WORKLOAD_REASONS:
+            continue
+        candidate_count += 1
+        known_candidate_bytes += int(item.file_size or 0)
+    usage = shutil.disk_usage(settings.ORIGINAL_DIR)
+    required_with_buffer = int(known_candidate_bytes * 1.05)
+    passed = required_with_buffer <= usage.free
+    return {
+        "passed": passed,
+        "candidate_count": candidate_count,
+        "known_candidate_bytes": known_candidate_bytes,
+        "free_bytes": usage.free,
+        "required_with_buffer_bytes": required_with_buffer,
+        "paths_redacted": True,
+    }
+
+
+def mark_source_item_import_outcome(
+    item: Any,
+    *,
+    state: str,
+    media_id: int | None = None,
+    content_hash: str | None = None,
+    failure_reason: str | None = None,
+    bytes_copied: int = 0,
+) -> None:
+    now = datetime.now(timezone.utc)
+    if content_hash:
+        item.content_hash = content_hash
+    if media_id:
+        item.media_id = media_id
+    item.last_checked_at = now
+    if state in {"imported", "reused_existing"}:
+        item.import_status = "imported"
+        item.source_status = "available"
+        item.failure_reason = None
+        item.deferred_reason = None
+        item.last_imported_at = now
+        if item.classification_status in {"waiting_import", "deferred", "failed"}:
+            item.classification_status = "pending"
+        if item.ai_tagging_status in {"waiting_import", "deferred", "failed"}:
+            item.ai_tagging_status = "pending"
+        if item.localization_status in {"waiting_ai_tags", "deferred", "failed"}:
+            item.localization_status = "waiting_ai_tags"
+    elif state in {"unsupported", "unsupported_sidecar", "unsupported_desired_media", "deferred_retryable"}:
+        item.import_status = "deferred"
+        item.source_status = "deferred"
+        item.deferred_reason = state
+        item.failure_reason = None
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
+    else:
+        item.import_status = "failed" if state in {"copy_failed", "import_failed"} else "deferred"
+        item.source_status = "failed"
+        item.failure_reason = failure_reason or state
+        item.deferred_reason = None
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
+    metadata = dict(item.metadata_json or {})
+    metadata["phase47_s2_last_state"] = state
+    metadata["phase47_s2_bytes_copied"] = bytes_copied
+    item.metadata_json = metadata
+
+
+def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) -> dict[str, Any]:
+    from app import database
+    from app.config import settings
+    from app.models import Media
+    from app.routes.media import process_and_save_media
+    from app.schemas import RatingEnum
+    from app.utils.local_library_scanner import (
+        SUPPORTED_EXTENSIONS,
+        _calculate_file_hash_with_timeout,
+    )
+    from app.utils.media_helpers import get_unique_filename
+    from app.utils.media_processor import calculate_file_hash
+
+    database.init_engine()
+    db = database.SessionLocal()
+    import_rows: list[dict[str, Any]] = []
+    unsupported_rows: list[dict[str, Any]] = []
+    hydration_rows: list[dict[str, Any]] = []
+    batch_rows: list[dict[str, Any]] = []
+    media_work_items: list[dict[str, Any]] = []
+    unsupported_breakdown: Counter[str] = Counter()
+    unsupported_extension_breakdown: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    bytes_copied_total = 0
+    hydration_workload_attempted = 0
+    read_attempted = 0
+    hydration_failures = 0
+    import_attempted = 0
+    import_failures = 0
+    stopped_by_rule: str | None = None
+    checkpoint_dir = prepare_private_output_dir(args)
+    checkpoint_files = (
+        "hydration-ledger.jsonl",
+        "import-item-ledger.jsonl",
+        "unsupported-or-deferred.jsonl",
+        "cloud-deferred.jsonl",
+        "batch-summary.jsonl",
+        "classification-ledger.jsonl",
+        "ai-tagging-ledger.jsonl",
+        "localization-ledger.jsonl",
+    )
+    for ledger_name in checkpoint_files:
+        write_jsonl(checkpoint_dir / ledger_name, [])
+
+    try:
+        items, root_paths = query_latest_source_items(db, dry_run)
+        disk_safety = ensure_import_disk_safety(items, root_paths)
+        if not disk_safety["passed"]:
+            return {
+                "stage": "import",
+                "status": "blocked_disk_space_resource_safety",
+                "executed": False,
+                "target_met": False,
+                "item_failures_recorded": True,
+                "disk_safety": disk_safety,
+                "attempted": 0,
+                "imported": 0,
+                "reused_existing": 0,
+                "failed": 0,
+                "unsupported": 0,
+                "stopped_by_rule": "disk_space_resource_safety",
+                "private_ledgers": {
+                    "import_item_rows": [],
+                    "unsupported_or_deferred_rows": [],
+                    "cloud_deferred_rows": [],
+                    "batch_summary_rows": [],
+                },
+            }
+
+        batch_size = max(int(args.import_batch_size or 1), 1)
+        max_items = max(int(args.max_import_items or 0), 0)
+        processed_candidates = 0
+
+        def checkpoint_batch_if_needed(force: bool = False) -> None:
+            if processed_candidates <= 0:
+                return
+            last_processed = int(batch_rows[-1].get("processed_candidates") or 0) if batch_rows else 0
+            if not force and processed_candidates % batch_size != 0:
+                return
+            if last_processed == processed_candidates:
+                return
+            batch_row = {
+                "stage": "import",
+                "batch_index": len(batch_rows) + 1,
+                "processed_candidates": processed_candidates,
+                "status_counts": dict(status_counts),
+                "bytes_copied": bytes_copied_total,
+                "paths_private_or_omitted": True,
+            }
+            batch_rows.append(batch_row)
+            append_jsonl(checkpoint_dir / "batch-summary.jsonl", batch_row)
+
+        for item in items:
+            if max_items and processed_candidates >= max_items:
+                stopped_by_rule = "max_import_items_reached"
+                break
+            suffix = Path(item.relative_path).suffix.casefold()
+            reason = item.deferred_reason or item.failure_reason
+            safe_item = source_item_safe_label(item.id)
+            if item.import_status == "imported" and item.media_id:
+                media_work_items.append(
+                    {
+                        "source_item_id": item.id,
+                        "source_item_label": safe_item,
+                        "media_id": item.media_id,
+                        "reused_existing": True,
+                    }
+                )
+                continue
+            if suffix not in SUPPORTED_EXTENSIONS or (reason and reason not in HYDRATION_WORKLOAD_REASONS):
+                kind = unsupported_kind_for_suffix(suffix, str(reason or "unsupported_extension"))
+                if reason in CLOUD_FAILURE_REASONS:
+                    state = "deferred_retryable"
+                elif kind == "desired_media_support_gap":
+                    state = "unsupported_desired_media"
+                else:
+                    state = "unsupported_sidecar"
+                unsupported_breakdown[kind] += 1
+                unsupported_extension_breakdown[suffix or "<none>"] += 1
+                status_counts[state] += 1
+                mark_source_item_import_outcome(item, state=state, failure_reason=reason or "unsupported_extension")
+                row = {
+                    "run_id": args.run_id,
+                    "source_item_label": safe_item,
+                    "state": state,
+                    "reason": reason or "unsupported_extension",
+                    "unsupported_kind": kind,
+                    "extension": suffix or "<none>",
+                    "eligible_for_db_import": False,
+                    "path_private_or_omitted": True,
+                }
+                unsupported_rows.append(row)
+                import_rows.append(row)
+                append_jsonl(checkpoint_dir / "unsupported-or-deferred.jsonl", row)
+                append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
+                continue
+
+            processed_candidates += 1
+            root_path = root_paths.get(item.source_root_id)
+            source_state = str(reason or "available")
+            is_hydration_workload = source_state in HYDRATION_WORKLOAD_REASONS
+            if is_hydration_workload:
+                hydration_workload_attempted += 1
+
+            row: dict[str, Any] = {
+                "run_id": args.run_id,
+                "source_item_label": safe_item,
+                "state": "attempted",
+                "source_state": source_state,
+                "extension": suffix,
+                "media_label": None,
+                "content_hash_available": False,
+                "bytes_copied": 0,
+                "path_private_or_omitted": True,
+            }
+            temp_path: Path | None = None
+            final_path: Path | None = None
+            copy_completed = False
+            media_created = False
+            try:
+                if root_path is None:
+                    raise FileNotFoundError("source_root_missing_for_item")
+                source_path = _resolve_source_item_path(root_path, item.relative_path)
+                timeout_sec = int(args.hydration_timeout_seconds or settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)
+                read_attempted += 1
+                hash_status, hash_value = _calculate_file_hash_with_timeout(source_path, timeout_sec)
+                if hash_status == "timeout":
+                    state = "read_timeout"
+                    hydration_failures += 1
+                    mark_source_item_import_outcome(item, state=state, failure_reason=hash_value)
+                    row.update({"state": state, "reason": hash_value})
+                    status_counts[state] += 1
+                    import_rows.append(row)
+                    hydration_rows.append(row)
+                    append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
+                    append_jsonl(checkpoint_dir / "hydration-ledger.jsonl", row)
+                    append_jsonl(checkpoint_dir / "cloud-deferred.jsonl", row)
+                    if failure_threshold_exceeded(
+                        hydration_failures,
+                        max(read_attempted, 1),
+                        max_items=args.hydration_failure_max_items,
+                        max_rate=args.hydration_failure_max_rate,
+                    ):
+                        stopped_by_rule = "hydration_read_failure_threshold_exceeded"
+                        break
+                    checkpoint_batch_if_needed()
+                    continue
+                if hash_status != "ok":
+                    state = "hydration_failed" if is_hydration_workload else "unreadable_source"
+                    hydration_failures += 1
+                    mark_source_item_import_outcome(item, state=state, failure_reason=hash_value)
+                    row.update({"state": state, "reason": hash_value})
+                    status_counts[state] += 1
+                    import_rows.append(row)
+                    hydration_rows.append(row)
+                    append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
+                    append_jsonl(checkpoint_dir / "hydration-ledger.jsonl", row)
+                    append_jsonl(checkpoint_dir / "cloud-deferred.jsonl", row)
+                    if failure_threshold_exceeded(
+                        hydration_failures,
+                        max(read_attempted, 1),
+                        max_items=args.hydration_failure_max_items,
+                        max_rate=args.hydration_failure_max_rate,
+                    ):
+                        stopped_by_rule = "hydration_read_failure_threshold_exceeded"
+                        break
+                    checkpoint_batch_if_needed()
+                    continue
+
+                source_hash = str(hash_value)
+                row["content_hash_available"] = True
+                existing = db.query(Media).filter(Media.hash == source_hash).first()
+                if existing:
+                    state = "reused_existing"
+                    mark_source_item_import_outcome(
+                        item,
+                        state=state,
+                        media_id=existing.id,
+                        content_hash=source_hash,
+                    )
+                    row.update({"state": state, "media_label": media_safe_label(existing.id), "reason": "content_hash_match"})
+                    status_counts[state] += 1
+                    media_work_items.append(
+                        {
+                            "source_item_id": item.id,
+                            "source_item_label": safe_item,
+                            "media_id": existing.id,
+                            "reused_existing": True,
+                        }
+                    )
+                    import_rows.append(row)
+                    append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
+                    if is_hydration_workload:
+                        hydration_row = {**row, "state": "hydrated_success"}
+                        hydration_rows.append(hydration_row)
+                        append_jsonl(checkpoint_dir / "hydration-ledger.jsonl", hydration_row)
+                    checkpoint_batch_if_needed()
+                    continue
+
+                import_attempted += 1
+                unique_name = get_unique_filename(settings.ORIGINAL_DIR, source_path.name)
+                final_path = settings.ORIGINAL_DIR / unique_name
+                temp_path = settings.ORIGINAL_DIR / f".{PHASE_SLUG}-{args.run_id}-{item.id}-{uuid.uuid4().hex}.tmp"
+                shutil.copy2(str(source_path), str(temp_path))
+                temp_hash = calculate_file_hash(temp_path)
+                if temp_hash != source_hash:
+                    raise IOError("copy_hash_mismatch")
+                bytes_copied = int(temp_path.stat().st_size)
+                temp_path.replace(final_path)
+                temp_path = None
+                copy_completed = True
+                media_resp = process_and_save_media(
+                    db=db,
+                    file_path=final_path,
+                    unique_filename=unique_name,
+                    rating=RatingEnum.safe,
+                    tags="",
+                    album_ids=None,
+                    source=None,
+                    category_hints=None,
+                )
+                media_created = True
+                media_id = int(media_resp.id)
+                mark_source_item_import_outcome(
+                    item,
+                    state="imported",
+                    media_id=media_id,
+                    content_hash=source_hash,
+                    bytes_copied=bytes_copied,
+                )
+                db.commit()
+                final_path = None
+                bytes_copied_total += bytes_copied
+                row.update({"state": "imported", "media_label": media_safe_label(media_id), "bytes_copied": bytes_copied})
+                status_counts["imported"] += 1
+                media_work_items.append(
+                    {
+                        "source_item_id": item.id,
+                        "source_item_label": safe_item,
+                        "media_id": media_id,
+                        "reused_existing": False,
+                    }
+                )
+                import_rows.append(row)
+                append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
+                if is_hydration_workload:
+                    hydration_row = {**row, "state": "hydrated_success"}
+                    hydration_rows.append(hydration_row)
+                    append_jsonl(checkpoint_dir / "hydration-ledger.jsonl", hydration_row)
+
+            except Exception as exc:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                if temp_path and temp_path.exists():
+                    try:
+                        temp_path.unlink()
+                    except OSError:
+                        pass
+                if final_path and final_path.exists() and not media_created:
+                    try:
+                        final_path.unlink()
+                    except OSError:
+                        pass
+                message = str(getattr(exc, "detail", exc))[:500]
+                state = "import_failed" if copy_completed or media_created else "copy_failed"
+                import_failures += 1
+                mark_source_item_import_outcome(item, state=state, failure_reason=message)
+                db.commit()
+                row.update({"state": state, "reason": message})
+                status_counts[state] += 1
+                import_rows.append(row)
+                append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
+                if is_hydration_workload:
+                    hydration_rows.append(row)
+                    append_jsonl(checkpoint_dir / "hydration-ledger.jsonl", row)
+                if failure_threshold_exceeded(
+                    import_failures,
+                    max(import_attempted, 1),
+                    max_items=args.import_failure_max_items,
+                    max_rate=args.import_failure_max_rate,
+                ):
+                    stopped_by_rule = "import_failure_threshold_exceeded"
+                    break
+
+            checkpoint_batch_if_needed()
+
+        db.commit()
+        checkpoint_batch_if_needed(force=True)
+
+        hydration_budget = failure_threshold_payload(
+            hydration_failures,
+            read_attempted,
+            max_items=args.hydration_failure_max_items,
+            max_rate=args.hydration_failure_max_rate,
+        )
+        import_budget = failure_threshold_payload(
+            import_failures,
+            import_attempted,
+            max_items=args.import_failure_max_items,
+            max_rate=args.import_failure_max_rate,
+        )
+        if stopped_by_rule == "hydration_read_failure_threshold_exceeded":
+            status = "hydration_read_failure_threshold_exceeded"
+        elif stopped_by_rule == "import_failure_threshold_exceeded":
+            status = "import_failure_threshold_exceeded"
+        elif stopped_by_rule == "max_import_items_reached":
+            status = "partial_import_max_items_reached"
+        elif import_failures:
+            status = "completed_with_item_failures_within_budget"
+        else:
+            status = "completed"
+        return {
+            "stage": "import",
+            "status": status,
+            "executed": True,
+            "target_met": status in {"completed", "completed_with_item_failures_within_budget"},
+            "item_failures_recorded": True,
+            "per_item_ledgers_written": True,
+            "attempted": processed_candidates,
+            "read_attempted": read_attempted,
+            "hydration_attempted": hydration_workload_attempted,
+            "hydrated_success": sum(1 for row in hydration_rows if row.get("state") == "hydrated_success"),
+            "hydration_failures": hydration_failures,
+            "import_attempted": import_attempted,
+            "imported": int(status_counts.get("imported", 0)),
+            "reused_existing": int(status_counts.get("reused_existing", 0)),
+            "failed": import_failures,
+            "unsupported": int(status_counts.get("unsupported_sidecar", 0)) + int(status_counts.get("unsupported_desired_media", 0)),
+            "unsupported_sidecar": int(status_counts.get("unsupported_sidecar", 0)),
+            "unsupported_desired_media": int(status_counts.get("unsupported_desired_media", 0)),
+            "bytes_copied": bytes_copied_total,
+            "unsupported_breakdown": dict(unsupported_breakdown),
+            "unsupported_extension_breakdown": dict(unsupported_extension_breakdown),
+            "hydration_failure_budget": hydration_budget,
+            "import_failure_budget": import_budget,
+            "disk_safety": disk_safety,
+            "stopped_by_rule": stopped_by_rule,
+            "media_work_items": media_work_items,
+            "private_ledgers": {
+                "import_item_rows": import_rows,
+                "hydration_rows": hydration_rows,
+                "unsupported_or_deferred_rows": unsupported_rows,
+                "cloud_deferred_rows": hydration_rows,
+                "batch_summary_rows": batch_rows,
+            },
+        }
+    finally:
+        db.close()
+
+
+def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    from app import database
+    from app.enums import ContentClassEnum
+    from app.models import DynamicSourceItem, Media, blombooru_media_tags
+    from app.services.ai_tagging_service import run_ai_tagging
+    from app.services.content_classifier import _classify_heuristic_from_db, classify_media
+
+    database.init_engine()
+    db = database.SessionLocal()
+    checkpoint_dir = prepare_private_output_dir(args)
+    classification_rows: list[dict[str, Any]] = []
+    ai_rows: list[dict[str, Any]] = []
+    classification_counts: Counter[str] = Counter()
+    ai_counts: Counter[str] = Counter()
+    ai_attempted = 0
+    ai_failures = 0
+    stopped_by_rule: str | None = None
+    work_items = list(import_results.get("media_work_items") or [])
+    max_ai_items = max(int(args.max_ai_items or 0), 0)
+
+    def classify_without_network_download(media: Any, source_item: Any | None, source_item_label: str) -> None:
+        if media.content_class is not None:
+            state = "reused_existing" if source_item and source_item.media_id == media.id else "already_classified"
+            classification_counts[state] += 1
+            if source_item:
+                source_item.classification_status = "classified_reused" if state == "reused_existing" else "classified"
+            row = {
+                "source_item_label": source_item_label,
+                "media_label": media_safe_label(media.id),
+                "state": state,
+                "content_class": media.content_class.value if hasattr(media.content_class, "value") else str(media.content_class),
+                "path_private_or_omitted": True,
+            }
+            classification_rows.append(row)
+            append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
+            return
+        try:
+            # Avoid CLIP model download in the S2 production runner. WD tags are local and already
+            # available at this point, so the heuristic classifier gives a retryable local signal.
+            if os.getenv("CONTENT_CLASSIFICATION_METHOD", "").casefold() == "heuristic":
+                result = classify_media(db, media.id, dry_run=False)
+                if result.get("error"):
+                    raise RuntimeError(result["error"])
+                content_class = result.get("content_class") or result.get("current_class")
+                method = result.get("method", "heuristic")
+            else:
+                heuristic = _classify_heuristic_from_db(db, media.id)
+                enum_value = heuristic["content_class"]
+                if not isinstance(enum_value, ContentClassEnum):
+                    enum_value = ContentClassEnum(str(enum_value))
+                media.content_class = enum_value
+                media.content_class_confidence = heuristic["confidence"]
+                media.content_class_source = "heuristic"
+                media.content_class_model = "wd_tag_count_phase47_s2_no_clip_download"
+                db.commit()
+                content_class = enum_value.value
+                method = "heuristic_after_ai_no_clip_download"
+            classification_counts["classified"] += 1
+            if source_item:
+                source_item.classification_status = "classified"
+            row = {
+                "source_item_label": source_item_label,
+                "media_label": media_safe_label(media.id),
+                "state": "classified",
+                "content_class": content_class,
+                "method": method,
+                "path_private_or_omitted": True,
+            }
+            classification_rows.append(row)
+            append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
+        except Exception as exc:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            classification_counts["failed"] += 1
+            if source_item:
+                source_item.classification_status = "failed"
+                source_item.failure_reason = str(exc)[:255]
+            row = {
+                "source_item_label": source_item_label,
+                "media_label": media_safe_label(media.id),
+                "state": "classification_failed",
+                "reason": str(exc)[:500],
+                "path_private_or_omitted": True,
+            }
+            classification_rows.append(row)
+            append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
+
+    try:
+        for work in work_items:
+            source_item = db.query(DynamicSourceItem).filter(DynamicSourceItem.id == work["source_item_id"]).first()
+            media = db.query(Media).filter(Media.id == work["media_id"]).first()
+            if not media:
+                classification_counts["failed"] += 1
+                ai_counts["failed"] += 1
+                row = {
+                    "source_item_label": work["source_item_label"],
+                    "state": "classification_failed",
+                    "reason": "media_missing",
+                    "path_private_or_omitted": True,
+                }
+                classification_rows.append(row)
+                append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
+                ai_row = {
+                    "source_item_label": work["source_item_label"],
+                    "state": "ai_failed",
+                    "reason": "media_missing",
+                    "path_private_or_omitted": True,
+                }
+                ai_rows.append(ai_row)
+                append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
+                if source_item:
+                    source_item.classification_status = "failed"
+                    source_item.ai_tagging_status = "failed"
+                db.commit()
+                continue
+
+            existing_ai_count = (
+                db.query(blombooru_media_tags)
+                .filter(
+                    blombooru_media_tags.c.media_id == media.id,
+                    blombooru_media_tags.c.source == "ai_wd",
+                )
+                .count()
+            )
+            if existing_ai_count:
+                ai_counts["ai_reused"] += 1
+                if source_item:
+                    source_item.ai_tagging_status = "tagged_reused"
+                    source_item.localization_status = "pending"
+                ai_row = {
+                    "source_item_label": work["source_item_label"],
+                    "media_label": media_safe_label(media.id),
+                    "state": "ai_reused",
+                    "existing_ai_tags": existing_ai_count,
+                    "path_private_or_omitted": True,
+                }
+                ai_rows.append(ai_row)
+                append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
+                db.commit()
+            else:
+                if max_ai_items and ai_attempted >= max_ai_items:
+                    stopped_by_rule = "max_ai_items_reached"
+                    break
+                ai_attempted += 1
+                try:
+                    result = run_ai_tagging(db, media.id, dry_run=False)
+                    if result.get("error"):
+                        raise RuntimeError(result["error"])
+                    ai_counts["ai_tagged"] += 1
+                    if source_item:
+                        source_item.ai_tagging_status = "tagged"
+                        source_item.localization_status = "pending"
+                    ai_row = {
+                        "source_item_label": work["source_item_label"],
+                        "media_label": media_safe_label(media.id),
+                        "state": "ai_tagged",
+                        "tags_added": result.get("tags_added", 0),
+                        "suggestions_added": result.get("suggestions_added", 0),
+                        "skipped_locked": result.get("skipped_locked", 0),
+                        "path_private_or_omitted": True,
+                    }
+                    ai_rows.append(ai_row)
+                    append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
+                except Exception as exc:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                    ai_failures += 1
+                    ai_counts["ai_failed"] += 1
+                    if source_item:
+                        source_item.ai_tagging_status = "failed"
+                        source_item.failure_reason = str(exc)[:255]
+                    ai_row = {
+                        "source_item_label": work["source_item_label"],
+                        "media_label": media_safe_label(media.id),
+                        "state": "ai_failed",
+                        "reason": str(exc)[:500],
+                        "path_private_or_omitted": True,
+                    }
+                    ai_rows.append(ai_row)
+                    append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
+                    if failure_threshold_exceeded(
+                        ai_failures,
+                        ai_attempted,
+                        max_items=args.ai_failure_max_items,
+                        max_rate=args.ai_failure_max_rate,
+                    ):
+                        stopped_by_rule = "ai_failure_threshold_exceeded"
+                        break
+                db.commit()
+
+            classify_without_network_download(media, source_item, work["source_item_label"])
+            db.commit()
+
+        ai_budget = failure_threshold_payload(
+            ai_failures,
+            ai_attempted,
+            max_items=args.ai_failure_max_items,
+            max_rate=args.ai_failure_max_rate,
+        )
+        classification_status = "completed" if not classification_counts.get("failed") else "completed_with_item_failures_within_budget"
+        if stopped_by_rule == "ai_failure_threshold_exceeded":
+            ai_status = "ai_failure_threshold_exceeded"
+        elif stopped_by_rule == "max_ai_items_reached":
+            ai_status = "partial_ai_max_items_reached"
+        elif ai_failures:
+            ai_status = "completed_with_item_failures_within_budget"
+        else:
+            ai_status = "completed"
+        return (
+            {
+                "stage": "classification",
+                "status": classification_status,
+                "executed": bool(work_items),
+                "target_met": classification_status in {"completed", "completed_with_item_failures_within_budget"},
+                "item_failures_recorded": True,
+                "attempted": len(work_items),
+                "classified": int(classification_counts.get("classified", 0)),
+                "reused_existing": int(classification_counts.get("reused_existing", 0)),
+                "failed": int(classification_counts.get("failed", 0)),
+                "status_counts": dict(classification_counts),
+            },
+            {
+                "stage": "ai_tagging",
+                "status": ai_status,
+                "executed": bool(work_items),
+                "target_met": ai_status in {"completed", "completed_with_item_failures_within_budget"},
+                "item_failures_recorded": True,
+                "attempted": ai_attempted,
+                "tagged": int(ai_counts.get("ai_tagged", 0)),
+                "reused_existing": int(ai_counts.get("ai_reused", 0)),
+                "failed": ai_failures,
+                "failure_budget": ai_budget,
+                "status_counts": dict(ai_counts),
+                "stopped_by_rule": stopped_by_rule,
+                "private_ledgers": {
+                    "classification_rows": classification_rows,
+                    "ai_tagging_rows": ai_rows,
+                },
+            },
+        )
+    finally:
+        db.close()
+
+
+def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
+    from app import database
+    from app.models import TagTranslationJob
+    from app.services.tag_localization_service import batch_translate_missing_tags, get_translation_stats, list_missing_translations
+
+    database.init_engine()
+    db = database.SessionLocal()
+    checkpoint_dir = prepare_private_output_dir(args)
+    rows: list[dict[str, Any]] = []
+    translated = 0
+    failed = 0
+    skipped = 0
+    processed = 0
+    stopped_by_rule: str | None = None
+    max_tags = max(int(args.localization_max_tags or 0), 0)
+    categories = ["general", "meta"]
+    try:
+        remaining_before = sum(len(list_missing_translations(db, limit=100000, category=category)) for category in categories)
+        job = TagTranslationJob(
+            status="running",
+            source="phase47_s2",
+            language="zh-CN",
+            category="general,meta",
+            batch_size=args.localization_batch_size,
+            max_per_run=max_tags or remaining_before,
+            remaining_before=remaining_before,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.add(job)
+        db.commit()
+        for category in categories:
+            while True:
+                if max_tags and processed >= max_tags:
+                    stopped_by_rule = "localization_max_tags_reached"
+                    break
+                limit = int(args.localization_batch_size or 50)
+                if max_tags:
+                    limit = min(limit, max_tags - processed)
+                if limit <= 0:
+                    break
+                missing = list_missing_translations(db, limit=limit, category=category)
+                if not missing:
+                    break
+                result = asyncio.run(
+                    batch_translate_missing_tags(
+                        db,
+                        dry_run=False,
+                        max_items=limit,
+                        category=category,
+                    )
+                )
+                batch_processed = int(result.get("candidates") or 0)
+                batch_translated = int(result.get("translated") or 0)
+                batch_failed = int(result.get("failed") or 0)
+                batch_skipped = int(result.get("skipped") or 0)
+                processed += batch_processed
+                translated += batch_translated
+                failed += batch_failed
+                skipped += batch_skipped
+                state = "localized" if batch_failed == 0 else "localization_failed"
+                row = {
+                    "category": category,
+                    "state": state,
+                    "candidates": batch_processed,
+                    "translated": batch_translated,
+                    "failed": batch_failed,
+                    "skipped": batch_skipped,
+                    "errors": result.get("errors", []),
+                    "proper_noun_unreviewed_aliases_trusted": False,
+                    "path_private_or_omitted": True,
+                }
+                rows.append(row)
+                append_jsonl(checkpoint_dir / "localization-ledger.jsonl", row)
+                job.processed = processed
+                job.translated = translated
+                job.failed = failed
+                job.skipped = skipped
+                db.commit()
+                if batch_processed == 0 or batch_failed >= batch_processed:
+                    break
+                if failure_threshold_exceeded(
+                    failed,
+                    max(processed, 1),
+                    max_items=args.localization_failure_max_items,
+                    max_rate=args.localization_failure_max_rate,
+                ):
+                    stopped_by_rule = "localization_failure_threshold_exceeded"
+                    break
+            if stopped_by_rule in {"localization_failure_threshold_exceeded", "localization_max_tags_reached"}:
+                break
+        stats_after = get_translation_stats(db)
+        remaining_after = sum(len(list_missing_translations(db, limit=100000, category=category)) for category in categories)
+        job.processed = processed
+        job.translated = translated
+        job.failed = failed
+        job.skipped = skipped
+        job.remaining_after = remaining_after
+        job.finished_at = datetime.now(timezone.utc)
+        job.status = "completed" if failed == 0 else "completed"
+        db.commit()
+        budget = failure_threshold_payload(
+            failed,
+            processed,
+            max_items=args.localization_failure_max_items,
+            max_rate=args.localization_failure_max_rate,
+        )
+        if stopped_by_rule == "localization_failure_threshold_exceeded":
+            status = "localization_failure_threshold_exceeded"
+        elif failed:
+            status = "completed_with_gap_visible"
+        else:
+            status = "completed" if remaining_after == 0 else "completed_with_gap_visible"
+        return {
+            "stage": "localization",
+            "status": status,
+            "executed": processed > 0,
+            "target_met": status in {"completed", "completed_with_gap_visible"},
+            "item_failures_recorded": True,
+            "llm_called": processed > 0,
+            "translated": translated,
+            "failed": failed,
+            "skipped": skipped,
+            "remaining_missing": remaining_after,
+            "remaining_missing_all_categories": stats_after.get("missing"),
+            "gap_report_generated": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+            "failure_budget": budget,
+            "job_id": job.id,
+            "stopped_by_rule": stopped_by_rule,
+            "private_ledgers": {"localization_rows": rows},
+        }
+    finally:
+        db.close()
+
+
+def run_execute_stages(args: argparse.Namespace, readiness: Mapping[str, Any], dry_run: Mapping[str, Any]) -> dict[str, Any]:
+    import_results = run_controlled_import(args, dry_run)
+    if import_results.get("status") in {
+        "blocked_disk_space_resource_safety",
+        "hydration_read_failure_threshold_exceeded",
+        "import_failure_threshold_exceeded",
+    }:
+        return {
+            "status": import_results["status"],
+            "stopped_by_rule": import_results.get("stopped_by_rule") or import_results["status"],
+            "import_results": import_results,
+            "classification_results": blocked_stage("classification", f"not_run_{import_results['status']}"),
+            "ai_tagging_results": blocked_stage("ai_tagging", f"not_run_{import_results['status']}"),
+            "localization_results": {
+                **blocked_stage("localization", f"not_run_{import_results['status']}"),
+                "llm_called": False,
+                "proper_noun_unreviewed_aliases_trusted": False,
+            },
+            "browser_validation": {
+                "status": "not_run_before_execute_completion",
+                "server_started": False,
+                "real_browser_validation_required_after_execute": True,
+            },
+            "private_ledgers": import_results.get("private_ledgers", {}),
+        }
+
+    classification_results, ai_tagging_results = run_classification_and_ai(args, import_results)
+    if ai_tagging_results.get("status") == "ai_failure_threshold_exceeded":
+        return {
+            "status": "ai_failure_threshold_exceeded",
+            "stopped_by_rule": ai_tagging_results.get("stopped_by_rule"),
+            "import_results": import_results,
+            "classification_results": classification_results,
+            "ai_tagging_results": ai_tagging_results,
+            "localization_results": {
+                **blocked_stage("localization", "not_run_ai_failure_threshold_exceeded"),
+                "llm_called": False,
+                "proper_noun_unreviewed_aliases_trusted": False,
+            },
+            "browser_validation": {
+                "status": "not_run_before_execute_completion",
+                "server_started": False,
+                "real_browser_validation_required_after_execute": True,
+            },
+            "private_ledgers": {
+                **(import_results.get("private_ledgers") or {}),
+                **(ai_tagging_results.get("private_ledgers") or {}),
+            },
+        }
+
+    localization_results = run_tag_localization(args)
+    if localization_results.get("status") == "localization_failure_threshold_exceeded":
+        status = "localization_failure_threshold_exceeded"
+    else:
+        status = "browser_validation_pending"
+    return {
+        "status": status,
+        "stopped_by_rule": "browser_validation_not_run_in_runner" if status == "browser_validation_pending" else localization_results.get("stopped_by_rule"),
+        "import_results": import_results,
+        "classification_results": classification_results,
+        "ai_tagging_results": ai_tagging_results,
+        "localization_results": localization_results,
+        "browser_validation": {
+            "status": "not_run_before_manual_browser_validation",
+            "server_started": False,
+            "real_browser_validation_required_after_execute": True,
+        },
+        "private_ledgers": {
+            **(import_results.get("private_ledgers") or {}),
+            **(ai_tagging_results.get("private_ledgers") or {}),
+            **(localization_results.get("private_ledgers") or {}),
+        },
+    }
+
+
+def public_stage_result(stage: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in dict(stage).items()
+        if key not in {"private_ledgers", "media_work_items", "job_id"}
+    }
+
+
+def status_for_state(
+    args: argparse.Namespace,
+    readiness: Mapping[str, Any],
+    dry_run: Mapping[str, Any] | None,
+    execution: Mapping[str, Any] | None = None,
+) -> str:
     blockers = set(readiness.get("blockers") or [])
     if not readiness.get("passed"):
         if "schema_setup_requires_valid_backup_proof" in blockers:
@@ -1282,11 +2367,10 @@ def status_for_state(args: argparse.Namespace, readiness: Mapping[str, Any], dry
         source_scope = dry_run.get("source_scope_check") or {}
         if source_scope and not source_scope.get("passed", True):
             return "source_scope_mismatch"
-        cloud_threshold = dry_run.get("cloud_deferred_threshold_check") or {}
-        if cloud_threshold and not cloud_threshold.get("passed", True):
-            return "cloud_deferred_threshold_exceeded"
+        if execution:
+            return str(execution.get("status") or "execute_status_unknown")
         if args.execute:
-            return "blocked_execute_import_not_implemented"
+            return "ready_to_execute"
         return "dry_run_complete_execute_not_requested"
     return "readiness_passed"
 
@@ -1295,32 +2379,67 @@ def build_summary(
     args: argparse.Namespace,
     readiness: Mapping[str, Any],
     dry_run: Mapping[str, Any] | None = None,
+    execution: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    status = status_for_state(args, readiness, dry_run)
+    status = status_for_state(args, readiness, dry_run, execution)
     gate0 = readiness.get("gate0") or {}
     stopped_by_rule = None
     if not readiness.get("passed"):
         stopped_by_rule = "Gate 0/Gate 1 readiness proof failed before baseline execution"
     elif status == "source_scope_mismatch":
         stopped_by_rule = "Fresh dynamic sync dry-run total_seen is below the approved full-library production scope"
-    elif status == "cloud_deferred_threshold_exceeded":
-        stopped_by_rule = "Cloud-only or unavailable candidates exceeded the approved S2 threshold"
-    elif status == "blocked_execute_import_not_implemented":
-        stopped_by_rule = "Execute requested after dry-run, but import/classification/AI/localization execution is not implemented"
+    elif execution:
+        stopped_by_rule = execution.get("stopped_by_rule")
+    elif status == "ready_to_execute":
+        stopped_by_rule = "Execute requested and readiness/dry-run passed, but execute stage did not run"
     if not readiness.get("passed"):
         post_readiness_stage_reason = "not_run_gate1"
     elif status == "source_scope_mismatch":
         post_readiness_stage_reason = "not_run_source_scope_mismatch"
-    elif status == "cloud_deferred_threshold_exceeded":
-        post_readiness_stage_reason = "not_run_cloud_deferred_threshold_exceeded"
+    elif execution:
+        post_readiness_stage_reason = None
     elif args.execute:
-        post_readiness_stage_reason = "not_run_execute_import_not_implemented"
+        post_readiness_stage_reason = "not_run_execute_stage_not_reached"
     else:
         post_readiness_stage_reason = "not_run_execute_not_requested"
     dry_run_stage = dry_run or blocked_stage(
         "dynamic_sync_dry_run",
         "not_run_readiness_failed" if not readiness.get("passed") else "not_run_yet",
     )
+    import_results = public_stage_result(execution.get("import_results") or {}) if execution else blocked_stage("import", post_readiness_stage_reason)
+    classification_results = (
+        public_stage_result(execution.get("classification_results") or {})
+        if execution
+        else blocked_stage("classification", post_readiness_stage_reason)
+    )
+    ai_tagging_results = (
+        public_stage_result(execution.get("ai_tagging_results") or {})
+        if execution
+        else blocked_stage("ai_tagging", post_readiness_stage_reason)
+    )
+    localization_results = (
+        public_stage_result(execution.get("localization_results") or {})
+        if execution
+        else {
+            **blocked_stage("localization", post_readiness_stage_reason),
+            "llm_called": False,
+            "proper_noun_unreviewed_aliases_trusted": False,
+        }
+    )
+    browser_validation = (
+        public_stage_result(execution.get("browser_validation") or {})
+        if execution
+        else {
+            "status": "not_run_before_execute" if readiness.get("passed") else "not_run_gate1",
+            "server_started": False,
+            "real_browser_validation_required_after_execute": True,
+        }
+    )
+    import_executed = bool(import_results.get("executed"))
+    classification_executed = bool(classification_results.get("executed"))
+    ai_tagging_executed = bool(ai_tagging_results.get("executed"))
+    localization_executed = bool(localization_results.get("executed"))
+    llm_called = bool(localization_results.get("llm_called"))
     summary = {
         "phase": PHASE,
         "title": PHASE_TITLE,
@@ -1341,8 +2460,9 @@ def build_summary(
             "gate0_status": gate0.get("status"),
             "fresh_dry_run_completed": bool(dry_run and dry_run.get("status") == "completed"),
             "source_scope_passed": bool((dry_run or {}).get("source_scope_check", {}).get("passed", False)),
-            "cloud_deferred_threshold_passed": bool(
-                (dry_run or {}).get("cloud_deferred_threshold_check", {}).get("passed", False)
+            "hydration_workload_recorded": bool((dry_run or {}).get("hydration_workload_check", {}).get("passed", False)),
+            "hydration_failure_threshold_not_exceeded": not bool(
+                (import_results.get("hydration_failure_budget") or {}).get("threshold_exceeded")
             ),
             "execute_requested": bool(args.execute),
             "execute_confirmation_present": bool(args.execute and args.confirm_execution == CONFIRM_PHRASE),
@@ -1352,11 +2472,17 @@ def build_summary(
         "dynamic_sync_dry_run": dry_run_stage,
         "icloud_cloud_policy": {
             "hydrated_only": True,
+            "controlled_hydration_backfill_approved": bool(args.execute),
             "mass_icloud_download": False,
-            "cloud_only_files_deferred": True,
+            "cloud_placeholder_counts_as_failure": False,
+            "cloud_only_files_deferred": not bool(args.execute),
+            "hydrate_and_import_batches": bool(args.execute),
             "structured_reasons": [
                 "cloud_offline",
                 "cloud_placeholder",
+                "cloud_only",
+                "recall_required",
+                "needs_hydration",
                 "cloud_recall_on_open",
                 "cloud_recall_on_data_access",
                 "cloud_network_unavailable",
@@ -1366,25 +2492,17 @@ def build_summary(
                 "unreadable_source",
             ],
         },
-        "import_results": blocked_stage("import", post_readiness_stage_reason),
-        "classification_results": blocked_stage("classification", post_readiness_stage_reason),
-        "ai_tagging_results": blocked_stage("ai_tagging", post_readiness_stage_reason),
-        "localization_results": {
-            **blocked_stage("localization", post_readiness_stage_reason),
-            "llm_called": False,
-            "proper_noun_unreviewed_aliases_trusted": False,
-        },
+        "import_results": import_results,
+        "classification_results": classification_results,
+        "ai_tagging_results": ai_tagging_results,
+        "localization_results": localization_results,
         "proper_noun_review": {
-            "status": "not_run_before_localization" if readiness.get("passed") else "not_run_gate1",
+            "status": "gap_report_generated" if localization_results.get("gap_report_generated") else ("not_run_before_localization" if readiness.get("passed") else "not_run_gate1"),
             "entity_truth_created": False,
             "confirmed_assignments_created": False,
             "unreviewed_llm_aliases_excluded_from_search": True,
         },
-        "browser_validation": {
-            "status": "not_run_before_execute" if readiness.get("passed") else "not_run_gate1",
-            "server_started": False,
-            "real_browser_validation_required_after_execute": True,
-        },
+        "browser_validation": browser_validation,
         "private_artifacts": {
             "private_artifact_root_label": f".local_manifests/{PHASE_SLUG}",
             "private_artifact_names": list(PRIVATE_LEDGER_NAMES),
@@ -1397,13 +2515,15 @@ def build_summary(
             "no_merge": True,
             "no_source_icloud_mutation": True,
             "no_cleanup_delete_reset_drop_truncate": True,
-            "no_db_import": True,
-            "no_classification": True,
-            "no_ai_tagging": True,
-            "no_llm_call": True,
+            "controlled_icloud_hydration_read_approved": bool(args.execute),
+            "no_db_import": not import_executed,
+            "no_classification": not classification_executed,
+            "no_ai_tagging": not ai_tagging_executed,
+            "no_llm_call": not llm_called,
             "no_sourceconcept_entity_resolver_similarity": True,
             "stopped_by_rule": stopped_by_rule,
         },
+        "execution_private_ledgers": (execution or {}).get("private_ledgers", {}),
         "artifact_lifecycle": {
             "artifacts": [
                 {
@@ -1441,6 +2561,11 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     schema_ensure = (gate0.get("schema") or {}).get("ensure") or {}
     source_registration = gate0.get("input_root_registration") or {}
     dry_run = summary.get("dynamic_sync_dry_run") or {}
+    import_results = summary.get("import_results") or {}
+    classification_results = summary.get("classification_results") or {}
+    ai_results = summary.get("ai_tagging_results") or {}
+    localization_results = summary.get("localization_results") or {}
+    browser_validation = summary.get("browser_validation") or {}
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
@@ -1454,9 +2579,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Source roots registered/valid: `{readiness.get('source_roots', {}).get('registered_count')}` / `{readiness.get('source_roots', {}).get('valid_count')}`.",
         f"- Fresh dynamic sync dry-run: `{dry_run.get('status')}`.",
         f"- Source scope check: `{(dry_run.get('source_scope_check') or {}).get('status')}`.",
-        f"- Cloud deferred threshold: `{(dry_run.get('cloud_deferred_threshold_check') or {}).get('status')}`.",
+        f"- Hydration workload: `{(dry_run.get('hydration_workload_check') or {}).get('status')}`.",
+        f"- Hydration backlog detected: `{dry_run.get('hydration_workload_count')}`.",
         f"- Execute confirmation present: `{summary.get('pipeline_contract', {}).get('execute_confirmation_present')}`.",
-        f"- Import/classification/AI/localization/browser execution: `not executed`.",
+        f"- Import/classification/AI/localization/browser execution: `{import_results.get('status')}` / `{classification_results.get('status')}` / `{ai_results.get('status')}` / `{localization_results.get('status')}` / `{browser_validation.get('status')}`.",
         f"- Full S2 target met / safe to merge claim: `false` / `false`.",
         "",
         "## Gate 0 Schema / Backup / Source Roots",
@@ -1494,16 +2620,20 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Failed: `{dry_run.get('failed')}`.",
         f"- Missing: `{dry_run.get('missing')}`.",
         f"- Cloud-only / iCloud unavailable: `{dry_run.get('cloud_only_or_icloud_unavailable')}`.",
-        f"- Cloud deferred threshold passed: `{(dry_run.get('cloud_deferred_threshold_check') or {}).get('passed')}`.",
+        f"- Hydration workload count: `{dry_run.get('hydration_workload_count')}`.",
+        f"- Actual cloud/read failures observed in dry-run: `{dry_run.get('actual_cloud_failure_count')}`.",
+        f"- Hydration backlog policy: `hydration_backlog_detected`, `controlled_hydration_in_progress` when execute runs, `hydration_failure_threshold_not_exceeded` until actual failures exceed budget.",
         f"- Estimated import batches: `{dry_run.get('estimated_import_batches')}`.",
         f"- Estimated AI tagging workload: `{dry_run.get('estimated_ai_tagging_workload')}`.",
         "",
         "## Execution Result",
-        "- Full production import did not execute.",
-        "- Classification did not execute.",
-        "- AI tagging did not execute.",
-        "- LLM localization did not execute.",
-        "- Production post-import browser validation did not execute.",
+        f"- Import status: `{import_results.get('status')}`; imported/reused/failed: `{import_results.get('imported')}` / `{import_results.get('reused_existing')}` / `{import_results.get('failed')}`.",
+        f"- Hydration attempted/succeeded/failed: `{import_results.get('hydration_attempted')}` / `{import_results.get('hydrated_success')}` / `{import_results.get('hydration_failures')}`.",
+        f"- Unsupported sidecar / desired-media unsupported: `{import_results.get('unsupported_sidecar')}` / `{import_results.get('unsupported_desired_media')}`.",
+        f"- Classification status: `{classification_results.get('status')}`; failed: `{classification_results.get('failed')}`.",
+        f"- AI tagging status: `{ai_results.get('status')}`; tagged/reused/failed: `{ai_results.get('tagged')}` / `{ai_results.get('reused_existing')}` / `{ai_results.get('failed')}`.",
+        f"- LLM localization status: `{localization_results.get('status')}`; translated/failed/skipped/remaining: `{localization_results.get('translated')}` / `{localization_results.get('failed')}` / `{localization_results.get('skipped')}` / `{localization_results.get('remaining_missing')}`.",
+        f"- Browser validation status: `{browser_validation.get('status')}`.",
         "",
         "## Public / Private Artifact Boundary",
         "- Public artifacts are aggregate-only and path-redacted.",
@@ -1514,8 +2644,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "- If schema setup is pending, rerun with backup proof and `--approve-schema-setup` to use the existing dynamic sync migration path.",
         "- If source roots are missing, register one or more valid roots with `--register-source-root --source-root <path> --source-label <label>` or the Admin UI/API.",
         "- If `source_scope_check.status` is `source_scope_mismatch`, correct the approved source root before any import.",
-        "- If `cloud_deferred_threshold_check.status` is `cloud_deferred_threshold_exceeded`, perform a separately approved bounded iCloud hydration/backfill pass, then rerun fresh dry-run before import.",
-        f"- Rerun with `--execute --confirm-execution {CONFIRM_PHRASE}` only after readiness, source scope, and cloud-deferred thresholds all pass.",
+        "- A high cloud-placeholder count is hydration workload, not a failure. Stop only if actual hydration/read/copy/import failure budgets are exceeded.",
+        f"- Rerun with `--execute --confirm-execution {CONFIRM_PHRASE}` only after readiness and source scope pass.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1538,29 +2668,38 @@ def scan_public_output(value: Any) -> dict[str, Any]:
 
 
 def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str, Any]:
-    output_dir = args.output_dir.resolve()
-    if not output_dir_allowed(output_dir):
-        raise S2BlockedError("unsafe_output_dir_must_be_phase_private_artifact_dir")
-    root_inputs, _root_input_source = phase_source_root_inputs(args)
-    for raw_root in root_inputs:
-        try:
-            overlaps_source_root = paths_overlap(output_dir, Path(raw_root))
-        except Exception:
-            overlaps_source_root = False
-        if overlaps_source_root:
-            raise S2BlockedError("unsafe_output_dir_overlaps_source_root")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = prepare_private_output_dir(args)
 
     write_json(output_dir / "readiness-proof.json", summary["readiness"])
     write_json(output_dir / "fresh-dynamic-sync-dry-run.json", summary["dynamic_sync_dry_run"])
     dry_run_ledgers = (summary.get("dynamic_sync_dry_run") or {}).get("private_ledgers") or {}
-    write_jsonl(output_dir / "import-item-ledger.jsonl", [])
-    write_jsonl(output_dir / "unsupported-or-deferred.jsonl", dry_run_ledgers.get("unsupported_or_deferred_rows") or [])
-    write_jsonl(output_dir / "cloud-deferred.jsonl", dry_run_ledgers.get("cloud_deferred_rows") or [])
-    write_jsonl(output_dir / "batch-summary.jsonl", dry_run_ledgers.get("batch_summary_rows") or [])
-    write_jsonl(output_dir / "classification-ledger.jsonl", [])
-    write_jsonl(output_dir / "ai-tagging-ledger.jsonl", [])
-    write_jsonl(output_dir / "localization-ledger.jsonl", [])
+    execution_ledgers = summary.get("execution_private_ledgers") or {}
+    write_jsonl(output_dir / "hydration-ledger.jsonl", execution_ledgers.get("hydration_rows") or [])
+    write_jsonl(output_dir / "import-item-ledger.jsonl", execution_ledgers.get("import_item_rows") or [])
+    write_jsonl(
+        output_dir / "unsupported-or-deferred.jsonl",
+        [
+            *(dry_run_ledgers.get("unsupported_or_deferred_rows") or []),
+            *(execution_ledgers.get("unsupported_or_deferred_rows") or []),
+        ],
+    )
+    write_jsonl(
+        output_dir / "cloud-deferred.jsonl",
+        [
+            *(dry_run_ledgers.get("cloud_deferred_rows") or []),
+            *(execution_ledgers.get("cloud_deferred_rows") or []),
+        ],
+    )
+    write_jsonl(
+        output_dir / "batch-summary.jsonl",
+        [
+            *(dry_run_ledgers.get("batch_summary_rows") or []),
+            *(execution_ledgers.get("batch_summary_rows") or []),
+        ],
+    )
+    write_jsonl(output_dir / "classification-ledger.jsonl", execution_ledgers.get("classification_rows") or [])
+    write_jsonl(output_dir / "ai-tagging-ledger.jsonl", execution_ledgers.get("ai_tagging_rows") or [])
+    write_jsonl(output_dir / "localization-ledger.jsonl", execution_ledgers.get("localization_rows") or [])
     write_json(output_dir / "browser-validation.json", summary["browser_validation"])
 
     public_markdown = public_report_markdown(summary)
@@ -1647,7 +2786,7 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
     public_summary = {
         key: value
         for key, value in summary.items()
-        if key not in {"readiness"} or key == "readiness"
+        if key not in {"execution_private_ledgers"}
     }
     public_summary["gate0"] = public_gate0
     public_summary["dynamic_sync_dry_run"] = public_dry_run
@@ -1736,9 +2875,13 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     gate0 = run_gate0_preparation(args)
     readiness = collect_readiness(args, gate0=gate0)
     dry_run: dict[str, Any] | None = None
+    execution: dict[str, Any] | None = None
     if readiness.get("passed"):
         dry_run = run_fresh_dynamic_sync_dry_run(args, readiness)
-    summary = build_summary(args, readiness, dry_run=dry_run)
+        source_scope = dry_run.get("source_scope_check") or {}
+        if args.execute and source_scope.get("passed", True):
+            execution = run_execute_stages(args, readiness, dry_run)
+    summary = build_summary(args, readiness, dry_run=dry_run, execution=execution)
     public_summary = write_outputs(args, summary)
     return public_summary
 
@@ -1764,9 +2907,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--replace-source-roots", action="store_true")
     parser.add_argument("--dynamic-sync-max-files", type=int, default=None)
     parser.add_argument("--expected-source-min-items", type=int, default=DEFAULT_EXPECTED_SOURCE_MIN_ITEMS)
-    parser.add_argument("--cloud-deferred-max-items", type=int, default=DEFAULT_CLOUD_DEFERRED_MAX_ITEMS)
-    parser.add_argument("--cloud-deferred-max-rate", type=float, default=DEFAULT_CLOUD_DEFERRED_MAX_RATE)
     parser.add_argument("--estimated-batch-size", type=int, default=100)
+    parser.add_argument("--import-batch-size", type=int, default=200)
+    parser.add_argument("--max-import-items", type=int, default=0)
+    parser.add_argument("--hydration-timeout-seconds", type=int, default=180)
+    parser.add_argument("--hydration-failure-max-items", type=int, default=DEFAULT_HYDRATION_FAILURE_MAX_ITEMS)
+    parser.add_argument("--hydration-failure-max-rate", type=float, default=DEFAULT_HYDRATION_FAILURE_MAX_RATE)
+    parser.add_argument("--import-failure-max-items", type=int, default=DEFAULT_IMPORT_FAILURE_MAX_ITEMS)
+    parser.add_argument("--import-failure-max-rate", type=float, default=DEFAULT_IMPORT_FAILURE_MAX_RATE)
+    parser.add_argument("--ai-failure-max-items", type=int, default=DEFAULT_AI_FAILURE_MAX_ITEMS)
+    parser.add_argument("--ai-failure-max-rate", type=float, default=DEFAULT_AI_FAILURE_MAX_RATE)
+    parser.add_argument("--localization-failure-max-items", type=int, default=DEFAULT_LOCALIZATION_FAILURE_MAX_ITEMS)
+    parser.add_argument("--localization-failure-max-rate", type=float, default=DEFAULT_LOCALIZATION_FAILURE_MAX_RATE)
+    parser.add_argument("--max-ai-items", type=int, default=0)
+    parser.add_argument("--localization-max-tags", type=int, default=0)
+    parser.add_argument("--localization-batch-size", type=int, default=50)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--write-public-report", action="store_true")
     parser.add_argument("--run-id", default="")
@@ -1784,7 +2939,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=json_default))
-    stop_statuses = {"source_scope_mismatch", "cloud_deferred_threshold_exceeded"}
+    stop_statuses = {
+        "source_scope_mismatch",
+        "hydration_read_failure_threshold_exceeded",
+        "import_failure_threshold_exceeded",
+        "ai_failure_threshold_exceeded",
+        "localization_failure_threshold_exceeded",
+        "blocked_disk_space_resource_safety",
+    }
     status = str(summary.get("status", ""))
     return 2 if status.startswith("blocked") or status in stop_statuses else 0
 

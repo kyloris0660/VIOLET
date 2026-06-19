@@ -1458,6 +1458,29 @@ def test_claimed_completion_requires_matching_contract_id() -> None:
     assert "claimed_completion_contract_id_mismatch" in _error_codes(result)
 
 
+def test_public_redaction_contract_allows_auxiliary_check_on_claimed_phase_summary() -> None:
+    result = check_phase_contract(
+        "public_redaction_contract_v1",
+        {
+            "pipeline_contract": {
+                "contract_id": "phase47_s2_baseline_contract_v1",
+                "status": "target_met",
+                "claims": {
+                    "target_met": True,
+                    "safe_to_merge": True,
+                    "full_chain_complete": True,
+                },
+            },
+            "public_json_payload": {
+                "status": "target_met",
+                "paths_redacted": True,
+            },
+        },
+    )
+
+    assert result.passed is True
+
+
 def test_required_artifact_and_ledger_fields_must_be_non_empty() -> None:
     source_metadata_base = {
         "provider_policy": {"explicitly_approved": True},

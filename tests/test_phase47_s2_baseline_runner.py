@@ -421,6 +421,28 @@ def test_private_output_dir_is_restricted_to_phase_local_manifests(tmp_path):
     assert not s2.output_dir_allowed(s2.DEFAULT_OUTPUT_DIR / "backup")
 
 
+def test_hydration_workload_is_not_a_failure_threshold():
+    args = s2.build_parser().parse_args(["--readiness"])
+    dry_run = {
+        "total_seen": 39625,
+        "hydration_workload_count": 23619,
+        "actual_cloud_failure_count": 0,
+    }
+
+    result = s2.dry_run_hydration_workload_check(args, dry_run)
+
+    assert result["passed"] is True
+    assert result["status"] == "hydration_workload_recorded"
+    assert result["counts_as_failure"] is False
+    assert result["actual_failure_count"] == 0
+
+
+def test_unsupported_breakdown_distinguishes_sidecar_and_desired_media():
+    assert s2.unsupported_kind_for_suffix(".AAE") == "sidecar_or_metadata"
+    assert s2.unsupported_kind_for_suffix(".heic") == "desired_media_support_gap"
+    assert s2.unsupported_kind_for_suffix(".MOV") == "desired_media_support_gap"
+
+
 def test_output_dir_cannot_overlap_source_root(tmp_path, monkeypatch):
     monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
     monkeypatch.setattr(s2, "PUBLIC_REPORT_JSON", tmp_path / "public.json")
@@ -565,7 +587,9 @@ def test_readiness_passed_runs_fresh_dryrun_and_stops_without_execute(tmp_path, 
     assert summary["import_results"]["executed"] is False
 
 
-def test_execute_after_dry_run_blocks_when_import_execution_not_implemented(tmp_path, monkeypatch):
+def test_execute_after_dry_run_runs_execute_stages(tmp_path, monkeypatch):
+    calls = {"execute": 0}
+
     def fake_dry_run(_args, _readiness):
         return {
             "stage": "dynamic_sync_dry_run",
@@ -590,11 +614,47 @@ def test_execute_after_dry_run_blocks_when_import_execution_not_implemented(tmp_
                 "expected_min_items": 1,
                 "total_seen": 1,
             },
-            "cloud_deferred_threshold_check": {
+            "hydration_workload_check": {
                 "passed": True,
-                "status": "passed",
-                "cloud_deferred_count": 0,
+                "status": "hydration_workload_recorded",
+                "hydration_workload_count": 0,
                 "total_seen": 1,
+            },
+        }
+
+    def fake_execute(_args, _readiness, _dry_run):
+        calls["execute"] += 1
+        return {
+            "status": "browser_validation_pending",
+            "stopped_by_rule": "browser_validation_not_run_in_runner",
+            "import_results": {
+                "stage": "import",
+                "status": "completed",
+                "executed": True,
+                "target_met": True,
+                "per_item_ledgers_written": True,
+                "item_failures_recorded": True,
+                "imported": 1,
+                "reused_existing": 0,
+                "failed": 0,
+            },
+            "classification_results": {"stage": "classification", "status": "completed", "executed": True, "target_met": True},
+            "ai_tagging_results": {"stage": "ai_tagging", "status": "completed", "executed": True, "target_met": True},
+            "localization_results": {
+                "stage": "localization",
+                "status": "completed_with_gap_visible",
+                "executed": True,
+                "target_met": True,
+                "llm_called": True,
+                "gap_report_generated": True,
+                "proper_noun_unreviewed_aliases_trusted": False,
+            },
+            "browser_validation": {"status": "not_run_before_manual_browser_validation", "server_started": False},
+            "private_ledgers": {
+                "import_item_rows": [{"state": "imported", "path_private_or_omitted": True}],
+                "classification_rows": [{"state": "classified", "path_private_or_omitted": True}],
+                "ai_tagging_rows": [{"state": "ai_tagged", "path_private_or_omitted": True}],
+                "localization_rows": [{"state": "localized", "path_private_or_omitted": True}],
             },
         }
 
@@ -604,6 +664,7 @@ def test_execute_after_dry_run_blocks_when_import_execution_not_implemented(tmp_
     monkeypatch.setattr(s2, "run_gate0_preparation", lambda _args: _passed_readiness()["gate0"])
     monkeypatch.setattr(s2, "collect_readiness", lambda _args, gate0=None: _passed_readiness(gate0=gate0))
     monkeypatch.setattr(s2, "run_fresh_dynamic_sync_dry_run", fake_dry_run)
+    monkeypatch.setattr(s2, "run_execute_stages", fake_execute)
 
     args = s2.build_parser().parse_args(
         [
@@ -618,9 +679,10 @@ def test_execute_after_dry_run_blocks_when_import_execution_not_implemented(tmp_
     args.run_id = "test-run"
     summary = s2.run_pipeline(args)
 
-    assert summary["status"] == "blocked_execute_import_not_implemented"
-    assert summary["safety"]["stopped_by_rule"]
-    assert summary["import_results"]["executed"] is False
+    assert calls["execute"] == 1
+    assert summary["status"] == "browser_validation_pending"
+    assert summary["safety"]["no_db_import"] is False
+    assert summary["import_results"]["executed"] is True
 
 
 def test_execute_stops_at_source_scope_mismatch_before_import(tmp_path, monkeypatch):
@@ -648,10 +710,10 @@ def test_execute_stops_at_source_scope_mismatch_before_import(tmp_path, monkeypa
                 "expected_min_items": 30000,
                 "total_seen": 81,
             },
-            "cloud_deferred_threshold_check": {
+            "hydration_workload_check": {
                 "passed": True,
-                "status": "passed",
-                "cloud_deferred_count": 0,
+                "status": "hydration_workload_recorded",
+                "hydration_workload_count": 0,
                 "total_seen": 81,
             },
         }
@@ -682,7 +744,9 @@ def test_execute_stops_at_source_scope_mismatch_before_import(tmp_path, monkeypa
     assert summary["safety"]["no_db_import"] is True
 
 
-def test_cloud_deferred_threshold_stops_before_import(tmp_path, monkeypatch):
+def test_hydration_backlog_does_not_stop_before_execute(tmp_path, monkeypatch):
+    calls = {"execute": 0}
+
     def fake_dry_run(_args, _readiness):
         return {
             "stage": "dynamic_sync_dry_run",
@@ -698,6 +762,8 @@ def test_cloud_deferred_threshold_stops_before_import(tmp_path, monkeypatch):
             "failed": 0,
             "missing": 0,
             "cloud_only_or_icloud_unavailable": 1500,
+            "hydration_workload_count": 1500,
+            "actual_cloud_failure_count": 0,
             "estimated_import_batches": 90,
             "estimated_ai_tagging_workload": 9000,
             "item_failures_recorded": True,
@@ -707,14 +773,43 @@ def test_cloud_deferred_threshold_stops_before_import(tmp_path, monkeypatch):
                 "expected_min_items": 10000,
                 "total_seen": 12000,
             },
-            "cloud_deferred_threshold_check": {
-                "passed": False,
-                "status": "cloud_deferred_threshold_exceeded",
-                "cloud_deferred_count": 1500,
+            "hydration_workload_check": {
+                "passed": True,
+                "status": "hydration_workload_recorded",
+                "hydration_workload_count": 1500,
                 "total_seen": 12000,
-                "max_items": 1000,
-                "max_rate": 0.10,
+                "counts_as_failure": False,
             },
+        }
+
+    def fake_execute(_args, _readiness, _dry_run):
+        calls["execute"] += 1
+        return {
+            "status": "browser_validation_pending",
+            "stopped_by_rule": "browser_validation_not_run_in_runner",
+            "import_results": {
+                "stage": "import",
+                "status": "completed",
+                "executed": True,
+                "target_met": True,
+                "per_item_ledgers_written": True,
+                "item_failures_recorded": True,
+                "hydration_attempted": 1500,
+                "hydration_failures": 0,
+                "hydration_failure_budget": {"threshold_exceeded": False},
+            },
+            "classification_results": {"stage": "classification", "status": "completed", "executed": True},
+            "ai_tagging_results": {"stage": "ai_tagging", "status": "completed", "executed": True},
+            "localization_results": {
+                "stage": "localization",
+                "status": "completed_with_gap_visible",
+                "executed": False,
+                "llm_called": False,
+                "gap_report_generated": True,
+                "proper_noun_unreviewed_aliases_trusted": False,
+            },
+            "browser_validation": {"status": "not_run_before_manual_browser_validation", "server_started": False},
+            "private_ledgers": {},
         }
 
     monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
@@ -723,6 +818,7 @@ def test_cloud_deferred_threshold_stops_before_import(tmp_path, monkeypatch):
     monkeypatch.setattr(s2, "run_gate0_preparation", lambda _args: _passed_readiness()["gate0"])
     monkeypatch.setattr(s2, "collect_readiness", lambda _args, gate0=None: _passed_readiness(gate0=gate0))
     monkeypatch.setattr(s2, "run_fresh_dynamic_sync_dry_run", fake_dry_run)
+    monkeypatch.setattr(s2, "run_execute_stages", fake_execute)
 
     args = s2.build_parser().parse_args(
         [
@@ -736,8 +832,10 @@ def test_cloud_deferred_threshold_stops_before_import(tmp_path, monkeypatch):
     args.run_id = "test-run"
     summary = s2.run_pipeline(args)
 
-    assert summary["status"] == "cloud_deferred_threshold_exceeded"
-    assert summary["import_results"]["status"] == "not_run_cloud_deferred_threshold_exceeded"
+    assert calls["execute"] == 1
+    assert summary["status"] == "browser_validation_pending"
+    assert summary["dynamic_sync_dry_run"]["hydration_workload_check"]["passed"] is True
+    assert summary["import_results"]["executed"] is True
     assert summary["safety"]["no_source_icloud_mutation"] is True
 
 
@@ -812,7 +910,12 @@ def test_public_summary_omits_source_root_labels_and_private_ledgers(tmp_path, m
         "estimated_ai_tagging_workload": 2,
         "item_failures_recorded": True,
         "source_scope_check": {"passed": True, "status": "passed", "expected_min_items": 1, "total_seen": 2},
-        "cloud_deferred_threshold_check": {"passed": True, "status": "passed", "cloud_deferred_count": 0, "total_seen": 2},
+        "hydration_workload_check": {
+            "passed": True,
+            "status": "hydration_workload_recorded",
+            "hydration_workload_count": 0,
+            "total_seen": 2,
+        },
         "private_ledgers": {
             "unsupported_or_deferred_rows": [{"reason": "cloud_offline", "path_private_or_omitted": True}],
             "cloud_deferred_rows": [{"reason": "cloud_offline", "path_private_or_omitted": True}],

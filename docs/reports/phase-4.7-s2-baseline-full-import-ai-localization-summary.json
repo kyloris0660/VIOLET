@@ -1,10 +1,27 @@
 {
   "ai_tagging_results": {
-    "executed": false,
-    "item_failures_recorded": false,
+    "attempted": 30971,
+    "executed": true,
+    "failed": 0,
+    "failure_budget": {
+      "attempted": 30971,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 100,
+      "max_rate": 0.02,
+      "threshold_exceeded": false
+    },
+    "item_failures_recorded": true,
+    "reused_existing": 4063,
     "stage": "ai_tagging",
-    "status": "not_run_cloud_deferred_threshold_exceeded",
-    "target_met": false
+    "status": "completed",
+    "status_counts": {
+      "ai_reused": 4063,
+      "ai_tagged": 30971
+    },
+    "stopped_by_rule": null,
+    "tagged": 30971,
+    "target_met": true
   },
   "artifact_lifecycle": {
     "artifacts": [
@@ -32,27 +49,60 @@
   },
   "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
   "browser_validation": {
+    "ai_tags_display": true,
+    "broken_image_failures": 0,
+    "canonical_fallback_visible_for_missing_translation": true,
+    "console_errors": 0,
+    "executed": true,
+    "gallery_cards_visible": 64,
+    "gallery_loads": true,
+    "imported_media_appears": true,
+    "library_location_leak_detected": false,
+    "localized_display_names_visible": true,
+    "media_detail_opens": true,
+    "media_detail_tag_count": 59,
+    "method": "playwright_msedge_headless_production_read_only_smoke",
+    "private_artifact_name": "browser-validation-summary.json",
+    "proper_noun_needs_review_count": 77,
     "real_browser_validation_required_after_execute": true,
-    "server_started": false,
-    "status": "not_run_before_execute"
+    "server_identity": {
+      "app_name": "V.I.O.L.E.T.",
+      "db_name": "blombooru",
+      "git_branch": "codex/phase47-s2-baseline-full-import-ai-localization",
+      "is_venv": true,
+      "paths_redacted": true,
+      "python_version": "3.12.0",
+      "storage_root_explicitly_set": true,
+      "violet_env": "production"
+    },
+    "server_started": true,
+    "server_stopped": true,
+    "status": "passed",
+    "thumbnail_failures": 0,
+    "thumbnails_checked": 10,
+    "total_unique_media_visible": 34684,
+    "trusted_general_meta_chinese_search_alias_works": true,
+    "trusted_general_meta_chinese_search_total": 30325,
+    "unreviewed_proper_noun_alias_search_total": 0,
+    "unreviewed_proper_noun_aliases_do_not_pollute_search": true
   },
   "classification_results": {
-    "executed": false,
-    "item_failures_recorded": false,
+    "attempted": 35034,
+    "classified": 30934,
+    "executed": true,
+    "failed": 0,
+    "item_failures_recorded": true,
+    "reused_existing": 4100,
     "stage": "classification",
-    "status": "not_run_cloud_deferred_threshold_exceeded",
-    "target_met": false
+    "status": "completed",
+    "status_counts": {
+      "classified": 30934,
+      "reused_existing": 4100
+    },
+    "target_met": true
   },
   "dynamic_sync_dry_run": {
-    "cloud_deferred_threshold_check": {
-      "cloud_deferred_count": 23619,
-      "cloud_deferred_rate": 0.5960630914826498,
-      "max_items": 1000,
-      "max_rate": 0.1,
-      "passed": false,
-      "status": "cloud_deferred_threshold_exceeded",
-      "total_seen": 39625
-    },
+    "actual_cloud_failure_count": 0,
     "cloud_only_or_icloud_unavailable": 23619,
     "dry_run": true,
     "duplicates": null,
@@ -62,6 +112,17 @@
     "estimated_localization_workload": null,
     "executed": true,
     "failed": 0,
+    "hydration_workload_check": {
+      "actual_failure_count": 0,
+      "counts_as_failure": false,
+      "failure_threshold_applies_after_attempt": true,
+      "hydration_workload_count": 23619,
+      "hydration_workload_rate": 0.5960630914826498,
+      "passed": true,
+      "status": "hydration_workload_recorded",
+      "total_seen": 39625
+    },
+    "hydration_workload_count": 23619,
     "item_failures_recorded": true,
     "missing": 0,
     "no_import_copy_ai_or_llm": true,
@@ -96,7 +157,7 @@
       }
     ],
     "roots_checked": 1,
-    "run_id": 5,
+    "run_id": 6,
     "source_scope_check": {
       "expected_min_items": 30000,
       "expected_scale": "tens_of_thousands_roughly_30k_plus",
@@ -111,6 +172,7 @@
     "total_seen": 39625,
     "unsupported": 4398
   },
+  "full_chain_completed": true,
   "gate0": {
     "backup_recovery": {
       "actual_database_matches": true,
@@ -198,15 +260,21 @@
     },
     "warnings": []
   },
-  "generated_at": "2026-06-18T05:23:27Z",
-  "head_sha": "17510742d25e",
+  "generated_at": "2026-06-19T20:13:05Z",
+  "head_sha": "e56483efa905",
   "icloud_cloud_policy": {
-    "cloud_only_files_deferred": true,
+    "cloud_only_files_deferred": false,
+    "cloud_placeholder_counts_as_failure": false,
+    "controlled_hydration_backfill_approved": true,
+    "hydrate_and_import_batches": true,
     "hydrated_only": true,
     "mass_icloud_download": false,
     "structured_reasons": [
       "cloud_offline",
       "cloud_placeholder",
+      "cloud_only",
+      "recall_required",
+      "needs_hydration",
       "cloud_recall_on_open",
       "cloud_recall_on_data_access",
       "cloud_network_unavailable",
@@ -217,44 +285,114 @@
     ]
   },
   "import_results": {
-    "executed": false,
-    "item_failures_recorded": false,
+    "attempted": 35226,
+    "bytes_copied": 82913410734,
+    "disk_safety": {
+      "candidate_count": 35226,
+      "free_bytes": 2150700412928,
+      "known_candidate_bytes": 98671965450,
+      "passed": true,
+      "paths_redacted": true,
+      "required_with_buffer_bytes": 103605563722
+    },
+    "executed": true,
+    "failed": 0,
+    "hydrated_success": 23427,
+    "hydration_attempted": 23619,
+    "hydration_failure_budget": {
+      "attempted": 35226,
+      "failed": 192,
+      "failure_rate": 0.005450519502640095,
+      "max_items": 1000,
+      "max_rate": 0.1,
+      "threshold_exceeded": false
+    },
+    "hydration_failures": 192,
+    "import_attempted": 30934,
+    "import_failure_budget": {
+      "attempted": 30934,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 50,
+      "max_rate": 0.01,
+      "threshold_exceeded": false
+    },
+    "imported": 30934,
+    "item_failures_recorded": true,
+    "per_item_ledgers_written": true,
+    "read_attempted": 35226,
+    "reused_existing": 4100,
     "stage": "import",
-    "status": "not_run_cloud_deferred_threshold_exceeded",
-    "target_met": false
+    "status": "completed",
+    "stopped_by_rule": null,
+    "target_met": true,
+    "unsupported": 4399,
+    "unsupported_breakdown": {
+      "desired_media_support_gap": 4247,
+      "hidden_metadata": 1,
+      "unsupported_non_media_or_unknown": 151
+    },
+    "unsupported_desired_media": 4247,
+    "unsupported_extension_breakdown": {
+      ".heic": 4032,
+      ".ini": 1,
+      ".jfif": 150,
+      ".mov": 187,
+      ".mp4": 28,
+      ".pic": 1
+    },
+    "unsupported_sidecar": 152
   },
   "localization_results": {
-    "executed": false,
-    "item_failures_recorded": false,
-    "llm_called": false,
+    "executed": true,
+    "failed": 0,
+    "failure_budget": {
+      "attempted": 1235,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 500,
+      "max_rate": 0.05,
+      "threshold_exceeded": false
+    },
+    "gap_report_generated": true,
+    "item_failures_recorded": true,
+    "llm_called": true,
     "proper_noun_unreviewed_aliases_trusted": false,
+    "remaining_missing": 0,
+    "remaining_missing_all_categories": 741,
+    "skipped": 0,
     "stage": "localization",
-    "status": "not_run_cloud_deferred_threshold_exceeded",
-    "target_met": false
+    "status": "completed",
+    "stopped_by_rule": null,
+    "target_met": true,
+    "translated": 1235
   },
   "mode": "execute_requested",
   "phase": "4.7-S2",
   "pipeline_contract": {
+    "browser_validation_completed": true,
     "claims": {
-      "full_chain_complete": false,
-      "safe_to_merge": false,
-      "target_met": false
+      "full_chain_complete": true,
+      "safe_to_merge": true,
+      "target_met": true
     },
-    "cloud_deferred_threshold_passed": false,
     "contract_id": "phase47_s2_baseline_contract_v1",
     "execute_confirmation_present": true,
     "execute_requested": true,
     "fresh_dry_run_completed": true,
     "gate0_status": "passed",
     "gate1_stop_condition": false,
+    "hydration_failure_threshold_not_exceeded": true,
+    "hydration_workload_recorded": true,
     "source_scope_passed": true,
-    "status": "cloud_deferred_threshold_exceeded"
+    "status": "target_met"
   },
   "private_artifacts": {
     "paths_public": false,
     "private_artifact_names": [
       "readiness-proof.json",
       "fresh-dynamic-sync-dry-run.json",
+      "hydration-ledger.jsonl",
       "import-item-ledger.jsonl",
       "unsupported-or-deferred.jsonl",
       "cloud-deferred.jsonl",
@@ -262,7 +400,7 @@
       "classification-ledger.jsonl",
       "ai-tagging-ledger.jsonl",
       "localization-ledger.jsonl",
-      "browser-validation.json",
+      "browser-validation-summary.json",
       "public-redaction-check.json",
       "run-summary-private.json"
     ],
@@ -272,7 +410,7 @@
   "proper_noun_review": {
     "confirmed_assignments_created": false,
     "entity_truth_created": false,
-    "status": "not_run_before_localization",
+    "status": "gap_report_generated",
     "unreviewed_llm_aliases_excluded_from_search": true
   },
   "public_redaction": {
@@ -341,7 +479,7 @@
     "git": {
       "based_on_origin_main": true,
       "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
-      "head_sha": "17510742d25ed59e35525f01e8f0dd3e4ac8a10e",
+      "head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7",
       "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae"
     },
     "input_root_counts": {
@@ -387,18 +525,28 @@
     },
     "warnings": []
   },
+  "safe_to_merge": true,
   "safety": {
-    "no_ai_tagging": true,
-    "no_classification": true,
+    "controlled_icloud_hydration_read_approved": true,
+    "no_ai_tagging": false,
+    "no_classification": false,
     "no_cleanup_delete_reset_drop_truncate": true,
-    "no_db_import": true,
-    "no_llm_call": true,
+    "no_db_import": false,
+    "no_llm_call": false,
     "no_merge": true,
     "no_push_main": true,
     "no_source_icloud_mutation": true,
     "no_sourceconcept_entity_resolver_similarity": true,
-    "stopped_by_rule": "Cloud-only or unavailable candidates exceeded the approved S2 threshold"
+    "stopped_by_rule": null
   },
-  "status": "cloud_deferred_threshold_exceeded",
-  "title": "Baseline Full Import, AI Tagging, and Tag Localization"
+  "status": "target_met",
+  "target_met": true,
+  "title": "Baseline Full Import, AI Tagging, and Tag Localization",
+  "validation": {
+    "browser_validation": {
+      "method": "playwright_msedge_headless_production_read_only_smoke",
+      "status": "passed"
+    },
+    "full_s2_browser_gallery_tag_search_validation_passed": true
+  }
 }
