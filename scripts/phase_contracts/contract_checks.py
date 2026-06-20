@@ -1353,12 +1353,22 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
 def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     allowed_statuses = {"target_met", "evidence_collected", "blocked_model_unavailable", "blocked_probe_unavailable"}
     status = str(result.status or "").casefold()
+    completion_claimed = status == "target_met" or _completion_or_approval_claimed(result)
     if status not in allowed_statuses:
         result.fail(
             "s2g1x_unknown_status",
             "S2G-1X status must be an explicit probe status.",
             path="pipeline_contract.status",
             expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+
+    if status != "target_met" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s2g1x_non_completion_status_claimed_completion",
+            "S2G-1X blocked or evidence-only statuses must not claim target_met, route approval, full-chain completion, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met for completion claims",
             actual=result.status,
         )
 
@@ -1409,6 +1419,46 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
         code="s2g1x_forbidden_execution_or_mutation",
         message="S2G-1X must not enable production execution, unattended sync, providers, SourceConcept/Entity, destructive actions, or model downloads.",
     )
+
+    if completion_claimed:
+        _check_required_boolean_paths(
+            summary,
+            result,
+            (
+                "capability_probe.model_identity.model_file_cached",
+                "capability_probe.model_identity.label_file_cached",
+                "capability_probe.provider_matrix.cpu.loaded",
+                "capability_probe.provider_matrix.cpu.practical",
+            ),
+            code="s2g1x_completion_model_load_evidence_missing",
+            message="S2G-1X completion claims require cached model and labels plus actual CPU model-load evidence.",
+        )
+        if _as_bool(_get(summary, "capability_probe.model_identity.network_download_required", False)):
+            result.fail(
+                "s2g1x_completion_requires_network_model_download",
+                "S2G-1X completion claims require a locally cached model and must not require a network download.",
+                path="capability_probe.model_identity.network_download_required",
+                expected=False,
+                actual=True,
+            )
+        benchmark_status = str(_get(summary, "capability_probe.provider_matrix.cpu.benchmark_status", "")).casefold()
+        if benchmark_status != "completed":
+            result.fail(
+                "s2g1x_completion_cpu_benchmark_not_completed",
+                "S2G-1X completion claims require the CPU provider benchmark to complete.",
+                path="capability_probe.provider_matrix.cpu.benchmark_status",
+                expected="completed",
+                actual=_get(summary, "capability_probe.provider_matrix.cpu.benchmark_status", None),
+            )
+        throughput = _get(summary, "capability_probe.provider_matrix.cpu.throughput_items_per_second", MISSING)
+        if throughput is MISSING or _as_float(throughput, 0.0) <= 0:
+            result.fail(
+                "s2g1x_completion_cpu_throughput_missing",
+                "S2G-1X completion claims require positive CPU throughput evidence.",
+                path="capability_probe.provider_matrix.cpu.throughput_items_per_second",
+                expected="> 0",
+                actual=None if throughput is MISSING else throughput,
+            )
 
     sample_count = _as_int(_get(summary, "capability_probe.safe_probe.sample_count", 0))
     if sample_count < 1 or sample_count > 16:

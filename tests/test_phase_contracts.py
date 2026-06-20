@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -347,6 +348,14 @@ def _s2g1x_summary(**overrides: object) -> dict:
     for key, value in overrides.items():
         summary[key] = value
     return summary
+
+
+def _set_nested(payload: dict, path: str, value: object) -> None:
+    cursor = payload
+    parts = path.split(".")
+    for part in parts[:-1]:
+        cursor = cursor[part]
+    cursor[parts[-1]] = value
 
 
 def _phase47_s2_summary(**overrides: object) -> dict:
@@ -1016,6 +1025,94 @@ def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:
     result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
 
     assert result.passed is True
+
+
+def test_s2g1x_probe_contract_accepts_current_canonical_probe_summary() -> None:
+    summary = load_summary_file(ROOT / "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json")
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "expected_code"),
+    [
+        (
+            "capability_probe.model_identity.model_file_cached",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.model_identity.label_file_cached",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.model_identity.network_download_required",
+            True,
+            "s2g1x_completion_requires_network_model_download",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.loaded",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.practical",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.benchmark_status",
+            "model_not_cached",
+            "s2g1x_completion_cpu_benchmark_not_completed",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.throughput_items_per_second",
+            0,
+            "s2g1x_completion_cpu_throughput_missing",
+        ),
+    ],
+)
+def test_s2g1x_probe_contract_requires_model_loaded_evidence_for_completion(
+    path: str, value: object, expected_code: str
+) -> None:
+    summary = _s2g1x_summary()
+    _set_nested(summary, path, value)
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert expected_code in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_allows_blocked_model_unavailable_without_completion_claim() -> None:
+    summary = _s2g1x_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "s2g1x_probe_contract_v1",
+        "status": "blocked_model_unavailable",
+        "claims": {"target_met": False, "safe_to_merge": False},
+    }
+    _set_nested(summary, "capability_probe.model_identity.model_file_cached", False)
+    _set_nested(summary, "capability_probe.model_identity.label_file_cached", False)
+    _set_nested(summary, "capability_probe.model_identity.network_download_required", True)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.loaded", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.practical", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.benchmark_status", "model_not_cached")
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.throughput_items_per_second", None)
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is True
+
+    blocked_completion = copy.deepcopy(summary)
+    blocked_completion["pipeline_contract"]["claims"]["safe_to_merge"] = True
+
+    blocked_result = check_phase_contract("s2g1x_probe_contract_v1", blocked_completion)
+
+    assert blocked_result.passed is False
+    assert "s2g1x_non_completion_status_claimed_completion" in _error_codes(blocked_result)
 
 
 def test_s2g1x_probe_contract_rejects_model_download_and_production_ai() -> None:
