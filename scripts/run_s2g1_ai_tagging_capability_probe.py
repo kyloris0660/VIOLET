@@ -92,6 +92,19 @@ def git_value(args: Sequence[str]) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def build_head_evidence() -> dict[str, Any]:
+    head = git_value(["rev-parse", "HEAD"])
+    return {
+        "probe_run_head_sha": head,
+        "probe_run_head_sha_scope": "git HEAD used while running the local capability probe and writing this report",
+        "report_generation_head_sha": head,
+        "report_generation_head_sha_scope": "same local generation step; later supplemental commits may update PR metadata without rewriting this file",
+        "current_pr_head_sha": "represented_by_pr_metadata_after_commit",
+        "current_pr_head_sha_scope": "a committed report cannot contain the final commit SHA that includes itself",
+        "top_level_head_sha_omitted": True,
+    }
+
+
 def dependency_status(module_name: str) -> dict[str, Any]:
     spec = importlib.util.find_spec(module_name)
     return {"module": module_name, "available": spec is not None}
@@ -397,7 +410,7 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
         "title": TITLE,
         "generated_at": utc_now(),
         "branch": git_value(["branch", "--show-current"]),
-        "head_sha": git_value(["rev-parse", "HEAD"]),
+        "head_evidence": build_head_evidence(),
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
             "status": "target_met",
@@ -527,6 +540,8 @@ def render_report(summary: Mapping[str, Any]) -> str:
     provider_matrix = probe["provider_matrix"]
     decision = summary["s2g_s3a_decision"]
     load = summary["load_control"]
+    runtime = probe["runtime"]
+    providers = ", ".join(runtime["onnxruntime"].get("available_providers") or [])
 
     def provider_line(key: str, label: str) -> str:
         row = provider_matrix.get(key, {})
@@ -548,6 +563,14 @@ def render_report(summary: Mapping[str, Any]) -> str:
         f"- Model cached locally: `{probe['model_identity']['model_file_cached']}`.",
         f"- Network model download performed: `{not probe['safe_probe']['no_model_download']}`.",
         f"- Decision: `{decision['decision']}`.",
+        "",
+        "## Runtime Environment",
+        "",
+        f"- Python executable public name: `{runtime['python_executable_public_name']}`.",
+        f"- Python version: `{runtime['python_version']}`.",
+        f"- ONNX Runtime version: `{runtime['onnxruntime'].get('version')}`.",
+        f"- ONNX Runtime device: `{runtime['onnxruntime'].get('device')}`.",
+        f"- ONNX Runtime providers: `{providers}`.",
         "",
         "## Provider Capability",
         "",

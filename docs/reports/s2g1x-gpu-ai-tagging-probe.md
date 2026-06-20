@@ -9,13 +9,21 @@
 - Network model download performed: `False`.
 - Decision: `share_foundation_split_production_execution`.
 
+## Runtime Environment
+
+- Python executable public name: `python.exe`.
+- Python version: `3.12.0`.
+- ONNX Runtime version: `1.23.2`.
+- ONNX Runtime device: `CPU`.
+- ONNX Runtime providers: `AzureExecutionProvider, CPUExecutionProvider`.
+
 ## Provider Capability
 
 | Provider | Available | Practical | Loaded | Benchmark status | Items/sec |
 | --- | --- | --- | --- | --- | --- |
 | CUDA | False | False | False | not_available | N/A |
 | DirectML | False | False | False | not_available | N/A |
-| CPU | True | True | True | completed | 1.2677 |
+| CPU | True | True | True | completed | 0.9458 |
 
 ## Threshold And Model Config
 

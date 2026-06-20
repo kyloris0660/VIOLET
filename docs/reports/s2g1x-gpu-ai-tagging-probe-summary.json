@@ -61,8 +61,8 @@
         "loaded": true,
         "practical": true,
         "provider": "CPUExecutionProvider",
-        "seconds_per_item": 0.7888,
-        "throughput_items_per_second": 1.2677
+        "seconds_per_item": 1.0573,
+        "throughput_items_per_second": 0.9458
       },
       "cuda": {
         "available": false,
@@ -116,7 +116,7 @@
       },
       "os": "Windows",
       "python_executable_public_name": "python.exe",
-      "python_version": "3.13.7",
+      "python_version": "3.12.0",
       "windows_setup": true
     },
     "safe_probe": {
@@ -139,8 +139,16 @@
       "suggestion_threshold": 0.2
     }
   },
-  "generated_at": "2026-06-20T13:59:52Z",
-  "head_sha": "3dcd201c9b8ece6204e088c7dc8af49bd3f4ad07",
+  "generated_at": "2026-06-20T15:29:11Z",
+  "head_evidence": {
+    "current_pr_head_sha": "represented_by_pr_metadata_after_commit",
+    "current_pr_head_sha_scope": "a committed report cannot contain the final commit SHA that includes itself",
+    "probe_run_head_sha": "acc3cff9372b93322f8538445e197d395d9d2350",
+    "probe_run_head_sha_scope": "git HEAD used while running the local capability probe and writing this report",
+    "report_generation_head_sha": "acc3cff9372b93322f8538445e197d395d9d2350",
+    "report_generation_head_sha_scope": "same local generation step; later supplemental commits may update PR metadata without rewriting this file",
+    "top_level_head_sha_omitted": true
+  },
   "load_control": {
     "implemented_now": [
       "capability_probe_runner",

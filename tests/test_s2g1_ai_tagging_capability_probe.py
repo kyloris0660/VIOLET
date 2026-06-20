@@ -83,6 +83,9 @@ def test_probe_summary_is_public_safe_and_keeps_execution_disabled(monkeypatch) 
     summary = probe.build_summary(args)
 
     assert summary["pipeline_contract"]["contract_id"] == "s2g1x_probe_contract_v1"
+    assert "head_sha" not in summary
+    assert summary["head_evidence"]["top_level_head_sha_omitted"] is True
+    assert summary["head_evidence"]["current_pr_head_sha"] == "represented_by_pr_metadata_after_commit"
     assert summary["capability_probe"]["provider_matrix"]["cpu"]["loaded"] is True
     assert summary["capability_probe"]["model_identity"]["network_download_required"] is False
     assert "_model_path" not in summary["capability_probe"]["model_identity"]
@@ -105,5 +108,7 @@ def test_render_report_includes_provider_table(monkeypatch) -> None:
     report = probe.render_report(summary)
 
     assert "| Provider | Available | Practical | Loaded | Benchmark status | Items/sec |" in report
+    assert "## Runtime Environment" in report
+    assert "ONNX Runtime providers" in report
     assert "S2G/S3A Decision" in report
     assert "No DB connection or production DB writes." in report
