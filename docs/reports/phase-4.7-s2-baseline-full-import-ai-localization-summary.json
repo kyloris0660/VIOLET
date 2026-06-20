@@ -1,0 +1,655 @@
+{
+  "ai_tagging_results": {
+    "attempted": 30971,
+    "executed": true,
+    "failed": 0,
+    "failure_budget": {
+      "attempted": 30971,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 100,
+      "max_rate": 0.02,
+      "threshold_exceeded": false
+    },
+    "item_failures_recorded": true,
+    "reused_existing": 4063,
+    "stage": "ai_tagging",
+    "status": "completed",
+    "status_counts": {
+      "ai_reused": 4063,
+      "ai_tagged": 30971
+    },
+    "stopped_by_rule": null,
+    "tagged": 30971,
+    "target_met": true
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "phase-scoped operational runner",
+        "committed": true,
+        "path": "scripts/run_phase47_s2_baseline_full_import_ai_localization.py"
+      },
+      {
+        "classification": "one-off local artifact / ignored output",
+        "committed": false,
+        "path": "private ledgers under ignored output directory"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/phase-4.7-s2-baseline-full-import-ai-localization.md"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/phase-4.7-s2-baseline-full-import-ai-localization-summary.json"
+      }
+    ]
+  },
+  "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
+  "browser_validation": {
+    "ai_tags_display": true,
+    "broken_image_failures": 0,
+    "canonical_fallback_visible_for_missing_translation": true,
+    "console_errors": 0,
+    "executed": true,
+    "gallery_cards_visible": 64,
+    "gallery_loads": true,
+    "imported_media_appears": true,
+    "library_location_leak_detected": false,
+    "localized_display_names_visible": true,
+    "media_detail_opens": true,
+    "media_detail_tag_count": 59,
+    "method": "playwright_msedge_headless_production_read_only_smoke",
+    "private_artifact_name": "browser-validation-summary.json",
+    "proper_noun_needs_review_count": 77,
+    "real_browser_validation_required_after_execute": true,
+    "server_identity": {
+      "app_name": "V.I.O.L.E.T.",
+      "db_name": "blombooru",
+      "git_branch": "codex/phase47-s2-baseline-full-import-ai-localization",
+      "is_venv": true,
+      "paths_redacted": true,
+      "python_version": "3.12.0",
+      "storage_root_explicitly_set": true,
+      "violet_env": "production"
+    },
+    "server_started": true,
+    "server_stopped": true,
+    "status": "passed",
+    "thumbnail_failures": 0,
+    "thumbnails_checked": 10,
+    "total_unique_media_visible": 34684,
+    "trusted_general_meta_chinese_search_alias_works": true,
+    "trusted_general_meta_chinese_search_total": 30325,
+    "unreviewed_proper_noun_alias_search_total": 0,
+    "unreviewed_proper_noun_aliases_do_not_pollute_search": true
+  },
+  "classification_results": {
+    "attempted": 35034,
+    "classified": 30934,
+    "executed": true,
+    "failed": 0,
+    "failure_budget": {
+      "attempted": 35034,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 50,
+      "max_rate": 0.01,
+      "threshold_exceeded": false
+    },
+    "item_failures_recorded": true,
+    "reused_existing": 4100,
+    "stage": "classification",
+    "status": "completed",
+    "status_counts": {
+      "classified": 30934,
+      "reused_existing": 4100
+    },
+    "target_met": true
+  },
+  "desired_media_support_gap": {
+    "extensions": [
+      ".heic",
+      ".heif",
+      ".jfif",
+      ".mov",
+      ".mp4",
+      ".pic"
+    ],
+    "not_folded_into_silent_success": true,
+    "status": "visible_future_audit_support_decision_scope",
+    "unsupported_desired_media_count": 4247
+  },
+  "dynamic_source_item_status": {
+    "import_status_by_root_activity": [
+      {
+        "count": 81,
+        "is_active": false,
+        "status": "pending"
+      },
+      {
+        "count": 4591,
+        "is_active": true,
+        "status": "deferred"
+      },
+      {
+        "count": 35034,
+        "is_active": true,
+        "status": "imported"
+      }
+    ],
+    "inactive_root_pending_excluded_from_active_backlog": true,
+    "localization_status": {
+      "active_root_counts": [
+        {
+          "count": 81,
+          "is_active": false,
+          "status": "waiting_ai_tags"
+        },
+        {
+          "count": 4591,
+          "is_active": true,
+          "status": "deferred"
+        },
+        {
+          "count": 35034,
+          "is_active": true,
+          "status": "localized"
+        }
+      ],
+      "eligible_pending_before": 35034,
+      "paths_redacted": true,
+      "semantic": "source-item localization_status reflects tag-localization readiness/completion for imported AI-tagged items",
+      "status": "backfilled",
+      "updated_to_localized": 35034
+    }
+  },
+  "dynamic_sync_dry_run": {
+    "actual_cloud_failure_count": 0,
+    "cloud_only_or_icloud_unavailable": 23619,
+    "dry_run": true,
+    "duplicates": null,
+    "duplicates_checked": false,
+    "estimated_ai_tagging_workload": 11688,
+    "estimated_import_batches": 117,
+    "estimated_localization_workload": null,
+    "executed": true,
+    "failed": 0,
+    "hydration_workload_check": {
+      "actual_failure_count": 0,
+      "counts_as_failure": false,
+      "failure_threshold_applies_after_attempt": true,
+      "hydration_workload_count": 23619,
+      "hydration_workload_rate": 0.5960630914826498,
+      "passed": true,
+      "status": "hydration_workload_recorded",
+      "total_seen": 39625
+    },
+    "hydration_workload_count": 23619,
+    "item_failures_recorded": true,
+    "missing": 0,
+    "no_import_copy_ai_or_llm": true,
+    "paths_redacted": true,
+    "pending_changed": 0,
+    "pending_deferred": 28018,
+    "pending_new": 11688,
+    "proper_noun_gap_needs_review": 77,
+    "reason_counts": {
+      "cloud_placeholder": 23619,
+      "hidden": 1,
+      "new": 11607,
+      "unsupported_extension": 4398
+    },
+    "root_summaries": [
+      {
+        "counts": {
+          "changed_items": 0,
+          "deferred_items": 28018,
+          "failed_items": 0,
+          "missing_items": 0,
+          "new_items": 11607,
+          "total_seen": 39625,
+          "unchanged_items": 0
+        },
+        "missing_reconciliation_reason": null,
+        "missing_reconciliation_skipped": false,
+        "partial_scan": false,
+        "paths_redacted": true,
+        "run_local_root_label": "root-1",
+        "source_walk_error_count": 0
+      }
+    ],
+    "roots_checked": 1,
+    "run_id": 6,
+    "source_scope_check": {
+      "expected_min_items": 30000,
+      "expected_scale": "tens_of_thousands_roughly_30k_plus",
+      "passed": true,
+      "status": "passed",
+      "total_seen": 39625
+    },
+    "stage": "dynamic_sync_dry_run",
+    "status": "completed",
+    "target_met": false,
+    "threshold_reached": true,
+    "total_seen": 39625,
+    "unsupported": 4398
+  },
+  "full_chain_completed": true,
+  "gate0": {
+    "backup_recovery": {
+      "actual_database_matches": true,
+      "backup_command_exit_code_zero": true,
+      "created_at_present": true,
+      "dump_file_exists": true,
+      "dump_file_non_empty": true,
+      "expected_database_matches": true,
+      "operator_instructions": [],
+      "path_redacted": true,
+      "proof_exists": true,
+      "proof_supplied": true,
+      "recovery_path_documented": true,
+      "valid": true,
+      "validation_error_codes": []
+    },
+    "blockers": [],
+    "db_identity": {
+      "connected_database": "blombooru",
+      "database": "blombooru",
+      "host": "localhost",
+      "port": 5432,
+      "username_present": true,
+      "violet_env": "production"
+    },
+    "input_root_registration": {
+      "deactivated_other_active_count": 0,
+      "failed_count": 0,
+      "input_source": "cli",
+      "instructions": [],
+      "registered_count": 1,
+      "registration_requested": true,
+      "replace_other_active_inputs": true,
+      "requested": true,
+      "roots": [
+        {
+          "auto_sync_enabled": false,
+          "is_active": true,
+          "issues": null,
+          "path_redacted": true,
+          "run_local_label": "root-1",
+          "valid": null
+        }
+      ],
+      "validated_count": 1
+    },
+    "safety": {
+      "additive_schema_only": true,
+      "drop_truncate_delete_reset": false,
+      "import_classification_ai_localization_executed": false,
+      "production_media_source_mutation": false
+    },
+    "schema": {
+      "after": {
+        "index_count_total": 17,
+        "tables_missing": [],
+        "tables_missing_count": 0,
+        "tables_present_count": 4
+      },
+      "before": {
+        "index_count_total": 17,
+        "tables_missing": [],
+        "tables_missing_count": 0,
+        "tables_present_count": 4
+      },
+      "ensure": {
+        "additive_only": true,
+        "approved": true,
+        "destructive_operations": [],
+        "import_classification_ai_localization_executed": null,
+        "path_used": null,
+        "production_media_source_mutation": null,
+        "ran": false,
+        "status": "not_needed",
+        "tables_missing_after": [],
+        "tables_missing_after_count": 0,
+        "tables_missing_before_count": 0
+      }
+    },
+    "status": "passed",
+    "storage_identity": {
+      "explicitly_set": true,
+      "matches_expected": true,
+      "paths_redacted": true
+    },
+    "warnings": []
+  },
+  "generated_at": "2026-06-20T10:26:00Z",
+  "governance_documents": [
+    "docs/governance/production-development-separation.md",
+    "docs/roadmap/post-s2-production-roadmap.md"
+  ],
+  "head_evidence": {
+    "current_pr_head_sha": "reported by PR metadata/final delivery after the report refresh commit",
+    "current_pr_head_sha_scope": "a committed artifact cannot truthfully contain its own final commit SHA",
+    "report_generation_head_sha": "f5f5cbe024c7127055a1ff16cea18a3775f264fa",
+    "report_generation_head_sha_scope": "git HEAD used while generating this committed public report",
+    "top_level_head_sha_omitted": true,
+    "validated_run_head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7",
+    "validated_run_head_sha_scope": "production baseline execution/import/classification/AI/localization head; later report-only commits may differ",
+    "working_tree_had_uncommitted_changes_at_report_generation": true
+  },
+  "icloud_cloud_policy": {
+    "cloud_only_files_deferred": false,
+    "cloud_placeholder_counts_as_failure": false,
+    "controlled_hydration_backfill_approved": true,
+    "hydrate_and_import_batches": true,
+    "hydrated_only": true,
+    "mass_icloud_download": false,
+    "structured_reasons": [
+      "cloud_offline",
+      "cloud_placeholder",
+      "cloud_only",
+      "recall_required",
+      "needs_hydration",
+      "cloud_recall_on_open",
+      "cloud_recall_on_data_access",
+      "cloud_network_unavailable",
+      "cloud_hydration_failed",
+      "read_timeout",
+      "permission_denied",
+      "unreadable_source"
+    ]
+  },
+  "import_results": {
+    "attempted": 35226,
+    "bytes_copied": 82913410734,
+    "disk_safety": {
+      "candidate_count": 35226,
+      "free_bytes": 2150700412928,
+      "known_candidate_bytes": 98671965450,
+      "passed": true,
+      "paths_redacted": true,
+      "required_with_buffer_bytes": 103605563722
+    },
+    "executed": true,
+    "failed": 0,
+    "hydrated_success": 23427,
+    "hydration_attempted": 23619,
+    "hydration_failure_budget": {
+      "attempted": 23619,
+      "failed": 192,
+      "failure_rate": 0.008129048647275499,
+      "max_items": 1000,
+      "max_rate": 0.1,
+      "threshold_exceeded": false
+    },
+    "hydration_failures": 192,
+    "import_attempted": 30934,
+    "import_failure_budget": {
+      "attempted": 30934,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 50,
+      "max_rate": 0.01,
+      "threshold_exceeded": false
+    },
+    "imported": 30934,
+    "item_failures_recorded": true,
+    "per_item_ledgers_written": true,
+    "read_attempted": 35226,
+    "reused_existing": 4100,
+    "stage": "import",
+    "status": "completed_with_item_failures_within_budget",
+    "stopped_by_rule": null,
+    "target_met": true,
+    "unsupported": 4399,
+    "unsupported_breakdown": {
+      "desired_media_support_gap": 4247,
+      "hidden_metadata": 1,
+      "unsupported_non_media_or_unknown": 151
+    },
+    "unsupported_desired_media": 4247,
+    "unsupported_extension_breakdown": {
+      ".heic": 4032,
+      ".ini": 1,
+      ".jfif": 150,
+      ".mov": 187,
+      ".mp4": 28,
+      ".pic": 1
+    },
+    "unsupported_sidecar": 152
+  },
+  "llm_localization_audit": {
+    "background_audit_source": "phase47-s2-execute.out.log",
+    "background_auto_translation_already_translated_or_static": 430,
+    "background_auto_translation_calls": 1438,
+    "background_auto_translation_observed": true,
+    "background_auto_translation_saved": 1437,
+    "background_provider_call_accounting": "historical_log_lower_bound",
+    "background_provider_calls_ledgered": false,
+    "current_runner_llm_localization_path": "explicit_localization_stage_ledgers_only",
+    "current_runner_suppresses_auto_translation_during_ai_stage": true,
+    "dedicated_localization_failed": 0,
+    "dedicated_localization_ledger_rows": 25,
+    "dedicated_localization_llm_called": true,
+    "dedicated_localization_provider_batch_calls": 25,
+    "dedicated_localization_translated": 1235,
+    "paths_redacted": true,
+    "provider_call_count_lower_bound": 1463,
+    "provider_call_count_lower_bound_semantic": "dedicated localization batch rows plus background auto-translate translating log lines",
+    "provider_calls_undercounted": false,
+    "status": "provider_calls_audited",
+    "translated_tag_units_recorded": 2672
+  },
+  "localization_results": {
+    "executed": true,
+    "failed": 0,
+    "failure_budget": {
+      "attempted": 1235,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 500,
+      "max_rate": 0.05,
+      "threshold_exceeded": false
+    },
+    "gap_report_generated": true,
+    "item_failures_recorded": true,
+    "llm_called": true,
+    "proper_noun_unreviewed_aliases_trusted": false,
+    "remaining_missing": 0,
+    "remaining_missing_all_categories": 741,
+    "skipped": 0,
+    "stage": "localization",
+    "status": "completed",
+    "stopped_by_rule": null,
+    "target_met": true,
+    "translated": 1235
+  },
+  "mode": "execute_requested",
+  "phase": "4.7-S2",
+  "pipeline_contract": {
+    "browser_validation_completed": true,
+    "claims": {
+      "full_chain_complete": true,
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "phase47_s2_baseline_contract_v1",
+    "execute_confirmation_present": true,
+    "execute_requested": true,
+    "fresh_dry_run_completed": true,
+    "gate0_status": "passed",
+    "gate1_stop_condition": false,
+    "hydration_failure_threshold_not_exceeded": true,
+    "hydration_workload_recorded": true,
+    "source_scope_passed": true,
+    "status": "target_met"
+  },
+  "private_artifacts": {
+    "paths_public": false,
+    "private_artifact_names": [
+      "ai-tagging-ledger.jsonl",
+      "batch-summary.jsonl",
+      "browser-validation-summary.json",
+      "classification-ledger.jsonl",
+      "cloud-deferred-cleanup-audit.json",
+      "cloud-deferred.jsonl",
+      "fresh-dynamic-sync-dry-run.json",
+      "hydration-ledger.jsonl",
+      "import-item-ledger.jsonl",
+      "llm-localization-audit.json",
+      "localization-ledger.jsonl",
+      "localization-status-backfill-proof.json",
+      "public-redaction-check.json",
+      "readiness-proof.json",
+      "run-summary-private.json",
+      "unsupported-or-deferred.jsonl"
+    ],
+    "private_artifact_root_label": ".local_manifests/phase-4.7-s2-baseline-full-import-ai-localization",
+    "private_artifacts_committed": false
+  },
+  "proper_noun_review": {
+    "confirmed_assignments_created": false,
+    "entity_truth_created": false,
+    "status": "gap_report_generated",
+    "unreviewed_llm_aliases_excluded_from_search": true
+  },
+  "public_redaction": {
+    "checked_payloads": [
+      "public_json_payload",
+      "public_markdown_text"
+    ],
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true
+  },
+  "readiness": {
+    "ai_model": {
+      "available": true,
+      "checked": true,
+      "enabled": true,
+      "model_downloaded": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "network_download_required": false,
+      "thresholds": {
+        "batch_max_items": 10,
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "app_settings_db_identity_matches_execution_db": true,
+    "automatic_production_sync": {
+      "enabled": false,
+      "remains_opt_in": true
+    },
+    "backup_recovery": {
+      "actual_database_matches": true,
+      "backup_command_exit_code_zero": true,
+      "created_at_present": true,
+      "dump_file_exists": true,
+      "dump_file_non_empty": true,
+      "expected_database_matches": true,
+      "operator_instructions": [],
+      "path_redacted": true,
+      "proof_exists": true,
+      "proof_supplied": true,
+      "recovery_path_documented": true,
+      "valid": true,
+      "validation_error_codes": []
+    },
+    "blockers": [],
+    "db_identity": {
+      "connected_database": "blombooru",
+      "database": "blombooru",
+      "db_resolution": {
+        "expected_database": "blombooru",
+        "runner_matches_app_equivalent": true,
+        "urls_match": true
+      },
+      "host": "localhost",
+      "port": 5432,
+      "user_configured": true
+    },
+    "dynamic_schema": {
+      "tables_missing": [],
+      "tables_missing_count": 0,
+      "tables_present_count": 4
+    },
+    "git": {
+      "based_on_origin_main": true,
+      "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
+      "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae",
+      "validated_run_head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7"
+    },
+    "input_root_counts": {
+      "active_count": 1,
+      "auto_sync_enabled_count": 0,
+      "paths_redacted": true,
+      "registered_count": 2,
+      "unsafe_overlap_count": 0,
+      "valid_count": 1
+    },
+    "llm_localization": {
+      "auth_material_configured": true,
+      "auto_enabled": true,
+      "background_enabled": true,
+      "base_url_configured": true,
+      "enabled": true,
+      "model_configured": true,
+      "operator_approved": true,
+      "provider": "openai_compatible",
+      "provider_configured": true,
+      "sensitive_values_recorded": false
+    },
+    "passed": true,
+    "production_storage": {
+      "explicitly_set": true,
+      "label": "app_storage",
+      "matches_expected": true,
+      "paths_redacted": true
+    },
+    "proper_noun_safeguards": {
+      "entity_truth_created": false,
+      "search_alias_trust_policy": "manual_static_or_operator_reviewed_only",
+      "unreviewed_llm_aliases_excluded_from_search": true,
+      "unreviewed_proper_noun_llm_aliases": 77,
+      "worker_excludes_proper_nouns": true
+    },
+    "python_env": {
+      "check_python_env_passed": true,
+      "executable_path_redacted": true,
+      "expected_python_checked": true,
+      "public_executable_name": "python.exe",
+      "python_version": "3.12.0"
+    },
+    "warnings": []
+  },
+  "safe_to_merge": true,
+  "safety": {
+    "controlled_icloud_hydration_read_approved": true,
+    "no_ai_tagging": false,
+    "no_classification": false,
+    "no_cleanup_delete_reset_drop_truncate": true,
+    "no_db_import": false,
+    "no_llm_call": false,
+    "no_merge": true,
+    "no_push_main": true,
+    "no_source_icloud_mutation": true,
+    "no_sourceconcept_entity_resolver_similarity": true,
+    "stopped_by_rule": null
+  },
+  "status": "target_met",
+  "target_met": true,
+  "title": "Baseline Full Import, AI Tagging, and Tag Localization",
+  "validation": {
+    "browser_validation": {
+      "method": "playwright_msedge_headless_production_read_only_smoke",
+      "status": "passed"
+    },
+    "full_s2_browser_gallery_tag_search_validation_passed": true
+  }
+}

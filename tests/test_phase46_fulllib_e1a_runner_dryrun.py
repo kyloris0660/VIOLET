@@ -415,6 +415,20 @@ def test_repo_python_preflight_accepts_documented_windows_and_posix_layouts(tmp_
     assert e1a.build_python_env(Path(sys.executable))["executable_path_redacted"] is True
 
 
+def test_repo_python_preflight_accepts_git_common_dir_canonical_worktree_venv(tmp_path, monkeypatch):
+    worktree = tmp_path / "worktree"
+    canonical = tmp_path / "canonical"
+    worktree.mkdir()
+    canonical.mkdir()
+    canonical_python = canonical / "venv" / "Scripts" / "python.exe"
+    sibling_python = tmp_path / "other" / "venv" / "Scripts" / "python.exe"
+
+    monkeypatch.setattr(e1a, "git_common_repo_root", lambda root: canonical if root == worktree else None)
+
+    assert e1a.build_python_env(canonical_python, root=worktree)["check_python_env_passed"] is True
+    assert e1a.build_python_env(sibling_python, root=worktree)["check_python_env_passed"] is False
+
+
 def test_repo_python_preflight_does_not_accept_symlink_target_base_python(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     venv_python = root / "venv" / "bin" / "python"

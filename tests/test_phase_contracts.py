@@ -161,6 +161,160 @@ def _dynamic_sync_summary(**overrides: object) -> dict:
     return summary
 
 
+def _phase47_s2_summary(**overrides: object) -> dict:
+    summary = {
+        "head_evidence": {
+            "validated_run_head_sha": "validated-head",
+            "report_generation_head_sha": "report-head",
+            "current_pr_head_sha": "reported by PR handoff",
+            "top_level_head_sha_omitted": True,
+        },
+        "pipeline_contract": {
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "blocked_gate1",
+            "claims": {"target_met": False, "safe_to_merge": False, "full_chain_complete": False},
+        },
+        "gate0": {
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": False, "valid": False},
+            "schema": {
+                "ensure": {"status": "blocked_backup_required", "ran": False},
+                "after": {"tables_missing": ["blombooru_dynamic_source_roots"]},
+            },
+            "input_root_registration": {"registered_count": 0},
+        },
+        "readiness": {
+            "passed": False,
+            "blockers": ["dynamic_sync_tables_missing"],
+            "llm_localization": {"operator_approved": True},
+            "python_env": {"check_python_env_passed": True},
+            "app_settings_db_identity_matches_execution_db": True,
+            "production_storage": {"explicitly_set": True},
+            "backup_recovery": {"valid": False},
+            "ai_model": {"model_downloaded": True},
+            "automatic_production_sync": {"remains_opt_in": True},
+            "proper_noun_safeguards": {"unreviewed_llm_aliases_excluded_from_search": True},
+            "input_root_counts": {"valid_count": 0},
+            "db_identity": {
+                "db_resolution": {
+                    "runner_matches_app_equivalent": True,
+                    "password_value_recorded": False,
+                }
+            },
+            "dynamic_schema": {"tables_missing": ["blombooru_dynamic_source_roots"]},
+        },
+        "dynamic_sync_dry_run": {"status": "not_run_gate1", "executed": False},
+        "import_results": {"status": "not_run_gate1", "executed": False},
+        "classification_results": {"status": "not_run_gate1", "executed": False},
+        "ai_tagging_results": {"status": "not_run_gate1", "executed": False},
+        "localization_results": {
+            "status": "not_run_gate1",
+            "executed": False,
+            "llm_called": False,
+            "proper_noun_unreviewed_aliases_trusted": False,
+        },
+        "proper_noun_review": {"unreviewed_llm_aliases_excluded_from_search": True},
+        "browser_validation": {"status": "not_run_gate1"},
+        "private_artifacts": {"private_artifacts_committed": False},
+        "public_redaction": {"passed": True},
+        "safety": {
+            "no_source_icloud_mutation": True,
+            "no_cleanup_delete_reset_drop_truncate": True,
+            "no_db_import": True,
+            "no_classification": True,
+            "no_ai_tagging": True,
+            "no_llm_call": True,
+        },
+        "artifact_lifecycle": {"artifacts": [{"path": "docs/reports/example.md"}]},
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def _phase47_ready_readiness(**overrides: object) -> dict:
+    readiness = {
+        "passed": True,
+        "blockers": [],
+        "llm_localization": {"operator_approved": True},
+        "python_env": {"check_python_env_passed": True},
+        "app_settings_db_identity_matches_execution_db": True,
+        "production_storage": {"explicitly_set": True},
+        "backup_recovery": {"valid": True},
+        "ai_model": {"model_downloaded": True},
+        "automatic_production_sync": {"remains_opt_in": True},
+        "proper_noun_safeguards": {"unreviewed_llm_aliases_excluded_from_search": True},
+        "input_root_counts": {"valid_count": 1},
+        "db_identity": {"db_resolution": {"runner_matches_app_equivalent": True, "password_value_recorded": False}},
+        "dynamic_schema": {"tables_missing": [], "tables_missing_count": 0},
+    }
+    readiness.update(overrides)
+    return readiness
+
+
+def _phase47_full_execution_summary(**overrides: object) -> dict:
+    summary = _phase47_s2_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "target_met",
+            "execute_confirmation_present": True,
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": True},
+        },
+        gate0={
+            "status": "passed",
+            "backup_recovery": {"proof_exists": True, "valid": True},
+            "db_identity": {"matches_expected_database": True},
+            "storage_identity": {"matches_expected": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 0},
+        },
+        readiness=_phase47_ready_readiness(),
+        dynamic_sync_dry_run={
+            "status": "completed",
+            "executed": True,
+            "source_scope_check": {"passed": True},
+        },
+        import_results={
+            "status": "completed_with_item_failures_within_budget",
+            "executed": True,
+            "per_item_ledgers_written": True,
+            "hydration_failure_budget": {"threshold_exceeded": False},
+            "import_failure_budget": {"threshold_exceeded": False},
+        },
+        classification_results={
+            "status": "completed",
+            "executed": True,
+            "failure_budget": {"threshold_exceeded": False},
+        },
+        ai_tagging_results={
+            "status": "completed",
+            "executed": True,
+            "failure_budget": {"threshold_exceeded": False},
+            "auto_translation_suppressed_during_ai_stage": True,
+        },
+        localization_results={
+            "status": "completed_with_gap_visible",
+            "executed": True,
+            "llm_called": True,
+            "gap_report_generated": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+            "failure_budget": {"threshold_exceeded": False},
+        },
+        llm_localization_audit={
+            "provider_call_count_lower_bound": 1,
+            "provider_calls_undercounted": False,
+            "current_runner_suppresses_auto_translation_during_ai_stage": True,
+            "background_provider_calls_ledgered": False,
+        },
+        browser_validation={"status": "passed"},
+    )
+    summary.update(overrides)
+    return summary
+
+
 def _error_codes(result) -> set[str]:
     return {error.code for error in result.errors}
 
@@ -174,6 +328,338 @@ def test_registry_contains_all_required_contracts() -> None:
 
     assert set(REQUIRED_CONTRACT_IDS).issubset(registered)
     assert len(registered) >= 15
+
+
+def test_phase47_s2_contract_accepts_gate1_blocked_summary_without_completion_claim() -> None:
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", _phase47_s2_summary())
+
+    assert result.passed is True
+
+
+def test_phase47_s2_contract_rejects_completion_claim_with_gate1_blocker() -> None:
+    summary = _phase47_s2_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_completion_claimed_with_gate1_blocker" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_schema_ensure_without_backup() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": False, "valid": False},
+            "schema": {
+                "ensure": {"status": "completed", "ran": True},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 0},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_schema_ensure_without_valid_backup_proof" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_missing_tables_after_schema_ensure() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": True, "valid": True},
+            "schema": {
+                "ensure": {"status": "failed", "ran": True},
+                "after": {"tables_missing": ["blombooru_dynamic_source_roots"]},
+            },
+            "input_root_registration": {"registered_count": 0},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_schema_tables_missing_after_ensure" in _error_codes(result)
+
+
+def test_phase47_s2_contract_accepts_readiness_passed_dry_run_complete_without_execute() -> None:
+    summary = _phase47_s2_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "dry_run_complete_execute_not_requested",
+            "claims": {"target_met": False, "safe_to_merge": False, "full_chain_complete": False},
+        },
+        gate0={
+            "status": "passed",
+            "backup_recovery": {"proof_exists": True, "valid": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 1},
+        },
+        readiness=_phase47_ready_readiness(),
+        dynamic_sync_dry_run={"status": "completed", "executed": True},
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_phase47_s2_contract_rejects_import_without_dry_run_or_ledgers() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "passed",
+            "backup_recovery": {"proof_exists": True, "valid": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 1},
+        },
+        readiness=_phase47_ready_readiness(),
+        dynamic_sync_dry_run={"status": "not_run", "executed": False},
+        import_results={"status": "completed", "executed": True},
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "phase47_s2_import_claimed_without_fresh_dry_run" in codes
+    assert "phase47_s2_import_missing_per_item_ledgers" in codes
+
+
+def test_phase47_s2_contract_rejects_llm_call_without_operator_approval() -> None:
+    summary = _phase47_s2_summary(
+        readiness=_phase47_ready_readiness(
+            passed=False,
+            blockers=["llm_localization_operator_approval_missing"],
+            llm_localization={"operator_approved": False},
+        ),
+        localization_results={
+            "status": "completed",
+            "llm_called": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+        },
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_llm_called_without_operator_approval" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_missing_public_redaction() -> None:
+    summary = _phase47_s2_summary(public_redaction={"passed": False})
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_public_redaction_absent_or_failed" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_missing_no_execution_safety_flags() -> None:
+    summary = _phase47_s2_summary(
+        safety={
+            "no_source_icloud_mutation": True,
+            "no_cleanup_delete_reset_drop_truncate": True,
+            "no_db_import": False,
+            "no_classification": True,
+            "no_ai_tagging": True,
+            "no_llm_call": True,
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_missing_no_execution_safety_flag" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_private_artifacts_committed() -> None:
+    summary = _phase47_s2_summary(private_artifacts={"private_artifacts_committed": True})
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_private_artifacts_committed_or_missing" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_full_completion_without_executed_proofs() -> None:
+    summary = _phase47_s2_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": True},
+        },
+        gate0={
+            "status": "passed",
+            "backup_recovery": {"proof_exists": True, "valid": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 1},
+        },
+        readiness=_phase47_ready_readiness(),
+        dynamic_sync_dry_run={"status": "completed", "executed": True},
+        import_results={"status": "completed", "executed": False, "per_item_ledgers_written": False},
+        classification_results={"status": "completed", "executed": False},
+        ai_tagging_results={"status": "completed", "executed": False},
+        localization_results={"status": "completed", "executed": False, "llm_called": False},
+        browser_validation={"status": "passed"},
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_full_completion_missing_executed_proof" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_ambiguous_stale_head_sha() -> None:
+    summary = _phase47_full_execution_summary(head_sha="stale-runtime-head")
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_ambiguous_top_level_head_sha_present" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_execution_without_exact_confirmation() -> None:
+    summary = _phase47_full_execution_summary(
+        pipeline_contract={
+            "contract_id": "phase47_s2_baseline_contract_v1",
+            "status": "target_met",
+            "execute_confirmation_present": False,
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": True},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_execution_claimed_without_exact_confirmation" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_classification_failure_budget_missing_or_exceeded() -> None:
+    missing = _phase47_full_execution_summary(
+        classification_results={"status": "completed", "executed": True}
+    )
+    exceeded = _phase47_full_execution_summary(
+        classification_results={
+            "status": "completed_with_item_failures_within_budget",
+            "executed": True,
+            "failure_budget": {"threshold_exceeded": True},
+        }
+    )
+
+    missing_result = check_phase_contract("phase47_s2_baseline_contract_v1", missing)
+    exceeded_result = check_phase_contract("phase47_s2_baseline_contract_v1", exceeded)
+
+    assert "phase47_s2_classification_failure_budget_missing" in _error_codes(missing_result)
+    assert "phase47_s2_classification_failure_budget_exceeded" in _error_codes(exceeded_result)
+
+
+def test_phase47_s2_contract_rejects_localization_failure_threshold_before_completion() -> None:
+    summary = _phase47_full_execution_summary(
+        localization_results={
+            "status": "completed_with_gap_visible",
+            "executed": True,
+            "llm_called": True,
+            "gap_report_generated": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+            "failure_budget": {"threshold_exceeded": True},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_localization_failure_budget_exceeded" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_capped_localization_completion_claim() -> None:
+    summary = _phase47_full_execution_summary(
+        localization_results={
+            "status": "partial_localization_max_tags_reached",
+            "executed": True,
+            "target_met": True,
+            "llm_called": True,
+            "gap_report_generated": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+            "failure_budget": {"threshold_exceeded": False},
+            "stopped_by_rule": "localization_max_tags_reached",
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_capped_localization_claimed_complete" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_partial_dry_run_completion_claim() -> None:
+    summary = _phase47_full_execution_summary(
+        dynamic_sync_dry_run={
+            "status": "completed",
+            "executed": True,
+            "source_scope_check": {"passed": False},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_full_completion_claimed_without_full_scope_dry_run" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_llm_call_without_audit_or_with_undercount() -> None:
+    missing = _phase47_full_execution_summary(llm_localization_audit={})
+    undercount = _phase47_full_execution_summary(
+        llm_localization_audit={"provider_call_count_lower_bound": 1, "provider_calls_undercounted": True}
+    )
+
+    missing_result = check_phase_contract("phase47_s2_baseline_contract_v1", missing)
+    undercount_result = check_phase_contract("phase47_s2_baseline_contract_v1", undercount)
+
+    assert "phase47_s2_llm_audit_missing" in _error_codes(missing_result)
+    assert "phase47_s2_llm_provider_calls_undercounted" in _error_codes(undercount_result)
+
+
+def test_phase47_s2_contract_rejects_llm_background_calls_without_suppression_or_ledger() -> None:
+    summary = _phase47_full_execution_summary(
+        ai_tagging_results={
+            "status": "completed",
+            "executed": True,
+            "failure_budget": {"threshold_exceeded": False},
+            "auto_translation_suppressed_during_ai_stage": False,
+        },
+        llm_localization_audit={
+            "provider_call_count_lower_bound": 1,
+            "provider_calls_undercounted": False,
+            "current_runner_suppresses_auto_translation_during_ai_stage": False,
+            "background_provider_calls_ledgered": False,
+        },
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_unledgered_background_auto_translation_not_prevented" in _error_codes(result)
+
+
+def test_phase47_s2_contract_rejects_source_root_write_without_clean_identity_or_backup() -> None:
+    summary = _phase47_s2_summary(
+        gate0={
+            "status": "blocked",
+            "backup_recovery": {"proof_exists": False, "valid": False},
+            "db_identity": {"matches_expected_database": False},
+            "storage_identity": {"matches_expected": True},
+            "schema": {
+                "ensure": {"status": "not_needed", "ran": False},
+                "after": {"tables_missing": []},
+            },
+            "input_root_registration": {"registered_count": 1},
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_source_root_write_without_clean_identity_or_backup" in _error_codes(result)
 
 
 def test_dynamic_library_sync_contract_accepts_s1_foundation_summary() -> None:
@@ -1188,6 +1674,29 @@ def test_claimed_completion_requires_matching_contract_id() -> None:
 
     assert result.passed is False
     assert "claimed_completion_contract_id_mismatch" in _error_codes(result)
+
+
+def test_public_redaction_contract_allows_auxiliary_check_on_claimed_phase_summary() -> None:
+    result = check_phase_contract(
+        "public_redaction_contract_v1",
+        {
+            "pipeline_contract": {
+                "contract_id": "phase47_s2_baseline_contract_v1",
+                "status": "target_met",
+                "claims": {
+                    "target_met": True,
+                    "safe_to_merge": True,
+                    "full_chain_complete": True,
+                },
+            },
+            "public_json_payload": {
+                "status": "target_met",
+                "paths_redacted": True,
+            },
+        },
+    )
+
+    assert result.passed is True
 
 
 def test_required_artifact_and_ledger_fields_must_be_non_empty() -> None:

@@ -629,8 +629,39 @@ def validate_positive_int(value: int, name: str) -> None:
         raise FulllibE1aBlockedError(f"{name}_must_be_positive")
 
 
+def git_common_repo_root(root: Path = ROOT) -> Path | None:
+    """Return the canonical repo root for a git worktree, if git can prove it."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    raw = (completed.stdout or "").strip()
+    if not raw:
+        return None
+    common_dir = Path(raw)
+    if not common_dir.is_absolute():
+        common_dir = root / common_dir
+    common_dir = common_dir.resolve()
+    if common_dir.name != ".git":
+        return None
+    repo_root = common_dir.parent
+    if repo_root == root.resolve():
+        return None
+    return repo_root
+
+
 def repo_python_candidates(root: Path = ROOT) -> list[Path]:
-    return [root / candidate for candidate in REPO_PYTHON_CANDIDATES]
+    roots = [root]
+    common_root = git_common_repo_root(root)
+    if common_root is not None:
+        roots.append(common_root)
+    return [candidate_root / candidate for candidate_root in roots for candidate in REPO_PYTHON_CANDIDATES]
 
 
 def is_repo_python_executable(executable: Path, *, root: Path = ROOT) -> bool:

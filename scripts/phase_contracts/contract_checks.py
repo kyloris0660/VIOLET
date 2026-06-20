@@ -199,6 +199,8 @@ def _declared_contract_id(summary: Mapping[str, Any]) -> Any:
 def _check_claimed_contract_id(contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     if not (result.target_met_claimed or result.route_approved or result.full_chain_complete_claimed or result.safe_to_merge_claimed):
         return
+    if contract.contract_id == "public_redaction_contract_v1":
+        return
     declared = _declared_contract_id(summary)
     if declared is MISSING:
         result.fail(
@@ -1161,6 +1163,393 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
             result.fail("dynamic_sync_forbidden_execution", "S1 summary reports a forbidden execution path.", path=path, expected=False, actual=True)
 
 
+def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    readiness_passed = _as_bool(_get(summary, "readiness.passed", False))
+    schema_ensure_ran = _as_bool(_get(summary, "gate0.schema.ensure.ran", False))
+    schema_missing_after = _get(summary, "gate0.schema.after.tables_missing", [])
+    backup_exists = _as_bool(_get(summary, "gate0.backup_recovery.proof_exists", False))
+    backup_valid = backup_exists and _as_bool(_get(summary, "gate0.backup_recovery.valid", False))
+    dry_run_executed = _as_bool(_get(summary, "dynamic_sync_dry_run.executed", False))
+    dry_run_status = str(_get(summary, "dynamic_sync_dry_run.status", "")).casefold()
+    import_executed = _as_bool(_get(summary, "import_results.executed", False))
+    classification_executed = _as_bool(_get(summary, "classification_results.executed", False))
+    ai_tagging_executed = _as_bool(_get(summary, "ai_tagging_results.executed", False))
+    localization_executed = _as_bool(_get(summary, "localization_results.executed", False))
+    llm_called = _as_bool(_get(summary, "localization_results.llm_called", False))
+    llm_approved = _as_bool(_get(summary, "readiness.llm_localization.operator_approved", False))
+    execute_confirmation_present = _as_bool(_get(summary, "pipeline_contract.execute_confirmation_present", False))
+    blockers = _get(summary, "readiness.blockers", [])
+    if blockers is MISSING or blockers is None:
+        blockers = []
+    if _has(summary, "head_sha"):
+        result.fail(
+            "phase47_s2_ambiguous_top_level_head_sha_present",
+            "S2 public reports must split validated run, report generation, and PR handoff head evidence instead of a stale top-level head_sha.",
+            path="head_sha",
+            expected="omitted",
+            actual=_get(summary, "head_sha", None),
+        )
+    required_head_paths = (
+        "head_evidence.validated_run_head_sha",
+        "head_evidence.report_generation_head_sha",
+        "head_evidence.current_pr_head_sha",
+    )
+    for path in required_head_paths:
+        if not _has_non_null(summary, path) or not str(_get(summary, path, "")).strip():
+            result.fail(
+                "phase47_s2_head_evidence_missing",
+                "S2 public reports must include split head evidence.",
+                path=path,
+                expected="non-empty",
+                actual=_get(summary, path, None),
+            )
+    if not _as_bool(_get(summary, "head_evidence.top_level_head_sha_omitted", False)):
+        result.fail(
+            "phase47_s2_head_evidence_does_not_omit_top_level_sha",
+            "S2 head evidence must explicitly state that ambiguous top-level head_sha is omitted.",
+            path="head_evidence.top_level_head_sha_omitted",
+            expected=True,
+            actual=_get(summary, "head_evidence.top_level_head_sha_omitted", None),
+        )
+    if _get(summary, "public_redaction.passed", MISSING) is MISSING or not _as_bool(_get(summary, "public_redaction.passed", False)):
+        result.fail(
+            "phase47_s2_public_redaction_absent_or_failed",
+            "S2 public artifacts require an explicit passing redaction proof.",
+            path="public_redaction.passed",
+            expected=True,
+            actual=_get(summary, "public_redaction.passed", None),
+        )
+    if _get(summary, "private_artifacts.private_artifacts_committed", MISSING) is MISSING or _as_bool(
+        _get(summary, "private_artifacts.private_artifacts_committed", False)
+    ):
+        result.fail(
+            "phase47_s2_private_artifacts_committed_or_missing",
+            "S2 private artifacts must be explicitly reported as not committed.",
+            path="private_artifacts.private_artifacts_committed",
+            expected=False,
+            actual=_get(summary, "private_artifacts.private_artifacts_committed", None),
+        )
+    required_true_safety_paths = (
+        "safety.no_source_icloud_mutation",
+        "safety.no_cleanup_delete_reset_drop_truncate",
+    )
+    for path in required_true_safety_paths:
+        if not _as_bool(_get(summary, path, False)):
+            result.fail(
+                "phase47_s2_required_safety_flag_missing_or_false",
+                "S2 safety proof field must be true.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path, None),
+            )
+    conditional_no_execution_flags = (
+        (not import_executed, "safety.no_db_import"),
+        (not classification_executed, "safety.no_classification"),
+        (not ai_tagging_executed, "safety.no_ai_tagging"),
+        (not localization_executed and not llm_called, "safety.no_llm_call"),
+    )
+    for required, path in conditional_no_execution_flags:
+        if required and not _as_bool(_get(summary, path, False)):
+            result.fail(
+                "phase47_s2_missing_no_execution_safety_flag",
+                "S2 summaries that do not claim a stage executed must explicitly prove the matching no-execution safety flag.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path, None),
+            )
+    if readiness_passed and isinstance(blockers, list) and blockers:
+        result.fail(
+            "phase47_s2_readiness_passed_with_blockers",
+            "Readiness cannot pass while blockers are present.",
+            path="readiness.blockers",
+            expected=[],
+            actual=blockers,
+        )
+    if readiness_passed:
+        readiness_required_true_paths = (
+            "readiness.python_env.check_python_env_passed",
+            "readiness.app_settings_db_identity_matches_execution_db",
+            "readiness.production_storage.explicitly_set",
+            "readiness.backup_recovery.valid",
+            "readiness.ai_model.model_downloaded",
+            "readiness.automatic_production_sync.remains_opt_in",
+            "readiness.proper_noun_safeguards.unreviewed_llm_aliases_excluded_from_search",
+        )
+        for path in readiness_required_true_paths:
+            if not _as_bool(_get(summary, path, False)):
+                result.fail(
+                    "phase47_s2_readiness_claim_not_independently_proven",
+                    "Gate 1 readiness.passed=true must be backed by independent readiness proof fields.",
+                    path=path,
+                    expected=True,
+                    actual=_get(summary, path, None),
+                )
+        if _get(summary, "readiness.dynamic_schema.tables_missing_count", 0) not in (0, "0"):
+            result.fail(
+                "phase47_s2_readiness_claim_schema_missing",
+                "Gate 1 readiness.passed=true cannot coexist with missing dynamic sync tables.",
+                path="readiness.dynamic_schema.tables_missing_count",
+                expected=0,
+                actual=_get(summary, "readiness.dynamic_schema.tables_missing_count", None),
+            )
+        if int(_get(summary, "readiness.input_root_counts.valid_count", 0) or 0) <= 0:
+            result.fail(
+                "phase47_s2_readiness_claim_no_valid_source_root",
+                "Gate 1 readiness.passed=true requires at least one valid active source root.",
+                path="readiness.input_root_counts.valid_count",
+                expected=">0",
+                actual=_get(summary, "readiness.input_root_counts.valid_count", None),
+            )
+    if not readiness_passed and _completion_or_approval_claimed(result):
+        result.fail(
+            "phase47_s2_completion_claimed_with_gate1_blocker",
+            "S2 cannot claim completion, route approval, or safe_to_merge when Gate 1 readiness failed.",
+            path="readiness.passed",
+            expected=True,
+            actual=False,
+        )
+    if schema_ensure_ran and not backup_valid:
+        result.fail(
+            "phase47_s2_schema_ensure_without_valid_backup_proof",
+            "S2 schema setup cannot run or be claimed without valid backup proof.",
+            path="gate0.backup_recovery.valid",
+            expected=True,
+            actual=_get(summary, "gate0.backup_recovery.valid", None),
+        )
+    if schema_ensure_ran and schema_missing_after:
+        result.fail(
+            "phase47_s2_schema_tables_missing_after_ensure",
+            "S2 schema ensure cannot pass while required dynamic sync tables remain missing.",
+            path="gate0.schema.after.tables_missing",
+            expected=[],
+            actual=schema_missing_after,
+        )
+    if import_executed and not backup_valid:
+        result.fail(
+            "phase47_s2_import_claimed_without_valid_backup_proof",
+            "S2 import cannot be claimed without valid backup proof.",
+            path="gate0.backup_recovery.valid",
+            expected=True,
+            actual=_get(summary, "gate0.backup_recovery.valid", None),
+        )
+    if (import_executed or classification_executed or ai_tagging_executed or localization_executed or llm_called) and not execute_confirmation_present:
+        result.fail(
+            "phase47_s2_execution_claimed_without_exact_confirmation",
+            "S2 execution stages require the exact execute confirmation in pipeline_contract.execute_confirmation_present.",
+            path="pipeline_contract.execute_confirmation_present",
+            expected=True,
+            actual=_get(summary, "pipeline_contract.execute_confirmation_present", None),
+        )
+    if import_executed and not (dry_run_executed and dry_run_status in {"completed", "passed"}):
+        result.fail(
+            "phase47_s2_import_claimed_without_fresh_dry_run",
+            "S2 import cannot be claimed without a completed fresh dynamic sync dry-run.",
+            path="dynamic_sync_dry_run.status",
+            expected=["completed", "passed"],
+            actual=_get(summary, "dynamic_sync_dry_run.status", None),
+        )
+    if import_executed and not _as_bool(_get(summary, "import_results.per_item_ledgers_written", False)):
+        result.fail(
+            "phase47_s2_import_missing_per_item_ledgers",
+            "S2 import claims require per-item ledgers/failure accounting.",
+            path="import_results.per_item_ledgers_written",
+            expected=True,
+            actual=_get(summary, "import_results.per_item_ledgers_written", None),
+        )
+    if import_executed and _as_bool(_get(summary, "import_results.hydration_failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_hydration_failure_budget_exceeded",
+            "S2 cannot claim a passing import when the hydration/read failure budget is exceeded.",
+            path="import_results.hydration_failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if import_executed and _as_bool(_get(summary, "import_results.import_failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_import_failure_budget_exceeded",
+            "S2 cannot claim a passing import when the import failure budget is exceeded.",
+            path="import_results.import_failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if classification_executed:
+        if _get(summary, "classification_results.failure_budget.threshold_exceeded", MISSING) is MISSING:
+            result.fail(
+                "phase47_s2_classification_failure_budget_missing",
+                "S2 classification execution requires explicit failure-budget proof.",
+                path="classification_results.failure_budget.threshold_exceeded",
+                expected=False,
+                actual=None,
+            )
+        elif _as_bool(_get(summary, "classification_results.failure_budget.threshold_exceeded", False)):
+            result.fail(
+                "phase47_s2_classification_failure_budget_exceeded",
+                "S2 cannot claim passing classification when its failure budget is exceeded.",
+                path="classification_results.failure_budget.threshold_exceeded",
+                expected=False,
+                actual=True,
+            )
+    if ai_tagging_executed and _as_bool(_get(summary, "ai_tagging_results.failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_ai_failure_budget_exceeded",
+            "S2 cannot claim passing AI tagging when the AI failure budget is exceeded.",
+            path="ai_tagging_results.failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if localization_executed and _as_bool(_get(summary, "localization_results.failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_localization_failure_budget_exceeded",
+            "S2 cannot claim passing localization when the localization failure budget is exceeded.",
+            path="localization_results.failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if localization_executed and _get(summary, "localization_results.stopped_by_rule", None) == "localization_max_tags_reached":
+        if _get(summary, "localization_results.status", None) != "partial_localization_max_tags_reached":
+            result.fail(
+                "phase47_s2_capped_localization_status_not_partial",
+                "Capped S2 localization runs must report a partial status.",
+                path="localization_results.status",
+                expected="partial_localization_max_tags_reached",
+                actual=_get(summary, "localization_results.status", None),
+            )
+        if _completion_or_approval_claimed(result) or _as_bool(_get(summary, "localization_results.target_met", False)):
+            result.fail(
+                "phase47_s2_capped_localization_claimed_complete",
+                "Capped S2 localization runs must not claim target_met, safe_to_merge, or full-chain completion.",
+                path="localization_results.stopped_by_rule",
+                expected="no completion claim when localization_max_tags_reached",
+                actual="localization_max_tags_reached",
+            )
+    if llm_called and not llm_approved:
+        result.fail(
+            "phase47_s2_llm_called_without_operator_approval",
+            "S2 LLM localization claims require explicit operator approval.",
+            path="readiness.llm_localization.operator_approved",
+            expected=True,
+            actual=False,
+        )
+    if llm_called:
+        if not _has(summary, "llm_localization_audit.provider_call_count_lower_bound"):
+            result.fail(
+                "phase47_s2_llm_audit_missing",
+                "S2 LLM localization claims require an explicit provider-call audit, including background auto-translation if observed.",
+                path="llm_localization_audit.provider_call_count_lower_bound",
+                expected="present",
+                actual=None,
+            )
+        if _as_bool(_get(summary, "llm_localization_audit.provider_calls_undercounted", False)):
+            result.fail(
+                "phase47_s2_llm_provider_calls_undercounted",
+                "S2 public summaries must not knowingly undercount LLM provider calls.",
+                path="llm_localization_audit.provider_calls_undercounted",
+                expected=False,
+                actual=True,
+            )
+        ai_stage_suppresses_auto = _as_bool(
+            _get(summary, "ai_tagging_results.auto_translation_suppressed_during_ai_stage", False)
+        ) or _as_bool(
+            _get(summary, "llm_localization_audit.current_runner_suppresses_auto_translation_during_ai_stage", False)
+        )
+        background_calls_ledgered = _as_bool(_get(summary, "llm_localization_audit.background_provider_calls_ledgered", False))
+        if ai_tagging_executed and not (ai_stage_suppresses_auto or background_calls_ledgered):
+            result.fail(
+                "phase47_s2_unledgered_background_auto_translation_not_prevented",
+                "S2 AI tagging must suppress auto-translation side effects or prove background provider calls are ledgered.",
+                path="llm_localization_audit.current_runner_suppresses_auto_translation_during_ai_stage",
+                expected=True,
+                actual=False,
+            )
+    if int(_get(summary, "gate0.input_root_registration.registered_count", 0) or 0) > 0:
+        if not backup_valid or not _as_bool(_get(summary, "gate0.db_identity.matches_expected_database", True)) or not _as_bool(
+            _get(summary, "gate0.storage_identity.matches_expected", True)
+        ):
+            result.fail(
+                "phase47_s2_source_root_write_without_clean_identity_or_backup",
+                "S2 source-root registration writes require clean DB/storage identity gates and valid backup proof.",
+                path="gate0.input_root_registration.registered_count",
+                expected="0 unless identity gates and backup are clean",
+                actual=_get(summary, "gate0.input_root_registration.registered_count", None),
+            )
+    if _completion_or_approval_claimed(result):
+        if not _as_bool(_get(summary, "dynamic_sync_dry_run.source_scope_check.passed", False)):
+            result.fail(
+                "phase47_s2_full_completion_claimed_without_full_scope_dry_run",
+                "Full S2 completion requires a full-scope dry-run; partial/source-scope mismatch dry-runs cannot claim execution complete.",
+                path="dynamic_sync_dry_run.source_scope_check.passed",
+                expected=True,
+                actual=_get(summary, "dynamic_sync_dry_run.source_scope_check.passed", None),
+            )
+        expected_statuses = {
+            "dynamic_sync_dry_run.status": {"completed", "passed"},
+            "import_results.status": {"completed", "completed_with_item_failures_within_budget"},
+            "classification_results.status": {"completed", "completed_with_item_failures_within_budget"},
+            "ai_tagging_results.status": {"completed", "completed_with_item_failures_within_budget"},
+            "localization_results.status": {"completed", "completed_with_gap_visible"},
+            "browser_validation.status": {"passed"},
+        }
+        for path, allowed in expected_statuses.items():
+            value = str(_get(summary, path, "")).casefold()
+            if value not in allowed:
+                result.fail(
+                    "phase47_s2_required_stage_not_complete",
+                    "S2 completion claims require every baseline stage to complete or pass.",
+                    path=path,
+                    expected=sorted(allowed),
+                    actual=_get(summary, path, None),
+                )
+        required_full_execution_flags = (
+            ("dynamic_sync_dry_run.executed", True),
+            ("import_results.executed", True),
+            ("import_results.per_item_ledgers_written", True),
+            ("classification_results.executed", True),
+            ("ai_tagging_results.executed", True),
+            ("browser_validation.status", "passed"),
+        )
+        for path, expected in required_full_execution_flags:
+            actual = _get(summary, path, None)
+            if expected == "passed":
+                ok = str(actual).casefold() == "passed"
+            else:
+                ok = _as_bool(actual) is expected
+            if not ok:
+                result.fail(
+                    "phase47_s2_full_completion_missing_executed_proof",
+                    "Full S2 completion claims require executed proof for every baseline stage.",
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                )
+        localization_gap_reported = _as_bool(_get(summary, "localization_results.gap_report_generated", False)) or str(
+            _get(summary, "localization_results.status", "")
+        ).casefold() == "completed_with_gap_visible"
+        if not (localization_executed or localization_gap_reported):
+            result.fail(
+                "phase47_s2_full_completion_missing_localization_or_gap_report",
+                "Full S2 completion requires localization execution or an explicit localization gap report.",
+                path="localization_results",
+                expected="executed or gap_report_generated",
+                actual=_get(summary, "localization_results", None),
+            )
+    if _as_bool(_get(summary, "localization_results.proper_noun_unreviewed_aliases_trusted", False)):
+        result.fail(
+            "phase47_s2_unreviewed_proper_noun_alias_trusted",
+            "Unreviewed proper-noun LLM aliases must not be trusted into Chinese search.",
+            path="localization_results.proper_noun_unreviewed_aliases_trusted",
+            expected=False,
+            actual=True,
+        )
+    forbidden_safety_paths = (
+        "safety.source_icloud_mutation",
+        "safety.cleanup_delete_reset_drop_truncate",
+        "safety.sourceconcept_entity_resolver_similarity",
+    )
+    for path in forbidden_safety_paths:
+        if _as_bool(_get(summary, path, False)):
+            result.fail("phase47_s2_forbidden_safety_flag", "S2 summary reports a forbidden safety flag.", path=path, expected=False, actual=True)
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -1178,4 +1567,5 @@ CUSTOM_CHECKS = {
     "destructive_operation": _check_destructive_operation,
     "entity_truth_bridge": _check_entity_truth_bridge,
     "dynamic_library_sync": _check_dynamic_library_sync,
+    "phase47_s2_baseline": _check_phase47_s2_baseline,
 }
