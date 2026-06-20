@@ -11,7 +11,8 @@ from sqlalchemy.pool import StaticPool
 
 from scripts import run_phase47_s2_baseline_full_import_ai_localization as s2
 from app.database import Base  # noqa: E402
-from app.models import DynamicSourceItem, DynamicSourceRoot  # noqa: E402
+from app.enums import ContentClassEnum, FileTypeEnum, RatingEnum  # noqa: E402
+from app.models import DynamicSourceItem, DynamicSourceRoot, Media  # noqa: E402
 
 
 def _gate0_blocked(**overrides):
@@ -475,6 +476,32 @@ def test_hydration_failure_budget_uses_hydration_attempted_denominator():
     assert budget["failure_rate"] == pytest.approx(192 / 23619)
 
 
+def test_source_item_import_outcome_helper_commits_before_later_ledger_steps():
+    item = SimpleNamespace(
+        import_status="pending",
+        source_status="available",
+        failure_reason=None,
+        deferred_reason=None,
+        last_imported_at=None,
+        classification_status="waiting_import",
+        ai_tagging_status="waiting_import",
+        localization_status="waiting_ai_tags",
+        media_id=None,
+        content_hash=None,
+        bytes_copied=0,
+        metadata_json={},
+    )
+    calls = []
+    db = SimpleNamespace(commit=lambda: calls.append("commit"))
+
+    s2.commit_source_item_import_outcome(db, item, state="unsupported_desired_media", failure_reason="unsupported_extension")
+
+    assert calls == ["commit"]
+    assert item.import_status == "deferred"
+    assert item.localization_status == "deferred"
+    assert item.metadata_json["phase47_s2_last_state"] == "unsupported_desired_media"
+
+
 def test_source_item_localization_status_backfill_marks_imported_ai_tagged_items():
     engine = create_engine(
         "sqlite://",
@@ -531,7 +558,11 @@ def test_source_item_localization_status_backfill_marks_imported_ai_tagged_items
         )
         db.commit()
 
-        result = s2.backfill_dynamic_source_item_localization_status(db)
+        result = s2.backfill_dynamic_source_item_localization_status(
+            db,
+            localization_stage_status="completed",
+            failure_threshold_exceeded=False,
+        )
         db.commit()
         statuses = {item.relative_path: item.localization_status for item in db.query(DynamicSourceItem).all()}
 
@@ -541,6 +572,151 @@ def test_source_item_localization_status_backfill_marks_imported_ai_tagged_items
         assert statuses["deferred.heic"] == "deferred"
     finally:
         db.close()
+
+
+def test_source_item_localization_status_backfill_defers_partial_or_failed_localization():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    def _seed(session, relative_path: str) -> DynamicSourceItem:
+        root = DynamicSourceRoot(label="active", root_path="redacted", root_path_hash=f"{relative_path}-root")
+        session.add(root)
+        session.flush()
+        item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=relative_path,
+            relative_path_hash=f"{relative_path}-hash",
+            import_status="imported",
+            ai_tagging_status="tagged",
+            localization_status="pending",
+        )
+        session.add(item)
+        session.commit()
+        return item
+
+    db = Session()
+    try:
+        _seed(db, "partial.jpg")
+        partial = s2.backfill_dynamic_source_item_localization_status(
+            db,
+            localization_stage_status="completed_with_gap_visible",
+            failure_threshold_exceeded=False,
+        )
+        db.commit()
+        assert partial["target_status"] == "deferred"
+        assert partial["updated_to_deferred_or_failed"] == 1
+        assert db.query(DynamicSourceItem).filter_by(relative_path="partial.jpg").one().localization_status == "deferred"
+
+        _seed(db, "failed.jpg")
+        failed = s2.backfill_dynamic_source_item_localization_status(
+            db,
+            localization_stage_status="localization_failure_threshold_exceeded",
+            failure_threshold_exceeded=True,
+        )
+        db.commit()
+        assert failed["target_status"] == "failed"
+        assert failed["updated_to_deferred_or_failed"] == 1
+        assert db.query(DynamicSourceItem).filter_by(relative_path="failed.jpg").one().localization_status == "failed"
+    finally:
+        db.close()
+
+
+def test_s2_ai_stage_suppresses_auto_translation_schedule(monkeypatch):
+    from app.services import tag_localization_service
+
+    calls = []
+
+    def fake_schedule(tag_names, lang="zh-CN"):
+        calls.append({"tag_names": list(tag_names), "lang": lang})
+
+    monkeypatch.setattr(tag_localization_service, "schedule_auto_translate", fake_schedule)
+
+    with s2.suppress_auto_translation_during_ai_stage() as suppressed:
+        tag_localization_service.schedule_auto_translate(["blue_eyes", "solo"])
+
+    assert calls == []
+    assert suppressed == [{"tag_count": 2, "language": "zh-CN", "provider_call_prevented": True}]
+    tag_localization_service.schedule_auto_translate(["after"])
+    assert calls == [{"tag_names": ["after"], "lang": "zh-CN"}]
+
+
+def test_classification_stage_respects_locked_media_before_heuristic_fallback(tmp_path, monkeypatch):
+    import app.database as app_database
+    import app.services.ai_tagging_service as ai_tagging_service
+    import app.services.content_classifier as content_classifier
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    db = Session()
+    root = DynamicSourceRoot(label="active", root_path="redacted", root_path_hash="root-hash")
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="locked.jpg",
+        path="media/original/locked.jpg",
+        hash="locked-hash",
+        file_type=FileTypeEnum.image,
+        rating=RatingEnum.safe,
+        content_class=ContentClassEnum.non_anime,
+        content_class_locked=True,
+    )
+    db.add(media)
+    db.flush()
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="locked.jpg",
+        relative_path_hash="locked-item-hash",
+        import_status="imported",
+        media_id=media.id,
+        ai_tagging_status="pending",
+        classification_status="pending",
+        localization_status="waiting_ai_tags",
+    )
+    db.add(item)
+    db.commit()
+    item_id = item.id
+    media_id = media.id
+    db.close()
+
+    monkeypatch.setattr(s2, "prepare_private_output_dir", lambda _args: tmp_path)
+    monkeypatch.setattr(app_database, "init_engine", lambda: None)
+    monkeypatch.setattr(app_database, "SessionLocal", Session)
+    monkeypatch.setattr(ai_tagging_service, "run_ai_tagging", lambda *_args, **_kwargs: {"tags_added": 0, "suggestions_added": 0, "skipped_locked": 0})
+    monkeypatch.setattr(
+        content_classifier,
+        "_classify_heuristic_from_db",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("locked media must not run heuristic fallback")),
+    )
+
+    args = s2.build_parser().parse_args(["--readiness"])
+    args.run_id = "test-run"
+    classification, ai = s2.run_classification_and_ai(
+        args,
+        {"media_work_items": [{"source_item_id": item_id, "source_item_label": "source-item-1", "media_id": media_id}]},
+    )
+
+    verify = Session()
+    try:
+        refreshed_media = verify.query(Media).filter_by(id=media_id).one()
+        refreshed_item = verify.query(DynamicSourceItem).filter_by(id=item_id).one()
+        assert refreshed_media.content_class == ContentClassEnum.non_anime
+        assert refreshed_media.content_class_locked is True
+        assert refreshed_item.classification_status == "classified_reused"
+        assert classification["status_counts"]["skipped_locked"] == 1
+        assert ai["auto_translation_suppressed_during_ai_stage"] is True
+    finally:
+        verify.close()
         Base.metadata.drop_all(engine)
         engine.dispose()
 
@@ -644,6 +820,77 @@ def test_source_root_registration_is_blocked_until_env_db_storage_schema_identit
 
     assert calls["register"] == 0
     assert "VIOLET_ENV_not_production" in gate0["blockers"]
+    assert "input_root_registration_skipped_until_identity_storage_schema_ready" in gate0["warnings"]
+
+
+def test_source_root_registration_requires_valid_backup_even_when_identity_is_clean(tmp_path, monkeypatch):
+    from app.config import settings
+
+    class FakeScalar:
+        def scalar(self):
+            return "blombooru"
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            return FakeScalar()
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+        def dispose(self):
+            pass
+
+    calls = {"register": 0}
+    source_root = tmp_path / "source"
+    storage_root = tmp_path / "storage"
+    source_root.mkdir()
+    storage_root.mkdir()
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("VIOLET_STORAGE_ROOT", str(storage_root))
+    monkeypatch.setattr(settings, "STORAGE_ROOT", storage_root)
+    monkeypatch.setattr(s2, "create_engine", lambda *_args, **_kwargs: FakeEngine())
+    monkeypatch.setattr(
+        s2,
+        "schema_snapshot",
+        lambda _conn: {
+            "tables_present": list(s2.DYNAMIC_SYNC_TABLES),
+            "tables_missing": [],
+            "indexes_present": {},
+        },
+    )
+    monkeypatch.setattr(
+        s2,
+        "create_backup_proof",
+        lambda _args, actual_db_name=None: {
+            "proof_exists": True,
+            "valid": False,
+            "path_redacted": True,
+            "validation_error_codes": ["backup_dump_path_missing"],
+        },
+    )
+
+    def forbidden_register(_args):
+        calls["register"] += 1
+        raise AssertionError("source-root registration must require a valid backup proof")
+
+    monkeypatch.setattr(s2, "register_phase_source_roots", forbidden_register)
+    args = s2.build_parser().parse_args(
+        ["--readiness", "--source-root", str(source_root), "--register-source-root"]
+    )
+    args.run_id = "test-run"
+
+    gate0 = s2.run_gate0_preparation(args)
+
+    assert calls["register"] == 0
+    assert "source_root_write_requires_valid_backup_proof" in gate0["blockers"]
+    assert "backup_recovery_proof_invalid" in gate0["blockers"]
     assert "input_root_registration_skipped_until_identity_storage_schema_ready" in gate0["warnings"]
 
 

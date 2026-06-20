@@ -1430,6 +1430,20 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
                 expected=False,
                 actual=True,
             )
+        ai_stage_suppresses_auto = _as_bool(
+            _get(summary, "ai_tagging_results.auto_translation_suppressed_during_ai_stage", False)
+        ) or _as_bool(
+            _get(summary, "llm_localization_audit.current_runner_suppresses_auto_translation_during_ai_stage", False)
+        )
+        background_calls_ledgered = _as_bool(_get(summary, "llm_localization_audit.background_provider_calls_ledgered", False))
+        if ai_tagging_executed and not (ai_stage_suppresses_auto or background_calls_ledgered):
+            result.fail(
+                "phase47_s2_unledgered_background_auto_translation_not_prevented",
+                "S2 AI tagging must suppress auto-translation side effects or prove background provider calls are ledgered.",
+                path="llm_localization_audit.current_runner_suppresses_auto_translation_during_ai_stage",
+                expected=True,
+                actual=False,
+            )
     if int(_get(summary, "gate0.input_root_registration.registered_count", 0) or 0) > 0:
         if not backup_valid or not _as_bool(_get(summary, "gate0.db_identity.matches_expected_database", True)) or not _as_bool(
             _get(summary, "gate0.storage_identity.matches_expected", True)

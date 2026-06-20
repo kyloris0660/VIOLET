@@ -22,6 +22,7 @@ import subprocess
 import sys
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -749,6 +750,13 @@ def run_gate0_preparation(args: argparse.Namespace) -> dict[str, Any]:
     else:
         backup = create_backup_proof(args, actual_db_name=actual_db_name)
     backup_public = {key: value for key, value in backup.items() if key not in {"private_path", "private_dump_path"}}
+    source_root_write_requested = bool(args.register_source_root or args.replace_source_roots)
+    if source_root_write_requested and not backup.get("valid"):
+        blockers.append("source_root_write_requires_valid_backup_proof")
+        if not backup.get("proof_exists"):
+            blockers.append("backup_recovery_proof_missing")
+        else:
+            blockers.append("backup_recovery_proof_invalid")
 
     if schema_before.get("tables_missing"):
         if not backup.get("valid"):
@@ -787,6 +795,9 @@ def run_gate0_preparation(args: argparse.Namespace) -> dict[str, Any]:
         "production_db_identity_query_failed",
         "production_db_name_mismatch",
         "dynamic_sync_schema_ensure_failed",
+        "source_root_write_requires_valid_backup_proof",
+        "backup_recovery_proof_missing",
+        "backup_recovery_proof_invalid",
     }
     root_inputs, _root_input_source = phase_source_root_inputs(args)
     source_registration_allowed = not schema_after.get("tables_missing") and not (
@@ -1184,6 +1195,7 @@ def llm_localization_audit_from_rows(
     translated_in_ledger = sum(int(row.get("translated") or 0) for row in localization_rows)
     failed_in_ledger = sum(int(row.get("failed") or 0) for row in localization_rows)
     background = dict(observed_background or {})
+    background_observed = bool(background)
     return {
         "status": "provider_calls_audited",
         "dedicated_localization_ledger_rows": len(localization_rows),
@@ -1191,12 +1203,16 @@ def llm_localization_audit_from_rows(
         "dedicated_localization_translated": translated_in_ledger,
         "dedicated_localization_failed": failed_in_ledger,
         "dedicated_localization_llm_called": bool(localization_results.get("llm_called")),
-        "background_auto_translation_observed": bool(background),
+        "background_auto_translation_observed": background_observed,
         "background_auto_translation_calls": int(background.get("translate_call_count") or 0),
         "background_auto_translation_saved": int(background.get("saved_translation_count") or 0),
         "background_auto_translation_already_translated_or_static": int(
             background.get("already_translated_or_static_count") or 0
         ),
+        "background_provider_call_accounting": "historical_log_lower_bound" if background_observed else "not_observed",
+        "background_provider_calls_ledgered": not background_observed,
+        "current_runner_suppresses_auto_translation_during_ai_stage": True,
+        "current_runner_llm_localization_path": "explicit_localization_stage_ledgers_only",
         "provider_call_count_lower_bound": len(localization_rows) + int(background.get("translate_call_count") or 0),
         "translated_tag_units_recorded": translated_in_ledger + int(background.get("saved_translation_count") or 0),
         "provider_calls_undercounted": False,
@@ -1569,6 +1585,27 @@ def mark_source_item_import_outcome(
     item.metadata_json = metadata
 
 
+def commit_source_item_import_outcome(
+    db: Any,
+    item: Any,
+    *,
+    state: str,
+    media_id: int | None = None,
+    content_hash: str | None = None,
+    bytes_copied: int = 0,
+    failure_reason: str | None = None,
+) -> None:
+    mark_source_item_import_outcome(
+        item,
+        state=state,
+        media_id=media_id,
+        content_hash=content_hash,
+        bytes_copied=bytes_copied,
+        failure_reason=failure_reason,
+    )
+    db.commit()
+
+
 def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) -> dict[str, Any]:
     from app import database
     from app.config import settings
@@ -1689,7 +1726,12 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                 unsupported_breakdown[kind] += 1
                 unsupported_extension_breakdown[suffix or "<none>"] += 1
                 status_counts[state] += 1
-                mark_source_item_import_outcome(item, state=state, failure_reason=reason or "unsupported_extension")
+                commit_source_item_import_outcome(
+                    db,
+                    item,
+                    state=state,
+                    failure_reason=reason or "unsupported_extension",
+                )
                 row = {
                     "run_id": args.run_id,
                     "source_item_label": safe_item,
@@ -1738,7 +1780,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                 if hash_status == "timeout":
                     state = "read_timeout"
                     hydration_failures += 1
-                    mark_source_item_import_outcome(item, state=state, failure_reason=hash_value)
+                    commit_source_item_import_outcome(db, item, state=state, failure_reason=hash_value)
                     row.update({"state": state, "reason": hash_value})
                     status_counts[state] += 1
                     import_rows.append(row)
@@ -1759,7 +1801,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                 if hash_status != "ok":
                     state = "hydration_failed" if is_hydration_workload else "unreadable_source"
                     hydration_failures += 1
-                    mark_source_item_import_outcome(item, state=state, failure_reason=hash_value)
+                    commit_source_item_import_outcome(db, item, state=state, failure_reason=hash_value)
                     row.update({"state": state, "reason": hash_value})
                     status_counts[state] += 1
                     import_rows.append(row)
@@ -1783,7 +1825,8 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                 existing = db.query(Media).filter(Media.hash == source_hash).first()
                 if existing:
                     state = "reused_existing"
-                    mark_source_item_import_outcome(
+                    commit_source_item_import_outcome(
+                        db,
                         item,
                         state=state,
                         media_id=existing.id,
@@ -1961,6 +2004,29 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
         db.close()
 
 
+@contextmanager
+def suppress_auto_translation_during_ai_stage() -> Iterable[list[dict[str, Any]]]:
+    from app.services import tag_localization_service
+
+    original = tag_localization_service.schedule_auto_translate
+    suppressed_calls: list[dict[str, Any]] = []
+
+    def _suppressed_schedule_auto_translate(tag_names: Sequence[str], lang: str = "zh-CN") -> None:
+        suppressed_calls.append(
+            {
+                "tag_count": len(list(tag_names or [])),
+                "language": lang,
+                "provider_call_prevented": True,
+            }
+        )
+
+    tag_localization_service.schedule_auto_translate = _suppressed_schedule_auto_translate
+    try:
+        yield suppressed_calls
+    finally:
+        tag_localization_service.schedule_auto_translate = original
+
+
 def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     from app import database
     from app.enums import ContentClassEnum
@@ -1982,6 +2048,21 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
     max_ai_items = max(int(args.max_ai_items or 0), 0)
 
     def classify_without_network_download(media: Any, source_item: Any | None, source_item_label: str) -> None:
+        if getattr(media, "content_class_locked", False):
+            classification_counts["skipped_locked"] += 1
+            if source_item:
+                source_item.classification_status = "classified_reused" if media.content_class is not None else "deferred"
+            row = {
+                "source_item_label": source_item_label,
+                "media_label": media_safe_label(media.id),
+                "state": "classification_skipped_locked",
+                "content_class": media.content_class.value if hasattr(media.content_class, "value") else str(media.content_class),
+                "reason": "content_class_locked",
+                "path_private_or_omitted": True,
+            }
+            classification_rows.append(row)
+            append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
+            return
         if media.content_class is not None:
             state = "reused_existing" if source_item and source_item.media_id == media.id else "already_classified"
             classification_counts[state] += 1
@@ -2051,112 +2132,113 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
             append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
 
     try:
-        for work in work_items:
-            source_item = db.query(DynamicSourceItem).filter(DynamicSourceItem.id == work["source_item_id"]).first()
-            media = db.query(Media).filter(Media.id == work["media_id"]).first()
-            if not media:
-                classification_counts["failed"] += 1
-                ai_counts["failed"] += 1
-                row = {
-                    "source_item_label": work["source_item_label"],
-                    "state": "classification_failed",
-                    "reason": "media_missing",
-                    "path_private_or_omitted": True,
-                }
-                classification_rows.append(row)
-                append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
-                ai_row = {
-                    "source_item_label": work["source_item_label"],
-                    "state": "ai_failed",
-                    "reason": "media_missing",
-                    "path_private_or_omitted": True,
-                }
-                ai_rows.append(ai_row)
-                append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
-                if source_item:
-                    source_item.classification_status = "failed"
-                    source_item.ai_tagging_status = "failed"
-                db.commit()
-                continue
-
-            existing_ai_count = (
-                db.query(blombooru_media_tags)
-                .filter(
-                    blombooru_media_tags.c.media_id == media.id,
-                    blombooru_media_tags.c.source == "ai_wd",
-                )
-                .count()
-            )
-            if existing_ai_count:
-                ai_counts["ai_reused"] += 1
-                if source_item:
-                    source_item.ai_tagging_status = "tagged_reused"
-                    source_item.localization_status = "pending"
-                ai_row = {
-                    "source_item_label": work["source_item_label"],
-                    "media_label": media_safe_label(media.id),
-                    "state": "ai_reused",
-                    "existing_ai_tags": existing_ai_count,
-                    "path_private_or_omitted": True,
-                }
-                ai_rows.append(ai_row)
-                append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
-                db.commit()
-            else:
-                if max_ai_items and ai_attempted >= max_ai_items:
-                    stopped_by_rule = "max_ai_items_reached"
-                    break
-                ai_attempted += 1
-                try:
-                    result = run_ai_tagging(db, media.id, dry_run=False)
-                    if result.get("error"):
-                        raise RuntimeError(result["error"])
-                    ai_counts["ai_tagged"] += 1
+        with suppress_auto_translation_during_ai_stage() as suppressed_auto_translate_calls:
+            for work in work_items:
+                source_item = db.query(DynamicSourceItem).filter(DynamicSourceItem.id == work["source_item_id"]).first()
+                media = db.query(Media).filter(Media.id == work["media_id"]).first()
+                if not media:
+                    classification_counts["failed"] += 1
+                    ai_counts["failed"] += 1
+                    row = {
+                        "source_item_label": work["source_item_label"],
+                        "state": "classification_failed",
+                        "reason": "media_missing",
+                        "path_private_or_omitted": True,
+                    }
+                    classification_rows.append(row)
+                    append_jsonl(checkpoint_dir / "classification-ledger.jsonl", row)
+                    ai_row = {
+                        "source_item_label": work["source_item_label"],
+                        "state": "ai_failed",
+                        "reason": "media_missing",
+                        "path_private_or_omitted": True,
+                    }
+                    ai_rows.append(ai_row)
+                    append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
                     if source_item:
-                        source_item.ai_tagging_status = "tagged"
+                        source_item.classification_status = "failed"
+                        source_item.ai_tagging_status = "failed"
+                    db.commit()
+                    continue
+
+                existing_ai_count = (
+                    db.query(blombooru_media_tags)
+                    .filter(
+                        blombooru_media_tags.c.media_id == media.id,
+                        blombooru_media_tags.c.source == "ai_wd",
+                    )
+                    .count()
+                )
+                if existing_ai_count:
+                    ai_counts["ai_reused"] += 1
+                    if source_item:
+                        source_item.ai_tagging_status = "tagged_reused"
                         source_item.localization_status = "pending"
                     ai_row = {
                         "source_item_label": work["source_item_label"],
                         "media_label": media_safe_label(media.id),
-                        "state": "ai_tagged",
-                        "tags_added": result.get("tags_added", 0),
-                        "suggestions_added": result.get("suggestions_added", 0),
-                        "skipped_locked": result.get("skipped_locked", 0),
+                        "state": "ai_reused",
+                        "existing_ai_tags": existing_ai_count,
                         "path_private_or_omitted": True,
                     }
                     ai_rows.append(ai_row)
                     append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
-                except Exception as exc:
-                    try:
-                        db.rollback()
-                    except Exception:
-                        pass
-                    ai_failures += 1
-                    ai_counts["ai_failed"] += 1
-                    if source_item:
-                        source_item.ai_tagging_status = "failed"
-                        source_item.failure_reason = str(exc)[:255]
-                    ai_row = {
-                        "source_item_label": work["source_item_label"],
-                        "media_label": media_safe_label(media.id),
-                        "state": "ai_failed",
-                        "reason": str(exc)[:500],
-                        "path_private_or_omitted": True,
-                    }
-                    ai_rows.append(ai_row)
-                    append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
-                    if failure_threshold_exceeded(
-                        ai_failures,
-                        ai_attempted,
-                        max_items=args.ai_failure_max_items,
-                        max_rate=args.ai_failure_max_rate,
-                    ):
-                        stopped_by_rule = "ai_failure_threshold_exceeded"
+                    db.commit()
+                else:
+                    if max_ai_items and ai_attempted >= max_ai_items:
+                        stopped_by_rule = "max_ai_items_reached"
                         break
-                db.commit()
+                    ai_attempted += 1
+                    try:
+                        result = run_ai_tagging(db, media.id, dry_run=False)
+                        if result.get("error"):
+                            raise RuntimeError(result["error"])
+                        ai_counts["ai_tagged"] += 1
+                        if source_item:
+                            source_item.ai_tagging_status = "tagged"
+                            source_item.localization_status = "pending"
+                        ai_row = {
+                            "source_item_label": work["source_item_label"],
+                            "media_label": media_safe_label(media.id),
+                            "state": "ai_tagged",
+                            "tags_added": result.get("tags_added", 0),
+                            "suggestions_added": result.get("suggestions_added", 0),
+                            "skipped_locked": result.get("skipped_locked", 0),
+                            "path_private_or_omitted": True,
+                        }
+                        ai_rows.append(ai_row)
+                        append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
+                    except Exception as exc:
+                        try:
+                            db.rollback()
+                        except Exception:
+                            pass
+                        ai_failures += 1
+                        ai_counts["ai_failed"] += 1
+                        if source_item:
+                            source_item.ai_tagging_status = "failed"
+                            source_item.failure_reason = str(exc)[:255]
+                        ai_row = {
+                            "source_item_label": work["source_item_label"],
+                            "media_label": media_safe_label(media.id),
+                            "state": "ai_failed",
+                            "reason": str(exc)[:500],
+                            "path_private_or_omitted": True,
+                        }
+                        ai_rows.append(ai_row)
+                        append_jsonl(checkpoint_dir / "ai-tagging-ledger.jsonl", ai_row)
+                        if failure_threshold_exceeded(
+                            ai_failures,
+                            ai_attempted,
+                            max_items=args.ai_failure_max_items,
+                            max_rate=args.ai_failure_max_rate,
+                        ):
+                            stopped_by_rule = "ai_failure_threshold_exceeded"
+                            break
+                    db.commit()
 
-            classify_without_network_download(media, source_item, work["source_item_label"])
-            db.commit()
+                classify_without_network_download(media, source_item, work["source_item_label"])
+                db.commit()
 
         classification_failures = int(classification_counts.get("failed", 0))
         classification_budget = failure_threshold_payload(
@@ -2209,6 +2291,12 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
                 "failed": ai_failures,
                 "failure_budget": ai_budget,
                 "status_counts": dict(ai_counts),
+                "auto_translation_suppressed_during_ai_stage": True,
+                "unledgered_background_provider_calls_prevented": True,
+                "suppressed_auto_translate_schedule_count": len(suppressed_auto_translate_calls),
+                "suppressed_auto_translate_tag_count": sum(
+                    int(row.get("tag_count") or 0) for row in suppressed_auto_translate_calls
+                ),
                 "stopped_by_rule": stopped_by_rule,
                 "private_ledgers": {
                     "classification_rows": classification_rows,
@@ -2220,27 +2308,45 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
         db.close()
 
 
-def backfill_dynamic_source_item_localization_status(db: Any) -> dict[str, Any]:
+def backfill_dynamic_source_item_localization_status(
+    db: Any,
+    *,
+    localization_stage_status: str = "completed",
+    failure_threshold_exceeded: bool = False,
+) -> dict[str, Any]:
     from app.models import DynamicSourceItem
 
     eligible_statuses = {"pending", "waiting_ai_tags"}
+    if localization_stage_status == "completed" and not failure_threshold_exceeded:
+        target_status = "localized"
+        result_status = "backfilled"
+    elif failure_threshold_exceeded:
+        target_status = "failed"
+        result_status = "marked_failed"
+    else:
+        target_status = "deferred"
+        result_status = "marked_deferred_retryable"
     query = db.query(DynamicSourceItem).filter(
         DynamicSourceItem.import_status == "imported",
         DynamicSourceItem.ai_tagging_status.in_(["tagged", "tagged_reused"]),
         DynamicSourceItem.localization_status.in_(sorted(eligible_statuses)),
     )
     before = int(query.count())
-    updated = int(query.update({DynamicSourceItem.localization_status: "localized"}, synchronize_session=False))
+    updated = int(query.update({DynamicSourceItem.localization_status: target_status}, synchronize_session=False))
     status_counts = dict(
         db.query(DynamicSourceItem.localization_status, func.count(DynamicSourceItem.id))
         .group_by(DynamicSourceItem.localization_status)
         .all()
     )
     return {
-        "status": "backfilled" if updated else "already_current",
+        "status": result_status if updated else "already_current",
         "semantic": "source-item localization_status reflects tag-localization readiness/completion for imported AI-tagged items",
+        "target_status": target_status,
+        "localization_stage_status": localization_stage_status,
+        "failure_threshold_exceeded": bool(failure_threshold_exceeded),
         "eligible_pending_before": before,
-        "updated_to_localized": updated,
+        "updated_to_localized": updated if target_status == "localized" else 0,
+        "updated_to_deferred_or_failed": updated if target_status != "localized" else 0,
         "status_counts_after": {str(key): int(value) for key, value in status_counts.items()},
         "paths_redacted": True,
     }
@@ -2343,10 +2449,6 @@ def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
         job.failed = failed
         job.skipped = skipped
         job.remaining_after = remaining_after
-        job.finished_at = datetime.now(timezone.utc)
-        job.status = "completed" if failed == 0 else "completed"
-        source_item_status = backfill_dynamic_source_item_localization_status(db)
-        db.commit()
         budget = failure_threshold_payload(
             failed,
             processed,
@@ -2359,6 +2461,14 @@ def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
             status = "completed_with_gap_visible"
         else:
             status = "completed" if remaining_after == 0 else "completed_with_gap_visible"
+        job.finished_at = datetime.now(timezone.utc)
+        job.status = "completed" if status in {"completed", "completed_with_gap_visible"} else "failed"
+        source_item_status = backfill_dynamic_source_item_localization_status(
+            db,
+            localization_stage_status=status,
+            failure_threshold_exceeded=bool(budget.get("threshold_exceeded")),
+        )
+        db.commit()
         return {
             "stage": "localization",
             "status": status,

@@ -19,23 +19,28 @@ This roadmap keeps production baseline closeout separate from later source/entit
 
 ## Short-Term Follow-Ups
 
-1. S2F desired-media support and backfill
-   - Add or validate support/backfill for `.heic`, `.heif`, `.jfif`, `.mov`, `.mp4`, and `.pic`.
+1. S2F0 desired-media gap audit / support decision report
+   - Report unsupported desired-media ratio, extension breakdown, sampled relevance, and recommendation.
    - Keep sidecar/metadata files such as `.AAE` separate from desired user media.
-   - Backfill through source-item state ledgers, content hashes, and retryable failure accounting.
+   - Do not commit to HEIC/JFIF/MOV/MP4 support or backfill unless the audit proves it is worth doing for the anime-library use case.
 
-2. S2G GPU AI tagging, provider benchmark, and load control
-   - Benchmark local WD tagging throughput and CPU/GPU options.
-   - Add operator-visible throttles for long production jobs.
-   - Preserve model identity, threshold, and provenance compatibility for reuse.
+2. S2G GPU AI tagging, provider benchmark, and load control (high priority)
+   - Benchmark CUDA, DirectML, and CPU fallback paths for local WD tagging.
+   - Record provider provenance, model identity, thresholds, and CPU/GPU drift audit results.
+   - Add batch/concurrency controls and operator-visible throttling for long production jobs.
+   - Preserve provenance compatibility for reuse.
+
+3. PD1 Production/Development Separation Executable Gates
+   - Convert the governance document into tests/contracts that prevent develop branches from casually writing production DB, storage, or source-root state.
+   - Require explicit promotion mode for production execution.
 
 ## Incremental Library Sync
 
-1. S3A manual incremental import
-   - Manual check first.
-   - Operator-reviewed pending counts and thresholds.
-   - Explicit execute confirmation for production writes.
-   - Resume/retry support for cloud hydration, import, classification, AI tagging, and localization.
+1. S3A Controlled Incremental Sync Pipeline
+   - Operator manually triggers a production run.
+   - The system automatically performs update check, hydration/read, import/reuse, classification, AI tagging, localization, per-item ledgers, failure budgets, and summary.
+   - Require operator-reviewed pending counts, thresholds, and explicit execute confirmation for production writes.
+   - Preserve resume/retry support for cloud hydration, import, classification, AI tagging, and localization.
 
 2. S3B opt-in automated incremental sync
    - Automatic production writes stay disabled by default until S3B approval.
@@ -48,7 +53,9 @@ This roadmap keeps production baseline closeout separate from later source/entit
    - Keep AI proper-noun tags as weak evidence only.
    - Do not create confirmed Entity assignments from AI tags.
 
-2. Later provider / Pixiv / source metadata / entity bridge
-   - Provider/Pixiv/gallery-dl/SauceNAO/Google remain out of S2.
+2. Pixiv / source metadata strategy polish after R1R
+   - Use R1R results to decide whether the current Pixiv/source metadata strategy is viable or needs a larger redesign.
+   - Do not introduce new providers before Pixiv/source metadata is polished.
+   - Provider/Pixiv/gallery-dl/SauceNAO/Google remain out of S2 and require separate approval.
    - Future provider work must be cache-first, budgeted, privacy-gated, and separately approved.
    - Entity bridge writes require explicit phase approval, provenance rules, and executable contracts.

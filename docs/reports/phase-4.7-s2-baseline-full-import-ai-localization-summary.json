@@ -119,7 +119,7 @@
       ".pic"
     ],
     "not_folded_into_silent_success": true,
-    "status": "visible_future_backfill_scope",
+    "status": "visible_future_audit_support_decision_scope",
     "unsupported_desired_media_count": 4247
   },
   "dynamic_source_item_status": {
@@ -325,7 +325,7 @@
     },
     "warnings": []
   },
-  "generated_at": "2026-06-20T06:33:38Z",
+  "generated_at": "2026-06-20T10:26:00Z",
   "governance_documents": [
     "docs/governance/production-development-separation.md",
     "docs/roadmap/post-s2-production-roadmap.md"
@@ -333,7 +333,7 @@
   "head_evidence": {
     "current_pr_head_sha": "reported by PR metadata/final delivery after the report refresh commit",
     "current_pr_head_sha_scope": "a committed artifact cannot truthfully contain its own final commit SHA",
-    "report_generation_head_sha": "83c4c87f12ef69787d1be4e27837210d35c33497",
+    "report_generation_head_sha": "f5f5cbe024c7127055a1ff16cea18a3775f264fa",
     "report_generation_head_sha_scope": "git HEAD used while generating this committed public report",
     "top_level_head_sha_omitted": true,
     "validated_run_head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7",
@@ -427,6 +427,10 @@
     "background_auto_translation_calls": 1438,
     "background_auto_translation_observed": true,
     "background_auto_translation_saved": 1437,
+    "background_provider_call_accounting": "historical_log_lower_bound",
+    "background_provider_calls_ledgered": false,
+    "current_runner_llm_localization_path": "explicit_localization_stage_ledgers_only",
+    "current_runner_suppresses_auto_translation_during_ai_stage": true,
     "dedicated_localization_failed": 0,
     "dedicated_localization_ledger_rows": 25,
     "dedicated_localization_llm_called": true,

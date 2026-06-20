@@ -41,7 +41,7 @@
 
 ## Head Evidence
 - Validated run head SHA: `e56483efa9058dc7bf34a765c8c3b6efcb1673a7`.
-- Report generation head SHA: `83c4c87f12ef69787d1be4e27837210d35c33497`.
+- Report generation head SHA: `f5f5cbe024c7127055a1ff16cea18a3775f264fa`.
 - Current PR head SHA: `reported by PR metadata/final delivery after the report refresh commit`.
 - Current PR head scope: a committed artifact cannot truthfully contain its own final commit SHA.
 - Top-level ambiguous `head_sha` is intentionally omitted.
@@ -73,7 +73,7 @@
 - Classification status: `completed`; failed: `0`.
 - AI tagging status: `completed`; tagged/reused/failed: `30971` / `4063` / `0`.
 - LLM localization status: `completed`; translated/failed/skipped/remaining: `1235` / `0` / `0` / `0`.
-- LLM provider-call audit: dedicated provider batches `25`, background auto-translation calls `1438`, provider call lower bound `1463`, translated tag units recorded `2672`.
+- LLM provider-call audit: dedicated provider batches `25`; historical background auto-translation log lower bound `1438`; provider call lower bound `1463`; translated tag units recorded `2672`. Current runner policy suppresses auto-translation during the AI tagging stage so future S2 LLM work goes through explicit localization ledgers only.
 - Dynamic source item localization status: `backfilled`; updated to localized `35034`.
 - Browser validation status: `passed`.
 
@@ -83,6 +83,6 @@
 
 ## Required Next Step
 - PR #113 is in closeout and browser/manual validation handoff; do not start S3 from this PR.
-- Keep desired-media support gaps visible for S2F backfill: `.heic`, `.heif`, `.jfif`, `.mov`, `.mp4`, `.pic`.
+- Keep desired-media support gaps visible for S2F0 audit / support decision: `.heic`, `.heif`, `.jfif`, `.mov`, `.mp4`, `.pic`.
 - Keep production/development lane separation in force before any future feature branch touches runtime state.
 - Future production writes still require PR review, executable contracts, backup proof, production dry-run where applicable, browser validation, redaction checks, and explicit execute confirmation.

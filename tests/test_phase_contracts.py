@@ -293,6 +293,7 @@ def _phase47_full_execution_summary(**overrides: object) -> dict:
             "status": "completed",
             "executed": True,
             "failure_budget": {"threshold_exceeded": False},
+            "auto_translation_suppressed_during_ai_stage": True,
         },
         localization_results={
             "status": "completed_with_gap_visible",
@@ -305,6 +306,8 @@ def _phase47_full_execution_summary(**overrides: object) -> dict:
         llm_localization_audit={
             "provider_call_count_lower_bound": 1,
             "provider_calls_undercounted": False,
+            "current_runner_suppresses_auto_translation_during_ai_stage": True,
+            "background_provider_calls_ledgered": False,
         },
         browser_validation={"status": "passed"},
     )
@@ -597,6 +600,27 @@ def test_phase47_s2_contract_rejects_llm_call_without_audit_or_with_undercount()
 
     assert "phase47_s2_llm_audit_missing" in _error_codes(missing_result)
     assert "phase47_s2_llm_provider_calls_undercounted" in _error_codes(undercount_result)
+
+
+def test_phase47_s2_contract_rejects_llm_background_calls_without_suppression_or_ledger() -> None:
+    summary = _phase47_full_execution_summary(
+        ai_tagging_results={
+            "status": "completed",
+            "executed": True,
+            "failure_budget": {"threshold_exceeded": False},
+            "auto_translation_suppressed_during_ai_stage": False,
+        },
+        llm_localization_audit={
+            "provider_call_count_lower_bound": 1,
+            "provider_calls_undercounted": False,
+            "current_runner_suppresses_auto_translation_during_ai_stage": False,
+            "background_provider_calls_ledgered": False,
+        },
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_unledgered_background_auto_translation_not_prevented" in _error_codes(result)
 
 
 def test_phase47_s2_contract_rejects_source_root_write_without_clean_identity_or_backup() -> None:
