@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from scripts import run_phase47_s2_baseline_full_import_ai_localization as s2
 from app.database import Base  # noqa: E402
 from app.enums import ContentClassEnum, FileTypeEnum, RatingEnum  # noqa: E402
-from app.models import DynamicSourceItem, DynamicSourceRoot, Media  # noqa: E402
+from app.models import DynamicSourceItem, DynamicSourceRoot, Media, TagTranslationJob  # noqa: E402
 
 
 def _gate0_blocked(**overrides):
@@ -502,6 +502,83 @@ def test_source_item_import_outcome_helper_commits_before_later_ledger_steps():
     assert item.metadata_json["phase47_s2_last_state"] == "unsupported_desired_media"
 
 
+def test_import_stage_writes_ledger_for_already_imported_source_items(tmp_path, monkeypatch):
+    import app.database as app_database
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    db = Session()
+    root = DynamicSourceRoot(label="active", root_path="redacted", root_path_hash="already-root-hash")
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="existing.jpg",
+        path="media/original/existing.jpg",
+        hash="existing-hash",
+        file_type=FileTypeEnum.image,
+        rating=RatingEnum.safe,
+    )
+    db.add(media)
+    db.flush()
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="existing.jpg",
+        relative_path_hash="existing-item-hash",
+        import_status="imported",
+        media_id=media.id,
+        content_hash="existing-hash",
+        classification_status="pending",
+        ai_tagging_status="pending",
+        localization_status="waiting_ai_tags",
+    )
+    db.add(item)
+    db.commit()
+    root_id = root.id
+    item_id = item.id
+    media_id = media.id
+    db.close()
+
+    monkeypatch.setattr(s2, "prepare_private_output_dir", lambda _args: tmp_path)
+    monkeypatch.setattr(app_database, "init_engine", lambda: None)
+    monkeypatch.setattr(app_database, "SessionLocal", Session)
+    monkeypatch.setattr(s2, "ensure_import_disk_safety", lambda *_args, **_kwargs: {"passed": True})
+    monkeypatch.setattr(
+        s2,
+        "query_latest_source_items",
+        lambda db_session, _dry_run: (db_session.query(DynamicSourceItem).all(), {root_id: tmp_path}),
+    )
+
+    args = s2.build_parser().parse_args(["--readiness", "--output-dir", str(tmp_path)])
+    args.run_id = "test-run"
+    result = s2.run_controlled_import(args, {"status": "completed"})
+
+    assert result["reused_existing"] == 1
+    assert result["per_item_ledgers_written"] is True
+    assert result["media_work_items"] == [
+        {
+            "source_item_id": item_id,
+            "source_item_label": "source-item-1",
+            "media_id": media_id,
+            "reused_existing": True,
+            "already_imported": True,
+        }
+    ]
+    rows = result["private_ledgers"]["import_item_rows"]
+    assert len(rows) == 1
+    assert rows[0]["state"] == "already_imported"
+    assert rows[0]["reuse_state"] == "reused_existing"
+    assert json.loads((tmp_path / "import-item-ledger.jsonl").read_text(encoding="utf-8").strip())["state"] == "already_imported"
+
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
 def test_source_item_localization_status_backfill_marks_imported_ai_tagged_items():
     engine = create_engine(
         "sqlite://",
@@ -626,6 +703,54 @@ def test_source_item_localization_status_backfill_defers_partial_or_failed_local
         db.close()
 
 
+def test_localization_max_tags_reports_partial_not_target_met(tmp_path, monkeypatch):
+    import app.database as app_database
+    import app.services.tag_localization_service as tag_service
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    missing_rows = [{"name": "blue_eyes", "category": "general"}]
+
+    def fake_list_missing(_db, limit=100000, category=None):
+        return missing_rows[: min(limit, len(missing_rows))]
+
+    async def fake_batch_translate_missing_tags(_db, dry_run=False, max_items=50, category=None):
+        return {"candidates": max_items, "translated": max_items, "failed": 0, "skipped": 0, "errors": []}
+
+    monkeypatch.setattr(s2, "prepare_private_output_dir", lambda _args: tmp_path)
+    monkeypatch.setattr(app_database, "init_engine", lambda: None)
+    monkeypatch.setattr(app_database, "SessionLocal", Session)
+    monkeypatch.setattr(tag_service, "list_missing_translations", fake_list_missing)
+    monkeypatch.setattr(tag_service, "batch_translate_missing_tags", fake_batch_translate_missing_tags)
+    monkeypatch.setattr(tag_service, "get_translation_stats", lambda _db: {"missing": 1})
+
+    args = s2.build_parser().parse_args(
+        ["--readiness", "--output-dir", str(tmp_path), "--localization-max-tags", "1", "--localization-batch-size", "1"]
+    )
+    args.run_id = "test-run"
+    result = s2.run_tag_localization(args)
+
+    db = Session()
+    try:
+        job = db.query(TagTranslationJob).one()
+        assert job.status == "partial"
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+    assert result["status"] == "partial_localization_max_tags_reached"
+    assert result["target_met"] is False
+    assert result["stopped_by_rule"] == "localization_max_tags_reached"
+    assert result["source_item_status_backfill"]["target_status"] == "deferred"
+
+
 def test_s2_ai_stage_suppresses_auto_translation_schedule(monkeypatch):
     from app.services import tag_localization_service
 
@@ -721,6 +846,82 @@ def test_classification_stage_respects_locked_media_before_heuristic_fallback(tm
         engine.dispose()
 
 
+def test_ai_missing_media_row_counts_as_ai_failure(tmp_path, monkeypatch):
+    import app.database as app_database
+    import app.services.ai_tagging_service as ai_tagging_service
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    db = Session()
+    root = DynamicSourceRoot(label="active", root_path="redacted", root_path_hash="stale-root-hash")
+    db.add(root)
+    db.flush()
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="stale.jpg",
+        relative_path_hash="stale-item-hash",
+        import_status="imported",
+        media_id=9999,
+        ai_tagging_status="pending",
+        classification_status="pending",
+        localization_status="waiting_ai_tags",
+    )
+    db.add(item)
+    db.commit()
+    item_id = item.id
+    db.close()
+
+    monkeypatch.setattr(s2, "prepare_private_output_dir", lambda _args: tmp_path)
+    monkeypatch.setattr(app_database, "init_engine", lambda: None)
+    monkeypatch.setattr(app_database, "SessionLocal", Session)
+    monkeypatch.setattr(
+        ai_tagging_service,
+        "run_ai_tagging",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("missing media must not tag")),
+    )
+
+    args = s2.build_parser().parse_args(
+        [
+            "--readiness",
+            "--classification-failure-max-rate",
+            "1.0",
+            "--ai-failure-max-rate",
+            "1.0",
+        ]
+    )
+    args.run_id = "test-run"
+    classification, ai = s2.run_classification_and_ai(
+        args,
+        {"media_work_items": [{"source_item_id": item_id, "source_item_label": "source-item-1", "media_id": 9999}]},
+    )
+
+    assert classification["failed"] == 1
+    assert ai["failed"] == 1
+    assert ai["attempted"] == 1
+    assert ai["status"] == "completed_with_item_failures_within_budget"
+    assert ai["failure_budget"]["failed"] == 1
+    assert ai["failure_budget"]["attempted"] == 1
+    assert ai["status_counts"]["ai_failed"] == 1
+    rows = ai["private_ledgers"]["ai_tagging_rows"]
+    assert rows == [
+        {
+            "source_item_label": "source-item-1",
+            "state": "ai_failed",
+            "reason": "media_missing",
+            "path_private_or_omitted": True,
+        }
+    ]
+
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
 def test_output_dir_cannot_overlap_source_root(tmp_path, monkeypatch):
     monkeypatch.setattr(s2, "PUBLIC_REPORT_MD", tmp_path / "public.md")
     monkeypatch.setattr(s2, "PUBLIC_REPORT_JSON", tmp_path / "public.json")
@@ -761,6 +962,24 @@ def test_llm_approval_still_requires_real_config(monkeypatch):
     assert "TAG_TRANSLATION_LLM_BASE_URL_missing" in blockers
     assert "TAG_TRANSLATION_LLM_API_KEY_missing" in blockers
     assert "tag_translation_execution_path_not_configured" in blockers
+
+
+def test_llm_readiness_rejects_unsupported_provider(monkeypatch):
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_PROVIDER", "typo_provider")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "local-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "local-key")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "true")
+    monkeypatch.delenv("TAG_TRANSLATION_BACKGROUND_ENABLED", raising=False)
+    args = s2.build_parser().parse_args(["--readiness", "--approve-llm-localization"])
+
+    readiness, blockers = s2.llm_localization_readiness(args)
+
+    assert readiness["provider_configured"] is True
+    assert readiness["provider_supported"] is False
+    assert "TAG_TRANSLATION_LLM_PROVIDER_unsupported" in blockers
+    assert "TAG_TRANSLATION_LLM_PROVIDER_missing" not in blockers
 
 
 def test_source_root_registration_is_blocked_until_env_db_storage_schema_identity_is_clean(tmp_path, monkeypatch):
@@ -821,6 +1040,79 @@ def test_source_root_registration_is_blocked_until_env_db_storage_schema_identit
     assert calls["register"] == 0
     assert "VIOLET_ENV_not_production" in gate0["blockers"]
     assert "input_root_registration_skipped_until_identity_storage_schema_ready" in gate0["warnings"]
+
+
+def test_schema_setup_is_blocked_by_env_and_storage_identity_even_with_valid_backup(tmp_path, monkeypatch):
+    class FakeScalar:
+        def scalar(self):
+            return "blombooru"
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            return FakeScalar()
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+        def dispose(self):
+            pass
+
+    from app.config import settings
+
+    calls = {"ensure": 0}
+    storage_root = tmp_path / "storage"
+    expected_storage = tmp_path / "expected-storage"
+    storage_root.mkdir()
+    expected_storage.mkdir()
+    monkeypatch.setenv("VIOLET_ENV", "development")
+    monkeypatch.setenv("VIOLET_STORAGE_ROOT", str(storage_root))
+    monkeypatch.setattr(settings, "STORAGE_ROOT", storage_root)
+    monkeypatch.setattr(s2, "create_engine", lambda *_args, **_kwargs: FakeEngine())
+    monkeypatch.setattr(
+        s2,
+        "schema_snapshot",
+        lambda _conn: {
+            "tables_present": [],
+            "tables_missing": list(s2.DYNAMIC_SYNC_TABLES),
+            "indexes_present": {},
+        },
+    )
+    monkeypatch.setattr(
+        s2,
+        "create_backup_proof",
+        lambda _args, actual_db_name=None: {"proof_exists": True, "valid": True, "path_redacted": True},
+    )
+
+    def forbidden_ensure(*_args, **_kwargs):
+        calls["ensure"] += 1
+        raise AssertionError("schema setup must wait for all identity gates")
+
+    monkeypatch.setattr(s2, "ensure_dynamic_sync_schema", forbidden_ensure)
+    args = s2.build_parser().parse_args(
+        [
+            "--readiness",
+            "--approve-schema-setup",
+            "--expected-storage-root",
+            str(expected_storage),
+        ]
+    )
+    args.run_id = "test-run"
+
+    gate0 = s2.run_gate0_preparation(args)
+
+    assert calls["ensure"] == 0
+    assert gate0["schema"]["ensure"]["ran"] is False
+    assert gate0["schema"]["ensure"]["status"] == "blocked_identity_required"
+    assert "schema_setup_identity_blocked" in gate0["blockers"]
+    assert "VIOLET_ENV_not_production" in gate0["blockers"]
+    assert "production_storage_root_mismatch" in gate0["blockers"]
 
 
 def test_source_root_registration_requires_valid_backup_even_when_identity_is_clean(tmp_path, monkeypatch):

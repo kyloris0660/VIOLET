@@ -1405,6 +1405,23 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=False,
             actual=True,
         )
+    if localization_executed and _get(summary, "localization_results.stopped_by_rule", None) == "localization_max_tags_reached":
+        if _get(summary, "localization_results.status", None) != "partial_localization_max_tags_reached":
+            result.fail(
+                "phase47_s2_capped_localization_status_not_partial",
+                "Capped S2 localization runs must report a partial status.",
+                path="localization_results.status",
+                expected="partial_localization_max_tags_reached",
+                actual=_get(summary, "localization_results.status", None),
+            )
+        if _completion_or_approval_claimed(result) or _as_bool(_get(summary, "localization_results.target_met", False)):
+            result.fail(
+                "phase47_s2_capped_localization_claimed_complete",
+                "Capped S2 localization runs must not claim target_met, safe_to_merge, or full-chain completion.",
+                path="localization_results.stopped_by_rule",
+                expected="no completion claim when localization_max_tags_reached",
+                actual="localization_max_tags_reached",
+            )
     if llm_called and not llm_approved:
         result.fail(
             "phase47_s2_llm_called_without_operator_approval",

@@ -70,6 +70,9 @@ DYNAMIC_SYNC_TABLES = (
     "blombooru_dynamic_sync_run_items",
 )
 
+SUPPORTED_TAG_TRANSLATION_LLM_PROVIDERS = {"openai_compatible"}
+SUPPORTED_TAG_TRANSLATION_LLM_FALLBACK_PROVIDERS = {"openai_compatible", "deepseek"}
+
 DYNAMIC_SYNC_INDEX_PREFIXES = (
     "ix_dynamic_source_roots_",
     "ix_dynamic_source_items_",
@@ -758,6 +761,14 @@ def run_gate0_preparation(args: argparse.Namespace) -> dict[str, Any]:
         else:
             blockers.append("backup_recovery_proof_invalid")
 
+    schema_setup_identity_gate_blockers = {
+        "VIOLET_ENV_not_production",
+        "VIOLET_STORAGE_ROOT_not_explicitly_set",
+        "production_storage_root_mismatch",
+        "production_db_identity_query_failed",
+        "production_db_name_mismatch",
+    }
+    active_schema_identity_blockers = sorted(set(blockers) & schema_setup_identity_gate_blockers)
     if schema_before.get("tables_missing"):
         if not backup.get("valid"):
             blockers.extend(["dynamic_sync_tables_missing", "schema_setup_requires_valid_backup_proof"])
@@ -769,14 +780,16 @@ def run_gate0_preparation(args: argparse.Namespace) -> dict[str, Any]:
         elif not args.approve_schema_setup:
             blockers.extend(["dynamic_sync_tables_missing", "schema_setup_approval_missing"])
             schema_ensure["status"] = "blocked_schema_approval_required"
-        elif "production_db_identity_query_failed" not in blockers and "production_db_name_mismatch" not in blockers:
+        elif active_schema_identity_blockers:
+            blockers.extend(["dynamic_sync_tables_missing", "schema_setup_identity_blocked"])
+            schema_ensure["status"] = "blocked_identity_required"
+            schema_ensure["identity_blockers"] = active_schema_identity_blockers
+        else:
             schema_ensure = ensure_dynamic_sync_schema(engine, schema_before)
             if schema_ensure.get("tables_missing_after"):
                 blockers.append("dynamic_sync_schema_ensure_failed")
             with engine.connect() as conn:
                 schema_after = schema_snapshot(conn)
-        else:
-            schema_ensure["status"] = "blocked_db_identity"
     else:
         schema_ensure["tables_missing_before"] = []
         schema_ensure["tables_missing_after"] = []
@@ -876,16 +889,27 @@ def safe_db_identity(url: Any, connected_database: str | None = None) -> dict[st
 
 
 def llm_localization_readiness(args: argparse.Namespace) -> tuple[dict[str, Any], list[str]]:
+    provider_name = os.getenv("TAG_TRANSLATION_LLM_PROVIDER", "").strip()
+    fallback_provider_name = os.getenv("TAG_TRANSLATION_LLM_FALLBACK_PROVIDER", "").strip()
+    fallback_enabled = env_truthy("TAG_TRANSLATION_LLM_FALLBACK_ENABLED")
     llm_localization = {
         "operator_approved": bool(args.approve_llm_localization),
         "enabled": env_truthy("TAG_TRANSLATION_LLM_ENABLED"),
-        "provider_configured": bool(os.getenv("TAG_TRANSLATION_LLM_PROVIDER", "").strip()),
+        "provider_configured": bool(provider_name),
+        "provider_supported": bool(provider_name in SUPPORTED_TAG_TRANSLATION_LLM_PROVIDERS),
         "model_configured": bool(os.getenv("TAG_TRANSLATION_LLM_MODEL", "").strip()),
         "base_url_configured": bool(os.getenv("TAG_TRANSLATION_LLM_BASE_URL", "").strip()),
         "api_key_configured": bool(os.getenv("TAG_TRANSLATION_LLM_API_KEY", "").strip()),
         "auto_enabled": env_truthy("TAG_TRANSLATION_AUTO_ENABLED"),
         "background_enabled": env_truthy("TAG_TRANSLATION_BACKGROUND_ENABLED"),
-        "provider": os.getenv("TAG_TRANSLATION_LLM_PROVIDER", ""),
+        "provider": provider_name,
+        "fallback_enabled": fallback_enabled,
+        "fallback_provider_configured": bool(fallback_provider_name),
+        "fallback_provider_supported": (
+            not fallback_enabled
+            or not fallback_provider_name
+            or fallback_provider_name in SUPPORTED_TAG_TRANSLATION_LLM_FALLBACK_PROVIDERS
+        ),
         "secrets_recorded": False,
     }
     blockers: list[str] = []
@@ -896,9 +920,11 @@ def llm_localization_readiness(args: argparse.Namespace) -> tuple[dict[str, Any]
     llm_requirements = {
         "TAG_TRANSLATION_LLM_ENABLED_false": llm_localization["enabled"],
         "TAG_TRANSLATION_LLM_PROVIDER_missing": llm_localization["provider_configured"],
+        "TAG_TRANSLATION_LLM_PROVIDER_unsupported": (not provider_name) or llm_localization["provider_supported"],
         "TAG_TRANSLATION_LLM_MODEL_missing": llm_localization["model_configured"],
         "TAG_TRANSLATION_LLM_BASE_URL_missing": llm_localization["base_url_configured"],
         "TAG_TRANSLATION_LLM_API_KEY_missing": llm_localization["api_key_configured"],
+        "TAG_TRANSLATION_LLM_FALLBACK_PROVIDER_unsupported": llm_localization["fallback_provider_supported"],
         "tag_translation_execution_path_not_configured": llm_localization["auto_enabled"]
         or llm_localization["background_enabled"],
     }
@@ -1706,14 +1732,37 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
             reason = item.deferred_reason or item.failure_reason
             safe_item = source_item_safe_label(item.id)
             if item.import_status == "imported" and item.media_id:
+                commit_source_item_import_outcome(
+                    db,
+                    item,
+                    state="reused_existing",
+                    media_id=item.media_id,
+                    content_hash=item.content_hash,
+                )
+                row = {
+                    "run_id": args.run_id,
+                    "source_item_label": safe_item,
+                    "state": "already_imported",
+                    "reuse_state": "reused_existing",
+                    "reason": "source_item_already_imported",
+                    "media_label": media_safe_label(item.media_id),
+                    "content_hash_available": bool(item.content_hash),
+                    "bytes_copied": 0,
+                    "eligible_for_db_import": False,
+                    "path_private_or_omitted": True,
+                }
+                status_counts["reused_existing"] += 1
                 media_work_items.append(
                     {
                         "source_item_id": item.id,
                         "source_item_label": safe_item,
                         "media_id": item.media_id,
                         "reused_existing": True,
+                        "already_imported": True,
                     }
                 )
+                import_rows.append(row)
+                append_jsonl(checkpoint_dir / "import-item-ledger.jsonl", row)
                 continue
             if suffix not in SUPPORTED_EXTENSIONS or (reason and reason not in HYDRATION_WORKLOAD_REASONS):
                 kind = unsupported_kind_for_suffix(suffix, str(reason or "unsupported_extension"))
@@ -2138,7 +2187,9 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
                 media = db.query(Media).filter(Media.id == work["media_id"]).first()
                 if not media:
                     classification_counts["failed"] += 1
-                    ai_counts["failed"] += 1
+                    ai_attempted += 1
+                    ai_failures += 1
+                    ai_counts["ai_failed"] += 1
                     row = {
                         "source_item_label": work["source_item_label"],
                         "state": "classification_failed",
@@ -2159,6 +2210,14 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
                         source_item.classification_status = "failed"
                         source_item.ai_tagging_status = "failed"
                     db.commit()
+                    if failure_threshold_exceeded(
+                        ai_failures,
+                        ai_attempted,
+                        max_items=args.ai_failure_max_items,
+                        max_rate=args.ai_failure_max_rate,
+                    ):
+                        stopped_by_rule = "ai_failure_threshold_exceeded"
+                        break
                     continue
 
                 existing_ai_count = (
@@ -2457,12 +2516,17 @@ def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
         )
         if stopped_by_rule == "localization_failure_threshold_exceeded":
             status = "localization_failure_threshold_exceeded"
+        elif stopped_by_rule == "localization_max_tags_reached":
+            status = "partial_localization_max_tags_reached"
         elif failed:
             status = "completed_with_gap_visible"
         else:
             status = "completed" if remaining_after == 0 else "completed_with_gap_visible"
         job.finished_at = datetime.now(timezone.utc)
-        job.status = "completed" if status in {"completed", "completed_with_gap_visible"} else "failed"
+        if status == "partial_localization_max_tags_reached":
+            job.status = "partial"
+        else:
+            job.status = "completed" if status in {"completed", "completed_with_gap_visible"} else "failed"
         source_item_status = backfill_dynamic_source_item_localization_status(
             db,
             localization_stage_status=status,
@@ -2568,6 +2632,8 @@ def run_execute_stages(args: argparse.Namespace, readiness: Mapping[str, Any], d
     localization_results = run_tag_localization(args)
     if localization_results.get("status") == "localization_failure_threshold_exceeded":
         status = "localization_failure_threshold_exceeded"
+    elif localization_results.get("status") == "partial_localization_max_tags_reached":
+        status = "partial_localization_max_tags_reached"
     else:
         status = "browser_validation_pending"
     return {

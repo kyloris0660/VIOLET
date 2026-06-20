@@ -575,6 +575,25 @@ def test_phase47_s2_contract_rejects_localization_failure_threshold_before_compl
     assert "phase47_s2_localization_failure_budget_exceeded" in _error_codes(result)
 
 
+def test_phase47_s2_contract_rejects_capped_localization_completion_claim() -> None:
+    summary = _phase47_full_execution_summary(
+        localization_results={
+            "status": "partial_localization_max_tags_reached",
+            "executed": True,
+            "target_met": True,
+            "llm_called": True,
+            "gap_report_generated": True,
+            "proper_noun_unreviewed_aliases_trusted": False,
+            "failure_budget": {"threshold_exceeded": False},
+            "stopped_by_rule": "localization_max_tags_reached",
+        }
+    )
+
+    result = check_phase_contract("phase47_s2_baseline_contract_v1", summary)
+
+    assert "phase47_s2_capped_localization_claimed_complete" in _error_codes(result)
+
+
 def test_phase47_s2_contract_rejects_partial_dry_run_completion_claim() -> None:
     summary = _phase47_full_execution_summary(
         dynamic_sync_dry_run={
