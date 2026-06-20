@@ -1,61 +1,94 @@
 # Post-S2 Production Roadmap
 
-Status: planning reference after PR #113 / Phase 4.7-S2.
+Status: accepted routing reference after PR #113 / Phase 4.7-S2.
 
-This roadmap keeps production baseline closeout separate from later source/entity/provider work. It does not authorize S3, provider calls, SourceConcept reruns, entity bridge writes, or automatic production sync.
+Canonical short version: `docs/roadmap/current-mainline-roadmap.md`.
+This file keeps the post-S2 production utility track aligned with that current
+mainline route. It does not authorize S3, provider calls, SourceConcept reruns,
+Entity bridge writes, desired-media backfill, or automatic production sync.
 
-## Immediate Closeout
+## Baseline
 
-1. PR #113 closeout
-   - Finish browser/manual validation evidence.
-   - Keep public report head evidence split into validated run head, report-generation head, and PR-handoff head.
-   - Keep unsupported desired-media counts visible instead of folding them into S2 completion.
-   - Keep source-item localization status aligned with tag-localization completion semantics.
+- PR #113 / Phase 4.7-S2 is merged.
+- Merge commit: `17ec3326bc00e4d025bbe4297fad1157b9cda2ff`.
+- Final PR head before merge: `b8ef981f791ce3718610226a8e46871f8e2a03a3`.
+- The project now has a real production baseline library.
+- Production DB, storage, source roots, and private ledgers must stay separate
+  from develop/test fixtures and feature-branch validation.
 
-2. Production governance persistence
-   - Keep production and development lanes separate.
-   - Use dev/test DB and storage for feature branches.
-   - Promote to production only through PR review, contracts, backup proof, production dry-run, browser validation, and redaction checks.
+## Accepted Sequence
 
-## Short-Term Follow-Ups
+1. `PD1-A` - Post-S2 mainline roadmap persistence and production/development
+   executable gate foundation.
+   - Current phase.
+   - Sync main after PR #113, persist the accepted roadmap, and add the
+     `production_development_separation_contract_v1` foundation.
+   - No production writes.
 
-1. S2F0 desired-media gap audit / support decision report
-   - Report unsupported desired-media ratio, extension breakdown, sampled relevance, and recommendation.
-   - Keep sidecar/metadata files such as `.AAE` separate from desired user media.
-   - Do not commit to HEIC/JFIF/MOV/MP4 support or backfill unless the audit proves it is worth doing for the anime-library use case.
+2. `S2G-1` - GPU AI tagging capability probe and benchmark.
+   - Recommended immediate next phase after PD1-A: `S2G-1`.
+   - Probe CUDA, DirectML, and CPU fallback.
+   - Benchmark local WD tagging throughput using dev/test DB/storage, fixtures,
+     or restored snapshots.
+   - Produce provider capability and load-control design evidence.
 
-2. S2G GPU AI tagging, provider benchmark, and load control (high priority)
-   - Benchmark CUDA, DirectML, and CPU fallback paths for local WD tagging.
-   - Record provider provenance, model identity, thresholds, and CPU/GPU drift audit results.
-   - Add batch/concurrency controls and operator-visible throttling for long production jobs.
-   - Preserve provenance compatibility for reuse.
+3. `S2G-2/3` - GPU/provider abstraction, provenance, and load control.
+   - Add execution-provider abstraction.
+   - Record provider provenance, model identity, thresholds, batch size, and backend.
+   - Add batch/concurrency/throttle controls.
+   - Preserve CPU fallback.
 
-3. PD1 Production/Development Separation Executable Gates
-   - Convert the governance document into tests/contracts that prevent develop branches from casually writing production DB, storage, or source-root state.
-   - Require explicit promotion mode for production execution.
+4. `R1R` - SourceConcept route redo under GOV3 contracts.
+   - Return to the main Phase 4 line after S2G.
+   - Use executable contracts and a review pack.
+   - AI proper-noun tags are weak evidence only.
+   - Do not create confirmed Entity assignments.
+   - Do not run new provider/Pixiv live calls unless separately approved.
+   - Decide whether the current Pixiv/source metadata strategy is viable or
+     needs larger redesign.
 
-## Incremental Library Sync
+5. `Pixiv/source metadata strategy polish`.
+   - Long-term mainline after R1R.
+   - Focus on making the Pixiv/source metadata route reliable.
+   - Do not introduce new providers before Pixiv/source metadata is settled.
 
-1. S3A Controlled Incremental Sync Pipeline
-   - Operator manually triggers a production run.
-   - The system automatically performs update check, hydration/read, import/reuse, classification, AI tagging, localization, per-item ledgers, failure budgets, and summary.
-   - Require operator-reviewed pending counts, thresholds, and explicit execute confirmation for production writes.
-   - Preserve resume/retry support for cloud hydration, import, classification, AI tagging, and localization.
+6. `S3A` - Controlled Incremental Sync Pipeline.
+   - Important, but after S2G and the R1R/Pixiv route decision unless the
+     operator explicitly reprioritizes.
+   - This is not one-by-one manual import.
+   - The operator manually triggers a run, then the system automatically
+     performs update check, hydration/read, import/reuse, classification,
+     AI tagging, localization, per-item ledgers, failure budgets, and summary.
+   - Production execution still requires explicit confirmation and promotion gates.
 
-2. S3B opt-in automated incremental sync
-   - Automatic production writes stay disabled by default until S3B approval.
-   - Auto-sync requires bounded batch size, failure budgets, safe scheduling, clear UI state, and pause/disable controls.
+7. `S3B` - Opt-in automated incremental sync.
+   - Later.
+   - Scheduled/unattended automation remains disabled by default until
+     explicitly approved.
 
-## Source / Entity Work Later
+8. `S2F0` - Desired-media gap audit / support decision report.
+   - Low priority.
+   - Audit-only, not implementation.
+   - Report unsupported desired-media ratio, extension breakdown, sampled
+     relevance, and recommendation.
+   - Do not implement HEIC/JFIF/MOV/MP4 support or backfill unless the audit
+     proves it is worth doing for the anime-library use case.
 
-1. R1R SourceConcept route redo under GOV3 contracts
-   - Re-enter only after S2 closeout is stable.
-   - Keep AI proper-noun tags as weak evidence only.
-   - Do not create confirmed Entity assignments from AI tags.
+## Production/Development Gate
 
-2. Pixiv / source metadata strategy polish after R1R
-   - Use R1R results to decide whether the current Pixiv/source metadata strategy is viable or needs a larger redesign.
-   - Do not introduce new providers before Pixiv/source metadata is polished.
-   - Provider/Pixiv/gallery-dl/SauceNAO/Google remain out of S2 and require separate approval.
-   - Future provider work must be cache-first, budgeted, privacy-gated, and separately approved.
-   - Entity bridge writes require explicit phase approval, provenance rules, and executable contracts.
+- Develop branches must use dev/test DB, dev/test storage, fixtures, or restored
+  snapshots.
+- Production execution requires explicit promotion mode.
+- Production source-root registration/replacement requires clean production
+  identity gates and valid backup proof.
+- Schema setup/migration paths must not run when env/storage/DB identity gates
+  are blocked.
+- Public reports are aggregate-only and path-redacted.
+- Private ledgers remain local ignored artifacts.
+
+## Non-Goals For PD1-A
+
+PD1-A must not run production import/classification/AI/localization, S3,
+provider/Pixiv/gallery-dl/SauceNAO/Google calls, SourceConcept R1/R2, Entity
+bridge, confirmed assignments, GPU benchmark, desired-media backfill, cleanup,
+delete, reset, drop, truncate, push main, or merge.

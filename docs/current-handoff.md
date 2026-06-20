@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated for Phase 4.7-S1 startup on `2026-06-16`.
-> Active PR branch: `codex/phase47-s1-dynamic-sync-product-foundation`.
+> Last updated for PD1-A startup on `2026-06-20`.
+> Active PR branch: `codex/pd1a-post-s2-mainline-gates-roadmap`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,8 +11,8 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
-| Current PR | Phase 4.7-S1 dynamic sync foundation / product UI / AI-localization readiness |
-| Baseline main | PR #111 / FULLLIB-E1a runner dry-run merge `577966b` or later |
+| Current PR | PD1-A post-S2 roadmap persistence and production/development executable gate foundation |
+| Baseline main | PR #113 / Phase 4.7-S2 merge `17ec3326bc00e4d025bbe4297fad1157b9cda2ff` |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript |
 | Python | `.\venv\Scripts\python.exe` |
 
@@ -29,17 +29,24 @@
 - Issue #109 tracks GOV3.1 hardening debt. It does not block plan-only FULLLIB-P0, but later route approval, `safe_to_merge`, or high-risk review-pack proof must account for the relevant issue class.
 - PR #110 / Phase 4.6-FULLLIB-P0 is merged. It mapped safe full-library production import, classification, AI tagging, and AI tag reuse for the production utility track.
 - PR #111 / Phase 4.6-FULLLIB-E1a is merged. It added and dry-run validated the production full-library runner without DB writes, source/app-storage mutation, provider calls, LLM calls, SourceConcept, Entity, classification execution, or AI tagging execution.
-- Phase 4.7-S1 is the current product feature stage. It turns full-library import planning into durable dynamic library synchronization state, Admin UI, and S2 readiness for baseline import + classification + AI tagging + tag localization.
+- PR #113 / Phase 4.7-S2 is merged. It established the real production baseline library through controlled baseline import, classification, AI tagging, tag localization, public redaction, and real browser validation.
+- Post-S2 work must keep production and development lanes separate. Feature branches must use dev/test DB, dev/test storage, fixtures, or restored snapshots instead of production DB/storage/source roots/private ledgers as casual fixtures.
+- The durable post-S2 route lives in `docs/roadmap/current-mainline-roadmap.md`.
 - SourceConcept remains source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not a confirmed assignment, and not `media_tags` truth.
 ## Current Route
 
-`Phase 4.7-S1` - Dynamic Sync Foundation + Product UI + AI/Localization Readiness.
+`PD1-A` - Post-S2 Mainline Roadmap Persistence and Production/Development Executable Gate Foundation.
 
-The short-term product route is capped at three stages:
+Accepted post-S2 order:
 
-1. Phase 4.7-S1: Dynamic Sync Foundation + Product UI + AI/Localization Readiness.
-2. Phase 4.7-S2: Baseline Full Import + Classification + AI Tagging + Tag Localization.
-3. Phase 4.7-S3: Incremental Sync Automation + Hardening.
+1. `PD1-A`: persist roadmap and add production/development executable gate foundation. No production writes.
+2. `S2G-1 GPU AI tagging capability probe and benchmark`: recommended immediate next phase after PD1-A.
+3. `S2G-2/3`: GPU/provider abstraction, provenance, batch/concurrency/throttle controls, CPU fallback.
+4. `R1R`: SourceConcept route redo under GOV3 contracts; no confirmed Entity assignments and no new provider/Pixiv live calls unless separately approved.
+5. `Pixiv/source metadata strategy polish`: settle Pixiv/source metadata reliability before adding providers.
+6. `S3A`: controlled incremental sync pipeline after S2G and the R1R/Pixiv route decision unless explicitly reprioritized.
+7. `S3B`: opt-in scheduled/unattended incremental sync, disabled by default until approved.
+8. `S2F0`: low-priority desired-media gap audit/support decision report only.
 
 SourceConcept/provider/entity work remains separate. R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident because R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval remains blocked pending R1R full-chain remediation and A1R rerun; old R1/A1 evidence must not approve R2. This does not block the product utility dynamic sync/import/AI/localization route as long as that route does not promote SourceConcept/Entity truth.
 
@@ -53,9 +60,9 @@ SourceConcept/provider/entity work remains separate. R1 target was met for deter
 ## Hard Non-Goals Without Explicit Approval
 
 - No push to `main`; agents do not merge PRs.
-- No full production import, production DB data import, cleanup/drop/truncate, destructive operation, source/iCloud mutation, SourceConcept table mutation, or app-managed storage mutation without explicit approval.
+- No full production import, production DB data import, production classification, production AI tagging, production localization, cleanup/drop/truncate, destructive operation, source/iCloud mutation, SourceConcept table mutation, or app-managed storage mutation without explicit approval.
 - No provider/gallery-dl/Pixiv/SauceNAO/Google/source enrichment run unless a later phase explicitly approves it.
-- No full LLM batch, full AI tagging/classification run, provider call, SourceConcept resolver, Entity bridge, R1R, A1R, R2, confirmed assignment creation, or full-library production execution during S1.
+- No full LLM batch, GPU benchmark, provider call, SourceConcept resolver, Entity bridge, R1R, A1R, R2, confirmed assignment creation, S3, automatic production sync, desired-media backfill, or full-library production execution during PD1-A.
 - Dynamic sync automatic production writes must remain disabled by default. Manual update checks and pending counts are allowed; manual sync execution requires explicit approved S2 policy/config.
 - No source/iCloud/staging/app-managed storage mutation.
 - No Entity Resolver, similarity/clustering, SourceConcept editing, Entity bridge, promotion, confirmed assignment, trusted Entity creation, or `media_tags` mutation.
@@ -64,7 +71,8 @@ SourceConcept/provider/entity work remains separate. R1 target was met for deter
 
 - GOV-2 is active: prefer executable guards, focused tests, DB constraints, validation runners, and runtime assertions over repeated long policy text.
 - GOV3 is the durable rule that phase completion claims require executable phase contracts. Contract checks must pass before `target_met`, `route_approved`, `full_chain_completed`, or `safe_to_merge` can be claimed.
-- Phase 4.7-S2 should use at least `python_env_contract_v1`, `postgres_db_contract_v1`, `media_import_contract_v1`, `classification_contract_v1`, `ai_tagging_contract_v1`, `mutation_safety_contract_v1`, `artifact_lifecycle_contract_v1`, and `public_redaction_contract_v1`.
+- PD1-A should use `production_development_separation_contract_v1` to keep post-S2 production/development separation executable.
+- Future production execution phases should still use the relevant execution contracts, including `python_env_contract_v1`, `postgres_db_contract_v1`, `media_import_contract_v1`, `classification_contract_v1`, `ai_tagging_contract_v1`, `mutation_safety_contract_v1`, `artifact_lifecycle_contract_v1`, and `public_redaction_contract_v1`.
 - AI tagging and tag localization are one S2 chain: baseline import -> AI tagging job -> new tags collected -> `_schedule_localization` -> background worker / auto translate -> `blombooru_tag_translations` -> frontend Chinese display and trusted search aliases.
 - Proper-noun localization safety remains strict: background translation is for general/meta by default; character/copyright/artist aliases require manual/static trusted aliases or Entity Alias Resolver review and must not pollute Chinese search from unreviewed LLM output.
 - Durable core remains strict: DB/migrations, provider-neutral evidence contracts, Entity/evidence/candidate/assignment lifecycle, provider privacy/budget gates, source/iCloud safety, and in-scope E2E pass requirements.
@@ -75,7 +83,9 @@ SourceConcept/provider/entity work remains separate. R1 target was met for deter
 
 - Python identity: `& "$PY" scripts/check_python_env.py --expected-python "$PY"`.
 - Dynamic library sync product doc: `docs/dynamic-library-sync.md`.
-- Phase 4.7-S1 report: `docs/reports/phase-4.7-s1-dynamic-sync-product-foundation.md`.
+- Current mainline roadmap: `docs/roadmap/current-mainline-roadmap.md`.
+- Post-S2 production roadmap: `docs/roadmap/post-s2-production-roadmap.md`.
+- Phase 4.7-S2 public summary: `docs/reports/phase-4.7-s2-baseline-full-import-ai-localization-summary.json`.
 - FULLLIB-P0 report: `docs/reports/phase-4.6-fulllib-p0-production-import-ai-tagging-plan.md`.
 - GOV3 contract checker: `& "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>`.
 - Scope-based test selection: `docs/test-workflow.md`.

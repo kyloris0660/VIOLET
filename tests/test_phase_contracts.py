@@ -161,6 +161,84 @@ def _dynamic_sync_summary(**overrides: object) -> dict:
     return summary
 
 
+def _pd1a_governance_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "production_development_separation_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        },
+        "governance_lanes": {
+            "production": {"explicit": True},
+            "development": {"explicit": True},
+        },
+        "development_lane": {
+            "allowed_data_sources": [
+                "dev_or_test_db",
+                "dev_or_test_storage",
+                "fixtures_or_restored_snapshots",
+            ],
+            "production_db_as_fixture": False,
+            "production_storage_as_fixture": False,
+            "production_source_roots_as_fixture": False,
+            "production_private_ledgers_as_fixture": False,
+        },
+        "production_promotion": {
+            "required_for_production_writes": True,
+            "enabled": False,
+            "operator_confirmation_present": False,
+        },
+        "production_write_gates": {
+            "import_classification_ai_localization_requires_promotion": True,
+        },
+        "production_source_root_write_gates": {
+            "clean_identity_required": True,
+            "backup_proof_required": True,
+        },
+        "schema_setup_gates": {
+            "identity_gates_required": True,
+            "no_schema_setup_when_identity_blocked": True,
+            "schema_setup_requested": False,
+            "schema_setup_ran": False,
+        },
+        "artifact_boundary": {
+            "public_reports_aggregate_only": True,
+            "public_reports_path_redacted": True,
+            "public_redaction_contract_passed": True,
+            "private_ledgers_local_ignored": True,
+            "private_ledgers_committed": False,
+        },
+        "phase_boundaries": {
+            "current_phase": "PD1-A",
+            "next_recommended_phase": "S2G-1 GPU AI tagging capability probe and benchmark",
+            "future_mentions_are_non_authorizing": True,
+            "authorizes_s3": False,
+            "authorizes_provider_calls": False,
+            "authorizes_pixiv_gallery_dl_saucenao_google": False,
+            "authorizes_sourceconcept_r1r_r2": False,
+            "authorizes_entity_bridge": False,
+            "authorizes_confirmed_assignments": False,
+            "authorizes_automatic_production_sync": False,
+            "authorizes_gpu_benchmark": False,
+            "authorizes_desired_media_backfill": False,
+        },
+        "write_requests": {
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging": False,
+            "production_localization": False,
+            "source_root_registration": False,
+            "source_root_replacement": False,
+            "schema_setup": False,
+            "schema_migration": False,
+        },
+        "validation": {"focused_tests_passed": True},
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _phase47_s2_summary(**overrides: object) -> dict:
     summary = {
         "head_evidence": {
@@ -746,6 +824,82 @@ def test_dynamic_library_sync_contract_rejects_completion_without_browser_passed
     result = check_phase_contract("dynamic_library_sync_contract_v1", summary)
 
     assert "dynamic_sync_browser_validation_not_passed" in _error_codes(result)
+
+
+def test_production_development_separation_contract_accepts_pd1a_summary() -> None:
+    result = check_phase_contract("production_development_separation_contract_v1", _pd1a_governance_summary())
+
+    assert result.passed is True
+
+
+def test_production_development_separation_fixture_passes() -> None:
+    summary = load_summary_file(FIXTURE_DIR / "mock_pd1a_governance_summary.json")
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_production_development_separation_rejects_production_fixtures() -> None:
+    summary = _pd1a_governance_summary()
+    summary["development_lane"]["production_db_as_fixture"] = True
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_forbidden_fixture_or_artifact" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_production_write_without_promotion() -> None:
+    summary = _pd1a_governance_summary()
+    summary["write_requests"]["production_import"] = True
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "production_write_without_promotion_mode" in codes
+    assert "production_write_without_operator_confirmation" in codes
+
+
+def test_production_development_separation_rejects_source_root_write_without_identity_backup() -> None:
+    summary = _pd1a_governance_summary()
+    summary["write_requests"]["source_root_registration"] = True
+    summary["production_promotion"]["enabled"] = True
+    summary["production_promotion"]["operator_confirmation_present"] = True
+    summary["production_identity"] = {
+        "db_clean": True,
+        "storage_clean": False,
+        "source_roots_clean": True,
+    }
+    summary["backup_proof"] = {"valid": False}
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_source_root_write_gate_missing" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_schema_setup_when_identity_blocked() -> None:
+    summary = _pd1a_governance_summary()
+    summary["write_requests"]["schema_setup"] = True
+    summary["production_promotion"]["enabled"] = True
+    summary["production_promotion"]["operator_confirmation_present"] = True
+    summary["identity_gates"] = {
+        "blocked": True,
+        "env_clean": True,
+        "db_clean": True,
+        "storage_clean": True,
+    }
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_schema_setup_identity_blocked" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_forbidden_current_phase_authorization() -> None:
+    summary = _pd1a_governance_summary()
+    summary["phase_boundaries"]["authorizes_provider_calls"] = True
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_forbidden_current_phase_authorization" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

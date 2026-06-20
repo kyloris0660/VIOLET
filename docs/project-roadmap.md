@@ -21,15 +21,28 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active product route is now the Phase 4.7 dynamic library sync route. It is a normal product feature sequence, not a temporary runner-only branch. The source library updates daily, so V.I.O.L.E.T. must preserve durable DB-backed source/sync/import/classification/AI/localization state and expose it in Admin UI.
+The active route is now the post-S2 mainline route. The canonical current
+sequence lives in `docs/roadmap/current-mainline-roadmap.md`. PR #113 /
+Phase 4.7-S2 is merged, and V.I.O.L.E.T. has a real production baseline
+library, so development work must keep production DB/storage/source roots and
+private ledgers separate from dev/test fixtures.
 
-The short-term roadmap is capped at three stages:
+The accepted short-term sequence is:
 
-1. **Phase 4.7-S1:** Dynamic Sync Foundation + Product UI + AI/Localization Readiness.
-2. **Phase 4.7-S2:** Baseline Full Import + Classification + AI Tagging + Tag Localization.
-3. **Phase 4.7-S3:** Incremental Sync Automation + Hardening.
+1. **PD1-A:** Persist the post-S2 roadmap and add the production/development executable gate foundation.
+2. **S2G-1:** GPU AI tagging capability probe and benchmark.
+3. **S2G-2/3:** GPU/provider abstraction, provenance, and load control.
+4. **R1R:** SourceConcept route redo under GOV3 contracts.
+5. **Pixiv/source metadata strategy polish:** settle Pixiv/source metadata reliability before adding providers.
+6. **S3A:** Controlled incremental sync pipeline, after S2G and the R1R/Pixiv route decision unless explicitly reprioritized.
+7. **S3B:** Opt-in automated incremental sync, disabled by default until approved.
+8. **S2F0:** Low-priority desired-media gap audit/support decision report.
 
-SourceConcept/provider/entity work remains a separate track. Provider expansion, SourceConcept editing, Entity truth work, R2, PX1-B, and Provider-2 remain blocked while the pipeline fidelity incident is unresolved. This does not block the product utility import/AI/localization route as long as it does not promote SourceConcept/Entity truth.
+SourceConcept/provider/entity work remains a separate track. Provider expansion,
+SourceConcept editing, Entity truth work, R2, PX1-B, and Provider-2 remain
+blocked while the pipeline fidelity incident is unresolved. This does not block
+the production utility route as long as that route does not promote
+SourceConcept/Entity truth.
 
 Current accepted state:
 
@@ -47,7 +60,8 @@ Current accepted state:
 - Issue #109 tracks GOV3.1 hardening debt. It does not block plan-only production utility planning, but later route approval, `safe_to_merge`, or high-risk review-pack proof must account for the relevant issue class.
 - PR #110 / Phase 4.6-FULLLIB-P0 is merged: plan-only contract mapping for a production utility full-library import, classification, AI tagging, and AI tag reuse track.
 - PR #111 / Phase 4.6-FULLLIB-E1a is merged: production full-library runner dry-run proof, no DB write/import, no source/app-storage mutation, no provider/LLM/SourceConcept/Entity execution.
-- Phase 4.7-S1 is current: durable dynamic sync state, manual update check, Admin UI, default-off production write policy, AI tagging readiness, tag localization readiness, and proper-noun safety proof.
+- PR #113 / Phase 4.7-S2 is merged: the production baseline library exists, with controlled baseline import, classification, AI tagging, tag localization, public redaction, and real browser validation already completed.
+- PD1-A is current: persist the post-S2 roadmap and add the `production_development_separation_contract_v1` foundation without production writes.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
 Current post-PX1 result:
@@ -58,23 +72,24 @@ Current post-PX1 result:
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
 - Current route is split into two tracks:
-  1. Production utility: Phase 4.7-S1/S2/S3 for durable dynamic sync, baseline full import, classification, AI tagging, tag localization, then incremental automation.
-  2. SourceConcept/provider/entity: R1R full SourceConcept pipeline replay/remediation, then A1R route audit rerun, then any R2/Provider-2/Entity bridge decision.
+  1. Production utility: PD1-A, then S2G-1 and S2G-2/3 before any S3A/S3B production sync automation.
+  2. SourceConcept/provider/entity: R1R full SourceConcept pipeline replay/remediation, Pixiv/source metadata strategy polish, then any later R2/Provider-2/Entity bridge decision after refreshed route evidence.
 - A1 final route approval remains blocked pending R1R and A1R. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the A1 pack does not approve R2 during this incident.
 - Old R1/A1 evidence must not approve R2. R1/A1 should not be destructively rolled back; R1R/A1R should supersede/remediate with contract-shaped outputs.
 - PX1-B, DEDUP1, SourceConcept editing, and Entity bridge are not part of the production utility FULLLIB-E1 track.
 
 ## Near-Term Route
 
-1. Complete `Phase 4.7-S1` with DB-backed dynamic sync state, Admin UI, readiness APIs, focused tests, real browser validation, and durable docs.
-2. Start `Phase 4.7-S2` only after S1 review/merge and explicit approval. S2 may run the approved baseline full import, classification, AI tagging, and tag localization chain, but must still avoid providers, SourceConcept, Entity bridge, R1R, A1R, and R2.
-3. Start `Phase 4.7-S3` only after S2 baseline state is validated. S3 handles incremental automation, scheduling, retry/backfill hardening, and any explicit opt-in auto-sync policy.
-4. Keep R1R/A1R important but separate unless the project owner explicitly reprioritizes the SourceConcept/provider track.
-5. Plan `Phase 4.5-SCV2-R1R: Full SourceConcept Pipeline Replay / Remediation` separately under `source_concept_full_chain_contract_v1` when that track resumes.
-6. Rerun A1 as A1R under `route_audit_contract_v1` after R1R before any final route approval.
-7. Defer PX1-B until after R1R+A1R or a separate provider-policy decision.
-8. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
-9. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
+1. Complete `PD1-A` with roadmap persistence and `production_development_separation_contract_v1` focused tests. No production writes.
+2. Start `S2G-1 GPU AI tagging capability probe and benchmark` next unless the operator explicitly reprioritizes.
+3. Follow with `S2G-2/3` for provider abstraction, provenance, batch/concurrency/throttle controls, and CPU fallback.
+4. Resume `R1R` under `source_concept_full_chain_contract_v1` after S2G. AI proper-noun tags remain weak evidence; no confirmed Entity assignments.
+5. Polish Pixiv/source metadata strategy after R1R before introducing new providers.
+6. Start `S3A` controlled incremental sync only after S2G and the R1R/Pixiv route decision unless explicitly reprioritized.
+7. Keep `S3B` automated sync opt-in and disabled by default until separately approved.
+8. Keep `S2F0` desired-media gap audit low priority and audit-only until evidence shows support/backfill is worth implementing.
+9. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
+10. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
