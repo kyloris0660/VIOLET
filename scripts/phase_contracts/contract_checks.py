@@ -1058,6 +1058,193 @@ def _check_entity_truth_bridge(_contract: PhaseContract, summary: Mapping[str, A
             result.fail("entity_truth_bridge_gate_missing", message, path=f"entity_truth_bridge.{key}", expected=True, actual=bridge.get(key))
 
 
+def _normalized_token_set(value: Any) -> set[str]:
+    if isinstance(value, str):
+        raw_items = re.split(r"[,;\n]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = [str(item) for item in value]
+    else:
+        raw_items = []
+    return {item.strip().casefold().replace("-", "_").replace(" ", "_") for item in raw_items if item.strip()}
+
+
+def _check_required_false_paths(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    paths: Iterable[str],
+    *,
+    code: str,
+    message: str,
+) -> None:
+    for path in paths:
+        if _as_bool(_get(summary, path, False)):
+            result.fail(code, message, path=path, expected=False, actual=True)
+
+
+def _production_write_requested(summary: Mapping[str, Any]) -> list[str]:
+    write_paths = (
+        "write_requests.production_import",
+        "write_requests.production_classification",
+        "write_requests.production_ai_tagging",
+        "write_requests.production_localization",
+        "write_requests.source_root_registration",
+        "write_requests.source_root_replacement",
+        "write_requests.schema_setup",
+        "write_requests.schema_migration",
+    )
+    return [path for path in write_paths if _as_bool(_get(summary, path, False))]
+
+
+def _check_production_development_separation(
+    _contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult
+) -> None:
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "governance_lanes.production.explicit",
+            "governance_lanes.development.explicit",
+            "production_promotion.required_for_production_writes",
+            "production_write_gates.import_classification_ai_localization_requires_promotion",
+            "production_source_root_write_gates.clean_identity_required",
+            "production_source_root_write_gates.backup_proof_required",
+            "schema_setup_gates.identity_gates_required",
+            "schema_setup_gates.no_schema_setup_when_identity_blocked",
+            "artifact_boundary.public_reports_aggregate_only",
+            "artifact_boundary.public_reports_path_redacted",
+            "artifact_boundary.public_redaction_contract_passed",
+            "artifact_boundary.private_ledgers_local_ignored",
+            "phase_boundaries.future_mentions_are_non_authorizing",
+            "validation.focused_tests_passed",
+        ),
+        code="production_development_required_proof_failed",
+        message="Post-S2 production/development separation requires explicit lanes, promotion gates, redacted artifacts, and focused tests.",
+    )
+    _check_required_false_paths(
+        summary,
+        result,
+        (
+            "development_lane.production_db_as_fixture",
+            "development_lane.production_storage_as_fixture",
+            "development_lane.production_source_roots_as_fixture",
+            "development_lane.production_private_ledgers_as_fixture",
+            "artifact_boundary.private_ledgers_committed",
+        ),
+        code="production_development_forbidden_fixture_or_artifact",
+        message="Develop branches must not use production state as casual fixtures, and private ledgers must not be committed.",
+    )
+
+    allowed_sources = _normalized_token_set(_get(summary, "development_lane.allowed_data_sources", []))
+    required_sources = {"dev_or_test_db", "dev_or_test_storage", "fixtures_or_restored_snapshots"}
+    missing_sources = sorted(required_sources - allowed_sources)
+    result.details["development_allowed_data_sources"] = sorted(allowed_sources)
+    if missing_sources:
+        result.fail(
+            "production_development_allowed_sources_incomplete",
+            "Develop lane must explicitly allow dev/test DB, dev/test storage, and fixtures or restored snapshots.",
+            path="development_lane.allowed_data_sources",
+            expected=sorted(required_sources),
+            actual=sorted(allowed_sources),
+        )
+
+    current_phase = str(_get(summary, "phase_boundaries.current_phase", "")).casefold()
+    if current_phase not in {"pd1-a", "pd1_a"}:
+        result.fail(
+            "production_development_current_phase_mismatch",
+            "This governance summary must identify PD1-A as the current phase.",
+            path="phase_boundaries.current_phase",
+            expected="PD1-A",
+            actual=_get(summary, "phase_boundaries.current_phase", None),
+        )
+    next_phase = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).casefold()
+    if "s2g-1" not in next_phase and "s2g_1" not in next_phase:
+        result.fail(
+            "production_development_next_phase_not_s2g1",
+            "The immediate recommended next phase after PD1-A must remain S2G-1.",
+            path="phase_boundaries.next_recommended_phase",
+            expected="S2G-1",
+            actual=_get(summary, "phase_boundaries.next_recommended_phase", None),
+        )
+
+    forbidden_authorizations = (
+        "phase_boundaries.authorizes_s3",
+        "phase_boundaries.authorizes_provider_calls",
+        "phase_boundaries.authorizes_pixiv_gallery_dl_saucenao_google",
+        "phase_boundaries.authorizes_sourceconcept_r1r_r2",
+        "phase_boundaries.authorizes_entity_bridge",
+        "phase_boundaries.authorizes_confirmed_assignments",
+        "phase_boundaries.authorizes_automatic_production_sync",
+        "phase_boundaries.authorizes_gpu_benchmark",
+        "phase_boundaries.authorizes_desired_media_backfill",
+    )
+    _check_required_false_paths(
+        summary,
+        result,
+        forbidden_authorizations,
+        code="production_development_forbidden_current_phase_authorization",
+        message="PD1-A may mention future work but must not authorize future execution phases or production automation.",
+    )
+
+    requested_writes = _production_write_requested(summary)
+    result.details["production_write_requests"] = requested_writes
+    if requested_writes:
+        if not _as_bool(_get(summary, "production_promotion.enabled", False)):
+            result.fail(
+                "production_write_without_promotion_mode",
+                "Production writes require explicit production/promotion mode.",
+                path="production_promotion.enabled",
+                expected=True,
+                actual=_get(summary, "production_promotion.enabled", None),
+            )
+        if not _as_bool(_get(summary, "production_promotion.operator_confirmation_present", False)):
+            result.fail(
+                "production_write_without_operator_confirmation",
+                "Production writes require explicit operator confirmation.",
+                path="production_promotion.operator_confirmation_present",
+                expected=True,
+                actual=_get(summary, "production_promotion.operator_confirmation_present", None),
+            )
+
+    source_root_write_requested = _as_bool(_get(summary, "write_requests.source_root_registration", False)) or _as_bool(
+        _get(summary, "write_requests.source_root_replacement", False)
+    )
+    if source_root_write_requested:
+        _check_required_boolean_paths(
+            summary,
+            result,
+            (
+                "production_identity.db_clean",
+                "production_identity.storage_clean",
+                "production_identity.source_roots_clean",
+                "backup_proof.valid",
+            ),
+            code="production_source_root_write_gate_missing",
+            message="Production source-root registration/replacement requires clean identity gates and valid backup proof.",
+        )
+
+    schema_setup_requested = _as_bool(_get(summary, "write_requests.schema_setup", False)) or _as_bool(
+        _get(summary, "write_requests.schema_migration", False)
+    )
+    schema_setup_requested = schema_setup_requested or _as_bool(_get(summary, "schema_setup_gates.schema_setup_requested", False))
+    schema_setup_requested = schema_setup_requested or _as_bool(_get(summary, "schema_setup_gates.schema_setup_ran", False))
+    if schema_setup_requested:
+        if _as_bool(_get(summary, "identity_gates.blocked", False)):
+            result.fail(
+                "production_schema_setup_identity_blocked",
+                "Schema setup/migration paths must not run while env/storage/DB identity gates are blocked.",
+                path="identity_gates.blocked",
+                expected=False,
+                actual=True,
+            )
+        _check_required_boolean_paths(
+            summary,
+            result,
+            ("identity_gates.env_clean", "identity_gates.db_clean", "identity_gates.storage_clean"),
+            code="production_schema_setup_identity_gate_missing",
+            message="Schema setup/migration paths require clean env, DB, and storage identity gates.",
+        )
+
+
 def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     tables = _get(summary, "dynamic_sync.schema.tables", [])
     required_tables = {
@@ -1566,6 +1753,7 @@ CUSTOM_CHECKS = {
     "artifact_lifecycle": _check_artifact_lifecycle,
     "destructive_operation": _check_destructive_operation,
     "entity_truth_bridge": _check_entity_truth_bridge,
+    "production_development_separation": _check_production_development_separation,
     "dynamic_library_sync": _check_dynamic_library_sync,
     "phase47_s2_baseline": _check_phase47_s2_baseline,
 }

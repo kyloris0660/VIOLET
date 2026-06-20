@@ -38,6 +38,9 @@ extend a contract first.
 - `artifact_lifecycle_contract_v1`
 - `destructive_operation_contract_v1`
 - `entity_truth_bridge_contract_v1`
+- `dynamic_library_sync_contract_v1`
+- `phase47_s2_baseline_contract_v1`
+- `production_development_separation_contract_v1`
 
 ## R1R Gate
 

@@ -1,0 +1,81 @@
+{
+  "artifact_boundary": {
+    "private_ledgers_committed": false,
+    "private_ledgers_local_ignored": true,
+    "public_redaction_contract_passed": true,
+    "public_reports_aggregate_only": true,
+    "public_reports_path_redacted": true
+  },
+  "development_lane": {
+    "allowed_data_sources": [
+      "dev_or_test_db",
+      "dev_or_test_storage",
+      "fixtures_or_restored_snapshots"
+    ],
+    "production_db_as_fixture": false,
+    "production_private_ledgers_as_fixture": false,
+    "production_source_roots_as_fixture": false,
+    "production_storage_as_fixture": false
+  },
+  "governance_lanes": {
+    "development": {
+      "explicit": true
+    },
+    "production": {
+      "explicit": true
+    }
+  },
+  "phase_boundaries": {
+    "authorizes_automatic_production_sync": false,
+    "authorizes_confirmed_assignments": false,
+    "authorizes_desired_media_backfill": false,
+    "authorizes_entity_bridge": false,
+    "authorizes_gpu_benchmark": false,
+    "authorizes_pixiv_gallery_dl_saucenao_google": false,
+    "authorizes_provider_calls": false,
+    "authorizes_s3": false,
+    "authorizes_sourceconcept_r1r_r2": false,
+    "current_phase": "PD1-A",
+    "future_mentions_are_non_authorizing": true,
+    "next_recommended_phase": "S2G-1 GPU AI tagging capability probe and benchmark"
+  },
+  "pipeline_contract": {
+    "claims": {
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "production_development_separation_contract_v1",
+    "status": "target_met"
+  },
+  "production_promotion": {
+    "enabled": false,
+    "operator_confirmation_present": false,
+    "required_for_production_writes": true
+  },
+  "production_source_root_write_gates": {
+    "backup_proof_required": true,
+    "clean_identity_required": true
+  },
+  "production_write_gates": {
+    "import_classification_ai_localization_requires_promotion": true
+  },
+  "schema_setup_gates": {
+    "identity_gates_required": true,
+    "no_schema_setup_when_identity_blocked": true,
+    "schema_setup_ran": false,
+    "schema_setup_requested": false
+  },
+  "validation": {
+    "focused_tests_passed": true
+  },
+  "write_requests": {
+    "production_ai_tagging": false,
+    "production_classification": false,
+    "production_import": false,
+    "production_localization": false,
+    "schema_migration": false,
+    "schema_setup": false,
+    "source_root_registration": false,
+    "source_root_replacement": false
+  }
+}
