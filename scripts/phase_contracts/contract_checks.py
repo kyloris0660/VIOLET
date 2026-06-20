@@ -1177,9 +1177,40 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
     localization_executed = _as_bool(_get(summary, "localization_results.executed", False))
     llm_called = _as_bool(_get(summary, "localization_results.llm_called", False))
     llm_approved = _as_bool(_get(summary, "readiness.llm_localization.operator_approved", False))
+    execute_confirmation_present = _as_bool(_get(summary, "pipeline_contract.execute_confirmation_present", False))
     blockers = _get(summary, "readiness.blockers", [])
     if blockers is MISSING or blockers is None:
         blockers = []
+    if _has(summary, "head_sha"):
+        result.fail(
+            "phase47_s2_ambiguous_top_level_head_sha_present",
+            "S2 public reports must split validated run, report generation, and PR handoff head evidence instead of a stale top-level head_sha.",
+            path="head_sha",
+            expected="omitted",
+            actual=_get(summary, "head_sha", None),
+        )
+    required_head_paths = (
+        "head_evidence.validated_run_head_sha",
+        "head_evidence.report_generation_head_sha",
+        "head_evidence.current_pr_head_sha",
+    )
+    for path in required_head_paths:
+        if not _has_non_null(summary, path) or not str(_get(summary, path, "")).strip():
+            result.fail(
+                "phase47_s2_head_evidence_missing",
+                "S2 public reports must include split head evidence.",
+                path=path,
+                expected="non-empty",
+                actual=_get(summary, path, None),
+            )
+    if not _as_bool(_get(summary, "head_evidence.top_level_head_sha_omitted", False)):
+        result.fail(
+            "phase47_s2_head_evidence_does_not_omit_top_level_sha",
+            "S2 head evidence must explicitly state that ambiguous top-level head_sha is omitted.",
+            path="head_evidence.top_level_head_sha_omitted",
+            expected=True,
+            actual=_get(summary, "head_evidence.top_level_head_sha_omitted", None),
+        )
     if _get(summary, "public_redaction.passed", MISSING) is MISSING or not _as_bool(_get(summary, "public_redaction.passed", False)):
         result.fail(
             "phase47_s2_public_redaction_absent_or_failed",
@@ -1234,6 +1265,41 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=[],
             actual=blockers,
         )
+    if readiness_passed:
+        readiness_required_true_paths = (
+            "readiness.python_env.check_python_env_passed",
+            "readiness.app_settings_db_identity_matches_execution_db",
+            "readiness.production_storage.explicitly_set",
+            "readiness.backup_recovery.valid",
+            "readiness.ai_model.model_downloaded",
+            "readiness.automatic_production_sync.remains_opt_in",
+            "readiness.proper_noun_safeguards.unreviewed_llm_aliases_excluded_from_search",
+        )
+        for path in readiness_required_true_paths:
+            if not _as_bool(_get(summary, path, False)):
+                result.fail(
+                    "phase47_s2_readiness_claim_not_independently_proven",
+                    "Gate 1 readiness.passed=true must be backed by independent readiness proof fields.",
+                    path=path,
+                    expected=True,
+                    actual=_get(summary, path, None),
+                )
+        if _get(summary, "readiness.dynamic_schema.tables_missing_count", 0) not in (0, "0"):
+            result.fail(
+                "phase47_s2_readiness_claim_schema_missing",
+                "Gate 1 readiness.passed=true cannot coexist with missing dynamic sync tables.",
+                path="readiness.dynamic_schema.tables_missing_count",
+                expected=0,
+                actual=_get(summary, "readiness.dynamic_schema.tables_missing_count", None),
+            )
+        if int(_get(summary, "readiness.input_root_counts.valid_count", 0) or 0) <= 0:
+            result.fail(
+                "phase47_s2_readiness_claim_no_valid_source_root",
+                "Gate 1 readiness.passed=true requires at least one valid active source root.",
+                path="readiness.input_root_counts.valid_count",
+                expected=">0",
+                actual=_get(summary, "readiness.input_root_counts.valid_count", None),
+            )
     if not readiness_passed and _completion_or_approval_claimed(result):
         result.fail(
             "phase47_s2_completion_claimed_with_gate1_blocker",
@@ -1266,6 +1332,14 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=True,
             actual=_get(summary, "gate0.backup_recovery.valid", None),
         )
+    if (import_executed or classification_executed or ai_tagging_executed or localization_executed or llm_called) and not execute_confirmation_present:
+        result.fail(
+            "phase47_s2_execution_claimed_without_exact_confirmation",
+            "S2 execution stages require the exact execute confirmation in pipeline_contract.execute_confirmation_present.",
+            path="pipeline_contract.execute_confirmation_present",
+            expected=True,
+            actual=_get(summary, "pipeline_contract.execute_confirmation_present", None),
+        )
     if import_executed and not (dry_run_executed and dry_run_status in {"completed", "passed"}):
         result.fail(
             "phase47_s2_import_claimed_without_fresh_dry_run",
@@ -1282,6 +1356,55 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=True,
             actual=_get(summary, "import_results.per_item_ledgers_written", None),
         )
+    if import_executed and _as_bool(_get(summary, "import_results.hydration_failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_hydration_failure_budget_exceeded",
+            "S2 cannot claim a passing import when the hydration/read failure budget is exceeded.",
+            path="import_results.hydration_failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if import_executed and _as_bool(_get(summary, "import_results.import_failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_import_failure_budget_exceeded",
+            "S2 cannot claim a passing import when the import failure budget is exceeded.",
+            path="import_results.import_failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if classification_executed:
+        if _get(summary, "classification_results.failure_budget.threshold_exceeded", MISSING) is MISSING:
+            result.fail(
+                "phase47_s2_classification_failure_budget_missing",
+                "S2 classification execution requires explicit failure-budget proof.",
+                path="classification_results.failure_budget.threshold_exceeded",
+                expected=False,
+                actual=None,
+            )
+        elif _as_bool(_get(summary, "classification_results.failure_budget.threshold_exceeded", False)):
+            result.fail(
+                "phase47_s2_classification_failure_budget_exceeded",
+                "S2 cannot claim passing classification when its failure budget is exceeded.",
+                path="classification_results.failure_budget.threshold_exceeded",
+                expected=False,
+                actual=True,
+            )
+    if ai_tagging_executed and _as_bool(_get(summary, "ai_tagging_results.failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_ai_failure_budget_exceeded",
+            "S2 cannot claim passing AI tagging when the AI failure budget is exceeded.",
+            path="ai_tagging_results.failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
+    if localization_executed and _as_bool(_get(summary, "localization_results.failure_budget.threshold_exceeded", False)):
+        result.fail(
+            "phase47_s2_localization_failure_budget_exceeded",
+            "S2 cannot claim passing localization when the localization failure budget is exceeded.",
+            path="localization_results.failure_budget.threshold_exceeded",
+            expected=False,
+            actual=True,
+        )
     if llm_called and not llm_approved:
         result.fail(
             "phase47_s2_llm_called_without_operator_approval",
@@ -1290,7 +1413,43 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             expected=True,
             actual=False,
         )
+    if llm_called:
+        if not _has(summary, "llm_localization_audit.provider_call_count_lower_bound"):
+            result.fail(
+                "phase47_s2_llm_audit_missing",
+                "S2 LLM localization claims require an explicit provider-call audit, including background auto-translation if observed.",
+                path="llm_localization_audit.provider_call_count_lower_bound",
+                expected="present",
+                actual=None,
+            )
+        if _as_bool(_get(summary, "llm_localization_audit.provider_calls_undercounted", False)):
+            result.fail(
+                "phase47_s2_llm_provider_calls_undercounted",
+                "S2 public summaries must not knowingly undercount LLM provider calls.",
+                path="llm_localization_audit.provider_calls_undercounted",
+                expected=False,
+                actual=True,
+            )
+    if int(_get(summary, "gate0.input_root_registration.registered_count", 0) or 0) > 0:
+        if not backup_valid or not _as_bool(_get(summary, "gate0.db_identity.matches_expected_database", True)) or not _as_bool(
+            _get(summary, "gate0.storage_identity.matches_expected", True)
+        ):
+            result.fail(
+                "phase47_s2_source_root_write_without_clean_identity_or_backup",
+                "S2 source-root registration writes require clean DB/storage identity gates and valid backup proof.",
+                path="gate0.input_root_registration.registered_count",
+                expected="0 unless identity gates and backup are clean",
+                actual=_get(summary, "gate0.input_root_registration.registered_count", None),
+            )
     if _completion_or_approval_claimed(result):
+        if not _as_bool(_get(summary, "dynamic_sync_dry_run.source_scope_check.passed", False)):
+            result.fail(
+                "phase47_s2_full_completion_claimed_without_full_scope_dry_run",
+                "Full S2 completion requires a full-scope dry-run; partial/source-scope mismatch dry-runs cannot claim execution complete.",
+                path="dynamic_sync_dry_run.source_scope_check.passed",
+                expected=True,
+                actual=_get(summary, "dynamic_sync_dry_run.source_scope_check.passed", None),
+            )
         expected_statuses = {
             "dynamic_sync_dry_run.status": {"completed", "passed"},
             "import_results.status": {"completed", "completed_with_item_failures_within_budget"},

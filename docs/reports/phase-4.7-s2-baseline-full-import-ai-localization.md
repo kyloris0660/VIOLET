@@ -7,18 +7,18 @@
 - Blockers: `[]`.
 - Schema ensure ran: `False`.
 - Backup proof supplied/existing/valid: `True` / `True` / `True`.
-- Source roots registered/valid: `1` / `1`.
+- Source roots registered/valid: `2` / `1`.
 - Fresh dynamic sync dry-run: `completed`.
 - Source scope check: `passed`.
 - Hydration workload: `hydration_workload_recorded`.
 - Hydration backlog detected: `23619`.
 - Execute confirmation present: `True`.
-- Import/classification/AI/localization/browser execution: `completed` / `completed` / `completed` / `completed` / `passed`.
+- Import/classification/AI/localization/browser execution: `completed_with_item_failures_within_budget` / `completed` / `completed` / `completed` / `passed`.
 - Full S2 target met / safe to merge claim: `true` / `true`.
 
 ## Gate 0 Schema / Backup / Source Roots
 - Schema ensure status: `not_needed`.
-- Migration path used: `None`.
+- Migration path used: `not_needed`.
 - Dynamic sync tables missing before count: `0`.
 - Dynamic sync tables missing after count: `0`.
 - Additive only: `True`.
@@ -29,7 +29,7 @@
 
 ## Gate 1 Readiness Proof
 - Branch: `codex/phase47-s2-baseline-full-import-ai-localization`.
-- Head SHA: `e56483efa905`.
+- Runtime readiness validated run head SHA: `e56483efa9058dc7bf34a765c8c3b6efcb1673a7`.
 - Python env passed: `True`.
 - DB identity matched app settings: `True`.
 - Dynamic sync missing table count: `0`.
@@ -38,6 +38,13 @@
 - AI model local/downloaded: `True`.
 - LLM localization operator-approved: `True`.
 - Proper-noun search safeguard: `manual_static_or_operator_reviewed_only`.
+
+## Head Evidence
+- Validated run head SHA: `e56483efa9058dc7bf34a765c8c3b6efcb1673a7`.
+- Report generation head SHA: `83c4c87f12ef69787d1be4e27837210d35c33497`.
+- Current PR head SHA: `reported by PR metadata/final delivery after the report refresh commit`.
+- Current PR head scope: a committed artifact cannot truthfully contain its own final commit SHA.
+- Top-level ambiguous `head_sha` is intentionally omitted.
 
 ## Fresh Dry-Run Proof
 - Dry-run executed: `True`.
@@ -58,22 +65,24 @@
 - Estimated AI tagging workload: `11688`.
 
 ## Execution Result
-- Import status: `completed`; imported/reused/failed: `30934` / `4100` / `0`.
+- Import status: `completed_with_item_failures_within_budget`; imported/reused/failed: `30934` / `4100` / `0`.
 - Hydration attempted/succeeded/failed: `23619` / `23427` / `192`.
+- Hydration failure budget denominator: `hydration_attempted`; threshold exceeded: `False`.
 - Unsupported sidecar / desired-media unsupported: `152` / `4247`.
+- Desired-media support gap extensions: `[".heic", ".heif", ".jfif", ".mov", ".mp4", ".pic"]`; count `4247`.
 - Classification status: `completed`; failed: `0`.
 - AI tagging status: `completed`; tagged/reused/failed: `30971` / `4063` / `0`.
 - LLM localization status: `completed`; translated/failed/skipped/remaining: `1235` / `0` / `0` / `0`.
+- LLM provider-call audit: dedicated provider batches `25`, background auto-translation calls `1438`, provider call lower bound `1463`, translated tag units recorded `2672`.
+- Dynamic source item localization status: `backfilled`; updated to localized `35034`.
 - Browser validation status: `passed`.
-- Browser validation proof: production server identity, gallery load, imported media visibility, thumbnail loading, media detail, AI tag display, localized Chinese names, canonical fallback for missing translations, trusted general/meta Chinese search alias, unreviewed proper-noun alias search exclusion, no broken image flood, and no source-path exposure all passed.
-- Unique media visible through gallery API: `34684`.
-- Remaining desired-media support gap: `4247` unsupported desired-media source items are recorded separately for future support/backfill; supported eligible media baseline completed.
 
 ## Public / Private Artifact Boundary
 - Public artifacts are aggregate-only and path-redacted.
 - Private ledgers are local under `.local_manifests/phase-4.7-s2-baseline-full-import-ai-localization/` and are not committed.
 
 ## Required Next Step
-- PR #113 is ready for review on the S2 supported-media baseline result.
-- Keep the desired-media support gap visible: HEIC/HEIF/MOV/MP4 support/backfill should be handled as a future scoped follow-up, not silently folded into this report.
-- Do not start S3 from this PR.
+- PR #113 is in closeout and browser/manual validation handoff; do not start S3 from this PR.
+- Keep desired-media support gaps visible for S2F backfill: `.heic`, `.heif`, `.jfif`, `.mov`, `.mp4`, `.pic`.
+- Keep production/development lane separation in force before any future feature branch touches runtime state.
+- Future production writes still require PR review, executable contracts, backup proof, production dry-run where applicable, browser validation, redaction checks, and explicit execute confirmation.

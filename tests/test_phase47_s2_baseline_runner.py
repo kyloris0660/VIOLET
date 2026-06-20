@@ -5,9 +5,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from scripts import run_phase47_s2_baseline_full_import_ai_localization as s2
+from app.database import Base  # noqa: E402
+from app.models import DynamicSourceItem, DynamicSourceRoot  # noqa: E402
 
 
 def _gate0_blocked(**overrides):
@@ -441,6 +445,104 @@ def test_unsupported_breakdown_distinguishes_sidecar_and_desired_media():
     assert s2.unsupported_kind_for_suffix(".AAE") == "sidecar_or_metadata"
     assert s2.unsupported_kind_for_suffix(".heic") == "desired_media_support_gap"
     assert s2.unsupported_kind_for_suffix(".MOV") == "desired_media_support_gap"
+
+
+def test_cloud_deferred_filter_keeps_only_unresolved_retryable_rows_after_execute():
+    rows = [
+        {"state": "hydrated_success", "reason": "content_hash_match"},
+        {"state": "imported"},
+        {"state": "reused_existing"},
+        {"state": "hydration_failed", "reason": "cloud_hydration_failed"},
+        {"state": "read_timeout", "reason": "read_timeout"},
+    ]
+
+    filtered = s2.filter_cloud_deferred_rows(rows, execution_present=True)
+
+    assert [row["state"] for row in filtered] == ["hydration_failed", "read_timeout"]
+
+
+def test_hydration_failure_budget_uses_hydration_attempted_denominator():
+    budget = s2.failure_threshold_payload(
+        192,
+        23619,
+        max_items=s2.DEFAULT_HYDRATION_FAILURE_MAX_ITEMS,
+        max_rate=s2.DEFAULT_HYDRATION_FAILURE_MAX_RATE,
+    )
+
+    assert budget["attempted"] == 23619
+    assert budget["failed"] == 192
+    assert budget["threshold_exceeded"] is False
+    assert budget["failure_rate"] == pytest.approx(192 / 23619)
+
+
+def test_source_item_localization_status_backfill_marks_imported_ai_tagged_items():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    try:
+        root = DynamicSourceRoot(
+            label="active",
+            root_path="redacted",
+            root_path_hash="root-hash",
+            is_active=True,
+            auto_sync_enabled=False,
+        )
+        db.add(root)
+        db.flush()
+        db.add_all(
+            [
+                DynamicSourceItem(
+                    source_root_id=root.id,
+                    relative_path="imported.jpg",
+                    relative_path_hash="imported-hash",
+                    import_status="imported",
+                    ai_tagging_status="tagged",
+                    localization_status="pending",
+                ),
+                DynamicSourceItem(
+                    source_root_id=root.id,
+                    relative_path="waiting.jpg",
+                    relative_path_hash="waiting-hash",
+                    import_status="pending",
+                    ai_tagging_status="waiting_import",
+                    localization_status="waiting_ai_tags",
+                ),
+                DynamicSourceItem(
+                    source_root_id=root.id,
+                    relative_path="deferred.heic",
+                    relative_path_hash="deferred-hash",
+                    import_status="deferred",
+                    ai_tagging_status="deferred",
+                    localization_status="deferred",
+                ),
+            ]
+        )
+        db.commit()
+
+        result = s2.backfill_dynamic_source_item_localization_status(db)
+        db.commit()
+        statuses = {item.relative_path: item.localization_status for item in db.query(DynamicSourceItem).all()}
+
+        assert result["updated_to_localized"] == 1
+        assert statuses["imported.jpg"] == "localized"
+        assert statuses["waiting.jpg"] == "waiting_ai_tags"
+        assert statuses["deferred.heic"] == "deferred"
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 def test_output_dir_cannot_overlap_source_root(tmp_path, monkeypatch):

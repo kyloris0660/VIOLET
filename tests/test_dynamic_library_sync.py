@@ -17,7 +17,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import Base, migrate_add_dynamic_library_sync_tables  # noqa: E402
 from app.enums import TagCategoryEnum  # noqa: E402
-from app.models import DynamicSourceItem, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, TagTranslation  # noqa: E402
+from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, TagTranslation  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as service  # noqa: E402
 
@@ -188,6 +188,46 @@ def test_update_check_detects_changed_and_missing_items(db, tmp_path):
     summary = service.get_pending_summary(db)
     assert summary["pending_changed"] == 1
     assert summary["pending_deferred"] >= 3
+
+
+def test_pending_summary_defaults_to_active_roots_and_reports_inactive_historical(db, tmp_path):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "active.jpg").write_bytes(b"active")
+    active_root = service.register_source_root(db, path=source_root, label="active")
+    service.run_update_check(db, root_ids=[active_root.id])
+
+    inactive_root = DynamicSourceRoot(
+        label="inactive",
+        root_path=str(tmp_path / "inactive"),
+        root_path_hash="inactive-hash",
+        is_active=False,
+        auto_sync_enabled=False,
+    )
+    db.add(inactive_root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=inactive_root.id,
+            relative_path="historical.jpg",
+            relative_path_hash="historical-hash",
+            sync_state="new",
+            import_status="pending",
+            classification_status="waiting_import",
+            ai_tagging_status="waiting_import",
+            localization_status="waiting_ai_tags",
+        )
+    )
+    db.commit()
+
+    active_summary = service.get_pending_summary(db)
+    all_summary = service.get_pending_summary(db, include_inactive=True)
+
+    assert active_summary["scope"] == "active_source_roots"
+    assert active_summary["pending_new"] == 1
+    assert active_summary["inactive_historical"]["pending_import"] == 1
+    assert all_summary["scope"] == "all_source_roots"
+    assert all_summary["pending_new"] == 2
 
 
 def test_capped_update_check_skips_missing_reconciliation(db, tmp_path):

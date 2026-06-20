@@ -576,20 +576,48 @@ def get_last_sync_run(db: Session) -> Optional[DynamicSyncRun]:
     return db.query(DynamicSyncRun).order_by(DynamicSyncRun.created_at.desc(), DynamicSyncRun.id.desc()).first()
 
 
-def get_pending_summary(db: Session) -> Dict[str, Any]:
+def _dynamic_source_item_scope(db: Session, *, include_inactive: bool = False):
+    query = db.query(DynamicSourceItem).join(DynamicSourceRoot)
+    if not include_inactive:
+        query = query.filter(DynamicSourceRoot.is_active == True)
+    return query
+
+
+def _inactive_historical_pending_summary(db: Session) -> Dict[str, int]:
+    inactive = db.query(DynamicSourceItem).join(DynamicSourceRoot).filter(DynamicSourceRoot.is_active == False)
+    pending_new = inactive.filter(DynamicSourceItem.import_status == "pending", DynamicSourceItem.sync_state == "new").count()
+    pending_changed = inactive.filter(
+        DynamicSourceItem.import_status == "pending", DynamicSourceItem.sync_state == "changed"
+    ).count()
+    deferred = inactive.filter(
+        or_(
+            DynamicSourceItem.import_status == "deferred",
+            DynamicSourceItem.source_status.in_(["deferred", "failed", "missing"]),
+        )
+    ).count()
+    return {
+        "pending_new": pending_new,
+        "pending_changed": pending_changed,
+        "pending_import": pending_new + pending_changed,
+        "pending_deferred": deferred,
+        "total_pending": pending_new + pending_changed + deferred,
+    }
+
+
+def get_pending_summary(db: Session, *, include_inactive: bool = False) -> Dict[str, Any]:
     threshold = settings.DYNAMIC_LIBRARY_SYNC_THRESHOLD
     pending_new = (
-        db.query(func.count(DynamicSourceItem.id))
+        _dynamic_source_item_scope(db, include_inactive=include_inactive).with_entities(func.count(DynamicSourceItem.id))
         .filter(DynamicSourceItem.import_status == "pending", DynamicSourceItem.sync_state == "new")
         .scalar() or 0
     )
     pending_changed = (
-        db.query(func.count(DynamicSourceItem.id))
+        _dynamic_source_item_scope(db, include_inactive=include_inactive).with_entities(func.count(DynamicSourceItem.id))
         .filter(DynamicSourceItem.import_status == "pending", DynamicSourceItem.sync_state == "changed")
         .scalar() or 0
     )
     deferred = (
-        db.query(func.count(DynamicSourceItem.id))
+        _dynamic_source_item_scope(db, include_inactive=include_inactive).with_entities(func.count(DynamicSourceItem.id))
         .filter(
             or_(
                 DynamicSourceItem.import_status == "deferred",
@@ -601,12 +629,15 @@ def get_pending_summary(db: Session) -> Dict[str, Any]:
     pending_import = pending_new + pending_changed
     total_pending = pending_import + deferred
     status_breakdown = dict(
-        db.query(DynamicSourceItem.import_status, func.count(DynamicSourceItem.id))
+        _dynamic_source_item_scope(db, include_inactive=include_inactive)
+        .with_entities(DynamicSourceItem.import_status, func.count(DynamicSourceItem.id))
         .group_by(DynamicSourceItem.import_status)
         .all()
     )
     last_run = get_last_sync_run(db)
     return {
+        "scope": "all_source_roots" if include_inactive else "active_source_roots",
+        "inactive_historical": _inactive_historical_pending_summary(db),
         "pending_new": pending_new,
         "pending_changed": pending_changed,
         "pending_deferred": deferred,

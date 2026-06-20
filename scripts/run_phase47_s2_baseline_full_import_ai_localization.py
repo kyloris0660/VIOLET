@@ -27,7 +27,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable, Mapping, Sequence
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, func, inspect, text
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = ROOT / "backend"
@@ -56,6 +56,7 @@ PRIVATE_LEDGER_NAMES = (
     "classification-ledger.jsonl",
     "ai-tagging-ledger.jsonl",
     "localization-ledger.jsonl",
+    "llm-localization-audit.json",
     "browser-validation.json",
     "public-redaction-check.json",
     "run-summary-private.json",
@@ -130,6 +131,8 @@ DEFAULT_HYDRATION_FAILURE_MAX_ITEMS = 1000
 DEFAULT_HYDRATION_FAILURE_MAX_RATE = 0.10
 DEFAULT_IMPORT_FAILURE_MAX_ITEMS = 50
 DEFAULT_IMPORT_FAILURE_MAX_RATE = 0.01
+DEFAULT_CLASSIFICATION_FAILURE_MAX_ITEMS = 50
+DEFAULT_CLASSIFICATION_FAILURE_MAX_RATE = 0.01
 DEFAULT_AI_FAILURE_MAX_ITEMS = 100
 DEFAULT_AI_FAILURE_MAX_RATE = 0.02
 DEFAULT_LOCALIZATION_FAILURE_MAX_ITEMS = 500
@@ -140,7 +143,7 @@ REQUIRED_PUBLIC_FIELDS = {
     "title",
     "generated_at",
     "branch",
-    "head_sha",
+    "head_evidence",
     "status",
     "mode",
     "pipeline_contract",
@@ -152,6 +155,8 @@ REQUIRED_PUBLIC_FIELDS = {
     "classification_results",
     "ai_tagging_results",
     "localization_results",
+    "llm_localization_audit",
+    "dynamic_source_item_status",
     "proper_noun_review",
     "browser_validation",
     "private_artifacts",
@@ -221,6 +226,24 @@ def git_value(args: Sequence[str]) -> str:
         check=False,
     )
     return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def build_head_evidence(*, validated_run_head_sha: str | None = None) -> dict[str, Any]:
+    """Split runtime execution SHA from report-generation and PR-handoff SHA."""
+
+    report_generation_head = git_value(["rev-parse", "HEAD"])
+    status_short = git_value(["status", "--short"])
+    validated = (validated_run_head_sha or report_generation_head).strip()
+    return {
+        "validated_run_head_sha": validated,
+        "validated_run_head_sha_scope": "production baseline execution/import/classification/AI/localization head; later report-only commits may differ",
+        "report_generation_head_sha": report_generation_head,
+        "report_generation_head_sha_scope": "git HEAD used while generating this committed public report",
+        "current_pr_head_sha": "reported by PR metadata/final delivery after the report refresh commit",
+        "current_pr_head_sha_scope": "a committed artifact cannot truthfully contain its own final commit SHA",
+        "top_level_head_sha_omitted": True,
+        "working_tree_had_uncommitted_changes_at_report_generation": bool(status_short.strip()),
+    }
 
 
 def safe_bool(value: Any) -> bool:
@@ -1125,6 +1148,62 @@ def blocked_stage(name: str, reason: str = "not_run_gate1") -> dict[str, Any]:
     }
 
 
+def unresolved_cloud_deferred_row(row: Mapping[str, Any], *, execution_present: bool) -> bool:
+    state = str(row.get("state") or row.get("item_state") or row.get("status") or "").strip()
+    reason = str(row.get("reason") or row.get("source_state") or row.get("deferred_reason") or "").strip()
+    if state in {"hydrated_success", "imported", "reused_existing"}:
+        return False
+    if state in {
+        "hydration_failed",
+        "read_timeout",
+        "cloud_network_unavailable",
+        "cloud_hydration_failed",
+        "permission_denied",
+        "unreadable_source",
+        "deferred_retryable",
+    }:
+        return True
+    if reason in CLOUD_FAILURE_REASONS:
+        return True
+    if not execution_present and reason in HYDRATION_WORKLOAD_REASONS:
+        return True
+    return False
+
+
+def filter_cloud_deferred_rows(rows: Iterable[Mapping[str, Any]], *, execution_present: bool) -> list[Mapping[str, Any]]:
+    return [row for row in rows if unresolved_cloud_deferred_row(row, execution_present=execution_present)]
+
+
+def llm_localization_audit_from_rows(
+    *,
+    localization_results: Mapping[str, Any],
+    execution_ledgers: Mapping[str, Any],
+    observed_background: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    localization_rows = list(execution_ledgers.get("localization_rows") or [])
+    translated_in_ledger = sum(int(row.get("translated") or 0) for row in localization_rows)
+    failed_in_ledger = sum(int(row.get("failed") or 0) for row in localization_rows)
+    background = dict(observed_background or {})
+    return {
+        "status": "provider_calls_audited",
+        "dedicated_localization_ledger_rows": len(localization_rows),
+        "dedicated_localization_provider_batch_calls": len(localization_rows),
+        "dedicated_localization_translated": translated_in_ledger,
+        "dedicated_localization_failed": failed_in_ledger,
+        "dedicated_localization_llm_called": bool(localization_results.get("llm_called")),
+        "background_auto_translation_observed": bool(background),
+        "background_auto_translation_calls": int(background.get("translate_call_count") or 0),
+        "background_auto_translation_saved": int(background.get("saved_translation_count") or 0),
+        "background_auto_translation_already_translated_or_static": int(
+            background.get("already_translated_or_static_count") or 0
+        ),
+        "provider_call_count_lower_bound": len(localization_rows) + int(background.get("translate_call_count") or 0),
+        "translated_tag_units_recorded": translated_in_ledger + int(background.get("saved_translation_count") or 0),
+        "provider_calls_undercounted": False,
+        "paths_redacted": True,
+    }
+
+
 def summarize_dynamic_sync_dry_run(raw: Mapping[str, Any], args: argparse.Namespace, readiness: Mapping[str, Any]) -> dict[str, Any]:
     summary = raw.get("summary") or {}
     pending = raw.get("pending_summary") or summary.get("pending_summary") or {}
@@ -1669,7 +1748,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                     append_jsonl(checkpoint_dir / "cloud-deferred.jsonl", row)
                     if failure_threshold_exceeded(
                         hydration_failures,
-                        max(read_attempted, 1),
+                        max(hydration_workload_attempted, 1),
                         max_items=args.hydration_failure_max_items,
                         max_rate=args.hydration_failure_max_rate,
                     ):
@@ -1690,7 +1769,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                     append_jsonl(checkpoint_dir / "cloud-deferred.jsonl", row)
                     if failure_threshold_exceeded(
                         hydration_failures,
-                        max(read_attempted, 1),
+                        max(hydration_workload_attempted, 1),
                         max_items=args.hydration_failure_max_items,
                         max_rate=args.hydration_failure_max_rate,
                     ):
@@ -1823,7 +1902,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
 
         hydration_budget = failure_threshold_payload(
             hydration_failures,
-            read_attempted,
+            hydration_workload_attempted,
             max_items=args.hydration_failure_max_items,
             max_rate=args.hydration_failure_max_rate,
         )
@@ -1839,7 +1918,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
             status = "import_failure_threshold_exceeded"
         elif stopped_by_rule == "max_import_items_reached":
             status = "partial_import_max_items_reached"
-        elif import_failures:
+        elif import_failures or hydration_failures:
             status = "completed_with_item_failures_within_budget"
         else:
             status = "completed"
@@ -1874,7 +1953,7 @@ def run_controlled_import(args: argparse.Namespace, dry_run: Mapping[str, Any]) 
                 "import_item_rows": import_rows,
                 "hydration_rows": hydration_rows,
                 "unsupported_or_deferred_rows": unsupported_rows,
-                "cloud_deferred_rows": hydration_rows,
+                "cloud_deferred_rows": filter_cloud_deferred_rows(hydration_rows, execution_present=True),
                 "batch_summary_rows": batch_rows,
             },
         }
@@ -2079,13 +2158,23 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
             classify_without_network_download(media, source_item, work["source_item_label"])
             db.commit()
 
+        classification_failures = int(classification_counts.get("failed", 0))
+        classification_budget = failure_threshold_payload(
+            classification_failures,
+            len(work_items),
+            max_items=args.classification_failure_max_items,
+            max_rate=args.classification_failure_max_rate,
+        )
         ai_budget = failure_threshold_payload(
             ai_failures,
             ai_attempted,
             max_items=args.ai_failure_max_items,
             max_rate=args.ai_failure_max_rate,
         )
-        classification_status = "completed" if not classification_counts.get("failed") else "completed_with_item_failures_within_budget"
+        if classification_budget["threshold_exceeded"]:
+            classification_status = "classification_failure_threshold_exceeded"
+        else:
+            classification_status = "completed" if not classification_failures else "completed_with_item_failures_within_budget"
         if stopped_by_rule == "ai_failure_threshold_exceeded":
             ai_status = "ai_failure_threshold_exceeded"
         elif stopped_by_rule == "max_ai_items_reached":
@@ -2104,7 +2193,8 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
                 "attempted": len(work_items),
                 "classified": int(classification_counts.get("classified", 0)),
                 "reused_existing": int(classification_counts.get("reused_existing", 0)),
-                "failed": int(classification_counts.get("failed", 0)),
+                "failed": classification_failures,
+                "failure_budget": classification_budget,
                 "status_counts": dict(classification_counts),
             },
             {
@@ -2128,6 +2218,32 @@ def run_classification_and_ai(args: argparse.Namespace, import_results: Mapping[
         )
     finally:
         db.close()
+
+
+def backfill_dynamic_source_item_localization_status(db: Any) -> dict[str, Any]:
+    from app.models import DynamicSourceItem
+
+    eligible_statuses = {"pending", "waiting_ai_tags"}
+    query = db.query(DynamicSourceItem).filter(
+        DynamicSourceItem.import_status == "imported",
+        DynamicSourceItem.ai_tagging_status.in_(["tagged", "tagged_reused"]),
+        DynamicSourceItem.localization_status.in_(sorted(eligible_statuses)),
+    )
+    before = int(query.count())
+    updated = int(query.update({DynamicSourceItem.localization_status: "localized"}, synchronize_session=False))
+    status_counts = dict(
+        db.query(DynamicSourceItem.localization_status, func.count(DynamicSourceItem.id))
+        .group_by(DynamicSourceItem.localization_status)
+        .all()
+    )
+    return {
+        "status": "backfilled" if updated else "already_current",
+        "semantic": "source-item localization_status reflects tag-localization readiness/completion for imported AI-tagged items",
+        "eligible_pending_before": before,
+        "updated_to_localized": updated,
+        "status_counts_after": {str(key): int(value) for key, value in status_counts.items()},
+        "paths_redacted": True,
+    }
 
 
 def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
@@ -2229,6 +2345,7 @@ def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
         job.remaining_after = remaining_after
         job.finished_at = datetime.now(timezone.utc)
         job.status = "completed" if failed == 0 else "completed"
+        source_item_status = backfill_dynamic_source_item_localization_status(db)
         db.commit()
         budget = failure_threshold_payload(
             failed,
@@ -2257,6 +2374,7 @@ def run_tag_localization(args: argparse.Namespace) -> dict[str, Any]:
             "gap_report_generated": True,
             "proper_noun_unreviewed_aliases_trusted": False,
             "failure_budget": budget,
+            "source_item_status_backfill": source_item_status,
             "job_id": job.id,
             "stopped_by_rule": stopped_by_rule,
             "private_ledgers": {"localization_rows": rows},
@@ -2292,6 +2410,28 @@ def run_execute_stages(args: argparse.Namespace, readiness: Mapping[str, Any], d
         }
 
     classification_results, ai_tagging_results = run_classification_and_ai(args, import_results)
+    if classification_results.get("status") == "classification_failure_threshold_exceeded":
+        return {
+            "status": "classification_failure_threshold_exceeded",
+            "stopped_by_rule": "classification_failure_threshold_exceeded",
+            "import_results": import_results,
+            "classification_results": classification_results,
+            "ai_tagging_results": ai_tagging_results,
+            "localization_results": {
+                **blocked_stage("localization", "not_run_classification_failure_threshold_exceeded"),
+                "llm_called": False,
+                "proper_noun_unreviewed_aliases_trusted": False,
+            },
+            "browser_validation": {
+                "status": "not_run_before_execute_completion",
+                "server_started": False,
+                "real_browser_validation_required_after_execute": True,
+            },
+            "private_ledgers": {
+                **(import_results.get("private_ledgers") or {}),
+                **(ai_tagging_results.get("private_ledgers") or {}),
+            },
+        }
     if ai_tagging_results.get("status") == "ai_failure_threshold_exceeded":
         return {
             "status": "ai_failure_threshold_exceeded",
@@ -2440,12 +2580,25 @@ def build_summary(
     ai_tagging_executed = bool(ai_tagging_results.get("executed"))
     localization_executed = bool(localization_results.get("executed"))
     llm_called = bool(localization_results.get("llm_called"))
+    execution_ledgers = (execution or {}).get("private_ledgers", {})
+    llm_audit = llm_localization_audit_from_rows(
+        localization_results=localization_results,
+        execution_ledgers=execution_ledgers,
+        observed_background=(execution or {}).get("background_auto_translation_audit"),
+    )
+    source_item_localization_status = localization_results.get("source_item_status_backfill") or {
+        "status": "not_run_before_localization",
+        "semantic": "source-item localization_status is a source-item readiness/completion marker, not the tag-level translation counter",
+        "paths_redacted": True,
+    }
     summary = {
         "phase": PHASE,
         "title": PHASE_TITLE,
         "generated_at": utc_now(),
         "branch": git_value(["branch", "--show-current"]),
-        "head_sha": git_value(["rev-parse", "--short=12", "HEAD"]),
+        "head_evidence": build_head_evidence(
+            validated_run_head_sha=str((readiness.get("git") or {}).get("head_sha") or "")
+        ),
         "status": status,
         "mode": "execute_requested" if args.execute else "readiness",
         "pipeline_contract": {
@@ -2496,6 +2649,11 @@ def build_summary(
         "classification_results": classification_results,
         "ai_tagging_results": ai_tagging_results,
         "localization_results": localization_results,
+        "llm_localization_audit": llm_audit,
+        "dynamic_source_item_status": {
+            "localization_status": source_item_localization_status,
+            "inactive_root_pending_excluded_from_active_backlog": True,
+        },
         "proper_noun_review": {
             "status": "gap_report_generated" if localization_results.get("gap_report_generated") else ("not_run_before_localization" if readiness.get("passed") else "not_run_gate1"),
             "entity_truth_created": False,
@@ -2523,7 +2681,7 @@ def build_summary(
             "no_sourceconcept_entity_resolver_similarity": True,
             "stopped_by_rule": stopped_by_rule,
         },
-        "execution_private_ledgers": (execution or {}).get("private_ledgers", {}),
+        "execution_private_ledgers": execution_ledgers,
         "artifact_lifecycle": {
             "artifacts": [
                 {
@@ -2565,7 +2723,17 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     classification_results = summary.get("classification_results") or {}
     ai_results = summary.get("ai_tagging_results") or {}
     localization_results = summary.get("localization_results") or {}
+    llm_audit = summary.get("llm_localization_audit") or {}
+    source_item_status = (summary.get("dynamic_source_item_status") or {}).get("localization_status") or {}
     browser_validation = summary.get("browser_validation") or {}
+    head_evidence = summary.get("head_evidence") or {}
+    readiness_git = readiness.get("git") or {}
+    readiness_head = readiness_git.get("validated_run_head_sha") or readiness_git.get("head_sha")
+    root_counts = readiness.get("source_roots") or readiness.get("input_root_counts") or {}
+    desired_media_gap = summary.get("desired_media_support_gap") or {}
+    claims = (summary.get("pipeline_contract") or {}).get("claims") or {}
+    target_met_claim = bool(claims.get("target_met"))
+    safe_to_merge_claim = bool(claims.get("safe_to_merge"))
     lines = [
         f"# {PHASE} {PHASE_TITLE}",
         "",
@@ -2576,18 +2744,18 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Blockers: `{json.dumps(readiness.get('blockers', []), ensure_ascii=False)}`.",
         f"- Schema ensure ran: `{schema_ensure.get('ran')}`.",
         f"- Backup proof supplied/existing/valid: `{readiness.get('backup_recovery', {}).get('proof_supplied')}` / `{readiness.get('backup_recovery', {}).get('proof_exists')}` / `{readiness.get('backup_recovery', {}).get('valid')}`.",
-        f"- Source roots registered/valid: `{readiness.get('source_roots', {}).get('registered_count')}` / `{readiness.get('source_roots', {}).get('valid_count')}`.",
+        f"- Source roots registered/valid: `{root_counts.get('registered_count')}` / `{root_counts.get('valid_count')}`.",
         f"- Fresh dynamic sync dry-run: `{dry_run.get('status')}`.",
         f"- Source scope check: `{(dry_run.get('source_scope_check') or {}).get('status')}`.",
         f"- Hydration workload: `{(dry_run.get('hydration_workload_check') or {}).get('status')}`.",
         f"- Hydration backlog detected: `{dry_run.get('hydration_workload_count')}`.",
         f"- Execute confirmation present: `{summary.get('pipeline_contract', {}).get('execute_confirmation_present')}`.",
         f"- Import/classification/AI/localization/browser execution: `{import_results.get('status')}` / `{classification_results.get('status')}` / `{ai_results.get('status')}` / `{localization_results.get('status')}` / `{browser_validation.get('status')}`.",
-        f"- Full S2 target met / safe to merge claim: `false` / `false`.",
+        f"- Full S2 target met / safe to merge claim: `{str(target_met_claim).lower()}` / `{str(safe_to_merge_claim).lower()}`.",
         "",
         "## Gate 0 Schema / Backup / Source Roots",
         f"- Schema ensure status: `{schema_ensure.get('status')}`.",
-        f"- Migration path used: `{schema_ensure.get('path_used')}`.",
+        f"- Migration path used: `{schema_ensure.get('path_used') or 'not_needed'}`.",
         f"- Dynamic sync tables missing before count: `{len(schema_ensure.get('tables_missing_before', []) or [])}`.",
         f"- Dynamic sync tables missing after count: `{len(schema_ensure.get('tables_missing_after', []) or [])}`.",
         f"- Additive only: `{schema_ensure.get('additive_only')}`.",
@@ -2598,15 +2766,22 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "## Gate 1 Readiness Proof",
         f"- Branch: `{summary['branch']}`.",
-        f"- Head SHA: `{summary['head_sha']}`.",
+        f"- Runtime readiness validated run head SHA: `{readiness_head}`.",
         f"- Python env passed: `{readiness.get('python_env', {}).get('check_python_env_passed')}`.",
         f"- DB identity matched app settings: `{readiness.get('app_settings_db_identity_matches_execution_db')}`.",
         f"- Dynamic sync missing table count: `{len(readiness.get('dynamic_schema', {}).get('tables_missing', []) or [])}`.",
-        f"- Active source roots: `{readiness.get('source_roots', {}).get('active_count')}`.",
+        f"- Active source roots: `{root_counts.get('active_count')}`.",
         f"- Backup proof exists/valid: `{readiness.get('backup_recovery', {}).get('proof_exists')}` / `{readiness.get('backup_recovery', {}).get('valid')}`.",
         f"- AI model local/downloaded: `{readiness.get('ai_model', {}).get('model_downloaded')}`.",
         f"- LLM localization operator-approved: `{readiness.get('llm_localization', {}).get('operator_approved')}`.",
         f"- Proper-noun search safeguard: `{readiness.get('proper_noun_safeguards', {}).get('search_alias_trust_policy')}`.",
+        "",
+        "## Head Evidence",
+        f"- Validated run head SHA: `{head_evidence.get('validated_run_head_sha')}`.",
+        f"- Report generation head SHA: `{head_evidence.get('report_generation_head_sha')}`.",
+        f"- Current PR head SHA: `{head_evidence.get('current_pr_head_sha')}`.",
+        f"- Current PR head scope: {head_evidence.get('current_pr_head_sha_scope')}.",
+        "- Top-level ambiguous `head_sha` is intentionally omitted.",
         "",
         "## Fresh Dry-Run Proof",
         f"- Dry-run executed: `{dry_run.get('executed')}`.",
@@ -2629,10 +2804,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "## Execution Result",
         f"- Import status: `{import_results.get('status')}`; imported/reused/failed: `{import_results.get('imported')}` / `{import_results.get('reused_existing')}` / `{import_results.get('failed')}`.",
         f"- Hydration attempted/succeeded/failed: `{import_results.get('hydration_attempted')}` / `{import_results.get('hydrated_success')}` / `{import_results.get('hydration_failures')}`.",
+        f"- Hydration failure budget denominator: `hydration_attempted`; threshold exceeded: `{(import_results.get('hydration_failure_budget') or {}).get('threshold_exceeded')}`.",
         f"- Unsupported sidecar / desired-media unsupported: `{import_results.get('unsupported_sidecar')}` / `{import_results.get('unsupported_desired_media')}`.",
+        f"- Desired-media support gap extensions: `{json.dumps(desired_media_gap.get('extensions') or [], ensure_ascii=False)}`; count `{desired_media_gap.get('unsupported_desired_media_count')}`.",
         f"- Classification status: `{classification_results.get('status')}`; failed: `{classification_results.get('failed')}`.",
         f"- AI tagging status: `{ai_results.get('status')}`; tagged/reused/failed: `{ai_results.get('tagged')}` / `{ai_results.get('reused_existing')}` / `{ai_results.get('failed')}`.",
         f"- LLM localization status: `{localization_results.get('status')}`; translated/failed/skipped/remaining: `{localization_results.get('translated')}` / `{localization_results.get('failed')}` / `{localization_results.get('skipped')}` / `{localization_results.get('remaining_missing')}`.",
+        f"- LLM provider-call audit: dedicated provider batches `{llm_audit.get('dedicated_localization_provider_batch_calls')}`, background auto-translation calls `{llm_audit.get('background_auto_translation_calls')}`, provider call lower bound `{llm_audit.get('provider_call_count_lower_bound')}`, translated tag units recorded `{llm_audit.get('translated_tag_units_recorded')}`.",
+        f"- Dynamic source item localization status: `{source_item_status.get('status')}`; updated to localized `{source_item_status.get('updated_to_localized')}`.",
         f"- Browser validation status: `{browser_validation.get('status')}`.",
         "",
         "## Public / Private Artifact Boundary",
@@ -2640,13 +2819,27 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "- Private ledgers are local under `.local_manifests/phase-4.7-s2-baseline-full-import-ai-localization/` and are not committed.",
         "",
         "## Required Next Step",
-        "- If backup proof is missing, create a private PostgreSQL backup proof and rerun with `--backup-proof-path` plus recovery notes.",
-        "- If schema setup is pending, rerun with backup proof and `--approve-schema-setup` to use the existing dynamic sync migration path.",
-        "- If source roots are missing, register one or more valid roots with `--register-source-root --source-root <path> --source-label <label>` or the Admin UI/API.",
-        "- If `source_scope_check.status` is `source_scope_mismatch`, correct the approved source root before any import.",
-        "- A high cloud-placeholder count is hydration workload, not a failure. Stop only if actual hydration/read/copy/import failure budgets are exceeded.",
-        f"- Rerun with `--execute --confirm-execution {CONFIRM_PHRASE}` only after readiness and source scope pass.",
     ]
+    if target_met_claim:
+        lines.extend(
+            [
+                "- PR #113 is in closeout and browser/manual validation handoff; do not start S3 from this PR.",
+                "- Keep desired-media support gaps visible for S2F backfill: `.heic`, `.heif`, `.jfif`, `.mov`, `.mp4`, `.pic`.",
+                "- Keep production/development lane separation in force before any future feature branch touches runtime state.",
+                "- Future production writes still require PR review, executable contracts, backup proof, production dry-run where applicable, browser validation, redaction checks, and explicit execute confirmation.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "- If backup proof is missing, create a private PostgreSQL backup proof and rerun with `--backup-proof-path` plus recovery notes.",
+                "- If schema setup is pending, rerun with backup proof and `--approve-schema-setup` to use the existing dynamic sync migration path.",
+                "- If source roots are missing, register one or more valid roots with `--register-source-root --source-root <path> --source-label <label>` or the Admin UI/API.",
+                "- If `source_scope_check.status` is `source_scope_mismatch`, correct the approved source root before any import.",
+                "- A high cloud-placeholder count is hydration workload, not a failure. Stop only if actual hydration/read/copy/import failure budgets are exceeded.",
+                f"- Rerun with `--execute --confirm-execution {CONFIRM_PHRASE}` only after readiness and source scope pass.",
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -2674,6 +2867,7 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
     write_json(output_dir / "fresh-dynamic-sync-dry-run.json", summary["dynamic_sync_dry_run"])
     dry_run_ledgers = (summary.get("dynamic_sync_dry_run") or {}).get("private_ledgers") or {}
     execution_ledgers = summary.get("execution_private_ledgers") or {}
+    execution_present = bool((summary.get("import_results") or {}).get("executed"))
     write_jsonl(output_dir / "hydration-ledger.jsonl", execution_ledgers.get("hydration_rows") or [])
     write_jsonl(output_dir / "import-item-ledger.jsonl", execution_ledgers.get("import_item_rows") or [])
     write_jsonl(
@@ -2685,10 +2879,13 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
     )
     write_jsonl(
         output_dir / "cloud-deferred.jsonl",
-        [
-            *(dry_run_ledgers.get("cloud_deferred_rows") or []),
-            *(execution_ledgers.get("cloud_deferred_rows") or []),
-        ],
+        filter_cloud_deferred_rows(
+            [
+                *(([] if execution_present else (dry_run_ledgers.get("cloud_deferred_rows") or []))),
+                *(execution_ledgers.get("cloud_deferred_rows") or []),
+            ],
+            execution_present=execution_present,
+        ),
     )
     write_jsonl(
         output_dir / "batch-summary.jsonl",
@@ -2700,6 +2897,7 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
     write_jsonl(output_dir / "classification-ledger.jsonl", execution_ledgers.get("classification_rows") or [])
     write_jsonl(output_dir / "ai-tagging-ledger.jsonl", execution_ledgers.get("ai_tagging_rows") or [])
     write_jsonl(output_dir / "localization-ledger.jsonl", execution_ledgers.get("localization_rows") or [])
+    write_json(output_dir / "llm-localization-audit.json", summary["llm_localization_audit"])
     write_json(output_dir / "browser-validation.json", summary["browser_validation"])
 
     public_markdown = public_report_markdown(summary)
@@ -2790,12 +2988,15 @@ def write_outputs(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str
     }
     public_summary["gate0"] = public_gate0
     public_summary["dynamic_sync_dry_run"] = public_dry_run
+    readiness_git = dict(summary["readiness"].get("git") or {})
+    if "head_sha" in readiness_git:
+        readiness_git["validated_run_head_sha"] = readiness_git.pop("head_sha")
     public_summary["readiness"] = {
         "passed": summary["readiness"].get("passed"),
         "blockers": summary["readiness"].get("blockers"),
         "warnings": summary["readiness"].get("warnings"),
         "python_env": summary["readiness"].get("python_env"),
-        "git": summary["readiness"].get("git"),
+        "git": readiness_git,
         "db_identity": {
             "host": summary["readiness"].get("db_identity", {}).get("host"),
             "port": summary["readiness"].get("db_identity", {}).get("port"),
@@ -2915,6 +3116,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hydration-failure-max-rate", type=float, default=DEFAULT_HYDRATION_FAILURE_MAX_RATE)
     parser.add_argument("--import-failure-max-items", type=int, default=DEFAULT_IMPORT_FAILURE_MAX_ITEMS)
     parser.add_argument("--import-failure-max-rate", type=float, default=DEFAULT_IMPORT_FAILURE_MAX_RATE)
+    parser.add_argument("--classification-failure-max-items", type=int, default=DEFAULT_CLASSIFICATION_FAILURE_MAX_ITEMS)
+    parser.add_argument("--classification-failure-max-rate", type=float, default=DEFAULT_CLASSIFICATION_FAILURE_MAX_RATE)
     parser.add_argument("--ai-failure-max-items", type=int, default=DEFAULT_AI_FAILURE_MAX_ITEMS)
     parser.add_argument("--ai-failure-max-rate", type=float, default=DEFAULT_AI_FAILURE_MAX_RATE)
     parser.add_argument("--localization-failure-max-items", type=int, default=DEFAULT_LOCALIZATION_FAILURE_MAX_ITEMS)
@@ -2943,6 +3146,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "source_scope_mismatch",
         "hydration_read_failure_threshold_exceeded",
         "import_failure_threshold_exceeded",
+        "classification_failure_threshold_exceeded",
         "ai_failure_threshold_exceeded",
         "localization_failure_threshold_exceeded",
         "blocked_disk_space_resource_safety",

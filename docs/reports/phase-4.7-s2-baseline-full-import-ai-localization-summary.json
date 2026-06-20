@@ -91,6 +91,14 @@
     "classified": 30934,
     "executed": true,
     "failed": 0,
+    "failure_budget": {
+      "attempted": 35034,
+      "failed": 0,
+      "failure_rate": 0.0,
+      "max_items": 50,
+      "max_rate": 0.01,
+      "threshold_exceeded": false
+    },
     "item_failures_recorded": true,
     "reused_existing": 4100,
     "stage": "classification",
@@ -100,6 +108,63 @@
       "reused_existing": 4100
     },
     "target_met": true
+  },
+  "desired_media_support_gap": {
+    "extensions": [
+      ".heic",
+      ".heif",
+      ".jfif",
+      ".mov",
+      ".mp4",
+      ".pic"
+    ],
+    "not_folded_into_silent_success": true,
+    "status": "visible_future_backfill_scope",
+    "unsupported_desired_media_count": 4247
+  },
+  "dynamic_source_item_status": {
+    "import_status_by_root_activity": [
+      {
+        "count": 81,
+        "is_active": false,
+        "status": "pending"
+      },
+      {
+        "count": 4591,
+        "is_active": true,
+        "status": "deferred"
+      },
+      {
+        "count": 35034,
+        "is_active": true,
+        "status": "imported"
+      }
+    ],
+    "inactive_root_pending_excluded_from_active_backlog": true,
+    "localization_status": {
+      "active_root_counts": [
+        {
+          "count": 81,
+          "is_active": false,
+          "status": "waiting_ai_tags"
+        },
+        {
+          "count": 4591,
+          "is_active": true,
+          "status": "deferred"
+        },
+        {
+          "count": 35034,
+          "is_active": true,
+          "status": "localized"
+        }
+      ],
+      "eligible_pending_before": 35034,
+      "paths_redacted": true,
+      "semantic": "source-item localization_status reflects tag-localization readiness/completion for imported AI-tagged items",
+      "status": "backfilled",
+      "updated_to_localized": 35034
+    }
   },
   "dynamic_sync_dry_run": {
     "actual_cloud_failure_count": 0,
@@ -260,8 +325,21 @@
     },
     "warnings": []
   },
-  "generated_at": "2026-06-19T20:13:05Z",
-  "head_sha": "e56483efa905",
+  "generated_at": "2026-06-20T06:33:38Z",
+  "governance_documents": [
+    "docs/governance/production-development-separation.md",
+    "docs/roadmap/post-s2-production-roadmap.md"
+  ],
+  "head_evidence": {
+    "current_pr_head_sha": "reported by PR metadata/final delivery after the report refresh commit",
+    "current_pr_head_sha_scope": "a committed artifact cannot truthfully contain its own final commit SHA",
+    "report_generation_head_sha": "83c4c87f12ef69787d1be4e27837210d35c33497",
+    "report_generation_head_sha_scope": "git HEAD used while generating this committed public report",
+    "top_level_head_sha_omitted": true,
+    "validated_run_head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7",
+    "validated_run_head_sha_scope": "production baseline execution/import/classification/AI/localization head; later report-only commits may differ",
+    "working_tree_had_uncommitted_changes_at_report_generation": true
+  },
   "icloud_cloud_policy": {
     "cloud_only_files_deferred": false,
     "cloud_placeholder_counts_as_failure": false,
@@ -300,9 +378,9 @@
     "hydrated_success": 23427,
     "hydration_attempted": 23619,
     "hydration_failure_budget": {
-      "attempted": 35226,
+      "attempted": 23619,
       "failed": 192,
-      "failure_rate": 0.005450519502640095,
+      "failure_rate": 0.008129048647275499,
       "max_items": 1000,
       "max_rate": 0.1,
       "threshold_exceeded": false
@@ -323,7 +401,7 @@
     "read_attempted": 35226,
     "reused_existing": 4100,
     "stage": "import",
-    "status": "completed",
+    "status": "completed_with_item_failures_within_budget",
     "stopped_by_rule": null,
     "target_met": true,
     "unsupported": 4399,
@@ -342,6 +420,24 @@
       ".pic": 1
     },
     "unsupported_sidecar": 152
+  },
+  "llm_localization_audit": {
+    "background_audit_source": "phase47-s2-execute.out.log",
+    "background_auto_translation_already_translated_or_static": 430,
+    "background_auto_translation_calls": 1438,
+    "background_auto_translation_observed": true,
+    "background_auto_translation_saved": 1437,
+    "dedicated_localization_failed": 0,
+    "dedicated_localization_ledger_rows": 25,
+    "dedicated_localization_llm_called": true,
+    "dedicated_localization_provider_batch_calls": 25,
+    "dedicated_localization_translated": 1235,
+    "paths_redacted": true,
+    "provider_call_count_lower_bound": 1463,
+    "provider_call_count_lower_bound_semantic": "dedicated localization batch rows plus background auto-translate translating log lines",
+    "provider_calls_undercounted": false,
+    "status": "provider_calls_audited",
+    "translated_tag_units_recorded": 2672
   },
   "localization_results": {
     "executed": true,
@@ -390,19 +486,22 @@
   "private_artifacts": {
     "paths_public": false,
     "private_artifact_names": [
-      "readiness-proof.json",
+      "ai-tagging-ledger.jsonl",
+      "batch-summary.jsonl",
+      "browser-validation-summary.json",
+      "classification-ledger.jsonl",
+      "cloud-deferred-cleanup-audit.json",
+      "cloud-deferred.jsonl",
       "fresh-dynamic-sync-dry-run.json",
       "hydration-ledger.jsonl",
       "import-item-ledger.jsonl",
-      "unsupported-or-deferred.jsonl",
-      "cloud-deferred.jsonl",
-      "batch-summary.jsonl",
-      "classification-ledger.jsonl",
-      "ai-tagging-ledger.jsonl",
+      "llm-localization-audit.json",
       "localization-ledger.jsonl",
-      "browser-validation-summary.json",
+      "localization-status-backfill-proof.json",
       "public-redaction-check.json",
-      "run-summary-private.json"
+      "readiness-proof.json",
+      "run-summary-private.json",
+      "unsupported-or-deferred.jsonl"
     ],
     "private_artifact_root_label": ".local_manifests/phase-4.7-s2-baseline-full-import-ai-localization",
     "private_artifacts_committed": false
@@ -479,8 +578,8 @@
     "git": {
       "based_on_origin_main": true,
       "branch": "codex/phase47-s2-baseline-full-import-ai-localization",
-      "head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7",
-      "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae"
+      "origin_main_sha": "bf0b47f751eea8e5ee9d4356166a5638e2b6f9ae",
+      "validated_run_head_sha": "e56483efa9058dc7bf34a765c8c3b6efcb1673a7"
     },
     "input_root_counts": {
       "active_count": 1,
