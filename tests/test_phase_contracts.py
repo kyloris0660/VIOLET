@@ -239,6 +239,116 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
     return summary
 
 
+def _s2g1x_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "s2g1x_probe_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        },
+        "capability_probe": {
+            "completed": True,
+            "safe_probe": {
+                "no_db_connection": True,
+                "no_production_db_writes": True,
+                "no_media_tags_writes": True,
+                "no_full_library_ai_tagging": True,
+                "no_model_download": True,
+                "local_files_only": True,
+                "sample_count": 3,
+            },
+            "model_identity": {
+                "model_name": "wd-swinv2-tagger-v3",
+                "model_file_cached": True,
+                "label_file_cached": True,
+                "network_download_required": False,
+            },
+            "current_app_backend": {
+                "forced_provider": "CPUExecutionProvider",
+                "hardcoded_cpu_execution_provider": True,
+            },
+            "provider_matrix": {
+                "cpu": {
+                    "provider": "CPUExecutionProvider",
+                    "available": True,
+                    "practical": True,
+                    "loaded": True,
+                    "benchmark_status": "completed",
+                    "throughput_items_per_second": 1.0,
+                },
+                "cuda": {
+                    "provider": "CUDAExecutionProvider",
+                    "available": False,
+                    "practical": False,
+                    "loaded": False,
+                    "benchmark_status": "not_available",
+                },
+                "directml": {
+                    "provider": "DmlExecutionProvider",
+                    "available": False,
+                    "practical": False,
+                    "loaded": False,
+                    "benchmark_status": "not_available",
+                },
+            },
+            "thresholds": {
+                "general_threshold": 0.35,
+                "character_threshold": 0.65,
+                "rating_threshold": 0.5,
+                "suggestion_threshold": 0.2,
+                "batch_max_items": 10,
+            },
+        },
+        "load_control": {
+            "recommended_config": {
+                "batch_size": 2,
+                "worker_count": 1,
+                "max_concurrent_jobs": 1,
+                "preprocess_workers": 2,
+                "cpu_intra_op_threads": 4,
+                "cpu_inter_op_threads": 1,
+                "provider_preference": ["CPUExecutionProvider"],
+            }
+        },
+        "s3a_dev_dry_run_plan": {
+            "production_execution_enabled": False,
+            "unattended_enabled": False,
+            "dry_run_only": True,
+            "stages": [
+                {"name": "update_check", "writes_enabled": False},
+                {"name": "ai_tagging_plan", "writes_enabled": False},
+            ],
+        },
+        "s2g_s3a_decision": {
+            "decision": "share_foundation_split_production_execution",
+            "should_share_job_progress_throttle_ledger_architecture": True,
+            "should_combine_current_production_execution": False,
+            "gpu_load_control_before_s3a_production_execution": True,
+            "production_s3a_execution_enabled": False,
+            "unattended_s3b_enabled": False,
+        },
+        "public_redaction": {"passed": True},
+        "safety": {
+            "production_db_writes": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging": False,
+            "production_localization": False,
+            "production_s3a_execution_enabled": False,
+            "unattended_auto_sync_enabled": False,
+            "provider_pixiv_gallery_dl_saucenao_google_calls": False,
+            "sourceconcept_or_entity": False,
+            "confirmed_entity_assignments": False,
+            "source_icloud_mutation": False,
+            "cleanup_delete_reset_drop_truncate": False,
+            "model_download": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _phase47_s2_summary(**overrides: object) -> dict:
     summary = {
         "head_evidence": {
@@ -900,6 +1010,51 @@ def test_production_development_separation_rejects_forbidden_current_phase_autho
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "production_development_forbidden_current_phase_authorization" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:
+    result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
+
+    assert result.passed is True
+
+
+def test_s2g1x_probe_contract_rejects_model_download_and_production_ai() -> None:
+    base = _s2g1x_summary()
+    summary = _s2g1x_summary(
+        capability_probe={
+            **base["capability_probe"],
+            "safe_probe": {
+                **base["capability_probe"]["safe_probe"],
+                "no_model_download": False,
+            },
+        },
+        safety={**base["safety"], "production_ai_tagging": True, "model_download": True},
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g1x_required_probe_proof_missing" in codes
+    assert "s2g1x_forbidden_execution_or_mutation" in codes
+
+
+def test_s2g1x_probe_contract_rejects_s3a_execution_enabled() -> None:
+    base = _s2g1x_summary()
+    summary = _s2g1x_summary(
+        s3a_dev_dry_run_plan={
+            **base["s3a_dev_dry_run_plan"],
+            "production_execution_enabled": True,
+        },
+        s2g_s3a_decision={
+            **base["s2g_s3a_decision"],
+            "production_s3a_execution_enabled": True,
+        },
+        safety={**base["safety"], "production_s3a_execution_enabled": True},
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert "s2g1x_forbidden_execution_or_mutation" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

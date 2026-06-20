@@ -41,6 +41,7 @@ extend a contract first.
 - `dynamic_library_sync_contract_v1`
 - `phase47_s2_baseline_contract_v1`
 - `production_development_separation_contract_v1`
+- `s2g1x_probe_contract_v1`
 
 ## R1R Gate
 

@@ -1350,6 +1350,134 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
             result.fail("dynamic_sync_forbidden_execution", "S1 summary reports a forbidden execution path.", path=path, expected=False, actual=True)
 
 
+def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {"target_met", "evidence_collected", "blocked_model_unavailable", "blocked_probe_unavailable"}
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s2g1x_unknown_status",
+            "S2G-1X status must be an explicit probe status.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "capability_probe.completed",
+            "capability_probe.safe_probe.no_db_connection",
+            "capability_probe.safe_probe.no_production_db_writes",
+            "capability_probe.safe_probe.no_media_tags_writes",
+            "capability_probe.safe_probe.no_full_library_ai_tagging",
+            "capability_probe.safe_probe.no_model_download",
+            "capability_probe.safe_probe.local_files_only",
+            "capability_probe.provider_matrix.cpu.available",
+            "s2g_s3a_decision.should_share_job_progress_throttle_ledger_architecture",
+            "s2g_s3a_decision.gpu_load_control_before_s3a_production_execution",
+            "public_redaction.passed",
+        ),
+        code="s2g1x_required_probe_proof_missing",
+        message="S2G-1X requires a completed safe local probe, CPU fallback evidence, shared-architecture decision, and public redaction proof.",
+    )
+
+    _check_required_false_paths(
+        summary,
+        result,
+        (
+            "capability_probe.model_identity.model_download_performed",
+            "s3a_dev_dry_run_plan.production_execution_enabled",
+            "s3a_dev_dry_run_plan.unattended_enabled",
+            "s2g_s3a_decision.should_combine_current_production_execution",
+            "s2g_s3a_decision.production_s3a_execution_enabled",
+            "s2g_s3a_decision.unattended_s3b_enabled",
+            "safety.production_db_writes",
+            "safety.production_import",
+            "safety.production_classification",
+            "safety.production_ai_tagging",
+            "safety.production_localization",
+            "safety.production_s3a_execution_enabled",
+            "safety.unattended_auto_sync_enabled",
+            "safety.provider_pixiv_gallery_dl_saucenao_google_calls",
+            "safety.sourceconcept_or_entity",
+            "safety.confirmed_entity_assignments",
+            "safety.source_icloud_mutation",
+            "safety.cleanup_delete_reset_drop_truncate",
+            "safety.model_download",
+        ),
+        code="s2g1x_forbidden_execution_or_mutation",
+        message="S2G-1X must not enable production execution, unattended sync, providers, SourceConcept/Entity, destructive actions, or model downloads.",
+    )
+
+    sample_count = _as_int(_get(summary, "capability_probe.safe_probe.sample_count", 0))
+    if sample_count < 1 or sample_count > 16:
+        result.fail(
+            "s2g1x_unbounded_sample_count",
+            "The AI tagging probe must use a tiny bounded sample.",
+            path="capability_probe.safe_probe.sample_count",
+            expected="1..16",
+            actual=sample_count,
+        )
+
+    model_name = str(_get(summary, "capability_probe.model_identity.model_name", ""))
+    if not model_name.startswith("wd-"):
+        result.fail(
+            "s2g1x_model_identity_not_wd",
+            "The probe must record a WD tagger model identity.",
+            path="capability_probe.model_identity.model_name",
+            expected="wd-*",
+            actual=model_name,
+        )
+
+    forced_provider = str(_get(summary, "capability_probe.current_app_backend.forced_provider", ""))
+    if forced_provider != "CPUExecutionProvider":
+        result.warn(
+            "s2g1x_current_app_provider_not_cpu",
+            "Current app provider is not the expected hardcoded CPU provider; verify whether runtime code changed.",
+            path="capability_probe.current_app_backend.forced_provider",
+            expected="CPUExecutionProvider",
+            actual=forced_provider,
+        )
+
+    batch_size = _as_int(_get(summary, "load_control.recommended_config.batch_size", 0))
+    worker_count = _as_int(_get(summary, "load_control.recommended_config.worker_count", 0))
+    concurrent_jobs = _as_int(_get(summary, "load_control.recommended_config.max_concurrent_jobs", 0))
+    if batch_size < 1 or batch_size > 16:
+        result.fail(
+            "s2g1x_load_control_batch_unbounded",
+            "S2G-1X load-control batch size must be bounded.",
+            path="load_control.recommended_config.batch_size",
+            expected="1..16",
+            actual=batch_size,
+        )
+    if worker_count != 1 or concurrent_jobs != 1:
+        result.fail(
+            "s2g1x_parallel_execution_enabled_too_early",
+            "S2G-1X must keep worker count and concurrent jobs at one until load control is implemented.",
+            path="load_control.recommended_config",
+            expected={"worker_count": 1, "max_concurrent_jobs": 1},
+            actual={"worker_count": worker_count, "max_concurrent_jobs": concurrent_jobs},
+        )
+
+    plan_stages = _get(summary, "s3a_dev_dry_run_plan.stages", [])
+    if not isinstance(plan_stages, list) or not plan_stages:
+        result.fail(
+            "s2g1x_s3a_plan_stages_missing",
+            "S2G-1X must include a dry-run-only S3A stage skeleton.",
+            path="s3a_dev_dry_run_plan.stages",
+            expected="non-empty list",
+            actual=plan_stages,
+        )
+    elif any(_as_bool(stage.get("writes_enabled", False)) for stage in plan_stages if isinstance(stage, Mapping)):
+        result.fail(
+            "s2g1x_s3a_plan_write_stage_enabled",
+            "The current S3A scaffold must not enable write stages.",
+            path="s3a_dev_dry_run_plan.stages",
+            expected="all writes_enabled=false",
+        )
+
+
 def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     readiness_passed = _as_bool(_get(summary, "readiness.passed", False))
     schema_ensure_ran = _as_bool(_get(summary, "gate0.schema.ensure.ran", False))
@@ -1755,5 +1883,6 @@ CUSTOM_CHECKS = {
     "entity_truth_bridge": _check_entity_truth_bridge,
     "production_development_separation": _check_production_development_separation,
     "dynamic_library_sync": _check_dynamic_library_sync,
+    "s2g1x_probe": _check_s2g1x_probe,
     "phase47_s2_baseline": _check_phase47_s2_baseline,
 }

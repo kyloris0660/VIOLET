@@ -1,0 +1,331 @@
+{
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "reusable validation/safety tool",
+        "committed": true,
+        "path": "scripts/run_s2g1_ai_tagging_capability_probe.py"
+      },
+      {
+        "classification": "reusable validation/safety tool",
+        "committed": true,
+        "path": "scripts/s2g_s3a_job_control.py"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s2g1x-gpu-ai-tagging-probe.md",
+        "redacted": true
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json",
+        "redacted": true
+      }
+    ]
+  },
+  "branch": "codex/s2g1x-gpu-probe-s3a-integration",
+  "capability_probe": {
+    "benchmark": {
+      "allow_model_load": true,
+      "batch_size": 2,
+      "loaded_providers": [
+        "CPUExecutionProvider"
+      ],
+      "synthetic_sample_count": 3
+    },
+    "completed": true,
+    "current_app_backend": {
+      "forced_provider": "CPUExecutionProvider",
+      "hardcoded_cpu_execution_provider": true,
+      "preprocess_workers": "min(4, os.cpu_count())",
+      "source_file": "backend/app/services/wd_tagger.py",
+      "uses_all_cpu_threads_by_default": true,
+      "uses_parallel_execution_mode": true
+    },
+    "model_identity": {
+      "error_code": null,
+      "label_file_cached": true,
+      "local_files_only": true,
+      "model_file_cached": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "network_download_required": false,
+      "repo_id": "SmilingWolf/wd-swinv2-tagger-v3"
+    },
+    "provider_matrix": {
+      "cpu": {
+        "available": true,
+        "benchmark_status": "completed",
+        "load_error_code": null,
+        "loaded": true,
+        "practical": true,
+        "provider": "CPUExecutionProvider",
+        "seconds_per_item": 0.7888,
+        "throughput_items_per_second": 1.2677
+      },
+      "cuda": {
+        "available": false,
+        "benchmark_status": "not_available",
+        "load_error_code": null,
+        "loaded": false,
+        "practical": false,
+        "provider": "CUDAExecutionProvider",
+        "seconds_per_item": null,
+        "throughput_items_per_second": null
+      },
+      "directml": {
+        "available": false,
+        "benchmark_status": "not_available",
+        "load_error_code": null,
+        "loaded": false,
+        "practical": false,
+        "provider": "DmlExecutionProvider",
+        "seconds_per_item": null,
+        "throughput_items_per_second": null
+      }
+    },
+    "runtime": {
+      "dependencies": [
+        {
+          "available": true,
+          "module": "onnxruntime"
+        },
+        {
+          "available": true,
+          "module": "huggingface_hub"
+        },
+        {
+          "available": true,
+          "module": "numpy"
+        },
+        {
+          "available": true,
+          "module": "PIL"
+        }
+      ],
+      "onnxruntime": {
+        "available_providers": [
+          "AzureExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "device": "CPU",
+        "error_code": null,
+        "importable": true,
+        "version": "1.23.2"
+      },
+      "os": "Windows",
+      "python_executable_public_name": "python.exe",
+      "python_version": "3.13.7",
+      "windows_setup": true
+    },
+    "safe_probe": {
+      "local_files_only": true,
+      "no_db_connection": true,
+      "no_full_library_ai_tagging": true,
+      "no_media_tags_writes": true,
+      "no_model_download": true,
+      "no_production_db_writes": true,
+      "sample_count": 3,
+      "sample_source": "synthetic_generated_arrays"
+    },
+    "thresholds": {
+      "ai_tagging_enabled": false,
+      "batch_max_items": 10,
+      "character_threshold": 0.65,
+      "general_threshold": 0.35,
+      "rating_threshold": 0.5,
+      "source": "app_settings",
+      "suggestion_threshold": 0.2
+    }
+  },
+  "generated_at": "2026-06-20T13:59:52Z",
+  "head_sha": "3dcd201c9b8ece6204e088c7dc8af49bd3f4ad07",
+  "load_control": {
+    "implemented_now": [
+      "capability_probe_runner",
+      "provider_capability_public_model",
+      "load_control_config_model",
+      "dry_run_only_s3a_stage_plan",
+      "s2g1x_probe_contract"
+    ],
+    "recommended_config": {
+      "allow_provider_fallback": true,
+      "batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "max_concurrent_jobs": 1,
+      "pause_resume_required": true,
+      "pause_supported": false,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "resume_supported": false,
+      "valid_for_production_execution": false,
+      "validation_errors": [
+        "pause_resume_required_but_not_implemented"
+      ],
+      "worker_count": 1
+    },
+    "requires_follow_up": [
+      "runtime provider abstraction in WDTagger",
+      "durable provider/model/batch/backend provenance for AI tag results",
+      "pause/resume semantics beyond cancel",
+      "failure budgets and retry ledgers shared by S2G and S3A",
+      "production job runner promotion under explicit operator approval"
+    ],
+    "risk_flags": [
+      "ai_tag_job_has_cancel_but_no_durable_pause_resume",
+      "current_app_forces_cpu_provider",
+      "current_app_uses_all_cpu_threads_by_default",
+      "pause_resume_not_yet_implemented",
+      "provider_backend_not_persisted_in_media_tag_provenance",
+      "s3a_requires_shared_per_item_ledgers_before_production_execution"
+    ]
+  },
+  "phase": "S2G-1X",
+  "pipeline_contract": {
+    "claims": {
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s2g1x_probe_contract_v1",
+    "status": "target_met"
+  },
+  "public_redaction": {
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true
+  },
+  "s2g_s3a_decision": {
+    "current_app_forced_provider": "CPUExecutionProvider",
+    "decision": "share_foundation_split_production_execution",
+    "gpu_load_control_before_s3a_production_execution": true,
+    "gpu_provider_practical_in_probe": false,
+    "load_control_gaps": [
+      "pause_resume_required_but_not_implemented"
+    ],
+    "production_s3a_execution_enabled": false,
+    "rationale": [
+      "Both S2G and S3A need the same manual trigger, progress, throttle, failure-budget, retry, and per-item ledger semantics.",
+      "The current AI tagger forces CPU execution and needs provider provenance plus bounded resource controls before production S3A chains AI tagging.",
+      "S3A production execution should stay disabled until the shared foundation is promoted under a separate operator-approved phase."
+    ],
+    "recommended_execution_boundary": "background_job_runner_with_admin_api_trigger_and_cli_probe",
+    "recommended_next_phase": "combined_s2g_s3a_foundation_before_any_production_s3a_execution",
+    "should_combine_current_production_execution": false,
+    "should_share_job_progress_throttle_ledger_architecture": true,
+    "unattended_s3b_enabled": false
+  },
+  "s3a_dev_dry_run_plan": {
+    "dry_run_only": true,
+    "execution_boundary": "background_job_runner_with_admin_api_trigger_and_cli_probe",
+    "load_control": {
+      "allow_provider_fallback": true,
+      "batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "max_concurrent_jobs": 1,
+      "pause_resume_required": true,
+      "pause_supported": false,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "resume_supported": false,
+      "valid_for_production_execution": false,
+      "validation_errors": [
+        "pause_resume_required_but_not_implemented"
+      ],
+      "worker_count": 1
+    },
+    "production_execution_enabled": false,
+    "safe_for_current_phase": false,
+    "stages": [
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": true,
+        "name": "update_check",
+        "purpose": "Detect new, changed, missing, and deferred source items.",
+        "retry_policy_required": true,
+        "writes_enabled": false
+      },
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": true,
+        "name": "hydration_read_plan",
+        "purpose": "Plan cloud hydration/read attempts and item-level failures.",
+        "retry_policy_required": true,
+        "writes_enabled": false
+      },
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": true,
+        "name": "import_reuse_plan",
+        "purpose": "Plan import/reuse decisions without copying or DB media writes.",
+        "retry_policy_required": true,
+        "writes_enabled": false
+      },
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": true,
+        "name": "classification_plan",
+        "purpose": "Plan classification workload and failure budgets.",
+        "retry_policy_required": true,
+        "writes_enabled": false
+      },
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": true,
+        "name": "ai_tagging_plan",
+        "purpose": "Plan AI tagging provider, provenance, load controls, and retry budget.",
+        "retry_policy_required": true,
+        "writes_enabled": false
+      },
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": true,
+        "name": "localization_plan",
+        "purpose": "Plan localization gap handling without LLM/provider calls.",
+        "retry_policy_required": true,
+        "writes_enabled": false
+      },
+      {
+        "durable_ledger_required": true,
+        "failure_budget_required": false,
+        "name": "summary",
+        "purpose": "Produce public aggregate summary and private-ledger manifest.",
+        "retry_policy_required": false,
+        "writes_enabled": false
+      }
+    ],
+    "trigger_mode": "manual_operator_trigger",
+    "unattended_enabled": false,
+    "validation_errors": [
+      "pause_resume_required_but_not_implemented"
+    ]
+  },
+  "safety": {
+    "cleanup_delete_reset_drop_truncate": false,
+    "confirmed_entity_assignments": false,
+    "model_download": false,
+    "production_ai_tagging": false,
+    "production_classification": false,
+    "production_db_writes": false,
+    "production_import": false,
+    "production_localization": false,
+    "production_s3a_execution_enabled": false,
+    "provider_pixiv_gallery_dl_saucenao_google_calls": false,
+    "source_icloud_mutation": false,
+    "sourceconcept_or_entity": false,
+    "unattended_auto_sync_enabled": false
+  },
+  "title": "GPU AI Tagging Probe and S3A Integration Decision"
+}
