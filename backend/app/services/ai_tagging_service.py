@@ -140,6 +140,7 @@ def run_ai_tagging(
     *,
     dry_run: bool = False,
     force_suggestions: bool = False,
+    local_files_only: bool = False,
 ) -> Dict[str, Any]:
     """Run WDv3 inference on a single media item and write tags.
 
@@ -156,7 +157,7 @@ def run_ai_tagging(
 
     tagger = _get_tagger()
     model_name = settings.AI_MODEL_NAME
-    tagger.ensure_loaded(model_name)
+    tagger.ensure_loaded(model_name, local_files_only=local_files_only)
     provenance = get_ai_tagging_runtime_provenance(tagger)
 
     predictions = tagger.predict_from_file(
@@ -166,6 +167,7 @@ def run_ai_tagging(
         hide_rating_tags=False,
         character_tags_first=True,
         model_name=model_name,
+        local_files_only=local_files_only,
     )
 
     summary: Dict[str, Any] = {
@@ -261,6 +263,7 @@ def run_ai_tagging_batch(
     max_items: int = 10,
     dry_run: bool = False,
     only_without_ai_tags: bool = True,
+    local_files_only: bool = False,
 ) -> Dict[str, Any]:
     """Run AI tagging on a batch of media items.
 
@@ -306,7 +309,7 @@ def run_ai_tagging_batch(
 
     for mid in ids:
         try:
-            result = run_ai_tagging(db, mid, dry_run=dry_run)
+            result = run_ai_tagging(db, mid, dry_run=dry_run, local_files_only=local_files_only)
             if batch_summary["provenance"] is None and result.get("provenance"):
                 batch_summary["provenance"] = result["provenance"]
             batch_summary["processed"] += 1
