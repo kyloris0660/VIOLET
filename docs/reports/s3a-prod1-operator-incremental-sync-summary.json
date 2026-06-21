@@ -47,12 +47,12 @@
   },
   "cpu_fallback_validation": {
     "dry_run": true,
-    "elapsed_seconds": 1.9662,
+    "elapsed_seconds": 2.1376,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": false,
-    "ignored_low_confidence": 10844,
+    "ignored_low_confidence": 10848,
     "job_record_created": false,
     "label": "cpu_fallback_dry_run",
     "load_control": {
@@ -83,8 +83,8 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 14,
-    "media_tags_count_before": 14,
+    "media_tags_count_after": 10,
+    "media_tags_count_before": 10,
     "media_tags_count_delta": 0,
     "media_with_ai_tags_after": 1,
     "media_with_ai_tags_before": 1,
@@ -119,11 +119,11 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10844,
+        "ignored_low_confidence": 10848,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 5,
+        "suggestions_added": 1,
         "tags_added": 9
       }
     ],
@@ -200,7 +200,7 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 5,
+    "suggestions_added": 1,
     "tag_source_values_used": [
       "ai_wd"
     ],
@@ -213,12 +213,12 @@
   },
   "directml_ai_tagging": {
     "dry_run": false,
-    "elapsed_seconds": 1.7776,
+    "elapsed_seconds": 0.2697,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 10844,
+    "ignored_low_confidence": 10848,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
@@ -228,13 +228,13 @@
         "cpu_intra_op_threads": 4,
         "execution_mode": "ORT_SEQUENTIAL"
       },
-      "batch_cap_source": "configured",
-      "batch_max_items": 5,
-      "batch_size": 2,
+      "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+      "batch_max_items": 1,
+      "batch_size": 1,
       "configured_batch_size": 2,
       "cpu_inter_op_threads": 1,
       "cpu_intra_op_threads": 4,
-      "effective_batch_size": 2,
+      "effective_batch_size": 1,
       "execution_mode": "ORT_SEQUENTIAL",
       "max_concurrent_jobs": 1,
       "preprocess_workers": 2,
@@ -250,14 +250,14 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 14,
+    "media_tags_count_after": 10,
     "media_tags_count_before": 0,
-    "media_tags_count_delta": 14,
+    "media_tags_count_delta": 10,
     "media_with_ai_tags_after": 1,
     "media_with_ai_tags_before": 0,
     "media_with_ai_tags_delta": 1,
     "no_media_tags_writes": null,
-    "operator_guard_elapsed_seconds": 1.7825,
+    "operator_guard_elapsed_seconds": 0.2709,
     "predicted_tag_count": 10858,
     "prediction_category_counts": {
       "character": 2751,
@@ -290,11 +290,11 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10844,
+        "ignored_low_confidence": 10848,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 5,
+        "suggestions_added": 1,
         "tags_added": 9
       }
     ],
@@ -303,17 +303,17 @@
     "runtime_provenance": {
       "backend": "onnxruntime",
       "batch": {
-        "batch_cap_source": "configured",
-        "batch_max_items": 5,
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
         "configured_batch_size": 2,
-        "effective_batch_size": 2,
-        "load_control_effective_batch_size": 2,
+        "effective_batch_size": 1,
+        "load_control_effective_batch_size": 1,
         "model_optimal_batch_size": 8,
         "phase_max_batch_size": 16
       },
-      "batch_size": 2,
+      "batch_size": 1,
       "configured_batch_size": 2,
-      "effective_batch_size": 2,
+      "effective_batch_size": 1,
       "load_control": {
         "allow_provider_fallback": true,
         "applied_session_options": {
@@ -321,13 +321,13 @@
           "cpu_intra_op_threads": 4,
           "execution_mode": "ORT_SEQUENTIAL"
         },
-        "batch_cap_source": "configured",
-        "batch_max_items": 5,
-        "batch_size": 2,
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "batch_size": 1,
         "configured_batch_size": 2,
         "cpu_inter_op_threads": 1,
         "cpu_intra_op_threads": 4,
-        "effective_batch_size": 2,
+        "effective_batch_size": 1,
         "execution_mode": "ORT_SEQUENTIAL",
         "max_concurrent_jobs": 1,
         "preprocess_workers": 2,
@@ -374,7 +374,176 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 5,
+    "suggestions_added": 1,
+    "tag_source_values_used": [
+      "ai_wd"
+    ],
+    "tags_added": 9
+  },
+  "directml_provider_probe": {
+    "dry_run": true,
+    "elapsed_seconds": 1.7295,
+    "error_state": false,
+    "executed": true,
+    "failed": 0,
+    "first_time_media_tag_insertion_proven": false,
+    "ignored_low_confidence": 10848,
+    "job_record_created": false,
+    "label": "directml_prewrite_probe",
+    "load_control": {
+      "allow_provider_fallback": true,
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+      "batch_max_items": 1,
+      "batch_size": 1,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 1,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+      "provider_preference": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "valid_for_runtime": true,
+      "validation_errors": [],
+      "worker_count": 1
+    },
+    "local_files_only": true,
+    "media_tags_count_after": 0,
+    "media_tags_count_before": 0,
+    "media_tags_count_delta": 0,
+    "media_with_ai_tags_after": 0,
+    "media_with_ai_tags_before": 0,
+    "media_with_ai_tags_delta": 0,
+    "no_media_tags_writes": true,
+    "operator_guard_elapsed_seconds": 1.7312,
+    "predicted_tag_count": 10858,
+    "prediction_category_counts": {
+      "character": 2751,
+      "general": 8106,
+      "rating": 1
+    },
+    "processed": 1,
+    "provider": {
+      "actual_onnx_provider_loaded": "DmlExecutionProvider",
+      "actual_provider": "DmlExecutionProvider",
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": false,
+      "fallback_reason": null,
+      "loaded_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "provider_load_errors": [],
+      "requested_provider_preference": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    },
+    "provider_preference_requested": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "public_item_results": [
+      {
+        "ignored_low_confidence": 10848,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 1,
+        "tags_added": 9
+      }
+    ],
+    "reported": true,
+    "rollback_error": false,
+    "runtime_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "configured_batch_size": 2,
+        "effective_batch_size": 1,
+        "load_control_effective_batch_size": 1,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 1,
+      "configured_batch_size": 2,
+      "effective_batch_size": 1,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "batch_size": 1,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 1,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "selected_media_count": 1,
+    "skipped_locked": 0,
+    "status": "completed",
+    "suggestions_added": 1,
     "tag_source_values_used": [
       "ai_wd"
     ],
@@ -390,7 +559,7 @@
     "sourceconcept_r1_r2_r1r": false,
     "unattended_s3b": false
   },
-  "generated_at": "2026-06-21T13:01:21.831539+00:00",
+  "generated_at": "2026-06-21T14:24:39.023984+00:00",
   "import_reuse": {
     "app_managed_storage_writes": 1,
     "created_files_public_count": 1,
@@ -441,12 +610,12 @@
   "load_control_observations": {
     "actual_provider": "DmlExecutionProvider",
     "appeared_bounded": true,
-    "batch_cap_source": "configured",
-    "batch_size": 2,
+    "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+    "batch_size": 1,
     "configured_batch_size": 2,
     "cpu_inter_op_threads": 1,
     "cpu_intra_op_threads": 4,
-    "effective_batch_size": 2,
+    "effective_batch_size": 1,
     "execution_mode": "ORT_SEQUENTIAL",
     "max_concurrent_ai_jobs": 1,
     "preprocess_workers": 2,
@@ -457,16 +626,16 @@
   },
   "localization": {
     "attempted": true,
-    "candidate_tags_count": 14,
+    "candidate_tags_count": 10,
     "candidate_tags_reported_as": "count_only_public_report",
     "deferred_reason": "external_llm_provider_not_approved_for_s3a_prod1",
     "external_provider_used": false,
     "failed": 0,
     "llm_external_provider_used": false,
-    "missing_or_deferred": 1,
+    "missing_or_deferred": 2,
     "new_translations": 0,
     "reported": true,
-    "reused_translations": 13,
+    "reused_translations": 8,
     "status": "validated_reuse_and_deferred_missing"
   },
   "model_cache": {
@@ -504,7 +673,7 @@
     },
     "no_full_library_fallback": true,
     "over_cap_check": {
-      "max_items": 5,
+      "max_items": 1,
       "over_cap_count": 0,
       "passed": true
     },
@@ -534,12 +703,12 @@
   },
   "primary_provider_validation": {
     "dry_run": false,
-    "elapsed_seconds": 1.7776,
+    "elapsed_seconds": 0.2697,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 10844,
+    "ignored_low_confidence": 10848,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
@@ -549,13 +718,13 @@
         "cpu_intra_op_threads": 4,
         "execution_mode": "ORT_SEQUENTIAL"
       },
-      "batch_cap_source": "configured",
-      "batch_max_items": 5,
-      "batch_size": 2,
+      "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+      "batch_max_items": 1,
+      "batch_size": 1,
       "configured_batch_size": 2,
       "cpu_inter_op_threads": 1,
       "cpu_intra_op_threads": 4,
-      "effective_batch_size": 2,
+      "effective_batch_size": 1,
       "execution_mode": "ORT_SEQUENTIAL",
       "max_concurrent_jobs": 1,
       "preprocess_workers": 2,
@@ -571,14 +740,14 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 14,
+    "media_tags_count_after": 10,
     "media_tags_count_before": 0,
-    "media_tags_count_delta": 14,
+    "media_tags_count_delta": 10,
     "media_with_ai_tags_after": 1,
     "media_with_ai_tags_before": 0,
     "media_with_ai_tags_delta": 1,
     "no_media_tags_writes": null,
-    "operator_guard_elapsed_seconds": 1.7825,
+    "operator_guard_elapsed_seconds": 0.2709,
     "predicted_tag_count": 10858,
     "prediction_category_counts": {
       "character": 2751,
@@ -611,11 +780,11 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10844,
+        "ignored_low_confidence": 10848,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 5,
+        "suggestions_added": 1,
         "tags_added": 9
       }
     ],
@@ -624,17 +793,17 @@
     "runtime_provenance": {
       "backend": "onnxruntime",
       "batch": {
-        "batch_cap_source": "configured",
-        "batch_max_items": 5,
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
         "configured_batch_size": 2,
-        "effective_batch_size": 2,
-        "load_control_effective_batch_size": 2,
+        "effective_batch_size": 1,
+        "load_control_effective_batch_size": 1,
         "model_optimal_batch_size": 8,
         "phase_max_batch_size": 16
       },
-      "batch_size": 2,
+      "batch_size": 1,
       "configured_batch_size": 2,
-      "effective_batch_size": 2,
+      "effective_batch_size": 1,
       "load_control": {
         "allow_provider_fallback": true,
         "applied_session_options": {
@@ -642,13 +811,13 @@
           "cpu_intra_op_threads": 4,
           "execution_mode": "ORT_SEQUENTIAL"
         },
-        "batch_cap_source": "configured",
-        "batch_max_items": 5,
-        "batch_size": 2,
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "batch_size": 1,
         "configured_batch_size": 2,
         "cpu_inter_op_threads": 1,
         "cpu_intra_op_threads": 4,
-        "effective_batch_size": 2,
+        "effective_batch_size": 1,
         "execution_mode": "ORT_SEQUENTIAL",
         "max_concurrent_jobs": 1,
         "preprocess_workers": 2,
@@ -695,7 +864,7 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 5,
+    "suggestions_added": 1,
     "tag_source_values_used": [
       "ai_wd"
     ],
@@ -721,6 +890,27 @@
     ],
     "status": "available"
   },
+  "provider_write_gate": {
+    "blockers": [],
+    "cpu_fallback_available": true,
+    "directml_available": true,
+    "exact_confirmation_present": true,
+    "no_cpu_only_write_path": true,
+    "passed": true,
+    "probe_actual_provider": "DmlExecutionProvider",
+    "probe_executed": true,
+    "probe_failed": 0,
+    "probe_status": "completed",
+    "provider_preference_includes_directml": true,
+    "reported": true,
+    "requested_provider_preference": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "requires_directml_provider": true,
+    "write_allowed": true,
+    "write_requested": true
+  },
   "public_redaction": {
     "finding_count": 0,
     "findings_redacted": true,
@@ -743,7 +933,7 @@
     "import_write_requested": true,
     "input_mode": "input_path",
     "local_files_only": true,
-    "max_items": 5,
+    "max_items": 1,
     "max_items_cap": 5,
     "mode": "production_write",
     "model_download_allowed": false,
@@ -825,14 +1015,14 @@
   },
   "scope": {
     "default_truncation_disabled": true,
-    "directory_inputs": 1,
+    "directory_inputs": 0,
     "discovered_files": 1,
     "explicit_input_path_redacted": true,
     "explicit_input_path_supplied": true,
-    "file_inputs": 0,
+    "file_inputs": 1,
     "input_mode": "input_path",
     "input_path_count": 1,
-    "max_items": 5,
+    "max_items": 1,
     "missing_input_count": 0,
     "no_full_library_fallback": true,
     "over_cap_blocked_before_selection": false,
@@ -846,7 +1036,7 @@
     "supported_files": 1,
     "unsupported_files": 0
   },
-  "started_at": "2026-06-21T13:01:17.105495+00:00",
+  "started_at": "2026-06-21T14:24:33.851937+00:00",
   "title": "Operator-Triggered Production Incremental Sync Guard",
   "validation": {
     "preflight_completed": true,

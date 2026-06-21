@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -85,6 +87,7 @@ def _ai_run(*, actual: str = "DmlExecutionProvider", dry_run: bool = False, delt
 
 def _prod_summary(**overrides: object) -> dict:
     directml = _ai_run()
+    directml_probe = _ai_run(dry_run=True, delta=0)
     cpu = _ai_run(actual="CPUExecutionProvider", dry_run=True, delta=0)
     summary = {
         "pipeline_contract": {
@@ -152,6 +155,7 @@ def _prod_summary(**overrides: object) -> dict:
             "model_download_allowed": False,
             "status": "cached",
         },
+        "db_session": {"reported": True, "available": True, "error_type": None},
         "import_write_preconditions": {
             "passed": True,
             "blockers": [],
@@ -192,6 +196,25 @@ def _prod_summary(**overrides: object) -> dict:
             "content_class_distribution": {"unknown": 1},
         },
         "directml_ai_tagging": directml,
+        "directml_provider_probe": directml_probe,
+        "provider_write_gate": {
+            "reported": True,
+            "write_requested": True,
+            "exact_confirmation_present": True,
+            "requested_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "requires_directml_provider": True,
+            "provider_preference_includes_directml": True,
+            "directml_available": True,
+            "cpu_fallback_available": True,
+            "probe_executed": True,
+            "probe_status": "completed",
+            "probe_failed": 0,
+            "probe_actual_provider": "DmlExecutionProvider",
+            "passed": True,
+            "write_allowed": True,
+            "no_cpu_only_write_path": True,
+            "blockers": [],
+        },
         "cpu_fallback_validation": cpu,
         "localization": {
             "reported": True,
@@ -246,6 +269,7 @@ def _prod_summary(**overrides: object) -> dict:
             "summary_json_path": "docs/reports/s3a-prod1-operator-incremental-sync-summary.json",
             "markdown_report_path": "tests/fixtures/phase_contracts/s3a_prod1_operator_incremental_sync_report.md",
         },
+        "validation": {"production_write_completed": True, "preflight_completed": True},
         "public_redaction": {"passed": True, "finding_count": 0},
     }
     for key, value in overrides.items():
@@ -255,6 +279,13 @@ def _prod_summary(**overrides: object) -> dict:
 
 def _error_codes(result) -> set[str]:
     return {finding.code for finding in result.errors}
+
+
+def _set_status(summary: dict, status: str) -> dict:
+    s3a_prod1.apply_pipeline_status(summary, status)
+    summary.setdefault("validation", {})["production_write_completed"] = s3a_prod1.production_write_completed(summary)
+    summary["safety"] = s3a_prod1.build_safety(summary)
+    return summary
 
 
 def test_parser_requires_explicit_input_path() -> None:
@@ -327,3 +358,364 @@ def test_s3a_prod1_contract_rejects_cpu_primary_write_provider() -> None:
     result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
 
     assert "s3a_prod1_actual_provider_not_directml" in _error_codes(result)
+
+
+def test_cpu_provider_preference_blocks_before_media_tags_write() -> None:
+    summary = _prod_summary()
+    summary["directml_ai_tagging"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_primary",
+        status="not_run_provider_write_gate_blocked",
+        dry_run=True,
+        provider_preference="CPUExecutionProvider",
+        local_files_only=True,
+        selected_media_count=1,
+    )
+    summary["directml_provider_probe"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_prewrite_probe",
+        status="not_run_provider_write_gate_blocked",
+        dry_run=True,
+        provider_preference="CPUExecutionProvider",
+        local_files_only=True,
+        selected_media_count=1,
+    )
+    summary["provider_write_gate"] = s3a_prod1.build_provider_write_gate(
+        summary["preflight"]["provider_availability"],
+        "CPUExecutionProvider",
+        summary["directml_provider_probe"],
+        production_write_requested=True,
+        production_confirmed=True,
+    )
+    _set_status(summary, "blocked_directml_provider_not_validated")
+
+    assert s3a_prod1.derive_status(summary) == "blocked_directml_provider_not_validated"
+    assert summary["provider_write_gate"]["blockers"] == ["provider_preference_missing_directml"]
+    assert summary["safety"]["media_tags_write_executed"] is False
+    result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
+    assert result.passed, result.to_dict()
+
+
+def test_main_cpu_provider_preference_never_calls_non_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    summary_path = tmp_path / "summary.json"
+    markdown_path = tmp_path / "summary.md"
+    monkeypatch.setattr(s3a_prod1, "SUMMARY_PATH", summary_path)
+    monkeypatch.setattr(s3a_prod1, "MARKDOWN_PATH", markdown_path)
+    monkeypatch.setattr(
+        s3a_prod1,
+        "discover_input_candidates",
+        lambda _paths, max_items: (
+            [object()],
+            {
+                "input_mode": "input_path",
+                "explicit_input_path_supplied": True,
+                "explicit_input_path_redacted": True,
+                "input_path_count": 1,
+                "selected_count": 1,
+                "supported_files": 1,
+                "over_cap_count": 0,
+                "max_items": max_items,
+                "no_full_library_fallback": True,
+                "private_locator_values_recorded": False,
+                "public_path_redaction": "paths_and_filenames_redacted",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        s3a_prod1.pilot,
+        "check_model_cache",
+        lambda local_files_only: {
+            "status": "cached",
+            "local_files_only": local_files_only,
+            "model_download_allowed": False,
+            "model_file_cached": True,
+            "label_file_cached": True,
+        },
+    )
+    monkeypatch.setattr(
+        s3a_prod1,
+        "check_provider_availability",
+        lambda provider_preference: {
+            "reported": True,
+            "requested_provider_preference": s3a_prod1.provider_list(provider_preference),
+            "available_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "directml_available": True,
+            "cpu_fallback_available": True,
+            "status": "available",
+            "error_type": None,
+        },
+    )
+
+    class FakeDb:
+        def close(self) -> None:
+            return None
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(s3a_prod1.pilot, "get_db_session", lambda: FakeDb())
+    monkeypatch.setattr(
+        s3a_prod1.pilot,
+        "import_or_reuse_from_input",
+        lambda *_args, **_kwargs: (
+            {
+                "reported": True,
+                "input_mode": "input_path",
+                "executed": True,
+                "status": "completed",
+                "imported_count": 1,
+                "reused_count": 0,
+                "would_import_count": 0,
+                "skipped_count": 0,
+                "failed_count": 0,
+                "downstream_media_count": 1,
+                "source_icloud_mutation": False,
+                "app_managed_storage_writes": 1,
+            },
+            [101],
+        ),
+    )
+    monkeypatch.setattr(
+        s3a_prod1,
+        "classify_media_scope",
+        lambda _db, _media_ids: {
+            "reported": True,
+            "executed": True,
+            "status": "completed",
+            "classified_count": 1,
+            "reused_classification_count": 0,
+            "failed_count": 0,
+            "content_class_distribution": {"unknown": 1},
+        },
+    )
+    ai_calls: list[tuple[str, bool, str]] = []
+
+    def fake_run_ai_tagging_pass(
+        _db,
+        *,
+        label: str,
+        media_ids: list[int],
+        dry_run: bool,
+        provider_preference: str,
+        max_items: int,
+        local_files_only: bool,
+    ):
+        del media_ids, max_items, local_files_only
+        ai_calls.append((label, dry_run, provider_preference))
+        if not dry_run:
+            raise AssertionError("CPU-only provider preference must not reach non-dry-run AI tagging")
+        return _ai_run(actual="CPUExecutionProvider", dry_run=True, delta=0), []
+
+    monkeypatch.setattr(s3a_prod1.pilot, "run_ai_tagging_pass", fake_run_ai_tagging_pass)
+    monkeypatch.setattr(
+        s3a_prod1,
+        "validate_localization_reuse",
+        lambda _db, _tags: {
+            "reported": True,
+            "attempted": False,
+            "status": "not_run_no_touched_tags",
+            "candidate_tags_count": 0,
+            "reused_translations": 0,
+            "new_translations": 0,
+            "missing_or_deferred": 0,
+            "failed": 0,
+            "llm_external_provider_used": False,
+            "external_provider_used": False,
+            "deferred_reason": "no_touched_tags",
+        },
+    )
+    monkeypatch.setattr(s3a_prod1, "load_control_observations", lambda _ai, _cpu: {})
+
+    exit_code = s3a_prod1.main(
+        [
+            "--input-path",
+            "redacted-input",
+            "--provider-preference",
+            "CPUExecutionProvider",
+            "--production-sync-confirmation",
+            s3a_prod1.PRODUCTION_SYNC_CONFIRMATION,
+        ]
+    )
+
+    report = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exit_code == 2
+    assert ai_calls == [("cpu_fallback_dry_run", True, "CPUExecutionProvider")]
+    assert report["pipeline_contract"]["status"] == "blocked_directml_provider_not_validated"
+    assert report["provider_write_gate"]["blockers"] == ["provider_preference_missing_directml"]
+    assert report["safety"]["media_tags_write_executed"] is False
+
+
+def test_directml_unavailable_blocks_without_media_tags_write() -> None:
+    summary = _prod_summary()
+    summary["preflight"]["directml_available"] = False
+    summary["preflight"]["provider_availability"]["directml_available"] = False
+    summary["provider_availability"] = copy.deepcopy(summary["preflight"]["provider_availability"])
+    summary["import_write_preconditions"]["passed"] = False
+    summary["import_write_preconditions"]["directml_available"] = False
+    summary["import_write_preconditions"]["blockers"] = ["directml_available"]
+    summary["import_reuse"].update(
+        {
+            "executed": False,
+            "imported_count": 0,
+            "reused_count": 0,
+            "skipped_count": 1,
+            "downstream_media_count": 0,
+            "app_managed_storage_writes": 0,
+        }
+    )
+    summary["directml_ai_tagging"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_primary",
+        status="not_run_directml_unavailable",
+        dry_run=True,
+        provider_preference=s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        local_files_only=True,
+        selected_media_count=1,
+    )
+    summary["directml_provider_probe"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_prewrite_probe",
+        status="not_run_provider_write_gate_blocked",
+        dry_run=True,
+        provider_preference=s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        local_files_only=True,
+        selected_media_count=1,
+    )
+    summary["provider_write_gate"] = s3a_prod1.build_provider_write_gate(
+        summary["provider_availability"],
+        s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        summary["directml_provider_probe"],
+        production_write_requested=True,
+        production_confirmed=True,
+    )
+    _set_status(summary, "blocked_directml_unavailable")
+
+    assert s3a_prod1.derive_status(summary) == "blocked_directml_unavailable"
+    assert summary["safety"]["media_tags_write_executed"] is False
+    result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
+    assert result.passed, result.to_dict()
+
+
+def test_contract_accepts_db_unavailable_blocked_report() -> None:
+    summary = _prod_summary()
+    summary["db_session"] = {"reported": True, "available": False, "error_type": "OperationalError"}
+    summary["import_reuse"].update(
+        {
+            "executed": False,
+            "status": "not_run_db_unavailable",
+            "imported_count": 0,
+            "reused_count": 0,
+            "skipped_count": 1,
+            "downstream_media_count": 0,
+            "app_managed_storage_writes": 0,
+        }
+    )
+    summary["classification"] = s3a_prod1.empty_classification_result(status="not_run_db_unavailable")
+    summary["directml_ai_tagging"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_primary",
+        status="not_run_db_unavailable",
+        dry_run=True,
+        provider_preference=s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        local_files_only=True,
+    )
+    summary["directml_provider_probe"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_prewrite_probe",
+        status="not_run_db_unavailable",
+        dry_run=True,
+        provider_preference=s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        local_files_only=True,
+    )
+    summary["provider_write_gate"] = s3a_prod1.build_provider_write_gate(
+        summary["preflight"]["provider_availability"],
+        s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        summary["directml_provider_probe"],
+        production_write_requested=True,
+        production_confirmed=True,
+    )
+    summary["cpu_fallback_validation"] = s3a_prod1.empty_ai_tagging_result(
+        label="cpu_fallback_dry_run",
+        status="not_run_db_unavailable",
+        dry_run=True,
+        provider_preference=s3a_prod1.CPU_PROVIDER_PREFERENCE,
+        local_files_only=True,
+    )
+    summary["localization"].update({"attempted": False, "status": "not_run_db_unavailable", "candidate_tags_count": 0})
+    _set_status(summary, "blocked_db_unavailable")
+
+    result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
+    assert result.passed, result.to_dict()
+
+
+def test_contract_accepts_input_scope_blocked_reports() -> None:
+    over_cap_summary = _prod_summary()
+    over_cap_summary["scope"].update({"selected_count": 0, "supported_files": 6, "over_cap_count": 1})
+    over_cap_summary["preflight"].update(
+        {"discovered_supported_files": 6, "selected_count": 0, "over_cap_check": {"passed": False, "over_cap_count": 1, "max_items": 5}}
+    )
+    over_cap_summary["import_reuse"].update(
+        {"executed": False, "imported_count": 0, "reused_count": 0, "skipped_count": 0, "downstream_media_count": 0}
+    )
+    over_cap_summary["directml_ai_tagging"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_primary",
+        status="not_run_input_scope_blocked",
+        dry_run=True,
+        provider_preference=s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        local_files_only=True,
+    )
+    _set_status(over_cap_summary, "blocked_input_over_cap")
+
+    empty_summary = _prod_summary()
+    empty_summary["scope"].update({"selected_count": 0, "supported_files": 0, "over_cap_count": 0})
+    empty_summary["preflight"].update(
+        {"discovered_supported_files": 0, "selected_count": 0, "over_cap_check": {"passed": True, "over_cap_count": 0, "max_items": 5}}
+    )
+    empty_summary["import_reuse"].update(
+        {"executed": False, "imported_count": 0, "reused_count": 0, "skipped_count": 0, "downstream_media_count": 0}
+    )
+    empty_summary["directml_ai_tagging"] = s3a_prod1.empty_ai_tagging_result(
+        label="directml_primary",
+        status="not_run_input_scope_blocked",
+        dry_run=True,
+        provider_preference=s3a_prod1.DEFAULT_PROVIDER_PREFERENCE,
+        local_files_only=True,
+    )
+    _set_status(empty_summary, "blocked_scope_invalid")
+
+    over_cap_result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", over_cap_summary)
+    empty_result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", empty_summary)
+    assert over_cap_result.passed, over_cap_result.to_dict()
+    assert empty_result.passed, empty_result.to_dict()
+
+
+def test_failed_write_does_not_mark_production_write_completed() -> None:
+    summary = _prod_summary()
+    summary["directml_ai_tagging"]["status"] = "completed_with_item_failures"
+    summary["directml_ai_tagging"]["failed"] = 1
+    _set_status(summary, "blocked_ai_tagging_item_failures")
+    summary["validation"]["production_write_completed"] = True
+
+    result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
+
+    assert s3a_prod1.production_write_completed(summary) is False
+    assert "s3a_prod1_production_write_completed_overstated" in _error_codes(result)
+
+
+def test_preflight_stage_failure_blocks_success() -> None:
+    summary = _prod_summary()
+    summary["run_configuration"]["production_write_requested"] = False
+    summary["run_configuration"]["exact_production_sync_confirmation"] = False
+    summary["import_reuse"]["failed_count"] = 1
+    summary["import_reuse"]["status"] = "completed_with_item_failures"
+    _set_status(summary, "preflight_completed_write_confirmation_required")
+
+    assert s3a_prod1.derive_status(summary) == "blocked_import_item_failures"
+    result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
+    assert "s3a_prod1_import_failures_not_blocked" in _error_codes(result)
+
+
+def test_target_requires_real_media_tags_delta_or_first_time_proof() -> None:
+    summary = _prod_summary()
+    summary["directml_ai_tagging"] = _ai_run(dry_run=False, delta=0)
+    summary["directml_ai_tagging"]["first_time_media_tag_insertion_proven"] = False
+    _set_status(summary, "target_met_with_bounded_write")
+    summary["validation"]["production_write_completed"] = True
+
+    assert s3a_prod1.derive_status(summary) == "write_executed_but_first_time_insertion_unproven"
+    result = check_phase_contract("s3a_prod1_operator_incremental_sync_contract_v1", summary)
+    assert "s3a_prod1_write_target_without_media_tags_delta" in _error_codes(result)

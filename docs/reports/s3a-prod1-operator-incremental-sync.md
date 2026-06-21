@@ -12,7 +12,7 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 - Selected count: `1`.
 - Discovered supported files: `1`.
 - Over-cap count: `0`.
-- Max items: `5`.
+- Max items: `1`.
 - Full-library fallback: `False`.
 - Public path redaction: `paths_and_filenames_redacted`.
 
@@ -48,6 +48,10 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 
 ## DirectML AI Tagging
 
+- DirectML prewrite probe status: `completed`.
+- DirectML prewrite probe provider: `DmlExecutionProvider`.
+- DirectML write gate passed: `True`.
+- DirectML write gate blockers: `[]`.
 - Executed: `True`.
 - Dry run: `False`.
 - Actual provider: `DmlExecutionProvider`.
@@ -55,10 +59,10 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 - Processed: `1`.
 - Failed: `0`.
 - Tags added: `9`.
-- Suggestions added: `5`.
+- Suggestions added: `1`.
 - Skipped locked: `0`.
-- Ignored low confidence: `10844`.
-- Media tags before/after/delta: `0` / `14` / `14`.
+- Ignored low confidence: `10848`.
+- Media tags before/after/delta: `0` / `10` / `10`.
 - Media with AI tags delta: `1`.
 - First-time insertion proven: `True`.
 
@@ -71,10 +75,10 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 
 ## Localization
 
-- Candidate tags: `14`.
-- Reused translations: `13`.
+- Candidate tags: `10`.
+- Reused translations: `8`.
 - New translations: `0`.
-- Missing/deferred: `1`.
+- Missing/deferred: `2`.
 - Failed: `0`.
 - External provider used: `False`.
 - Deferred reason: `external_llm_provider_not_approved_for_s3a_prod1`.
@@ -86,7 +90,7 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 
 ## Load Control
 
-- Effective batch size: `2`.
+- Effective batch size: `1`.
 - CPU intra/inter threads: `4` / `1`.
 - Preprocess workers: `2`.
 - Max concurrent AI jobs: `1`.

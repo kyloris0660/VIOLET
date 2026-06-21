@@ -3165,6 +3165,8 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
         "blocked_cpu_fallback_not_validated",
         "blocked_localization_failures",
         "blocked_public_redaction_failed",
+        "blocked_db_unavailable",
+        "write_executed_but_first_time_insertion_unproven",
     }
     target_statuses = {"target_met_with_bounded_write"}
     status = str(result.status or "").casefold()
@@ -3207,7 +3209,6 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
             "s3a_boundary.single_operator_triggered_run_only",
             "safety.max_items_lte_5",
             "safety.explicit_input_required",
-            "safety.selected_input_explicit_bounded",
             "safety.no_full_library_run",
             "safety.single_operator_triggered_run_only",
         ),
@@ -3281,7 +3282,16 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
             expected="1..5",
             actual=max_items,
         )
-    if not over_cap and not (1 <= selected_count <= max_items <= 5):
+    if not over_cap and selected_count <= 0:
+        if status != "blocked_scope_invalid":
+            result.fail(
+                "s3a_prod1_selected_sample_not_small",
+                "S3A-PROD1 selected input count must be non-zero unless the report is fail-closed on invalid scope.",
+                path="scope.selected_count",
+                expected=f"1..{max_items} or blocked_scope_invalid",
+                actual=selected_count,
+            )
+    elif not over_cap and not (selected_count <= max_items <= 5):
         result.fail(
             "s3a_prod1_selected_sample_not_small",
             "S3A-PROD1 selected input count must be non-zero and within max_items <= 5.",
@@ -3290,13 +3300,14 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
             actual=selected_count,
         )
     if over_cap:
-        result.fail(
-            "s3a_prod1_input_over_cap",
-            "S3A-PROD1 input must block over-cap supported files before selection.",
-            path="scope.over_cap_count",
-            expected=0,
-            actual=over_cap,
-        )
+        if status != "blocked_input_over_cap":
+            result.fail(
+                "s3a_prod1_input_over_cap",
+                "S3A-PROD1 input must block over-cap supported files before selection.",
+                path="scope.over_cap_count",
+                expected="0 or blocked_input_over_cap",
+                actual=over_cap,
+            )
         if status in target_statuses:
             result.fail(
                 "s3a_prod1_target_claimed_with_over_cap_input",
@@ -3305,6 +3316,14 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
                 expected="blocked_input_over_cap",
                 actual=result.status,
             )
+    if status in target_statuses and not _as_bool(_get(summary, "safety.selected_input_explicit_bounded", False)):
+        result.fail(
+            "s3a_prod1_target_without_selected_input_proof",
+            "S3A-PROD1 target_met requires selected explicit bounded input proof.",
+            path="safety.selected_input_explicit_bounded",
+            expected=True,
+            actual=_get(summary, "safety.selected_input_explicit_bounded", None),
+        )
 
     directml_available = _as_bool(_get(summary, "preflight.directml_available", False))
     cpu_available = _as_bool(_get(summary, "preflight.cpu_fallback_available", False))
@@ -3325,11 +3344,29 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
             actual=cpu_available,
         )
 
+    db_available = _as_bool(_get(summary, "db_session.available", True))
+    if not db_available and status != "blocked_db_unavailable":
+        result.fail(
+            "s3a_prod1_db_unavailable_not_blocked",
+            "A DB-unavailable S3A-PROD1 report must fail closed with blocked_db_unavailable.",
+            path="pipeline_contract.status",
+            expected="blocked_db_unavailable",
+            actual=result.status,
+        )
+
     production_write_requested = _as_bool(_get(summary, "run_configuration.production_write_requested", False))
     exact_confirmation = _as_bool(_get(summary, "run_configuration.exact_production_sync_confirmation", False))
     import_executed = _as_bool(_get(summary, "import_reuse.executed", False))
     ai_executed = _as_bool(_get(summary, "directml_ai_tagging.executed", False))
     ai_dry_run = _as_bool(_get(summary, "directml_ai_tagging.dry_run", True))
+    if not db_available and (import_executed or (ai_executed and not ai_dry_run)):
+        result.fail(
+            "s3a_prod1_db_unavailable_report_claims_writes",
+            "blocked_db_unavailable reports must not claim import or media_tags writes.",
+            path="db_session.available",
+            expected={"available": False, "writes": False},
+            actual={"import_executed": import_executed, "ai_write_executed": ai_executed and not ai_dry_run},
+        )
     if production_write_requested and not exact_confirmation and status != "blocked_production_write_requested_without_exact_confirmation":
         result.fail(
             "s3a_prod1_write_requested_without_exact_confirmation_not_blocked",
@@ -3395,6 +3432,7 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
     would_import = _as_int(_get(summary, "import_reuse.would_import_count", 0))
     skipped = _as_int(_get(summary, "import_reuse.skipped_count", 0))
     import_failed = _as_int(_get(summary, "import_reuse.failed_count", 0))
+    import_status = str(_get(summary, "import_reuse.status", "") or "").casefold()
     downstream = _as_int(_get(summary, "import_reuse.downstream_media_count", 0))
     if imported + reused + would_import + skipped + import_failed < selected_count:
         result.fail(
@@ -3410,7 +3448,7 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
                 "failed": import_failed,
             },
         )
-    if import_failed and status != "blocked_import_item_failures":
+    if (import_failed or "item_failures" in import_status) and status != "blocked_import_item_failures":
         result.fail(
             "s3a_prod1_import_failures_not_blocked",
             "Import/reuse item failures must produce a blocked status.",
@@ -3428,8 +3466,9 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
         )
 
     classification_failed = _as_int(_get(summary, "classification.failed_count", 0))
+    classification_status = str(_get(summary, "classification.status", "") or "").casefold()
     classification_executed = _as_bool(_get(summary, "classification.executed", False))
-    if classification_failed and status != "blocked_classification_failures":
+    if (classification_failed or "item_failures" in classification_status) and status != "blocked_classification_failures":
         result.fail(
             "s3a_prod1_classification_failures_not_blocked",
             "Classification failures must produce a blocked status.",
@@ -3450,13 +3489,36 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
     actual_provider = _get(summary, "directml_ai_tagging.provider.actual_provider", None)
     ai_failed = _as_int(_get(summary, "directml_ai_tagging.failed", 0))
     ai_processed = _as_int(_get(summary, "directml_ai_tagging.processed", 0))
-    if ai_failed and status != "blocked_ai_tagging_item_failures":
+    ai_status = str(_get(summary, "directml_ai_tagging.status", "") or "").casefold()
+    gate_passed = _as_bool(_get(summary, "provider_write_gate.passed", False))
+    gate_write_allowed = _as_bool(_get(summary, "provider_write_gate.write_allowed", False))
+    gate_blockers = _get(summary, "provider_write_gate.blockers", [])
+    gate_prefers_directml = _as_bool(_get(summary, "provider_write_gate.provider_preference_includes_directml", False))
+    probe_actual = _get(summary, "provider_write_gate.probe_actual_provider", None)
+    probe_executed = _as_bool(_get(summary, "provider_write_gate.probe_executed", False))
+    if (ai_failed or "item_failures" in ai_status) and status != "blocked_ai_tagging_item_failures":
         result.fail(
             "s3a_prod1_ai_failures_not_blocked",
             "AI tagging item failures must produce a blocked status.",
             path="pipeline_contract.status",
             expected="blocked_ai_tagging_item_failures",
             actual=result.status,
+        )
+    if ai_executed and not ai_dry_run and not gate_passed:
+        result.fail(
+            "s3a_prod1_ai_write_without_directml_gate",
+            "S3A-PROD1 media_tags writes must be preceded by a passing DirectML provider write gate.",
+            path="provider_write_gate.passed",
+            expected=True,
+            actual=_get(summary, "provider_write_gate.passed", None),
+        )
+    if status == "blocked_directml_provider_not_validated" and production_write_requested and exact_confirmation and not gate_blockers:
+        result.fail(
+            "s3a_prod1_directml_provider_blocker_missing",
+            "DirectML provider blocked reports must include the provider write-gate blocker.",
+            path="provider_write_gate.blockers",
+            expected="non-empty blocker list",
+            actual=gate_blockers,
         )
     if status in target_statuses:
         if not ai_executed or ai_dry_run or ai_processed != downstream:
@@ -3475,6 +3537,27 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
                 expected=["DmlExecutionProvider", "CPUExecutionProvider"],
                 actual=requested,
             )
+        if not gate_passed or not gate_write_allowed or not gate_prefers_directml or not probe_executed or probe_actual != "DmlExecutionProvider":
+            result.fail(
+                "s3a_prod1_target_without_directml_write_gate",
+                "S3A-PROD1 target_met requires a passing pre-write DirectML provider gate before any media_tags write.",
+                path="provider_write_gate",
+                expected={
+                    "passed": True,
+                    "write_allowed": True,
+                    "provider_preference_includes_directml": True,
+                    "probe_executed": True,
+                    "probe_actual_provider": "DmlExecutionProvider",
+                },
+                actual={
+                    "passed": gate_passed,
+                    "write_allowed": gate_write_allowed,
+                    "provider_preference_includes_directml": gate_prefers_directml,
+                    "probe_executed": probe_executed,
+                    "probe_actual_provider": probe_actual,
+                    "blockers": gate_blockers,
+                },
+            )
         if actual_provider != "DmlExecutionProvider":
             result.fail(
                 "s3a_prod1_actual_provider_not_directml",
@@ -3487,6 +3570,7 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
     ai_before = _as_int(_get(summary, "directml_ai_tagging.media_tags_count_before", 0))
     ai_after = _as_int(_get(summary, "directml_ai_tagging.media_tags_count_after", 0))
     ai_delta = _as_int(_get(summary, "directml_ai_tagging.media_tags_count_delta", 0))
+    ai_first_time = _as_bool(_get(summary, "directml_ai_tagging.first_time_media_tag_insertion_proven", False))
     if ai_after - ai_before != ai_delta:
         result.fail(
             "s3a_prod1_media_tags_delta_inconsistent",
@@ -3494,6 +3578,39 @@ def _check_s3a_prod1_operator_incremental_sync(_contract: PhaseContract, summary
             path="directml_ai_tagging.media_tags_count_delta",
             expected=ai_after - ai_before,
             actual=ai_delta,
+        )
+    if status in target_statuses and not (ai_delta > 0 or ai_first_time):
+        result.fail(
+            "s3a_prod1_write_target_without_media_tags_delta",
+            "target_met_with_bounded_write requires a positive media_tags delta or explicit first-time insertion proof.",
+            path="directml_ai_tagging.media_tags_count_delta",
+            expected=">0 or first_time_media_tag_insertion_proven=true",
+            actual={"media_tags_count_delta": ai_delta, "first_time_media_tag_insertion_proven": ai_first_time},
+        )
+
+    validation_write_completed = _as_bool(_get(summary, "validation.production_write_completed", False))
+    expected_write_completed = bool(
+        status in target_statuses
+        and import_failed == 0
+        and ai_failed == 0
+        and actual_provider == "DmlExecutionProvider"
+        and (ai_delta > 0 or ai_first_time)
+    )
+    if validation_write_completed and not expected_write_completed:
+        result.fail(
+            "s3a_prod1_production_write_completed_overstated",
+            "validation.production_write_completed may only be true for a successful target write with DirectML and real media_tags proof.",
+            path="validation.production_write_completed",
+            expected=False,
+            actual=True,
+        )
+    if status in target_statuses and not validation_write_completed:
+        result.fail(
+            "s3a_prod1_target_without_production_write_completed",
+            "S3A-PROD1 target_met should mark production_write_completed only after all target write proof is present.",
+            path="validation.production_write_completed",
+            expected=True,
+            actual=validation_write_completed,
         )
 
     cpu_executed = _as_bool(_get(summary, "cpu_fallback_validation.executed", False))
