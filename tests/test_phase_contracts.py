@@ -254,6 +254,104 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
     return summary
 
 
+def _prod_launcher_mvp_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "prod_launcher_mvp_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        },
+        "launcher_code": {
+            "control_exists": True,
+            "cli_control_exists": True,
+            "visual_launcher_exists": True,
+            "cmd_entry_exists": True,
+        },
+        "start_command": {
+            "production_mode": True,
+            "no_debug": True,
+            "debug": False,
+            "command": ["python.exe", "run.py"],
+        },
+        "preflight_gates": {
+            "env": True,
+            "debug_disabled": True,
+            "storage_root": True,
+            "db": True,
+            "port": True,
+            "venv": True,
+            "worktree_dev_refusal": True,
+        },
+        "stop_safety": {
+            "refuses_unknown_process": True,
+            "managed_identity_required": True,
+            "force_kill_same_verified_only": True,
+        },
+        "state_file": {
+            "local_ignored": True,
+            "path": ".local_manifests/production_launcher/violet-production-launcher-state.json",
+        },
+        "health_status": {
+            "public_safe": True,
+            "no_paths": True,
+            "no_secrets": True,
+            "status_example": {
+                "ok": True,
+                "app_name": "V.I.O.L.E.T.",
+                "version": "1.41.0",
+                "env": "production",
+                "db_reachable": True,
+                "storage_configured": True,
+                "debug": False,
+            },
+        },
+        "diagnostics": {
+            "status_json_example": {
+                "running": True,
+                "managed_by_launcher": True,
+                "port": 8000,
+                "url": "http://127.0.0.1:8000",
+                "env": "production",
+                "debug": False,
+                "db_reachable": True,
+                "health_ok": True,
+            }
+        },
+        "reports": {"redacted": True},
+        "tests": {
+            "preflight_failure": True,
+            "port_occupied": True,
+            "stale_pid": True,
+            "managed_stop": True,
+            "unknown_process_refusal": True,
+        },
+        "validation": {"focused_tests_passed": True, "contract_passed": True},
+        "safety": {
+            "no_import_tagging_localization_sync_jobs": True,
+            "no_provider_calls": True,
+            "no_sourceconcept_or_entity": True,
+            "no_db_migrations": True,
+            "no_destructive_operations": True,
+            "no_source_icloud_mutation": True,
+        },
+        "forbidden_operations": {
+            "import_jobs": False,
+            "tagging_jobs": False,
+            "localization_jobs": False,
+            "sync_jobs": False,
+            "provider_calls": False,
+            "sourceconcept": False,
+            "entity_bridge": False,
+            "db_migrations": False,
+            "destructive_operations": False,
+            "source_icloud_mutation": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _s2g1x_summary(**overrides: object) -> dict:
     head = _current_test_head()
     summary = {
@@ -1431,6 +1529,55 @@ def test_production_development_separation_rejects_forbidden_current_phase_autho
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "production_development_forbidden_current_phase_authorization" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_accepts_safe_launcher_summary() -> None:
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", _prod_launcher_mvp_summary())
+
+    assert result.passed is True
+
+
+def test_prod_launcher_mvp_contract_rejects_debug_start_command() -> None:
+    summary = _prod_launcher_mvp_summary(
+        start_command={
+            "production_mode": True,
+            "no_debug": False,
+            "debug": True,
+            "command": ["python.exe", "run.py", "--debug"],
+        }
+    )
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "prod_launcher_required_proof_failed" in codes
+    assert "prod_launcher_start_command_debug_enabled" in codes
+
+
+def test_prod_launcher_mvp_contract_rejects_nonignored_state_file() -> None:
+    summary = _prod_launcher_mvp_summary(state_file={"local_ignored": True, "path": "data/runtime/state.json"})
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_state_file_not_local_ignored" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_public_status_path_leak() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["health_status"]["status_example"]["storage_root"] = r"C:\Users\name\Pictures\private"
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_public_status_not_safe" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_forbidden_operation_enabled() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["forbidden_operations"]["provider_calls"] = True
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:

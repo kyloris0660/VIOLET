@@ -1269,6 +1269,119 @@ def _check_production_development_separation(
         )
 
 
+def _check_prod_launcher_mvp(
+    _contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult
+) -> None:
+    required_true = (
+        "launcher_code.control_exists",
+        "launcher_code.cli_control_exists",
+        "launcher_code.visual_launcher_exists",
+        "launcher_code.cmd_entry_exists",
+        "start_command.production_mode",
+        "start_command.no_debug",
+        "preflight_gates.env",
+        "preflight_gates.debug_disabled",
+        "preflight_gates.storage_root",
+        "preflight_gates.db",
+        "preflight_gates.port",
+        "preflight_gates.venv",
+        "preflight_gates.worktree_dev_refusal",
+        "stop_safety.refuses_unknown_process",
+        "stop_safety.managed_identity_required",
+        "stop_safety.force_kill_same_verified_only",
+        "state_file.local_ignored",
+        "health_status.public_safe",
+        "health_status.no_paths",
+        "health_status.no_secrets",
+        "reports.redacted",
+        "tests.preflight_failure",
+        "tests.port_occupied",
+        "tests.stale_pid",
+        "tests.managed_stop",
+        "tests.unknown_process_refusal",
+        "validation.focused_tests_passed",
+        "validation.contract_passed",
+        "safety.no_import_tagging_localization_sync_jobs",
+        "safety.no_provider_calls",
+        "safety.no_sourceconcept_or_entity",
+        "safety.no_db_migrations",
+        "safety.no_destructive_operations",
+        "safety.no_source_icloud_mutation",
+    )
+    _check_required_boolean_paths(
+        summary,
+        result,
+        required_true,
+        code="prod_launcher_required_proof_failed",
+        message="Production launcher MVP requires code, visible controls, hard preflight, safe stop, focused tests, and no forbidden operations.",
+    )
+
+    command = _get(summary, "start_command.command", [])
+    command_text = " ".join(str(item) for item in command) if isinstance(command, list) else str(command)
+    command_lower = command_text.casefold()
+    result.details["prod_launcher_command"] = command_text
+    if "run.py" not in command_lower:
+        result.fail(
+            "prod_launcher_start_command_missing_run_py",
+            "Production launcher must start the current runtime entry point run.py.",
+            path="start_command.command",
+            expected="python run.py",
+            actual=command,
+        )
+    if "--debug" in command_lower or _as_bool(_get(summary, "start_command.debug", False)):
+        result.fail(
+            "prod_launcher_start_command_debug_enabled",
+            "Production launcher start command must not pass --debug or enable debug mode.",
+            path="start_command.command",
+            expected="no --debug",
+            actual=command,
+        )
+
+    state_path = str(_get(summary, "state_file.path", "")).replace("\\", "/").casefold()
+    if not state_path.startswith(".local_manifests/production_launcher/"):
+        result.fail(
+            "prod_launcher_state_file_not_local_ignored",
+            "Launcher state must live under the ignored .local_manifests/production_launcher path.",
+            path="state_file.path",
+            expected=".local_manifests/production_launcher/<state>.json",
+            actual=_get(summary, "state_file.path", None),
+        )
+
+    forbidden_false = (
+        "forbidden_operations.import_jobs",
+        "forbidden_operations.tagging_jobs",
+        "forbidden_operations.localization_jobs",
+        "forbidden_operations.sync_jobs",
+        "forbidden_operations.provider_calls",
+        "forbidden_operations.sourceconcept",
+        "forbidden_operations.entity_bridge",
+        "forbidden_operations.db_migrations",
+        "forbidden_operations.destructive_operations",
+        "forbidden_operations.source_icloud_mutation",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        forbidden_false,
+        code="prod_launcher_forbidden_operation_enabled",
+        message="Launcher MVP summary must explicitly report forbidden operations as false.",
+    )
+
+    for payload_path in ("health_status.status_example", "diagnostics.status_json_example", "public_json_payload"):
+        payload = _get(summary, payload_path, MISSING)
+        if payload is MISSING:
+            continue
+        findings = scan_public_payload(payload)
+        if findings:
+            result.fail(
+                "prod_launcher_public_status_not_safe",
+                "Production launcher health/status examples must be public-safe.",
+                path=payload_path,
+                expected="no secrets, local paths, filenames, or private provenance",
+                actual=findings[:5],
+            )
+
+
 def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     tables = _get(summary, "dynamic_sync.schema.tables", [])
     required_tables = {
@@ -3495,6 +3608,7 @@ CUSTOM_CHECKS = {
     "destructive_operation": _check_destructive_operation,
     "entity_truth_bridge": _check_entity_truth_bridge,
     "production_development_separation": _check_production_development_separation,
+    "prod_launcher_mvp": _check_prod_launcher_mvp,
     "dynamic_library_sync": _check_dynamic_library_sync,
     "s2g1x_probe": _check_s2g1x_probe,
     "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,

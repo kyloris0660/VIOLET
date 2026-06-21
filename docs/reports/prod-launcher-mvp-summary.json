@@ -1,0 +1,186 @@
+{
+  "phase": "PROD-LAUNCHER-MVP",
+  "pipeline_contract": {
+    "contract_id": "prod_launcher_mvp_contract_v1",
+    "status": "target_met",
+    "claims": {
+      "target_met": true,
+      "safe_to_merge": true
+    }
+  },
+  "launcher_code": {
+    "control_exists": true,
+    "control_path": "scripts/violet_production_control.py",
+    "cli_control_exists": true,
+    "visual_launcher_exists": true,
+    "visual_launcher_path": "scripts/violet_production_launcher.py",
+    "cmd_entry_exists": true,
+    "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
+    "documentation_path": "docs/production-launcher.md"
+  },
+  "start_command": {
+    "production_mode": true,
+    "no_debug": true,
+    "debug": false,
+    "command": [
+      "python.exe",
+      "run.py"
+    ],
+    "child_env_overrides": {
+      "VIOLET_ENV": "production",
+      "BLOMBOORU_DEBUG": "false",
+      "APP_PORT": "resolved"
+    }
+  },
+  "preflight_gates": {
+    "env": true,
+    "debug_disabled": true,
+    "storage_root": true,
+    "db": true,
+    "port": true,
+    "venv": true,
+    "worktree_dev_refusal": true,
+    "dotenv_exists": true,
+    "settings_initialized": true,
+    "no_startup_mutation_automation": true
+  },
+  "stop_safety": {
+    "refuses_unknown_process": true,
+    "managed_identity_required": true,
+    "force_kill_same_verified_only": true,
+    "stale_pid_cleanup": true,
+    "port_release_verified": true
+  },
+  "state_file": {
+    "local_ignored": true,
+    "path": ".local_manifests/production_launcher/violet-production-launcher-state.json",
+    "log_path": ".local_manifests/production_launcher/violet-production.log",
+    "committed": false
+  },
+  "health_status": {
+    "endpoint": "GET /api/health",
+    "public_safe": true,
+    "no_paths": true,
+    "no_secrets": true,
+    "status_example": {
+      "ok": true,
+      "app_name": "V.I.O.L.E.T.",
+      "version": "1.41.0",
+      "env": "production",
+      "db_reachable": true,
+      "storage_configured": true,
+      "debug": false
+    }
+  },
+  "diagnostics": {
+    "command": "python scripts/violet_production_control.py status --json",
+    "status_json_example": {
+      "running": true,
+      "managed_by_launcher": true,
+      "port": 8000,
+      "url": "http://127.0.0.1:8000",
+      "env": "production",
+      "debug": false,
+      "db_reachable": true,
+      "health_ok": true
+    }
+  },
+  "reports": {
+    "redacted": true,
+    "markdown_report_path": "docs/reports/prod-launcher-mvp.md",
+    "summary_json_path": "docs/reports/prod-launcher-mvp-summary.json"
+  },
+  "tests": {
+    "preflight_failure": true,
+    "port_occupied": true,
+    "stale_pid": true,
+    "managed_stop": true,
+    "unknown_process_refusal": true,
+    "status_json_public_safe": true,
+    "command_no_debug": true
+  },
+  "validation": {
+    "focused_tests_passed": true,
+    "contract_passed": true,
+    "py_compile_passed": true,
+    "json_tool_passed": true,
+    "git_diff_check_passed": true,
+    "git_diff_cached_check_passed": true,
+    "preflight_dry_run": "blocked_as_expected_from_agent_worktree",
+    "preflight_dry_run_blockers": [
+      "canonical_repo_root",
+      "violet_env_production",
+      "canonical_venv_python",
+      "dotenv_exists",
+      "storage_root_explicit",
+      "production_storage_root_shape",
+      "settings_initialized",
+      "db_readonly_reachable"
+    ],
+    "real_start_stop_smoke": "not_run_from_agent_worktree"
+  },
+  "safety": {
+    "no_import_tagging_localization_sync_jobs": true,
+    "no_provider_calls": true,
+    "no_sourceconcept_or_entity": true,
+    "no_db_migrations": true,
+    "no_destructive_operations": true,
+    "no_source_icloud_mutation": true,
+    "no_push_main": true,
+    "no_merge": true
+  },
+  "forbidden_operations": {
+    "import_jobs": false,
+    "tagging_jobs": false,
+    "localization_jobs": false,
+    "sync_jobs": false,
+    "provider_calls": false,
+    "sourceconcept": false,
+    "entity_bridge": false,
+    "db_migrations": false,
+    "destructive_operations": false,
+    "source_icloud_mutation": false
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "path": "scripts/violet_production_control.py",
+        "classification": "reusable validation/safety tool",
+        "committed": true
+      },
+      {
+        "path": "scripts/violet_production_launcher.py",
+        "classification": "phase-scoped operational runner",
+        "committed": true
+      },
+      {
+        "path": "scripts/start_violet_production_launcher.cmd",
+        "classification": "phase-scoped operational runner",
+        "committed": true
+      },
+      {
+        "path": "backend/app/routes/health.py",
+        "classification": "durable production code",
+        "committed": true
+      },
+      {
+        "path": "docs/production-launcher.md",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      },
+      {
+        "path": "docs/reports/prod-launcher-mvp.md",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      },
+      {
+        "path": "docs/reports/prod-launcher-mvp-summary.json",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      }
+    ]
+  }
+}
