@@ -1087,6 +1087,17 @@ def test_s2g1x_probe_contract_requires_model_loaded_evidence_for_completion(
     assert expected_code in _error_codes(result)
 
 
+def test_s2g1x_probe_contract_requires_gpu_provider_checks_for_completion() -> None:
+    summary = _s2g1x_summary()
+    _set_nested(summary, "capability_probe.provider_matrix.cuda.benchmark_status", "not_requested")
+    _set_nested(summary, "capability_probe.provider_matrix.directml.benchmark_status", "not_requested")
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_completion_provider_not_checked" in _error_codes(result)
+
+
 def test_s2g1x_probe_contract_allows_blocked_model_unavailable_without_completion_claim() -> None:
     summary = _s2g1x_summary()
     summary["pipeline_contract"] = {
@@ -1113,6 +1124,51 @@ def test_s2g1x_probe_contract_allows_blocked_model_unavailable_without_completio
 
     assert blocked_result.passed is False
     assert "s2g1x_non_completion_status_claimed_completion" in _error_codes(blocked_result)
+
+
+def test_s2g1x_probe_contract_allows_blocked_probe_unavailable_without_cpu_provider() -> None:
+    summary = _s2g1x_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "s2g1x_probe_contract_v1",
+        "status": "blocked_probe_unavailable",
+        "claims": {"target_met": False, "safe_to_merge": False},
+    }
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.available", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.loaded", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.practical", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.benchmark_status", "not_available")
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.throughput_items_per_second", None)
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s2g1x_probe_contract_independently_scans_public_payload() -> None:
+    summary = _s2g1x_summary()
+    summary["public_redaction"] = {"passed": True}
+    summary["capability_probe"]["leaked_example"] = r"C:\Users\example\private.png"
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_public_payload_redaction_failed" in _error_codes(result)
+    assert "C:\\Users\\example\\private.png" not in _serialized_result(result)
+
+
+def test_s2g1x_probe_contract_requires_s3a_dry_run_only() -> None:
+    base = _s2g1x_summary()
+    summary = _s2g1x_summary(
+        s3a_dev_dry_run_plan={
+            **base["s3a_dev_dry_run_plan"],
+            "dry_run_only": False,
+        }
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_required_probe_proof_missing" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_rejects_model_download_and_production_ai() -> None:

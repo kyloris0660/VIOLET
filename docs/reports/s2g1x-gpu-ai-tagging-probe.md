@@ -3,6 +3,8 @@
 ## Summary
 
 - Contract: `s2g1x_probe_contract_v1`.
+- Status: `target_met`.
+- Target met / safe to merge: `True` / `True`.
 - Current app WD backend: `CPUExecutionProvider`.
 - Configured model: `wd-swinv2-tagger-v3`.
 - Model cached locally: `True`.
@@ -23,7 +25,7 @@
 | --- | --- | --- | --- | --- | --- |
 | CUDA | False | False | False | not_available | N/A |
 | DirectML | False | False | False | not_available | N/A |
-| CPU | True | True | True | completed | 0.9458 |
+| CPU | True | True | True | completed | 1.16 |
 
 ## Threshold And Model Config
 

@@ -27,11 +27,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND_ROOT = ROOT / "backend"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-if str(BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(BACKEND_ROOT))
 
 from scripts.s2g_s3a_job_control import (  # noqa: E402
     ProviderCapability,
@@ -56,6 +53,16 @@ WD_MODELS = {
 MODEL_FILENAME = "model.onnx"
 LABEL_FILENAME = "selected_tags.csv"
 DEFAULT_PROVIDERS = ("CUDAExecutionProvider", "DmlExecutionProvider", "CPUExecutionProvider")
+ENV_FILE = ROOT / ".env"
+DEFAULT_AI_SETTINGS: dict[str, Any] = {
+    "AI_TAGGING_ENABLED": False,
+    "AI_MODEL_NAME": "wd-swinv2-tagger-v3",
+    "AI_GENERAL_THRESHOLD": 0.35,
+    "AI_CHARACTER_THRESHOLD": 0.65,
+    "AI_RATING_THRESHOLD": 0.50,
+    "AI_SUGGESTION_THRESHOLD": 0.20,
+    "AI_TAGGING_BATCH_MAX_ITEMS": 10,
+}
 
 
 def utc_now() -> str:
@@ -115,35 +122,96 @@ def public_error_code(exc: BaseException) -> str:
     return name[:80]
 
 
-def load_settings_snapshot(model_override: str | None) -> dict[str, Any]:
-    defaults = {
-        "ai_tagging_enabled": os.getenv("AI_TAGGING_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
-        "model_name": model_override or os.getenv("AI_MODEL_NAME", "wd-swinv2-tagger-v3"),
-        "general_threshold": float(os.getenv("AI_GENERAL_THRESHOLD", "0.35")),
-        "character_threshold": float(os.getenv("AI_CHARACTER_THRESHOLD", "0.65")),
-        "rating_threshold": float(os.getenv("AI_RATING_THRESHOLD", "0.50")),
-        "suggestion_threshold": float(os.getenv("AI_SUGGESTION_THRESHOLD", "0.20")),
-        "batch_max_items": int(os.getenv("AI_TAGGING_BATCH_MAX_ITEMS", "10")),
-        "source": "env_defaults",
-        "settings_import_error_code": None,
-    }
-    try:
-        from app.config import settings
+def read_dotenv_values(path: Path = ENV_FILE) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists() or not path.is_file():
+        return values
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key] = value
+    return values
 
-        return {
-            "ai_tagging_enabled": bool(settings.AI_TAGGING_ENABLED),
-            "model_name": model_override or settings.AI_MODEL_NAME,
-            "general_threshold": settings.AI_GENERAL_THRESHOLD,
-            "character_threshold": settings.AI_CHARACTER_THRESHOLD,
-            "rating_threshold": settings.AI_RATING_THRESHOLD,
-            "suggestion_threshold": settings.AI_SUGGESTION_THRESHOLD,
-            "batch_max_items": settings.AI_TAGGING_BATCH_MAX_ITEMS,
-            "source": "app_settings",
-            "settings_import_error_code": None,
-        }
-    except Exception as exc:  # pragma: no cover - exercised only in broken envs
-        defaults["settings_import_error_code"] = public_error_code(exc)
-        return defaults
+
+def side_effect_free_setting(name: str, dotenv_values: Mapping[str, str]) -> tuple[Any, str]:
+    if name in os.environ:
+        return os.environ[name], "process_env"
+    if name in dotenv_values:
+        return dotenv_values[name], "repo_dotenv"
+    return DEFAULT_AI_SETTINGS[name], "documented_default"
+
+
+def parse_bool_setting(name: str, raw: Any, errors: list[dict[str, str]]) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().casefold()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off", ""}:
+        return False
+    errors.append({"setting": name, "error_code": "invalid_bool_used_default"})
+    return bool(DEFAULT_AI_SETTINGS[name])
+
+
+def parse_float_setting(name: str, raw: Any, errors: list[dict[str, str]]) -> float:
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        errors.append({"setting": name, "error_code": "invalid_float_used_default"})
+        return float(DEFAULT_AI_SETTINGS[name])
+
+
+def parse_int_setting(name: str, raw: Any, errors: list[dict[str, str]]) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        errors.append({"setting": name, "error_code": "invalid_int_used_default"})
+        return int(DEFAULT_AI_SETTINGS[name])
+    if value < 1:
+        errors.append({"setting": name, "error_code": "non_positive_int_used_default"})
+        return int(DEFAULT_AI_SETTINGS[name])
+    return value
+
+
+def load_settings_snapshot(model_override: str | None) -> dict[str, Any]:
+    dotenv_values = read_dotenv_values()
+    errors: list[dict[str, str]] = []
+    raw_enabled, enabled_source = side_effect_free_setting("AI_TAGGING_ENABLED", dotenv_values)
+    raw_model, model_source = side_effect_free_setting("AI_MODEL_NAME", dotenv_values)
+    raw_general, general_source = side_effect_free_setting("AI_GENERAL_THRESHOLD", dotenv_values)
+    raw_character, character_source = side_effect_free_setting("AI_CHARACTER_THRESHOLD", dotenv_values)
+    raw_rating, rating_source = side_effect_free_setting("AI_RATING_THRESHOLD", dotenv_values)
+    raw_suggestion, suggestion_source = side_effect_free_setting("AI_SUGGESTION_THRESHOLD", dotenv_values)
+    raw_batch, batch_source = side_effect_free_setting("AI_TAGGING_BATCH_MAX_ITEMS", dotenv_values)
+    return {
+        "ai_tagging_enabled": parse_bool_setting("AI_TAGGING_ENABLED", raw_enabled, errors),
+        "model_name": model_override or str(raw_model or DEFAULT_AI_SETTINGS["AI_MODEL_NAME"]),
+        "general_threshold": parse_float_setting("AI_GENERAL_THRESHOLD", raw_general, errors),
+        "character_threshold": parse_float_setting("AI_CHARACTER_THRESHOLD", raw_character, errors),
+        "rating_threshold": parse_float_setting("AI_RATING_THRESHOLD", raw_rating, errors),
+        "suggestion_threshold": parse_float_setting("AI_SUGGESTION_THRESHOLD", raw_suggestion, errors),
+        "batch_max_items": parse_int_setting("AI_TAGGING_BATCH_MAX_ITEMS", raw_batch, errors),
+        "source": "side_effect_free_env_or_defaults",
+        "config_sources": {
+            "AI_TAGGING_ENABLED": enabled_source,
+            "AI_MODEL_NAME": "cli_override" if model_override else model_source,
+            "AI_GENERAL_THRESHOLD": general_source,
+            "AI_CHARACTER_THRESHOLD": character_source,
+            "AI_RATING_THRESHOLD": rating_source,
+            "AI_SUGGESTION_THRESHOLD": suggestion_source,
+            "AI_TAGGING_BATCH_MAX_ITEMS": batch_source,
+        },
+        "config_parse_errors": errors,
+        "app_config_imported": False,
+    }
 
 
 def inspect_current_app_backend() -> dict[str, Any]:
@@ -348,6 +416,92 @@ def load_control_risks(current_backend: Mapping[str, Any], load_control_errors: 
     return sorted(set(risks))
 
 
+def positive_throughput(capability: ProviderCapability) -> bool:
+    return capability.throughput_items_per_second is not None and capability.throughput_items_per_second > 0
+
+
+def required_provider_checks_completed(capabilities: Mapping[str, ProviderCapability]) -> bool:
+    return all(
+        provider in capabilities and capabilities[provider].benchmark_status != "not_requested"
+        for provider in DEFAULT_PROVIDERS
+    )
+
+
+def cpu_completion_evidence(capabilities: Mapping[str, ProviderCapability]) -> bool:
+    cpu = capabilities.get("CPUExecutionProvider")
+    return bool(
+        cpu
+        and cpu.available
+        and cpu.loaded
+        and cpu.practical
+        and cpu.benchmark_status == "completed"
+        and positive_throughput(cpu)
+    )
+
+
+def model_completion_evidence(model_cache: Mapping[str, Any]) -> bool:
+    return bool(
+        model_cache.get("model_file_cached")
+        and model_cache.get("label_file_cached")
+        and not model_cache.get("network_download_required")
+    )
+
+
+def build_completion_evidence(
+    *,
+    model_cache: Mapping[str, Any],
+    capabilities: Mapping[str, ProviderCapability],
+    allow_model_load: bool,
+) -> dict[str, Any]:
+    return {
+        "allow_model_load": allow_model_load,
+        "model_file_cached": bool(model_cache.get("model_file_cached")),
+        "label_file_cached": bool(model_cache.get("label_file_cached")),
+        "network_download_required": bool(model_cache.get("network_download_required")),
+        "all_default_providers_checked": required_provider_checks_completed(capabilities),
+        "checked_default_providers": [
+            provider
+            for provider in DEFAULT_PROVIDERS
+            if provider in capabilities and capabilities[provider].benchmark_status != "not_requested"
+        ],
+        "cpu_loaded": bool(capabilities.get("CPUExecutionProvider") and capabilities["CPUExecutionProvider"].loaded),
+        "cpu_practical": bool(capabilities.get("CPUExecutionProvider") and capabilities["CPUExecutionProvider"].practical),
+        "cpu_benchmark_status": capabilities.get(
+            "CPUExecutionProvider",
+            ProviderCapability("CPUExecutionProvider", False, False, False, "not_requested"),
+        ).benchmark_status,
+        "cpu_throughput_items_per_second": capabilities.get(
+            "CPUExecutionProvider",
+            ProviderCapability("CPUExecutionProvider", False, False, False, "not_requested"),
+        ).throughput_items_per_second,
+    }
+
+
+def derive_pipeline_contract(
+    *,
+    model_cache: Mapping[str, Any],
+    capabilities: Mapping[str, ProviderCapability],
+    allow_model_load: bool,
+) -> dict[str, Any]:
+    model_ready = model_completion_evidence(model_cache)
+    cpu_ready = cpu_completion_evidence(capabilities)
+    providers_checked = required_provider_checks_completed(capabilities)
+    if model_ready and cpu_ready and providers_checked:
+        status = "target_met"
+    elif not model_ready:
+        status = "blocked_model_unavailable"
+    elif not allow_model_load or not providers_checked:
+        status = "evidence_collected"
+    else:
+        status = "blocked_probe_unavailable"
+    target_met = status == "target_met"
+    return {
+        "contract_id": CONTRACT_ID,
+        "status": status,
+        "claims": {"target_met": target_met, "safe_to_merge": target_met},
+    }
+
+
 def scan_public(summary: Mapping[str, Any], markdown: str) -> dict[str, Any]:
     try:
         from scripts.phase_contracts.contract_checks import scan_public_payload
@@ -404,6 +558,11 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
         current_app_forced_provider=str(current_backend.get("forced_provider") or "unknown"),
         load_control=load_control,
     )
+    pipeline_contract = derive_pipeline_contract(
+        model_cache=model_cache,
+        capabilities=capabilities,
+        allow_model_load=args.allow_model_load,
+    )
     python_version = ".".join(str(part) for part in sys.version_info[:3])
     summary: dict[str, Any] = {
         "phase": PHASE,
@@ -411,13 +570,14 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at": utc_now(),
         "branch": git_value(["branch", "--show-current"]),
         "head_evidence": build_head_evidence(),
-        "pipeline_contract": {
-            "contract_id": CONTRACT_ID,
-            "status": "target_met",
-            "claims": {"target_met": True, "safe_to_merge": True},
-        },
+        "pipeline_contract": pipeline_contract,
         "capability_probe": {
             "completed": True,
+            "completion_evidence": build_completion_evidence(
+                model_cache=model_cache,
+                capabilities=capabilities,
+                allow_model_load=args.allow_model_load,
+            ),
             "safe_probe": {
                 "no_db_connection": True,
                 "no_production_db_writes": True,
@@ -450,6 +610,9 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
                 "rating_threshold": settings_snapshot["rating_threshold"],
                 "suggestion_threshold": settings_snapshot["suggestion_threshold"],
                 "batch_max_items": settings_snapshot["batch_max_items"],
+                "config_sources": settings_snapshot.get("config_sources", {}),
+                "config_parse_errors": settings_snapshot.get("config_parse_errors", []),
+                "app_config_imported": bool(settings_snapshot.get("app_config_imported", False)),
             },
             "current_app_backend": current_backend,
             "provider_matrix": {
@@ -558,6 +721,8 @@ def render_report(summary: Mapping[str, Any]) -> str:
         "## Summary",
         "",
         f"- Contract: `{summary['pipeline_contract']['contract_id']}`.",
+        f"- Status: `{summary['pipeline_contract']['status']}`.",
+        f"- Target met / safe to merge: `{summary['pipeline_contract']['claims']['target_met']}` / `{summary['pipeline_contract']['claims']['safe_to_merge']}`.",
         f"- Current app WD backend: `{probe['current_app_backend']['forced_provider']}`.",
         f"- Configured model: `{probe['model_identity']['model_name']}`.",
         f"- Model cached locally: `{probe['model_identity']['model_file_cached']}`.",

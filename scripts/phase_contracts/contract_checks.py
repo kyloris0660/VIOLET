@@ -1383,7 +1383,7 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
             "capability_probe.safe_probe.no_full_library_ai_tagging",
             "capability_probe.safe_probe.no_model_download",
             "capability_probe.safe_probe.local_files_only",
-            "capability_probe.provider_matrix.cpu.available",
+            "s3a_dev_dry_run_plan.dry_run_only",
             "s2g_s3a_decision.should_share_job_progress_throttle_ledger_architecture",
             "s2g_s3a_decision.gpu_load_control_before_s3a_production_execution",
             "public_redaction.passed",
@@ -1420,6 +1420,17 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
         message="S2G-1X must not enable production execution, unattended sync, providers, SourceConcept/Entity, destructive actions, or model downloads.",
     )
 
+    redaction_findings = scan_public_payload({"public_json_payload": summary})
+    result.details["s2g1x_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s2g1x_public_payload_redaction_failed",
+            "S2G-1X contract independently found forbidden public payload content; public_redaction.passed cannot be trusted alone.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
     if completion_claimed:
         _check_required_boolean_paths(
             summary,
@@ -1427,6 +1438,7 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
             (
                 "capability_probe.model_identity.model_file_cached",
                 "capability_probe.model_identity.label_file_cached",
+                "capability_probe.provider_matrix.cpu.available",
                 "capability_probe.provider_matrix.cpu.loaded",
                 "capability_probe.provider_matrix.cpu.practical",
             ),
@@ -1459,6 +1471,26 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
                 expected="> 0",
                 actual=None if throughput is MISSING else throughput,
             )
+        for provider_key_name in ("cuda", "directml", "cpu"):
+            row = _get(summary, f"capability_probe.provider_matrix.{provider_key_name}", MISSING)
+            status_value = _get(summary, f"capability_probe.provider_matrix.{provider_key_name}.benchmark_status", MISSING)
+            if not isinstance(row, Mapping) or status_value is MISSING:
+                result.fail(
+                    "s2g1x_completion_provider_check_missing",
+                    "S2G-1X completion claims require explicit CUDA, DirectML, and CPU provider checks.",
+                    path=f"capability_probe.provider_matrix.{provider_key_name}",
+                    expected="provider row with benchmark_status",
+                    actual=None if row is MISSING else row,
+                )
+                continue
+            if str(status_value).casefold() == "not_requested":
+                result.fail(
+                    "s2g1x_completion_provider_not_checked",
+                    "S2G-1X completion claims require CUDA, DirectML, and CPU providers to be explicitly checked, even when unavailable.",
+                    path=f"capability_probe.provider_matrix.{provider_key_name}.benchmark_status",
+                    expected="checked provider status",
+                    actual=status_value,
+                )
 
     sample_count = _as_int(_get(summary, "capability_probe.safe_probe.sample_count", 0))
     if sample_count < 1 or sample_count > 16:
