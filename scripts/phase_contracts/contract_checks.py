@@ -1809,6 +1809,59 @@ def _read_s2g_real1_markdown_report(summary: Mapping[str, Any], result: Contract
     return ""
 
 
+def _read_s3a_pilot1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if path_text is MISSING or not str(path_text).strip():
+        result.fail(
+            "s3a_pilot1_markdown_report_path_missing",
+            "S3A-PILOT1 summaries must name the public Markdown report path.",
+            path="public_reports.markdown_report_path",
+        )
+        return ""
+    candidate = Path(str(path_text))
+    if candidate.is_absolute():
+        result.fail(
+            "s3a_pilot1_markdown_report_path_unsafe",
+            "S3A-PILOT1 Markdown report path must be repo-relative.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative path",
+            actual="[redacted-path]",
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s3a_pilot1_markdown_report_path_escape",
+            "S3A-PILOT1 Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s3a_pilot1_markdown_report_missing",
+            "S3A-PILOT1 Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s3a_pilot1_markdown_report_unreadable",
+            "S3A-PILOT1 Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
 def _check_s2g_s3a_f1_foundation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     allowed_statuses = {"target_met", "foundation_ready", "blocked_model_unavailable", "blocked_provider_unavailable"}
     status = str(result.status or "").casefold()
@@ -2536,6 +2589,508 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
         )
 
 
+def _check_s3a_pilot1_new_data_directml_chain(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "target_met_dry_run_only",
+        "target_met_with_bounded_write",
+        "write_executed_but_first_time_insertion_unproven",
+        "blocked_input_over_cap",
+        "blocked_scope_invalid",
+        "blocked_no_media",
+        "blocked_model_cache_missing",
+        "blocked_model_download_allowed",
+        "blocked_import_write_prerequisites",
+        "blocked_import_requested_without_exact_confirmation",
+        "blocked_ai_tagging_requested_without_exact_confirmation",
+        "blocked_import_item_failures",
+        "blocked_classification_failures",
+        "blocked_ai_tagging_item_failures",
+        "blocked_ai_tagging_write_not_executed",
+        "blocked_directml_provider_not_validated",
+        "blocked_cpu_fallback_not_validated",
+        "blocked_public_redaction_failed",
+    }
+    target_statuses = {"target_met_dry_run_only", "target_met_with_bounded_write"}
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_pilot1_unknown_status",
+            "S3A-PILOT1 status must explicitly describe completion or the blocking gate.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status not in target_statuses and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_pilot1_non_completion_status_claimed_completion",
+            "Blocked S3A-PILOT1 summaries must not claim target_met, full_chain_complete, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met status for completion claims",
+            actual=result.status,
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "run_configuration.local_files_only",
+            "scope.no_full_library_fallback",
+            "model_cache.local_files_only",
+            "import_reuse.reported",
+            "classification.reported",
+            "directml_ai_tagging.reported",
+            "cpu_fallback_validation.reported",
+            "localization.reported",
+            "s3a_boundary.operator_triggered_pilot_only",
+            "safety.max_items_lte_5",
+            "safety.selected_input_explicit_bounded",
+            "safety.no_full_library_run",
+        ),
+        code="s3a_pilot1_required_proof_missing",
+        message="S3A-PILOT1 requires explicit bounded input, local-only model loading, staged results, S3A boundary proof, and public redaction proof.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "run_configuration.model_download_allowed",
+            "run_configuration.s3a_production_execution_enabled",
+            "run_configuration.unattended_s3b_enabled",
+            "scope.private_locator_values_recorded",
+            "s3a_boundary.production_execution_enabled",
+            "s3a_boundary.unattended_enabled",
+            "s3a_boundary.scheduled_automation_enabled",
+            "s3a_boundary.broad_production_sync_enabled",
+            "safety.import_write_without_confirmation",
+            "safety.ai_tagging_write_without_confirmation",
+            "safety.production_s3a_execution_enabled",
+            "safety.unattended_s3b_enabled",
+            "safety.scheduled_automation_enabled",
+            "safety.broad_production_sync_enabled",
+            "safety.provider_pixiv_gallery_dl_saucenao_google_calls",
+            "safety.sourceconcept_r1_r2_r1r",
+            "safety.entity_bridge",
+            "safety.confirmed_entity_assignments",
+            "safety.desired_media_backfill",
+            "safety.cleanup_delete_reset_drop_truncate",
+            "safety.source_icloud_mutation",
+            "safety.model_download",
+            "safety.private_locator_values_recorded",
+            "safety.external_llm_provider_used",
+            "localization.llm_external_provider_used",
+        ),
+        code="s3a_pilot1_forbidden_safety_flag",
+        message="S3A-PILOT1 summaries must explicitly keep forbidden automation, provider, entity, destructive, model-download, and privacy paths disabled.",
+    )
+
+    max_items = _as_int(_get(summary, "run_configuration.max_items", 0))
+    selected_count = _as_int(_get(summary, "scope.selected_count", 0))
+    over_cap = _as_int(_get(summary, "scope.over_cap_count", 0))
+    input_mode = str(_get(summary, "run_configuration.input_mode", "") or "")
+    if input_mode not in {"input_path", "media_ids"}:
+        result.fail(
+            "s3a_pilot1_input_mode_invalid",
+            "S3A-PILOT1 must use an explicit input path or explicit media IDs.",
+            path="run_configuration.input_mode",
+            expected=["input_path", "media_ids"],
+            actual=input_mode,
+        )
+    if not (1 <= max_items <= 5):
+        result.fail(
+            "s3a_pilot1_max_items_unbounded",
+            "S3A-PILOT1 max_items must stay between 1 and 5.",
+            path="run_configuration.max_items",
+            expected="1..5",
+            actual=max_items,
+        )
+    if not over_cap and not (1 <= selected_count <= max_items <= 5):
+        result.fail(
+            "s3a_pilot1_selected_sample_not_small",
+            "S3A-PILOT1 selected sample count must be non-zero and within max_items <= 5.",
+            path="scope.selected_count",
+            expected=f"1..{max_items}",
+            actual=selected_count,
+        )
+    if over_cap:
+        result.fail(
+            "s3a_pilot1_input_over_cap",
+            "S3A-PILOT1 input must be visibly bounded and should not hide extra supported files behind max_items truncation.",
+            path="scope.over_cap_count",
+            expected=0,
+            actual=over_cap,
+        )
+        if status in target_statuses:
+            result.fail(
+                "s3a_pilot1_target_claimed_with_over_cap_input",
+                "S3A-PILOT1 must block over-cap input before target claims.",
+                path="pipeline_contract.status",
+                expected="blocked_input_over_cap",
+                actual=result.status,
+            )
+
+    import_write_requested = _as_bool(_get(summary, "run_configuration.import_write_requested", False))
+    import_confirmed = _as_bool(_get(summary, "run_configuration.import_confirmation_exact", False))
+    import_executed = _as_bool(_get(summary, "import_reuse.executed", False))
+    import_preconditions_passed = _as_bool(_get(summary, "import_write_preconditions.passed", False))
+    ai_write_requested = _as_bool(_get(summary, "run_configuration.ai_tagging_write_requested", False))
+    ai_confirmed = _as_bool(_get(summary, "run_configuration.ai_tagging_confirmation_exact", False))
+    ai_executed = _as_bool(_get(summary, "directml_ai_tagging.executed", False))
+    ai_dry_run = _as_bool(_get(summary, "directml_ai_tagging.dry_run", True))
+    if import_write_requested and not import_confirmed and status != "blocked_import_requested_without_exact_confirmation":
+        result.fail(
+            "s3a_pilot1_import_requested_without_exact_confirmation_not_blocked",
+            "An import write request without the exact operator confirmation must block.",
+            path="pipeline_contract.status",
+            expected="blocked_import_requested_without_exact_confirmation",
+            actual=result.status,
+        )
+    if import_write_requested and import_confirmed and not import_preconditions_passed and status not in {
+        "blocked_import_write_prerequisites",
+        "blocked_model_cache_missing",
+        "blocked_model_download_allowed",
+        "blocked_scope_invalid",
+        "blocked_input_over_cap",
+    }:
+        result.fail(
+            "s3a_pilot1_import_prerequisites_not_blocked",
+            "Import writes must block unless model cache, local-files-only, scope, over-cap, and confirmation gates all pass before execution.",
+            path="pipeline_contract.status",
+            expected="blocked import precondition status",
+            actual={
+                "status": result.status,
+                "preconditions_passed": import_preconditions_passed,
+                "blockers": _get(summary, "import_write_preconditions.blockers", None),
+            },
+        )
+    if import_executed and not import_preconditions_passed:
+        result.fail(
+            "s3a_pilot1_import_write_executed_before_prerequisites",
+            "Import write execution must not happen before all pre-write prerequisites pass.",
+            path="import_write_preconditions.passed",
+            expected=True,
+            actual=False,
+        )
+    if import_executed and not import_confirmed:
+        result.fail(
+            "s3a_pilot1_import_write_without_exact_confirmation",
+            "Tiny import writes require the exact S3A-PILOT1 import confirmation string.",
+            path="run_configuration.import_confirmation_exact",
+            expected=True,
+            actual=False,
+        )
+    if ai_write_requested and not ai_confirmed and status != "blocked_ai_tagging_requested_without_exact_confirmation":
+        result.fail(
+            "s3a_pilot1_ai_requested_without_exact_confirmation_not_blocked",
+            "An AI tagging write request without the exact operator confirmation must block.",
+            path="pipeline_contract.status",
+            expected="blocked_ai_tagging_requested_without_exact_confirmation",
+            actual=result.status,
+        )
+    if ai_executed and not ai_dry_run and not ai_confirmed:
+        result.fail(
+            "s3a_pilot1_ai_write_without_exact_confirmation",
+            "DirectML AI tagging writes require the exact S3A-PILOT1 AI tagging confirmation string.",
+            path="run_configuration.ai_tagging_confirmation_exact",
+            expected=True,
+            actual=False,
+        )
+
+    imported = _as_int(_get(summary, "import_reuse.imported_count", 0))
+    reused = _as_int(_get(summary, "import_reuse.reused_count", 0))
+    would_import = _as_int(_get(summary, "import_reuse.would_import_count", 0))
+    skipped = _as_int(_get(summary, "import_reuse.skipped_count", 0))
+    import_failed = _as_int(_get(summary, "import_reuse.failed_count", 0))
+    downstream = _as_int(_get(summary, "import_reuse.downstream_media_count", 0))
+    if imported + reused + would_import + skipped + import_failed < selected_count:
+        result.fail(
+            "s3a_pilot1_import_reuse_counts_under_reported",
+            "Import/reuse counts must account for the selected tiny sample.",
+            path="import_reuse",
+            expected=f">={selected_count} accounted items",
+            actual={
+                "imported": imported,
+                "reused": reused,
+                "would_import": would_import,
+                "skipped": skipped,
+                "failed": import_failed,
+            },
+        )
+    if import_failed and status != "blocked_import_item_failures":
+        result.fail(
+            "s3a_pilot1_import_failures_not_blocked",
+            "Import/reuse item failures must produce a blocked status.",
+            path="pipeline_contract.status",
+            expected="blocked_import_item_failures",
+            actual=result.status,
+        )
+    if downstream <= 0 and status in target_statuses:
+        result.fail(
+            "s3a_pilot1_target_without_downstream_media",
+            "S3A-PILOT1 target_met requires at least one imported or reused downstream media item.",
+            path="import_reuse.downstream_media_count",
+            expected=">=1",
+            actual=downstream,
+        )
+
+    classification_failed = _as_int(_get(summary, "classification.failed_count", 0))
+    classification_executed = _as_bool(_get(summary, "classification.executed", False))
+    if classification_failed and status != "blocked_classification_failures":
+        result.fail(
+            "s3a_pilot1_classification_failures_not_blocked",
+            "Classification failures must produce a blocked status.",
+            path="pipeline_contract.status",
+            expected="blocked_classification_failures",
+            actual=result.status,
+        )
+    if status in target_statuses and not classification_executed:
+        result.fail(
+            "s3a_pilot1_target_without_classification",
+            "S3A-PILOT1 target_met requires a reported classification validation for downstream media.",
+            path="classification.executed",
+            expected=True,
+            actual=classification_executed,
+        )
+
+    requested = _get(summary, "directml_ai_tagging.provider_preference_requested", [])
+    provider = _get(summary, "directml_ai_tagging.provider", {})
+    actual_provider = _get(summary, "directml_ai_tagging.provider.actual_provider", None)
+    ai_failed = _as_int(_get(summary, "directml_ai_tagging.failed", 0))
+    ai_processed = _as_int(_get(summary, "directml_ai_tagging.processed", 0))
+    if ai_failed and status != "blocked_ai_tagging_item_failures":
+        result.fail(
+            "s3a_pilot1_ai_failures_not_blocked",
+            "AI tagging item failures must produce a blocked status.",
+            path="pipeline_contract.status",
+            expected="blocked_ai_tagging_item_failures",
+            actual=result.status,
+        )
+    if status in target_statuses:
+        if not ai_executed or ai_processed != downstream:
+            result.fail(
+                "s3a_pilot1_target_without_ai_scope_match",
+                "S3A-PILOT1 target_met requires DirectML AI tagging validation over the downstream media scope.",
+                path="directml_ai_tagging.processed",
+                expected=downstream,
+                actual=ai_processed,
+            )
+        if not isinstance(requested, list) or not requested:
+            result.fail(
+                "s3a_pilot1_provider_preference_missing",
+                "DirectML AI tagging validation must record requested provider preference.",
+                path="directml_ai_tagging.provider_preference_requested",
+                expected="non-empty list",
+                actual=requested,
+            )
+        if not isinstance(actual_provider, str) or not actual_provider.strip():
+            result.fail(
+                "s3a_pilot1_actual_provider_missing",
+                "DirectML AI tagging validation must report the actual ONNX provider loaded.",
+                path="directml_ai_tagging.provider.actual_provider",
+                expected="non-empty provider",
+                actual=actual_provider,
+            )
+        elif isinstance(requested, list) and requested and actual_provider not in requested:
+            result.fail(
+                "s3a_pilot1_actual_provider_not_requested",
+                "Primary actual provider must come from the requested bounded provider preference.",
+                path="directml_ai_tagging.provider.actual_provider",
+                expected=requested,
+                actual=actual_provider,
+            )
+        if isinstance(requested, list) and "DmlExecutionProvider" in requested and actual_provider != "DmlExecutionProvider":
+            fallback_occurred = _as_bool(_get(summary, "directml_ai_tagging.provider.fallback_occurred", False))
+            fallback_reason = str(_get(summary, "directml_ai_tagging.provider.fallback_reason", "") or "").strip()
+            load_errors = _get(summary, "directml_ai_tagging.provider.provider_load_errors", [])
+            if not (fallback_occurred and (fallback_reason or load_errors)):
+                result.fail(
+                    "s3a_pilot1_directml_missing_without_blocker",
+                    "If DirectML is requested but not loaded, the summary must report explicit fallback/blocker evidence.",
+                    path="directml_ai_tagging.provider",
+                    expected="DmlExecutionProvider or fallback/blocker",
+                    actual=provider,
+                )
+
+    ai_delta = _as_int(_get(summary, "directml_ai_tagging.media_tags_count_delta", 0))
+    ai_first_time = _as_bool(_get(summary, "directml_ai_tagging.first_time_media_tag_insertion_proven", False))
+    if status == "target_met_dry_run_only" and ai_delta != 0:
+        result.fail(
+            "s3a_pilot1_dry_run_media_tags_delta",
+            "Dry-run AI tagging validation must not write media_tags.",
+            path="directml_ai_tagging.media_tags_count_delta",
+            expected=0,
+            actual=ai_delta,
+        )
+    if status == "target_met_dry_run_only" and ai_first_time:
+        result.fail(
+            "s3a_pilot1_dry_run_claims_first_time_insertion",
+            "Dry-run target summaries must not claim first-time media_tags insertion proof.",
+            path="directml_ai_tagging.first_time_media_tag_insertion_proven",
+            expected=False,
+            actual=True,
+        )
+    if status == "target_met_with_bounded_write":
+        accepted_fallback = _as_bool(_get(summary, "directml_ai_tagging.provider.explicit_accepted_fallback", False))
+        if not ai_write_requested:
+            result.fail(
+                "s3a_pilot1_write_target_without_ai_write_request",
+                "target_met_with_bounded_write requires an explicit AI tagging write request.",
+                path="run_configuration.ai_tagging_write_requested",
+                expected=True,
+                actual=False,
+            )
+        if not ai_confirmed:
+            result.fail(
+                "s3a_pilot1_write_target_without_ai_confirmation",
+                "target_met_with_bounded_write requires the exact DirectML AI tagging confirmation.",
+                path="run_configuration.ai_tagging_confirmation_exact",
+                expected=True,
+                actual=False,
+            )
+        if ai_dry_run:
+            result.fail(
+                "s3a_pilot1_write_target_ai_still_dry_run",
+                "target_met_with_bounded_write requires directml_ai_tagging.dry_run=false.",
+                path="directml_ai_tagging.dry_run",
+                expected=False,
+                actual=True,
+            )
+        if ai_failed != 0:
+            result.fail(
+                "s3a_pilot1_write_target_ai_failures",
+                "target_met_with_bounded_write requires directml_ai_tagging.failed=0.",
+                path="directml_ai_tagging.failed",
+                expected=0,
+                actual=ai_failed,
+            )
+        if actual_provider != "DmlExecutionProvider" and not accepted_fallback:
+            result.fail(
+                "s3a_pilot1_write_target_without_directml_or_accepted_fallback",
+                "target_met_with_bounded_write requires DmlExecutionProvider or an explicit accepted fallback.",
+                path="directml_ai_tagging.provider.actual_provider",
+                expected="DmlExecutionProvider or explicit accepted fallback",
+                actual=actual_provider,
+            )
+        if ai_delta <= 0 and not ai_first_time:
+            result.fail(
+                "s3a_pilot1_write_target_without_first_time_media_tags",
+                "target_met_with_bounded_write requires positive media_tags delta or explicit first-time insertion proof.",
+                path="directml_ai_tagging.media_tags_count_delta",
+                expected=">0 or first_time_media_tag_insertion_proven=true",
+                actual={"media_tags_count_delta": ai_delta, "first_time_media_tag_insertion_proven": ai_first_time},
+            )
+        if input_mode == "input_path" and import_write_requested and imported <= 0:
+            result.fail(
+                "s3a_pilot1_write_target_without_imported_input",
+                "Input-path write targets should prove at least one newly imported staged item.",
+                path="import_reuse.imported_count",
+                expected=">=1",
+                actual=imported,
+            )
+
+    cpu_executed = _as_bool(_get(summary, "cpu_fallback_validation.executed", False))
+    cpu_status = str(_get(summary, "cpu_fallback_validation.status", "") or "").casefold()
+    cpu_failed = _as_int(_get(summary, "cpu_fallback_validation.failed", 0))
+    cpu_dry_run = _as_bool(_get(summary, "cpu_fallback_validation.dry_run", False))
+    cpu_actual = _get(summary, "cpu_fallback_validation.provider.actual_provider", None)
+    cpu_delta = _as_int(_get(summary, "cpu_fallback_validation.media_tags_count_delta", 0))
+    if status in target_statuses:
+        if not cpu_executed:
+            result.fail(
+                "s3a_pilot1_target_without_cpu_fallback",
+                "S3A-PILOT1 target_met requires CPU fallback validation or smoke proof.",
+                path="cpu_fallback_validation.executed",
+                expected=True,
+                actual=cpu_executed,
+            )
+        if cpu_status != "completed":
+            result.fail(
+                "s3a_pilot1_cpu_fallback_status_invalid",
+                "CPU fallback validation must complete successfully before any target status.",
+                path="cpu_fallback_validation.status",
+                expected="completed",
+                actual=_get(summary, "cpu_fallback_validation.status", None),
+            )
+        if cpu_failed != 0:
+            result.fail(
+                "s3a_pilot1_cpu_fallback_failed",
+                "CPU fallback validation must report failed=0 before any target status.",
+                path="cpu_fallback_validation.failed",
+                expected=0,
+                actual=cpu_failed,
+            )
+        if not cpu_dry_run:
+            result.fail(
+                "s3a_pilot1_cpu_fallback_not_dry_run",
+                "CPU fallback validation must remain dry-run.",
+                path="cpu_fallback_validation.dry_run",
+                expected=True,
+                actual=cpu_dry_run,
+            )
+        if cpu_actual != "CPUExecutionProvider":
+            result.fail(
+                "s3a_pilot1_cpu_fallback_actual_provider_invalid",
+                "CPU fallback validation must force and load CPUExecutionProvider.",
+                path="cpu_fallback_validation.provider.actual_provider",
+                expected="CPUExecutionProvider",
+                actual=cpu_actual,
+            )
+        if cpu_delta != 0:
+            result.fail(
+                "s3a_pilot1_cpu_fallback_media_tags_delta",
+                "CPU fallback validation must not write media_tags.",
+                path="cpu_fallback_validation.media_tags_count_delta",
+                expected=0,
+                actual=cpu_delta,
+            )
+    if status == "blocked_cpu_fallback_not_validated" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_pilot1_cpu_fallback_blocker_claimed_completion",
+            "CPU fallback failure must clear target/safe_to_merge claims.",
+            path="pipeline_contract.claims",
+            expected="all false",
+            actual=_get(summary, "pipeline_contract.claims", None),
+        )
+
+    localization_failed = _as_int(_get(summary, "localization.failed", 0))
+    if localization_failed:
+        result.fail(
+            "s3a_pilot1_localization_failed",
+            "Localization validation must report zero failures or defer without external provider use.",
+            path="localization.failed",
+            expected=0,
+            actual=localization_failed,
+        )
+
+    markdown_text = _read_s3a_pilot1_markdown_report(summary, result)
+    redaction_passed = _as_bool(_get(summary, "public_redaction.passed", False))
+    if not redaction_passed and status in target_statuses:
+        result.fail(
+            "s3a_pilot1_target_with_failed_public_redaction",
+            "Public redaction failure must clear target/safe_to_merge claims and block the run.",
+            path="public_redaction.passed",
+            expected=True,
+            actual=_get(summary, "public_redaction.passed", None),
+        )
+    if status == "blocked_public_redaction_failed" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_pilot1_redaction_blocker_claimed_completion",
+            "blocked_public_redaction_failed must not claim target_met, full_chain_complete, or safe_to_merge.",
+            path="pipeline_contract.claims",
+            expected="all false",
+            actual=_get(summary, "pipeline_contract.claims", None),
+        )
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
+    result.details["s3a_pilot1_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s3a_pilot1_public_payload_redaction_failed",
+            "S3A-PILOT1 contract independently found forbidden public JSON or Markdown content.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
+
 def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     readiness_passed = _as_bool(_get(summary, "readiness.passed", False))
     schema_ensure_ran = _as_bool(_get(summary, "gate0.schema.ensure.ran", False))
@@ -2944,5 +3499,6 @@ CUSTOM_CHECKS = {
     "s2g1x_probe": _check_s2g1x_probe,
     "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,
     "s2g_real1_bounded_ai_tagging_validation": _check_s2g_real1_bounded_ai_tagging_validation,
+    "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "phase47_s2_baseline": _check_phase47_s2_baseline,
 }
