@@ -376,6 +376,183 @@ def _s2g1x_summary(**overrides: object) -> dict:
     return summary
 
 
+def _s2g_s3a_f1_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "s2g_s3a_f1_foundation_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        },
+        "wd_tagger": {
+            "provider_abstraction": {
+                "implemented": True,
+                "hardcoded_cpu_provider_removed": True,
+                "supported_provider_preference": [
+                    "CUDAExecutionProvider",
+                    "DmlExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "requested_provider_preference": [
+                    "CUDAExecutionProvider",
+                    "DmlExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "available_onnx_providers": [
+                    "AzureExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "actual_provider": "CPUExecutionProvider",
+                "loaded_providers": ["CPUExecutionProvider"],
+                "fallback_occurred": True,
+                "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider,DmlExecutionProvider",
+            },
+            "load_control": {
+                "configured_batch_size": 20,
+                "effective_batch_size": 2,
+                "batch_size": 2,
+                "batch": {
+                    "configured_batch_size": 20,
+                    "load_control_effective_batch_size": 10,
+                    "effective_batch_size": 2,
+                    "batch_cap_source": "model_optimal_batch_size",
+                    "batch_max_items": 10,
+                    "phase_max_batch_size": 16,
+                    "model_optimal_batch_size": 2,
+                },
+                "cpu_intra_op_threads": 4,
+                "cpu_inter_op_threads": 1,
+                "preprocess_workers": 2,
+                "execution_mode": "ORT_SEQUENTIAL",
+                "max_concurrent_jobs": 1,
+                "process_priority": "below_normal",
+            },
+            "provenance": {
+                "fields_available": [
+                    "model_name",
+                    "model_repo_id",
+                    "thresholds",
+                    "requested_provider_preference",
+                    "actual_provider",
+                    "fallback_reason",
+                    "batch_size",
+                    "effective_batch_size",
+                    "configured_batch_size",
+                    "batch_cap_source",
+                    "cpu_thread_settings",
+                    "preprocess_workers",
+                    "execution_mode",
+                    "tagger_version_source",
+                ]
+            },
+            "model": {
+                "model_download_allowed": False,
+                "model_download_performed": False,
+            },
+        },
+        "gpu_directml_enablement": {
+            "attempted": True,
+            "package_install": {
+                "performed": False,
+                "scope": "project_venv",
+                "packages": [
+                    {
+                        "package": "onnxruntime-directml",
+                        "install_performed": False,
+                        "installed_after_attempt": False,
+                        "version": None,
+                    },
+                    {
+                        "package": "onnxruntime-gpu",
+                        "install_performed": False,
+                        "installed_after_attempt": False,
+                        "version": None,
+                    },
+                ],
+                "global_or_system_python_modified": False,
+            },
+            "available_onnx_providers_after_attempt": [
+                "AzureExecutionProvider",
+                "CPUExecutionProvider",
+            ],
+            "success": False,
+            "actual_gpu_provider_loaded": None,
+            "blocker": "package_missing",
+            "benchmarks": [
+                {
+                    "provider": "DmlExecutionProvider",
+                    "status": "provider_unavailable",
+                    "blocker": "package_missing",
+                },
+                {
+                    "provider": "CUDAExecutionProvider",
+                    "status": "provider_unavailable",
+                    "blocker": "package_missing",
+                },
+            ],
+        },
+        "benchmarks": {
+            "sample_source": "synthetic_zero_arrays",
+            "sample_count": 2,
+            "cpu": {
+                "status": "completed",
+                "actual_provider": "CPUExecutionProvider",
+                "sample_count": 2,
+                "throughput_items_per_second": 1.0,
+            },
+            "gpu_or_directml": [],
+        },
+        "shared_foundation": {
+            "module": "backend/app/services/job_control.py",
+            "concepts": [
+                "LoadControlConfig",
+                "ProviderCapability",
+                "JobRun",
+                "StageRun",
+                "ProgressSnapshot",
+                "ProviderProvenance",
+            ],
+        },
+        "s3a_dry_run_plan": {
+            "production_execution_enabled": False,
+            "unattended_enabled": False,
+            "stages": [
+                {"name": "update_check", "writes_enabled": False},
+                {"name": "hydration_read", "writes_enabled": False},
+                {"name": "import_reuse", "writes_enabled": False},
+                {"name": "classification", "writes_enabled": False},
+                {"name": "ai_tagging", "writes_enabled": False},
+                {"name": "localization", "writes_enabled": False},
+                {"name": "summary", "writes_enabled": False},
+            ],
+        },
+        "public_reports": {
+            "summary_json_path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation-summary.json",
+            "markdown_report_path": "docs/reports/s2g1x-gpu-ai-tagging-probe.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
+        "public_redaction": {"passed": True},
+        "safety": {
+            "production_db_writes": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging": False,
+            "production_localization": False,
+            "production_s3a_execution_enabled": False,
+            "unattended_auto_sync_enabled": False,
+            "provider_pixiv_gallery_dl_saucenao_google_calls": False,
+            "sourceconcept_or_entity": False,
+            "confirmed_entity_assignments": False,
+            "source_icloud_mutation": False,
+            "cleanup_delete_reset_drop_truncate": False,
+            "model_download": False,
+            "db_schema_change": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _set_nested(payload: dict, path: str, value: object) -> None:
     cursor = payload
     parts = path.split(".")
@@ -1280,6 +1457,107 @@ def test_s2g1x_probe_contract_rejects_s3a_execution_enabled() -> None:
     result = check_phase_contract("s2g1x_probe_contract_v1", summary)
 
     assert "s2g1x_forbidden_execution_or_mutation" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_accepts_provider_load_control_foundation() -> None:
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", _s2g_s3a_f1_summary())
+
+    assert result.passed is True
+
+
+def test_s2g_s3a_f1_contract_requires_fallback_reason_when_fallback_occurs() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["provider_abstraction"]["fallback_reason"] = ""
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_fallback_reason_missing" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_rejects_fallback_reason_without_fallback() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["provider_abstraction"]["fallback_occurred"] = False
+    summary["wd_tagger"]["provider_abstraction"]["fallback_reason"] = "unavailable_requested_providers=CUDAExecutionProvider"
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_fallback_reason_present_without_fallback" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_rejects_unbounded_cpu_controls() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["load_control"]["batch_size"] = 32
+    summary["wd_tagger"]["load_control"]["effective_batch_size"] = 32
+    summary["wd_tagger"]["load_control"]["cpu_intra_op_threads"] = 16
+    summary["wd_tagger"]["load_control"]["cpu_inter_op_threads"] = 4
+    summary["wd_tagger"]["load_control"]["preprocess_workers"] = 8
+    summary["wd_tagger"]["load_control"]["execution_mode"] = "ORT_PARALLEL"
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g_s3a_f1_batch_size_unbounded" in codes
+    assert "s2g_s3a_f1_effective_batch_size_unbounded" in codes
+    assert "s2g_s3a_f1_cpu_intra_threads_unbounded" in codes
+    assert "s2g_s3a_f1_cpu_inter_threads_unbounded" in codes
+    assert "s2g_s3a_f1_preprocess_workers_unbounded" in codes
+    assert "s2g_s3a_f1_parallel_execution_enabled" in codes
+
+
+def test_s2g_s3a_f1_contract_requires_effective_batch_size_and_cap_source() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["load_control"]["effective_batch_size"] = 3
+    summary["wd_tagger"]["load_control"]["batch"]["batch_cap_source"] = ""
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g_s3a_f1_effective_batch_size_mismatch" in codes
+    assert "s2g_s3a_f1_batch_cap_source_missing" in codes
+
+
+def test_s2g_s3a_f1_contract_rejects_gpu_success_without_actual_loaded_provider() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["gpu_directml_enablement"]["success"] = True
+    summary["gpu_directml_enablement"]["actual_gpu_provider_loaded"] = None
+    summary["gpu_directml_enablement"]["blocker"] = None
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_gpu_success_without_gpu_provider" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_requires_gpu_blocker_when_unavailable() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["gpu_directml_enablement"]["success"] = False
+    summary["gpu_directml_enablement"]["blocker"] = ""
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_gpu_unavailable_blocker_missing" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_rejects_model_download_allowed() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["model"]["model_download_allowed"] = True
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_model_download_allowed" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_rejects_s3a_or_s3b_execution_enabled() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["s3a_dry_run_plan"]["production_execution_enabled"] = True
+    summary["s3a_dry_run_plan"]["unattended_enabled"] = True
+    summary["safety"]["production_s3a_execution_enabled"] = True
+    summary["safety"]["unattended_auto_sync_enabled"] = True
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g_s3a_f1_forbidden_execution_enabled" in codes
+    assert "s2g_s3a_f1_required_safety_false_missing_or_true" in codes
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

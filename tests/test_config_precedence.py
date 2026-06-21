@@ -255,3 +255,36 @@ class TestDotenvDefaultLoading:
         assert "override=True" not in source, (
             "config.py must NOT call load_dotenv with override=True"
         )
+
+
+class TestAiTaggingLoadControlSettings:
+    """AI tagging provider/load-control env vars must be parsed from Settings."""
+
+    def test_ai_tagging_provider_and_load_control_env(self, tmp_path):
+        env = {
+            "VIOLET_ENV": "test",
+            "POSTGRES_DB": "blombooru_test",
+            "VIOLET_STORAGE_ROOT": str(tmp_path / "storage"),
+            "TEST_DATABASE_URL": "",
+            "AI_TAGGING_PROVIDER_PREFERENCE": "DmlExecutionProvider,CPUExecutionProvider",
+            "AI_TAGGING_CPU_INTRA_OP_THREADS": "3",
+            "AI_TAGGING_CPU_INTER_OP_THREADS": "1",
+            "AI_TAGGING_PREPROCESS_WORKERS": "2",
+            "AI_TAGGING_EXECUTION_MODE": "ORT_SEQUENTIAL",
+            "AI_TAGGING_PROCESS_PRIORITY": "below_normal",
+            "AI_TAGGING_BATCH_SIZE": "2",
+            "AI_TAGGING_MAX_CONCURRENT_JOBS": "1",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            s = _reload_settings(tmp_path)
+            assert s.AI_TAGGING_PROVIDER_PREFERENCE == (
+                "DmlExecutionProvider",
+                "CPUExecutionProvider",
+            )
+            assert s.AI_TAGGING_CPU_INTRA_OP_THREADS == 3
+            assert s.AI_TAGGING_CPU_INTER_OP_THREADS == 1
+            assert s.AI_TAGGING_PREPROCESS_WORKERS == 2
+            assert s.AI_TAGGING_EXECUTION_MODE == "ORT_SEQUENTIAL"
+            assert s.AI_TAGGING_PROCESS_PRIORITY == "below_normal"
+            assert s.AI_TAGGING_BATCH_SIZE == 2
+            assert s.AI_TAGGING_MAX_CONCURRENT_JOBS == 1

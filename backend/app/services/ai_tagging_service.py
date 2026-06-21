@@ -31,6 +31,38 @@ def _get_tagger():
     return get_wd_tagger()
 
 
+def _threshold_summary() -> Dict[str, float]:
+    return {
+        "general_threshold": settings.AI_GENERAL_THRESHOLD,
+        "character_threshold": settings.AI_CHARACTER_THRESHOLD,
+        "rating_threshold": settings.AI_RATING_THRESHOLD,
+        "suggestion_threshold": settings.AI_SUGGESTION_THRESHOLD,
+    }
+
+
+def get_ai_tagging_runtime_provenance(tagger: Any = None) -> Dict[str, Any]:
+    """Return public-safe model/provider/load-control provenance."""
+    tagger = tagger or _get_tagger()
+    model_name = settings.AI_MODEL_NAME
+    thresholds = _threshold_summary()
+    if hasattr(tagger, "get_runtime_provenance"):
+        return tagger.get_runtime_provenance(
+            model_name=model_name,
+            thresholds=thresholds,
+            batch_size=getattr(settings, "AI_TAGGING_BATCH_SIZE", None),
+        )
+    return {
+        "model_name": model_name,
+        "model_repo_id": None,
+        "thresholds": thresholds,
+        "provider": {},
+        "load_control": {},
+        "batch_size": getattr(settings, "AI_TAGGING_BATCH_SIZE", None),
+        "tagger_version_source": "unknown",
+        "backend": "unknown",
+    }
+
+
 def check_model_status() -> Dict[str, Any]:
     """Return model availability information without loading the model."""
     result: Dict[str, Any] = {
@@ -45,13 +77,16 @@ def check_model_status() -> Dict[str, Any]:
             "rating_threshold": settings.AI_RATING_THRESHOLD,
             "suggestion_threshold": settings.AI_SUGGESTION_THRESHOLD,
             "batch_max_items": settings.AI_TAGGING_BATCH_MAX_ITEMS,
+            "batch_size": settings.AI_TAGGING_BATCH_SIZE,
         },
+        "provenance": None,
     }
 
     try:
         tagger = _get_tagger()
         result["available"] = True
         result["loaded"] = tagger.is_loaded and tagger.current_model == settings.AI_MODEL_NAME
+        result["provenance"] = get_ai_tagging_runtime_provenance(tagger)
 
         try:
             import huggingface_hub
@@ -122,6 +157,7 @@ def run_ai_tagging(
     tagger = _get_tagger()
     model_name = settings.AI_MODEL_NAME
     tagger.ensure_loaded(model_name)
+    provenance = get_ai_tagging_runtime_provenance(tagger)
 
     predictions = tagger.predict_from_file(
         str(file_path),
@@ -139,6 +175,7 @@ def run_ai_tagging(
         "skipped_locked": 0,
         "ignored_low_confidence": 0,
         "predictions": [],
+        "provenance": provenance,
     }
 
     for pred in predictions:
@@ -264,11 +301,14 @@ def run_ai_tagging_batch(
         "max_items": effective_max,
         "total_selected": len(ids),
         "results": [],
+        "provenance": None,
     }
 
     for mid in ids:
         try:
             result = run_ai_tagging(db, mid, dry_run=dry_run)
+            if batch_summary["provenance"] is None and result.get("provenance"):
+                batch_summary["provenance"] = result["provenance"]
             batch_summary["processed"] += 1
             batch_summary["tags_added"] += result.get("tags_added", 0)
             batch_summary["suggestions_added"] += result.get("suggestions_added", 0)

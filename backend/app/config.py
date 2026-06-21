@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 from pathlib import Path, PureWindowsPath
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from dotenv import load_dotenv
 from sqlalchemy.engine import URL
@@ -448,6 +448,47 @@ class Settings:
     @property
     def AI_MODEL_NAME(self) -> str:
         return os.getenv("AI_MODEL_NAME", "wd-swinv2-tagger-v3")
+
+    @property
+    def AI_TAGGING_PROVIDER_PREFERENCE(self) -> Tuple[str, ...]:
+        raw = os.getenv(
+            "AI_TAGGING_PROVIDER_PREFERENCE",
+            "CUDAExecutionProvider,DmlExecutionProvider,CPUExecutionProvider",
+        )
+        providers = tuple(part.strip() for part in raw.split(",") if part.strip())
+        return providers or (
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "CPUExecutionProvider",
+        )
+
+    @property
+    def AI_TAGGING_CPU_INTRA_OP_THREADS(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_CPU_INTRA_OP_THREADS", "4")))
+
+    @property
+    def AI_TAGGING_CPU_INTER_OP_THREADS(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_CPU_INTER_OP_THREADS", "1")))
+
+    @property
+    def AI_TAGGING_PREPROCESS_WORKERS(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_PREPROCESS_WORKERS", "2")))
+
+    @property
+    def AI_TAGGING_EXECUTION_MODE(self) -> str:
+        return os.getenv("AI_TAGGING_EXECUTION_MODE", "ORT_SEQUENTIAL").strip().upper() or "ORT_SEQUENTIAL"
+
+    @property
+    def AI_TAGGING_PROCESS_PRIORITY(self) -> str:
+        return os.getenv("AI_TAGGING_PROCESS_PRIORITY", "below_normal").strip().lower() or "below_normal"
+
+    @property
+    def AI_TAGGING_BATCH_SIZE(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_BATCH_SIZE", "2")))
+
+    @property
+    def AI_TAGGING_MAX_CONCURRENT_JOBS(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_MAX_CONCURRENT_JOBS", "1")))
 
     @property
     def AI_AUTO_TAG_AFTER_IMPORT(self) -> bool:

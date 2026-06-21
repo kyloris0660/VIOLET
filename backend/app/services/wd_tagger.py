@@ -10,10 +10,18 @@ import onnxruntime as rt
 import pandas as pd
 from PIL import Image
 
+from ..config import settings
+from .job_control import (
+    LoadControlConfig,
+    ProviderProvenance,
+    build_ai_tagging_load_control_config,
+    select_onnx_provider,
+)
+
 class WDTagger:
     """
     WD Tagger using ONNX models from SmilingWolf's collection.
-    Optimized for CPU batch processing.
+    Provider-aware ONNX runtime with bounded CPU fallback controls.
     """
     _instance = None
     _initialized = False
@@ -61,34 +69,53 @@ class WDTagger:
             self._tag_data = None
             self._target_size = None
             self._current_model_name = None
+            self._current_model_repo = None
             self._input_name = None
             self._inference_lock = threading.Lock()
-            # Preprocessing can be parallelized
-            self._num_preprocess_workers = min(4, (os.cpu_count() or 4))
-            self._preprocess_executor = ThreadPoolExecutor(
-                max_workers=self._num_preprocess_workers,
-                thread_name_prefix="wd_preprocess"
+            self._load_control_config = build_ai_tagging_load_control_config(settings)
+            self._load_control_signature = None
+            self._session_options_summary = {}
+            self._provider_provenance = ProviderProvenance(
+                requested_provider_preference=self._load_control_config.provider_preference,
+                available_providers=tuple(rt.get_available_providers()),
+                actual_provider=None,
             )
+            self._num_preprocess_workers = 0
+            self._preprocess_executor = None
+            self._configure_preprocess_executor(self._load_control_config)
             WDTagger._initialized = True
+
+    def _refresh_load_control_config(self) -> LoadControlConfig:
+        self._load_control_config = build_ai_tagging_load_control_config(settings)
+        self._configure_preprocess_executor(self._load_control_config)
+        return self._load_control_config
+
+    def _configure_preprocess_executor(self, config: LoadControlConfig) -> None:
+        if self._preprocess_executor and self._num_preprocess_workers == config.preprocess_workers:
+            return
+        if self._preprocess_executor:
+            self._preprocess_executor.shutdown(wait=False)
+        self._num_preprocess_workers = config.preprocess_workers
+        self._preprocess_executor = ThreadPoolExecutor(
+            max_workers=self._num_preprocess_workers,
+            thread_name_prefix="wd_preprocess",
+        )
     
-    def _get_session_options(self) -> rt.SessionOptions:
-        """Create optimized session options for CPU execution."""
+    def _get_session_options(self, config: Optional[LoadControlConfig] = None) -> rt.SessionOptions:
+        """Create bounded ONNX Runtime session options."""
+        config = config or self._load_control_config
         sess_options = rt.SessionOptions()
         
         # Enable all graph optimizations
         sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
-        
-        # Determine optimal thread counts
-        cpu_count = os.cpu_count() or 4
-        
-        # intra_op: threads for parallelism within a single operator (e.g., matrix multiply)
-        # inter_op: threads for parallelism across operators
-        # For batch processing, we want more intra-op parallelism
-        sess_options.intra_op_num_threads = cpu_count
-        sess_options.inter_op_num_threads = max(1, cpu_count // 2)
-        
-        # Enable parallel execution mode
-        sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL
+
+        sess_options.intra_op_num_threads = config.cpu_intra_op_threads
+        sess_options.inter_op_num_threads = config.cpu_inter_op_threads
+        sess_options.execution_mode = getattr(
+            rt.ExecutionMode,
+            config.execution_mode,
+            rt.ExecutionMode.ORT_SEQUENTIAL,
+        )
         
         # Enable memory pattern optimization
         sess_options.enable_mem_pattern = True
@@ -98,12 +125,23 @@ class WDTagger:
         
         return sess_options
     
-    def _load_model(self, model_name: str = "wd-eva02-large-tagger-v3"):
-        """Load the specified model with CPU optimizations."""
+    def _load_model(
+        self,
+        model_name: str = "wd-eva02-large-tagger-v3",
+        *,
+        local_files_only: bool = False,
+    ):
+        """Load the specified model with bounded provider/load controls."""
         if model_name not in self.AVAILABLE_MODELS:
             raise ValueError(f"Unknown model: {model_name}. Available: {list(self.AVAILABLE_MODELS.keys())}")
-        
-        if self._current_model_name == model_name and self._model is not None:
+
+        config = self._refresh_load_control_config()
+        signature = config.runtime_signature()
+        if (
+            self._current_model_name == model_name
+            and self._model is not None
+            and self._load_control_signature == signature
+        ):
             return
         
         try:
@@ -113,9 +151,18 @@ class WDTagger:
         
         model_repo = self.AVAILABLE_MODELS[model_name]
         
-        # Download files
-        csv_path = huggingface_hub.hf_hub_download(model_repo, self.LABEL_FILENAME)
-        model_path = huggingface_hub.hf_hub_download(model_repo, self.MODEL_FILENAME)
+        # Resolve model files from the Hugging Face cache, downloading only
+        # when local_files_only is False.
+        csv_path = huggingface_hub.hf_hub_download(
+            model_repo,
+            self.LABEL_FILENAME,
+            local_files_only=local_files_only,
+        )
+        model_path = huggingface_hub.hf_hub_download(
+            model_repo,
+            self.MODEL_FILENAME,
+            local_files_only=local_files_only,
+        )
         
         # Load tags
         df = pd.read_csv(csv_path)
@@ -128,29 +175,94 @@ class WDTagger:
             'character': np.where(df["category"] == 4)[0],
         }
         
-        # Create optimized session
-        sess_options = self._get_session_options()
-        
-        try:
-            self._model = rt.InferenceSession(
-                model_path, 
-                sess_options=sess_options,
-                providers=['CPUExecutionProvider']
+        sess_options = self._get_session_options(config)
+        selection = select_onnx_provider(
+            config.provider_preference,
+            rt.get_available_providers(),
+        )
+        provider_errors: List[str] = []
+        session = None
+        loaded_providers: tuple[str, ...] = ()
+
+        for provider in selection.candidate_provider_order:
+            try:
+                session = rt.InferenceSession(
+                    model_path,
+                    sess_options=sess_options,
+                    providers=[provider],
+                )
+                loaded_providers = tuple(session.get_providers())
+                break
+            except Exception as exc:
+                provider_errors.append(f"{provider}:{exc.__class__.__name__}")
+
+        if session is None:
+            self._provider_provenance = ProviderProvenance(
+                requested_provider_preference=selection.requested_provider_preference,
+                available_providers=selection.available_providers,
+                actual_provider=None,
+                fallback_occurred=True,
+                fallback_reason=selection.fallback_reason or "no_provider_loaded",
+                provider_load_errors=tuple(provider_errors),
             )
-        except Exception as e:
-            raise
+            raise RuntimeError(
+                "Unable to load WDTagger ONNX session with requested providers: "
+                + ", ".join(selection.requested_provider_preference)
+            )
+
+        actual_provider = loaded_providers[0] if loaded_providers else selection.selected_provider
+        fallback_reason = selection.fallback_reason
+        fallback_occurred = selection.fallback_occurred
+        if provider_errors:
+            fallback_occurred = True
+            error_reason = "provider_load_errors=" + ",".join(provider_errors)
+            fallback_reason = f"{fallback_reason}; {error_reason}" if fallback_reason else error_reason
+
+        self._model = session
+        self._session_options_summary = {
+            "cpu_intra_op_threads": config.cpu_intra_op_threads,
+            "cpu_inter_op_threads": config.cpu_inter_op_threads,
+            "execution_mode": config.execution_mode,
+        }
+        self._provider_provenance = ProviderProvenance(
+            requested_provider_preference=selection.requested_provider_preference,
+            available_providers=selection.available_providers,
+            actual_provider=actual_provider,
+            loaded_providers=loaded_providers,
+            fallback_occurred=fallback_occurred,
+            fallback_reason=fallback_reason,
+            provider_load_errors=tuple(provider_errors),
+        )
 
         input_info = self._model.get_inputs()[0]
         self._target_size = input_info.shape[2]
         self._input_name = input_info.name
         self._current_model_name = model_name
+        self._current_model_repo = model_repo
+        self._load_control_signature = signature
 
-    def ensure_loaded(self, model_name: str = "wd-eva02-large-tagger-v3"):
+    def ensure_loaded(
+        self,
+        model_name: str = "wd-eva02-large-tagger-v3",
+        *,
+        local_files_only: bool = False,
+    ):
         """Ensure the model is loaded."""
-        if self._model is None or self._current_model_name != model_name:
+        config = self._refresh_load_control_config()
+        needs_load = (
+            self._model is None
+            or self._current_model_name != model_name
+            or self._load_control_signature != config.runtime_signature()
+        )
+        if needs_load:
             with self._lock:
-                if self._model is None or self._current_model_name != model_name:
-                    self._load_model(model_name)
+                config = self._refresh_load_control_config()
+                if (
+                    self._model is None
+                    or self._current_model_name != model_name
+                    or self._load_control_signature != config.runtime_signature()
+                ):
+                    self._load_model(model_name, local_files_only=local_files_only)
     
     def _prepare_image(self, image: Image.Image) -> np.ndarray:
         """
@@ -383,13 +495,14 @@ class WDTagger:
         **kwargs
     ) -> List[Dict[str, Any]]:
         """Predict tags from a single file path."""
+        model_name = kwargs.get('model_name', 'wd-eva02-large-tagger-v3')
+        local_files_only = bool(kwargs.get('local_files_only', False))
+        self.ensure_loaded(model_name, local_files_only=local_files_only)
+
         _, prepared = self._prepare_image_from_path(file_path)
         
         if prepared is None:
             return []
-        
-        model_name = kwargs.get('model_name', 'wd-eva02-large-tagger-v3')
-        self.ensure_loaded(model_name)
         
         batch = np.expand_dims(prepared, axis=0)
         
@@ -431,7 +544,7 @@ class WDTagger:
         self.ensure_loaded(model_name)
         
         if batch_size is None:
-            batch_size = self.OPTIMAL_BATCH_SIZES.get(model_name, 4)
+            batch_size = self.get_optimal_batch_size(model_name)
         
         total = len(file_paths)
         results = {}
@@ -497,7 +610,7 @@ class WDTagger:
         self.ensure_loaded(model_name)
         
         if batch_size is None:
-            batch_size = self.OPTIMAL_BATCH_SIZES.get(model_name, 4)
+            batch_size = self.get_optimal_batch_size(model_name)
         
         for i in range(0, len(file_paths), batch_size):
             batch_paths = file_paths[i:i + batch_size]
@@ -566,15 +679,72 @@ class WDTagger:
     @property
     def current_model(self) -> Optional[str]:
         return self._current_model_name
+
+    @property
+    def current_model_repo(self) -> Optional[str]:
+        return self._current_model_repo
     
     def get_optimal_batch_size(self, model_name: Optional[str] = None) -> int:
-        """Get optimal batch size for the specified or current model."""
+        """Get the configured bounded batch size for the model."""
         name = model_name or self._current_model_name or "wd-eva02-large-tagger-v3"
-        return self.OPTIMAL_BATCH_SIZES.get(name, 4)
+        model_cap = self.OPTIMAL_BATCH_SIZES.get(name, 4)
+        configured = self._load_control_config.batch_size
+        return max(1, min(configured, model_cap))
+
+    def get_batch_size_provenance(self, model_name: Optional[str] = None) -> Dict[str, Any]:
+        name = model_name or self._current_model_name or settings.AI_MODEL_NAME
+        model_cap = self.OPTIMAL_BATCH_SIZES.get(name, 4)
+        effective = self.get_optimal_batch_size(name)
+        cap_source = self._load_control_config.batch_cap_source
+        if effective == model_cap and model_cap < self._load_control_config.effective_batch_size:
+            cap_source = "model_optimal_batch_size"
+        return {
+            "configured_batch_size": self._load_control_config.configured_batch_size,
+            "load_control_effective_batch_size": self._load_control_config.effective_batch_size,
+            "effective_batch_size": effective,
+            "batch_cap_source": cap_source,
+            "batch_max_items": self._load_control_config.batch_max_items,
+            "phase_max_batch_size": 16,
+            "model_optimal_batch_size": model_cap,
+        }
+
+    def get_provider_provenance(self) -> Dict[str, Any]:
+        """Return public-safe ONNX provider selection provenance."""
+        return self._provider_provenance.to_public_dict()
+
+    def get_load_control_config(self) -> Dict[str, Any]:
+        """Return public-safe load-control settings currently applied."""
+        payload = self._load_control_config.to_public_dict()
+        payload["applied_session_options"] = dict(self._session_options_summary)
+        return payload
+
+    def get_runtime_provenance(
+        self,
+        *,
+        model_name: Optional[str] = None,
+        thresholds: Optional[Dict[str, float]] = None,
+        batch_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Return model/provider/backend provenance for AI tagging summaries."""
+        name = model_name or self._current_model_name or settings.AI_MODEL_NAME
+        batch_provenance = self.get_batch_size_provenance(name)
+        return {
+            "model_name": name,
+            "model_repo_id": self.AVAILABLE_MODELS.get(name),
+            "thresholds": thresholds or {},
+            "provider": self.get_provider_provenance(),
+            "load_control": self.get_load_control_config(),
+            "configured_batch_size": batch_provenance["configured_batch_size"],
+            "effective_batch_size": batch_provenance["effective_batch_size"],
+            "batch_size": batch_provenance["effective_batch_size"],
+            "batch": batch_provenance,
+            "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+            "backend": "onnxruntime",
+        }
     
     def shutdown(self):
         """Clean up resources."""
-        if hasattr(self, '_preprocess_executor'):
+        if hasattr(self, '_preprocess_executor') and self._preprocess_executor:
             self._preprocess_executor.shutdown(wait=False)
 
 # Global singleton instance

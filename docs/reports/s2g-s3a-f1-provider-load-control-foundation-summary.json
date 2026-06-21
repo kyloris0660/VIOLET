@@ -1,0 +1,557 @@
+{
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "durable production code",
+        "committed": true,
+        "path": "backend/app/services/job_control.py"
+      },
+      {
+        "classification": "reusable validation/safety tool",
+        "committed": true,
+        "path": "scripts/run_s2g_s3a_f1_provider_load_smoke.py"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation.md",
+        "redacted": true
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation-summary.json",
+        "redacted": true
+      }
+    ]
+  },
+  "benchmarks": {
+    "cpu": {
+      "actual_provider": "CPUExecutionProvider",
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "elapsed_seconds": 0.8764,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 2,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "provider": {
+        "actual_onnx_provider_loaded": "CPUExecutionProvider",
+        "actual_provider": "CPUExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "sample_count": 2,
+      "status": "completed",
+      "throughput_items_per_second": 2.282
+    },
+    "gpu_or_directml": [
+      {
+        "actual_provider": "DmlExecutionProvider",
+        "batch": {
+          "batch_cap_source": "configured",
+          "batch_max_items": 10,
+          "configured_batch_size": 2,
+          "effective_batch_size": 2,
+          "load_control_effective_batch_size": 2,
+          "model_optimal_batch_size": 8,
+          "phase_max_batch_size": 16
+        },
+        "elapsed_seconds": 0.3943,
+        "load_control": {
+          "allow_provider_fallback": true,
+          "applied_session_options": {
+            "cpu_inter_op_threads": 1,
+            "cpu_intra_op_threads": 4,
+            "execution_mode": "ORT_SEQUENTIAL"
+          },
+          "batch_cap_source": "configured",
+          "batch_max_items": 10,
+          "batch_size": 2,
+          "configured_batch_size": 2,
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "effective_batch_size": 2,
+          "execution_mode": "ORT_SEQUENTIAL",
+          "max_concurrent_jobs": 1,
+          "preprocess_workers": 2,
+          "process_priority": "below_normal",
+          "process_priority_applied": false,
+          "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+          "provider_preference": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "valid_for_runtime": true,
+          "validation_errors": [],
+          "worker_count": 1
+        },
+        "provider": {
+          "actual_onnx_provider_loaded": "DmlExecutionProvider",
+          "actual_provider": "DmlExecutionProvider",
+          "available_providers": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "fallback_occurred": false,
+          "fallback_reason": null,
+          "loaded_providers": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "provider_load_errors": [],
+          "requested_provider_preference": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "sample_count": 2,
+        "status": "completed",
+        "throughput_items_per_second": 5.0729
+      },
+      {
+        "blocker": "package_missing",
+        "package": "onnxruntime-gpu",
+        "package_installed": false,
+        "provider": "CUDAExecutionProvider",
+        "status": "provider_unavailable"
+      }
+    ],
+    "sample_count": 2,
+    "sample_source": "synthetic_zero_arrays"
+  },
+  "generated_at": "2026-06-21T08:58:22.576071Z",
+  "gpu_directml_enablement": {
+    "actual_gpu_provider_loaded": "DmlExecutionProvider",
+    "attempted": true,
+    "available_onnx_providers_after_attempt": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "benchmarks": [
+      {
+        "actual_provider": "DmlExecutionProvider",
+        "batch": {
+          "batch_cap_source": "configured",
+          "batch_max_items": 10,
+          "configured_batch_size": 2,
+          "effective_batch_size": 2,
+          "load_control_effective_batch_size": 2,
+          "model_optimal_batch_size": 8,
+          "phase_max_batch_size": 16
+        },
+        "elapsed_seconds": 0.3943,
+        "load_control": {
+          "allow_provider_fallback": true,
+          "applied_session_options": {
+            "cpu_inter_op_threads": 1,
+            "cpu_intra_op_threads": 4,
+            "execution_mode": "ORT_SEQUENTIAL"
+          },
+          "batch_cap_source": "configured",
+          "batch_max_items": 10,
+          "batch_size": 2,
+          "configured_batch_size": 2,
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "effective_batch_size": 2,
+          "execution_mode": "ORT_SEQUENTIAL",
+          "max_concurrent_jobs": 1,
+          "preprocess_workers": 2,
+          "process_priority": "below_normal",
+          "process_priority_applied": false,
+          "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+          "provider_preference": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "valid_for_runtime": true,
+          "validation_errors": [],
+          "worker_count": 1
+        },
+        "provider": {
+          "actual_onnx_provider_loaded": "DmlExecutionProvider",
+          "actual_provider": "DmlExecutionProvider",
+          "available_providers": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "fallback_occurred": false,
+          "fallback_reason": null,
+          "loaded_providers": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "provider_load_errors": [],
+          "requested_provider_preference": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "sample_count": 2,
+        "status": "completed",
+        "throughput_items_per_second": 5.0729
+      },
+      {
+        "blocker": "package_missing",
+        "package": "onnxruntime-gpu",
+        "package_installed": false,
+        "provider": "CUDAExecutionProvider",
+        "status": "provider_unavailable"
+      }
+    ],
+    "blocker": null,
+    "package_install": {
+      "global_or_system_python_modified": false,
+      "packages": [
+        {
+          "install_performed": true,
+          "installed_after_attempt": true,
+          "package": "onnxruntime-directml",
+          "version": "1.24.4"
+        },
+        {
+          "install_performed": false,
+          "installed_after_attempt": false,
+          "package": "onnxruntime-gpu",
+          "version": null
+        }
+      ],
+      "performed": true,
+      "scope": "project_venv"
+    },
+    "preferred_order": [
+      "DmlExecutionProvider",
+      "CUDAExecutionProvider"
+    ],
+    "success": true
+  },
+  "phase": "S2G/S3A-F1+G1",
+  "pipeline_contract": {
+    "claims": {
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s2g_s3a_f1_foundation_contract_v1",
+    "status": "target_met"
+  },
+  "public_redaction": {
+    "finding_count": 0,
+    "passed": true,
+    "scan_contract": "s2g_s3a_f1_foundation_contract_v1"
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation.md",
+    "path_style": "repo_relative_public_artifacts",
+    "summary_json_path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation-summary.json"
+  },
+  "recommended_next_phase": "If GPU/DirectML is available, validate a bounded real AI tagging job; otherwise keep CPU fallback and decide whether to make DirectML a documented optional dependency before production S3A.",
+  "runtime": {
+    "onnxruntime": {
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "version": "1.24.4"
+    },
+    "packages": {
+      "onnxruntime": {
+        "installed": true,
+        "location_public": "project_venv_site_packages",
+        "version": "1.23.2"
+      },
+      "onnxruntime-directml": {
+        "installed": true,
+        "location_public": "project_venv_site_packages",
+        "version": "1.24.4"
+      },
+      "onnxruntime-gpu": {
+        "installed": false,
+        "location_public": null,
+        "version": null
+      }
+    },
+    "python_executable_public_name": "python.exe"
+  },
+  "s3a_dry_run_plan": {
+    "dry_run": true,
+    "production_execution_enabled": false,
+    "stages": [
+      {
+        "name": "update_check",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "hydration_read",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "import_reuse",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "classification",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "ai_tagging",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "localization",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "summary",
+        "status": "planned",
+        "writes_enabled": false
+      }
+    ],
+    "unattended_enabled": false
+  },
+  "safety": {
+    "cleanup_delete_reset_drop_truncate": false,
+    "confirmed_entity_assignments": false,
+    "db_schema_change": false,
+    "model_download": false,
+    "production_ai_tagging": false,
+    "production_classification": false,
+    "production_db_writes": false,
+    "production_import": false,
+    "production_localization": false,
+    "production_s3a_execution_enabled": false,
+    "provider_pixiv_gallery_dl_saucenao_google_calls": false,
+    "source_icloud_mutation": false,
+    "sourceconcept_or_entity": false,
+    "unattended_auto_sync_enabled": false
+  },
+  "shared_foundation": {
+    "concepts": [
+      "LoadControlConfig",
+      "ProviderCapability",
+      "JobRun",
+      "StageRun",
+      "ProgressSnapshot",
+      "ProviderProvenance"
+    ],
+    "module": "backend/app/services/job_control.py",
+    "no_background_daemon_added": true,
+    "no_db_schema_change": true
+  },
+  "title": "WDTagger Provider, Load-Control, and GPU/DirectML Enablement Attempt",
+  "wd_tagger": {
+    "load_control": {
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 2,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls"
+    },
+    "model": {
+      "cache_after": {
+        "label_file_cached": true,
+        "model_file_cached": true
+      },
+      "cache_before": {
+        "label_file_cached": true,
+        "model_file_cached": true
+      },
+      "load_error_type": null,
+      "local_files_only": true,
+      "model_download_allowed": false,
+      "model_download_performed": false,
+      "model_loaded": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3"
+    },
+    "provenance": {
+      "fields_available": [
+        "model_name",
+        "model_repo_id",
+        "thresholds",
+        "requested_provider_preference",
+        "actual_provider",
+        "fallback_reason",
+        "batch_size",
+        "effective_batch_size",
+        "configured_batch_size",
+        "batch_cap_source",
+        "cpu_thread_settings",
+        "preprocess_workers",
+        "execution_mode",
+        "tagger_version_source"
+      ],
+      "runtime_provenance": {
+        "backend": "onnxruntime",
+        "batch": {
+          "batch_cap_source": "configured",
+          "batch_max_items": 10,
+          "configured_batch_size": 2,
+          "effective_batch_size": 2,
+          "load_control_effective_batch_size": 2,
+          "model_optimal_batch_size": 8,
+          "phase_max_batch_size": 16
+        },
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control": {
+          "allow_provider_fallback": true,
+          "applied_session_options": {
+            "cpu_inter_op_threads": 1,
+            "cpu_intra_op_threads": 4,
+            "execution_mode": "ORT_SEQUENTIAL"
+          },
+          "batch_cap_source": "configured",
+          "batch_max_items": 10,
+          "batch_size": 2,
+          "configured_batch_size": 2,
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "effective_batch_size": 2,
+          "execution_mode": "ORT_SEQUENTIAL",
+          "max_concurrent_jobs": 1,
+          "preprocess_workers": 2,
+          "process_priority": "below_normal",
+          "process_priority_applied": false,
+          "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+          "provider_preference": [
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "valid_for_runtime": true,
+          "validation_errors": [],
+          "worker_count": 1
+        },
+        "model_name": "wd-swinv2-tagger-v3",
+        "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+        "provider": {
+          "actual_onnx_provider_loaded": "DmlExecutionProvider",
+          "actual_provider": "DmlExecutionProvider",
+          "available_providers": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "fallback_occurred": true,
+          "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider",
+          "loaded_providers": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "provider_load_errors": [],
+          "requested_provider_preference": [
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+        "thresholds": {
+          "character_threshold": 0.65,
+          "general_threshold": 0.35,
+          "rating_threshold": 0.5,
+          "suggestion_threshold": 0.2
+        }
+      }
+    },
+    "provider_abstraction": {
+      "actual_provider": "DmlExecutionProvider",
+      "available_onnx_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": true,
+      "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider",
+      "hardcoded_cpu_provider_removed": true,
+      "implemented": true,
+      "loaded_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "requested_provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "supported_provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    },
+    "thresholds": {
+      "character_threshold": 0.65,
+      "general_threshold": 0.35,
+      "rating_threshold": 0.5,
+      "suggestion_threshold": 0.2
+    }
+  }
+}

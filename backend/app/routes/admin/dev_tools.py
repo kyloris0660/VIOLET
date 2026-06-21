@@ -152,6 +152,8 @@ async def get_config_diagnostics(
 ):
     """Return runtime configuration diagnostics (no secrets)."""
     gate_diag = _compute_gate_diagnostic()
+    from ...services.job_control import build_ai_tagging_load_control_config
+    ai_load_control = build_ai_tagging_load_control_config(settings).to_public_dict()
     return {
         "environment": {
             "VIOLET_ENV": settings.VIOLET_ENV,
@@ -177,7 +179,17 @@ async def get_config_diagnostics(
         "ai_tagging": {
             "enabled": settings.AI_TAGGING_ENABLED,
             "batch_max_items": settings.AI_TAGGING_BATCH_MAX_ITEMS,
+            "batch_size": ai_load_control["effective_batch_size"],
+            "configured_batch_size": ai_load_control["configured_batch_size"],
+            "batch_cap_source": ai_load_control["batch_cap_source"],
             "model_name": settings.AI_MODEL_NAME,
+            "provider_preference": ai_load_control["provider_preference"],
+            "cpu_intra_op_threads": ai_load_control["cpu_intra_op_threads"],
+            "cpu_inter_op_threads": ai_load_control["cpu_inter_op_threads"],
+            "preprocess_workers": ai_load_control["preprocess_workers"],
+            "execution_mode": ai_load_control["execution_mode"],
+            "process_priority": ai_load_control["process_priority"],
+            "max_concurrent_jobs": ai_load_control["max_concurrent_jobs"],
             "general_threshold": settings.AI_GENERAL_THRESHOLD,
             "character_threshold": settings.AI_CHARACTER_THRESHOLD,
             "rating_threshold": settings.AI_RATING_THRESHOLD,
