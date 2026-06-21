@@ -553,6 +553,215 @@ def _s2g_s3a_f1_summary(**overrides: object) -> dict:
     return summary
 
 
+def _s2g_real1_summary(**overrides: object) -> dict:
+    provider = {
+        "requested_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "available_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "actual_provider": "DmlExecutionProvider",
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "loaded_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "fallback_occurred": False,
+        "fallback_reason": None,
+        "provider_load_errors": [],
+    }
+    load_control = {
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "batch_cap_source": "configured",
+        "cpu_intra_op_threads": 4,
+        "cpu_inter_op_threads": 1,
+        "preprocess_workers": 2,
+        "max_concurrent_jobs": 1,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "process_priority": "below_normal",
+    }
+    dry_run = {
+        "executed": True,
+        "status": "completed",
+        "dry_run": True,
+        "local_files_only": True,
+        "provider_preference_requested": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "selected_media_count": 3,
+        "processed": 3,
+        "tags_added": 12,
+        "suggestions_added": 2,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 9,
+        "failed": 0,
+        "rollback_error": False,
+        "error_state": False,
+        "predicted_tag_count": 23,
+        "media_tags_count_before": 10,
+        "media_tags_count_after": 10,
+        "media_tags_count_delta": 0,
+        "no_media_tags_writes": True,
+        "tag_source_values_used": ["ai_wd"],
+        "job_record_created": False,
+        "provider": provider,
+        "load_control": load_control,
+        "runtime_provenance": {
+            "model_name": "wd-swinv2-tagger-v3",
+            "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+            "provider": provider,
+            "load_control": load_control,
+        },
+    }
+    cpu_provider = {
+        "requested_provider_preference": ["CPUExecutionProvider"],
+        "available_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "actual_provider": "CPUExecutionProvider",
+        "actual_onnx_provider_loaded": "CPUExecutionProvider",
+        "loaded_providers": ["CPUExecutionProvider"],
+        "fallback_occurred": False,
+        "fallback_reason": None,
+        "provider_load_errors": [],
+    }
+    cpu_fallback = {
+        **dry_run,
+        "label": "cpu_fallback_dry_run",
+        "provider_preference_requested": ["CPUExecutionProvider"],
+        "selected_media_count": 1,
+        "processed": 1,
+        "provider": cpu_provider,
+        "runtime_provenance": {
+            "model_name": "wd-swinv2-tagger-v3",
+            "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+            "provider": cpu_provider,
+            "load_control": load_control,
+        },
+    }
+    summary = {
+        "phase": "S2G-REAL1",
+        "pipeline_contract": {
+            "contract_id": "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+            "status": "target_met_dry_run_only",
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": False},
+        },
+        "run_configuration": {
+            "mode": "dry_run",
+            "write_requested": False,
+            "operator_confirmation_exact": False,
+            "max_items": 3,
+            "max_items_cap": 5,
+            "candidate_scan_limit": 25,
+            "provider_preference_requested": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "cpu_fallback_provider_preference": ["CPUExecutionProvider"],
+            "local_files_only": True,
+            "model_download_allowed": False,
+            "s3a_execution_enabled": False,
+            "unattended_enabled": False,
+        },
+        "selected_media": {
+            "selection_mode": "content_class_filter",
+            "content_class_filter": ["anime"],
+            "explicit_media_ids_supplied": False,
+            "explicit_media_ids_publicly_recorded": False,
+            "candidate_scan_limit": 25,
+            "candidate_rows_reviewed": 3,
+            "skipped_missing_local_file_count": 0,
+            "count": 3,
+            "id_count": 3,
+            "max_items": 3,
+            "small_explicit_sample": True,
+            "no_full_library_fallback": True,
+            "private_locator_values_recorded": False,
+        },
+        "model_cache": {
+            "model_name": "wd-swinv2-tagger-v3",
+            "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+            "local_files_only": True,
+            "model_download_allowed": False,
+            "model_download_performed": False,
+            "model_file_cached": True,
+            "label_file_cached": True,
+            "status": "cached",
+            "blocker": None,
+        },
+        "dry_run": dry_run,
+        "write_run": {
+            "executed": False,
+            "status": "not_run_not_requested",
+            "required_confirmation_present": False,
+            "selected_media_count": 0,
+            "processed": 0,
+            "media_tags_count_delta": 0,
+            "tags_added": 0,
+            "suggestions_added": 0,
+            "skipped_locked": 0,
+            "ignored_low_confidence": 0,
+            "failed": 0,
+            "rollback_error": False,
+            "error_state": False,
+            "tag_source_values_used": ["ai_wd"],
+        },
+        "write_prerequisites": {
+            "selected_media_count_within_cap": True,
+            "model_cache_available": True,
+            "primary_dry_run_success": True,
+            "primary_provider_evidence_present": True,
+            "cpu_fallback_success": True,
+            "public_private_scope_clean": True,
+            "exact_write_confirmation_present": False,
+            "write_executed_after_prerequisites_passed": True,
+            "all_passed": False,
+        },
+        "primary_provider_validation": dry_run,
+        "cpu_fallback_validation": cpu_fallback,
+        "load_control_observations": {
+            **load_control,
+            "max_concurrent_ai_jobs": 1,
+            "actual_provider": "DmlExecutionProvider",
+            "appeared_bounded": True,
+            "warnings": [],
+        },
+        "s3a_boundary": {
+            "production_execution_enabled": False,
+            "unattended_enabled": False,
+            "dry_run_only": True,
+            "stages": [
+                {"name": "ai_tagging", "writes_enabled": False},
+                {"name": "summary", "writes_enabled": False},
+            ],
+        },
+        "safety": {
+            "max_items_lte_5": True,
+            "no_full_library_run": True,
+            "dry_run_before_write": True,
+            "ai_tagging_write_without_confirmation": False,
+            "media_tags_write_executed": False,
+            "write_requested_without_exact_confirmation": False,
+            "write_executed_after_prerequisites_passed": True,
+            "dry_run_media_tags_write": False,
+            "production_s3a_execution_enabled": False,
+            "unattended_s3b_enabled": False,
+            "provider_pixiv_gallery_dl_saucenao_google_calls": False,
+            "provider_pixiv_r1r_entity_operations": False,
+            "sourceconcept_r1r_r2": False,
+            "entity_bridge": False,
+            "confirmed_entity_assignments": False,
+            "source_icloud_mutation": False,
+            "cleanup_delete_reset_drop_truncate": False,
+            "db_import": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_localization": False,
+            "model_download": False,
+            "local_files_only": True,
+            "private_locator_values_recorded": False,
+        },
+        "public_reports": {
+            "summary_json_path": "docs/reports/s2g-real1-bounded-ai-tagging-validation-summary.json",
+            "markdown_report_path": "docs/reports/s2g-real1-bounded-ai-tagging-validation.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
+        "public_redaction": {"passed": True, "finding_count": 0},
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _set_nested(payload: dict, path: str, value: object) -> None:
     cursor = payload
     parts = path.split(".")
@@ -1558,6 +1767,249 @@ def test_s2g_s3a_f1_contract_rejects_s3a_or_s3b_execution_enabled() -> None:
 
     assert "s2g_s3a_f1_forbidden_execution_enabled" in codes
     assert "s2g_s3a_f1_required_safety_false_missing_or_true" in codes
+
+
+def test_s2g_real1_contract_accepts_bounded_dry_run_without_write() -> None:
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        _s2g_real1_summary(),
+    )
+
+    assert result.passed is True
+
+
+def test_s2g_real1_contract_rejects_max_items_above_cap() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["run_configuration"]["max_items"] = 6
+    summary["selected_media"]["count"] = 6
+    summary["selected_media"]["id_count"] = 6
+    summary["selected_media"]["max_items"] = 6
+    summary["dry_run"]["selected_media_count"] = 6
+    summary["safety"]["max_items_lte_5"] = False
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_max_items_unbounded" in codes
+    assert "s2g_real1_selected_media_not_small" in codes
+    assert "s2g_real1_required_proof_missing" in codes
+
+
+def test_s2g_real1_contract_rejects_write_without_exact_confirmation() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["run_configuration"]["write_requested"] = True
+    summary["write_run"]["executed"] = True
+    summary["write_run"]["selected_media_count"] = 3
+    summary["write_run"]["processed"] = 3
+    summary["safety"]["media_tags_write_executed"] = True
+    summary["safety"]["write_requested_without_exact_confirmation"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+
+    assert "s2g_real1_write_without_exact_confirmation" in _error_codes(result)
+
+
+def test_s2g_real1_contract_rejects_execute_without_confirmation_as_dry_run_target() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["run_configuration"]["write_requested"] = True
+    summary["write_run"]["status"] = "not_run_missing_exact_operator_confirmation"
+    summary["safety"]["write_requested_without_exact_confirmation"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_write_requested_without_exact_confirmation_not_blocked" in codes
+    assert "s2g_real1_dry_run_target_with_write_requested" in codes
+
+
+def test_s2g_real1_contract_accepts_successful_bounded_write() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["pipeline_contract"]["claims"]["target_met"] = True
+    summary["pipeline_contract"]["claims"]["safe_to_merge"] = True
+    summary["run_configuration"]["mode"] = "execute"
+    summary["run_configuration"]["write_requested"] = True
+    summary["run_configuration"]["operator_confirmation_exact"] = True
+    summary["write_run"] = {
+        "executed": True,
+        "status": "completed",
+        "required_confirmation_present": True,
+        "selected_media_count": 3,
+        "processed": 3,
+        "media_tags_count_before": 10,
+        "media_tags_count_after": 15,
+        "media_tags_count_delta": 5,
+        "tags_added": 5,
+        "suggestions_added": 0,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 9,
+        "failed": 0,
+        "rollback_error": False,
+        "error_state": False,
+        "tag_source_values_used": ["ai_wd"],
+    }
+    summary["write_prerequisites"]["exact_write_confirmation_present"] = True
+    summary["write_prerequisites"]["all_passed"] = True
+    summary["safety"]["media_tags_write_executed"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+
+    assert result.passed is True
+
+
+def test_s2g_real1_contract_rejects_failed_bounded_write_target() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["run_configuration"]["mode"] = "execute"
+    summary["run_configuration"]["write_requested"] = True
+    summary["run_configuration"]["operator_confirmation_exact"] = True
+    summary["write_run"].update(
+        {
+            "executed": True,
+            "status": "completed_with_item_failures",
+            "required_confirmation_present": True,
+            "selected_media_count": 3,
+            "processed": 3,
+            "failed": 1,
+        }
+    )
+    summary["write_prerequisites"]["exact_write_confirmation_present"] = True
+    summary["write_prerequisites"]["all_passed"] = True
+    summary["safety"]["media_tags_write_executed"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_write_run_failed_not_blocked" in codes
+    assert "s2g_real1_write_run_failed_target" in codes
+
+
+def test_s2g_real1_contract_rejects_write_before_cpu_fallback_prerequisite() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["run_configuration"]["mode"] = "execute"
+    summary["run_configuration"]["write_requested"] = True
+    summary["run_configuration"]["operator_confirmation_exact"] = True
+    summary["write_run"].update(
+        {
+            "executed": True,
+            "status": "completed",
+            "required_confirmation_present": True,
+            "selected_media_count": 3,
+            "processed": 3,
+            "media_tags_count_delta": 2,
+        }
+    )
+    summary["write_prerequisites"]["exact_write_confirmation_present"] = True
+    summary["write_prerequisites"]["cpu_fallback_success"] = False
+    summary["write_prerequisites"]["write_executed_after_prerequisites_passed"] = False
+    summary["write_prerequisites"]["all_passed"] = False
+    summary["safety"]["media_tags_write_executed"] = True
+    summary["safety"]["write_executed_after_prerequisites_passed"] = False
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_write_before_prerequisites" in codes
+    assert "s2g_real1_write_target_without_prerequisites" in codes
+    assert "s2g_real1_write_target_missing_prerequisite" in codes
+
+
+def test_s2g_real1_contract_rejects_model_download_target() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_dry_run_only"
+    summary["run_configuration"]["local_files_only"] = False
+    summary["run_configuration"]["model_download_allowed"] = True
+    summary["model_cache"]["local_files_only"] = False
+    summary["model_cache"]["model_download_allowed"] = True
+    summary["safety"]["model_download"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_model_download_allowed_claimed_target" in codes
+    assert "s2g_real1_model_download_allowed_not_blocked" in codes
+
+
+def test_s2g_real1_contract_rejects_missing_primary_provider() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["primary_provider_validation"]["provider"]["actual_provider"] = None
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+
+    assert "s2g_real1_actual_provider_missing" in _error_codes(result)
+
+
+def test_s2g_real1_contract_rejects_directml_absent_without_blocker() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["primary_provider_validation"]["provider"]["actual_provider"] = "CPUExecutionProvider"
+    summary["primary_provider_validation"]["provider"]["actual_onnx_provider_loaded"] = "CPUExecutionProvider"
+    summary["primary_provider_validation"]["provider"]["fallback_occurred"] = False
+    summary["primary_provider_validation"]["provider"]["fallback_reason"] = None
+    summary["primary_provider_validation"]["provider"]["provider_load_errors"] = []
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+
+    assert "s2g_real1_directml_missing_without_blocker" in _error_codes(result)
+
+
+def test_s2g_real1_contract_rejects_missing_cpu_fallback() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["cpu_fallback_validation"]["executed"] = False
+    summary["cpu_fallback_validation"]["provider"]["actual_provider"] = None
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_required_proof_missing" in codes
+    assert "s2g_real1_cpu_fallback_actual_provider_invalid" in codes
+
+
+def test_s2g_real1_contract_rejects_dry_run_media_tag_delta() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["dry_run"]["media_tags_count_delta"] = 1
+    summary["dry_run"]["no_media_tags_writes"] = False
+    summary["safety"]["dry_run_media_tags_write"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_dry_run_media_tags_delta" in codes
+    assert "s2g_real1_required_proof_missing" in codes
+    assert "s2g_real1_forbidden_safety_flag" in codes
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:
