@@ -288,3 +288,60 @@ class TestAiTaggingLoadControlSettings:
             assert s.AI_TAGGING_PROCESS_PRIORITY == "below_normal"
             assert s.AI_TAGGING_BATCH_SIZE == 2
             assert s.AI_TAGGING_MAX_CONCURRENT_JOBS == 1
+
+
+class TestS3BDisabledSyncSettings:
+    """S3B unattended/scheduled sync settings must default disabled."""
+
+    def test_s3b_settings_default_disabled(self, tmp_path):
+        env = {
+            "VIOLET_ENV": "test",
+            "POSTGRES_DB": "blombooru_test",
+            "VIOLET_STORAGE_ROOT": str(tmp_path / "storage"),
+            "TEST_DATABASE_URL": "",
+            "S3B_UNATTENDED_SYNC_ENABLED": "",
+            "S3B_SCHEDULED_SYNC_ENABLED": "",
+            "S3B_SYNC_MAX_ITEMS": "",
+            "S3B_SYNC_SOURCE_ROOTS": "",
+        }
+        clean_env = dict(os.environ)
+        for key in (
+            "S3B_UNATTENDED_SYNC_ENABLED",
+            "S3B_SCHEDULED_SYNC_ENABLED",
+            "S3B_SYNC_MAX_ITEMS",
+            "S3B_SYNC_SOURCE_ROOTS",
+            "S3B_REQUIRE_OPERATOR_CONFIRMATION",
+            "S3B_DRY_RUN_ONLY",
+        ):
+            clean_env.pop(key, None)
+        clean_env.update({key: value for key, value in env.items() if value})
+        with patch.dict(os.environ, clean_env, clear=True):
+            s = _reload_settings(tmp_path)
+            assert s.S3B_UNATTENDED_SYNC_ENABLED is False
+            assert s.S3B_SCHEDULED_SYNC_ENABLED is False
+            assert s.S3B_SYNC_MAX_ITEMS == 0
+            assert s.S3B_SYNC_SOURCE_ROOTS == []
+            assert s.S3B_REQUIRE_OPERATOR_CONFIRMATION is True
+            assert s.S3B_DRY_RUN_ONLY is True
+
+    def test_s3b_settings_parse_explicit_env(self, tmp_path):
+        env = {
+            "VIOLET_ENV": "test",
+            "POSTGRES_DB": "blombooru_test",
+            "VIOLET_STORAGE_ROOT": str(tmp_path / "storage"),
+            "TEST_DATABASE_URL": "",
+            "S3B_UNATTENDED_SYNC_ENABLED": "false",
+            "S3B_SCHEDULED_SYNC_ENABLED": "false",
+            "S3B_SYNC_MAX_ITEMS": "7",
+            "S3B_SYNC_SOURCE_ROOTS": f"{tmp_path / 'one'}|{tmp_path / 'two'}",
+            "S3B_REQUIRE_OPERATOR_CONFIRMATION": "true",
+            "S3B_DRY_RUN_ONLY": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            s = _reload_settings(tmp_path)
+            assert s.S3B_UNATTENDED_SYNC_ENABLED is False
+            assert s.S3B_SCHEDULED_SYNC_ENABLED is False
+            assert s.S3B_SYNC_MAX_ITEMS == 7
+            assert len(s.S3B_SYNC_SOURCE_ROOTS) == 2
+            assert s.S3B_REQUIRE_OPERATOR_CONFIRMATION is True
+            assert s.S3B_DRY_RUN_ONLY is True

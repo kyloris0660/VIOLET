@@ -596,6 +596,61 @@ class Settings:
         return val.lower() in ("true", "1", "yes", "on")
 
     @property
+    def S3B_UNATTENDED_SYNC_ENABLED(self) -> bool:
+        """Future unattended S3B sync master switch.
+
+        This must stay disabled by default. S3A-PROD2/S3B-D1 may inspect this
+        setting for reporting, but must not start background work from it.
+        """
+        val = os.getenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_SCHEDULED_SYNC_ENABLED(self) -> bool:
+        """Future scheduled S3B sync switch, disabled by default."""
+        val = os.getenv("S3B_SCHEDULED_SYNC_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_SYNC_MAX_ITEMS(self) -> int:
+        """Maximum future unattended sync batch size.
+
+        Default zero means no unattended item selection is allowed.
+        """
+        return max(0, int(os.getenv("S3B_SYNC_MAX_ITEMS", "0")))
+
+    @property
+    def S3B_SYNC_SOURCE_ROOTS(self) -> List[Path]:
+        """Explicit future S3B roots. Empty by default forbids auto scope."""
+        raw = os.getenv("S3B_SYNC_SOURCE_ROOTS", "")
+        if not raw:
+            return []
+        roots = []
+        for value in raw.split("|"):
+            value = value.strip()
+            if value:
+                roots.append(Path(value))
+        return roots
+
+    @property
+    def S3B_REQUIRE_OPERATOR_CONFIRMATION(self) -> bool:
+        val = os.getenv("S3B_REQUIRE_OPERATOR_CONFIRMATION", "true")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_DRY_RUN_ONLY(self) -> bool:
+        val = os.getenv("S3B_DRY_RUN_ONLY", "true")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_SYNC_MIN_STABLE_AGE_SECONDS(self) -> int:
+        return max(0, int(os.getenv("S3B_SYNC_MIN_STABLE_AGE_SECONDS", "60")))
+
+    @property
+    def S3B_SYNC_STABILITY_WAIT_SECONDS(self) -> float:
+        return max(0.0, float(os.getenv("S3B_SYNC_STABILITY_WAIT_SECONDS", "0.25")))
+
+    @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:
         raw = os.getenv("LOCAL_LIBRARY_PATHS", "")
         if not raw:
