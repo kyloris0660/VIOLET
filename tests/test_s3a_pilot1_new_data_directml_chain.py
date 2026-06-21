@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -117,6 +118,18 @@ def _s3a_summary(**overrides: object) -> dict:
             "model_download_allowed": False,
             "status": "cached",
         },
+        "import_write_preconditions": {
+            "passed": False,
+            "blockers": ["exact_confirmation_present"],
+            "write_requested": False,
+            "local_files_only": True,
+            "model_cache_cached": True,
+            "model_download_not_allowed": True,
+            "scope_valid": True,
+            "no_over_cap_input": True,
+            "no_full_library_fallback": True,
+            "exact_confirmation_present": False,
+        },
         "import_reuse": {
             "reported": True,
             "executed": False,
@@ -198,9 +211,11 @@ def test_discover_input_candidates_is_bounded_and_redacted(tmp_path: Path) -> No
 
     candidates, scope = s3a_pilot1.discover_input_candidates([str(tmp_path)], max_items=5)
 
-    assert len(candidates) == 5
-    assert scope["selected_count"] == 5
+    assert len(candidates) == 0
+    assert scope["selected_count"] == 0
     assert scope["over_cap_count"] == 2
+    assert scope["over_cap_blocked_before_selection"] is True
+    assert scope["default_truncation_disabled"] is True
     assert scope["explicit_input_path_redacted"] is True
     assert "sample_0.png" not in str(scope)
 
@@ -218,6 +233,45 @@ def test_derive_status_blocks_missing_model_cache_before_target() -> None:
     summary["model_cache"]["status"] = "blocked"
 
     assert s3a_pilot1.derive_status(summary) == "blocked_model_cache_missing"
+
+
+def test_derive_status_blocks_over_cap_before_target() -> None:
+    summary = _s3a_summary()
+    summary["scope"]["selected_count"] = 0
+    summary["scope"]["over_cap_count"] = 1
+
+    assert s3a_pilot1.derive_status(summary) == "blocked_input_over_cap"
+
+
+def test_derive_status_blocks_cpu_fallback_failure_before_target() -> None:
+    summary = _s3a_summary()
+    summary["cpu_fallback_validation"]["status"] = "completed_with_item_failures"
+    summary["cpu_fallback_validation"]["failed"] = 1
+
+    assert s3a_pilot1.derive_status(summary) == "blocked_cpu_fallback_not_validated"
+
+
+def test_derive_status_reports_unproven_write_when_delta_zero() -> None:
+    summary = _s3a_summary()
+    summary["run_configuration"]["ai_tagging_write_requested"] = True
+    summary["run_configuration"]["ai_tagging_confirmation_exact"] = True
+    summary["directml_ai_tagging"]["dry_run"] = False
+    summary["directml_ai_tagging"]["media_tags_count_delta"] = 0
+    summary["directml_ai_tagging"]["first_time_media_tag_insertion_proven"] = False
+
+    assert s3a_pilot1.derive_status(summary) == "write_executed_but_first_time_insertion_unproven"
+
+
+def test_derive_status_accepts_bounded_write_with_first_time_delta() -> None:
+    summary = _s3a_summary()
+    summary["run_configuration"]["ai_tagging_write_requested"] = True
+    summary["run_configuration"]["ai_tagging_confirmation_exact"] = True
+    summary["directml_ai_tagging"]["dry_run"] = False
+    summary["directml_ai_tagging"]["media_tags_count_after"] = 9
+    summary["directml_ai_tagging"]["media_tags_count_delta"] = 9
+    summary["directml_ai_tagging"]["first_time_media_tag_insertion_proven"] = True
+
+    assert s3a_pilot1.derive_status(summary) == "target_met_with_bounded_write"
 
 
 def test_s3a_pilot1_contract_accepts_bounded_dry_run() -> None:
@@ -248,3 +302,44 @@ def test_s3a_pilot1_contract_rejects_write_request_without_blocked_status() -> N
     result = check_phase_contract("s3a_pilot1_new_data_directml_chain_contract_v1", summary)
 
     assert "s3a_pilot1_ai_requested_without_exact_confirmation_not_blocked" in _error_codes(result)
+
+
+def test_s3a_pilot1_contract_rejects_write_target_without_first_time_insert() -> None:
+    summary = _s3a_summary()
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["pipeline_contract"]["claims"] = {"target_met": True, "safe_to_merge": True, "full_chain_complete": False}
+    summary["run_configuration"]["ai_tagging_write_requested"] = True
+    summary["run_configuration"]["ai_tagging_confirmation_exact"] = True
+    summary["directml_ai_tagging"]["dry_run"] = False
+
+    result = check_phase_contract("s3a_pilot1_new_data_directml_chain_contract_v1", summary)
+
+    assert "s3a_pilot1_write_target_without_first_time_media_tags" in _error_codes(result)
+
+
+def test_s3a_pilot1_contract_rejects_target_when_cpu_fallback_failed() -> None:
+    summary = _s3a_summary()
+    summary["cpu_fallback_validation"]["status"] = "completed_with_item_failures"
+    summary["cpu_fallback_validation"]["failed"] = 1
+
+    result = check_phase_contract("s3a_pilot1_new_data_directml_chain_contract_v1", summary)
+
+    codes = _error_codes(result)
+    assert "s3a_pilot1_cpu_fallback_status_invalid" in codes
+    assert "s3a_pilot1_cpu_fallback_failed" in codes
+
+
+def test_write_reports_clears_completion_on_redaction_failure(tmp_path: Path, monkeypatch) -> None:
+    summary = _s3a_summary()
+    summary["private_leak_for_test"] = r"C:\Users\secret\sample.png"
+    s3a_pilot1.apply_pipeline_status(summary, "target_met_dry_run_only")
+    monkeypatch.setattr(s3a_pilot1, "SUMMARY_PATH", tmp_path / "summary.json")
+    monkeypatch.setattr(s3a_pilot1, "MARKDOWN_PATH", tmp_path / "report.md")
+
+    s3a_pilot1.write_reports(summary)
+
+    payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert payload["pipeline_contract"]["status"] == "blocked_public_redaction_failed"
+    assert payload["pipeline_contract"]["claims"]["target_met"] is False
+    assert payload["pipeline_contract"]["claims"]["safe_to_merge"] is False
+    assert payload["public_redaction"]["passed"] is False

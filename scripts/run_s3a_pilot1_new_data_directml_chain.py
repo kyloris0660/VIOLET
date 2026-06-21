@@ -60,7 +60,10 @@ def utc_now_iso() -> str:
 
 
 def repo_relative(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.name
 
 
 def provider_list(raw: str) -> list[str]:
@@ -166,7 +169,8 @@ def discover_input_candidates(input_paths: list[str], *, max_items: int) -> tupl
         seen.add(key)
         unique.append(path)
 
-    selected_paths = unique[:max_items]
+    over_cap_count = max(0, len(unique) - max_items)
+    selected_paths = [] if over_cap_count else unique
     candidates = [
         SelectedCandidate(
             label=f"item_{index:03d}",
@@ -189,7 +193,9 @@ def discover_input_candidates(input_paths: list[str], *, max_items: int) -> tupl
         "unsupported_files": unsupported_seen,
         "selected_count": len(candidates),
         "selected_labels": [candidate.label for candidate in candidates],
-        "over_cap_count": max(0, len(unique) - max_items),
+        "over_cap_count": over_cap_count,
+        "over_cap_blocked_before_selection": bool(over_cap_count),
+        "default_truncation_disabled": True,
         "max_items": max_items,
         "no_full_library_fallback": True,
         "private_locator_values_recorded": False,
@@ -259,8 +265,11 @@ def import_or_reuse_from_input(
     db: Any,
     candidates: list[SelectedCandidate],
     *,
+    write_requested: bool,
     execute_import: bool,
     import_confirmed: bool,
+    write_preconditions_passed: bool,
+    write_blockers: list[str],
 ) -> tuple[dict[str, Any], list[int]]:
     from backend.app.config import settings
     from backend.app.routes.media import process_and_save_media
@@ -285,7 +294,7 @@ def import_or_reuse_from_input(
     failed_count = sum(1 for item in candidates if item.status == "failed")
     copied_paths: list[Path] = []
 
-    if execute_import and import_confirmed:
+    if execute_import:
         settings.ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
         settings.THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
         for candidate in candidates:
@@ -350,9 +359,11 @@ def import_or_reuse_from_input(
     result = {
         "reported": True,
         "input_mode": "input_path",
-        "executed": bool(execute_import and import_confirmed),
-        "write_requested": execute_import,
+        "executed": bool(execute_import),
+        "write_requested": write_requested,
         "exact_confirmation_present": import_confirmed,
+        "write_preconditions_passed": write_preconditions_passed,
+        "write_blockers": write_blockers,
         "status": "completed" if failed_count == 0 else "completed_with_item_failures",
         "files_discovered": len(candidates),
         "files_supported": len(candidates),
@@ -703,6 +714,47 @@ def check_model_cache(local_files_only: bool) -> dict[str, Any]:
     return result
 
 
+def build_import_write_preconditions(
+    scope: dict[str, Any],
+    model_cache: dict[str, Any],
+    *,
+    input_mode: str,
+    import_write_requested: bool,
+    import_confirmed: bool,
+    local_files_only: bool,
+) -> dict[str, Any]:
+    max_items = int(scope.get("max_items", 0) or 0)
+    selected_count = int(scope.get("selected_count", 0) or 0)
+    over_cap_count = int(scope.get("over_cap_count", 0) or 0)
+    checks = {
+        "write_requested": bool(import_write_requested),
+        "input_path_mode": input_mode == "input_path",
+        "local_files_only": bool(local_files_only),
+        "model_cache_cached": model_cache.get("status") == "cached",
+        "model_download_not_allowed": not bool(model_cache.get("model_download_allowed")),
+        "scope_valid": 1 <= selected_count <= max_items <= MAX_ALLOWED_ITEMS,
+        "no_over_cap_input": over_cap_count == 0,
+        "no_full_library_fallback": bool(scope.get("no_full_library_fallback")),
+        "exact_confirmation_present": bool(import_confirmed),
+    }
+    required_keys = (
+        "input_path_mode",
+        "local_files_only",
+        "model_cache_cached",
+        "model_download_not_allowed",
+        "scope_valid",
+        "no_over_cap_input",
+        "no_full_library_fallback",
+        "exact_confirmation_present",
+    )
+    blockers = [key for key in required_keys if not checks[key]]
+    return {
+        **checks,
+        "passed": bool(import_write_requested) and not blockers,
+        "blockers": blockers,
+    }
+
+
 def validate_localization_reuse(db: Any, tag_names: list[str]) -> dict[str, Any]:
     if not tag_names:
         return {
@@ -776,14 +828,20 @@ def load_control_observations(ai_run: dict[str, Any], fallback_run: dict[str, An
 
 
 def derive_status(summary: dict[str, Any]) -> str:
+    if summary.get("scope", {}).get("over_cap_count", 0):
+        return "blocked_input_over_cap"
     if summary.get("scope", {}).get("selected_count", 0) <= 0:
         return "blocked_scope_invalid"
     if summary.get("model_cache", {}).get("model_download_allowed"):
         return "blocked_model_download_allowed"
     if summary.get("model_cache", {}).get("status") != "cached":
         return "blocked_model_cache_missing"
-    if summary.get("run_configuration", {}).get("import_write_requested") and not summary.get("run_configuration", {}).get("import_confirmation_exact"):
-        return "blocked_import_requested_without_exact_confirmation"
+    import_write_requested = bool(summary.get("run_configuration", {}).get("import_write_requested"))
+    if import_write_requested:
+        if not summary.get("run_configuration", {}).get("import_confirmation_exact"):
+            return "blocked_import_requested_without_exact_confirmation"
+        if not summary.get("import_write_preconditions", {}).get("passed"):
+            return "blocked_import_write_prerequisites"
     if summary.get("run_configuration", {}).get("ai_tagging_write_requested") and not summary.get("run_configuration", {}).get("ai_tagging_confirmation_exact"):
         return "blocked_ai_tagging_requested_without_exact_confirmation"
     if summary.get("import_reuse", {}).get("failed_count", 0):
@@ -795,9 +853,45 @@ def derive_status(summary: dict[str, Any]) -> str:
     ai = summary.get("directml_ai_tagging", {})
     if ai.get("executed") and ai.get("failed", 0):
         return "blocked_ai_tagging_item_failures"
+    if not cpu_fallback_success(summary):
+        return "blocked_cpu_fallback_not_validated"
     if summary.get("run_configuration", {}).get("ai_tagging_write_requested"):
+        actual_provider = ai.get("provider", {}).get("actual_provider")
+        accepted_fallback = bool(ai.get("provider", {}).get("explicit_accepted_fallback"))
+        if not ai.get("executed") or ai.get("dry_run"):
+            return "blocked_ai_tagging_write_not_executed"
+        if actual_provider != "DmlExecutionProvider" and not accepted_fallback:
+            return "blocked_directml_provider_not_validated"
+        if not ai.get("first_time_media_tag_insertion_proven") and int(ai.get("media_tags_count_delta", 0) or 0) <= 0:
+            return "write_executed_but_first_time_insertion_unproven"
         return "target_met_with_bounded_write"
     return "target_met_dry_run_only"
+
+
+def cpu_fallback_success(summary: dict[str, Any]) -> bool:
+    cpu = summary.get("cpu_fallback_validation", {})
+    return (
+        bool(cpu.get("executed"))
+        and str(cpu.get("status") or "").casefold() == "completed"
+        and int(cpu.get("failed", 0) or 0) == 0
+        and cpu.get("provider", {}).get("actual_provider") == "CPUExecutionProvider"
+        and bool(cpu.get("dry_run", False))
+        and int(cpu.get("media_tags_count_delta", 0) or 0) == 0
+    )
+
+
+def apply_pipeline_status(summary: dict[str, Any], status: str) -> None:
+    completion = status in {"target_met_dry_run_only", "target_met_with_bounded_write"}
+    first_time_proven = bool(summary.get("directml_ai_tagging", {}).get("first_time_media_tag_insertion_proven"))
+    summary["pipeline_contract"] = {
+        "contract_id": CONTRACT_ID,
+        "status": status,
+        "claims": {
+            "target_met": completion,
+            "safe_to_merge": completion,
+            "full_chain_complete": status == "target_met_with_bounded_write" and first_time_proven,
+        },
+    }
 
 
 def build_safety(summary: dict[str, Any]) -> dict[str, Any]:
@@ -855,6 +949,9 @@ def write_reports(summary: dict[str, Any]) -> None:
         "findings_redacted": True,
         "scan_scope": "public_json_and_markdown",
     }
+    if findings:
+        apply_pipeline_status(summary, "blocked_public_redaction_failed")
+        summary["safety"] = build_safety(summary)
     summary["safety"] = build_safety(summary)
     SUMMARY_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     MARKDOWN_PATH.write_text(render_markdown(summary), encoding="utf-8")
@@ -884,6 +981,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"- Input mode: `{scope.get('input_mode')}`.",
         f"- Selected sample count: `{scope.get('selected_count')}`.",
+        f"- Discovered supported files: `{scope.get('supported_files')}`.",
+        f"- Over-cap count: `{scope.get('over_cap_count', 0)}`.",
         f"- Max items: `{config.get('max_items')}`.",
         f"- Full-library fallback: `{not scope.get('no_full_library_fallback', False)}`.",
         f"- Public path redaction: `{scope.get('public_path_redaction')}`.",
@@ -891,6 +990,10 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "## Import / Reuse",
         "",
         f"- Executed import write: `{import_reuse.get('executed')}`.",
+        f"- Import write requested: `{import_reuse.get('write_requested')}`.",
+        f"- Import exact confirmation present: `{import_reuse.get('exact_confirmation_present')}`.",
+        f"- Import write preconditions passed: `{summary.get('import_write_preconditions', {}).get('passed')}`.",
+        f"- Import write blockers: `{summary.get('import_write_preconditions', {}).get('blockers')}`.",
         f"- Imported: `{import_reuse.get('imported_count')}`.",
         f"- Reused: `{import_reuse.get('reused_count')}`.",
         f"- Would import: `{import_reuse.get('would_import_count')}`.",
@@ -911,6 +1014,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"- Executed: `{ai.get('executed')}`.",
         f"- Dry run: `{ai.get('dry_run')}`.",
+        f"- AI tagging exact confirmation present: `{config.get('ai_tagging_confirmation_exact')}`.",
         f"- Actual provider: `{ai.get('provider', {}).get('actual_provider')}`.",
         f"- Processed: `{ai.get('processed')}`.",
         f"- Failed: `{ai.get('failed')}`.",
@@ -936,6 +1040,11 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"- Failed: `{loc.get('failed')}`.",
         f"- External provider used: `{loc.get('llm_external_provider_used')}`.",
         f"- Deferred reason: `{loc.get('deferred_reason')}`.",
+        "",
+        "## Public Redaction",
+        "",
+        f"- Passed: `{summary.get('public_redaction', {}).get('passed')}`.",
+        f"- Finding count: `{summary.get('public_redaction', {}).get('finding_count')}`.",
         "",
         "## Load Control",
         "",
@@ -1008,6 +1117,7 @@ def main(argv: list[str] | None = None) -> int:
 
     started_at = utc_now_iso()
     model_cache: dict[str, Any] = {}
+    import_write_preconditions: dict[str, Any] = {}
     import_reuse: dict[str, Any] = {"reported": False, "status": "not_run"}
     classification: dict[str, Any] = {"reported": False, "status": "not_run"}
     directml_ai_tagging: dict[str, Any] = {"reported": False, "status": "not_run"}
@@ -1018,6 +1128,14 @@ def main(argv: list[str] | None = None) -> int:
 
     with temporary_env(base_runtime_env(max_items, args.provider_preference)):
         model_cache = check_model_cache(local_files_only)
+        import_write_preconditions = build_import_write_preconditions(
+            scope,
+            model_cache,
+            input_mode=input_mode,
+            import_write_requested=bool(args.execute_import),
+            import_confirmed=import_confirmed,
+            local_files_only=local_files_only,
+        )
         db = get_db_session()
         try:
             if input_mode == "media_ids":
@@ -1027,8 +1145,11 @@ def main(argv: list[str] | None = None) -> int:
                 import_reuse, downstream_media_ids = import_or_reuse_from_input(
                     db,
                     candidates,
-                    execute_import=bool(args.execute_import),
+                    write_requested=bool(args.execute_import),
+                    execute_import=bool(args.execute_import and import_write_preconditions.get("passed")),
                     import_confirmed=import_confirmed,
+                    write_preconditions_passed=bool(import_write_preconditions.get("passed")),
+                    write_blockers=list(import_write_preconditions.get("blockers") or []),
                 )
 
             classification = classify_media_scope(db, downstream_media_ids)
@@ -1108,6 +1229,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "scope": scope,
         "model_cache": model_cache,
+        "import_write_preconditions": import_write_preconditions,
         "import_reuse": import_reuse,
         "classification": classification,
         "directml_ai_tagging": directml_ai_tagging,
@@ -1166,21 +1288,11 @@ def main(argv: list[str] | None = None) -> int:
             "Unattended S3B automation remains deferred.",
         ],
     }
-    status = derive_status(summary)
-    completion = status in {"target_met_dry_run_only", "target_met_with_bounded_write"}
-    summary["pipeline_contract"] = {
-        "contract_id": CONTRACT_ID,
-        "status": status,
-        "claims": {
-            "target_met": completion,
-            "safe_to_merge": completion,
-            "full_chain_complete": status == "target_met_with_bounded_write"
-            and bool(directml_ai_tagging.get("first_time_media_tag_insertion_proven")),
-        },
-    }
+    apply_pipeline_status(summary, derive_status(summary))
     summary["safety"] = build_safety(summary)
     write_reports(summary)
-    return 0 if completion else 2
+    final_status = str(summary.get("pipeline_contract", {}).get("status") or "")
+    return 0 if final_status in {"target_met_dry_run_only", "target_met_with_bounded_write"} else 2
 
 
 if __name__ == "__main__":
