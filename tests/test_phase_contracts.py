@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,10 +15,23 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.phase_contracts import REQUIRED_CONTRACT_IDS, check_phase_contract, list_contracts, load_summary_file  # noqa: E402
+from scripts.phase_contracts import contract_checks as contract_checks_module  # noqa: E402
 from scripts.phase_contracts.contract_registry import SOURCE_CONCEPT_FULL_CHAIN_STAGES  # noqa: E402
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
+
+
+def _current_test_head() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "test-head"
 
 
 def _source_concept_summary(**overrides: object) -> dict:
@@ -237,6 +252,136 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
     for key, value in overrides.items():
         summary[key] = value
     return summary
+
+
+def _s2g1x_summary(**overrides: object) -> dict:
+    head = _current_test_head()
+    summary = {
+        "head_evidence": {
+            "probe_run_head_sha": head,
+            "report_generation_head_sha": head,
+            "current_pr_head_sha": "represented_by_pr_metadata_after_commit",
+            "top_level_head_sha_omitted": True,
+        },
+        "pipeline_contract": {
+            "contract_id": "s2g1x_probe_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        },
+        "capability_probe": {
+            "completed": True,
+            "safe_probe": {
+                "no_db_connection": True,
+                "no_production_db_writes": True,
+                "no_media_tags_writes": True,
+                "no_full_library_ai_tagging": True,
+                "no_model_download": True,
+                "local_files_only": True,
+                "sample_count": 3,
+            },
+            "model_identity": {
+                "model_name": "wd-swinv2-tagger-v3",
+                "model_file_cached": True,
+                "label_file_cached": True,
+                "network_download_required": False,
+            },
+            "current_app_backend": {
+                "forced_provider": "CPUExecutionProvider",
+                "hardcoded_cpu_execution_provider": True,
+            },
+            "provider_matrix": {
+                "cpu": {
+                    "provider": "CPUExecutionProvider",
+                    "available": True,
+                    "practical": True,
+                    "loaded": True,
+                    "benchmark_status": "completed",
+                    "throughput_items_per_second": 1.0,
+                },
+                "cuda": {
+                    "provider": "CUDAExecutionProvider",
+                    "available": False,
+                    "practical": False,
+                    "loaded": False,
+                    "benchmark_status": "not_available",
+                },
+                "directml": {
+                    "provider": "DmlExecutionProvider",
+                    "available": False,
+                    "practical": False,
+                    "loaded": False,
+                    "benchmark_status": "not_available",
+                },
+            },
+            "thresholds": {
+                "general_threshold": 0.35,
+                "character_threshold": 0.65,
+                "rating_threshold": 0.5,
+                "suggestion_threshold": 0.2,
+                "batch_max_items": 10,
+            },
+        },
+        "load_control": {
+            "recommended_config": {
+                "batch_size": 2,
+                "worker_count": 1,
+                "max_concurrent_jobs": 1,
+                "preprocess_workers": 2,
+                "cpu_intra_op_threads": 4,
+                "cpu_inter_op_threads": 1,
+                "provider_preference": ["CPUExecutionProvider"],
+            }
+        },
+        "s3a_dev_dry_run_plan": {
+            "production_execution_enabled": False,
+            "unattended_enabled": False,
+            "dry_run_only": True,
+            "stages": [
+                {"name": "update_check", "writes_enabled": False},
+                {"name": "ai_tagging_plan", "writes_enabled": False},
+            ],
+        },
+        "s2g_s3a_decision": {
+            "decision": "share_foundation_split_production_execution",
+            "should_share_job_progress_throttle_ledger_architecture": True,
+            "should_combine_current_production_execution": False,
+            "gpu_load_control_before_s3a_production_execution": True,
+            "production_s3a_execution_enabled": False,
+            "unattended_s3b_enabled": False,
+        },
+        "public_redaction": {"passed": True},
+        "public_reports": {
+            "summary_json_path": "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json",
+            "markdown_report_path": "docs/reports/s2g1x-gpu-ai-tagging-probe.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
+        "safety": {
+            "production_db_writes": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging": False,
+            "production_localization": False,
+            "production_s3a_execution_enabled": False,
+            "unattended_auto_sync_enabled": False,
+            "provider_pixiv_gallery_dl_saucenao_google_calls": False,
+            "sourceconcept_or_entity": False,
+            "confirmed_entity_assignments": False,
+            "source_icloud_mutation": False,
+            "cleanup_delete_reset_drop_truncate": False,
+            "model_download": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def _set_nested(payload: dict, path: str, value: object) -> None:
+    cursor = payload
+    parts = path.split(".")
+    for part in parts[:-1]:
+        cursor = cursor[part]
+    cursor[parts[-1]] = value
 
 
 def _phase47_s2_summary(**overrides: object) -> dict:
@@ -900,6 +1045,241 @@ def test_production_development_separation_rejects_forbidden_current_phase_autho
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "production_development_forbidden_current_phase_authorization" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:
+    result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
+
+    assert result.passed is True
+
+
+def test_s2g1x_probe_contract_accepts_current_canonical_probe_summary() -> None:
+    summary = load_summary_file(ROOT / "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json")
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "expected_code"),
+    [
+        (
+            "capability_probe.model_identity.model_file_cached",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.model_identity.label_file_cached",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.model_identity.network_download_required",
+            True,
+            "s2g1x_completion_requires_network_model_download",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.loaded",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.practical",
+            False,
+            "s2g1x_completion_model_load_evidence_missing",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.benchmark_status",
+            "model_not_cached",
+            "s2g1x_completion_cpu_benchmark_not_completed",
+        ),
+        (
+            "capability_probe.provider_matrix.cpu.throughput_items_per_second",
+            0,
+            "s2g1x_completion_cpu_throughput_missing",
+        ),
+    ],
+)
+def test_s2g1x_probe_contract_requires_model_loaded_evidence_for_completion(
+    path: str, value: object, expected_code: str
+) -> None:
+    summary = _s2g1x_summary()
+    _set_nested(summary, path, value)
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert expected_code in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_requires_gpu_provider_checks_for_completion() -> None:
+    summary = _s2g1x_summary()
+    _set_nested(summary, "capability_probe.provider_matrix.cuda.benchmark_status", "not_requested")
+    _set_nested(summary, "capability_probe.provider_matrix.directml.benchmark_status", "not_requested")
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_completion_provider_not_checked" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_allows_blocked_model_unavailable_without_completion_claim() -> None:
+    summary = _s2g1x_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "s2g1x_probe_contract_v1",
+        "status": "blocked_model_unavailable",
+        "claims": {"target_met": False, "safe_to_merge": False},
+    }
+    _set_nested(summary, "capability_probe.model_identity.model_file_cached", False)
+    _set_nested(summary, "capability_probe.model_identity.label_file_cached", False)
+    _set_nested(summary, "capability_probe.model_identity.network_download_required", True)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.loaded", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.practical", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.benchmark_status", "model_not_cached")
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.throughput_items_per_second", None)
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is True
+
+    blocked_completion = copy.deepcopy(summary)
+    blocked_completion["pipeline_contract"]["claims"]["safe_to_merge"] = True
+
+    blocked_result = check_phase_contract("s2g1x_probe_contract_v1", blocked_completion)
+
+    assert blocked_result.passed is False
+    assert "s2g1x_non_completion_status_claimed_completion" in _error_codes(blocked_result)
+
+
+def test_s2g1x_probe_contract_allows_blocked_probe_unavailable_without_cpu_provider() -> None:
+    summary = _s2g1x_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "s2g1x_probe_contract_v1",
+        "status": "blocked_probe_unavailable",
+        "claims": {"target_met": False, "safe_to_merge": False},
+    }
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.available", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.loaded", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.practical", False)
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.benchmark_status", "not_available")
+    _set_nested(summary, "capability_probe.provider_matrix.cpu.throughput_items_per_second", None)
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s2g1x_probe_contract_independently_scans_public_payload() -> None:
+    summary = _s2g1x_summary()
+    summary["public_redaction"] = {"passed": True}
+    summary["capability_probe"]["leaked_example"] = r"C:\Users\example\private.png"
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_public_payload_redaction_failed" in _error_codes(result)
+    assert "C:\\Users\\example\\private.png" not in _serialized_result(result)
+
+
+def test_s2g1x_probe_contract_scans_markdown_report(monkeypatch) -> None:
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_read_s2g1x_markdown_report",
+        lambda _summary, _result: r"leaked C:\Users\example\private.png",
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
+
+    assert result.passed is False
+    assert "s2g1x_public_payload_redaction_failed" in _error_codes(result)
+    assert "C:\\Users\\example\\private.png" not in _serialized_result(result)
+
+
+def test_s2g1x_probe_contract_rejects_stale_head_evidence_after_probe_code_changes(monkeypatch) -> None:
+    summary = _s2g1x_summary()
+    summary["head_evidence"]["report_generation_head_sha"] = "old-head"
+    monkeypatch.setattr(contract_checks_module, "_current_git_head", lambda: "new-head")
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_changed_paths_between",
+        lambda _old, _new, _paths: ["scripts/run_s2g1_ai_tagging_capability_probe.py"],
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_probe_evidence_stale_for_current_code" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_requires_explicit_false_safety_flags() -> None:
+    summary = _s2g1x_summary()
+    del summary["safety"]["provider_pixiv_gallery_dl_saucenao_google_calls"]
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_required_safety_false_missing_or_true" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_accepts_explicit_false_safety_flags() -> None:
+    result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
+
+    assert result.passed is True
+
+
+def test_s2g1x_probe_contract_requires_s3a_dry_run_only() -> None:
+    base = _s2g1x_summary()
+    summary = _s2g1x_summary(
+        s3a_dev_dry_run_plan={
+            **base["s3a_dev_dry_run_plan"],
+            "dry_run_only": False,
+        }
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_required_probe_proof_missing" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_rejects_model_download_and_production_ai() -> None:
+    base = _s2g1x_summary()
+    summary = _s2g1x_summary(
+        capability_probe={
+            **base["capability_probe"],
+            "safe_probe": {
+                **base["capability_probe"]["safe_probe"],
+                "no_model_download": False,
+            },
+        },
+        safety={**base["safety"], "production_ai_tagging": True, "model_download": True},
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g1x_required_probe_proof_missing" in codes
+    assert "s2g1x_required_safety_false_missing_or_true" in codes
+
+
+def test_s2g1x_probe_contract_rejects_s3a_execution_enabled() -> None:
+    base = _s2g1x_summary()
+    summary = _s2g1x_summary(
+        s3a_dev_dry_run_plan={
+            **base["s3a_dev_dry_run_plan"],
+            "production_execution_enabled": True,
+        },
+        s2g_s3a_decision={
+            **base["s2g_s3a_decision"],
+            "production_s3a_execution_enabled": True,
+        },
+        safety={**base["safety"], "production_s3a_execution_enabled": True},
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert "s2g1x_forbidden_execution_or_mutation" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

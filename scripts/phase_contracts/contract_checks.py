@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from .contract_registry import (
     SOURCE_CONCEPT_ALLOWED_STATUSES,
@@ -15,6 +16,7 @@ from .contract_registry import (
 from .contract_types import ContractCheckResult, PhaseContract
 
 MISSING = object()
+CONTRACT_ROOT = Path(__file__).resolve().parents[2]
 
 WINDOWS_PATH_RE = re.compile(r"(?i)\b[A-Z]:\\[^\s\"'<>|]+")
 UNC_PATH_RE = re.compile(r"\\\\[^\\\s\"'<>|]+\\[^\\\s\"'<>|]+")
@@ -25,6 +27,7 @@ POSIX_PRIVATE_PATH_RE = re.compile(
 TOKEN_RE = re.compile(
     r"(?i)(sk-[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,}|xoxb-[A-Za-z0-9-]{4,}|Authorization\s*:|Bearer\s+[A-Za-z0-9._-]{4,})"
 )
+DB_URL_RE = re.compile(r"(?i)\b(postgresql|postgres|mysql|mariadb|mssql|mongodb|redis|sqlite)://[^\s\"'<>]+")
 HTTP_URL_RE = re.compile(r"(?i)\bhttps?://[^\s\"'<>]+")
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
 SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer|credential)")
@@ -43,6 +46,12 @@ REQUIRED_NON_EMPTY_PROOF_FIELDS = {
     "review_pack",
     "public_report_copy",
 }
+S2G1X_PROBE_EVIDENCE_CODE_PATHS = (
+    "scripts/run_s2g1_ai_tagging_capability_probe.py",
+    "scripts/s2g_s3a_job_control.py",
+    "scripts/phase_contracts/contract_checks.py",
+    "scripts/phase_contracts/contract_registry.py",
+)
 
 REDACTED_VALUES = {
     "",
@@ -416,6 +425,7 @@ def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dic
         ("unc_local_path", UNC_PATH_RE),
         ("file_uri", FILE_URI_RE),
         ("posix_private_path", POSIX_PRIVATE_PATH_RE),
+        ("db_url", DB_URL_RE),
         ("common_secret_or_token", TOKEN_RE),
     )
     for code, pattern in checks:
@@ -1081,6 +1091,22 @@ def _check_required_false_paths(
             result.fail(code, message, path=path, expected=False, actual=True)
 
 
+def _check_explicit_false_paths(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    paths: Iterable[str],
+    *,
+    code: str,
+    message: str,
+) -> None:
+    for path in paths:
+        value = _get(summary, path, MISSING)
+        if value is MISSING:
+            result.fail(code, message, path=path, expected=False, actual="missing")
+        elif value is not False:
+            result.fail(code, message, path=path, expected=False, actual=value)
+
+
 def _production_write_requested(summary: Mapping[str, Any]) -> list[str]:
     write_paths = (
         "write_requests.production_import",
@@ -1348,6 +1374,335 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
     for path in forbidden_true_paths:
         if _as_bool(_get(summary, path, False)):
             result.fail("dynamic_sync_forbidden_execution", "S1 summary reports a forbidden execution path.", path=path, expected=False, actual=True)
+
+
+def _current_git_head() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=CONTRACT_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _changed_paths_between(old_ref: str, new_ref: str, paths: Sequence[str]) -> list[str]:
+    completed = subprocess.run(
+        ["git", "diff", "--name-only", f"{old_ref}..{new_ref}", "--", *paths],
+        cwd=CONTRACT_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return ["[invalid-head-evidence]"]
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _check_s2g1x_head_evidence(summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    evidence_head = str(_get(summary, "head_evidence.report_generation_head_sha", "") or "").strip()
+    if not evidence_head:
+        result.fail(
+            "s2g1x_head_evidence_missing",
+            "S2G-1X summaries must record the probe/report-generation head evidence.",
+            path="head_evidence.report_generation_head_sha",
+            expected="non-empty git ref",
+            actual=evidence_head,
+        )
+        return
+    current_head = _current_git_head()
+    if not current_head or evidence_head == current_head:
+        return
+    changed_paths = _changed_paths_between(evidence_head, current_head, S2G1X_PROBE_EVIDENCE_CODE_PATHS)
+    result.details["s2g1x_probe_code_paths_changed_after_evidence"] = changed_paths
+    if changed_paths:
+        result.fail(
+            "s2g1x_probe_evidence_stale_for_current_code",
+            "S2G-1X probe/report evidence was generated before later probe, shared scaffold, or contract code changes.",
+            path="head_evidence.report_generation_head_sha",
+            expected=f"no changes under {list(S2G1X_PROBE_EVIDENCE_CODE_PATHS)} after evidence head",
+            actual={"evidence_head": evidence_head, "current_head": current_head, "changed_paths": changed_paths},
+        )
+
+
+def _read_s2g1x_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    raw_path = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if raw_path is MISSING or not str(raw_path).strip():
+        result.fail(
+            "s2g1x_markdown_report_path_missing",
+            "S2G-1X summaries must name the public Markdown report path for contract redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative docs/reports/*.md path",
+            actual=None,
+        )
+        return ""
+    path_text = str(raw_path).replace("\\", "/")
+    candidate = Path(path_text)
+    if candidate.is_absolute() or candidate.drive or ".." in candidate.parts or not path_text.startswith("docs/reports/") or candidate.suffix != ".md":
+        result.fail(
+            "s2g1x_markdown_report_path_unsafe",
+            "S2G-1X Markdown report path must be a safe repo-relative docs/reports/*.md path.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative docs/reports/*.md path",
+            actual="[redacted-path]" if "\\" in path_text or "/" in path_text else path_text,
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s2g1x_markdown_report_path_escape",
+            "S2G-1X Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s2g1x_markdown_report_missing",
+            "S2G-1X Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s2g1x_markdown_report_unreadable",
+            "S2G-1X Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
+def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {"target_met", "evidence_collected", "blocked_model_unavailable", "blocked_probe_unavailable"}
+    status = str(result.status or "").casefold()
+    completion_claimed = status == "target_met" or _completion_or_approval_claimed(result)
+    _check_s2g1x_head_evidence(summary, result)
+    if status not in allowed_statuses:
+        result.fail(
+            "s2g1x_unknown_status",
+            "S2G-1X status must be an explicit probe status.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+
+    if status != "target_met" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s2g1x_non_completion_status_claimed_completion",
+            "S2G-1X blocked or evidence-only statuses must not claim target_met, route approval, full-chain completion, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met for completion claims",
+            actual=result.status,
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "capability_probe.completed",
+            "capability_probe.safe_probe.no_db_connection",
+            "capability_probe.safe_probe.no_production_db_writes",
+            "capability_probe.safe_probe.no_media_tags_writes",
+            "capability_probe.safe_probe.no_full_library_ai_tagging",
+            "capability_probe.safe_probe.no_model_download",
+            "capability_probe.safe_probe.local_files_only",
+            "s3a_dev_dry_run_plan.dry_run_only",
+            "s2g_s3a_decision.should_share_job_progress_throttle_ledger_architecture",
+            "s2g_s3a_decision.gpu_load_control_before_s3a_production_execution",
+            "public_redaction.passed",
+        ),
+        code="s2g1x_required_probe_proof_missing",
+        message="S2G-1X requires a completed safe local probe, CPU fallback evidence, shared-architecture decision, and public redaction proof.",
+    )
+
+    _check_required_false_paths(
+        summary,
+        result,
+        (
+            "capability_probe.model_identity.model_download_performed",
+            "s3a_dev_dry_run_plan.production_execution_enabled",
+            "s3a_dev_dry_run_plan.unattended_enabled",
+            "s2g_s3a_decision.should_combine_current_production_execution",
+            "s2g_s3a_decision.production_s3a_execution_enabled",
+            "s2g_s3a_decision.unattended_s3b_enabled",
+        ),
+        code="s2g1x_forbidden_execution_or_mutation",
+        message="S2G-1X must not enable production execution, unattended sync, providers, SourceConcept/Entity, destructive actions, or model downloads.",
+    )
+
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "safety.production_db_writes",
+            "safety.production_import",
+            "safety.production_classification",
+            "safety.production_ai_tagging",
+            "safety.production_localization",
+            "safety.production_s3a_execution_enabled",
+            "safety.unattended_auto_sync_enabled",
+            "safety.provider_pixiv_gallery_dl_saucenao_google_calls",
+            "safety.sourceconcept_or_entity",
+            "safety.confirmed_entity_assignments",
+            "safety.source_icloud_mutation",
+            "safety.cleanup_delete_reset_drop_truncate",
+            "safety.model_download",
+        ),
+        code="s2g1x_required_safety_false_missing_or_true",
+        message="S2G-1X safety proofs must explicitly set every forbidden operation flag to false.",
+    )
+
+    markdown_text = _read_s2g1x_markdown_report(summary, result)
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
+    result.details["s2g1x_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s2g1x_public_payload_redaction_failed",
+            "S2G-1X contract independently found forbidden public JSON or Markdown content; public_redaction.passed cannot be trusted alone.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
+    if completion_claimed:
+        _check_required_boolean_paths(
+            summary,
+            result,
+            (
+                "capability_probe.model_identity.model_file_cached",
+                "capability_probe.model_identity.label_file_cached",
+                "capability_probe.provider_matrix.cpu.available",
+                "capability_probe.provider_matrix.cpu.loaded",
+                "capability_probe.provider_matrix.cpu.practical",
+            ),
+            code="s2g1x_completion_model_load_evidence_missing",
+            message="S2G-1X completion claims require cached model and labels plus actual CPU model-load evidence.",
+        )
+        if _as_bool(_get(summary, "capability_probe.model_identity.network_download_required", False)):
+            result.fail(
+                "s2g1x_completion_requires_network_model_download",
+                "S2G-1X completion claims require a locally cached model and must not require a network download.",
+                path="capability_probe.model_identity.network_download_required",
+                expected=False,
+                actual=True,
+            )
+        benchmark_status = str(_get(summary, "capability_probe.provider_matrix.cpu.benchmark_status", "")).casefold()
+        if benchmark_status != "completed":
+            result.fail(
+                "s2g1x_completion_cpu_benchmark_not_completed",
+                "S2G-1X completion claims require the CPU provider benchmark to complete.",
+                path="capability_probe.provider_matrix.cpu.benchmark_status",
+                expected="completed",
+                actual=_get(summary, "capability_probe.provider_matrix.cpu.benchmark_status", None),
+            )
+        throughput = _get(summary, "capability_probe.provider_matrix.cpu.throughput_items_per_second", MISSING)
+        if throughput is MISSING or _as_float(throughput, 0.0) <= 0:
+            result.fail(
+                "s2g1x_completion_cpu_throughput_missing",
+                "S2G-1X completion claims require positive CPU throughput evidence.",
+                path="capability_probe.provider_matrix.cpu.throughput_items_per_second",
+                expected="> 0",
+                actual=None if throughput is MISSING else throughput,
+            )
+        for provider_key_name in ("cuda", "directml", "cpu"):
+            row = _get(summary, f"capability_probe.provider_matrix.{provider_key_name}", MISSING)
+            status_value = _get(summary, f"capability_probe.provider_matrix.{provider_key_name}.benchmark_status", MISSING)
+            if not isinstance(row, Mapping) or status_value is MISSING:
+                result.fail(
+                    "s2g1x_completion_provider_check_missing",
+                    "S2G-1X completion claims require explicit CUDA, DirectML, and CPU provider checks.",
+                    path=f"capability_probe.provider_matrix.{provider_key_name}",
+                    expected="provider row with benchmark_status",
+                    actual=None if row is MISSING else row,
+                )
+                continue
+            if str(status_value).casefold() == "not_requested":
+                result.fail(
+                    "s2g1x_completion_provider_not_checked",
+                    "S2G-1X completion claims require CUDA, DirectML, and CPU providers to be explicitly checked, even when unavailable.",
+                    path=f"capability_probe.provider_matrix.{provider_key_name}.benchmark_status",
+                    expected="checked provider status",
+                    actual=status_value,
+                )
+
+    sample_count = _as_int(_get(summary, "capability_probe.safe_probe.sample_count", 0))
+    if sample_count < 1 or sample_count > 16:
+        result.fail(
+            "s2g1x_unbounded_sample_count",
+            "The AI tagging probe must use a tiny bounded sample.",
+            path="capability_probe.safe_probe.sample_count",
+            expected="1..16",
+            actual=sample_count,
+        )
+
+    model_name = str(_get(summary, "capability_probe.model_identity.model_name", ""))
+    if not model_name.startswith("wd-"):
+        result.fail(
+            "s2g1x_model_identity_not_wd",
+            "The probe must record a WD tagger model identity.",
+            path="capability_probe.model_identity.model_name",
+            expected="wd-*",
+            actual=model_name,
+        )
+
+    forced_provider = str(_get(summary, "capability_probe.current_app_backend.forced_provider", ""))
+    if forced_provider != "CPUExecutionProvider":
+        result.warn(
+            "s2g1x_current_app_provider_not_cpu",
+            "Current app provider is not the expected hardcoded CPU provider; verify whether runtime code changed.",
+            path="capability_probe.current_app_backend.forced_provider",
+            expected="CPUExecutionProvider",
+            actual=forced_provider,
+        )
+
+    batch_size = _as_int(_get(summary, "load_control.recommended_config.batch_size", 0))
+    worker_count = _as_int(_get(summary, "load_control.recommended_config.worker_count", 0))
+    concurrent_jobs = _as_int(_get(summary, "load_control.recommended_config.max_concurrent_jobs", 0))
+    if batch_size < 1 or batch_size > 16:
+        result.fail(
+            "s2g1x_load_control_batch_unbounded",
+            "S2G-1X load-control batch size must be bounded.",
+            path="load_control.recommended_config.batch_size",
+            expected="1..16",
+            actual=batch_size,
+        )
+    if worker_count != 1 or concurrent_jobs != 1:
+        result.fail(
+            "s2g1x_parallel_execution_enabled_too_early",
+            "S2G-1X must keep worker count and concurrent jobs at one until load control is implemented.",
+            path="load_control.recommended_config",
+            expected={"worker_count": 1, "max_concurrent_jobs": 1},
+            actual={"worker_count": worker_count, "max_concurrent_jobs": concurrent_jobs},
+        )
+
+    plan_stages = _get(summary, "s3a_dev_dry_run_plan.stages", [])
+    if not isinstance(plan_stages, list) or not plan_stages:
+        result.fail(
+            "s2g1x_s3a_plan_stages_missing",
+            "S2G-1X must include a dry-run-only S3A stage skeleton.",
+            path="s3a_dev_dry_run_plan.stages",
+            expected="non-empty list",
+            actual=plan_stages,
+        )
+    elif any(_as_bool(stage.get("writes_enabled", False)) for stage in plan_stages if isinstance(stage, Mapping)):
+        result.fail(
+            "s2g1x_s3a_plan_write_stage_enabled",
+            "The current S3A scaffold must not enable write stages.",
+            path="s3a_dev_dry_run_plan.stages",
+            expected="all writes_enabled=false",
+        )
 
 
 def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
@@ -1755,5 +2110,6 @@ CUSTOM_CHECKS = {
     "entity_truth_bridge": _check_entity_truth_bridge,
     "production_development_separation": _check_production_development_separation,
     "dynamic_library_sync": _check_dynamic_library_sync,
+    "s2g1x_probe": _check_s2g1x_probe,
     "phase47_s2_baseline": _check_phase47_s2_baseline,
 }
