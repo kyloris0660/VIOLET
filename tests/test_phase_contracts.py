@@ -589,6 +589,8 @@ def _s2g_real1_summary(**overrides: object) -> dict:
         "skipped_locked": 0,
         "ignored_low_confidence": 9,
         "failed": 0,
+        "rollback_error": False,
+        "error_state": False,
         "predicted_tag_count": 23,
         "media_tags_count_before": 10,
         "media_tags_count_after": 10,
@@ -681,13 +683,28 @@ def _s2g_real1_summary(**overrides: object) -> dict:
             "executed": False,
             "status": "not_run_not_requested",
             "required_confirmation_present": False,
+            "selected_media_count": 0,
+            "processed": 0,
             "media_tags_count_delta": 0,
             "tags_added": 0,
             "suggestions_added": 0,
             "skipped_locked": 0,
             "ignored_low_confidence": 0,
             "failed": 0,
+            "rollback_error": False,
+            "error_state": False,
             "tag_source_values_used": ["ai_wd"],
+        },
+        "write_prerequisites": {
+            "selected_media_count_within_cap": True,
+            "model_cache_available": True,
+            "primary_dry_run_success": True,
+            "primary_provider_evidence_present": True,
+            "cpu_fallback_success": True,
+            "public_private_scope_clean": True,
+            "exact_write_confirmation_present": False,
+            "write_executed_after_prerequisites_passed": True,
+            "all_passed": False,
         },
         "primary_provider_validation": dry_run,
         "cpu_fallback_validation": cpu_fallback,
@@ -713,6 +730,8 @@ def _s2g_real1_summary(**overrides: object) -> dict:
             "dry_run_before_write": True,
             "ai_tagging_write_without_confirmation": False,
             "media_tags_write_executed": False,
+            "write_requested_without_exact_confirmation": False,
+            "write_executed_after_prerequisites_passed": True,
             "dry_run_media_tags_write": False,
             "production_s3a_execution_enabled": False,
             "unattended_s3b_enabled": False,
@@ -733,7 +752,7 @@ def _s2g_real1_summary(**overrides: object) -> dict:
         },
         "public_reports": {
             "summary_json_path": "docs/reports/s2g-real1-bounded-ai-tagging-validation-summary.json",
-            "markdown_report_path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation.md",
+            "markdown_report_path": "docs/reports/s2g-real1-bounded-ai-tagging-validation.md",
             "path_style": "repo_relative_public_artifacts",
         },
         "public_redaction": {"passed": True, "finding_count": 0},
@@ -1781,9 +1800,12 @@ def test_s2g_real1_contract_rejects_max_items_above_cap() -> None:
 
 def test_s2g_real1_contract_rejects_write_without_exact_confirmation() -> None:
     summary = copy.deepcopy(_s2g_real1_summary())
+    summary["run_configuration"]["write_requested"] = True
     summary["write_run"]["executed"] = True
     summary["write_run"]["selected_media_count"] = 3
+    summary["write_run"]["processed"] = 3
     summary["safety"]["media_tags_write_executed"] = True
+    summary["safety"]["write_requested_without_exact_confirmation"] = True
 
     result = check_phase_contract(
         "s2g_real1_bounded_ai_tagging_validation_contract_v1",
@@ -1791,6 +1813,143 @@ def test_s2g_real1_contract_rejects_write_without_exact_confirmation() -> None:
     )
 
     assert "s2g_real1_write_without_exact_confirmation" in _error_codes(result)
+
+
+def test_s2g_real1_contract_rejects_execute_without_confirmation_as_dry_run_target() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["run_configuration"]["write_requested"] = True
+    summary["write_run"]["status"] = "not_run_missing_exact_operator_confirmation"
+    summary["safety"]["write_requested_without_exact_confirmation"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_write_requested_without_exact_confirmation_not_blocked" in codes
+    assert "s2g_real1_dry_run_target_with_write_requested" in codes
+
+
+def test_s2g_real1_contract_accepts_successful_bounded_write() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["pipeline_contract"]["claims"]["target_met"] = True
+    summary["pipeline_contract"]["claims"]["safe_to_merge"] = True
+    summary["run_configuration"]["mode"] = "execute"
+    summary["run_configuration"]["write_requested"] = True
+    summary["run_configuration"]["operator_confirmation_exact"] = True
+    summary["write_run"] = {
+        "executed": True,
+        "status": "completed",
+        "required_confirmation_present": True,
+        "selected_media_count": 3,
+        "processed": 3,
+        "media_tags_count_before": 10,
+        "media_tags_count_after": 15,
+        "media_tags_count_delta": 5,
+        "tags_added": 5,
+        "suggestions_added": 0,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 9,
+        "failed": 0,
+        "rollback_error": False,
+        "error_state": False,
+        "tag_source_values_used": ["ai_wd"],
+    }
+    summary["write_prerequisites"]["exact_write_confirmation_present"] = True
+    summary["write_prerequisites"]["all_passed"] = True
+    summary["safety"]["media_tags_write_executed"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+
+    assert result.passed is True
+
+
+def test_s2g_real1_contract_rejects_failed_bounded_write_target() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["run_configuration"]["mode"] = "execute"
+    summary["run_configuration"]["write_requested"] = True
+    summary["run_configuration"]["operator_confirmation_exact"] = True
+    summary["write_run"].update(
+        {
+            "executed": True,
+            "status": "completed_with_item_failures",
+            "required_confirmation_present": True,
+            "selected_media_count": 3,
+            "processed": 3,
+            "failed": 1,
+        }
+    )
+    summary["write_prerequisites"]["exact_write_confirmation_present"] = True
+    summary["write_prerequisites"]["all_passed"] = True
+    summary["safety"]["media_tags_write_executed"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_write_run_failed_not_blocked" in codes
+    assert "s2g_real1_write_run_failed_target" in codes
+
+
+def test_s2g_real1_contract_rejects_write_before_cpu_fallback_prerequisite() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_with_bounded_write"
+    summary["run_configuration"]["mode"] = "execute"
+    summary["run_configuration"]["write_requested"] = True
+    summary["run_configuration"]["operator_confirmation_exact"] = True
+    summary["write_run"].update(
+        {
+            "executed": True,
+            "status": "completed",
+            "required_confirmation_present": True,
+            "selected_media_count": 3,
+            "processed": 3,
+            "media_tags_count_delta": 2,
+        }
+    )
+    summary["write_prerequisites"]["exact_write_confirmation_present"] = True
+    summary["write_prerequisites"]["cpu_fallback_success"] = False
+    summary["write_prerequisites"]["write_executed_after_prerequisites_passed"] = False
+    summary["write_prerequisites"]["all_passed"] = False
+    summary["safety"]["media_tags_write_executed"] = True
+    summary["safety"]["write_executed_after_prerequisites_passed"] = False
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_write_before_prerequisites" in codes
+    assert "s2g_real1_write_target_without_prerequisites" in codes
+    assert "s2g_real1_write_target_missing_prerequisite" in codes
+
+
+def test_s2g_real1_contract_rejects_model_download_target() -> None:
+    summary = copy.deepcopy(_s2g_real1_summary())
+    summary["pipeline_contract"]["status"] = "target_met_dry_run_only"
+    summary["run_configuration"]["local_files_only"] = False
+    summary["run_configuration"]["model_download_allowed"] = True
+    summary["model_cache"]["local_files_only"] = False
+    summary["model_cache"]["model_download_allowed"] = True
+    summary["safety"]["model_download"] = True
+
+    result = check_phase_contract(
+        "s2g_real1_bounded_ai_tagging_validation_contract_v1",
+        summary,
+    )
+    codes = _error_codes(result)
+
+    assert "s2g_real1_model_download_allowed_claimed_target" in codes
+    assert "s2g_real1_model_download_allowed_not_blocked" in codes
 
 
 def test_s2g_real1_contract_rejects_missing_primary_provider() -> None:

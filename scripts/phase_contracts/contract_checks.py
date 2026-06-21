@@ -2133,13 +2133,19 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
         "target_met_dry_run_only",
         "target_met_with_bounded_write",
         "blocked_no_media",
+        "blocked_scope_invalid",
         "blocked_model_cache_missing",
+        "blocked_model_download_allowed",
         "blocked_dry_run_not_completed",
         "blocked_dry_run_item_failures",
         "blocked_cpu_fallback_not_validated",
+        "blocked_write_item_failures",
+        "blocked_write_prerequisites_failed",
+        "blocked_write_requested_without_exact_confirmation",
         "blocked_write_requested_not_completed",
     }
     status = str(result.status or "").casefold()
+    target_statuses = {"target_met_dry_run_only", "target_met_with_bounded_write"}
     if status not in allowed_statuses:
         result.fail(
             "s2g_real1_unknown_status",
@@ -2148,7 +2154,7 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
             expected=sorted(allowed_statuses),
             actual=result.status,
         )
-    if status not in {"target_met_dry_run_only", "target_met_with_bounded_write"} and _completion_or_approval_claimed(result):
+    if status not in target_statuses and _completion_or_approval_claimed(result):
         result.fail(
             "s2g_real1_non_completion_status_claimed_completion",
             "Blocked S2G-REAL1 summaries must not claim target_met or safe_to_merge.",
@@ -2209,6 +2215,16 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
     max_items = _as_int(_get(summary, "run_configuration.max_items", 0))
     selected_count = _as_int(_get(summary, "selected_media.count", 0))
     dry_selected = _as_int(_get(summary, "dry_run.selected_media_count", 0))
+    dry_processed = _as_int(_get(summary, "dry_run.processed", 0))
+    dry_status = str(_get(summary, "dry_run.status", "") or "").casefold()
+    dry_failed = _as_int(_get(summary, "dry_run.failed", 0))
+    dry_error_state = _as_bool(_get(summary, "dry_run.error_state", False)) or _as_bool(_get(summary, "dry_run.rollback_error", False))
+    cpu_status = str(_get(summary, "cpu_fallback_validation.status", "") or "").casefold()
+    cpu_failed = _as_int(_get(summary, "cpu_fallback_validation.failed", 0))
+    cpu_error_state = _as_bool(_get(summary, "cpu_fallback_validation.error_state", False)) or _as_bool(_get(summary, "cpu_fallback_validation.rollback_error", False))
+    write_requested = _as_bool(_get(summary, "run_configuration.write_requested", False))
+    write_executed = _as_bool(_get(summary, "write_run.executed", False))
+    confirmation = _as_bool(_get(summary, "run_configuration.operator_confirmation_exact", False))
     if not (1 <= max_items <= 5):
         result.fail(
             "s2g_real1_max_items_unbounded",
@@ -2232,6 +2248,22 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
             path="dry_run.selected_media_count",
             expected=selected_count,
             actual=dry_selected,
+        )
+
+    dry_success = (
+        _as_bool(_get(summary, "dry_run.executed", False))
+        and dry_status == "completed"
+        and dry_failed == 0
+        and dry_processed == selected_count
+        and not dry_error_state
+    )
+    if status in target_statuses and not dry_success:
+        result.fail(
+            "s2g_real1_target_without_successful_dry_run",
+            "S2G-REAL1 target_met requires a completed primary dry-run with zero item failures.",
+            path="dry_run",
+            expected={"status": "completed", "failed": 0, "processed": selected_count},
+            actual={"status": _get(summary, "dry_run.status", None), "failed": dry_failed, "processed": dry_processed},
         )
 
     dry_delta = _as_int(_get(summary, "dry_run.media_tags_count_delta", 0))
@@ -2304,6 +2336,23 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
             actual=_get(summary, "cpu_fallback_validation.media_tags_count_delta", None),
         )
 
+    cpu_success = (
+        _as_bool(_get(summary, "cpu_fallback_validation.executed", False))
+        and cpu_status == "completed"
+        and cpu_failed == 0
+        and not cpu_error_state
+        and cpu_actual == "CPUExecutionProvider"
+        and _as_int(_get(summary, "cpu_fallback_validation.media_tags_count_delta", 0)) == 0
+    )
+    if status in target_statuses and not cpu_success:
+        result.fail(
+            "s2g_real1_target_without_successful_cpu_fallback",
+            "S2G-REAL1 target_met requires a completed CPU fallback validation with zero failures.",
+            path="cpu_fallback_validation",
+            expected={"status": "completed", "failed": 0, "actual_provider": "CPUExecutionProvider"},
+            actual={"status": _get(summary, "cpu_fallback_validation.status", None), "failed": cpu_failed, "actual_provider": cpu_actual},
+        )
+
     effective_batch = _as_int(_get(summary, "load_control_observations.effective_batch_size", 0))
     intra = _as_int(_get(summary, "load_control_observations.cpu_intra_op_threads", 0))
     inter = _as_int(_get(summary, "load_control_observations.cpu_inter_op_threads", 0))
@@ -2320,8 +2369,32 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
     if max_jobs != 1:
         result.fail("s2g_real1_max_concurrent_jobs_unbounded", "S2G-REAL1 must keep max concurrent AI jobs at one.", path="load_control_observations.max_concurrent_ai_jobs", expected=1, actual=max_jobs)
 
-    write_executed = _as_bool(_get(summary, "write_run.executed", False))
-    confirmation = _as_bool(_get(summary, "run_configuration.operator_confirmation_exact", False))
+    model_download_allowed = _as_bool(_get(summary, "run_configuration.model_download_allowed", False)) or _as_bool(_get(summary, "model_cache.model_download_allowed", False))
+    if model_download_allowed and status in target_statuses:
+        result.fail(
+            "s2g_real1_model_download_allowed_claimed_target",
+            "S2G-REAL1 public validation must remain local-cache-only and cannot claim target_met when model download is allowed.",
+            path="run_configuration.model_download_allowed",
+            expected=False,
+            actual=_get(summary, "run_configuration.model_download_allowed", None),
+        )
+    if model_download_allowed and status != "blocked_model_download_allowed":
+        result.fail(
+            "s2g_real1_model_download_allowed_not_blocked",
+            "Model download allowance must produce blocked_model_download_allowed for S2G-REAL1 public validation.",
+            path="pipeline_contract.status",
+            expected="blocked_model_download_allowed",
+            actual=result.status,
+        )
+
+    if write_requested and not confirmation and status != "blocked_write_requested_without_exact_confirmation":
+        result.fail(
+            "s2g_real1_write_requested_without_exact_confirmation_not_blocked",
+            "An --execute request without the exact operator confirmation must block, not fall through to dry-run target_met.",
+            path="pipeline_contract.status",
+            expected="blocked_write_requested_without_exact_confirmation",
+            actual=result.status,
+        )
     if write_executed and not confirmation:
         result.fail(
             "s2g_real1_write_without_exact_confirmation",
@@ -2330,7 +2403,56 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
             expected=True,
             actual=False,
         )
-    if confirmation and status == "target_met_with_bounded_write" and not write_executed:
+
+    if status == "target_met_dry_run_only":
+        if write_requested:
+            result.fail(
+                "s2g_real1_dry_run_target_with_write_requested",
+                "target_met_dry_run_only is only valid when no write run was requested.",
+                path="run_configuration.write_requested",
+                expected=False,
+                actual=True,
+            )
+        if write_executed:
+            result.fail(
+                "s2g_real1_dry_run_target_with_write_executed",
+                "target_met_dry_run_only must not include a bounded write execution.",
+                path="write_run.executed",
+                expected=False,
+                actual=True,
+            )
+
+    write_status = str(_get(summary, "write_run.status", "") or "").casefold()
+    write_failed = _as_int(_get(summary, "write_run.failed", 0))
+    write_processed = _as_int(_get(summary, "write_run.processed", 0))
+    write_delta_present = _has_non_null(summary, "write_run.media_tags_count_delta")
+    write_error_state = _as_bool(_get(summary, "write_run.error_state", False)) or _as_bool(_get(summary, "write_run.rollback_error", False))
+    write_prerequisites_all_passed = _as_bool(_get(summary, "write_prerequisites.all_passed", False))
+    write_after_prerequisites = _as_bool(_get(summary, "write_prerequisites.write_executed_after_prerequisites_passed", False))
+    if write_executed and not write_after_prerequisites:
+        result.fail(
+            "s2g_real1_write_before_prerequisites",
+            "Bounded write must not execute until dry-run, CPU fallback, model cache, scope, redaction, and confirmation prerequisites pass.",
+            path="write_prerequisites.write_executed_after_prerequisites_passed",
+            expected=True,
+            actual=False,
+        )
+    write_has_item_failures = write_executed and (
+        write_status != "completed"
+        or write_failed != 0
+        or write_processed != selected_count
+        or not write_delta_present
+        or write_error_state
+    )
+    if write_has_item_failures and status != "blocked_write_item_failures":
+        result.fail(
+            "s2g_real1_write_run_failed_not_blocked",
+            "A bounded write with item failures, rollback/error state, missing delta, or scope mismatch must block.",
+            path="pipeline_contract.status",
+            expected="blocked_write_item_failures",
+            actual=result.status,
+        )
+    if status == "target_met_with_bounded_write" and not write_executed:
         result.fail(
             "s2g_real1_confirmed_write_missing",
             "A target_met_with_bounded_write summary must include an executed write result.",
@@ -2338,6 +2460,60 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
             expected=True,
             actual=False,
         )
+    if status == "target_met_with_bounded_write":
+        if not write_requested:
+            result.fail(
+                "s2g_real1_write_target_without_write_requested",
+                "target_met_with_bounded_write requires an explicit write request.",
+                path="run_configuration.write_requested",
+                expected=True,
+                actual=False,
+            )
+        if not confirmation:
+            result.fail(
+                "s2g_real1_write_target_without_exact_confirmation",
+                "target_met_with_bounded_write requires exact operator confirmation.",
+                path="run_configuration.operator_confirmation_exact",
+                expected=True,
+                actual=False,
+            )
+        if not write_prerequisites_all_passed:
+            result.fail(
+                "s2g_real1_write_target_without_prerequisites",
+                "target_met_with_bounded_write requires all write prerequisites to pass before execution.",
+                path="write_prerequisites.all_passed",
+                expected=True,
+                actual=_get(summary, "write_prerequisites.all_passed", None),
+            )
+        required_prerequisite_paths = (
+            "write_prerequisites.primary_dry_run_success",
+            "write_prerequisites.cpu_fallback_success",
+            "write_prerequisites.exact_write_confirmation_present",
+            "write_prerequisites.write_executed_after_prerequisites_passed",
+        )
+        for path in required_prerequisite_paths:
+            if not _as_bool(_get(summary, path, False)):
+                result.fail(
+                    "s2g_real1_write_target_missing_prerequisite",
+                    "target_met_with_bounded_write requires successful dry-run, CPU fallback, confirmation, and post-prerequisite execution proof.",
+                    path=path,
+                    expected=True,
+                    actual=_get(summary, path, None),
+                )
+        if write_has_item_failures:
+            result.fail(
+                "s2g_real1_write_run_failed_target",
+                "target_met_with_bounded_write requires a completed bounded write with failed=0, processed scope match, present delta, and no rollback/error state.",
+                path="write_run",
+                expected={"status": "completed", "failed": 0, "processed": selected_count, "media_tags_count_delta": "present"},
+                actual={
+                    "status": _get(summary, "write_run.status", None),
+                    "failed": write_failed,
+                    "processed": write_processed,
+                    "media_tags_count_delta_present": write_delta_present,
+                    "error_state": write_error_state,
+                },
+            )
     if write_executed and _as_int(_get(summary, "write_run.selected_media_count", selected_count)) > 5:
         result.fail(
             "s2g_real1_write_scope_unbounded",

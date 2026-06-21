@@ -169,14 +169,16 @@ def select_media_ids(
     content_classes: list[str],
     max_items: int,
     candidate_scan_limit: int,
+    prefer_without_ai_tags: bool = True,
 ) -> tuple[list[int], dict[str, Any]]:
-    from sqlalchemy import or_
+    from sqlalchemy import or_, select
 
     from backend.app.enums import ContentClassEnum
-    from backend.app.models import Media
+    from backend.app.models import Media, blombooru_media_tags
     from backend.app.services.ai_tagging_service import _resolve_media_file
 
     selection_mode = "explicit_media_ids" if explicit_media_ids is not None else "content_class_filter"
+    preferred_without_ai_tags_count = 0
     if explicit_media_ids is not None:
         if not explicit_media_ids:
             raise ValueError("Explicit media_ids resolved to an empty list.")
@@ -184,7 +186,10 @@ def select_media_ids(
             raise ValueError("Explicit media_ids exceed max_items.")
         rows = db.query(Media).filter(Media.id.in_(explicit_media_ids)).all()
         by_id = {int(row.id): row for row in rows}
-        ordered_rows = [by_id[mid] for mid in explicit_media_ids if mid in by_id]
+        missing_count = sum(1 for mid in explicit_media_ids if mid not in by_id)
+        if missing_count:
+            raise ValueError("Explicit media_ids include missing database rows.")
+        ordered_rows = [by_id[mid] for mid in explicit_media_ids]
         candidate_count = len(ordered_rows)
     else:
         conditions = []
@@ -196,7 +201,24 @@ def select_media_ids(
         query = db.query(Media).order_by(Media.id.asc())
         if conditions:
             query = query.filter(or_(*conditions))
-        ordered_rows = query.limit(candidate_scan_limit).all()
+        if prefer_without_ai_tags:
+            ai_tagged = (
+                select(blombooru_media_tags.c.media_id)
+                .where(blombooru_media_tags.c.source == "ai_wd")
+                .distinct()
+            )
+            preferred_rows = query.filter(~Media.id.in_(ai_tagged)).limit(candidate_scan_limit).all()
+            ordered_rows = list(preferred_rows)
+            preferred_without_ai_tags_count = len(preferred_rows)
+            if len(ordered_rows) < max_items:
+                seen_ids = [int(row.id) for row in ordered_rows]
+                fill_query = query
+                if seen_ids:
+                    fill_query = fill_query.filter(~Media.id.in_(seen_ids))
+                fill_rows = fill_query.limit(candidate_scan_limit - len(ordered_rows)).all()
+                ordered_rows.extend(fill_rows)
+        else:
+            ordered_rows = query.limit(candidate_scan_limit).all()
         candidate_count = len(ordered_rows)
 
     selected: list[int] = []
@@ -208,12 +230,27 @@ def select_media_ids(
         selected.append(int(media.id))
         if len(selected) >= max_items:
             break
+    if selected:
+        tagged_rows = (
+            db.query(blombooru_media_tags.c.media_id)
+            .filter(
+                blombooru_media_tags.c.source == "ai_wd",
+                blombooru_media_tags.c.media_id.in_(selected),
+            )
+            .distinct()
+            .all()
+        )
+        existing_ai_tagged_ids = {int(row[0]) for row in tagged_rows}
+        preferred_without_ai_tags_count = sum(1 for media_id in selected if media_id not in existing_ai_tagged_ids)
 
     summary = {
         "selection_mode": selection_mode,
         "content_class_filter": content_classes if explicit_media_ids is None else [],
         "explicit_media_ids_supplied": explicit_media_ids is not None,
         "explicit_media_ids_publicly_recorded": False,
+        "explicit_media_ids_missing_count": 0,
+        "prefer_without_existing_ai_tags": prefer_without_ai_tags and explicit_media_ids is None,
+        "selected_without_existing_ai_tags_count": preferred_without_ai_tags_count,
         "candidate_scan_limit": candidate_scan_limit,
         "candidate_rows_reviewed": candidate_count,
         "skipped_missing_local_file_count": skipped_missing,
@@ -278,6 +315,7 @@ def run_validation_pass(
     results: list[dict[str, Any]] = []
     public_results: list[dict[str, Any]] = []
     provenance: dict[str, Any] | None = None
+    rollback_error = False
 
     with temporary_env(env):
         for media_id in media_ids:
@@ -290,13 +328,19 @@ def run_validation_pass(
                     local_files_only=local_files_only,
                 )
                 if dry_run:
-                    db.rollback()
+                    try:
+                        db.rollback()
+                    except Exception:  # noqa: BLE001
+                        rollback_error = True
                 if provenance is None and isinstance(result.get("provenance"), dict):
                     provenance = result["provenance"]
                 results.append(result)
                 public_results.append(public_result_entry(result))
             except Exception as exc:  # noqa: BLE001 - public report records type only.
-                db.rollback()
+                try:
+                    db.rollback()
+                except Exception:  # noqa: BLE001
+                    rollback_error = True
                 results.append({"error_type": exc.__class__.__name__})
                 public_results.append({"status": "failed", "error_type": exc.__class__.__name__})
 
@@ -316,11 +360,12 @@ def run_validation_pass(
     predicted_count = sum(len(result.get("predictions", []) or []) for result in results)
     provider = provenance.get("provider", {}) if isinstance(provenance, dict) else {}
     load_control = provenance.get("load_control", {}) if isinstance(provenance, dict) else {}
+    status = "completed" if failed == 0 and not rollback_error else "completed_with_item_failures"
 
     return {
         "label": label,
         "executed": True,
-        "status": "completed" if failed == 0 else "completed_with_item_failures",
+        "status": status,
         "dry_run": dry_run,
         "local_files_only": local_files_only,
         "provider_preference_requested": provider_list(provider_preference),
@@ -331,6 +376,8 @@ def run_validation_pass(
         "skipped_locked": skipped_locked,
         "ignored_low_confidence": ignored_low_confidence,
         "failed": failed,
+        "rollback_error": rollback_error,
+        "error_state": failed > 0 or rollback_error,
         "predicted_tag_count": predicted_count,
         "prediction_category_counts": aggregate_prediction_categories(results),
         "media_tags_count_before": before_count,
@@ -364,14 +411,103 @@ def build_s3a_boundary() -> dict[str, Any]:
     }
 
 
-def build_safety(write_executed: bool, dry_run: dict[str, Any] | None) -> dict[str, Any]:
+def provider_evidence_present(run: dict[str, Any] | None) -> bool:
+    if not isinstance(run, dict):
+        return False
+    provider = run.get("provider")
+    if not isinstance(provider, dict):
+        return False
+    actual = str(provider.get("actual_provider") or "").strip()
+    requested = run.get("provider_preference_requested") or provider.get("requested_provider_preference")
+    return bool(actual and isinstance(requested, list) and requested)
+
+
+def validation_pass_succeeded(
+    run: dict[str, Any] | None,
+    *,
+    selected_count: int | None = None,
+    require_provider: bool = False,
+    require_no_writes: bool = False,
+) -> bool:
+    if not isinstance(run, dict):
+        return False
+    if not run.get("executed") or run.get("status") != "completed":
+        return False
+    if int(run.get("failed", 0) or 0) != 0 or run.get("rollback_error") or run.get("error_state"):
+        return False
+    if selected_count is not None and int(run.get("processed", 0) or 0) != selected_count:
+        return False
+    if require_provider and not provider_evidence_present(run):
+        return False
+    if require_no_writes and int(run.get("media_tags_count_delta", 0) or 0) != 0:
+        return False
+    return True
+
+
+def write_pass_succeeded(write_run: dict[str, Any] | None, *, selected_count: int) -> bool:
+    if not validation_pass_succeeded(write_run, selected_count=selected_count, require_provider=True):
+        return False
+    return "media_tags_count_delta" in write_run
+
+
+def build_write_prerequisites(
+    *,
+    selected_media: dict[str, Any],
+    model_cache: dict[str, Any],
+    dry_run: dict[str, Any] | None,
+    cpu_fallback: dict[str, Any] | None,
+    local_files_only: bool,
+    operator_confirmation_exact: bool,
+) -> dict[str, Any]:
+    selected_count = int(selected_media.get("count", 0) or 0)
+    checks = {
+        "selected_media_count_within_cap": 1 <= selected_count <= min(
+            int(selected_media.get("max_items", MAX_ALLOWED_ITEMS) or MAX_ALLOWED_ITEMS),
+            MAX_ALLOWED_ITEMS,
+        ),
+        "model_cache_available": model_cache.get("status") == "cached",
+        "primary_dry_run_success": validation_pass_succeeded(
+            dry_run,
+            selected_count=selected_count,
+            require_provider=True,
+            require_no_writes=True,
+        ),
+        "primary_provider_evidence_present": provider_evidence_present(dry_run),
+        "cpu_fallback_success": (
+            validation_pass_succeeded(cpu_fallback, require_provider=True, require_no_writes=True)
+            and str((cpu_fallback or {}).get("provider", {}).get("actual_provider") or "") == CPU_PROVIDER_PREFERENCE
+        ),
+        "public_private_scope_clean": (
+            bool(selected_media.get("no_full_library_fallback"))
+            and not bool(selected_media.get("private_locator_values_recorded"))
+            and local_files_only
+        ),
+        "exact_write_confirmation_present": operator_confirmation_exact,
+    }
+    return {
+        **checks,
+        "all_passed": all(checks.values()),
+    }
+
+
+def build_safety(
+    *,
+    write_requested: bool,
+    write_confirmed: bool,
+    write_executed: bool,
+    dry_run: dict[str, Any] | None,
+    write_prerequisites: dict[str, Any] | None,
+) -> dict[str, Any]:
     dry_run_delta = int((dry_run or {}).get("media_tags_count_delta", 0) or 0)
+    prerequisites = write_prerequisites or {}
     return {
         "max_items_lte_5": True,
         "no_full_library_run": True,
-        "dry_run_before_write": True,
-        "ai_tagging_write_without_confirmation": False,
+        "dry_run_before_write": bool(prerequisites.get("primary_dry_run_success", not write_executed)),
+        "ai_tagging_write_without_confirmation": write_executed and not write_confirmed,
         "media_tags_write_executed": write_executed,
+        "write_requested_without_exact_confirmation": write_requested and not write_confirmed,
+        "write_executed_after_prerequisites_passed": (not write_executed) or bool(prerequisites.get("all_passed")),
         "dry_run_media_tags_write": dry_run_delta != 0,
         "production_s3a_execution_enabled": False,
         "unattended_s3b_enabled": False,
@@ -398,20 +534,40 @@ def derive_status(
     model_cache: dict[str, Any],
     dry_run: dict[str, Any] | None,
     cpu_fallback: dict[str, Any] | None,
-    write_executed: bool,
+    write_run: dict[str, Any] | None,
+    write_requested: bool,
     write_confirmed: bool,
+    local_files_only: bool,
+    write_prerequisites: dict[str, Any] | None = None,
 ) -> str:
-    if selected_media.get("count", 0) == 0:
+    selected_count = int(selected_media.get("count", 0) or 0)
+    if not local_files_only:
+        return "blocked_model_download_allowed"
+    if selected_count == 0:
         return "blocked_no_media"
+    if selected_count > min(int(selected_media.get("max_items", MAX_ALLOWED_ITEMS) or MAX_ALLOWED_ITEMS), MAX_ALLOWED_ITEMS):
+        return "blocked_scope_invalid"
+    if write_requested and not write_confirmed:
+        return "blocked_write_requested_without_exact_confirmation"
     if model_cache.get("status") != "cached":
         return "blocked_model_cache_missing"
-    if not dry_run or not dry_run.get("executed"):
+    if not validation_pass_succeeded(dry_run, selected_count=selected_count, require_provider=True, require_no_writes=True):
+        if not dry_run or not dry_run.get("executed"):
+            return "blocked_dry_run_not_completed"
+        if int(dry_run.get("failed", 0) or 0) > 0 or dry_run.get("status") == "completed_with_item_failures":
+            return "blocked_dry_run_item_failures"
         return "blocked_dry_run_not_completed"
-    if dry_run.get("failed", 0):
-        return "blocked_dry_run_item_failures"
-    if not cpu_fallback or not cpu_fallback.get("executed") or cpu_fallback.get("failed", 0):
+    if not validation_pass_succeeded(cpu_fallback, require_provider=True, require_no_writes=True):
         return "blocked_cpu_fallback_not_validated"
-    if write_executed:
+    if write_requested:
+        if not write_run or not write_run.get("executed"):
+            if write_prerequisites and not write_prerequisites.get("all_passed"):
+                return "blocked_write_prerequisites_failed"
+            return "blocked_write_requested_not_completed"
+        if not write_pass_succeeded(write_run, selected_count=selected_count):
+            return "blocked_write_item_failures"
+        if write_prerequisites and not write_prerequisites.get("all_passed"):
+            return "blocked_write_prerequisites_failed"
         return "target_met_with_bounded_write"
     if write_confirmed:
         return "blocked_write_requested_not_completed"
@@ -487,6 +643,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
     cpu = summary.get("cpu_fallback_validation", {})
     load = summary.get("load_control_observations", {})
     selected = summary.get("selected_media", {})
+    run_config = summary.get("run_configuration", {})
+    runtime_source = write_run if write_run.get("executed") else primary
+    runtime = runtime_source.get("runtime_provenance", {}) if isinstance(runtime_source, dict) else {}
     status = summary.get("pipeline_contract", {}).get("status")
 
     lines = [
@@ -502,15 +661,20 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"- Selection mode: `{selected.get('selection_mode')}`.",
         f"- Selected media count: `{selected.get('count')}`.",
-        f"- Max items: `{summary.get('run_configuration', {}).get('max_items')}`.",
+        f"- Max items: `{run_config.get('max_items')}`.",
         f"- Public private locator values recorded: `{selected.get('private_locator_values_recorded')}`.",
         f"- Full-library fallback: `{not selected.get('no_full_library_fallback', False)}`.",
+        f"- Prefer media without existing ai_wd tags: `{selected.get('prefer_without_existing_ai_tags')}`.",
+        f"- Selected without existing ai_wd tags: `{selected.get('selected_without_existing_ai_tags_count')}`.",
         "",
         "## Dry-run Result",
         "",
         f"- Executed: `{dry_run.get('executed')}`.",
         f"- Status: `{dry_run.get('status')}`.",
         f"- Processed: `{dry_run.get('processed')}`.",
+        f"- Failed: `{dry_run.get('failed')}`.",
+        f"- Skipped locked: `{dry_run.get('skipped_locked')}`.",
+        f"- Ignored low confidence: `{dry_run.get('ignored_low_confidence')}`.",
         f"- Predicted tags: `{dry_run.get('predicted_tag_count')}`.",
         f"- Confirmed tag actions predicted: `{dry_run.get('tags_added')}`.",
         f"- Suggestion actions predicted: `{dry_run.get('suggestions_added')}`.",
@@ -527,6 +691,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "## CPU Fallback",
         "",
         f"- Executed: `{cpu.get('executed')}`.",
+        f"- Status: `{cpu.get('status')}`.",
+        f"- Processed: `{cpu.get('processed')}`.",
+        f"- Failed: `{cpu.get('failed')}`.",
         f"- Requested provider preference: `{cpu.get('provider_preference_requested')}`.",
         f"- Actual provider: `{cpu.get('provider', {}).get('actual_provider')}`.",
         f"- Media tag delta: `{cpu.get('media_tags_count_delta')}`.",
@@ -535,8 +702,22 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"- Executed: `{write_run.get('executed')}`.",
         f"- Status: `{write_run.get('status')}`.",
-        f"- Exact operator confirmation present: `{summary.get('run_configuration', {}).get('operator_confirmation_exact')}`.",
-        f"- Media tag delta: `{write_run.get('media_tags_count_delta')}`.",
+        f"- Write requested: `{run_config.get('write_requested')}`.",
+        f"- Exact operator confirmation present: `{run_config.get('operator_confirmation_exact')}`.",
+        f"- Processed: `{write_run.get('processed')}`.",
+        f"- Failed: `{write_run.get('failed')}`.",
+        f"- Tags added: `{write_run.get('tags_added')}`.",
+        f"- Suggestions added: `{write_run.get('suggestions_added')}`.",
+        f"- Skipped locked: `{write_run.get('skipped_locked')}`.",
+        f"- Ignored low confidence: `{write_run.get('ignored_low_confidence')}`.",
+        f"- Media tags before/after/delta: `{write_run.get('media_tags_count_before')}` / `{write_run.get('media_tags_count_after')}` / `{write_run.get('media_tags_count_delta')}`.",
+        f"- Tag source values used: `{write_run.get('tag_source_values_used')}`.",
+        "",
+        "## Runtime Provenance",
+        "",
+        f"- Model name: `{runtime.get('model_name')}`.",
+        f"- Model repo id: `{runtime.get('model_repo_id')}`.",
+        f"- Actual provider loaded: `{runtime.get('provider', {}).get('actual_provider')}`.",
         "",
         "## Load Control Observations",
         "",
@@ -609,6 +790,7 @@ def main(argv: list[str] | None = None) -> int:
     dry_run: dict[str, Any] | None = None
     write_run: dict[str, Any] | None = None
     cpu_fallback: dict[str, Any] | None = None
+    write_prerequisites: dict[str, Any] | None = None
     selected_media: dict[str, Any] = {}
     selected_ids: list[int] = []
     model_cache: dict[str, Any] = {}
@@ -627,7 +809,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_items=max_items,
                 candidate_scan_limit=candidate_scan_limit,
             )
-            if selected_ids and model_cache.get("status") == "cached":
+            if selected_ids and model_cache.get("status") == "cached" and local_files_only:
                 dry_run = run_validation_pass(
                     db,
                     label="primary_dry_run",
@@ -638,17 +820,6 @@ def main(argv: list[str] | None = None) -> int:
                     local_files_only=local_files_only,
                     force_suggestions=args.force_suggestions,
                 )
-                if write_confirmed:
-                    write_run = run_validation_pass(
-                        db,
-                        label="bounded_write",
-                        media_ids=selected_ids,
-                        dry_run=False,
-                        provider_preference=args.provider_preference,
-                        max_items=max_items,
-                        local_files_only=local_files_only,
-                        force_suggestions=args.force_suggestions,
-                    )
                 cpu_fallback = run_validation_pass(
                     db,
                     label="cpu_fallback_dry_run",
@@ -659,6 +830,25 @@ def main(argv: list[str] | None = None) -> int:
                     local_files_only=local_files_only,
                     force_suggestions=args.force_suggestions,
                 )
+                write_prerequisites = build_write_prerequisites(
+                    selected_media=selected_media,
+                    model_cache=model_cache,
+                    dry_run=dry_run,
+                    cpu_fallback=cpu_fallback,
+                    local_files_only=local_files_only,
+                    operator_confirmation_exact=operator_confirmation_exact,
+                )
+                if write_confirmed and write_prerequisites["all_passed"]:
+                    write_run = run_validation_pass(
+                        db,
+                        label="bounded_write",
+                        media_ids=selected_ids,
+                        dry_run=False,
+                        provider_preference=args.provider_preference,
+                        max_items=max_items,
+                        local_files_only=local_files_only,
+                        force_suggestions=args.force_suggestions,
+                    )
         finally:
             db.close()
 
@@ -690,25 +880,43 @@ def main(argv: list[str] | None = None) -> int:
             "status": (
                 "not_run_missing_exact_operator_confirmation"
                 if write_requested and not operator_confirmation_exact
+                else "not_run_prerequisites_failed"
+                if write_confirmed
                 else "not_run_not_requested"
             ),
             "required_confirmation_present": operator_confirmation_exact,
+            "selected_media_count": 0,
+            "processed": 0,
             "media_tags_count_delta": 0,
             "tags_added": 0,
             "suggestions_added": 0,
             "skipped_locked": 0,
             "ignored_low_confidence": 0,
             "failed": 0,
+            "rollback_error": False,
+            "error_state": False,
             "tag_source_values_used": ["ai_wd"],
         }
+    if write_prerequisites is None:
+        write_prerequisites = build_write_prerequisites(
+            selected_media=selected_media,
+            model_cache=model_cache,
+            dry_run=dry_run,
+            cpu_fallback=cpu_fallback,
+            local_files_only=local_files_only,
+            operator_confirmation_exact=operator_confirmation_exact,
+        )
 
     status = derive_status(
         selected_media=selected_media,
         model_cache=model_cache,
         dry_run=dry_run,
         cpu_fallback=cpu_fallback,
-        write_executed=bool(write_run.get("executed")),
+        write_run=write_run,
+        write_requested=write_requested,
         write_confirmed=write_confirmed,
+        local_files_only=local_files_only,
+        write_prerequisites=write_prerequisites,
     )
     completion = status in {"target_met_dry_run_only", "target_met_with_bounded_write"}
     primary_provider = dry_run
@@ -744,11 +952,24 @@ def main(argv: list[str] | None = None) -> int:
         "model_cache": model_cache,
         "dry_run": dry_run,
         "write_run": write_run,
+        "write_prerequisites": {
+            **write_prerequisites,
+            "write_executed_after_prerequisites_passed": (
+                not bool(write_run.get("executed"))
+                or bool(write_prerequisites.get("all_passed"))
+            ),
+        },
         "primary_provider_validation": primary_provider,
         "cpu_fallback_validation": cpu_fallback,
         "load_control_observations": build_load_control_observations(primary_provider),
         "s3a_boundary": build_s3a_boundary(),
-        "safety": build_safety(bool(write_run.get("executed")), dry_run),
+        "safety": build_safety(
+            write_requested=write_requested,
+            write_confirmed=write_confirmed,
+            write_executed=bool(write_run.get("executed")),
+            dry_run=dry_run,
+            write_prerequisites=write_prerequisites,
+        ),
         "public_reports": {
             "summary_json_path": repo_relative(SUMMARY_PATH),
             "markdown_report_path": repo_relative(MARKDOWN_PATH),
@@ -782,9 +1003,9 @@ def main(argv: list[str] | None = None) -> int:
             "Durable per-job provider provenance schema migration remains a later reviewed phase.",
         ],
         "recommended_next_phase": (
-            "If this PR is reviewed and merged, decide whether to run the exact approved "
-            "bounded write validation or promote a separate S3A production plan; do not "
-            "start full-library tagging from this phase."
+            "If this PR is reviewed and merged, use the bounded write evidence to decide "
+            "whether to design a separately approved S3A production plan; do not start "
+            "full-library tagging from this phase."
         ),
         "validation": {
             "runner_command": "python scripts/run_s2g_real1_bounded_ai_tagging_validation.py",

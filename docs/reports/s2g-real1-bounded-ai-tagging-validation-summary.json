@@ -28,7 +28,8 @@
   ],
   "cpu_fallback_validation": {
     "dry_run": true,
-    "elapsed_seconds": 2.3493,
+    "elapsed_seconds": 2.8483,
+    "error_state": false,
     "executed": true,
     "failed": 0,
     "ignored_low_confidence": 10817,
@@ -103,6 +104,7 @@
         "tags_added": 27
       }
     ],
+    "rollback_error": false,
     "runtime_provenance": {
       "backend": "onnxruntime",
       "batch": {
@@ -182,7 +184,8 @@
   },
   "dry_run": {
     "dry_run": true,
-    "elapsed_seconds": 2.7154,
+    "elapsed_seconds": 2.7761,
+    "error_state": false,
     "executed": true,
     "failed": 0,
     "ignored_low_confidence": 32411,
@@ -277,6 +280,7 @@
         "tags_added": 53
       }
     ],
+    "rollback_error": false,
     "runtime_provenance": {
       "backend": "onnxruntime",
       "batch": {
@@ -357,7 +361,7 @@
     ],
     "tags_added": 121
   },
-  "generated_at": "2026-06-21T10:23:16.156528+00:00",
+  "generated_at": "2026-06-21T11:01:55.590101+00:00",
   "load_control_observations": {
     "actual_provider": "DmlExecutionProvider",
     "appeared_bounded": true,
@@ -394,11 +398,12 @@
       "target_met": true
     },
     "contract_id": "s2g_real1_bounded_ai_tagging_validation_contract_v1",
-    "status": "target_met_dry_run_only"
+    "status": "target_met_with_bounded_write"
   },
   "primary_provider_validation": {
     "dry_run": true,
-    "elapsed_seconds": 2.7154,
+    "elapsed_seconds": 2.7761,
+    "error_state": false,
     "executed": true,
     "failed": 0,
     "ignored_low_confidence": 32411,
@@ -493,6 +498,7 @@
         "tags_added": 53
       }
     ],
+    "rollback_error": false,
     "runtime_provenance": {
       "backend": "onnxruntime",
       "batch": {
@@ -584,7 +590,7 @@
     "path_style": "repo_relative_public_artifacts",
     "summary_json_path": "docs/reports/s2g-real1-bounded-ai-tagging-validation-summary.json"
   },
-  "recommended_next_phase": "If this PR is reviewed and merged, decide whether to run the exact approved bounded write validation or promote a separate S3A production plan; do not start full-library tagging from this phase.",
+  "recommended_next_phase": "If this PR is reviewed and merged, use the bounded write evidence to decide whether to design a separately approved S3A production plan; do not start full-library tagging from this phase.",
   "run_configuration": {
     "candidate_scan_limit": 25,
     "cpu_fallback_provider_preference": [
@@ -594,16 +600,16 @@
     "local_files_only": true,
     "max_items": 3,
     "max_items_cap": 5,
-    "mode": "dry_run",
+    "mode": "execute",
     "model_download_allowed": false,
-    "operator_confirmation_exact": false,
+    "operator_confirmation_exact": true,
     "provider_preference_requested": [
       "DmlExecutionProvider",
       "CPUExecutionProvider"
     ],
     "s3a_execution_enabled": false,
     "unattended_enabled": false,
-    "write_requested": false
+    "write_requested": true
   },
   "s3a_boundary": {
     "dry_run_only": true,
@@ -650,7 +656,7 @@
     "entity_bridge": false,
     "local_files_only": true,
     "max_items_lte_5": true,
-    "media_tags_write_executed": false,
+    "media_tags_write_executed": true,
     "model_download": false,
     "no_full_library_run": true,
     "private_locator_values_recorded": false,
@@ -662,7 +668,9 @@
     "provider_pixiv_r1r_entity_operations": false,
     "source_icloud_mutation": false,
     "sourceconcept_r1r_r2": false,
-    "unattended_s3b_enabled": false
+    "unattended_s3b_enabled": false,
+    "write_executed_after_prerequisites_passed": true,
+    "write_requested_without_exact_confirmation": false
   },
   "selected_media": {
     "candidate_rows_reviewed": 25,
@@ -671,12 +679,15 @@
       "anime"
     ],
     "count": 3,
+    "explicit_media_ids_missing_count": 0,
     "explicit_media_ids_publicly_recorded": false,
     "explicit_media_ids_supplied": false,
     "id_count": 3,
     "max_items": 3,
     "no_full_library_fallback": true,
+    "prefer_without_existing_ai_tags": true,
     "private_locator_values_recorded": false,
+    "selected_without_existing_ai_tags_count": 0,
     "selection_mode": "content_class_filter",
     "skipped_missing_local_file_count": 0,
     "small_explicit_sample": true,
@@ -687,20 +698,196 @@
     "cpu_fallback_completed": true,
     "dry_run_completed": true,
     "runner_command": "python scripts/run_s2g_real1_bounded_ai_tagging_validation.py",
-    "write_completed": false
+    "write_completed": true
+  },
+  "write_prerequisites": {
+    "all_passed": true,
+    "cpu_fallback_success": true,
+    "exact_write_confirmation_present": true,
+    "model_cache_available": true,
+    "primary_dry_run_success": true,
+    "primary_provider_evidence_present": true,
+    "public_private_scope_clean": true,
+    "selected_media_count_within_cap": true,
+    "write_executed_after_prerequisites_passed": true
   },
   "write_run": {
-    "executed": false,
+    "dry_run": false,
+    "elapsed_seconds": 3.437,
+    "error_state": false,
+    "executed": true,
     "failed": 0,
-    "ignored_low_confidence": 0,
+    "ignored_low_confidence": 32411,
+    "job_record_created": false,
+    "label": "bounded_write",
+    "load_control": {
+      "allow_provider_fallback": true,
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_cap_source": "configured",
+      "batch_max_items": 3,
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 2,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+      "provider_preference": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "valid_for_runtime": true,
+      "validation_errors": [],
+      "worker_count": 1
+    },
+    "local_files_only": true,
+    "media_tags_count_after": 1842414,
+    "media_tags_count_before": 1842414,
     "media_tags_count_delta": 0,
-    "required_confirmation_present": false,
+    "no_media_tags_writes": null,
+    "predicted_tag_count": 32574,
+    "prediction_category_counts": {
+      "character": 8253,
+      "general": 24318,
+      "rating": 3
+    },
+    "processed": 3,
+    "provider": {
+      "actual_onnx_provider_loaded": "DmlExecutionProvider",
+      "actual_provider": "DmlExecutionProvider",
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": false,
+      "fallback_reason": null,
+      "loaded_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "provider_load_errors": [],
+      "requested_provider_preference": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    },
+    "provider_preference_requested": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "public_item_results": [
+      {
+        "ignored_low_confidence": 10817,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 14,
+        "tags_added": 27
+      },
+      {
+        "ignored_low_confidence": 10802,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 15,
+        "tags_added": 41
+      },
+      {
+        "ignored_low_confidence": 10792,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 13,
+        "tags_added": 53
+      }
+    ],
+    "rollback_error": false,
+    "runtime_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 3,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "effective_batch_size": 2,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "configured",
+        "batch_max_items": 3,
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 2,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "selected_media_count": 3,
     "skipped_locked": 0,
-    "status": "not_run_not_requested",
-    "suggestions_added": 0,
+    "status": "completed",
+    "suggestions_added": 42,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 0
+    "tags_added": 121
   }
 }

@@ -1,6 +1,6 @@
 # S2G-REAL1: Bounded Real AI Tagging Validation with DirectML
 
-Status: `target_met_dry_run_only`.
+Status: `target_met_with_bounded_write`.
 
 Contract: `s2g_real1_bounded_ai_tagging_validation_contract_v1`.
 
@@ -13,12 +13,17 @@ Public summary: `docs/reports/s2g-real1-bounded-ai-tagging-validation-summary.js
 - Max items: `3`.
 - Public private locator values recorded: `False`.
 - Full-library fallback: `False`.
+- Prefer media without existing ai_wd tags: `True`.
+- Selected without existing ai_wd tags: `0`.
 
 ## Dry-run Result
 
 - Executed: `True`.
 - Status: `completed`.
 - Processed: `3`.
+- Failed: `0`.
+- Skipped locked: `0`.
+- Ignored low confidence: `32411`.
 - Predicted tags: `32574`.
 - Confirmed tag actions predicted: `121`.
 - Suggestion actions predicted: `42`.
@@ -35,16 +40,33 @@ Public summary: `docs/reports/s2g-real1-bounded-ai-tagging-validation-summary.js
 ## CPU Fallback
 
 - Executed: `True`.
+- Status: `completed`.
+- Processed: `1`.
+- Failed: `0`.
 - Requested provider preference: `['CPUExecutionProvider']`.
 - Actual provider: `CPUExecutionProvider`.
 - Media tag delta: `0`.
 
 ## Write Result
 
-- Executed: `False`.
-- Status: `not_run_not_requested`.
-- Exact operator confirmation present: `False`.
-- Media tag delta: `0`.
+- Executed: `True`.
+- Status: `completed`.
+- Write requested: `True`.
+- Exact operator confirmation present: `True`.
+- Processed: `3`.
+- Failed: `0`.
+- Tags added: `121`.
+- Suggestions added: `42`.
+- Skipped locked: `0`.
+- Ignored low confidence: `32411`.
+- Media tags before/after/delta: `1842414` / `1842414` / `0`.
+- Tag source values used: `['ai_wd']`.
+
+## Runtime Provenance
+
+- Model name: `wd-swinv2-tagger-v3`.
+- Model repo id: `SmilingWolf/wd-swinv2-tagger-v3`.
+- Actual provider loaded: `DmlExecutionProvider`.
 
 ## Load Control Observations
 
