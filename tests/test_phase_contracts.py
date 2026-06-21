@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,10 +15,23 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.phase_contracts import REQUIRED_CONTRACT_IDS, check_phase_contract, list_contracts, load_summary_file  # noqa: E402
+from scripts.phase_contracts import contract_checks as contract_checks_module  # noqa: E402
 from scripts.phase_contracts.contract_registry import SOURCE_CONCEPT_FULL_CHAIN_STAGES  # noqa: E402
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
+
+
+def _current_test_head() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "test-head"
 
 
 def _source_concept_summary(**overrides: object) -> dict:
@@ -241,7 +255,14 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
 
 
 def _s2g1x_summary(**overrides: object) -> dict:
+    head = _current_test_head()
     summary = {
+        "head_evidence": {
+            "probe_run_head_sha": head,
+            "report_generation_head_sha": head,
+            "current_pr_head_sha": "represented_by_pr_metadata_after_commit",
+            "top_level_head_sha_omitted": True,
+        },
         "pipeline_contract": {
             "contract_id": "s2g1x_probe_contract_v1",
             "status": "target_met",
@@ -329,6 +350,11 @@ def _s2g1x_summary(**overrides: object) -> dict:
             "unattended_s3b_enabled": False,
         },
         "public_redaction": {"passed": True},
+        "public_reports": {
+            "summary_json_path": "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json",
+            "markdown_report_path": "docs/reports/s2g1x-gpu-ai-tagging-probe.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
         "safety": {
             "production_db_writes": False,
             "production_import": False,
@@ -1156,6 +1182,52 @@ def test_s2g1x_probe_contract_independently_scans_public_payload() -> None:
     assert "C:\\Users\\example\\private.png" not in _serialized_result(result)
 
 
+def test_s2g1x_probe_contract_scans_markdown_report(monkeypatch) -> None:
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_read_s2g1x_markdown_report",
+        lambda _summary, _result: r"leaked C:\Users\example\private.png",
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
+
+    assert result.passed is False
+    assert "s2g1x_public_payload_redaction_failed" in _error_codes(result)
+    assert "C:\\Users\\example\\private.png" not in _serialized_result(result)
+
+
+def test_s2g1x_probe_contract_rejects_stale_head_evidence_after_probe_code_changes(monkeypatch) -> None:
+    summary = _s2g1x_summary()
+    summary["head_evidence"]["report_generation_head_sha"] = "old-head"
+    monkeypatch.setattr(contract_checks_module, "_current_git_head", lambda: "new-head")
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_changed_paths_between",
+        lambda _old, _new, _paths: ["scripts/run_s2g1_ai_tagging_capability_probe.py"],
+    )
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_probe_evidence_stale_for_current_code" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_requires_explicit_false_safety_flags() -> None:
+    summary = _s2g1x_summary()
+    del summary["safety"]["provider_pixiv_gallery_dl_saucenao_google_calls"]
+
+    result = check_phase_contract("s2g1x_probe_contract_v1", summary)
+
+    assert result.passed is False
+    assert "s2g1x_required_safety_false_missing_or_true" in _error_codes(result)
+
+
+def test_s2g1x_probe_contract_accepts_explicit_false_safety_flags() -> None:
+    result = check_phase_contract("s2g1x_probe_contract_v1", _s2g1x_summary())
+
+    assert result.passed is True
+
+
 def test_s2g1x_probe_contract_requires_s3a_dry_run_only() -> None:
     base = _s2g1x_summary()
     summary = _s2g1x_summary(
@@ -1188,7 +1260,7 @@ def test_s2g1x_probe_contract_rejects_model_download_and_production_ai() -> None
     codes = _error_codes(result)
 
     assert "s2g1x_required_probe_proof_missing" in codes
-    assert "s2g1x_forbidden_execution_or_mutation" in codes
+    assert "s2g1x_required_safety_false_missing_or_true" in codes
 
 
 def test_s2g1x_probe_contract_rejects_s3a_execution_enabled() -> None:

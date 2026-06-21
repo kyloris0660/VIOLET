@@ -200,6 +200,29 @@ def test_load_settings_snapshot_avoids_app_config_import_and_handles_malformed_e
     }
 
 
+def test_probe_redaction_failure_does_not_write_public_outputs(tmp_path, monkeypatch) -> None:
+    output_json = tmp_path / "probe-summary.json"
+    output_md = tmp_path / "probe-report.md"
+    monkeypatch.setattr(
+        probe,
+        "build_summary",
+        lambda _args: {
+            "public_redaction": {"passed": False, "finding_count": 1, "findings_redacted": True},
+            "pipeline_contract": {"contract_id": "s2g1x_probe_contract_v1", "status": "blocked_probe_unavailable"},
+            "capability_probe": {"provider_matrix": {}, "runtime": {"onnxruntime": {}}},
+            "s2g_s3a_decision": {},
+            "load_control": {"recommended_config": {}, "risk_flags": []},
+        },
+    )
+    monkeypatch.setattr(probe, "render_report", lambda _summary: r"leak C:\Users\example\private.png")
+
+    exit_code = probe.main(["--output-json", str(output_json), "--output-md", str(output_md)])
+
+    assert exit_code == 2
+    assert not output_json.exists()
+    assert not output_md.exists()
+
+
 def test_render_report_includes_provider_table(monkeypatch) -> None:
     args = SimpleNamespace(
         model_name="unknown-model",

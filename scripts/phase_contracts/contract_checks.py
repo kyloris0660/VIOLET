@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from .contract_registry import (
     SOURCE_CONCEPT_ALLOWED_STATUSES,
@@ -15,6 +16,7 @@ from .contract_registry import (
 from .contract_types import ContractCheckResult, PhaseContract
 
 MISSING = object()
+CONTRACT_ROOT = Path(__file__).resolve().parents[2]
 
 WINDOWS_PATH_RE = re.compile(r"(?i)\b[A-Z]:\\[^\s\"'<>|]+")
 UNC_PATH_RE = re.compile(r"\\\\[^\\\s\"'<>|]+\\[^\\\s\"'<>|]+")
@@ -25,6 +27,7 @@ POSIX_PRIVATE_PATH_RE = re.compile(
 TOKEN_RE = re.compile(
     r"(?i)(sk-[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,}|xoxb-[A-Za-z0-9-]{4,}|Authorization\s*:|Bearer\s+[A-Za-z0-9._-]{4,})"
 )
+DB_URL_RE = re.compile(r"(?i)\b(postgresql|postgres|mysql|mariadb|mssql|mongodb|redis|sqlite)://[^\s\"'<>]+")
 HTTP_URL_RE = re.compile(r"(?i)\bhttps?://[^\s\"'<>]+")
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
 SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer|credential)")
@@ -43,6 +46,12 @@ REQUIRED_NON_EMPTY_PROOF_FIELDS = {
     "review_pack",
     "public_report_copy",
 }
+S2G1X_PROBE_EVIDENCE_CODE_PATHS = (
+    "scripts/run_s2g1_ai_tagging_capability_probe.py",
+    "scripts/s2g_s3a_job_control.py",
+    "scripts/phase_contracts/contract_checks.py",
+    "scripts/phase_contracts/contract_registry.py",
+)
 
 REDACTED_VALUES = {
     "",
@@ -416,6 +425,7 @@ def _redaction_findings_for_text(text: str, path: str, *, kind: str) -> list[dic
         ("unc_local_path", UNC_PATH_RE),
         ("file_uri", FILE_URI_RE),
         ("posix_private_path", POSIX_PRIVATE_PATH_RE),
+        ("db_url", DB_URL_RE),
         ("common_secret_or_token", TOKEN_RE),
     )
     for code, pattern in checks:
@@ -1081,6 +1091,22 @@ def _check_required_false_paths(
             result.fail(code, message, path=path, expected=False, actual=True)
 
 
+def _check_explicit_false_paths(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    paths: Iterable[str],
+    *,
+    code: str,
+    message: str,
+) -> None:
+    for path in paths:
+        value = _get(summary, path, MISSING)
+        if value is MISSING:
+            result.fail(code, message, path=path, expected=False, actual="missing")
+        elif value is not False:
+            result.fail(code, message, path=path, expected=False, actual=value)
+
+
 def _production_write_requested(summary: Mapping[str, Any]) -> list[str]:
     write_paths = (
         "write_requests.production_import",
@@ -1350,10 +1376,119 @@ def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, 
             result.fail("dynamic_sync_forbidden_execution", "S1 summary reports a forbidden execution path.", path=path, expected=False, actual=True)
 
 
+def _current_git_head() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=CONTRACT_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _changed_paths_between(old_ref: str, new_ref: str, paths: Sequence[str]) -> list[str]:
+    completed = subprocess.run(
+        ["git", "diff", "--name-only", f"{old_ref}..{new_ref}", "--", *paths],
+        cwd=CONTRACT_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return ["[invalid-head-evidence]"]
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _check_s2g1x_head_evidence(summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    evidence_head = str(_get(summary, "head_evidence.report_generation_head_sha", "") or "").strip()
+    if not evidence_head:
+        result.fail(
+            "s2g1x_head_evidence_missing",
+            "S2G-1X summaries must record the probe/report-generation head evidence.",
+            path="head_evidence.report_generation_head_sha",
+            expected="non-empty git ref",
+            actual=evidence_head,
+        )
+        return
+    current_head = _current_git_head()
+    if not current_head or evidence_head == current_head:
+        return
+    changed_paths = _changed_paths_between(evidence_head, current_head, S2G1X_PROBE_EVIDENCE_CODE_PATHS)
+    result.details["s2g1x_probe_code_paths_changed_after_evidence"] = changed_paths
+    if changed_paths:
+        result.fail(
+            "s2g1x_probe_evidence_stale_for_current_code",
+            "S2G-1X probe/report evidence was generated before later probe, shared scaffold, or contract code changes.",
+            path="head_evidence.report_generation_head_sha",
+            expected=f"no changes under {list(S2G1X_PROBE_EVIDENCE_CODE_PATHS)} after evidence head",
+            actual={"evidence_head": evidence_head, "current_head": current_head, "changed_paths": changed_paths},
+        )
+
+
+def _read_s2g1x_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    raw_path = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if raw_path is MISSING or not str(raw_path).strip():
+        result.fail(
+            "s2g1x_markdown_report_path_missing",
+            "S2G-1X summaries must name the public Markdown report path for contract redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative docs/reports/*.md path",
+            actual=None,
+        )
+        return ""
+    path_text = str(raw_path).replace("\\", "/")
+    candidate = Path(path_text)
+    if candidate.is_absolute() or candidate.drive or ".." in candidate.parts or not path_text.startswith("docs/reports/") or candidate.suffix != ".md":
+        result.fail(
+            "s2g1x_markdown_report_path_unsafe",
+            "S2G-1X Markdown report path must be a safe repo-relative docs/reports/*.md path.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative docs/reports/*.md path",
+            actual="[redacted-path]" if "\\" in path_text or "/" in path_text else path_text,
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s2g1x_markdown_report_path_escape",
+            "S2G-1X Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s2g1x_markdown_report_missing",
+            "S2G-1X Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s2g1x_markdown_report_unreadable",
+            "S2G-1X Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
 def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     allowed_statuses = {"target_met", "evidence_collected", "blocked_model_unavailable", "blocked_probe_unavailable"}
     status = str(result.status or "").casefold()
     completion_claimed = status == "target_met" or _completion_or_approval_claimed(result)
+    _check_s2g1x_head_evidence(summary, result)
     if status not in allowed_statuses:
         result.fail(
             "s2g1x_unknown_status",
@@ -1402,6 +1537,15 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
             "s2g_s3a_decision.should_combine_current_production_execution",
             "s2g_s3a_decision.production_s3a_execution_enabled",
             "s2g_s3a_decision.unattended_s3b_enabled",
+        ),
+        code="s2g1x_forbidden_execution_or_mutation",
+        message="S2G-1X must not enable production execution, unattended sync, providers, SourceConcept/Entity, destructive actions, or model downloads.",
+    )
+
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
             "safety.production_db_writes",
             "safety.production_import",
             "safety.production_classification",
@@ -1416,16 +1560,17 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
             "safety.cleanup_delete_reset_drop_truncate",
             "safety.model_download",
         ),
-        code="s2g1x_forbidden_execution_or_mutation",
-        message="S2G-1X must not enable production execution, unattended sync, providers, SourceConcept/Entity, destructive actions, or model downloads.",
+        code="s2g1x_required_safety_false_missing_or_true",
+        message="S2G-1X safety proofs must explicitly set every forbidden operation flag to false.",
     )
 
-    redaction_findings = scan_public_payload({"public_json_payload": summary})
+    markdown_text = _read_s2g1x_markdown_report(summary, result)
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
     result.details["s2g1x_public_redaction_finding_count"] = len(redaction_findings)
     if redaction_findings:
         result.fail(
             "s2g1x_public_payload_redaction_failed",
-            "S2G-1X contract independently found forbidden public payload content; public_redaction.passed cannot be trusted alone.",
+            "S2G-1X contract independently found forbidden public JSON or Markdown content; public_redaction.passed cannot be trusted alone.",
             path="public_payload",
             expected="no findings",
             actual={"finding_count": len(redaction_findings), "findings_redacted": True},

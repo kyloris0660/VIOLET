@@ -666,6 +666,11 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
             "cleanup_delete_reset_drop_truncate": False,
             "model_download": False,
         },
+        "public_reports": {
+            "summary_json_path": "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json",
+            "markdown_report_path": "docs/reports/s2g1x-gpu-ai-tagging-probe.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
         "artifact_lifecycle": {
             "artifacts": [
                 {
@@ -800,11 +805,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--synthetic-samples must be between 1 and 16")
     summary = build_summary(args)
     markdown = render_report(summary)
+    redaction_passed = bool(summary.get("public_redaction", {}).get("passed"))
+    if not redaction_passed:
+        print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=json_default))
+        print("S2G-1X probe redaction failed; public report files were not written.", file=sys.stderr)
+        return 2
     if not args.no_write:
         write_json(args.output_json, summary)
         write_text(args.output_md, markdown)
     print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=json_default))
-    return 0 if summary.get("public_redaction", {}).get("passed") else 2
+    return 0
 
 
 if __name__ == "__main__":
