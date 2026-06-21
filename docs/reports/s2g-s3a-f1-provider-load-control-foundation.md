@@ -1,4 +1,4 @@
-# S2G/S3A-F1: WDTagger Provider and Load-Control Foundation
+# S2G/S3A-F1+G1: WDTagger Provider, Load Control, and DirectML Attempt
 
 Status: target_met.
 
@@ -8,19 +8,22 @@ Public summary: `docs/reports/s2g-s3a-f1-provider-load-control-foundation-summar
 
 ## Summary
 
-This phase implements the first runtime foundation shared by S2G and future
-S3A without enabling production S3A execution.
+This PR now covers the F1 foundation plus a bounded G1 GPU/DirectML enablement
+attempt. It still does not enable production S3A execution.
 
 Implemented now:
 
 - WDTagger provider abstraction for `CUDAExecutionProvider`,
   `DmlExecutionProvider`, and `CPUExecutionProvider`.
 - Truthful provider fallback reporting.
-- Bounded CPU load-control defaults.
-- Provider/model/backend provenance in AI tagging runtime outputs.
+- Bounded CPU load-control defaults and caps after settings/env parsing.
+- Configured vs effective batch-size provenance.
+- Provider/model/backend/load provenance in current AI tagging runtime outputs.
 - Shared job/progress/load/provider vocabulary in
   `backend/app/services/job_control.py`.
 - Dry-run-only S3A stage planning vocabulary.
+- Project-venv-only DirectML package installation attempt and tiny bounded
+  CPU vs DirectML benchmark evidence.
 
 ## Provider Behavior
 
@@ -30,33 +33,70 @@ Requested provider preference:
 CUDAExecutionProvider,DmlExecutionProvider,CPUExecutionProvider
 ```
 
-ONNX Runtime providers available in the smoke validation:
+ONNX Runtime providers available after the DirectML attempt:
 
 ```text
-AzureExecutionProvider,CPUExecutionProvider
+DmlExecutionProvider,CPUExecutionProvider
 ```
 
-Actual loaded provider:
+Actual loaded provider for the default preference:
+
+```text
+DmlExecutionProvider
+```
+
+Fallback occurred only for the skipped provider before the selected provider:
+
+```text
+unavailable_requested_providers=CUDAExecutionProvider
+```
+
+CPU-only preference was also validated and did not report fallback:
 
 ```text
 CPUExecutionProvider
 ```
 
-Fallback occurred because the requested CUDA and DirectML providers are not
-available in the current ONNX Runtime environment. The runtime records this as:
+## DirectML / CUDA Attempt
 
-```text
-unavailable_requested_providers=CUDAExecutionProvider,DmlExecutionProvider
-```
+DirectML:
 
-This phase does not install CUDA, DirectML, or ONNX Runtime packages, and it
-does not claim GPU usage when the runtime falls back to CPU.
+- `onnxruntime-directml` was installed only into the project virtual
+  environment.
+- Installed version: `1.24.4`.
+- ONNX Runtime imported version after the attempt: `1.24.4`.
+- `DmlExecutionProvider` was exposed by ONNX Runtime and loaded by WDTagger.
+- The smoke run reported an ONNX Runtime warning that some graph nodes were
+  assigned outside the preferred execution provider; DirectML still loaded and
+  completed inference.
+
+CUDA:
+
+- `onnxruntime-gpu` was not installed.
+- `CUDAExecutionProvider` was not exposed.
+- CUDA blocker: `package_missing`.
+
+No global or system Python was modified.
+
+## Bounded Benchmark
+
+The smoke benchmark used synthetic zero arrays, two samples, local model cache
+only, no production DB writes, and no media tag writes.
+
+| Provider | Status | Samples | Throughput items/sec |
+| --- | --- | ---: | ---: |
+| `CPUExecutionProvider` | completed | 2 | 2.2820 |
+| `DmlExecutionProvider` | completed | 2 | 5.0729 |
+| `CUDAExecutionProvider` | provider_unavailable | 0 | N/A |
+
+The DirectML result proves provider load and inference capability, not a
+production throughput guarantee. CPU fallback remains valid.
 
 ## Load Control
 
-Conservative defaults now available through settings/env:
+Effective defaults and caps now available through settings/env:
 
-| Setting | Effective default |
+| Setting | Effective value in smoke |
 | --- | --- |
 | `AI_TAGGING_PROVIDER_PREFERENCE` | `CUDAExecutionProvider,DmlExecutionProvider,CPUExecutionProvider` |
 | `AI_TAGGING_CPU_INTRA_OP_THREADS` | `4` |
@@ -64,12 +104,14 @@ Conservative defaults now available through settings/env:
 | `AI_TAGGING_PREPROCESS_WORKERS` | `2` |
 | `AI_TAGGING_EXECUTION_MODE` | `ORT_SEQUENTIAL` |
 | `AI_TAGGING_PROCESS_PRIORITY` | `below_normal` |
-| `AI_TAGGING_BATCH_SIZE` | `2` |
-| `AI_TAGGING_MAX_CONCURRENT_JOBS` | `1` |
+| `AI_TAGGING_BATCH_SIZE` configured | `2` |
+| effective runtime batch size | `2` |
+| batch cap source | `configured` |
+| max concurrent AI jobs | `1` |
 
-`AI_TAGGING_PROCESS_PRIORITY` is recorded but not applied to the shared FastAPI
-process in this phase. The active controls are bounded ONNX session threads,
-bounded preprocessing, bounded batch size, and single active AI job semantics.
+Operator/env overrides are clamped before ONNX Runtime session options or job
+load-control summaries use them. `AI_TAGGING_PROCESS_PRIORITY` is recorded but
+not applied to the shared FastAPI process in this phase.
 
 ## Provenance
 
@@ -81,15 +123,21 @@ AI tagging runtime summaries now expose:
 - requested provider preference;
 - actual ONNX provider loaded;
 - fallback reason when fallback occurs;
-- batch size;
+- configured batch size;
+- effective runtime batch size;
+- batch cap source;
+- model optimal batch size;
 - CPU intra/inter thread settings;
 - preprocess workers;
 - execution mode;
 - tagger version/source;
 - backend.
 
-No DB schema migration was added. Durable DB persistence of this provenance
-should be planned separately if a later production phase requires it.
+Admin job serialization reports `current_runtime_provenance` with
+`provenance_scope: current_runtime_not_historical`. No DB schema migration was
+added, and completed historical jobs do not yet have durable per-job provider
+provenance. Durable per-job provenance persistence should be a later
+schema-backed phase.
 
 ## Shared Foundation
 
@@ -141,10 +189,11 @@ This phase did not run or enable:
 - confirmed assignments;
 - desired-media backfill;
 - cleanup/delete/reset/drop/truncate;
-- DB schema migration.
+- DB schema migration;
+- model download during the smoke run.
 
 ## Recommended Next Phase
 
-Run a bounded S2G provider/load-control validation against a controlled AI
-tagging job, still under explicit operator approval and with production S3A
-execution kept separate. Production S3A promotion should remain a later phase.
+Keep DirectML as an optional local runtime path, then run a separately approved
+bounded real AI tagging validation job before any production S3A promotion.
+Production S3A execution should remain a later operator-approved phase.

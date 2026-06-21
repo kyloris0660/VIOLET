@@ -28,6 +28,10 @@ DEFAULT_PREPROCESS_WORKERS = 2
 DEFAULT_MAX_CONCURRENT_AI_JOBS = 1
 DEFAULT_EXECUTION_MODE = "ORT_SEQUENTIAL"
 DEFAULT_PROCESS_PRIORITY = "below_normal"
+MAX_AI_TAGGING_BATCH_SIZE = 16
+MAX_CPU_INTRA_OP_THREADS = 4
+MAX_CPU_INTER_OP_THREADS = 1
+MAX_PREPROCESS_WORKERS = 2
 
 S3A_FOUNDATION_STAGES: tuple[str, ...] = (
     "update_check",
@@ -107,31 +111,45 @@ def select_onnx_provider(
     requested = parse_provider_preference(requested_provider_preference)
     available = tuple(str(provider) for provider in available_providers)
     available_set = set(available)
-    supported_requested = tuple(
-        provider for provider in requested if provider in SUPPORTED_ONNX_PROVIDERS
-    )
-    unsupported = tuple(
-        provider for provider in requested if provider not in SUPPORTED_ONNX_PROVIDERS
-    )
-    effective_requested = supported_requested or DEFAULT_PROVIDER_PREFERENCE
-    unavailable = tuple(
-        provider for provider in effective_requested if provider not in available_set
-    )
+    supported_requested: list[str] = []
+    unsupported: list[str] = []
+    unavailable_before_selected: list[str] = []
+    unsupported_before_selected: list[str] = []
+    selected: str | None = None
+
+    for provider in requested:
+        if provider not in SUPPORTED_ONNX_PROVIDERS:
+            unsupported.append(provider)
+            if selected is None:
+                unsupported_before_selected.append(provider)
+            continue
+        supported_requested.append(provider)
+        if provider in available_set:
+            if selected is None:
+                selected = provider
+        elif selected is None:
+            unavailable_before_selected.append(provider)
+
+    effective_requested = tuple(supported_requested) or DEFAULT_PROVIDER_PREFERENCE
+    if selected is None:
+        for provider in effective_requested:
+            if provider in available_set:
+                selected = provider
+                break
     candidates = tuple(
         provider for provider in effective_requested if provider in available_set
     )
-    selected = candidates[0] if candidates else None
 
     fallback_reasons: list[str] = []
-    if unsupported:
+    if unsupported_before_selected:
         fallback_reasons.append(
             "unsupported_requested_providers="
-            + ",".join(unsupported)
+            + ",".join(unsupported_before_selected)
         )
-    if unavailable:
+    if unavailable_before_selected:
         fallback_reasons.append(
             "unavailable_requested_providers="
-            + ",".join(unavailable)
+            + ",".join(unavailable_before_selected)
         )
     if selected is None:
         fallback_reasons.append("no_requested_providers_available")
@@ -154,8 +172,8 @@ def select_onnx_provider(
         available_providers=available,
         candidate_provider_order=candidates,
         selected_provider=selected,
-        unsupported_requested_providers=unsupported,
-        unavailable_requested_providers=unavailable,
+        unsupported_requested_providers=tuple(unsupported),
+        unavailable_requested_providers=tuple(unavailable_before_selected),
         fallback_occurred=fallback_occurred,
         fallback_reason=fallback_reason,
     )
@@ -166,6 +184,10 @@ class LoadControlConfig:
     """Bounded execution controls for model or pipeline work."""
 
     batch_size: int = DEFAULT_AI_TAGGING_BATCH_SIZE
+    configured_batch_size: int = DEFAULT_AI_TAGGING_BATCH_SIZE
+    effective_batch_size: int = DEFAULT_AI_TAGGING_BATCH_SIZE
+    batch_cap_source: str = "configured"
+    batch_max_items: int = 10
     worker_count: int = 1
     max_concurrent_jobs: int = DEFAULT_MAX_CONCURRENT_AI_JOBS
     preprocess_workers: int = DEFAULT_PREPROCESS_WORKERS
@@ -184,6 +206,10 @@ class LoadControlConfig:
         errors: list[str] = []
         if self.batch_size < 1:
             errors.append("batch_size_must_be_positive")
+        if self.effective_batch_size < 1:
+            errors.append("effective_batch_size_must_be_positive")
+        if self.effective_batch_size > MAX_AI_TAGGING_BATCH_SIZE:
+            errors.append("effective_batch_size_exceeds_phase_cap")
         if self.worker_count != 1:
             errors.append("worker_count_must_remain_one")
         if self.max_concurrent_jobs != 1:
@@ -205,6 +231,10 @@ class LoadControlConfig:
     def runtime_signature(self) -> tuple[Any, ...]:
         return (
             self.batch_size,
+            self.configured_batch_size,
+            self.effective_batch_size,
+            self.batch_cap_source,
+            self.batch_max_items,
             self.worker_count,
             self.max_concurrent_jobs,
             self.preprocess_workers,
@@ -226,12 +256,47 @@ class LoadControlConfig:
 
 def build_ai_tagging_load_control_config(settings_obj: Any) -> LoadControlConfig:
     """Build bounded AI tagging controls from settings-like object values."""
+    configured_batch = coerce_positive_int(
+        getattr(settings_obj, "AI_TAGGING_BATCH_SIZE", DEFAULT_AI_TAGGING_BATCH_SIZE),
+        default=DEFAULT_AI_TAGGING_BATCH_SIZE,
+    )
+    batch_max_items = coerce_positive_int(
+        getattr(settings_obj, "AI_TAGGING_BATCH_MAX_ITEMS", 10),
+        default=10,
+    )
+    batch_caps = {
+        "configured": configured_batch,
+        "AI_TAGGING_BATCH_MAX_ITEMS": batch_max_items,
+        "phase_max_batch_size": MAX_AI_TAGGING_BATCH_SIZE,
+    }
+    effective_batch = min(batch_caps.values())
+    batch_cap_source = "configured"
+    for source, value in batch_caps.items():
+        if value == effective_batch and source != "configured":
+            batch_cap_source = source
+            break
+    requested_execution_mode = str(
+        getattr(settings_obj, "AI_TAGGING_EXECUTION_MODE", DEFAULT_EXECUTION_MODE)
+    ).strip().upper() or DEFAULT_EXECUTION_MODE
+    execution_mode = (
+        "ORT_SEQUENTIAL"
+        if requested_execution_mode != "ORT_SEQUENTIAL"
+        else requested_execution_mode
+    )
+    requested_process_priority = str(
+        getattr(settings_obj, "AI_TAGGING_PROCESS_PRIORITY", DEFAULT_PROCESS_PRIORITY)
+    ).strip().lower() or DEFAULT_PROCESS_PRIORITY
+    process_priority = (
+        requested_process_priority
+        if requested_process_priority in ALLOWED_PROCESS_PRIORITIES
+        else DEFAULT_PROCESS_PRIORITY
+    )
     return LoadControlConfig(
-        batch_size=coerce_positive_int(
-            getattr(settings_obj, "AI_TAGGING_BATCH_SIZE", DEFAULT_AI_TAGGING_BATCH_SIZE),
-            default=DEFAULT_AI_TAGGING_BATCH_SIZE,
-            maximum=getattr(settings_obj, "AI_TAGGING_BATCH_MAX_ITEMS", 10),
-        ),
+        batch_size=effective_batch,
+        configured_batch_size=configured_batch,
+        effective_batch_size=effective_batch,
+        batch_cap_source=batch_cap_source,
+        batch_max_items=batch_max_items,
         worker_count=1,
         max_concurrent_jobs=coerce_positive_int(
             getattr(settings_obj, "AI_TAGGING_MAX_CONCURRENT_JOBS", DEFAULT_MAX_CONCURRENT_AI_JOBS),
@@ -241,6 +306,7 @@ def build_ai_tagging_load_control_config(settings_obj: Any) -> LoadControlConfig
         preprocess_workers=coerce_positive_int(
             getattr(settings_obj, "AI_TAGGING_PREPROCESS_WORKERS", DEFAULT_PREPROCESS_WORKERS),
             default=DEFAULT_PREPROCESS_WORKERS,
+            maximum=MAX_PREPROCESS_WORKERS,
         ),
         provider_preference=parse_provider_preference(
             getattr(settings_obj, "AI_TAGGING_PROVIDER_PREFERENCE", DEFAULT_PROVIDER_PREFERENCE)
@@ -248,17 +314,15 @@ def build_ai_tagging_load_control_config(settings_obj: Any) -> LoadControlConfig
         cpu_intra_op_threads=coerce_positive_int(
             getattr(settings_obj, "AI_TAGGING_CPU_INTRA_OP_THREADS", DEFAULT_CPU_INTRA_OP_THREADS),
             default=DEFAULT_CPU_INTRA_OP_THREADS,
+            maximum=MAX_CPU_INTRA_OP_THREADS,
         ),
         cpu_inter_op_threads=coerce_positive_int(
             getattr(settings_obj, "AI_TAGGING_CPU_INTER_OP_THREADS", DEFAULT_CPU_INTER_OP_THREADS),
             default=DEFAULT_CPU_INTER_OP_THREADS,
+            maximum=MAX_CPU_INTER_OP_THREADS,
         ),
-        execution_mode=str(
-            getattr(settings_obj, "AI_TAGGING_EXECUTION_MODE", DEFAULT_EXECUTION_MODE)
-        ).strip().upper() or DEFAULT_EXECUTION_MODE,
-        process_priority=str(
-            getattr(settings_obj, "AI_TAGGING_PROCESS_PRIORITY", DEFAULT_PROCESS_PRIORITY)
-        ).strip().lower() or DEFAULT_PROCESS_PRIORITY,
+        execution_mode=execution_mode,
+        process_priority=process_priority,
     )
 
 

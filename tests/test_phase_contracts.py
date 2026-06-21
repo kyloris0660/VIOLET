@@ -407,7 +407,18 @@ def _s2g_s3a_f1_summary(**overrides: object) -> dict:
                 "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider,DmlExecutionProvider",
             },
             "load_control": {
+                "configured_batch_size": 20,
+                "effective_batch_size": 2,
                 "batch_size": 2,
+                "batch": {
+                    "configured_batch_size": 20,
+                    "load_control_effective_batch_size": 10,
+                    "effective_batch_size": 2,
+                    "batch_cap_source": "model_optimal_batch_size",
+                    "batch_max_items": 10,
+                    "phase_max_batch_size": 16,
+                    "model_optimal_batch_size": 2,
+                },
                 "cpu_intra_op_threads": 4,
                 "cpu_inter_op_threads": 1,
                 "preprocess_workers": 2,
@@ -424,12 +435,71 @@ def _s2g_s3a_f1_summary(**overrides: object) -> dict:
                     "actual_provider",
                     "fallback_reason",
                     "batch_size",
+                    "effective_batch_size",
+                    "configured_batch_size",
+                    "batch_cap_source",
                     "cpu_thread_settings",
                     "preprocess_workers",
                     "execution_mode",
                     "tagger_version_source",
                 ]
             },
+            "model": {
+                "model_download_allowed": False,
+                "model_download_performed": False,
+            },
+        },
+        "gpu_directml_enablement": {
+            "attempted": True,
+            "package_install": {
+                "performed": False,
+                "scope": "project_venv",
+                "packages": [
+                    {
+                        "package": "onnxruntime-directml",
+                        "install_performed": False,
+                        "installed_after_attempt": False,
+                        "version": None,
+                    },
+                    {
+                        "package": "onnxruntime-gpu",
+                        "install_performed": False,
+                        "installed_after_attempt": False,
+                        "version": None,
+                    },
+                ],
+                "global_or_system_python_modified": False,
+            },
+            "available_onnx_providers_after_attempt": [
+                "AzureExecutionProvider",
+                "CPUExecutionProvider",
+            ],
+            "success": False,
+            "actual_gpu_provider_loaded": None,
+            "blocker": "package_missing",
+            "benchmarks": [
+                {
+                    "provider": "DmlExecutionProvider",
+                    "status": "provider_unavailable",
+                    "blocker": "package_missing",
+                },
+                {
+                    "provider": "CUDAExecutionProvider",
+                    "status": "provider_unavailable",
+                    "blocker": "package_missing",
+                },
+            ],
+        },
+        "benchmarks": {
+            "sample_source": "synthetic_zero_arrays",
+            "sample_count": 2,
+            "cpu": {
+                "status": "completed",
+                "actual_provider": "CPUExecutionProvider",
+                "sample_count": 2,
+                "throughput_items_per_second": 1.0,
+            },
+            "gpu_or_directml": [],
         },
         "shared_foundation": {
             "module": "backend/app/services/job_control.py",
@@ -1404,8 +1474,20 @@ def test_s2g_s3a_f1_contract_requires_fallback_reason_when_fallback_occurs() -> 
     assert "s2g_s3a_f1_fallback_reason_missing" in _error_codes(result)
 
 
+def test_s2g_s3a_f1_contract_rejects_fallback_reason_without_fallback() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["provider_abstraction"]["fallback_occurred"] = False
+    summary["wd_tagger"]["provider_abstraction"]["fallback_reason"] = "unavailable_requested_providers=CUDAExecutionProvider"
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_fallback_reason_present_without_fallback" in _error_codes(result)
+
+
 def test_s2g_s3a_f1_contract_rejects_unbounded_cpu_controls() -> None:
     summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["load_control"]["batch_size"] = 32
+    summary["wd_tagger"]["load_control"]["effective_batch_size"] = 32
     summary["wd_tagger"]["load_control"]["cpu_intra_op_threads"] = 16
     summary["wd_tagger"]["load_control"]["cpu_inter_op_threads"] = 4
     summary["wd_tagger"]["load_control"]["preprocess_workers"] = 8
@@ -1414,10 +1496,54 @@ def test_s2g_s3a_f1_contract_rejects_unbounded_cpu_controls() -> None:
     result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
     codes = _error_codes(result)
 
+    assert "s2g_s3a_f1_batch_size_unbounded" in codes
+    assert "s2g_s3a_f1_effective_batch_size_unbounded" in codes
     assert "s2g_s3a_f1_cpu_intra_threads_unbounded" in codes
     assert "s2g_s3a_f1_cpu_inter_threads_unbounded" in codes
     assert "s2g_s3a_f1_preprocess_workers_unbounded" in codes
     assert "s2g_s3a_f1_parallel_execution_enabled" in codes
+
+
+def test_s2g_s3a_f1_contract_requires_effective_batch_size_and_cap_source() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["load_control"]["effective_batch_size"] = 3
+    summary["wd_tagger"]["load_control"]["batch"]["batch_cap_source"] = ""
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g_s3a_f1_effective_batch_size_mismatch" in codes
+    assert "s2g_s3a_f1_batch_cap_source_missing" in codes
+
+
+def test_s2g_s3a_f1_contract_rejects_gpu_success_without_actual_loaded_provider() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["gpu_directml_enablement"]["success"] = True
+    summary["gpu_directml_enablement"]["actual_gpu_provider_loaded"] = None
+    summary["gpu_directml_enablement"]["blocker"] = None
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_gpu_success_without_gpu_provider" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_requires_gpu_blocker_when_unavailable() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["gpu_directml_enablement"]["success"] = False
+    summary["gpu_directml_enablement"]["blocker"] = ""
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_gpu_unavailable_blocker_missing" in _error_codes(result)
+
+
+def test_s2g_s3a_f1_contract_rejects_model_download_allowed() -> None:
+    summary = copy.deepcopy(_s2g_s3a_f1_summary())
+    summary["wd_tagger"]["model"]["model_download_allowed"] = True
+
+    result = check_phase_contract("s2g_s3a_f1_foundation_contract_v1", summary)
+
+    assert "s2g_s3a_f1_model_download_allowed" in _error_codes(result)
 
 
 def test_s2g_s3a_f1_contract_rejects_s3a_or_s3b_execution_enabled() -> None:

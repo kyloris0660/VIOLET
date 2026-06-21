@@ -1858,13 +1858,56 @@ def _check_s2g_s3a_f1_foundation(_contract: PhaseContract, summary: Mapping[str,
             expected="non-empty fallback reason when fallback_occurred=true",
             actual=fallback_reason,
         )
+    if not fallback_occurred and str(fallback_reason or "").strip():
+        result.fail(
+            "s2g_s3a_f1_fallback_reason_present_without_fallback",
+            "Provider fallback reason must not be reported when the selected provider was the first usable requested provider.",
+            path="wd_tagger.provider_abstraction.fallback_reason",
+            expected="empty when fallback_occurred=false",
+            actual=fallback_reason,
+        )
 
     caps = {
         "batch_size": _as_int(_get(summary, "wd_tagger.load_control.batch_size", 0)),
+        "configured_batch_size": _as_int(_get(summary, "wd_tagger.load_control.configured_batch_size", 0)),
+        "effective_batch_size": _as_int(_get(summary, "wd_tagger.load_control.effective_batch_size", 0)),
         "cpu_intra_op_threads": _as_int(_get(summary, "wd_tagger.load_control.cpu_intra_op_threads", 0)),
         "cpu_inter_op_threads": _as_int(_get(summary, "wd_tagger.load_control.cpu_inter_op_threads", 0)),
         "preprocess_workers": _as_int(_get(summary, "wd_tagger.load_control.preprocess_workers", 0)),
     }
+    batch_cap_source = str(_get(summary, "wd_tagger.load_control.batch.batch_cap_source", "") or "").strip()
+    if caps["configured_batch_size"] < 1:
+        result.fail(
+            "s2g_s3a_f1_configured_batch_size_missing",
+            "Configured batch size must be reported separately from effective runtime batch size.",
+            path="wd_tagger.load_control.configured_batch_size",
+            expected="positive integer",
+            actual=caps["configured_batch_size"],
+        )
+    if caps["effective_batch_size"] != caps["batch_size"]:
+        result.fail(
+            "s2g_s3a_f1_effective_batch_size_mismatch",
+            "Reported batch_size must represent the effective runtime batch size.",
+            path="wd_tagger.load_control.effective_batch_size",
+            expected=caps["batch_size"],
+            actual=caps["effective_batch_size"],
+        )
+    if not (1 <= caps["effective_batch_size"] <= 16):
+        result.fail(
+            "s2g_s3a_f1_effective_batch_size_unbounded",
+            "Effective AI tagging batch size must be bounded after config/env parsing.",
+            path="wd_tagger.load_control.effective_batch_size",
+            expected="1..16",
+            actual=caps["effective_batch_size"],
+        )
+    if not batch_cap_source:
+        result.fail(
+            "s2g_s3a_f1_batch_cap_source_missing",
+            "Batch provenance must report which cap determined the effective batch size.",
+            path="wd_tagger.load_control.batch.batch_cap_source",
+            expected="non-empty cap source",
+            actual=batch_cap_source,
+        )
     if not (1 <= caps["batch_size"] <= 16):
         result.fail("s2g_s3a_f1_batch_size_unbounded", "AI tagging batch size must be bounded.", path="wd_tagger.load_control.batch_size", expected="1..16", actual=caps["batch_size"])
     if not (1 <= caps["cpu_intra_op_threads"] <= 4):
@@ -1891,6 +1934,9 @@ def _check_s2g_s3a_f1_foundation(_contract: PhaseContract, summary: Mapping[str,
         "actual_provider",
         "fallback_reason",
         "batch_size",
+        "effective_batch_size",
+        "configured_batch_size",
+        "batch_cap_source",
         "cpu_thread_settings",
         "preprocess_workers",
         "execution_mode",
@@ -1904,6 +1950,80 @@ def _check_s2g_s3a_f1_foundation(_contract: PhaseContract, summary: Mapping[str,
             path="wd_tagger.provenance.fields_available",
             expected=sorted(required_provenance_fields),
             actual=sorted(provenance_fields),
+        )
+
+    if _as_bool(_get(summary, "wd_tagger.model.model_download_allowed", False)):
+        result.fail(
+            "s2g_s3a_f1_model_download_allowed",
+            "The F1/G1 smoke summary must be cache-only by default and not allow model downloads.",
+            path="wd_tagger.model.model_download_allowed",
+            expected=False,
+            actual=True,
+        )
+    if _as_bool(_get(summary, "wd_tagger.model.model_download_performed", False)):
+        result.fail(
+            "s2g_s3a_f1_model_download_performed",
+            "The F1/G1 smoke summary must not perform a model download.",
+            path="wd_tagger.model.model_download_performed",
+            expected=False,
+            actual=True,
+        )
+
+    gpu_attempted = _as_bool(_get(summary, "gpu_directml_enablement.attempted", False))
+    gpu_success = _as_bool(_get(summary, "gpu_directml_enablement.success", False))
+    gpu_blocker = str(_get(summary, "gpu_directml_enablement.blocker", "") or "").strip()
+    providers_after_attempt = _get(summary, "gpu_directml_enablement.available_onnx_providers_after_attempt", [])
+    actual_gpu_provider = _get(summary, "gpu_directml_enablement.actual_gpu_provider_loaded", None)
+    if not gpu_attempted:
+        result.fail(
+            "s2g_s3a_f1_gpu_enablement_not_attempted",
+            "F1+G1 must include a DirectML/CUDA enablement attempt or explicit provider blocker.",
+            path="gpu_directml_enablement.attempted",
+            expected=True,
+            actual=False,
+        )
+    if not isinstance(providers_after_attempt, list) or not providers_after_attempt:
+        result.fail(
+            "s2g_s3a_f1_gpu_attempt_provider_list_missing",
+            "GPU enablement summary must report actual ONNX Runtime providers after the attempt.",
+            path="gpu_directml_enablement.available_onnx_providers_after_attempt",
+            expected="non-empty list",
+            actual=providers_after_attempt,
+        )
+    if gpu_success:
+        if actual_gpu_provider not in {"DmlExecutionProvider", "CUDAExecutionProvider"}:
+            result.fail(
+                "s2g_s3a_f1_gpu_success_without_gpu_provider",
+                "GPU success cannot be claimed unless DirectML or CUDA was actually loaded.",
+                path="gpu_directml_enablement.actual_gpu_provider_loaded",
+                expected=["DmlExecutionProvider", "CUDAExecutionProvider"],
+                actual=actual_gpu_provider,
+            )
+        if isinstance(providers_after_attempt, list) and actual_gpu_provider not in providers_after_attempt:
+            result.fail(
+                "s2g_s3a_f1_gpu_success_provider_not_available",
+                "Claimed GPU provider must be present in ONNX Runtime available providers after the attempt.",
+                path="gpu_directml_enablement.available_onnx_providers_after_attempt",
+                expected=actual_gpu_provider,
+                actual=providers_after_attempt,
+            )
+    elif not gpu_blocker:
+        result.fail(
+            "s2g_s3a_f1_gpu_unavailable_blocker_missing",
+            "If GPU/DirectML is unavailable, the summary must report an explicit blocker.",
+            path="gpu_directml_enablement.blocker",
+            expected="non-empty blocker when success=false",
+            actual=gpu_blocker,
+        )
+
+    cpu_benchmark_status = str(_get(summary, "benchmarks.cpu.status", "") or "").strip()
+    if status == "target_met" and cpu_benchmark_status != "completed":
+        result.fail(
+            "s2g_s3a_f1_cpu_benchmark_not_completed",
+            "Target-met F1+G1 summaries must include a completed bounded CPU benchmark.",
+            path="benchmarks.cpu.status",
+            expected="completed",
+            actual=cpu_benchmark_status,
         )
 
     concepts = set(_get(summary, "shared_foundation.concepts", []) or [])

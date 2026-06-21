@@ -495,13 +495,14 @@ class WDTagger:
         **kwargs
     ) -> List[Dict[str, Any]]:
         """Predict tags from a single file path."""
+        model_name = kwargs.get('model_name', 'wd-eva02-large-tagger-v3')
+        local_files_only = bool(kwargs.get('local_files_only', False))
+        self.ensure_loaded(model_name, local_files_only=local_files_only)
+
         _, prepared = self._prepare_image_from_path(file_path)
         
         if prepared is None:
             return []
-        
-        model_name = kwargs.get('model_name', 'wd-eva02-large-tagger-v3')
-        self.ensure_loaded(model_name)
         
         batch = np.expand_dims(prepared, axis=0)
         
@@ -690,6 +691,23 @@ class WDTagger:
         configured = self._load_control_config.batch_size
         return max(1, min(configured, model_cap))
 
+    def get_batch_size_provenance(self, model_name: Optional[str] = None) -> Dict[str, Any]:
+        name = model_name or self._current_model_name or settings.AI_MODEL_NAME
+        model_cap = self.OPTIMAL_BATCH_SIZES.get(name, 4)
+        effective = self.get_optimal_batch_size(name)
+        cap_source = self._load_control_config.batch_cap_source
+        if effective == model_cap and model_cap < self._load_control_config.effective_batch_size:
+            cap_source = "model_optimal_batch_size"
+        return {
+            "configured_batch_size": self._load_control_config.configured_batch_size,
+            "load_control_effective_batch_size": self._load_control_config.effective_batch_size,
+            "effective_batch_size": effective,
+            "batch_cap_source": cap_source,
+            "batch_max_items": self._load_control_config.batch_max_items,
+            "phase_max_batch_size": 16,
+            "model_optimal_batch_size": model_cap,
+        }
+
     def get_provider_provenance(self) -> Dict[str, Any]:
         """Return public-safe ONNX provider selection provenance."""
         return self._provider_provenance.to_public_dict()
@@ -709,13 +727,17 @@ class WDTagger:
     ) -> Dict[str, Any]:
         """Return model/provider/backend provenance for AI tagging summaries."""
         name = model_name or self._current_model_name or settings.AI_MODEL_NAME
+        batch_provenance = self.get_batch_size_provenance(name)
         return {
             "model_name": name,
             "model_repo_id": self.AVAILABLE_MODELS.get(name),
             "thresholds": thresholds or {},
             "provider": self.get_provider_provenance(),
             "load_control": self.get_load_control_config(),
-            "batch_size": batch_size or self.get_optimal_batch_size(name),
+            "configured_batch_size": batch_provenance["configured_batch_size"],
+            "effective_batch_size": batch_provenance["effective_batch_size"],
+            "batch_size": batch_provenance["effective_batch_size"],
+            "batch": batch_provenance,
             "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
             "backend": "onnxruntime",
         }
