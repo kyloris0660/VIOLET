@@ -50,6 +50,30 @@ def _serialize_ai_job(job: AITagJob) -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
 
+    runtime_provenance = None
+    try:
+        from ...services import wd_tagger as wd_tagger_module
+        from ...services.ai_tagging_service import get_ai_tagging_runtime_provenance
+        from ...services.job_control import build_ai_tagging_load_control_config
+
+        tagger = getattr(wd_tagger_module, "_tagger_instance", None)
+        if tagger is not None:
+            runtime_provenance = get_ai_tagging_runtime_provenance(tagger)
+        else:
+            runtime_provenance = {
+                "model_name": settings.AI_MODEL_NAME,
+                "provider": {
+                    "requested_provider_preference": list(settings.AI_TAGGING_PROVIDER_PREFERENCE),
+                    "actual_provider": None,
+                    "fallback_occurred": False,
+                    "fallback_reason": None,
+                },
+                "load_control": build_ai_tagging_load_control_config(settings).to_public_dict(),
+                "loaded": False,
+            }
+    except Exception as exc:
+        runtime_provenance = {"available": False, "error_type": exc.__class__.__name__}
+
     return {
         "id": job.id,
         "status": job.status,
@@ -69,6 +93,7 @@ def _serialize_ai_job(job: AITagJob) -> dict:
         "failed_items": failed_items,
         "error_message": job.error_message,
         "localization_status": job.localization_status,
+        "runtime_provenance": runtime_provenance,
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
@@ -257,6 +282,14 @@ async def get_auto_tag_config(
         "auto_tag_dry_run": settings.AI_AUTO_TAG_AFTER_IMPORT_DRY_RUN,
         "auto_tag_force_suggestions": settings.AI_AUTO_TAG_AFTER_IMPORT_FORCE_SUGGESTIONS,
         "batch_max_items": settings.AI_TAGGING_BATCH_MAX_ITEMS,
+        "batch_size": settings.AI_TAGGING_BATCH_SIZE,
+        "provider_preference": list(settings.AI_TAGGING_PROVIDER_PREFERENCE),
+        "cpu_intra_op_threads": settings.AI_TAGGING_CPU_INTRA_OP_THREADS,
+        "cpu_inter_op_threads": settings.AI_TAGGING_CPU_INTER_OP_THREADS,
+        "preprocess_workers": settings.AI_TAGGING_PREPROCESS_WORKERS,
+        "execution_mode": settings.AI_TAGGING_EXECUTION_MODE,
+        "process_priority": settings.AI_TAGGING_PROCESS_PRIORITY,
+        "max_concurrent_ai_jobs": settings.AI_TAGGING_MAX_CONCURRENT_JOBS,
         "ai_tagging_auto_localization": settings.AI_TAGGING_AUTO_LOCALIZATION,
         "tag_translation_auto": settings.TAG_TRANSLATION_AUTO_ENABLED,
         "tag_translation_llm": settings.TAG_TRANSLATION_LLM_ENABLED,

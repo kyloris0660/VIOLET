@@ -49,8 +49,6 @@ REQUIRED_NON_EMPTY_PROOF_FIELDS = {
 S2G1X_PROBE_EVIDENCE_CODE_PATHS = (
     "scripts/run_s2g1_ai_tagging_capability_probe.py",
     "scripts/s2g_s3a_job_control.py",
-    "scripts/phase_contracts/contract_checks.py",
-    "scripts/phase_contracts/contract_registry.py",
 )
 
 REDACTED_VALUES = {
@@ -1705,6 +1703,258 @@ def _check_s2g1x_probe(_contract: PhaseContract, summary: Mapping[str, Any], res
         )
 
 
+def _read_s2g_s3a_f1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if path_text is MISSING or not str(path_text).strip():
+        result.fail(
+            "s2g_s3a_f1_markdown_report_path_missing",
+            "S2G/S3A-F1 summaries must name the public Markdown report path.",
+            path="public_reports.markdown_report_path",
+        )
+        return ""
+    candidate = Path(str(path_text))
+    if candidate.is_absolute():
+        result.fail(
+            "s2g_s3a_f1_markdown_report_path_unsafe",
+            "S2G/S3A-F1 Markdown report path must be repo-relative.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative path",
+            actual="[redacted-path]",
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s2g_s3a_f1_markdown_report_path_escape",
+            "S2G/S3A-F1 Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s2g_s3a_f1_markdown_report_missing",
+            "S2G/S3A-F1 Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s2g_s3a_f1_markdown_report_unreadable",
+            "S2G/S3A-F1 Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
+def _check_s2g_s3a_f1_foundation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {"target_met", "foundation_ready", "blocked_model_unavailable", "blocked_provider_unavailable"}
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s2g_s3a_f1_unknown_status",
+            "S2G/S3A-F1 status must be an explicit foundation status.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "target_met" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s2g_s3a_f1_non_completion_status_claimed_completion",
+            "Blocked or foundation-only statuses must not claim target_met or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met for completion claims",
+            actual=result.status,
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "wd_tagger.provider_abstraction.implemented",
+            "wd_tagger.provider_abstraction.hardcoded_cpu_provider_removed",
+            "public_redaction.passed",
+        ),
+        code="s2g_s3a_f1_required_foundation_proof_missing",
+        message="S2G/S3A-F1 requires provider abstraction, hardcoded CPU removal, and public redaction proof.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "safety.production_db_writes",
+            "safety.production_import",
+            "safety.production_classification",
+            "safety.production_ai_tagging",
+            "safety.production_localization",
+            "safety.production_s3a_execution_enabled",
+            "safety.unattended_auto_sync_enabled",
+            "safety.provider_pixiv_gallery_dl_saucenao_google_calls",
+            "safety.sourceconcept_or_entity",
+            "safety.confirmed_entity_assignments",
+            "safety.source_icloud_mutation",
+            "safety.cleanup_delete_reset_drop_truncate",
+            "safety.model_download",
+            "safety.db_schema_change",
+        ),
+        code="s2g_s3a_f1_required_safety_false_missing_or_true",
+        message="S2G/S3A-F1 safety proofs must explicitly set forbidden operation flags to false.",
+    )
+    _check_required_false_paths(
+        summary,
+        result,
+        (
+            "s3a_dry_run_plan.production_execution_enabled",
+            "s3a_dry_run_plan.unattended_enabled",
+        ),
+        code="s2g_s3a_f1_forbidden_execution_enabled",
+        message="S2G/S3A-F1 must keep S3A production execution and unattended S3B disabled.",
+    )
+
+    requested = _get(summary, "wd_tagger.provider_abstraction.requested_provider_preference", [])
+    actual_provider = _get(summary, "wd_tagger.provider_abstraction.actual_provider", None)
+    available = _get(summary, "wd_tagger.provider_abstraction.available_onnx_providers", [])
+    if not isinstance(requested, list) or not requested:
+        result.fail(
+            "s2g_s3a_f1_provider_preference_missing",
+            "WDTagger provider preference must be recorded as a non-empty list.",
+            path="wd_tagger.provider_abstraction.requested_provider_preference",
+            expected="non-empty list",
+            actual=requested,
+        )
+    if not isinstance(actual_provider, str) or not actual_provider.strip():
+        result.fail(
+            "s2g_s3a_f1_actual_provider_missing",
+            "WDTagger actual loaded ONNX provider must be reported.",
+            path="wd_tagger.provider_abstraction.actual_provider",
+            expected="non-empty provider name",
+            actual=actual_provider,
+        )
+    elif isinstance(available, list) and available and actual_provider not in available:
+        result.fail(
+            "s2g_s3a_f1_actual_provider_not_available",
+            "WDTagger actual provider must be one of the reported ONNX Runtime available providers.",
+            path="wd_tagger.provider_abstraction.actual_provider",
+            expected=available,
+            actual=actual_provider,
+        )
+
+    fallback_occurred = _as_bool(_get(summary, "wd_tagger.provider_abstraction.fallback_occurred", False))
+    fallback_reason = _get(summary, "wd_tagger.provider_abstraction.fallback_reason", None)
+    if fallback_occurred and not str(fallback_reason or "").strip():
+        result.fail(
+            "s2g_s3a_f1_fallback_reason_missing",
+            "Provider fallback must include a truthful fallback reason.",
+            path="wd_tagger.provider_abstraction.fallback_reason",
+            expected="non-empty fallback reason when fallback_occurred=true",
+            actual=fallback_reason,
+        )
+
+    caps = {
+        "batch_size": _as_int(_get(summary, "wd_tagger.load_control.batch_size", 0)),
+        "cpu_intra_op_threads": _as_int(_get(summary, "wd_tagger.load_control.cpu_intra_op_threads", 0)),
+        "cpu_inter_op_threads": _as_int(_get(summary, "wd_tagger.load_control.cpu_inter_op_threads", 0)),
+        "preprocess_workers": _as_int(_get(summary, "wd_tagger.load_control.preprocess_workers", 0)),
+    }
+    if not (1 <= caps["batch_size"] <= 16):
+        result.fail("s2g_s3a_f1_batch_size_unbounded", "AI tagging batch size must be bounded.", path="wd_tagger.load_control.batch_size", expected="1..16", actual=caps["batch_size"])
+    if not (1 <= caps["cpu_intra_op_threads"] <= 4):
+        result.fail("s2g_s3a_f1_cpu_intra_threads_unbounded", "CPU intra-op threads must be capped for this phase.", path="wd_tagger.load_control.cpu_intra_op_threads", expected="1..4", actual=caps["cpu_intra_op_threads"])
+    if caps["cpu_inter_op_threads"] != 1:
+        result.fail("s2g_s3a_f1_cpu_inter_threads_unbounded", "CPU inter-op threads must remain one for this phase.", path="wd_tagger.load_control.cpu_inter_op_threads", expected=1, actual=caps["cpu_inter_op_threads"])
+    if not (1 <= caps["preprocess_workers"] <= 2):
+        result.fail("s2g_s3a_f1_preprocess_workers_unbounded", "Preprocess workers must be capped for this phase.", path="wd_tagger.load_control.preprocess_workers", expected="1..2", actual=caps["preprocess_workers"])
+    if str(_get(summary, "wd_tagger.load_control.execution_mode", "")).upper() != "ORT_SEQUENTIAL":
+        result.fail(
+            "s2g_s3a_f1_parallel_execution_enabled",
+            "ORT execution mode must default to ORT_SEQUENTIAL in this foundation phase.",
+            path="wd_tagger.load_control.execution_mode",
+            expected="ORT_SEQUENTIAL",
+            actual=_get(summary, "wd_tagger.load_control.execution_mode", None),
+        )
+
+    provenance_fields = set(_get(summary, "wd_tagger.provenance.fields_available", []) or [])
+    required_provenance_fields = {
+        "model_name",
+        "model_repo_id",
+        "thresholds",
+        "requested_provider_preference",
+        "actual_provider",
+        "fallback_reason",
+        "batch_size",
+        "cpu_thread_settings",
+        "preprocess_workers",
+        "execution_mode",
+        "tagger_version_source",
+    }
+    missing_provenance = sorted(required_provenance_fields - provenance_fields)
+    if missing_provenance:
+        result.fail(
+            "s2g_s3a_f1_provenance_fields_missing",
+            "AI tagging provenance is missing required fields.",
+            path="wd_tagger.provenance.fields_available",
+            expected=sorted(required_provenance_fields),
+            actual=sorted(provenance_fields),
+        )
+
+    concepts = set(_get(summary, "shared_foundation.concepts", []) or [])
+    required_concepts = {"LoadControlConfig", "ProviderCapability", "JobRun", "StageRun", "ProgressSnapshot", "ProviderProvenance"}
+    missing_concepts = sorted(required_concepts - concepts)
+    if missing_concepts:
+        result.fail(
+            "s2g_s3a_f1_shared_concepts_missing",
+            "Shared foundation must expose the required job/progress/provider vocabulary.",
+            path="shared_foundation.concepts",
+            expected=sorted(required_concepts),
+            actual=sorted(concepts),
+        )
+
+    stage_rows = _get(summary, "s3a_dry_run_plan.stages", [])
+    stage_names = {
+        str(stage.get("name"))
+        for stage in stage_rows
+        if isinstance(stage, Mapping)
+    } if isinstance(stage_rows, list) else set()
+    expected_stages = {"update_check", "hydration_read", "import_reuse", "classification", "ai_tagging", "localization", "summary"}
+    missing_stages = sorted(expected_stages - stage_names)
+    if missing_stages:
+        result.fail(
+            "s2g_s3a_f1_s3a_stages_missing",
+            "S3A dry-run planning summary must include every future stage name.",
+            path="s3a_dry_run_plan.stages",
+            expected=sorted(expected_stages),
+            actual=sorted(stage_names),
+        )
+    elif any(_as_bool(stage.get("writes_enabled", False)) for stage in stage_rows if isinstance(stage, Mapping)):
+        result.fail(
+            "s2g_s3a_f1_s3a_write_stage_enabled",
+            "S3A dry-run planning stages must keep writes disabled.",
+            path="s3a_dry_run_plan.stages",
+            expected="all writes_enabled=false",
+        )
+
+    markdown_text = _read_s2g_s3a_f1_markdown_report(summary, result)
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
+    result.details["s2g_s3a_f1_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s2g_s3a_f1_public_payload_redaction_failed",
+            "S2G/S3A-F1 contract independently found forbidden public JSON or Markdown content.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
+
 def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     readiness_passed = _as_bool(_get(summary, "readiness.passed", False))
     schema_ensure_ran = _as_bool(_get(summary, "gate0.schema.ensure.ran", False))
@@ -2111,5 +2361,6 @@ CUSTOM_CHECKS = {
     "production_development_separation": _check_production_development_separation,
     "dynamic_library_sync": _check_dynamic_library_sync,
     "s2g1x_probe": _check_s2g1x_probe,
+    "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,
     "phase47_s2_baseline": _check_phase47_s2_baseline,
 }

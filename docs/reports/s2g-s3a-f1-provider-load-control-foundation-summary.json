@@ -1,0 +1,258 @@
+{
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "durable production code",
+        "committed": true,
+        "path": "backend/app/services/job_control.py"
+      },
+      {
+        "classification": "reusable validation/safety tool",
+        "committed": true,
+        "path": "scripts/run_s2g_s3a_f1_provider_load_smoke.py"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation.md",
+        "redacted": true
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation-summary.json",
+        "redacted": true
+      }
+    ]
+  },
+  "generated_at": "2026-06-21T06:03:04.328294Z",
+  "phase": "S2G/S3A-F1",
+  "pipeline_contract": {
+    "claims": {
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s2g_s3a_f1_foundation_contract_v1",
+    "status": "target_met"
+  },
+  "public_redaction": {
+    "finding_count": 0,
+    "passed": true,
+    "scan_contract": "s2g_s3a_f1_foundation_contract_v1"
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation.md",
+    "path_style": "repo_relative_public_artifacts",
+    "summary_json_path": "docs/reports/s2g-s3a-f1-provider-load-control-foundation-summary.json"
+  },
+  "recommended_next_phase": "S2G provider/load-control validation on real controlled AI tagging job, then separately approved production S3A execution",
+  "runtime": {
+    "onnxruntime": {
+      "available_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "version": "1.23.2"
+    },
+    "python_executable_public_name": "python.exe"
+  },
+  "s3a_dry_run_plan": {
+    "dry_run": true,
+    "production_execution_enabled": false,
+    "stages": [
+      {
+        "name": "update_check",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "hydration_read",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "import_reuse",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "classification",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "ai_tagging",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "localization",
+        "status": "planned",
+        "writes_enabled": false
+      },
+      {
+        "name": "summary",
+        "status": "planned",
+        "writes_enabled": false
+      }
+    ],
+    "unattended_enabled": false
+  },
+  "safety": {
+    "cleanup_delete_reset_drop_truncate": false,
+    "confirmed_entity_assignments": false,
+    "db_schema_change": false,
+    "model_download": false,
+    "production_ai_tagging": false,
+    "production_classification": false,
+    "production_db_writes": false,
+    "production_import": false,
+    "production_localization": false,
+    "production_s3a_execution_enabled": false,
+    "provider_pixiv_gallery_dl_saucenao_google_calls": false,
+    "source_icloud_mutation": false,
+    "sourceconcept_or_entity": false,
+    "unattended_auto_sync_enabled": false
+  },
+  "shared_foundation": {
+    "concepts": [
+      "LoadControlConfig",
+      "ProviderCapability",
+      "JobRun",
+      "StageRun",
+      "ProgressSnapshot",
+      "ProviderProvenance"
+    ],
+    "module": "backend/app/services/job_control.py",
+    "no_background_daemon_added": true,
+    "no_db_schema_change": true
+  },
+  "title": "WDTagger Provider Abstraction and Bounded Load-Control Foundation",
+  "wd_tagger": {
+    "load_control": {
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls"
+    },
+    "model": {
+      "load_error_type": null,
+      "local_files_only": true,
+      "model_loaded": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3"
+    },
+    "provenance": {
+      "fields_available": [
+        "model_name",
+        "model_repo_id",
+        "thresholds",
+        "requested_provider_preference",
+        "actual_provider",
+        "fallback_reason",
+        "batch_size",
+        "cpu_thread_settings",
+        "preprocess_workers",
+        "execution_mode",
+        "tagger_version_source"
+      ],
+      "runtime_provenance": {
+        "backend": "onnxruntime",
+        "batch_size": 2,
+        "load_control": {
+          "allow_provider_fallback": true,
+          "applied_session_options": {
+            "cpu_inter_op_threads": 1,
+            "cpu_intra_op_threads": 4,
+            "execution_mode": "ORT_SEQUENTIAL"
+          },
+          "batch_size": 2,
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL",
+          "max_concurrent_jobs": 1,
+          "preprocess_workers": 2,
+          "process_priority": "below_normal",
+          "process_priority_applied": false,
+          "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+          "provider_preference": [
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "valid_for_runtime": true,
+          "validation_errors": [],
+          "worker_count": 1
+        },
+        "model_name": "wd-swinv2-tagger-v3",
+        "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+        "provider": {
+          "actual_onnx_provider_loaded": "CPUExecutionProvider",
+          "actual_provider": "CPUExecutionProvider",
+          "available_providers": [
+            "AzureExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "fallback_occurred": true,
+          "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider,DmlExecutionProvider",
+          "loaded_providers": [
+            "CPUExecutionProvider"
+          ],
+          "provider_load_errors": [],
+          "requested_provider_preference": [
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+        "thresholds": {
+          "character_threshold": 0.65,
+          "general_threshold": 0.35,
+          "rating_threshold": 0.5,
+          "suggestion_threshold": 0.2
+        }
+      }
+    },
+    "provider_abstraction": {
+      "actual_provider": "CPUExecutionProvider",
+      "available_onnx_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": true,
+      "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider,DmlExecutionProvider",
+      "hardcoded_cpu_provider_removed": true,
+      "implemented": true,
+      "loaded_providers": [
+        "CPUExecutionProvider"
+      ],
+      "requested_provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "supported_provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    },
+    "thresholds": {
+      "character_threshold": 0.65,
+      "general_threshold": 0.35,
+      "rating_threshold": 0.5,
+      "suggestion_threshold": 0.2
+    }
+  }
+}

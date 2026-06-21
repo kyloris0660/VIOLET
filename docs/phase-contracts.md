@@ -42,6 +42,7 @@ extend a contract first.
 - `phase47_s2_baseline_contract_v1`
 - `production_development_separation_contract_v1`
 - `s2g1x_probe_contract_v1`
+- `s2g_s3a_f1_foundation_contract_v1`
 
 ## R1R Gate
 
