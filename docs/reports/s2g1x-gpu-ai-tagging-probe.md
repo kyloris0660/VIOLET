@@ -25,7 +25,7 @@
 | --- | --- | --- | --- | --- | --- |
 | CUDA | False | False | False | not_available | N/A |
 | DirectML | False | False | False | not_available | N/A |
-| CPU | True | True | True | completed | 1.16 |
+| CPU | True | True | True | completed | 1.1534 |
 
 ## Threshold And Model Config
 

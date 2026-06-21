@@ -47,7 +47,7 @@
       "cpu_benchmark_status": "completed",
       "cpu_loaded": true,
       "cpu_practical": true,
-      "cpu_throughput_items_per_second": 1.16,
+      "cpu_throughput_items_per_second": 1.1534,
       "label_file_cached": true,
       "model_file_cached": true,
       "network_download_required": false
@@ -77,8 +77,8 @@
         "loaded": true,
         "practical": true,
         "provider": "CPUExecutionProvider",
-        "seconds_per_item": 0.8621,
-        "throughput_items_per_second": 1.16
+        "seconds_per_item": 0.867,
+        "throughput_items_per_second": 1.1534
       },
       "cuda": {
         "available": false,
@@ -166,13 +166,13 @@
       "suggestion_threshold": 0.2
     }
   },
-  "generated_at": "2026-06-21T04:06:56Z",
+  "generated_at": "2026-06-21T05:32:36Z",
   "head_evidence": {
     "current_pr_head_sha": "represented_by_pr_metadata_after_commit",
     "current_pr_head_sha_scope": "a committed report cannot contain the final commit SHA that includes itself",
-    "probe_run_head_sha": "e903f15ed51db789ac8627d599aceaa4c9fe0fef",
+    "probe_run_head_sha": "9ce87404074a29eed373d03759920500af9a6d20",
     "probe_run_head_sha_scope": "git HEAD used while running the local capability probe and writing this report",
-    "report_generation_head_sha": "e903f15ed51db789ac8627d599aceaa4c9fe0fef",
+    "report_generation_head_sha": "9ce87404074a29eed373d03759920500af9a6d20",
     "report_generation_head_sha_scope": "same local generation step; later supplemental commits may update PR metadata without rewriting this file",
     "top_level_head_sha_omitted": true
   },
@@ -235,6 +235,11 @@
     "finding_count": 0,
     "findings_redacted": true,
     "passed": true
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s2g1x-gpu-ai-tagging-probe.md",
+    "path_style": "repo_relative_public_artifacts",
+    "summary_json_path": "docs/reports/s2g1x-gpu-ai-tagging-probe-summary.json"
   },
   "s2g_s3a_decision": {
     "current_app_forced_provider": "CPUExecutionProvider",
