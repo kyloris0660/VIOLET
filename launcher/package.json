@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/launcher-contract.test.js",
+    "test": "node tests/launcher-contract.test.js && node tests/controller-runner.test.js && node tests/renderer-behavior.test.js",
     "lint": "node tests/lint.js"
   },
   "devDependencies": {

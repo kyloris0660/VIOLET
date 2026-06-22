@@ -14,6 +14,7 @@ import json
 import ntpath
 import os
 import platform
+import re
 import signal
 import socket
 import subprocess
@@ -62,6 +63,37 @@ DANGEROUS_PRODUCTION_FLAGS = (
     "VIOLET_ALLOW_DESTRUCTIVE_E2E",
     "VIOLET_RUN_REAL_E2E",
 )
+
+PRODUCTION_PROFILE_ENV_ALLOWLIST = {
+    "APPDATA",
+    "COMSPEC",
+    "CURL_CA_BUNDLE",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LOCALAPPDATA",
+    "NUMBER_OF_PROCESSORS",
+    "PATH",
+    "PATHEXT",
+    "PROCESSOR_ARCHITECTURE",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMW6432",
+    "PYTHONIOENCODING",
+    "PYTHONUTF8",
+    "REQUESTS_CA_BUNDLE",
+    "SSL_CERT_DIR",
+    "SSL_CERT_FILE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+    "USERPROFILE",
+    "WINDIR",
+}
 
 STARTUP_SAFE_MODE_ENV = "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP"
 STARTUP_MAINTENANCE_APPROVAL_ENV = "VIOLET_PRODUCTION_STARTUP_MAINTENANCE_APPROVED"
@@ -513,6 +545,17 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
     return profile_env
 
 
+def _production_profile_baseline(source_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    source = dict(source_env or os.environ)
+    allowed = {key.casefold() for key in PRODUCTION_PROFILE_ENV_ALLOWLIST}
+    baseline: dict[str, str] = {}
+    for key, value in source.items():
+        if key.casefold() in allowed:
+            baseline[str(key)] = str(value)
+    baseline.setdefault("PYTHONUNBUFFERED", "1")
+    return baseline
+
+
 def resolve_config(
     repo_root: Path = ROOT,
     *,
@@ -536,7 +579,7 @@ def resolve_config(
             profile_path=profile_path,
         )
         profile = loaded_profile or _default_profile_payload(repo_root, profile_id)
-        merged = dict(base_env or os.environ)
+        merged = _production_profile_baseline(base_env)
         merged.update(_profile_to_env(profile, repo_root=repo_root))
         config_source = "production_profile"
         profile_exists = loaded_profile is not None
@@ -963,6 +1006,47 @@ def port_owner_pid(port: int) -> int | None:
             return int(text[0].strip())
         except ValueError:
             return None
+    return _port_owner_pid_posix(int(port))
+
+
+def _port_owner_pid_posix(port: int) -> int | None:
+    try:
+        completed = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{int(port)}", "-sTCP:LISTEN", "-Fp"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        completed = None
+    if completed is not None:
+        for line in (completed.stdout or "").splitlines():
+            if line.startswith("p"):
+                try:
+                    return int(line[1:].strip())
+                except ValueError:
+                    continue
+
+    try:
+        completed = subprocess.run(
+            ["ss", "-ltnp"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    needle = f":{int(port)}"
+    for line in (completed.stdout or "").splitlines():
+        if needle not in line:
+            continue
+        match = re.search(r"\bpid=(\d+)", line)
+        if match:
+            return int(match.group(1))
     return None
 
 
@@ -1112,6 +1196,7 @@ def _profile_automation_enabled(profile: Mapping[str, Any]) -> list[str]:
 def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
     db = config.db
     automation_enabled = _profile_automation_enabled(config.profile_data)
+    db_user = str(db.get("user") or "").strip()
     return {
         "profile_id": config.profile_id or DEFAULT_PROFILE_ID,
         "exists": config.profile_exists,
@@ -1127,7 +1212,8 @@ def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
             "port": db.get("port"),
             "port_valid": config.db_port_valid,
             "name": db.get("name"),
-            "user_configured": bool(str(db.get("user") or "").strip()),
+            "user": db_user,
+            "user_configured": bool(db_user),
             "password_present": bool(str(db.get("password") or "").strip()),
             "password_value_recorded": False,
         },
@@ -1345,6 +1431,7 @@ def profile_discover(
             "db_host": discovered["db"]["host"],
             "db_port": discovered["db"]["port"],
             "db_name": discovered["db"]["name"],
+            "db_user": discovered["db"].get("user") or "",
             "db_user_configured": bool(discovered["db"].get("user")),
             "password_copied_from_dotenv": False,
             "storage_root_copied_from_dotenv": False,
@@ -1586,8 +1673,11 @@ def production_command(config: RuntimeConfig) -> list[str]:
 
 
 def _child_environment(config: RuntimeConfig) -> dict[str, str]:
-    env = os.environ.copy()
-    env.update(config.env)
+    if config.config_source == "production_profile":
+        env = dict(config.env)
+    else:
+        env = os.environ.copy()
+        env.update(config.env)
     env["VIOLET_ENV"] = "production"
     env["APP_PORT"] = str(config.port)
     env["BLOMBOORU_DEBUG"] = "false"
@@ -2077,6 +2167,35 @@ def test_database(
     )
 
 
+def _profile_update_args_to_payload(args: argparse.Namespace) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    for attr, key in (("storage_root", "storage_root"), ("python", "python"), ("repo_root", "repo_root"), ("app_port", "app_port")):
+        value = getattr(args, attr)
+        if value is not None:
+            updates[key] = value
+    db_updates: dict[str, Any] = {}
+    for attr, key in (("db_host", "host"), ("db_port", "port"), ("db_name", "name"), ("db_user", "user")):
+        value = getattr(args, attr)
+        if value is not None:
+            db_updates[key] = value
+    if db_updates:
+        updates["db"] = db_updates
+    return updates
+
+
+def _profile_update_stdin_payload(stdin_text: str) -> tuple[dict[str, Any] | None, str | None]:
+    text = stdin_text.strip()
+    if not text:
+        return {}, None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None, "profile_update_stdin_json_invalid"
+    if not isinstance(payload, Mapping):
+        return None, "profile_update_stdin_json_not_object"
+    return dict(payload), None
+
+
 def _add_json_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Print public-safe JSON.")
 
@@ -2107,7 +2226,7 @@ def make_parser() -> argparse.ArgumentParser:
     update.add_argument("--db-port")
     update.add_argument("--db-name")
     update.add_argument("--db-user")
-    update.add_argument("--db-password")
+    update.add_argument("--stdin-json", action="store_true", help="Read profile update payload from stdin JSON.")
     return parser
 
 
@@ -2150,18 +2269,19 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "profile-init":
         result = profile_init(profile_id=args.profile)
     elif args.command == "profile-update":
-        updates: dict[str, Any] = {}
-        for attr, key in (("storage_root", "storage_root"), ("python", "python"), ("repo_root", "repo_root"), ("app_port", "app_port")):
-            value = getattr(args, attr)
-            if value is not None:
-                updates[key] = value
-        db_updates: dict[str, Any] = {}
-        for attr, key in (("db_host", "host"), ("db_port", "port"), ("db_name", "name"), ("db_user", "user"), ("db_password", "password")):
-            value = getattr(args, attr)
-            if value is not None:
-                db_updates[key] = value
-        if db_updates:
-            updates["db"] = db_updates
+        updates = _profile_update_args_to_payload(args)
+        if args.stdin_json:
+            stdin_payload, stdin_error = _profile_update_stdin_payload(sys.stdin.read())
+            if stdin_error:
+                result = ControlResult(
+                    ok=False,
+                    status="error",
+                    message="Profile update payload must be valid JSON.",
+                    errors=[stdin_error],
+                )
+                _print_result(result, json_output=args.json)
+                return 1
+            updates.update(stdin_payload or {})
         result = profile_update(profile_id=args.profile, updates=updates)
     else:
         raise AssertionError(args.command)

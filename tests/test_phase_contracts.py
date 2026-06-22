@@ -485,8 +485,8 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
         "manual_acceptance_completed": False,
         "merge_allowed": False,
         "validation": {
-            "python_tests_status": "pending",
-            "electron_tests_status": "pending",
+            "python_tests_status": "passed",
+            "electron_tests_status": "passed",
         },
         "safety": {
             "no_import_tagging_localization_sync_jobs": True,
@@ -1853,6 +1853,24 @@ def test_prod_launcher_ux1_contract_rejects_missing_checklist_group() -> None:
     result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
 
     assert "prod_launcher_ux1_missing_checklist_groups" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_rejects_pending_python_validation() -> None:
+    summary = _prod_launcher_ux1_summary()
+    summary["validation"]["python_tests_status"] = "pending"
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_python_validation_not_passed" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_rejects_failed_electron_validation() -> None:
+    summary = _prod_launcher_ux1_summary()
+    summary["validation"]["electron_tests_status"] = "failed"
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_electron_validation_not_passed" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:

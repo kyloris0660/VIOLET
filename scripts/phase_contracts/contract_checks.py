@@ -1539,6 +1539,22 @@ def _check_prod_launcher_ux1_production_profile(
             expected=False,
             actual=True,
         )
+    if str(_get(summary, "validation.python_tests_status", "")).strip().casefold() != "passed":
+        result.fail(
+            "prod_launcher_ux1_python_validation_not_passed",
+            "UX1/PF1 executable contract requires Python validation to be recorded as passed.",
+            path="validation.python_tests_status",
+            expected="passed",
+            actual=_get(summary, "validation.python_tests_status", None),
+        )
+    if str(_get(summary, "validation.electron_tests_status", "")).strip().casefold() != "passed":
+        result.fail(
+            "prod_launcher_ux1_electron_validation_not_passed",
+            "UX1/PF1 executable contract requires Electron validation to be recorded as passed.",
+            path="validation.electron_tests_status",
+            expected="passed",
+            actual=_get(summary, "validation.electron_tests_status", None),
+        )
 
     checklist_groups = set(str(item) for item in (_get(summary, "electron_launcher.checklist_groups", []) or []))
     required_groups = {

@@ -31,14 +31,15 @@ The profile is the production source of truth for launcher startup:
 - `python`
 - `app_port`
 - `storage_root`
-- DB host, port, name, user, optional password
+- DB host, port, name, user, optional private DB credential
 - `safe_startup=true`
 - startup automation flags set to false
 
 The existing development `.env` may still be read for non-private generic
 defaults during profile discovery, such as a default port or DB name. The
-launcher does not copy a development storage root, does not copy passwords, does
-not modify `.env`, and does not require `VIOLET_ENV=production` in `.env`.
+launcher does not copy a development storage root, does not copy private DB
+credentials, does not modify `.env`, and does not require
+`VIOLET_ENV=production` in `.env`.
 
 If storage root or private DB values cannot be safely inferred, the Electron UI
 shows `Profile Incomplete` and asks the operator to select or enter them once.
@@ -117,7 +118,8 @@ Observed #121 blockers are mapped to user-facing actions:
 
 ## Startup Environment
 
-The production child process environment is built from the profile:
+The production child process environment is built from a clean allowlisted
+baseline plus the profile:
 
 ```text
 VIOLET_ENV=production
@@ -134,6 +136,9 @@ TAG_TRANSLATION_BACKGROUND_ENABLED=false
 VIOLET_ALLOW_DESTRUCTIVE_E2E=false
 VIOLET_RUN_REAL_E2E=false
 ```
+
+Profile updates that include private DB values are sent from Electron to the
+Python controller through stdin JSON, not command-line argv.
 
 In this profile-active safe-startup mode, backend DB settings prefer the profile
 environment over storage `settings.json`. This override is deliberately narrow

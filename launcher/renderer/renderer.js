@@ -35,6 +35,7 @@ const buttons = {
 };
 
 let latestPayload = null;
+let initialFieldValues = {};
 
 const stateLabels = {
   no_profile: 'No Production Profile',
@@ -69,12 +70,16 @@ function setBusy(isBusy) {
 
 function deriveState(payload) {
   const data = payload && payload.data ? payload.data : {};
+  if (payload && payload.status === 'error') return 'Error';
+  if (payload && payload.status === 'no_profile') return 'No Production Profile';
+  if (data.profile && data.profile.exists === false) return 'No Production Profile';
+  if (payload && (payload.status === 'profile_incomplete' || payload.status === 'discovered' || payload.status === 'cancelled')) {
+    return 'Profile Incomplete';
+  }
   if (payload && payload.status === 'running') return 'Running';
   if (payload && payload.status === 'unhealthy') return 'Unhealthy';
   if (payload && payload.status === 'stopped') return 'Stopped';
-  if (payload && payload.status === 'error') return 'Error';
   if (payload && payload.status === 'blocked') return 'Blocked';
-  if (data.profile && data.profile.exists === false) return 'No Production Profile';
   return stateLabels[payload && payload.status] || 'Not Checked';
 }
 
@@ -91,6 +96,7 @@ function updateSummary(payload) {
   if (profile.db) {
     if (profile.db.port && !fields.dbPort.value) fields.dbPort.value = String(profile.db.port);
     if (profile.db.name && !fields.dbName.value) fields.dbName.value = String(profile.db.name);
+    if (profile.db.user && !fields.dbUser.value) fields.dbUser.value = String(profile.db.user);
   }
 }
 
@@ -158,7 +164,7 @@ async function run(command, extraArgs = []) {
   }
 }
 
-function formPayload() {
+function currentFieldValues() {
   return {
     appPort: fields.appPort.value,
     dbHost: fields.dbHost.value,
@@ -167,6 +173,22 @@ function formPayload() {
     dbUser: fields.dbUser.value,
     dbPassword: fields.dbPassword.value
   };
+}
+
+function rememberInitialFields() {
+  initialFieldValues = currentFieldValues();
+}
+
+function formPayload() {
+  const current = currentFieldValues();
+  const payload = {};
+  for (const [key, value] of Object.entries(current)) {
+    const trimmed = String(value || '').trim();
+    if (trimmed && trimmed !== String(initialFieldValues[key] || '').trim()) {
+      payload[key] = trimmed;
+    }
+  }
+  return payload;
 }
 
 buttons.createProfile.addEventListener('click', () => run('profile-init'));
@@ -181,7 +203,12 @@ buttons.selectStorage.addEventListener('click', async () => {
 buttons.saveProfile.addEventListener('click', async () => {
   setBusy(true);
   try {
-    applyPayload(await window.violetLauncher.saveProfile(formPayload()));
+    const payload = await window.violetLauncher.saveProfile(formPayload());
+    applyPayload(payload);
+    if (payload.ok) {
+      fields.dbPassword.value = '';
+      rememberInitialFields();
+    }
   } finally {
     setBusy(false);
   }
@@ -213,8 +240,13 @@ async function boot() {
   fields.dbHost.value = inferred.db_host || '';
   fields.dbPort.value = inferred.db_port || '';
   fields.dbName.value = inferred.db_name || '';
-  fields.dbUser.value = inferred.db_user_configured ? 'postgres' : '';
-  await run('profile-status');
+  fields.dbUser.value = inferred.db_user || '';
+  rememberInitialFields();
+  const profilePayload = await run('profile-status');
+  rememberInitialFields();
+  if (profilePayload.status === 'no_profile' || profilePayload.status === 'profile_incomplete') {
+    return;
+  }
   await run('status');
 }
 

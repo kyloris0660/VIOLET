@@ -26,6 +26,9 @@
     "development_dotenv_modified": false,
     "development_dotenv_required_for_production": false,
     "child_env_from_profile": true,
+    "clean_allowlisted_process_environment": true,
+    "arbitrary_development_env_inheritance": false,
+    "dangerous_development_variables_stripped": true,
     "profile_overrides_development_dotenv_for_child": true,
     "storage_root_not_invented": true,
     "storage_root_not_copied_from_dotenv": true,
@@ -45,7 +48,7 @@
       ],
       "remaining_user_selected": [
         "production storage root",
-        "db password if production DB requires one"
+        "private DB credential if production DB requires one"
       ],
       "private_values_invented": false
     }
@@ -59,6 +62,9 @@
     "raw_json_hidden_from_main_screen": true,
     "advanced_diagnostics_collapsed_by_default": true,
     "copy_diagnostic_summary": true,
+    "profile_missing_state_precedence": true,
+    "preserves_existing_db_user": true,
+    "save_profile_uses_stdin_json": true,
     "checklist_groups": [
       "Production Profile",
       "Environment",
@@ -112,6 +118,10 @@
     ],
     "safe_startup_requires_initialized_settings": true,
     "profile_active_db_env_overrides_settings_json": true,
+    "profile_update_private_db_value_uses_stdin_json": true,
+    "controller_empty_stdout_is_error": true,
+    "controller_stderr_redacted": true,
+    "posix_port_owner_lookup": "lsof_then_ss",
     "development_env_legacy_function_test_path_preserved": true
   },
   "health_status": {
@@ -144,7 +154,22 @@
   "public_json_safety": {
     "log_tail_in_public_json": false,
     "profile_paths_redacted": true,
+    "controller_stderr_redacted": true,
+    "controller_error_length_capped": true,
     "advanced_diagnostics_public_safe": true
+  },
+  "review_fix_round": {
+    "base_head_sha": "bf0edb669ac912b7b10cc5732c1efacf6a51b31f",
+    "fixed": [
+      "P1 clean allowlisted production profile environment replaces inherited development environment",
+      "P2 profile status/discovery expose public-safe DB user and renderer preserves custom DB users",
+      "P2 missing/incomplete profile state takes precedence over generic stopped runtime state",
+      "P2 missing controller JSON and spawn/crash failures return structured actionable errors",
+      "P2 controller stderr is redacted before renderer diagnostics",
+      "P2 private DB credential profile updates use stdin JSON instead of argv",
+      "P2 POSIX port owner lookup uses lsof/ss and unknown owners remain fail-closed",
+      "P2 UX1 contract requires Python and Electron validation statuses to be passed"
+    ]
   },
   "manual_acceptance_required_before_merge": true,
   "manual_acceptance_completed": false,
@@ -154,9 +179,10 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "195 passed",
+    "python_tests_result": "204 passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",
+    "electron_tests_result": "launcher contract checks passed; controller runner tests passed; renderer behavior tests passed",
     "electron_lint_status": "passed",
     "electron_audit_status": "passed_zero_vulnerabilities",
     "contract_check_status": "passed",

@@ -55,7 +55,14 @@ def _write_fake_repo(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     return repo, storage, env
 
 
-def _write_fake_profile(repo: Path, storage: Path, *, profile_id: str = control.DEFAULT_PROFILE_ID) -> Path:
+def _write_fake_profile(
+    repo: Path,
+    storage: Path,
+    *,
+    profile_id: str = control.DEFAULT_PROFILE_ID,
+    db_user: str = "postgres",
+    db_password: str = "",
+) -> Path:
     profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
     profile_path.parent.mkdir(parents=True)
     profile_path.write_text(
@@ -71,8 +78,8 @@ def _write_fake_profile(repo: Path, storage: Path, *, profile_id: str = control.
                     "host": "localhost",
                     "port": 5432,
                     "name": "blombooru",
-                    "user": "postgres",
-                    "password": "",
+                    "user": db_user,
+                    "password": db_password,
                 },
                 "safe_startup": True,
                 "automation_flags": {
@@ -166,6 +173,94 @@ def test_profile_preflight_uses_profile_not_development_dotenv(tmp_path, safe_ba
     assert child_env["VIOLET_ENV"] == "production"
     assert child_env["VIOLET_STORAGE_ROOT"] == str(storage)
     assert child_env["VIOLET_PRODUCTION_PROFILE_ACTIVE"] == "true"
+
+
+def test_profile_launch_environment_strips_development_variables(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    dotenv_before = (repo / ".env").read_text(encoding="utf-8")
+    env.update(
+        {
+            "BLOMBOORU_REQUIRE_AUTH": "true",
+            "OPENAI_API_KEY": "sk-development-secret",
+            "LLM_PROVIDER": "openai",
+            "REDIS_URL": "redis://localhost:6379/0",
+            "VIOLET_RUN_REAL_E2E": "1",
+            "VIOLET_ALLOW_DESTRUCTIVE_E2E": "1",
+            "VIOLET_S3A_SYNC_ENABLED": "true",
+            "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED": "true",
+            "TAG_TRANSLATION_BACKGROUND_ENABLED": "true",
+        }
+    )
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    config = control.resolve_config(repo, base_env=env, profile_id=control.DEFAULT_PROFILE_ID)
+    child_env = control._child_environment(config)
+
+    assert child_env["VIOLET_ENV"] == "production"
+    assert child_env["VIOLET_STORAGE_ROOT"] == str(storage)
+    assert child_env["POSTGRES_USER"] == "violet_prod"
+    assert child_env["VIOLET_RUN_REAL_E2E"] == "false"
+    assert child_env["VIOLET_ALLOW_DESTRUCTIVE_E2E"] == "false"
+    assert child_env["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
+    assert child_env["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
+    assert "BLOMBOORU_REQUIRE_AUTH" not in child_env
+    assert "OPENAI_API_KEY" not in child_env
+    assert "LLM_PROVIDER" not in child_env
+    assert "REDIS_URL" not in child_env
+    assert "VIOLET_S3A_SYNC_ENABLED" not in child_env
+    assert (repo / ".env").read_text(encoding="utf-8") == dotenv_before
+
+
+def test_profile_status_and_discovery_expose_public_safe_db_user(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    status = control.profile_status(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID, base_env=env)
+    discovered = control.profile_discover(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+
+    assert status.data["profile"]["db"]["user"] == "violet_prod"
+    assert discovered.data["safe_inferred_fields"]["db_user"] == "violet_prod"
+    serialized = json.dumps(status.to_public_dict(), sort_keys=True)
+    assert "password" not in serialized.lower() or "password_present" in serialized
+
+
+def test_profile_update_preserves_custom_db_user_when_unrelated_field_changes(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={"app_port": "8124"},
+    )
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert result.ok is True
+    assert payload["app_port"] == "8124"
+    assert payload["db"]["user"] == "violet_prod"
+
+
+def test_profile_update_stdin_json_accepts_password_payload_without_argv(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    payload, error = control._profile_update_stdin_payload(
+        json.dumps({"db": {"password": "secret-db-password"}})
+    )
+    assert error is None
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates=payload,
+    )
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert result.data["profile"]["db"]["password_present"] is True
+    assert profile["db"]["password"] == "secret-db-password"
 
 
 def test_profile_preflight_blocks_missing_secret_key_to_avoid_settings_import_write(tmp_path, safe_backends):
@@ -324,6 +419,59 @@ def test_public_json_omits_raw_log_tail_with_paths_and_tokens(tmp_path, safe_bac
     assert "sk-test-secret-token" not in serialized
     assert public["data"]["log_tail_in_public_json"] is False
     assert public["data"]["log_tail_redacted"] is True
+
+
+def test_posix_port_owner_pid_uses_lsof_when_available(monkeypatch):
+    monkeypatch.setattr(control.platform, "system", lambda: "Linux")
+
+    def fake_run(command, **kwargs):
+        assert command[0] == "lsof"
+        return SimpleNamespace(stdout="p4321\n", returncode=0)
+
+    monkeypatch.setattr(control.subprocess, "run", fake_run)
+
+    assert control.port_owner_pid(8123) == 4321
+
+
+def test_posix_port_owner_pid_falls_back_to_ss(monkeypatch):
+    monkeypatch.setattr(control.platform, "system", lambda: "Linux")
+
+    def fake_run(command, **kwargs):
+        if command[0] == "lsof":
+            raise FileNotFoundError("lsof")
+        return SimpleNamespace(
+            stdout='LISTEN 0 128 127.0.0.1:8123 0.0.0.0:* users:(("python",pid=9876,fd=7))\n',
+            returncode=0,
+        )
+
+    monkeypatch.setattr(control.subprocess, "run", fake_run)
+
+    assert control.port_owner_pid(8123) == 9876
+
+
+def test_posix_unknown_port_owner_keeps_managed_process_unverified(tmp_path, safe_backends, monkeypatch):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage)
+    config = control.resolve_config(repo, base_env=env, profile_id=control.DEFAULT_PROFILE_ID)
+    state = {
+        "state_version": control.STATE_VERSION,
+        "app_name": control.APP_NAME,
+        "started_by": "violet_production_launcher",
+        "pid": 1234,
+        "pid_create_time": 100.0,
+        "start_time": "1970-01-01T00:00:00+00:00",
+        "repo_root": str(repo),
+        "port": 8123,
+        "env": "production",
+    }
+    monkeypatch.setattr(control, "process_snapshot", lambda pid: _managed_snapshot(pid))
+    monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: True)
+    monkeypatch.setattr(control, "port_owner_pid", lambda port: None)
+
+    verified, reasons = control.verify_managed_process(state, config)
+
+    assert verified is False
+    assert "target_port_owner_unavailable" in reasons
 
 
 def test_preflight_reports_explicit_startup_write_policy(tmp_path, safe_backends):

@@ -4,11 +4,14 @@ const { spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const files = [
+  'controller-runner.js',
   'main.js',
   'preload.js',
   path.join('renderer', 'renderer.js'),
+  path.join('tests', 'controller-runner.test.js'),
   path.join('tests', 'launcher-contract.test.js'),
-  path.join('tests', 'lint.js')
+  path.join('tests', 'lint.js'),
+  path.join('tests', 'renderer-behavior.test.js')
 ];
 
 for (const file of files) {

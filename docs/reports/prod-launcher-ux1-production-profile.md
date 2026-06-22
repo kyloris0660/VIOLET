@@ -41,6 +41,12 @@ automation flags=false
 destructive E2E flags=false
 ```
 
+In profile mode the controller now starts from a clean allowlisted process
+baseline instead of inheriting arbitrary development process variables. Profile
+startup does not inherit development-only `BLOMBOORU_*`, `VIOLET_*`, provider,
+LLM, Redis, sync, test, or E2E variables unless they are explicitly generated
+by the production profile path and forced to safe values.
+
 The backend DB settings override is deliberately narrow: only profile-active
 production safe-startup prefers profile-provided DB environment values over
 storage settings. Normal development and test startup behavior is unchanged.
@@ -59,7 +65,7 @@ Safe inferred values:
 Not inferred:
 
 - Production storage root
-- DB password, if the production DB requires one
+- Private DB credential, if the production DB requires one
 
 The reports available in the repo are public-safe and path-redacted, so this
 phase does not invent a private storage root. The UI shows `Profile Incomplete`
@@ -112,6 +118,10 @@ Main screen controls:
 Raw JSON is hidden from the main screen. Advanced diagnostics are collapsed by
 default and contain only public-safe JSON.
 
+Profile status takes precedence over runtime status on first launch: a missing
+or incomplete profile remains visible as `No Production Profile` or
+`Profile Incomplete` and is not overwritten by generic `Stopped`.
+
 ## Current Blocker Mapping
 
 Observed #121 blockers are mapped to user-facing checklist rows:
@@ -151,8 +161,34 @@ Safety preserved or improved:
 - Stale start locks remain recoverable.
 - Public JSON excludes raw log tail.
 - Malformed app and DB ports fail preflight.
-- Safe startup requires initialized settings with `secret_key` before launch.
-- POSIX unknown target port owner fails closed.
+- Safe startup requires already-initialized production settings before launch.
+- POSIX port owner lookup uses `lsof` then `ss` where available, and unknown
+  target port owners still fail closed.
+- Controller failures with empty stdout, missing Python, or pre-JSON crashes
+  return structured public-safe errors instead of `{}`.
+- Controller stderr is redacted and capped before it reaches renderer
+  diagnostics.
+- Private DB credential profile updates use stdin JSON, not command-line argv.
+- Existing custom DB users are preserved by profile status/discovery and the
+  renderer only sends changed non-empty form fields.
+
+## Reviewer Fix Round
+
+Current-head P1/P2 findings fixed in PR #122:
+
+- P1: profile launches no longer inherit the full development process
+  environment; they use an allowlisted production baseline plus profile values.
+- P2: profile status/discovery expose public-safe DB user and renderer preserves
+  custom users such as `violet_prod`.
+- P2: missing/incomplete profile state is not overwritten by `Stopped`.
+- P2: controller empty stdout, invalid Python, and crash-before-JSON paths
+  surface actionable `Error` payloads.
+- P2: controller stderr is path/private-value redacted and length capped.
+- P2: private DB credential profile updates use stdin JSON rather than argv.
+- P2: POSIX port owner lookup was implemented with `lsof`/`ss`; unknown owners
+  remain fail-closed.
+- P2: the UX1 phase contract now requires Python and Electron validation status
+  to be `passed`.
 
 ## Validation
 
@@ -173,9 +209,10 @@ Results:
 
 - Python env preflight: PASS
 - Py compile: PASS
-- Focused Python tests: `195 passed`
+- Focused Python tests: `204 passed`
 - Electron install: PASS
-- Electron test: PASS
+- Electron test: PASS (`launcher contract checks passed`; `controller runner
+  tests passed`; `renderer behavior tests passed`)
 - Electron lint: PASS
 - Electron audit: 0 vulnerabilities
 

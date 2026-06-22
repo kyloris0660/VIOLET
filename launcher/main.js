@@ -2,25 +2,15 @@ const { app, BrowserWindow, clipboard, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const {
+  allowedCommands,
+  profileUpdatePayload,
+  runController: runPythonController
+} = require('./controller-runner');
 
 const repoRoot = path.resolve(__dirname, '..');
 const controllerScript = path.join(repoRoot, 'scripts', 'violet_production_control.py');
 const profileId = 'production-default';
-
-const allowedCommands = new Set([
-  'profile-status',
-  'profile-discover',
-  'profile-init',
-  'profile-update',
-  'preflight',
-  'test-db',
-  'status',
-  'start',
-  'stop',
-  'restart',
-  'open-browser',
-  'diagnostic-summary'
-]);
 
 function resolvePython() {
   const candidates = [
@@ -33,76 +23,21 @@ function resolvePython() {
   return found || 'python';
 }
 
-function controllerArgs(command, extraArgs = []) {
-  return [
-    controllerScript,
-    command,
-    '--profile',
-    profileId,
-    '--json',
-    ...extraArgs.filter((value) => value !== undefined && value !== null)
-  ];
-}
-
-function runController(command, extraArgs = []) {
+function runController(command, extraArgs = [], options = {}) {
   if (!allowedCommands.has(command)) {
     return Promise.reject(new Error(`Unsupported launcher command: ${command}`));
   }
-  const python = resolvePython();
-  const child = spawn(python, controllerArgs(command, extraArgs), {
-    cwd: repoRoot,
-    windowsHide: true,
-    env: { ...process.env }
+  return runPythonController({
+    command,
+    extraArgs,
+    stdinJson: options.stdinJson,
+    spawnImpl: spawn,
+    python: resolvePython(),
+    controllerScript,
+    repoRoot,
+    profileId,
+    env: process.env
   });
-
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk.toString();
-  });
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk.toString();
-  });
-
-  return new Promise((resolve) => {
-    child.on('close', (code) => {
-      let payload;
-      try {
-        payload = JSON.parse(stdout || '{}');
-      } catch (error) {
-        payload = {
-          ok: false,
-          status: 'error',
-          message: 'Controller returned non-JSON output.',
-          errors: ['controller_non_json_output'],
-          data: {}
-        };
-      }
-      payload.exitCode = code;
-      if (stderr.trim()) {
-        payload.controllerError = stderr.trim().slice(0, 500);
-      }
-      resolve(payload);
-    });
-  });
-}
-
-function profileUpdateArgs(form) {
-  const args = [];
-  const pairs = [
-    ['--app-port', form.appPort],
-    ['--db-host', form.dbHost],
-    ['--db-port', form.dbPort],
-    ['--db-name', form.dbName],
-    ['--db-user', form.dbUser],
-    ['--db-password', form.dbPassword]
-  ];
-  for (const [flag, value] of pairs) {
-    if (value !== undefined && String(value).trim() !== '') {
-      args.push(flag, String(value).trim());
-    }
-  }
-  return args;
 }
 
 function createWindow() {
@@ -124,7 +59,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ipcMain.handle('launcher:run', (_event, command, extraArgs = []) => runController(command, extraArgs));
-  ipcMain.handle('launcher:save-profile', (_event, form) => runController('profile-update', profileUpdateArgs(form || {})));
+  ipcMain.handle('launcher:save-profile', (_event, form) => runController('profile-update', ['--stdin-json'], { stdinJson: profileUpdatePayload(form || {}) }));
   ipcMain.handle('launcher:select-storage-root', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Select Production Storage Root',
