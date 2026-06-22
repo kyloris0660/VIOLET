@@ -179,6 +179,7 @@ class WDTagger:
         selection = select_onnx_provider(
             config.provider_preference,
             rt.get_available_providers(),
+            allow_fallback=config.allow_provider_fallback,
         )
         provider_errors: List[str] = []
         session = None
