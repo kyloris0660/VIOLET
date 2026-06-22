@@ -58,19 +58,19 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 - Actual provider: `DmlExecutionProvider`.
 - Processed: `3`.
 - Failed: `0`.
-- Tags added: `38`.
-- Suggestions added: `21`.
+- Tags added: `36`.
+- Suggestions added: `17`.
 - Skipped locked: `0`.
-- Ignored low confidence: `32515`.
-- Media tags delta: `36`.
+- Ignored low confidence: `32521`.
+- Media tags delta: `30`.
 - Media with AI tags delta: `2`.
 - First-time insertion count: `2`.
 - Prewrite DirectML probe status: `completed`.
 - Prewrite DirectML probe provider: `DmlExecutionProvider`.
 - Provider write gate passed: `True`.
 - Provider write gate blockers: `[]`.
-- Write window protection mode: `immediate_recheck_no_durable_lock`.
-- Durable lock held: `False`.
+- Write window protection mode: `lock_file_atomic_create_plus_immediate_recheck`.
+- Durable lock held: `True`.
 - Write window rechecked: `True`.
 - Write window blockers: `[]`.
 
@@ -84,7 +84,7 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 
 ## Localization
 
-- Reused translations: `44`.
+- Reused translations: `40`.
 - New local/static translations: `0`.
 - Missing/deferred: `1`.
 - Failed: `0`.

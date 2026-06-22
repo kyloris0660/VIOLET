@@ -10,6 +10,7 @@ unattended/scheduled scaffold without starting any scheduler.
 from __future__ import annotations
 
 import argparse
+import atexit
 import contextlib
 import importlib.util
 import json
@@ -43,6 +44,7 @@ from backend.app.services.s3b_unattended_sync_policy import (  # noqa: E402
 
 SUMMARY_PATH = ROOT / "docs" / "reports" / "s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-summary.json"
 MARKDOWN_PATH = ROOT / "docs" / "reports" / "s3a-prod2-s3b-d1-operator-scaleup-disabled-sync.md"
+LOCK_PATH = ROOT / ".local_manifests" / "s3a_prod2_operator_sync" / "active.lock"
 
 PHASE = "S3A-PROD2/S3B-D1"
 CONTRACT_ID = "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1"
@@ -62,6 +64,68 @@ class PreflightResult:
     candidates: list[Any]
     scope: dict[str, Any]
     source_file_preflight: dict[str, Any]
+
+
+@dataclass
+class OperatorSyncLock:
+    path: Path = LOCK_PATH
+    acquired: bool = False
+    acquire_error: str | None = None
+
+    def acquire(self) -> dict[str, Any]:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "phase": PHASE,
+            "pid": os.getpid(),
+            "started_at": utc_now_iso(),
+            "lock_scope": "s3a_prod2_operator_sync_write_window",
+        }
+        try:
+            fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            self.acquired = False
+            self.acquire_error = "active_operator_sync_lock_exists"
+            return self.public_state(acquisition_attempted=True)
+        except OSError as exc:
+            self.acquired = False
+            self.acquire_error = exc.__class__.__name__
+            return self.public_state(acquisition_attempted=True)
+
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, sort_keys=True)
+                handle.write("\n")
+        except OSError as exc:
+            self.acquired = False
+            self.acquire_error = exc.__class__.__name__
+            with contextlib.suppress(OSError):
+                self.path.unlink()
+            return self.public_state(acquisition_attempted=True)
+
+        self.acquired = True
+        self.acquire_error = None
+        atexit.register(self.release)
+        return self.public_state(acquisition_attempted=True)
+
+    def release(self) -> None:
+        if not self.acquired:
+            return
+        with contextlib.suppress(OSError):
+            self.path.unlink()
+        self.acquired = False
+
+    def public_state(self, *, acquisition_attempted: bool = False) -> dict[str, Any]:
+        return {
+            "reported": True,
+            "acquisition_attempted": acquisition_attempted,
+            "acquired": self.acquired,
+            "durable_lock_held": self.acquired,
+            "lock_scope": "s3a_prod2_operator_sync_write_window",
+            "lock_path": repo_relative(self.path),
+            "lock_path_redacted": True,
+            "held_through_report_finalization": self.acquired,
+            "error": self.acquire_error,
+        }
 
 
 def utc_now_iso() -> str:
@@ -177,7 +241,26 @@ def split_protected_input_paths(input_paths: list[str]) -> tuple[list[str], dict
     }
 
 
-def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict[str, int], list[SourceFileDecision]]:
+def _protected_input_decision(safe_label: str, labels: list[str]) -> SourceFileDecision:
+    return SourceFileDecision(
+        safe_label=safe_label,
+        eligible=False,
+        reason="protected_app_storage_input",
+        source_state="failed",
+        cloud_gate={
+            "protected_root_overlap": True,
+            "protected_root_labels": labels,
+            "paths_redacted": True,
+        },
+    )
+
+
+def _iter_explicit_input_files(
+    input_paths: list[str],
+    *,
+    protected_roots: list[tuple[str, Path]] | None = None,
+) -> tuple[list[Path], dict[str, int], list[SourceFileDecision]]:
+    roots = protected_roots or protected_input_roots()
     discovered: list[Path] = []
     missing_decisions: list[SourceFileDecision] = []
     counts = {
@@ -185,9 +268,13 @@ def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict
         "directory_inputs": 0,
         "file_inputs": 0,
         "unsupported_files": 0,
+        "protected_child_count": 0,
     }
     for index, raw in enumerate(input_paths, start=1):
-        path = Path(raw).expanduser().resolve()
+        try:
+            path = Path(raw).expanduser().resolve()
+        except OSError:
+            path = Path(raw).expanduser().absolute()
         if not path.exists():
             counts["missing_input_count"] += 1
             missing_decisions.append(
@@ -215,16 +302,49 @@ def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict
                 )
                 continue
             for item in children:
-                if not item.is_file():
+                try:
+                    resolved_item = item.resolve()
+                    item_is_file = resolved_item.is_file()
+                except OSError:
+                    counts["missing_input_count"] += 1
+                    missing_decisions.append(
+                        SourceFileDecision(
+                            safe_label=f"missing_input_{index:03d}",
+                            eligible=False,
+                            reason="unreadable_source",
+                            source_state="failed",
+                        )
+                    )
                     continue
-                if item.suffix.casefold() in SUPPORTED_EXTENSIONS:
-                    discovered.append(item.resolve())
+                if not item_is_file:
+                    continue
+                labels = protected_root_labels_for_path(resolved_item, roots)
+                if labels:
+                    counts["protected_child_count"] += 1
+                    missing_decisions.append(
+                        _protected_input_decision(
+                            f"protected_input_{counts['protected_child_count']:03d}",
+                            labels,
+                        )
+                    )
+                    continue
+                if resolved_item.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                    discovered.append(resolved_item)
                 else:
                     counts["unsupported_files"] += 1
         elif path.is_file():
             counts["file_inputs"] += 1
-            if path.suffix.casefold() in SUPPORTED_EXTENSIONS:
-                discovered.append(path.resolve())
+            labels = protected_root_labels_for_path(path, roots)
+            if labels:
+                counts["protected_child_count"] += 1
+                missing_decisions.append(
+                    _protected_input_decision(
+                        f"protected_input_{counts['protected_child_count']:03d}",
+                        labels,
+                    )
+                )
+            elif path.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                discovered.append(path)
             else:
                 counts["unsupported_files"] += 1
         else:
@@ -262,7 +382,17 @@ def discover_input_candidates(
     allowed_input_paths, protected_input_gate = split_protected_input_paths(input_paths)
     if not protected_input_gate["passed"]:
         allowed_input_paths = []
-    discovered, counts, missing_decisions = _iter_explicit_input_files(allowed_input_paths)
+    discovered, counts, missing_decisions = _iter_explicit_input_files(
+        allowed_input_paths,
+        protected_roots=protected_input_roots(),
+    )
+    if counts["protected_child_count"]:
+        protected_input_gate = dict(protected_input_gate)
+        protected_input_gate["passed"] = False
+        protected_input_gate["blocked_count"] = int(protected_input_gate.get("blocked_count") or 0) + counts[
+            "protected_child_count"
+        ]
+        protected_input_gate["child_blocked_count"] = counts["protected_child_count"]
     unique = _dedupe_paths(discovered)
     over_cap_count = max(0, len(unique) - max_items)
     decisions: list[SourceFileDecision] = list(missing_decisions)
@@ -300,7 +430,12 @@ def discover_input_candidates(
         "failed_count": sum(
             count
             for reason, count in dict(skipped_by_reason).items()
-            if reason in {"unreadable_source", "source_missing", "source_not_file"}
+            if reason in {
+                "unreadable_source",
+                "source_missing",
+                "source_not_file",
+                "protected_app_storage_input",
+            }
         ),
         "cloud_placeholder_skipped": sum(
             count
@@ -315,6 +450,7 @@ def discover_input_candidates(
         ),
         "unsupported_extension_skipped": counts["unsupported_files"],
         "protected_input_blocked_count": int(protected_input_gate.get("blocked_count") or 0),
+        "protected_input_child_blocked_count": int(protected_input_gate.get("child_blocked_count") or 0),
         "reason_counts": dict(sorted(dict(skipped_by_reason).items())),
         "public_item_results": preflight_counts.get("public_item_results", []),
         "paths_redacted": True,
@@ -663,23 +799,38 @@ def build_write_window_protection(
     write_preconditions_passed: bool,
     import_recheck: Mapping[str, Any] | None = None,
     ai_write_recheck: Mapping[str, Any] | None = None,
+    operator_lock: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     import_check = dict(import_recheck or _job_recheck_not_run("not_run", "before_import_write"))
     ai_check = dict(ai_write_recheck or _job_recheck_not_run("not_run", "before_ai_write"))
+    lock_state = dict(operator_lock or OperatorSyncLock().public_state())
     write_path_active = bool(write_requested and write_confirmed and write_preconditions_passed)
     blockers: list[str] = []
     if write_path_active:
+        if not bool(lock_state.get("acquired")):
+            blockers.append("operator_sync_lock_not_held")
         if not bool(import_check.get("passed")):
             blockers.append("import_write_concurrency_recheck_not_passed")
         if not bool(ai_check.get("passed")):
             blockers.append("ai_write_concurrency_recheck_not_passed")
     rechecked = bool(import_check.get("executed")) and bool(ai_check.get("executed"))
-    no_concurrent = bool(import_check.get("passed")) and bool(ai_check.get("passed"))
+    no_concurrent = (
+        bool(lock_state.get("acquired"))
+        and bool(import_check.get("passed"))
+        and bool(ai_check.get("passed"))
+    )
+    mode = (
+        "lock_file_atomic_create_plus_immediate_recheck"
+        if bool(lock_state.get("acquired"))
+        else "immediate_recheck_no_durable_lock"
+    )
     return {
         "reported": True,
-        "mode": "immediate_recheck_no_durable_lock",
-        "durable_lock_held": False,
-        "durable_lock_deferred": True,
+        "mode": mode,
+        "durable_lock_held": bool(lock_state.get("acquired")),
+        "durable_lock_deferred": False,
+        "lock_scope": lock_state.get("lock_scope"),
+        "operator_sync_lock": lock_state,
         "write_requested": write_requested,
         "exact_confirmation_present": write_confirmed,
         "write_preconditions_passed": write_preconditions_passed,
@@ -779,7 +930,12 @@ def derive_status(summary: Mapping[str, Any]) -> str:
         return "blocked_directml_provider_not_available"
     if not bool(summary.get("provider_availability", {}).get("cpu_fallback_available", True)):
         return "blocked_cpu_fallback_provider_not_available"
-    if not bool(summary.get("job_concurrency", {}).get("no_concurrent_import_or_tagging_jobs")):
+    job_concurrency = summary.get("job_concurrency", {}) if isinstance(summary.get("job_concurrency", {}), Mapping) else {}
+    if bool(job_concurrency.get("operator_sync_lock_acquisition_attempted")) and not bool(
+        job_concurrency.get("operator_sync_lock_acquired")
+    ):
+        return "blocked_concurrent_operator_sync"
+    if not bool(job_concurrency.get("no_concurrent_import_or_tagging_jobs")):
         return "blocked_concurrent_job_active"
     if int(summary.get("source_file_preflight", {}).get("failed_count") or 0) > 0:
         return "blocked_source_file_preflight_failures"
@@ -794,6 +950,8 @@ def derive_status(summary: Mapping[str, Any]) -> str:
     ):
         return "blocked_write_preconditions"
     if bool(config.get("write_requested")) and bool(config.get("operator_confirmation_exact")):
+        if not bool(window.get("durable_lock_held")):
+            return "blocked_concurrent_operator_sync"
         import_recheck = window.get("import_recheck", {}) if isinstance(window.get("import_recheck", {}), Mapping) else {}
         ai_recheck = window.get("ai_write_recheck", {}) if isinstance(window.get("ai_write_recheck", {}), Mapping) else {}
         if bool(import_recheck.get("executed")) and not bool(import_recheck.get("passed")):
@@ -826,6 +984,8 @@ def derive_status(summary: Mapping[str, Any]) -> str:
             return "write_executed_but_first_time_insertion_unproven"
         return "target_met_with_bounded_write"
 
+    if ai.get("provider", {}).get("actual_provider") != "DmlExecutionProvider":
+        return "blocked_directml_provider_not_validated"
     return "target_met_dry_run_only"
 
 
@@ -1062,7 +1222,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     )
 
 
-def write_reports(summary: dict[str, Any]) -> None:
+def write_reports(summary: dict[str, Any]) -> bool:
     SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
     summary["public_redaction"] = {"passed": False, "finding_count": None}
     summary["failure_budget"] = build_failure_budget(summary)
@@ -1079,6 +1239,8 @@ def write_reports(summary: dict[str, Any]) -> None:
         "finding_count": len(findings),
         "findings_redacted": True,
         "scan_scope": "public_json_and_markdown",
+        "clean_before_public_write": not findings,
+        "unsafe_public_report_written": False,
     }
     summary["failure_budget"] = build_failure_budget(summary)
     status = derive_status(summary)
@@ -1093,6 +1255,8 @@ def write_reports(summary: dict[str, Any]) -> None:
         "finding_count": len(findings),
         "findings_redacted": True,
         "scan_scope": "public_json_and_markdown",
+        "clean_before_public_write": not findings,
+        "unsafe_public_report_written": False,
     }
     summary["failure_budget"] = build_failure_budget(summary)
     status = derive_status(summary)
@@ -1102,12 +1266,13 @@ def write_reports(summary: dict[str, Any]) -> None:
         apply_pipeline_status(summary, "blocked_public_redaction_failed")
         summary["safety"] = build_safety(summary)
         summary["failure_budget"] = build_failure_budget(summary)
-        markdown = render_markdown(summary)
+        return False
     SUMMARY_PATH.write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     MARKDOWN_PATH.write_text(markdown, encoding="utf-8")
+    return True
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1177,12 +1342,15 @@ def main(argv: list[str] | None = None) -> int:
     write_provider_policy = build_write_provider_policy(args.provider_preference)
     import_concurrency_recheck = _job_recheck_not_run("not_run", "before_import_write")
     ai_write_concurrency_recheck = _job_recheck_not_run("not_run", "before_ai_write")
+    operator_lock = OperatorSyncLock()
+    operator_lock_state = operator_lock.public_state()
     write_window_protection = build_write_window_protection(
         write_requested=write_requested,
         write_confirmed=write_confirmed,
         write_preconditions_passed=False,
         import_recheck=import_concurrency_recheck,
         ai_write_recheck=ai_write_concurrency_recheck,
+        operator_lock=operator_lock_state,
     )
     cpu_fallback: dict[str, Any] = _not_run_ai_result("not_run")
     localization: dict[str, Any] = {"reported": True, "status": "not_run", "failed": 0, "llm_external_provider_used": False}
@@ -1207,8 +1375,33 @@ def main(argv: list[str] | None = None) -> int:
                 local_files_only=local_files_only,
             )
             if bool(write_preconditions.get("passed")):
-                import_concurrency_recheck = job_concurrency_recheck(db, stage="before_import_write")
-                if not bool(import_concurrency_recheck.get("passed")):
+                operator_lock_state = operator_lock.acquire()
+                job_concurrency = dict(job_concurrency)
+                job_concurrency.update(
+                    {
+                        "operator_sync_lock_acquisition_attempted": True,
+                        "operator_sync_lock_acquired": bool(operator_lock_state.get("acquired")),
+                        "durable_lock_held": bool(operator_lock_state.get("acquired")),
+                        "lock_scope": operator_lock_state.get("lock_scope"),
+                        "operator_sync_lock": operator_lock_state,
+                        "no_concurrent_import_or_tagging_jobs": bool(
+                            job_concurrency.get("no_concurrent_import_or_tagging_jobs")
+                        )
+                        and bool(operator_lock_state.get("acquired")),
+                    }
+                )
+                if not bool(operator_lock_state.get("acquired")):
+                    write_preconditions = add_write_precondition_blocker(
+                        write_preconditions,
+                        "concurrent_operator_sync_active",
+                    )
+                    import_concurrency_recheck = _job_recheck_not_run(
+                        "not_run_operator_sync_lock_blocked",
+                        "before_import_write",
+                    )
+                else:
+                    import_concurrency_recheck = job_concurrency_recheck(db, stage="before_import_write")
+                if bool(operator_lock_state.get("acquired")) and not bool(import_concurrency_recheck.get("passed")):
                     write_preconditions = add_write_precondition_blocker(
                         write_preconditions,
                         "concurrent_job_active_before_import_write",
@@ -1224,6 +1417,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_preconditions_passed=bool(write_preconditions.get("passed")),
                 import_recheck=import_concurrency_recheck,
                 ai_write_recheck=ai_write_concurrency_recheck,
+                operator_lock=operator_lock_state,
             )
             import_reuse, downstream_media_ids = pilot.import_or_reuse_from_input(
                 db,
@@ -1286,11 +1480,12 @@ def main(argv: list[str] | None = None) -> int:
                         ai_write_concurrency_recheck = job_concurrency_recheck(db, stage="before_ai_write")
                         write_window_protection = build_write_window_protection(
                             write_requested=write_requested,
-                            write_confirmed=write_confirmed,
-                            write_preconditions_passed=bool(write_preconditions.get("passed")),
-                            import_recheck=import_concurrency_recheck,
-                            ai_write_recheck=ai_write_concurrency_recheck,
-                        )
+                        write_confirmed=write_confirmed,
+                        write_preconditions_passed=bool(write_preconditions.get("passed")),
+                        import_recheck=import_concurrency_recheck,
+                        ai_write_recheck=ai_write_concurrency_recheck,
+                        operator_lock=operator_lock_state,
+                    )
                         if bool(ai_write_concurrency_recheck.get("passed")):
                             with pilot.temporary_env({"AI_TAGGING_ALLOW_PROVIDER_FALLBACK": "false"}):
                                 directml_ai_tagging, touched_tags = pilot.run_ai_tagging_pass(
@@ -1395,7 +1590,11 @@ def main(argv: list[str] | None = None) -> int:
             "write_window_rechecked": bool(write_window_protection.get("write_window_rechecked")),
             "write_window_protection_mode": write_window_protection.get("mode"),
             "durable_lock_held": bool(write_window_protection.get("durable_lock_held")),
-            "concurrency_claim_scope": "preflight_plus_immediate_rechecks_no_durable_lock",
+            "lock_scope": write_window_protection.get("lock_scope"),
+            "operator_sync_lock_acquisition_attempted": bool(operator_lock_state.get("acquisition_attempted")),
+            "operator_sync_lock_acquired": bool(operator_lock_state.get("acquired")),
+            "operator_sync_lock": operator_lock_state,
+            "concurrency_claim_scope": "durable_operator_lock_plus_immediate_rechecks",
         }
     )
     summary: dict[str, Any] = {
@@ -1516,9 +1715,12 @@ def main(argv: list[str] | None = None) -> int:
     apply_pipeline_status(summary, derive_status(summary))
     summary["failure_budget"] = build_failure_budget(summary)
     summary["safety"] = build_safety(summary)
-    write_reports(summary)
-    final_status = str(summary.get("pipeline_contract", {}).get("status") or "")
-    return 0 if final_status in TARGET_STATUSES else 2
+    try:
+        reports_written = write_reports(summary)
+        final_status = str(summary.get("pipeline_contract", {}).get("status") or "")
+        return 0 if reports_written and final_status in TARGET_STATUSES else 2
+    finally:
+        operator_lock.release()
 
 
 if __name__ == "__main__":

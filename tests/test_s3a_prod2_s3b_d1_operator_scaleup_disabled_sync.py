@@ -167,6 +167,17 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
         "private_locator_values_recorded": False,
         "public_path_redaction": "paths_and_filenames_redacted",
     }
+    lock_state = {
+        "reported": True,
+        "acquisition_attempted": write,
+        "acquired": write,
+        "durable_lock_held": write,
+        "lock_scope": "s3a_prod2_operator_sync_write_window",
+        "lock_path": ".local_manifests/s3a_prod2_operator_sync/active.lock",
+        "lock_path_redacted": True,
+        "held_through_report_finalization": write,
+        "error": None,
+    }
     summary = {
         "phase": "S3A-PROD2/S3B-D1",
         "pipeline_contract": {
@@ -232,6 +243,16 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "reported": True,
             "no_concurrent_import_or_tagging_jobs": True,
             "background_job_started_by_runner": False,
+            "write_window_rechecked": write,
+            "write_window_protection_mode": "lock_file_atomic_create_plus_immediate_recheck"
+            if write
+            else "immediate_recheck_no_durable_lock",
+            "durable_lock_held": write,
+            "lock_scope": "s3a_prod2_operator_sync_write_window",
+            "operator_sync_lock_acquisition_attempted": write,
+            "operator_sync_lock_acquired": write,
+            "operator_sync_lock": lock_state,
+            "concurrency_claim_scope": "durable_operator_lock_plus_immediate_rechecks",
         },
         "write_preconditions": {
             "reported": True,
@@ -260,9 +281,11 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
         },
         "write_window_protection": {
             "reported": True,
-            "mode": "immediate_recheck_no_durable_lock",
-            "durable_lock_held": False,
-            "durable_lock_deferred": True,
+            "mode": "lock_file_atomic_create_plus_immediate_recheck" if write else "immediate_recheck_no_durable_lock",
+            "durable_lock_held": write,
+            "durable_lock_deferred": False,
+            "lock_scope": "s3a_prod2_operator_sync_write_window",
+            "operator_sync_lock": lock_state,
             "write_requested": write,
             "exact_confirmation_present": write,
             "write_preconditions_passed": write,
@@ -336,7 +359,12 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
         "public_reports": {
             "markdown_report_path": "docs/reports/s3a-prod2-test.md",
         },
-        "public_redaction": {"passed": True, "finding_count": 0},
+        "public_redaction": {
+            "passed": True,
+            "finding_count": 0,
+            "clean_before_public_write": True,
+            "unsafe_public_report_written": False,
+        },
     }
     summary["safety"] = s3a_prod2.build_safety(summary)
     return summary
@@ -496,6 +524,119 @@ def test_discover_input_candidates_blocks_storage_root_before_import(monkeypatch
     assert "protected.jpg" not in str(result.scope)
 
 
+def test_discover_input_candidates_blocks_child_resolved_under_original_dir(monkeypatch, tmp_path: Path) -> None:
+    allowed_dir = tmp_path / "allowed"
+    allowed_dir.mkdir()
+    child = allowed_dir / "link.png"
+    child.write_bytes(b"x")
+    original_dir = tmp_path / "storage" / "media" / "original"
+    original_dir.mkdir(parents=True)
+    protected_target = original_dir / "protected.png"
+    protected_target.write_bytes(b"x")
+
+    monkeypatch.setattr(
+        s3a_prod2,
+        "protected_input_roots",
+        lambda: [("settings.ORIGINAL_DIR", original_dir)],
+    )
+    original_resolve = Path.resolve
+
+    def fake_resolve(self: Path, *args, **kwargs):
+        if self == child:
+            return protected_target
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(allowed_dir)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert result.candidates == []
+    assert result.scope["protected_input_gate"]["passed"] is False
+    assert result.scope["protected_input_gate"]["blocked_count"] == 1
+    assert result.scope["protected_input_gate"]["child_blocked_count"] == 1
+    assert result.source_file_preflight["failed_count"] == 1
+    assert result.source_file_preflight["reason_counts"]["protected_app_storage_input"] == 1
+    assert "protected.png" not in str(result.source_file_preflight)
+
+
+def test_discover_input_candidates_blocks_child_resolved_under_repo_data_and_media(monkeypatch, tmp_path: Path) -> None:
+    allowed_dir = tmp_path / "allowed"
+    allowed_dir.mkdir()
+    child_data = allowed_dir / "data_link.png"
+    child_media = allowed_dir / "media_link.png"
+    child_data.write_bytes(b"x")
+    child_media.write_bytes(b"x")
+    repo_data = tmp_path / "repo_data"
+    repo_media = tmp_path / "repo_media"
+    repo_data.mkdir()
+    repo_media.mkdir()
+    protected_data = repo_data / "private_data.png"
+    protected_media = repo_media / "private_media.png"
+    protected_data.write_bytes(b"x")
+    protected_media.write_bytes(b"x")
+
+    monkeypatch.setattr(
+        s3a_prod2,
+        "protected_input_roots",
+        lambda: [("repo.data", repo_data), ("repo.media", repo_media)],
+    )
+    original_resolve = Path.resolve
+
+    def fake_resolve(self: Path, *args, **kwargs):
+        if self == child_data:
+            return protected_data
+        if self == child_media:
+            return protected_media
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(allowed_dir)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert result.candidates == []
+    assert result.scope["protected_input_gate"]["blocked_count"] == 2
+    assert result.source_file_preflight["failed_count"] == 2
+    assert result.source_file_preflight["reason_counts"]["protected_app_storage_input"] == 2
+    assert "private_data.png" not in str(result.scope)
+    assert "private_media.png" not in str(result.source_file_preflight)
+
+
+def test_discover_input_candidates_allows_normal_external_files(monkeypatch, tmp_path: Path) -> None:
+    allowed_dir = tmp_path / "allowed"
+    allowed_dir.mkdir()
+    source = allowed_dir / "normal.png"
+    source.write_bytes(b"x")
+    protected_root = tmp_path / "protected"
+    protected_root.mkdir()
+
+    monkeypatch.setattr(
+        s3a_prod2,
+        "protected_input_roots",
+        lambda: [("settings.ORIGINAL_DIR", protected_root)],
+    )
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(allowed_dir)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert len(result.candidates) == 1
+    assert result.scope["protected_input_gate"]["passed"] is True
+    assert result.source_file_preflight["failed_count"] == 0
+
+
 def test_discover_input_candidates_blocks_repo_data_and_media_without_path_leak() -> None:
     blocked_inputs = [
         str(ROOT / "data" / "synthetic_private_input.png"),
@@ -546,6 +687,19 @@ def test_provider_selection_can_disable_cpu_fallback_for_actual_write() -> None:
     assert selection.fallback_occurred is True
 
 
+def test_provider_selection_unsupported_only_fallback_disabled_does_not_default_to_cpu() -> None:
+    selection = select_onnx_provider(
+        ["UnsupportedExecutionProvider"],
+        ["CPUExecutionProvider"],
+        allow_fallback=False,
+    )
+
+    assert selection.selected_provider is None
+    assert selection.candidate_provider_order == ()
+    assert selection.unsupported_requested_providers == ("UnsupportedExecutionProvider",)
+    assert selection.fallback_occurred is True
+
+
 def test_load_control_config_honors_provider_fallback_disable() -> None:
     settings = SimpleNamespace(
         AI_TAGGING_BATCH_SIZE=2,
@@ -574,6 +728,67 @@ def test_derive_status_blocks_failed_ai_write_window_recheck() -> None:
     summary["write_window_protection"]["blockers"] = ["ai_write_concurrency_recheck_not_passed"]
 
     assert s3a_prod2.derive_status(summary) == "blocked_write_window_concurrency"
+
+
+def test_derive_status_blocks_dry_run_target_without_directml_primary_provider() -> None:
+    summary = _s3a_prod2_summary(write=False)
+    summary["directml_ai_tagging"]["provider"] = _provider("CPUExecutionProvider", ["CPUExecutionProvider"])
+    summary["directml_ai_tagging"]["provider_preference_requested"] = ["CPUExecutionProvider"]
+
+    assert s3a_prod2.derive_status(summary) == "blocked_directml_provider_not_validated"
+
+
+def test_derive_status_blocks_concurrent_operator_sync_lock_failure() -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["job_concurrency"]["operator_sync_lock_acquisition_attempted"] = True
+    summary["job_concurrency"]["operator_sync_lock_acquired"] = False
+    summary["job_concurrency"]["durable_lock_held"] = False
+    summary["job_concurrency"]["no_concurrent_import_or_tagging_jobs"] = False
+    summary["write_window_protection"]["durable_lock_held"] = False
+    summary["write_window_protection"]["operator_sync_lock"]["acquired"] = False
+
+    assert s3a_prod2.derive_status(summary) == "blocked_concurrent_operator_sync"
+
+
+def test_write_reports_does_not_publish_unsafe_public_payload(monkeypatch, tmp_path: Path) -> None:
+    summary_path = tmp_path / "summary.json"
+    markdown_path = tmp_path / "report.md"
+    monkeypatch.setattr(s3a_prod2, "SUMMARY_PATH", summary_path)
+    monkeypatch.setattr(s3a_prod2, "MARKDOWN_PATH", markdown_path)
+    summary = _s3a_prod2_summary(write=True)
+    summary["public_reports"]["summary_json_path"] = "summary.json"
+    summary["public_reports"]["markdown_report_path"] = "report.md"
+    summary["private_leak"] = r"C:\Users\kyloris\Pictures\secret.png"
+
+    assert s3a_prod2.write_reports(summary) is False
+    assert summary["pipeline_contract"]["status"] == "blocked_public_redaction_failed"
+    assert summary["public_redaction"]["passed"] is False
+    assert summary["public_redaction"]["unsafe_public_report_written"] is False
+    assert not summary_path.exists()
+    assert not markdown_path.exists()
+
+
+def test_write_reports_writes_clean_payload_after_rescan(monkeypatch, tmp_path: Path) -> None:
+    summary_path = tmp_path / "summary.json"
+    markdown_path = tmp_path / "report.md"
+    monkeypatch.setattr(s3a_prod2, "SUMMARY_PATH", summary_path)
+    monkeypatch.setattr(s3a_prod2, "MARKDOWN_PATH", markdown_path)
+    summary = _s3a_prod2_summary(write=True)
+    summary["public_reports"]["summary_json_path"] = "summary.json"
+    summary["public_reports"]["markdown_report_path"] = "report.md"
+
+    assert s3a_prod2.write_reports(summary) is True
+    assert summary["public_redaction"]["passed"] is True
+    assert summary["public_redaction"]["clean_before_public_write"] is True
+    assert summary["public_redaction"]["unsafe_public_report_written"] is False
+    assert summary_path.exists()
+    assert markdown_path.exists()
+    assert contract_checks.scan_public_payload(
+        {
+            "public_json_payload": summary_path.read_text(encoding="utf-8"),
+            "public_markdown_text": markdown_path.read_text(encoding="utf-8"),
+        }
+    ) == []
 
 
 def test_contract_accepts_bounded_write_summary(monkeypatch, tmp_path: Path) -> None:
@@ -667,6 +882,25 @@ def test_contract_rejects_missing_write_window_recheck(monkeypatch, tmp_path: Pa
     assert "s3a_prod2_write_without_window_recheck" in codes
 
 
+def test_contract_rejects_write_without_durable_operator_lock(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["job_concurrency"]["durable_lock_held"] = False
+    summary["job_concurrency"]["operator_sync_lock_acquired"] = False
+    summary["write_window_protection"]["mode"] = "immediate_recheck_no_durable_lock"
+    summary["write_window_protection"]["durable_lock_held"] = False
+    summary["write_window_protection"]["operator_sync_lock"]["acquired"] = False
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    codes = _error_codes(result)
+    assert "s3a_prod2_write_without_durable_operator_lock" in codes
+    assert "s3a_prod2_write_window_not_protected" in codes
+
+
 def test_contract_rejects_ai_write_when_write_preconditions_failed(monkeypatch, tmp_path: Path) -> None:
     summary = _s3a_prod2_summary(write=True)
     summary["write_preconditions"]["passed"] = False
@@ -715,3 +949,20 @@ def test_contract_rejects_enabled_s3b(monkeypatch, tmp_path: Path) -> None:
     codes = _error_codes(result)
     assert "s3a_prod2_forbidden_safety_flag" in codes
     assert "s3a_prod2_s3b_scaffold_status_invalid" in codes
+
+
+def test_contract_rejects_public_redaction_findings_even_when_status_claims_target(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["public_redaction"]["passed"] = False
+    summary["public_redaction"]["finding_count"] = 1
+    summary["public_redaction"]["clean_before_public_write"] = False
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    codes = _error_codes(result)
+    assert "s3a_prod2_redaction_findings_cannot_publish_report" in codes
+    assert "s3a_prod2_target_without_clean_redaction_before_write" in codes

@@ -3935,6 +3935,7 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
         "blocked_directml_provider_not_available",
         "blocked_cpu_fallback_provider_not_available",
         "blocked_concurrent_job_active",
+        "blocked_concurrent_operator_sync",
         "blocked_protected_input_root",
         "blocked_source_file_preflight_failures",
         "blocked_write_requested_without_exact_confirmation",
@@ -4032,6 +4033,7 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
             "safety.model_download",
             "safety.private_locator_values_recorded",
             "safety.external_llm_provider_used",
+            "public_redaction.unsafe_public_report_written",
             "localization.llm_external_provider_used",
             "s3b_disabled_scaffold.policy.unattended_enabled",
             "s3b_disabled_scaffold.policy.scheduled_enabled",
@@ -4131,12 +4133,15 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
             expected=True,
             actual=protected_passed,
         )
-    if source_failed and status != "blocked_source_file_preflight_failures":
+    if source_failed and not (
+        status == "blocked_source_file_preflight_failures"
+        or (protected_blocked and status == "blocked_protected_input_root")
+    ):
         result.fail(
             "s3a_prod2_target_with_source_preflight_failures",
-            "Source-file preflight failures, including missing explicit inputs, must block the run.",
+            "Source-file preflight failures, including missing explicit inputs and protected child paths, must block the run.",
             path="source_file_preflight.failed_count",
-            expected="0 or blocked_source_file_preflight_failures",
+            expected="0 or blocked source/protected-input status",
             actual={"failed_count": source_failed, "status": result.status},
         )
     write_requested = _as_bool(_get(summary, "run_configuration.write_requested", False))
@@ -4210,6 +4215,7 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
         "blocked_directml_provider_not_available",
         "blocked_cpu_fallback_provider_not_available",
         "blocked_concurrent_job_active",
+        "blocked_concurrent_operator_sync",
         "blocked_protected_input_root",
         "blocked_source_file_preflight_failures",
         "blocked_write_window_concurrency",
@@ -4253,6 +4259,27 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
             actual=False,
         )
     if import_executed or (ai_executed and not ai_dry_run):
+        durable_lock_held_for_write = _as_bool(_get(summary, "write_window_protection.durable_lock_held", False))
+        operator_lock_acquired_for_write = _as_bool(
+            _get(summary, "write_window_protection.operator_sync_lock.acquired", False)
+        )
+        job_lock_held_for_write = _as_bool(_get(summary, "job_concurrency.durable_lock_held", False))
+        if not durable_lock_held_for_write or not operator_lock_acquired_for_write or not job_lock_held_for_write:
+            result.fail(
+                "s3a_prod2_write_without_durable_operator_lock",
+                "Import and media_tags writes must be covered by the S3A-PROD2 durable operator sync guard.",
+                path="write_window_protection",
+                expected={
+                    "write_window_protection.durable_lock_held": True,
+                    "write_window_protection.operator_sync_lock.acquired": True,
+                    "job_concurrency.durable_lock_held": True,
+                },
+                actual={
+                    "write_window_protection.durable_lock_held": durable_lock_held_for_write,
+                    "write_window_protection.operator_sync_lock.acquired": operator_lock_acquired_for_write,
+                    "job_concurrency.durable_lock_held": job_lock_held_for_write,
+                },
+            )
         import_recheck_passed_for_write = _as_bool(
             _get(summary, "write_window_protection.import_recheck.passed", False)
         )
@@ -4420,10 +4447,10 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
                 expected="non-empty provider",
                 actual=actual_provider,
             )
-        if status == "target_met_with_bounded_write" and actual_provider != "DmlExecutionProvider":
+        if actual_provider != "DmlExecutionProvider":
             result.fail(
-                "s3a_prod2_write_target_without_directml",
-                "Bounded write target requires DmlExecutionProvider.",
+                "s3a_prod2_target_without_primary_directml",
+                "S3A-PROD2 target claims, including dry-run target claims, require DmlExecutionProvider on the primary DirectML path.",
                 path="directml_ai_tagging.provider.actual_provider",
                 expected="DmlExecutionProvider",
                 actual=actual_provider,
@@ -4588,19 +4615,31 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
         window_no_concurrent = _as_bool(_get(summary, "write_window_protection.no_concurrent_import_or_tagging_jobs", False))
         import_recheck_passed = _as_bool(_get(summary, "write_window_protection.import_recheck.passed", False))
         ai_recheck_passed = _as_bool(_get(summary, "write_window_protection.ai_write_recheck.passed", False))
+        window_durable_lock_held = _as_bool(_get(summary, "write_window_protection.durable_lock_held", False))
+        window_operator_lock_acquired = _as_bool(
+            _get(summary, "write_window_protection.operator_sync_lock.acquired", False)
+        )
+        job_durable_lock_held = _as_bool(_get(summary, "job_concurrency.durable_lock_held", False))
+        job_operator_lock_acquired = _as_bool(_get(summary, "job_concurrency.operator_sync_lock_acquired", False))
         if (
-            window_mode != "immediate_recheck_no_durable_lock"
+            window_mode != "lock_file_atomic_create_plus_immediate_recheck"
             or not window_rechecked
             or not window_no_concurrent
             or not import_recheck_passed
             or not ai_recheck_passed
+            or not window_durable_lock_held
+            or not window_operator_lock_acquired
+            or not job_durable_lock_held
+            or not job_operator_lock_acquired
         ):
             result.fail(
                 "s3a_prod2_write_window_not_protected",
-                "Bounded write target must prove concurrency was rechecked immediately before import and AI writes, or hold a stronger durable lock.",
+                "Bounded write target must prove a durable runner lock plus immediate rechecks covered import and AI writes.",
                 path="write_window_protection",
                 expected={
-                    "mode": "immediate_recheck_no_durable_lock",
+                    "mode": "lock_file_atomic_create_plus_immediate_recheck",
+                    "durable_lock_held": True,
+                    "operator_sync_lock.acquired": True,
                     "write_window_rechecked": True,
                     "no_concurrent_import_or_tagging_jobs": True,
                     "import_recheck.passed": True,
@@ -4612,7 +4651,10 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
                     "no_concurrent_import_or_tagging_jobs": window_no_concurrent,
                     "import_recheck.passed": import_recheck_passed,
                     "ai_write_recheck.passed": ai_recheck_passed,
-                    "durable_lock_held": _as_bool(_get(summary, "write_window_protection.durable_lock_held", False)),
+                    "durable_lock_held": window_durable_lock_held,
+                    "operator_sync_lock.acquired": window_operator_lock_acquired,
+                    "job_concurrency.durable_lock_held": job_durable_lock_held,
+                    "job_concurrency.operator_sync_lock_acquired": job_operator_lock_acquired,
                 },
             )
 
@@ -4719,6 +4761,28 @@ def _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync(_contract: PhaseContr
 
     markdown_text = _read_s3a_prod2_markdown_report(summary, result)
     redaction_passed = _as_bool(_get(summary, "public_redaction.passed", False))
+    redaction_finding_count = _as_int(_get(summary, "public_redaction.finding_count", 0))
+    clean_before_public_write = _as_bool(_get(summary, "public_redaction.clean_before_public_write", False))
+    unsafe_public_report_written = _as_bool(_get(summary, "public_redaction.unsafe_public_report_written", False))
+    if redaction_finding_count:
+        result.fail(
+            "s3a_prod2_redaction_findings_cannot_publish_report",
+            "S3A-PROD2/S3B-D1 public reports must only be produced after a clean redaction scan.",
+            path="public_redaction.finding_count",
+            expected=0,
+            actual=redaction_finding_count,
+        )
+    if status in target_statuses and (not clean_before_public_write or unsafe_public_report_written):
+        result.fail(
+            "s3a_prod2_target_without_clean_redaction_before_write",
+            "Target claims require a clean redaction scan before public report write and must not record unsafe report publication.",
+            path="public_redaction",
+            expected={"clean_before_public_write": True, "unsafe_public_report_written": False},
+            actual={
+                "clean_before_public_write": clean_before_public_write,
+                "unsafe_public_report_written": unsafe_public_report_written,
+            },
+        )
     if not redaction_passed and status in target_statuses:
         result.fail(
             "s3a_prod2_target_with_failed_public_redaction",

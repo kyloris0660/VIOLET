@@ -62,7 +62,7 @@
   },
   "cpu_fallback_validation": {
     "dry_run": true,
-    "elapsed_seconds": 2.792,
+    "elapsed_seconds": 2.183,
     "error_state": false,
     "executed": true,
     "failed": 0,
@@ -224,13 +224,13 @@
   },
   "directml_ai_tagging": {
     "dry_run": false,
-    "elapsed_seconds": 2.4568,
+    "elapsed_seconds": 2.3327,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_count": 2,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 32515,
+    "ignored_low_confidence": 32521,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
@@ -261,9 +261,9 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 59,
+    "media_tags_count_after": 53,
     "media_tags_count_before": 23,
-    "media_tags_count_delta": 36,
+    "media_tags_count_delta": 30,
     "media_with_ai_tags_after": 3,
     "media_with_ai_tags_before": 1,
     "media_with_ai_tags_delta": 2,
@@ -306,20 +306,20 @@
         "tags_added": 16
       },
       {
-        "ignored_low_confidence": 10839,
+        "ignored_low_confidence": 10840,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 7,
-        "tags_added": 12
+        "suggestions_added": 9,
+        "tags_added": 9
       },
       {
-        "ignored_low_confidence": 10841,
+        "ignored_low_confidence": 10846,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 7,
-        "tags_added": 10
+        "suggestions_added": 1,
+        "tags_added": 11
       }
     ],
     "reported": true,
@@ -396,15 +396,15 @@
     "selected_media_count": 3,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 21,
+    "suggestions_added": 17,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 38
+    "tags_added": 36
   },
   "directml_provider_probe": {
     "dry_run": true,
-    "elapsed_seconds": 1.9711,
+    "elapsed_seconds": 1.9126,
     "error_state": false,
     "executed": true,
     "failed": 0,
@@ -591,7 +591,7 @@
     "sourceconcept_r1_r2_r1r": false,
     "unattended_automation": false
   },
-  "generated_at": "2026-06-22T06:40:30.896656+00:00",
+  "generated_at": "2026-06-22T07:22:45.089422+00:00",
   "import_reuse": {
     "app_managed_storage_writes": 2,
     "created_files_public_count": 2,
@@ -641,12 +641,26 @@
     "active_ai_tagging_memory_job": false,
     "active_import_jobs": 0,
     "background_job_started_by_runner": false,
-    "concurrency_claim_scope": "preflight_plus_immediate_rechecks_no_durable_lock",
-    "durable_lock_held": false,
+    "concurrency_claim_scope": "durable_operator_lock_plus_immediate_rechecks",
+    "durable_lock_held": true,
+    "lock_scope": "s3a_prod2_operator_sync_write_window",
     "no_concurrent_import_or_tagging_jobs": true,
+    "operator_sync_lock": {
+      "acquired": true,
+      "acquisition_attempted": true,
+      "durable_lock_held": true,
+      "error": null,
+      "held_through_report_finalization": true,
+      "lock_path": ".local_manifests/s3a_prod2_operator_sync/active.lock",
+      "lock_path_redacted": true,
+      "lock_scope": "s3a_prod2_operator_sync_write_window",
+      "reported": true
+    },
+    "operator_sync_lock_acquired": true,
+    "operator_sync_lock_acquisition_attempted": true,
     "reported": true,
     "single_active_sync_job_policy": true,
-    "write_window_protection_mode": "immediate_recheck_no_durable_lock",
+    "write_window_protection_mode": "lock_file_atomic_create_plus_immediate_recheck",
     "write_window_rechecked": true
   },
   "load_control_observations": {
@@ -667,7 +681,7 @@
   },
   "localization": {
     "attempted": true,
-    "candidate_tags_count": 45,
+    "candidate_tags_count": 41,
     "deferred_reason": "external_llm_provider_not_approved_for_s3a_prod2_s3b_d1",
     "external_provider_used": false,
     "failed": 0,
@@ -675,7 +689,7 @@
     "missing_or_deferred": 1,
     "new_translations": 0,
     "reported": true,
-    "reused_translations": 44,
+    "reused_translations": 40,
     "status": "validated_reuse_and_deferred_missing"
   },
   "model_cache": {
@@ -701,13 +715,13 @@
   },
   "primary_provider_validation": {
     "dry_run": false,
-    "elapsed_seconds": 2.4568,
+    "elapsed_seconds": 2.3327,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_count": 2,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 32515,
+    "ignored_low_confidence": 32521,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
@@ -738,9 +752,9 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 59,
+    "media_tags_count_after": 53,
     "media_tags_count_before": 23,
-    "media_tags_count_delta": 36,
+    "media_tags_count_delta": 30,
     "media_with_ai_tags_after": 3,
     "media_with_ai_tags_before": 1,
     "media_with_ai_tags_delta": 2,
@@ -783,20 +797,20 @@
         "tags_added": 16
       },
       {
-        "ignored_low_confidence": 10839,
+        "ignored_low_confidence": 10840,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 7,
-        "tags_added": 12
+        "suggestions_added": 9,
+        "tags_added": 9
       },
       {
-        "ignored_low_confidence": 10841,
+        "ignored_low_confidence": 10846,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 7,
-        "tags_added": 10
+        "suggestions_added": 1,
+        "tags_added": 11
       }
     ],
     "reported": true,
@@ -873,11 +887,11 @@
     "selected_media_count": 3,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 21,
+    "suggestions_added": 17,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 38
+    "tags_added": 36
   },
   "protected_input_gate": {
     "blocked_count": 0,
@@ -939,10 +953,12 @@
     "write_requested": true
   },
   "public_redaction": {
+    "clean_before_public_write": true,
     "finding_count": 0,
     "findings_redacted": true,
     "passed": true,
-    "scan_scope": "public_json_and_markdown"
+    "scan_scope": "public_json_and_markdown",
+    "unsafe_public_report_written": false
   },
   "public_reports": {
     "markdown_report_path": "docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync.md",
@@ -1258,6 +1274,7 @@
     "local_files_only": true,
     "paths_redacted": true,
     "protected_input_blocked_count": 0,
+    "protected_input_child_blocked_count": 0,
     "public_item_results": [
       {
         "cloud_gate": {
@@ -1374,7 +1391,7 @@
         "reason": "local_readable_stable_supported_file",
         "recently_modified": false,
         "safe_label": "item_003",
-        "size_bytes": 1529,
+        "size_bytes": 1653,
         "source_state": "available",
         "stable_size_mtime": true,
         "supported_extension": true
@@ -1389,7 +1406,7 @@
     "unsupported_extension_skipped": 0,
     "zero_byte_skipped": 0
   },
-  "started_at": "2026-06-22T06:40:22.045001+00:00",
+  "started_at": "2026-06-22T07:22:37.065236+00:00",
   "title": "Bounded Operator Sync Scale-Up and Disabled Unattended Sync Design",
   "validation": {
     "dry_run_or_preflight_completed": true,
@@ -1457,8 +1474,8 @@
       "status": "passed"
     },
     "blockers": [],
-    "durable_lock_deferred": true,
-    "durable_lock_held": false,
+    "durable_lock_deferred": false,
+    "durable_lock_held": true,
     "exact_confirmation_present": true,
     "import_recheck": {
       "active_ai_tagging_jobs": 0,
@@ -1473,8 +1490,20 @@
       "stage": "before_import_write",
       "status": "passed"
     },
-    "mode": "immediate_recheck_no_durable_lock",
+    "lock_scope": "s3a_prod2_operator_sync_write_window",
+    "mode": "lock_file_atomic_create_plus_immediate_recheck",
     "no_concurrent_import_or_tagging_jobs": true,
+    "operator_sync_lock": {
+      "acquired": true,
+      "acquisition_attempted": true,
+      "durable_lock_held": true,
+      "error": null,
+      "held_through_report_finalization": true,
+      "lock_path": ".local_manifests/s3a_prod2_operator_sync/active.lock",
+      "lock_path_redacted": true,
+      "lock_scope": "s3a_prod2_operator_sync_write_window",
+      "reported": true
+    },
     "reported": true,
     "write_preconditions_passed": true,
     "write_requested": true,

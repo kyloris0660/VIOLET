@@ -132,7 +132,10 @@ def select_onnx_provider(
         elif selected is None:
             unavailable_before_selected.append(provider)
 
-    effective_requested = tuple(supported_requested) or DEFAULT_PROVIDER_PREFERENCE
+    if supported_requested or allow_fallback:
+        effective_requested = tuple(supported_requested) or DEFAULT_PROVIDER_PREFERENCE
+    else:
+        effective_requested = ()
     if selected is None:
         for provider in effective_requested:
             if provider in available_set:
