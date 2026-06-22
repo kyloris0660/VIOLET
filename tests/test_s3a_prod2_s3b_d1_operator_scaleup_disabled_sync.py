@@ -89,6 +89,40 @@ def _base_ai(*, dry_run: bool = True, actual: str = "DmlExecutionProvider") -> d
 
 def _s3a_prod2_summary(*, write: bool = False) -> dict:
     directml = _base_ai(dry_run=not write)
+    probe = {
+        **_base_ai(dry_run=True),
+        "label": "directml_prewrite_probe",
+        "executed": write,
+        "status": "completed" if write else "not_required_preflight_only",
+        "selected_media_count": 1 if write else 0,
+        "processed": 1 if write else 0,
+        "tags_added": 0,
+        "suggestions_added": 0,
+        "first_time_media_tag_insertion_count": 0,
+        "first_time_media_tag_insertion_proven": False,
+    }
+    provider_gate = {
+        "reported": True,
+        "write_requested": write,
+        "exact_confirmation_present": write,
+        "write_preconditions_passed": write,
+        "requested_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "requires_directml_provider": True,
+        "provider_preference_includes_directml": True,
+        "provider_preference_includes_cpu_fallback": True,
+        "provider_preference_dml_then_cpu": True,
+        "directml_available": True,
+        "cpu_fallback_available": True,
+        "probe_executed": write,
+        "probe_status": "completed" if write else "not_required_preflight_only",
+        "probe_failed": 0,
+        "probe_rollback_error": False,
+        "probe_error_state": False,
+        "probe_actual_provider": "DmlExecutionProvider" if write else None,
+        "passed": write,
+        "write_allowed": write,
+        "blockers": [] if write else ["write_not_requested"],
+    }
     cpu = {
         **_base_ai(dry_run=True, actual="CPUExecutionProvider"),
         "label": "cpu_fallback_dry_run",
@@ -133,15 +167,19 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "model_download_allowed": False,
             "write_requested": write,
             "operator_confirmation_exact": write,
+            "provider_preference_requested": ["DmlExecutionProvider", "CPUExecutionProvider"],
             "s3a_production_automation_enabled": False,
             "unattended_s3b_enabled": False,
             "scheduled_s3b_enabled": False,
             "no_full_library_fallback": True,
+            "min_stable_age_seconds": 60,
+            "stability_wait_seconds": 0.25,
         },
         "scope": {
             "selected_count": 3,
             "max_items": 5,
             "over_cap_count": 0,
+            "missing_input_count": 0,
             "explicit_input_path_supplied": True,
             "no_full_library_fallback": True,
             "private_locator_values_recorded": False,
@@ -155,7 +193,12 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "paths_redacted": True,
         },
         "model_cache": {"local_files_only": True, "model_download_allowed": False, "status": "cached"},
-        "provider_availability": {"reported": True, "directml_available": True, "cpu_available": True},
+        "provider_availability": {
+            "reported": True,
+            "directml_available": True,
+            "cpu_available": True,
+            "cpu_fallback_available": True,
+        },
         "job_concurrency": {
             "reported": True,
             "no_concurrent_import_or_tagging_jobs": True,
@@ -169,6 +212,9 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "local_files_only": True,
             "model_cache_cached": True,
             "directml_provider_available": True,
+            "provider_preference_dml_then_cpu": True,
+            "cpu_fallback_available": True,
+            "s3b_disabled_state_passed": True,
             "no_concurrent_import_or_tagging_jobs": True,
         },
         "import_reuse": import_reuse,
@@ -181,6 +227,8 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "failed_count": 0,
             "content_class_distribution": {"unknown": 3},
         },
+        "directml_provider_probe": probe,
+        "provider_write_gate": provider_gate,
         "directml_ai_tagging": directml,
         "cpu_fallback_validation": cpu,
         "localization": {
@@ -276,12 +324,66 @@ def test_discover_input_candidates_blocks_over_cap_without_truncation(tmp_path: 
     assert "sample_0.png" not in str(result.scope)
 
 
+def test_discover_input_candidates_reports_missing_input_as_failure(tmp_path: Path) -> None:
+    valid = tmp_path / "valid.png"
+    valid.write_bytes(b"x")
+    missing = tmp_path / "missing.png"
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(valid), str(missing)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert result.scope["missing_input_count"] == 1
+    assert result.source_file_preflight["failed_count"] == 1
+    assert result.source_file_preflight["reason_counts"]["source_missing"] == 1
+    assert "missing.png" not in str(result.source_file_preflight)
+
+
+def test_discover_input_candidates_uses_preflight_size_after_stat_race(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "race.png"
+    source.write_bytes(b"x")
+
+    def fake_evaluate(path, **kwargs):
+        Path(path).unlink()
+        return s3a_prod2.SourceFileDecision(
+            safe_label=kwargs["safe_label"],
+            eligible=True,
+            reason="local_readable_stable_supported_file",
+            source_state="available",
+            size_bytes=7,
+            supported_extension=True,
+            stable_size_mtime=True,
+        )
+
+    monkeypatch.setattr(s3a_prod2, "evaluate_source_file", fake_evaluate)
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(source)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert result.candidates[0].size_bytes == 7
+
+
 def test_derive_status_blocks_unconfirmed_write() -> None:
     summary = _s3a_prod2_summary(write=False)
     summary["run_configuration"]["write_requested"] = True
     summary["run_configuration"]["operator_confirmation_exact"] = False
 
     assert s3a_prod2.derive_status(summary) == "blocked_write_requested_without_exact_confirmation"
+
+
+def test_derive_status_blocks_cpu_only_provider_before_write() -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["run_configuration"]["provider_preference_requested"] = ["CPUExecutionProvider"]
+    summary["write_preconditions"]["provider_preference_dml_then_cpu"] = False
+
+    assert s3a_prod2.derive_status(summary) == "blocked_provider_preference_invalid"
 
 
 def test_contract_accepts_bounded_write_summary(monkeypatch, tmp_path: Path) -> None:
@@ -294,6 +396,39 @@ def test_contract_accepts_bounded_write_summary(monkeypatch, tmp_path: Path) -> 
     )
 
     assert result.passed, result.to_dict()
+
+
+def test_contract_rejects_ai_write_when_write_preconditions_failed(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["write_preconditions"]["passed"] = False
+    summary["write_preconditions"]["blockers"] = ["provider_preference_not_dml_then_cpu"]
+    summary["import_reuse"]["executed"] = False
+    summary["import_reuse"]["reused_count"] = 3
+    summary["directml_ai_tagging"]["dry_run"] = False
+    summary["directml_ai_tagging"]["executed"] = True
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    assert "s3a_prod2_ai_write_without_write_preconditions" in _error_codes(result)
+
+
+def test_contract_rejects_write_target_without_clean_directml_probe(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["provider_write_gate"]["probe_status"] = "failed"
+    summary["provider_write_gate"]["passed"] = False
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    assert "s3a_prod2_write_target_without_provider_write_gate" in _error_codes(result)
+    assert "s3a_prod2_write_target_without_clean_directml_probe" in _error_codes(result)
 
 
 def test_contract_rejects_enabled_s3b(monkeypatch, tmp_path: Path) -> None:

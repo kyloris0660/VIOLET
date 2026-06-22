@@ -34,6 +34,7 @@ _pilot_spec.loader.exec_module(pilot)
 
 from backend.app.services.s3b_unattended_sync_policy import (  # noqa: E402
     SourceFileDecision,
+    SyncPolicy,
     build_disabled_scaffold,
     evaluate_source_file,
     public_file_decision_counts,
@@ -90,32 +91,54 @@ def prod2_runtime_env(max_items: int, provider_preference: str) -> Iterator[None
             "TAG_TRANSLATION_LLM_ENABLED": "false",
             "TAG_TRANSLATION_LLM_FALLBACK_ENABLED": "false",
             "ENTITY_ALIAS_RESOLVER_ENABLED": "false",
-            "S3B_UNATTENDED_SYNC_ENABLED": "false",
-            "S3B_SCHEDULED_SYNC_ENABLED": "false",
-            "S3B_REQUIRE_OPERATOR_CONFIRMATION": "true",
-            "S3B_DRY_RUN_ONLY": "true",
         }
     )
     with pilot.temporary_env(updates):
         yield
 
 
-def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict[str, int]]:
+def provider_preference_is_bounded_directml_cpu(raw: str) -> bool:
+    return provider_list(raw) == ["DmlExecutionProvider", "CPUExecutionProvider"]
+
+
+def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict[str, int], list[SourceFileDecision]]:
     discovered: list[Path] = []
+    missing_decisions: list[SourceFileDecision] = []
     counts = {
         "missing_input_count": 0,
         "directory_inputs": 0,
         "file_inputs": 0,
         "unsupported_files": 0,
     }
-    for raw in input_paths:
+    for index, raw in enumerate(input_paths, start=1):
         path = Path(raw).expanduser().resolve()
         if not path.exists():
             counts["missing_input_count"] += 1
+            missing_decisions.append(
+                SourceFileDecision(
+                    safe_label=f"missing_input_{index:03d}",
+                    eligible=False,
+                    reason="source_missing",
+                    source_state="failed",
+                )
+            )
             continue
         if path.is_dir():
             counts["directory_inputs"] += 1
-            for item in sorted(path.iterdir(), key=lambda p: p.name.casefold()):
+            try:
+                children = sorted(path.iterdir(), key=lambda p: p.name.casefold())
+            except OSError:
+                counts["missing_input_count"] += 1
+                missing_decisions.append(
+                    SourceFileDecision(
+                        safe_label=f"missing_input_{index:03d}",
+                        eligible=False,
+                        reason="unreadable_source",
+                        source_state="failed",
+                    )
+                )
+                continue
+            for item in children:
                 if not item.is_file():
                     continue
                 if item.suffix.casefold() in SUPPORTED_EXTENSIONS:
@@ -130,7 +153,15 @@ def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict
                 counts["unsupported_files"] += 1
         else:
             counts["missing_input_count"] += 1
-    return discovered, counts
+            missing_decisions.append(
+                SourceFileDecision(
+                    safe_label=f"missing_input_{index:03d}",
+                    eligible=False,
+                    reason="source_not_file",
+                    source_state="failed",
+                )
+            )
+    return discovered, counts, missing_decisions
 
 
 def _dedupe_paths(paths: Iterable[Path]) -> list[Path]:
@@ -149,38 +180,35 @@ def discover_input_candidates(
     input_paths: list[str],
     *,
     max_items: int,
-    min_stable_age_seconds: int = 0,
-    stability_wait_seconds: float = 0.0,
+    min_stable_age_seconds: int = 60,
+    stability_wait_seconds: float = 0.25,
 ) -> PreflightResult:
-    discovered, counts = _iter_explicit_input_files(input_paths)
+    discovered, counts, missing_decisions = _iter_explicit_input_files(input_paths)
     unique = _dedupe_paths(discovered)
     over_cap_count = max(0, len(unique) - max_items)
-    decisions: list[SourceFileDecision] = []
+    decisions: list[SourceFileDecision] = list(missing_decisions)
+    eligible_entries: list[tuple[Path, SourceFileDecision]] = []
 
     if over_cap_count == 0:
         for index, path in enumerate(unique, start=1):
-            decisions.append(
-                evaluate_source_file(
-                    path,
-                    safe_label=f"item_{index:03d}",
-                    min_stable_age_seconds=min_stable_age_seconds,
-                    stability_wait_seconds=stability_wait_seconds,
-                )
+            decision = evaluate_source_file(
+                path,
+                safe_label=f"item_{index:03d}",
+                min_stable_age_seconds=min_stable_age_seconds,
+                stability_wait_seconds=stability_wait_seconds,
             )
+            decisions.append(decision)
+            if decision.eligible:
+                eligible_entries.append((path, decision))
 
-    eligible_paths = [
-        path
-        for path, decision in zip(unique, decisions)
-        if decision.eligible
-    ]
     candidates = [
         pilot.SelectedCandidate(
             label=f"item_{index:03d}",
             path=path,
             suffix=path.suffix.casefold(),
-            size_bytes=path.stat().st_size,
+            size_bytes=int(decision.size_bytes or 0),
         )
-        for index, path in enumerate(eligible_paths, start=1)
+        for index, (path, decision) in enumerate(eligible_entries, start=1)
     ]
     preflight_counts = public_file_decision_counts(decisions)
     skipped_by_reason = preflight_counts.get("reason_counts", {})
@@ -252,6 +280,7 @@ def provider_availability_summary() -> dict[str, Any]:
             "available_providers": providers,
             "directml_available": "DmlExecutionProvider" in providers,
             "cpu_available": "CPUExecutionProvider" in providers,
+            "cpu_fallback_available": "CPUExecutionProvider" in providers,
             "error": None,
         }
     except Exception as exc:  # noqa: BLE001
@@ -260,6 +289,7 @@ def provider_availability_summary() -> dict[str, Any]:
             "available_providers": [],
             "directml_available": False,
             "cpu_available": False,
+            "cpu_fallback_available": False,
             "error": exc.__class__.__name__,
         }
 
@@ -299,18 +329,25 @@ def build_write_preconditions(
     source_file_preflight: Mapping[str, Any],
     model_cache: Mapping[str, Any],
     provider_availability: Mapping[str, Any],
+    provider_preference: str,
     job_concurrency: Mapping[str, Any],
+    s3b_scaffold: Mapping[str, Any],
     write_requested: bool,
     write_confirmed: bool,
     local_files_only: bool,
 ) -> dict[str, Any]:
     blockers: list[str] = []
+    requested_providers = provider_list(provider_preference)
+    s3b_policy = s3b_scaffold.get("policy", {}) if isinstance(s3b_scaffold.get("policy", {}), Mapping) else {}
+    s3b_trigger = s3b_scaffold.get("trigger", {}) if isinstance(s3b_scaffold.get("trigger", {}), Mapping) else {}
     if not write_requested:
         blockers.append("write_not_requested")
     if write_requested and not write_confirmed:
         blockers.append("exact_confirmation_missing")
     if not bool(scope.get("explicit_input_path_supplied")):
         blockers.append("explicit_input_path_missing")
+    if int(scope.get("missing_input_count") or 0) > 0:
+        blockers.append("explicit_input_missing_or_disappeared")
     if not bool(scope.get("no_full_library_fallback")):
         blockers.append("full_library_fallback_not_allowed")
     if int(scope.get("selected_count") or 0) <= 0:
@@ -325,10 +362,25 @@ def build_write_preconditions(
         blockers.append("model_download_not_allowed")
     if model_cache.get("status") != "cached":
         blockers.append("model_cache_not_cached")
+    if not provider_preference_is_bounded_directml_cpu(provider_preference):
+        blockers.append("provider_preference_not_dml_then_cpu")
     if not bool(provider_availability.get("directml_available")):
         blockers.append("directml_provider_unavailable")
+    if not bool(provider_availability.get("cpu_fallback_available")):
+        blockers.append("cpu_fallback_provider_unavailable")
     if not bool(job_concurrency.get("no_concurrent_import_or_tagging_jobs")):
         blockers.append("concurrent_import_or_tagging_job_active")
+    s3b_disabled = (
+        s3b_scaffold.get("status") == "disabled_scaffold_ready"
+        and not bool(s3b_policy.get("unattended_enabled"))
+        and not bool(s3b_policy.get("scheduled_enabled"))
+        and bool(s3b_policy.get("dry_run_only"))
+        and not bool(s3b_trigger.get("scheduler_started"))
+        and not bool(s3b_trigger.get("background_job_started"))
+        and not bool(s3b_scaffold.get("automatic_writes_started"))
+    )
+    if not s3b_disabled:
+        blockers.append("s3b_unattended_or_scheduled_state_not_disabled")
     return {
         "reported": True,
         "passed": write_requested and write_confirmed and not blockers,
@@ -339,13 +391,26 @@ def build_write_preconditions(
         "local_files_only": local_files_only,
         "model_cache_cached": model_cache.get("status") == "cached",
         "model_download_not_allowed": local_files_only,
-        "scope_valid": bool(scope.get("explicit_input_path_supplied")) and bool(scope.get("no_full_library_fallback")),
+        "scope_valid": (
+            bool(scope.get("explicit_input_path_supplied"))
+            and int(scope.get("missing_input_count") or 0) == 0
+            and bool(scope.get("no_full_library_fallback"))
+        ),
         "no_over_cap_input": int(scope.get("over_cap_count") or 0) == 0,
         "no_full_library_fallback": bool(scope.get("no_full_library_fallback")),
+        "requested_provider_preference": requested_providers,
+        "provider_preference_dml_then_cpu": provider_preference_is_bounded_directml_cpu(provider_preference),
         "directml_provider_available": bool(provider_availability.get("directml_available")),
+        "cpu_fallback_available": bool(provider_availability.get("cpu_fallback_available")),
         "no_concurrent_import_or_tagging_jobs": bool(
             job_concurrency.get("no_concurrent_import_or_tagging_jobs")
         ),
+        "s3b_disabled_state_passed": s3b_disabled,
+        "s3b_unattended_enabled": bool(s3b_policy.get("unattended_enabled")),
+        "s3b_scheduled_enabled": bool(s3b_policy.get("scheduled_enabled")),
+        "s3b_scheduler_started": bool(s3b_trigger.get("scheduler_started")),
+        "s3b_background_job_started": bool(s3b_trigger.get("background_job_started")),
+        "s3b_automatic_writes_started": bool(s3b_scaffold.get("automatic_writes_started")),
     }
 
 
@@ -353,15 +418,22 @@ def _default_stage(name: str) -> dict[str, Any]:
     return {"reported": False, "status": "not_run", "stage": name}
 
 
-def _not_run_ai_result(status: str) -> dict[str, Any]:
+def _not_run_ai_result(
+    status: str,
+    *,
+    label: str = "directml_primary",
+    provider_preference: str = DEFAULT_PROVIDER_PREFERENCE,
+    selected_media_count: int = 0,
+) -> dict[str, Any]:
     return {
         "reported": True,
         "executed": False,
+        "label": label,
         "status": status,
         "dry_run": True,
         "local_files_only": True,
-        "provider_preference_requested": provider_list(DEFAULT_PROVIDER_PREFERENCE),
-        "selected_media_count": 0,
+        "provider_preference_requested": provider_list(provider_preference),
+        "selected_media_count": selected_media_count,
         "processed": 0,
         "tags_added": 0,
         "suggestions_added": 0,
@@ -379,6 +451,78 @@ def _not_run_ai_result(status: str) -> dict[str, Any]:
         "no_media_tags_writes": True,
         "provider": {},
         "load_control": {},
+    }
+
+
+def build_provider_write_gate(
+    *,
+    provider_availability: Mapping[str, Any],
+    provider_preference: str,
+    directml_probe: Mapping[str, Any],
+    write_requested: bool,
+    write_confirmed: bool,
+    write_preconditions_passed: bool,
+) -> dict[str, Any]:
+    requested = provider_list(provider_preference)
+    preference_dml_then_cpu = requested == ["DmlExecutionProvider", "CPUExecutionProvider"]
+    directml_available = bool(provider_availability.get("directml_available"))
+    cpu_available = bool(provider_availability.get("cpu_fallback_available"))
+    probe_executed = bool(directml_probe.get("executed"))
+    probe_status = directml_probe.get("status")
+    probe_failed = int(directml_probe.get("failed", 0) or 0)
+    probe_rollback_error = bool(directml_probe.get("rollback_error"))
+    probe_error_state = bool(directml_probe.get("error_state"))
+    probe_actual = directml_probe.get("provider", {}).get("actual_provider")
+    blockers: list[str] = []
+
+    if not write_requested:
+        blockers.append("write_not_requested")
+    if write_requested and not write_confirmed:
+        blockers.append("exact_confirmation_missing")
+    if write_requested and write_confirmed and not write_preconditions_passed:
+        blockers.append("write_preconditions_not_passed")
+    if write_requested and write_confirmed and not preference_dml_then_cpu:
+        blockers.append("provider_preference_not_dml_then_cpu")
+    if write_requested and write_confirmed and not directml_available:
+        blockers.append("directml_provider_unavailable")
+    if write_requested and write_confirmed and not cpu_available:
+        blockers.append("cpu_fallback_provider_unavailable")
+    if write_requested and write_confirmed and write_preconditions_passed and preference_dml_then_cpu and directml_available:
+        if not probe_executed:
+            blockers.append("directml_probe_not_executed")
+        if probe_status != "completed":
+            blockers.append("directml_probe_status_not_completed")
+        if probe_failed:
+            blockers.append("directml_probe_failed")
+        if probe_rollback_error:
+            blockers.append("directml_probe_rollback_error")
+        if probe_error_state:
+            blockers.append("directml_probe_error_state")
+        if probe_actual != "DmlExecutionProvider":
+            blockers.append("directml_probe_actual_provider_not_directml")
+
+    passed = bool(write_requested and write_confirmed and write_preconditions_passed and not blockers)
+    return {
+        "reported": True,
+        "write_requested": write_requested,
+        "exact_confirmation_present": write_confirmed,
+        "write_preconditions_passed": write_preconditions_passed,
+        "requested_provider_preference": requested,
+        "requires_directml_provider": True,
+        "provider_preference_includes_directml": "DmlExecutionProvider" in requested,
+        "provider_preference_includes_cpu_fallback": "CPUExecutionProvider" in requested,
+        "provider_preference_dml_then_cpu": preference_dml_then_cpu,
+        "directml_available": directml_available,
+        "cpu_fallback_available": cpu_available,
+        "probe_executed": probe_executed,
+        "probe_status": probe_status,
+        "probe_failed": probe_failed,
+        "probe_rollback_error": probe_rollback_error,
+        "probe_error_state": probe_error_state,
+        "probe_actual_provider": probe_actual,
+        "passed": passed,
+        "write_allowed": passed,
+        "blockers": blockers,
     }
 
 
@@ -428,6 +572,8 @@ def derive_status(summary: Mapping[str, Any]) -> str:
     import_reuse = summary.get("import_reuse", {})
     classification = summary.get("classification", {})
     ai = summary.get("directml_ai_tagging", {})
+    probe = summary.get("directml_provider_probe", {})
+    gate = summary.get("provider_write_gate", {})
     cpu = summary.get("cpu_fallback_validation", {})
     s3b = summary.get("s3b_disabled_scaffold", {})
 
@@ -445,14 +591,22 @@ def derive_status(summary: Mapping[str, Any]) -> str:
         return "blocked_model_download_allowed"
     if model_cache.get("status") != "cached":
         return "blocked_model_cache_missing"
+    if not bool(preconditions.get("provider_preference_dml_then_cpu", True)):
+        return "blocked_provider_preference_invalid"
     if not bool(summary.get("provider_availability", {}).get("directml_available")):
         return "blocked_directml_provider_not_available"
+    if not bool(summary.get("provider_availability", {}).get("cpu_fallback_available", True)):
+        return "blocked_cpu_fallback_provider_not_available"
     if not bool(summary.get("job_concurrency", {}).get("no_concurrent_import_or_tagging_jobs")):
         return "blocked_concurrent_job_active"
+    if int(summary.get("source_file_preflight", {}).get("failed_count") or 0) > 0:
+        return "blocked_source_file_preflight_failures"
     if bool(config.get("write_requested")) and not bool(config.get("operator_confirmation_exact")):
         return "blocked_write_requested_without_exact_confirmation"
     if int(scope.get("selected_count") or 0) <= 0:
         return "blocked_no_media"
+    if bool(config.get("write_requested")) and not bool(preconditions.get("s3b_disabled_state_passed", True)):
+        return "blocked_s3b_scaffold_not_disabled"
     if bool(config.get("write_requested")) and bool(config.get("operator_confirmation_exact")) and not bool(
         preconditions.get("passed")
     ):
@@ -471,6 +625,8 @@ def derive_status(summary: Mapping[str, Any]) -> str:
     if bool(config.get("write_requested")) and bool(config.get("operator_confirmation_exact")):
         if not bool(import_reuse.get("executed")) or not bool(ai.get("executed")) or bool(ai.get("dry_run")):
             return "blocked_write_not_executed"
+        if not bool(summary.get("provider_write_gate", {}).get("passed")):
+            return "blocked_directml_provider_not_validated"
         if ai.get("provider", {}).get("actual_provider") != "DmlExecutionProvider":
             return "blocked_directml_provider_not_validated"
         if int(scope.get("selected_count") or 0) < 2:
@@ -566,6 +722,8 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     import_reuse = summary.get("import_reuse", {})
     classification = summary.get("classification", {})
     ai = summary.get("directml_ai_tagging", {})
+    probe = summary.get("directml_provider_probe", {})
+    gate = summary.get("provider_write_gate", {})
     cpu = summary.get("cpu_fallback_validation", {})
     loc = summary.get("localization", {})
     failure_budget = summary.get("failure_budget", {})
@@ -637,6 +795,10 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- Media tags delta: `{ai.get('media_tags_count_delta')}`.",
             f"- Media with AI tags delta: `{ai.get('media_with_ai_tags_delta')}`.",
             f"- First-time insertion count: `{ai.get('first_time_media_tag_insertion_count')}`.",
+            f"- Prewrite DirectML probe status: `{probe.get('status')}`.",
+            f"- Prewrite DirectML probe provider: `{probe.get('provider', {}).get('actual_provider')}`.",
+            f"- Provider write gate passed: `{gate.get('passed')}`.",
+            f"- Provider write gate blockers: `{gate.get('blockers')}`.",
             "",
             "## CPU Fallback",
             "",
@@ -756,8 +918,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--execute-write", action="store_true")
     parser.add_argument("--confirmation", default="")
     parser.add_argument("--allow-model-download", action="store_true")
-    parser.add_argument("--min-stable-age-seconds", type=int, default=0)
-    parser.add_argument("--stability-wait-seconds", type=float, default=0.0)
+    parser.add_argument("--min-stable-age-seconds", type=int, default=None)
+    parser.add_argument("--stability-wait-seconds", type=float, default=None)
     return parser
 
 
@@ -773,13 +935,25 @@ def main(argv: list[str] | None = None) -> int:
     write_requested = bool(args.execute_write)
     write_confirmed = args.confirmation == WRITE_CONFIRMATION
     local_files_only = not args.allow_model_download
+    s3b_policy_defaults = SyncPolicy.from_settings()
+    min_stable_age_seconds = (
+        s3b_policy_defaults.min_stable_age_seconds
+        if args.min_stable_age_seconds is None
+        else max(0, int(args.min_stable_age_seconds))
+    )
+    stability_wait_seconds = (
+        s3b_policy_defaults.stability_wait_seconds
+        if args.stability_wait_seconds is None
+        else max(0.0, float(args.stability_wait_seconds))
+    )
+    s3b_scaffold = build_disabled_scaffold()
 
     pilot.SOURCE_LABEL = SOURCE_LABEL
     preflight = discover_input_candidates(
         args.input_path,
         max_items=max_items,
-        min_stable_age_seconds=max(0, int(args.min_stable_age_seconds)),
-        stability_wait_seconds=max(0.0, float(args.stability_wait_seconds)),
+        min_stable_age_seconds=min_stable_age_seconds,
+        stability_wait_seconds=stability_wait_seconds,
     )
 
     model_cache: dict[str, Any] = {}
@@ -794,6 +968,12 @@ def main(argv: list[str] | None = None) -> int:
     import_reuse: dict[str, Any] = _default_stage("import_reuse")
     classification: dict[str, Any] = _default_stage("classification")
     directml_ai_tagging: dict[str, Any] = _not_run_ai_result("not_run")
+    directml_provider_probe: dict[str, Any] = _not_run_ai_result(
+        "not_required_preflight_only",
+        label="directml_prewrite_probe",
+        provider_preference=args.provider_preference,
+    )
+    provider_write_gate: dict[str, Any] = {}
     cpu_fallback: dict[str, Any] = _not_run_ai_result("not_run")
     localization: dict[str, Any] = {"reported": True, "status": "not_run", "failed": 0, "llm_external_provider_used": False}
     downstream_media_ids: list[int] = []
@@ -809,7 +989,9 @@ def main(argv: list[str] | None = None) -> int:
                 source_file_preflight=preflight.source_file_preflight,
                 model_cache=model_cache,
                 provider_availability=provider_availability,
+                provider_preference=args.provider_preference,
                 job_concurrency=job_concurrency,
+                s3b_scaffold=s3b_scaffold,
                 write_requested=write_requested,
                 write_confirmed=write_confirmed,
                 local_files_only=local_files_only,
@@ -823,19 +1005,93 @@ def main(argv: list[str] | None = None) -> int:
                 write_preconditions_passed=bool(write_preconditions.get("passed")),
                 write_blockers=list(write_preconditions.get("blockers") or []),
             )
-            classification = pilot.classify_media_scope(db, downstream_media_ids)
+            downstream_allowed = bool(downstream_media_ids) and (
+                not write_requested or bool(write_preconditions.get("passed"))
+            )
+            if downstream_allowed:
+                classification = pilot.classify_media_scope(db, downstream_media_ids)
+            else:
+                classification = {
+                    "reported": True,
+                    "executed": False,
+                    "status": "not_run_write_preconditions_blocked"
+                    if write_requested and not write_preconditions.get("passed")
+                    else "not_run_no_media",
+                    "classified_count": 0,
+                    "reused_classification_count": 0,
+                    "failed_count": 0,
+                    "content_class_distribution": {},
+                }
 
-            if model_cache.get("status") == "cached" and local_files_only and downstream_media_ids:
-                directml_ai_tagging, touched_tags = pilot.run_ai_tagging_pass(
-                    db,
-                    label="directml_primary",
-                    media_ids=downstream_media_ids,
-                    dry_run=not (write_requested and write_confirmed),
-                    provider_preference=args.provider_preference,
-                    max_items=max_items,
-                    local_files_only=local_files_only,
-                )
-                directml_ai_tagging = _augment_ai_result(directml_ai_tagging)
+            if model_cache.get("status") == "cached" and local_files_only and downstream_allowed:
+                if write_requested and write_confirmed:
+                    if bool(write_preconditions.get("passed")) and provider_preference_is_bounded_directml_cpu(
+                        args.provider_preference
+                    ) and bool(provider_availability.get("directml_available")):
+                        directml_provider_probe, _probe_tags = pilot.run_ai_tagging_pass(
+                            db,
+                            label="directml_prewrite_probe",
+                            media_ids=downstream_media_ids[:1],
+                            dry_run=True,
+                            provider_preference=args.provider_preference,
+                            max_items=1,
+                            local_files_only=local_files_only,
+                        )
+                        directml_provider_probe = _augment_ai_result(directml_provider_probe)
+                    else:
+                        directml_provider_probe = _not_run_ai_result(
+                            "not_run_write_preconditions_blocked",
+                            label="directml_prewrite_probe",
+                            provider_preference=args.provider_preference,
+                            selected_media_count=min(1, len(downstream_media_ids)),
+                        )
+                    provider_write_gate = build_provider_write_gate(
+                        provider_availability=provider_availability,
+                        provider_preference=args.provider_preference,
+                        directml_probe=directml_provider_probe,
+                        write_requested=write_requested,
+                        write_confirmed=write_confirmed,
+                        write_preconditions_passed=bool(write_preconditions.get("passed")),
+                    )
+                    if provider_write_gate.get("passed"):
+                        directml_ai_tagging, touched_tags = pilot.run_ai_tagging_pass(
+                            db,
+                            label="directml_primary",
+                            media_ids=downstream_media_ids,
+                            dry_run=False,
+                            provider_preference=args.provider_preference,
+                            max_items=max_items,
+                            local_files_only=local_files_only,
+                        )
+                        directml_ai_tagging = _augment_ai_result(directml_ai_tagging)
+                    else:
+                        directml_ai_tagging = _not_run_ai_result(
+                            "not_run_provider_write_gate_blocked",
+                            provider_preference=args.provider_preference,
+                            selected_media_count=len(downstream_media_ids),
+                        )
+                        directml_ai_tagging["write_gate_blockers"] = list(
+                            provider_write_gate.get("blockers") or []
+                        )
+                else:
+                    directml_ai_tagging, touched_tags = pilot.run_ai_tagging_pass(
+                        db,
+                        label="directml_primary",
+                        media_ids=downstream_media_ids,
+                        dry_run=True,
+                        provider_preference=args.provider_preference,
+                        max_items=max_items,
+                        local_files_only=local_files_only,
+                    )
+                    directml_ai_tagging = _augment_ai_result(directml_ai_tagging)
+                    provider_write_gate = build_provider_write_gate(
+                        provider_availability=provider_availability,
+                        provider_preference=args.provider_preference,
+                        directml_probe=directml_provider_probe,
+                        write_requested=write_requested,
+                        write_confirmed=write_confirmed,
+                        write_preconditions_passed=bool(write_preconditions.get("passed")),
+                    )
                 cpu_fallback, _cpu_tags = pilot.run_ai_tagging_pass(
                     db,
                     label="cpu_fallback_dry_run",
@@ -847,14 +1103,40 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 cpu_fallback = _augment_ai_result(cpu_fallback)
             else:
-                status = "not_run_no_media" if not downstream_media_ids else "not_run_model_cache_unavailable"
-                directml_ai_tagging = _not_run_ai_result(status)
-                cpu_fallback = _not_run_ai_result(status)
+                status = (
+                    "not_run_write_preconditions_blocked"
+                    if write_requested and not write_preconditions.get("passed")
+                    else ("not_run_no_media" if not downstream_media_ids else "not_run_model_cache_unavailable")
+                )
+                directml_ai_tagging = _not_run_ai_result(
+                    status,
+                    provider_preference=args.provider_preference,
+                    selected_media_count=len(downstream_media_ids),
+                )
+                directml_provider_probe = _not_run_ai_result(
+                    status,
+                    label="directml_prewrite_probe",
+                    provider_preference=args.provider_preference,
+                    selected_media_count=min(1, len(downstream_media_ids)),
+                )
+                provider_write_gate = build_provider_write_gate(
+                    provider_availability=provider_availability,
+                    provider_preference=args.provider_preference,
+                    directml_probe=directml_provider_probe,
+                    write_requested=write_requested,
+                    write_confirmed=write_confirmed,
+                    write_preconditions_passed=bool(write_preconditions.get("passed")),
+                )
+                cpu_fallback = _not_run_ai_result(
+                    status,
+                    label="cpu_fallback_dry_run",
+                    provider_preference=CPU_PROVIDER_PREFERENCE,
+                    selected_media_count=min(1, len(downstream_media_ids)),
+                )
             localization = validate_localization(db, touched_tags)
         finally:
             db.close()
 
-    s3b_scaffold = build_disabled_scaffold()
     import_executed = bool(import_reuse.get("executed"))
     ai_write_executed = bool(directml_ai_tagging.get("executed")) and not bool(directml_ai_tagging.get("dry_run"))
     summary: dict[str, Any] = {
@@ -881,11 +1163,19 @@ def main(argv: list[str] | None = None) -> int:
             "required_confirmation_string_public": "exact_s3a_prod2_operator_confirmation",
             "operator_triggered_only": True,
             "s3a_production_automation_enabled": False,
-            "unattended_s3b_enabled": False,
-            "scheduled_s3b_enabled": False,
+            "unattended_s3b_enabled": bool(
+                s3b_scaffold.get("policy", {}).get("unattended_enabled")
+                if isinstance(s3b_scaffold.get("policy", {}), Mapping)
+                else False
+            ),
+            "scheduled_s3b_enabled": bool(
+                s3b_scaffold.get("policy", {}).get("scheduled_enabled")
+                if isinstance(s3b_scaffold.get("policy", {}), Mapping)
+                else False
+            ),
             "no_full_library_fallback": True,
-            "min_stable_age_seconds": max(0, int(args.min_stable_age_seconds)),
-            "stability_wait_seconds": max(0.0, float(args.stability_wait_seconds)),
+            "min_stable_age_seconds": min_stable_age_seconds,
+            "stability_wait_seconds": stability_wait_seconds,
         },
         "scope": preflight.scope,
         "source_file_preflight": preflight.source_file_preflight,
@@ -895,6 +1185,8 @@ def main(argv: list[str] | None = None) -> int:
         "write_preconditions": write_preconditions,
         "import_reuse": import_reuse,
         "classification": classification,
+        "directml_provider_probe": directml_provider_probe,
+        "provider_write_gate": provider_write_gate,
         "directml_ai_tagging": directml_ai_tagging,
         "primary_provider_validation": directml_ai_tagging,
         "cpu_fallback_validation": cpu_fallback,

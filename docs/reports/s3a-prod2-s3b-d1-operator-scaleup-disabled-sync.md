@@ -9,8 +9,8 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 ## Operator Scope
 
 - Input mode: `input_path`.
-- Selected input count: `2`.
-- Discovered supported files: `2`.
+- Selected input count: `3`.
+- Discovered supported files: `3`.
 - Over-cap count: `0`.
 - Max items: `5`.
 - Full-library fallback: `False`.
@@ -18,8 +18,8 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 
 ## Source File Preflight
 
-- Evaluated: `2`.
-- Eligible: `2`.
+- Evaluated: `3`.
+- Eligible: `3`.
 - Skipped: `0`.
 - Failed: `0`.
 - Cloud placeholder skipped: `0`.
@@ -31,20 +31,20 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 
 - Executed write: `True`.
 - Exact confirmation present: `True`.
-- Imported: `2`.
-- Reused: `0`.
+- Imported: `1`.
+- Reused: `2`.
 - Skipped: `0`.
 - Failed: `0`.
-- App-managed storage writes: `2`.
+- App-managed storage writes: `1`.
 - Source/iCloud mutation: `False`.
 
 ## Classification
 
 - Executed: `True`.
-- Classified: `2`.
+- Classified: `3`.
 - Reused classification: `0`.
 - Failed: `0`.
-- Distribution: `{'unknown': 2}`.
+- Distribution: `{'anime': 2, 'unknown': 1}`.
 
 ## DirectML AI Tagging
 
@@ -52,15 +52,19 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 - Dry run: `False`.
 - Provider preference: `['DmlExecutionProvider', 'CPUExecutionProvider']`.
 - Actual provider: `DmlExecutionProvider`.
-- Processed: `2`.
+- Processed: `3`.
 - Failed: `0`.
-- Tags added: `101`.
-- Suggestions added: `45`.
+- Tags added: `117`.
+- Suggestions added: `52`.
 - Skipped locked: `0`.
-- Ignored low confidence: `21570`.
-- Media tags delta: `146`.
-- Media with AI tags delta: `2`.
-- First-time insertion count: `2`.
+- Ignored low confidence: `32405`.
+- Media tags delta: `23`.
+- Media with AI tags delta: `1`.
+- First-time insertion count: `1`.
+- Prewrite DirectML probe status: `completed`.
+- Prewrite DirectML probe provider: `DmlExecutionProvider`.
+- Provider write gate passed: `True`.
+- Provider write gate blockers: `[]`.
 
 ## CPU Fallback
 
@@ -72,9 +76,9 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 
 ## Localization
 
-- Reused translations: `118`.
+- Reused translations: `138`.
 - New local/static translations: `0`.
-- Missing/deferred: `0`.
+- Missing/deferred: `1`.
 - Failed: `0`.
 - External/LLM provider used: `False`.
 

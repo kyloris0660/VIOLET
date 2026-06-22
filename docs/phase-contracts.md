@@ -45,6 +45,7 @@ extend a contract first.
 - `s2g_s3a_f1_foundation_contract_v1`
 - `s2g_real1_bounded_ai_tagging_validation_contract_v1`
 - `s3a_pilot1_new_data_directml_chain_contract_v1`
+- `s3a_prod1_operator_incremental_sync_contract_v1`
 - `s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1`
 
 ## R1R Gate
