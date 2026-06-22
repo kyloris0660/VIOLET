@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE_DIR = ROOT / ".local_manifests" / "production_launcher"
 STATE_FILE = STATE_DIR / "violet-production-launcher-state.json"
 LOG_FILE = STATE_DIR / "violet-production.log"
+START_LOCK_FILE = STATE_DIR / "violet-production-launcher-start.lock"
 RUN_PY = ROOT / "run.py"
 
 APP_NAME = "V.I.O.L.E.T."
@@ -44,6 +45,24 @@ AUTOMATION_FLAGS = (
     "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT",
     "TAG_TRANSLATION_AUTO_ENABLED",
     "TAG_TRANSLATION_BACKGROUND_ENABLED",
+)
+
+DANGEROUS_PRODUCTION_FLAGS = (
+    "VIOLET_ALLOW_DESTRUCTIVE_E2E",
+    "VIOLET_RUN_REAL_E2E",
+)
+
+STARTUP_SAFE_MODE_ENV = "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP"
+STARTUP_MAINTENANCE_APPROVAL_ENV = "VIOLET_PRODUCTION_STARTUP_MAINTENANCE_APPROVED"
+
+NORMAL_STARTUP_MAINTENANCE = (
+    "init_engine",
+    "init_db_create_all_and_schema_migration",
+    "upload_temp_chunk_cleanup",
+    "stale_scan_ai_translation_classification_job_recovery",
+    "static_tag_translation_seed",
+    "periodic_upload_temp_cleanup_task",
+    "background_tag_translation_worker_if_enabled",
 )
 
 FORBIDDEN_START_TOKENS = (
@@ -75,6 +94,19 @@ class RuntimeConfig:
     url: str
     expected_python: Path
     accepted_storage_root: Path | None = None
+    port_raw: str = ""
+    port_resolved: bool = True
+    port_error: str | None = None
+
+
+@dataclass
+class ProcessSnapshot:
+    pid: int
+    exists: bool
+    command_line: str = ""
+    executable_path: str = ""
+    create_time: float | None = None
+    cwd: str = ""
 
 
 @dataclass
@@ -128,6 +160,26 @@ def public_error(exc: BaseException) -> str:
 
 def _truthy(value: Any) -> bool:
     return str(value or "").strip().casefold() in {"true", "1", "yes", "on"}
+
+
+def _parse_port(value: Any, *, default: int = DEFAULT_PORT) -> tuple[int, bool, str | None, str]:
+    raw = str(value if value is not None else default).strip()
+    if not raw:
+        raw = str(default)
+    try:
+        port = int(raw)
+    except (TypeError, ValueError):
+        return default, False, "APP_PORT must be an integer between 1 and 65535.", raw
+    if not (1 <= port <= 65535):
+        return default, False, "APP_PORT must be between 1 and 65535.", raw
+    return port, True, None, raw
+
+
+def _parse_int(value: Any, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _normalize_path(value: str | Path | None) -> str:
@@ -189,6 +241,24 @@ def _public_payload(value: Any) -> Any:
     return value
 
 
+def startup_write_policy_public(config: RuntimeConfig | None = None) -> dict[str, Any]:
+    operator_intent = False
+    if config is not None:
+        operator_intent = _truthy(config.env.get(STARTUP_MAINTENANCE_APPROVAL_ENV))
+    return {
+        "normal_startup_maintenance_documented": True,
+        "normal_startup_maintenance": list(NORMAL_STARTUP_MAINTENANCE),
+        "launcher_safe_startup_mode_enabled": True,
+        "schema_migration_allowed": False,
+        "schema_migration_blocked_by_launcher_safe_mode": True,
+        "destructive_cleanup_allowed": False,
+        "upload_temp_cleanup_blocked_by_launcher_safe_mode": True,
+        "import_tagging_sync_jobs_allowed": False,
+        "operator_intent_required_for_startup_maintenance": True,
+        "operator_intent_present": operator_intent,
+    }
+
+
 def parse_dotenv(path: Path) -> dict[str, str]:
     data: dict[str, str] = {}
     if not path.exists():
@@ -246,16 +316,17 @@ def resolve_config(
     settings_path = storage_root / "data" / "settings.json" if storage_root else repo_root / "data" / "settings.json"
     settings_json = load_settings_json(settings_path)
     settings_db = settings_json.get("database", {}) if isinstance(settings_json.get("database"), dict) else {}
+    db_port = _parse_int(settings_db.get("port") or merged.get("POSTGRES_PORT") or 5432, default=5432)
 
     db = {
         "host": settings_db.get("host") or merged.get("POSTGRES_HOST") or "localhost",
-        "port": int(settings_db.get("port") or merged.get("POSTGRES_PORT") or 5432),
+        "port": db_port,
         "name": settings_db.get("name") or merged.get("POSTGRES_DB") or "blombooru",
         "user": settings_db.get("user") or merged.get("POSTGRES_USER") or "postgres",
         "password": settings_db.get("password") or merged.get("POSTGRES_PASSWORD") or "",
     }
 
-    port = int((merged.get("APP_PORT") or str(DEFAULT_PORT)).strip())
+    port, port_resolved, port_error, port_raw = _parse_port(merged.get("APP_PORT") or str(DEFAULT_PORT))
     accepted_raw = (
         merged.get("VIOLET_PRODUCTION_STORAGE_ROOT")
         or merged.get("VIOLET_ACCEPTED_PRODUCTION_STORAGE_ROOT")
@@ -277,6 +348,9 @@ def resolve_config(
             merged.get("VIOLET_PRODUCTION_PYTHON") or str(expected_venv_python(repo_root))
         ),
         accepted_storage_root=accepted_storage_root,
+        port_raw=port_raw,
+        port_resolved=port_resolved,
+        port_error=port_error,
     )
 
 
@@ -326,10 +400,37 @@ def _load_state(path: Path = STATE_FILE) -> dict[str, Any] | None:
 
 def _write_state(state: Mapping[str, Any], path: Path = STATE_FILE) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(dict(state), indent=2, sort_keys=True), encoding="utf-8")
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        temp_path.write_text(json.dumps(dict(state), indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temp_path, path)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _clear_state(path: Path = STATE_FILE) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _acquire_start_lock(path: Path = START_LOCK_FILE) -> bool:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    try:
+        fd = os.open(path, flags)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps({"pid": os.getpid(), "created_at": now_iso()}, sort_keys=True))
+    return True
+
+
+def _release_start_lock(path: Path = START_LOCK_FILE) -> None:
     try:
         path.unlink()
     except FileNotFoundError:
@@ -418,6 +519,111 @@ def process_command_line(pid: int) -> str:
     return (completed.stdout or "").strip()
 
 
+def _parse_windows_cim_datetime(value: Any) -> float | None:
+    text = str(value or "").strip()
+    if len(text) < 14:
+        return None
+    try:
+        parsed = dt.datetime.strptime(text[:14], "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+    offset_text = text[21:] if len(text) > 21 else ""
+    if offset_text:
+        try:
+            offset_minutes = int(offset_text)
+            tz = dt.timezone(dt.timedelta(minutes=offset_minutes))
+            parsed = parsed.replace(tzinfo=tz)
+        except ValueError:
+            parsed = parsed.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
+    else:
+        parsed = parsed.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
+    return parsed.timestamp()
+
+
+def process_snapshot(pid: int) -> ProcessSnapshot:
+    if pid <= 0 or not process_exists(pid):
+        return ProcessSnapshot(pid=pid, exists=False)
+    if platform.system() == "Windows":
+        command = (
+            "Get-CimInstance Win32_Process "
+            f"-Filter \"ProcessId={pid}\" | "
+            "Select-Object ProcessId,CommandLine,ExecutablePath,CreationDate | ConvertTo-Json -Compress"
+        )
+        try:
+            completed = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            payload = json.loads((completed.stdout or "").strip() or "{}")
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            payload = {}
+        if isinstance(payload, list):
+            payload = payload[0] if payload else {}
+        if isinstance(payload, Mapping):
+            return ProcessSnapshot(
+                pid=pid,
+                exists=True,
+                command_line=str(payload.get("CommandLine") or "").strip(),
+                executable_path=str(payload.get("ExecutablePath") or "").strip(),
+                create_time=_parse_windows_cim_datetime(payload.get("CreationDate")),
+            )
+    command_line = process_command_line(pid)
+    return ProcessSnapshot(pid=pid, exists=bool(command_line), command_line=command_line)
+
+
+def _parse_iso_timestamp(value: Any) -> float | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _state_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def port_owner_pid(port: int) -> int | None:
+    if not (1 <= int(port) <= 65535):
+        return None
+    if platform.system() == "Windows":
+        command = (
+            "Get-NetTCPConnection "
+            f"-LocalPort {int(port)} -State Listen -ErrorAction SilentlyContinue | "
+            "Select-Object -First 1 -ExpandProperty OwningProcess"
+        )
+        try:
+            completed = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        text = (completed.stdout or "").strip().splitlines()
+        if not text:
+            return None
+        try:
+            return int(text[0].strip())
+        except ValueError:
+            return None
+    return None
+
+
 def state_pid(state: Mapping[str, Any] | None) -> int | None:
     if not state:
         return None
@@ -439,23 +645,55 @@ def is_launcher_managed_state(state: Mapping[str, Any] | None, config: RuntimeCo
             return False
         if int(state.get("port") or 0) != config.port:
             return False
+        if str(state.get("env") or "production").strip().lower() != "production":
+            return False
     return True
+
+
+def verify_managed_process(state: Mapping[str, Any] | None, config: RuntimeConfig | None = None) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    pid = state_pid(state)
+    if pid is None or not is_launcher_managed_state(state, config):
+        return False, ["launcher_state_mismatch"]
+    snapshot = process_snapshot(pid)
+    if not snapshot.exists:
+        return False, ["pid_not_running"]
+    command_line = snapshot.command_line.strip()
+    command_lower = command_line.casefold()
+    if not command_line:
+        reasons.append("command_line_unavailable")
+    if "run.py" not in command_lower and "backend.app.main" not in command_lower:
+        reasons.append("expected_run_py_missing")
+    if "--debug" in command_lower:
+        reasons.append("debug_process_refused")
+    if config is not None:
+        expected_python = _normalize_path(config.expected_python)
+        executable = _normalize_path(snapshot.executable_path)
+        command_normalized = _normalize_path(command_line)
+        if executable:
+            executable_ok = executable == expected_python or expected_python in command_normalized
+        else:
+            executable_ok = expected_python in command_normalized
+        if not executable_ok:
+            reasons.append("python_executable_unverified")
+        state_start = _parse_iso_timestamp(state.get("start_time"))
+        if snapshot.create_time is None:
+            reasons.append("process_create_time_unavailable")
+        elif state_start is not None and snapshot.create_time + 2.0 < state_start:
+            reasons.append("pid_created_before_launcher_state")
+        recorded_create_time = _state_float(state.get("pid_create_time"))
+        if recorded_create_time is not None and snapshot.create_time is not None:
+            if abs(snapshot.create_time - recorded_create_time) > 2.0:
+                reasons.append("pid_create_time_mismatch")
+        owner = port_owner_pid(config.port)
+        if owner is not None and owner != pid:
+            reasons.append("target_port_owned_by_different_pid")
+    return not reasons, reasons
 
 
 def is_managed_process(state: Mapping[str, Any] | None, config: RuntimeConfig | None = None) -> bool:
-    pid = state_pid(state)
-    if pid is None or not is_launcher_managed_state(state, config):
-        return False
-    if not process_exists(pid):
-        return False
-    command_line = process_command_line(pid).lower()
-    if not command_line:
-        return False
-    if "run.py" not in command_line and "backend.app.main" not in command_line:
-        return False
-    if "--debug" in command_line:
-        return False
-    return True
+    ok, _reasons = verify_managed_process(state, config)
+    return ok
 
 
 def stale_state_cleanup(config: RuntimeConfig, state_path: Path = STATE_FILE) -> tuple[bool, str | None]:
@@ -561,6 +799,24 @@ def preflight(
     gate("violet_env_production", env_is_production, "VIOLET_ENV must resolve to production.")
     debug_disabled = not _truthy(config.env.get("BLOMBOORU_DEBUG"))
     gate("debug_disabled", debug_disabled, "BLOMBOORU_DEBUG must not be true.")
+    destructive_e2e_enabled = _truthy(config.env.get("VIOLET_ALLOW_DESTRUCTIVE_E2E"))
+    gate("destructive_e2e_disabled", not destructive_e2e_enabled, "VIOLET_ALLOW_DESTRUCTIVE_E2E must be false for production launcher startup.")
+    dangerous_flags = [flag for flag in DANGEROUS_PRODUCTION_FLAGS if _truthy(config.env.get(flag))]
+    gate(
+        "dangerous_dev_test_flags_disabled",
+        not dangerous_flags,
+        "Destructive E2E and real E2E flags must not be enabled for production launcher startup.",
+    )
+    gate(
+        "startup_write_policy_explicit",
+        True,
+        "Normal app startup maintenance is documented and launcher safe-start mode blocks schema migration, upload cleanup, and background jobs.",
+    )
+    gate(
+        "launcher_safe_startup_mode",
+        True,
+        "Child process will set VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true.",
+    )
     gate("run_command_no_debug", "--debug" not in production_command(config), "Production command does not pass --debug.")
     gate(
         "canonical_venv_python",
@@ -580,7 +836,7 @@ def preflight(
     else:
         db_ok, db_message = False, "db_check_skipped_until_env_storage_settings_gates_pass"
     gate("db_readonly_reachable", db_ok, db_message)
-    gate("app_port_resolved", 1 <= config.port <= 65535, "APP_PORT is configured or defaulted to a valid port.")
+    gate("app_port_resolved", config.port_resolved and 1 <= config.port <= 65535, config.port_error or "APP_PORT is configured or defaulted to a valid port.")
 
     stale_state_cleanup(config, state_path)
     state = _load_state(state_path)
@@ -606,11 +862,14 @@ def preflight(
             "env": config.env.get("VIOLET_ENV", "development").strip().lower(),
             "debug": _truthy(config.env.get("BLOMBOORU_DEBUG")),
             "port": config.port,
+            "app_port_resolved": config.port_resolved,
             "url": config.url,
             "db_name": config.db.get("name"),
             "storage_root_status": "configured" if storage_ok else "blocked",
             "state_file_local_ignored": _state_file_is_local_ignored(state_path),
             "health_endpoint": HEALTH_PATH,
+            "destructive_e2e_allowed": False,
+            "startup_write_policy": startup_write_policy_public(config),
         },
         errors=[gate_item.name for gate_item in gates if gate_item.hard and not gate_item.passed],
     )
@@ -634,8 +893,12 @@ def _child_environment(config: RuntimeConfig) -> dict[str, str]:
     env["VIOLET_ENV"] = "production"
     env["APP_PORT"] = str(config.port)
     env["BLOMBOORU_DEBUG"] = "false"
+    env[STARTUP_SAFE_MODE_ENV] = "true"
+    env.setdefault(STARTUP_MAINTENANCE_APPROVAL_ENV, "false")
     for flag in AUTOMATION_FLAGS:
-        env.setdefault(flag, "false")
+        env[flag] = "false"
+    for flag in DANGEROUS_PRODUCTION_FLAGS:
+        env[flag] = "false"
     return env
 
 
@@ -666,99 +929,121 @@ def start_production(
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
     state_path: Path = STATE_FILE,
+    _lock_already_held: bool = False,
 ) -> ControlResult:
     config = resolve_config(repo_root, base_env=base_env)
-    existing = status(repo_root=repo_root, base_env=base_env, state_path=state_path)
-    if existing.data.get("running") and existing.data.get("managed_by_launcher"):
-        return ControlResult(
-            ok=True,
-            status="running",
-            message="Production server is already running under launcher management.",
-            data=existing.data,
-        )
-
-    preflight_result = preflight(repo_root=repo_root, base_env=base_env, state_path=state_path)
-    if not preflight_result.ok:
-        return preflight_result
-
-    command = production_command(config)
-    command_text = " ".join(command).lower()
-    forbidden = [token for token in FORBIDDEN_START_TOKENS if token in command_text]
-    if forbidden:
-        result = ControlResult(
-            ok=False,
-            status="blocked",
-            message="Production command contains a forbidden token.",
-            errors=forbidden,
-        )
-        _append_launcher_event("start_blocked_forbidden_command", result.to_public_dict())
-        return result
-
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    log_handle = LOG_FILE.open("a", encoding="utf-8")
-    log_handle.write(f"\n=== launcher start {now_iso()} ===\n")
-    log_handle.flush()
-
-    creationflags = 0
-    if platform.system() == "Windows":
-        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    lock_acquired = False
+    if not _lock_already_held:
+        lock_acquired = _acquire_start_lock()
+        if not lock_acquired:
+            result = ControlResult(
+                ok=False,
+                status="blocked",
+                message="Another Start or Restart action is already in progress.",
+                data={"running": False, "managed_by_launcher": False, "port": config.port, "url": config.url},
+                errors=["start_already_in_progress"],
+            )
+            _append_launcher_event("start_refused_already_in_progress", result.to_public_dict())
+            return result
 
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=str(config.repo_root),
-            env=_child_environment(config),
-            stdin=subprocess.DEVNULL,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            text=True,
-            creationflags=creationflags,
-        )
-    except Exception as exc:
+        existing = status(repo_root=repo_root, base_env=base_env, state_path=state_path)
+        if existing.data.get("running") and existing.data.get("managed_by_launcher"):
+            return ControlResult(
+                ok=True,
+                status="running",
+                message="Production server is already running under launcher management.",
+                data=existing.data,
+            )
+
+        preflight_result = preflight(repo_root=repo_root, base_env=base_env, state_path=state_path)
+        if not preflight_result.ok:
+            return preflight_result
+
+        command = production_command(config)
+        command_text = " ".join(command).lower()
+        forbidden = [token for token in FORBIDDEN_START_TOKENS if token in command_text]
+        if forbidden:
+            result = ControlResult(
+                ok=False,
+                status="blocked",
+                message="Production command contains a forbidden token.",
+                errors=forbidden,
+            )
+            _append_launcher_event("start_blocked_forbidden_command", result.to_public_dict())
+            return result
+
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        log_handle = LOG_FILE.open("a", encoding="utf-8")
+        log_handle.write(f"\n=== launcher start {now_iso()} ===\n")
+        log_handle.flush()
+
+        creationflags = 0
+        if platform.system() == "Windows":
+            creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=str(config.repo_root),
+                env=_child_environment(config),
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=creationflags,
+            )
+        except Exception as exc:
+            log_handle.close()
+            result = ControlResult(
+                ok=False,
+                status="error",
+                message="Failed to start production server.",
+                errors=[public_error(exc)],
+            )
+            _append_launcher_event("start_failed", result.to_public_dict())
+            return result
+
+        snapshot = process_snapshot(process.pid)
+        state = {
+            "state_version": STATE_VERSION,
+            "app_name": APP_NAME,
+            "started_by": "violet_production_launcher",
+            "pid": process.pid,
+            "pid_create_time": snapshot.create_time,
+            "start_time": now_iso(),
+            "command": command,
+            "repo_root": str(config.repo_root),
+            "port": config.port,
+            "url": config.url,
+            "env": "production",
+            "debug": False,
+            "startup_safe_mode": True,
+        }
+        _write_state(state, state_path)
+        _append_launcher_event("started_process", {"pid": process.pid, "port": config.port})
+
+        health = poll_health(config.url)
         log_handle.close()
-        result = ControlResult(
+        if health:
+            return ControlResult(
+                ok=True,
+                status="running",
+                message="Production server started and health check passed.",
+                data=_status_data(config, state, health),
+            )
+
+        return ControlResult(
             ok=False,
             status="error",
-            message="Failed to start production server.",
-            errors=[public_error(exc)],
+            message="Production server started but did not become healthy before timeout.",
+            data={"running": process_exists(process.pid), "managed_by_launcher": True, "port": config.port, "url": config.url},
+            errors=["health_timeout"],
         )
-        _append_launcher_event("start_failed", result.to_public_dict())
-        return result
-
-    state = {
-        "state_version": STATE_VERSION,
-        "app_name": APP_NAME,
-        "started_by": "violet_production_launcher",
-        "pid": process.pid,
-        "start_time": now_iso(),
-        "command": command,
-        "repo_root": str(config.repo_root),
-        "port": config.port,
-        "url": config.url,
-        "env": "production",
-        "debug": False,
-    }
-    _write_state(state, state_path)
-    _append_launcher_event("started_process", {"pid": process.pid, "port": config.port})
-
-    health = poll_health(config.url)
-    log_handle.close()
-    if health:
-        return ControlResult(
-            ok=True,
-            status="running",
-            message="Production server started and health check passed.",
-            data=_status_data(config, state, health),
-        )
-
-    return ControlResult(
-        ok=False,
-        status="error",
-        message="Production server started but did not become healthy before timeout.",
-        data={"running": process_exists(process.pid), "managed_by_launcher": True, "port": config.port, "url": config.url},
-        errors=["health_timeout"],
-    )
+    finally:
+        if lock_acquired:
+            _release_start_lock()
 
 
 def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -769,6 +1054,7 @@ def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health:
         "running": running,
         "managed_by_launcher": managed,
         "port": config.port,
+        "app_port_resolved": config.port_resolved,
         "url": config.url,
         "env": (health or {}).get("env") or config.env.get("VIOLET_ENV", "development").strip().lower(),
         "debug": bool((health or {}).get("debug", _truthy(config.env.get("BLOMBOORU_DEBUG")))),
@@ -779,6 +1065,8 @@ def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health:
         "health_ok": bool((health or {}).get("ok", False)),
         "last_health_check": now_iso() if health else None,
         "last_error": None if health else "health_unavailable",
+        "destructive_e2e_allowed": False,
+        "startup_write_policy": startup_write_policy_public(config),
         "recent_log_tail": tail_log(20),
     }
 
@@ -850,13 +1138,20 @@ def stop_production(
         _clear_state(state_path)
         return ControlResult(ok=True, status="stopped", message="Production server is already stopped.", data={"running": False, "managed_by_launcher": False, "port": config.port, "url": config.url})
 
-    if not is_managed_process(state, config):
+    verified, verification_failures = verify_managed_process(state, config)
+    if not verified:
         result = ControlResult(
             ok=False,
             status="blocked",
-            message="Launcher state does not verify the process identity. Refusing to stop.",
-            data={"running": process_exists(pid), "managed_by_launcher": False, "port": config.port, "url": config.url},
-            errors=["managed_process_identity_failed"],
+            message="Launcher state does not confidently verify the process identity. Refusing to stop an unknown process.",
+            data={
+                "running": process_exists(pid),
+                "managed_by_launcher": False,
+                "port": config.port,
+                "url": config.url,
+                "verification_failures": verification_failures,
+            },
+            errors=["unknown_or_unverified_process_refused"],
         )
         _append_launcher_event("stop_refused_unverified_state", result.to_public_dict())
         return result
@@ -868,8 +1163,15 @@ def stop_production(
         return ControlResult(ok=False, status="error", message="Graceful stop failed.", errors=[public_error(exc)])
 
     if not wait_for_exit(pid, 10.0):
-        if not is_managed_process(state, config):
-            return ControlResult(ok=False, status="blocked", message="Process identity changed during shutdown. Refusing force kill.", errors=["identity_changed_before_force_kill"])
+        verified, verification_failures = verify_managed_process(state, config)
+        if not verified:
+            return ControlResult(
+                ok=False,
+                status="blocked",
+                message="Process identity changed during shutdown. Refusing force kill.",
+                data={"verification_failures": verification_failures},
+                errors=["unknown_or_unverified_process_refused"],
+            )
         try:
             terminator(pid, True)
         except Exception as exc:
@@ -893,14 +1195,31 @@ def stop_production(
 
 
 def restart_production(**kwargs: Any) -> ControlResult:
-    stopped = stop_production(**kwargs)
-    if not stopped.ok:
-        return stopped
-    return start_production(
-        repo_root=kwargs.get("repo_root", ROOT),
-        base_env=kwargs.get("base_env"),
-        state_path=kwargs.get("state_path", STATE_FILE),
-    )
+    if not _acquire_start_lock():
+        repo_root = kwargs.get("repo_root", ROOT)
+        base_env = kwargs.get("base_env")
+        config = resolve_config(repo_root, base_env=base_env)
+        result = ControlResult(
+            ok=False,
+            status="blocked",
+            message="Another Start or Restart action is already in progress.",
+            data={"running": False, "managed_by_launcher": False, "port": config.port, "url": config.url},
+            errors=["start_already_in_progress"],
+        )
+        _append_launcher_event("restart_refused_already_in_progress", result.to_public_dict())
+        return result
+    try:
+        stopped = stop_production(**kwargs)
+        if not stopped.ok:
+            return stopped
+        return start_production(
+            repo_root=kwargs.get("repo_root", ROOT),
+            base_env=kwargs.get("base_env"),
+            state_path=kwargs.get("state_path", STATE_FILE),
+            _lock_already_held=True,
+        )
+    finally:
+        _release_start_lock()
 
 
 def open_browser_target(
@@ -926,6 +1245,9 @@ def diagnostic_summary(repo_root: Path = ROOT) -> dict[str, Any]:
         "debug": bool(current.data.get("debug")),
         "db_reachable": bool(current.data.get("db_reachable")),
         "health_ok": bool(current.data.get("health_ok")),
+        "app_port_resolved": config.port_resolved,
+        "destructive_e2e_allowed": False,
+        "startup_write_policy": startup_write_policy_public(config),
     }
 
 

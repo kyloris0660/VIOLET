@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import subprocess
 import uuid
 from contextlib import asynccontextmanager
@@ -50,6 +51,15 @@ CACHE_BUSTER = DynamicCacheBuster(get_cache_buster())
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().casefold() in {"true", "1", "yes", "on"}
+
+
+def _production_launcher_safe_startup() -> bool:
+    return settings.VIOLET_ENV == "production" and _truthy_env("VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler (startup and shutdown)"""
@@ -58,64 +68,74 @@ async def lifespan(app: FastAPI):
         logger.warning("DEBUG MODE ENABLED - DO NOT USE IN PRODUCTION")
     if not settings.IS_FIRST_RUN:
         try:
-            init_engine()
-            init_db()
+            safe_startup = _production_launcher_safe_startup()
+            if safe_startup:
+                init_engine()
+                logger.info(
+                    "V.I.O.L.E.T. production launcher safe startup enabled: "
+                    "schema create/migrate, startup cleanup, stale job recovery, "
+                    "translation seeding, periodic cleanup, and background workers skipped"
+                )
+                logger.info("V.I.O.L.E.T. started successfully")
+            else:
+                init_engine()
+                init_db()
 
-            # Clean up any leftover chunks from abandoned uploads
-            from .routes.media import cleanup_archive_chunks, cleanup_media_chunks
-            cleanup_archive_chunks()
-            cleanup_media_chunks()
+                # Clean up any leftover chunks from abandoned uploads
+                from .routes.media import cleanup_archive_chunks, cleanup_media_chunks
+                cleanup_archive_chunks()
+                cleanup_media_chunks()
 
-            # Mark stale scan jobs from unclean shutdowns
-            from .database import SessionLocal as _StartupSession
-            if _StartupSession is not None:
-                _sdb = _StartupSession()
-                try:
-                    from .utils.local_library_scanner import mark_stale_jobs
-                    mark_stale_jobs(_sdb)
-
-                    from .services.ai_tagging_job_service import mark_stale_ai_jobs
-                    mark_stale_ai_jobs(_sdb)
-
-                    from .services.tag_translation_worker import mark_stale_translation_jobs
-                    mark_stale_translation_jobs(_sdb)
-
-                    from .services.classification_job_service import mark_stale_classification_jobs
-                    mark_stale_classification_jobs(_sdb)
-                finally:
-                    _sdb.close()
-
-            # Seed static tag translations into DB
-            if _StartupSession is not None:
-                _seed_db = _StartupSession()
-                try:
-                    from .services.tag_localization_service import seed_static_translations
-                    seed_static_translations(_seed_db)
-                except Exception as e:
-                    logger.warning(f"Tag translation seeding skipped: {e}")
-                finally:
-                    _seed_db.close()
-
-            # Start periodic cleanup task for abandoned uploads
-            async def periodic_upload_chunks_cleanup():
-                while True:
-                    await asyncio.sleep(900)  # Every 15 minutes
+                # Mark stale scan jobs from unclean shutdowns
+                from .database import SessionLocal as _StartupSession
+                if _StartupSession is not None:
+                    _sdb = _StartupSession()
                     try:
-                        cleanup_archive_chunks(max_age_seconds=3600)
-                        cleanup_media_chunks(max_age_seconds=3600)
+                        from .utils.local_library_scanner import mark_stale_jobs
+                        mark_stale_jobs(_sdb)
+
+                        from .services.ai_tagging_job_service import mark_stale_ai_jobs
+                        mark_stale_ai_jobs(_sdb)
+
+                        from .services.tag_translation_worker import mark_stale_translation_jobs
+                        mark_stale_translation_jobs(_sdb)
+
+                        from .services.classification_job_service import mark_stale_classification_jobs
+                        mark_stale_classification_jobs(_sdb)
+                    finally:
+                        _sdb.close()
+
+                # Seed static tag translations into DB
+                if _StartupSession is not None:
+                    _seed_db = _StartupSession()
+                    try:
+                        from .services.tag_localization_service import seed_static_translations
+                        seed_static_translations(_seed_db)
                     except Exception as e:
-                        logger.error(f"Upload chunks cleanup error: {e}")
+                        logger.warning(f"Tag translation seeding skipped: {e}")
+                    finally:
+                        _seed_db.close()
 
-            asyncio.create_task(periodic_upload_chunks_cleanup())
+                # Start periodic cleanup task for abandoned uploads
+                async def periodic_upload_chunks_cleanup():
+                    while True:
+                        await asyncio.sleep(900)  # Every 15 minutes
+                        try:
+                            cleanup_archive_chunks(max_age_seconds=3600)
+                            cleanup_media_chunks(max_age_seconds=3600)
+                        except Exception as e:
+                            logger.error(f"Upload chunks cleanup error: {e}")
 
-            # Start background tag translation worker
-            try:
-                from .services.tag_translation_worker import start_worker as start_translation_worker
-                start_translation_worker()
-            except Exception as e:
-                logger.warning(f"Background tag translation worker start skipped: {e}")
+                asyncio.create_task(periodic_upload_chunks_cleanup())
 
-            logger.info("V.I.O.L.E.T. started successfully")
+                # Start background tag translation worker
+                try:
+                    from .services.tag_translation_worker import start_worker as start_translation_worker
+                    start_translation_worker()
+                except Exception as e:
+                    logger.warning(f"Background tag translation worker start skipped: {e}")
+
+                logger.info("V.I.O.L.E.T. started successfully")
         except Exception as e:
             logger.error(f"Error during startup: {e}")
     else:

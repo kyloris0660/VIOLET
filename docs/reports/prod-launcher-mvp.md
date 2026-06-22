@@ -13,6 +13,7 @@ Tkinter UI:
 - `scripts/start_violet_production_launcher.cmd`: double-click entry that
   prefers the project venv Python.
 - `GET /api/health`: public-safe health endpoint for launcher readiness checks.
+  The route is auth-exempt for launcher polling under `REQUIRE_AUTH=true`.
 
 ## Scope
 
@@ -39,31 +40,48 @@ Production start is blocked unless the preflight confirms:
 - initialized settings JSON under the configured storage root;
 - DB settings present and DB reachable through a read-only check;
 - valid `APP_PORT`;
+- malformed `APP_PORT` blocks preflight cleanly;
 - port free or owned by launcher state;
 - no stale PID state;
 - no startup import/tagging/localization/sync automation flags.
+- destructive E2E / real E2E flags disabled.
+- explicit startup write policy present.
 
 Stop is stateful and conservative. The launcher refuses to stop any process
 unless its local state verifies the PID, repo root, port, and V.I.O.L.E.T.
-runtime identity. If the target port is occupied without launcher state, stop is
-blocked.
+runtime identity, including process create time, configured/canonical Python,
+and target port owner when available. If the target port is occupied without
+launcher state, stop is blocked.
+
+Normal plain `python run.py` startup can perform maintenance writes:
+`init_db()`/schema checks and migrations, upload temp cleanup, stale job
+recovery, static translation seeding, periodic cleanup task creation, and
+background tag translation worker startup if enabled by app settings. The
+launcher child process sets `VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true`, and
+`backend/app/main.py` uses that mode to skip schema create/migrate, upload temp
+cleanup, stale job recovery, translation seeding, periodic cleanup, and
+background workers. The launcher does not claim normal startup is write-free.
 
 ## Implementation
 
 - State/logs live under ignored `.local_manifests/production_launcher/`.
+- State writes are atomic, and Start/Restart actions are serialized.
 - `status --json` returns public-safe fields only: running, managed status,
-  port, URL, env, debug, DB reachability, and health.
+  port, URL, env, debug, DB reachability, health, destructive E2E denial, and
+  startup write policy.
 - `GET /api/health` exposes only public fields: app name/version, env,
   `db_reachable`, `storage_configured`, and `debug`.
 - The Tkinter UI shows status, environment, port, URL, DB name, storage root
   status, health check time, last error, and recent log tail.
+- The Tkinter UI disables Start/Restart while one of those actions is already
+  in progress; the controller also returns `start_already_in_progress`.
 
 ## Validation
 
 Recorded validation:
 
 ```text
-python -m py_compile scripts/violet_production_control.py scripts/violet_production_launcher.py backend/app/routes/health.py
+python -m py_compile scripts/violet_production_control.py scripts/violet_production_launcher.py backend/app/routes/health.py backend/app/main.py backend/app/auth_middleware.py
 pytest tests/test_production_launcher_control.py -v
 pytest tests/test_phase_contracts.py -k prod_launcher_mvp -v
 pytest tests/test_production_launcher_control.py tests/test_phase_contracts.py -v
@@ -107,6 +125,12 @@ the target port is released, and no launcher-managed process remains.
 - [x] Launcher scripts compile.
 - [x] Focused launcher control tests passed.
 - [x] Phase contract tests for launcher passed.
+- [x] Health route auth-exempt behavior covered.
+- [x] Startup write policy covered.
+- [x] Destructive E2E denial covered.
+- [x] Process-stop unverified PID refusal covered.
+- [x] Start/Restart serialization covered.
+- [x] Malformed `APP_PORT` handling covered.
 - [x] `prod_launcher_mvp_contract_v1` passed against the public summary JSON.
 - [x] Summary JSON is valid JSON.
 - [x] Whitespace diff checks passed.
@@ -135,9 +159,9 @@ and did not run SourceConcept, similarity, or Entity bridge operations.
 - Windows-first MVP; no service/tray packaging.
 - Production preflight is intentionally strict and may require operators to set
   an accepted production storage root or production Python override.
-- The launcher cannot prove future app startup will never contain runtime
-  migrations; this phase itself does not run migrations, and the start smoke was
-  intentionally deferred until canonical production preflight passes.
+- This MVP does not add an operator-approved launcher path to allow startup
+  schema migrations or destructive cleanup. Safe startup blocks those normal
+  maintenance writes instead.
 
 ## Next Step
 

@@ -60,10 +60,57 @@ Startup is blocked unless all hard gates pass:
 - Initialized `data/settings.json` exists under the configured storage root.
 - DB settings are present.
 - DB is reachable through a read-only `SELECT 1` check.
-- `APP_PORT` is configured or defaulted to a valid port.
+- `APP_PORT` is configured or defaulted to a valid port; malformed values such
+  as `APP_PORT=abc` are reported as preflight failures instead of crashing the
+  launcher.
 - The target port is free or owned by the launcher-managed process state.
 - No stale PID claims a running process.
 - Startup automation flags for import/tagging/localization/sync are not enabled.
+- `VIOLET_ALLOW_DESTRUCTIVE_E2E` and real E2E flags are not enabled.
+- The launcher startup write policy is explicit.
+
+## Startup Write Policy
+
+Normal application startup through plain `python run.py` can perform maintenance
+writes before serving requests:
+
+- DB engine/schema initialization through `init_db()`, including
+  `create_all()` and `check_and_migrate_schema()`.
+- Upload temp chunk cleanup.
+- Stale scan, AI-tagging, tag-translation, and classification job recovery.
+- Static tag translation seeding.
+- Periodic upload temp cleanup task creation.
+- Background tag translation worker startup if its normal app settings enable it.
+
+The production launcher does not claim that normal app startup is write-free.
+Instead, the launcher child process forces:
+
+```text
+VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true
+```
+
+When this flag is present in production, `backend/app/main.py` initializes the
+DB engine only and skips schema create/migrate, upload cleanup, stale job
+recovery, translation seeding, periodic cleanup, and background worker startup.
+The launcher also forces import/tagging/localization/sync automation flags and
+destructive E2E flags to `false` in the child environment.
+
+Public status/report output includes:
+
+```json
+{
+  "startup_write_policy": {
+    "normal_startup_maintenance_documented": true,
+    "schema_migration_allowed": false,
+    "destructive_cleanup_allowed": false,
+    "import_tagging_sync_jobs_allowed": false,
+    "operator_intent_required_for_startup_maintenance": true
+  }
+}
+```
+
+This MVP does not add an operator-approved path for allowing startup schema
+migration or destructive cleanup from the launcher.
 
 The launcher state and log are local ignored artifacts under:
 
@@ -80,8 +127,12 @@ Do not commit files from that directory.
 - state was created by `violet_production_launcher`;
 - state repo root and port match the current launcher config;
 - PID still exists;
+- PID create time matches the launcher state and is not older than the recorded
+  start time;
+- process executable or command line matches the configured production Python;
 - process command line looks like V.I.O.L.E.T. `run.py` or uvicorn runtime;
 - process is not a debug server.
+- target port owner matches the state PID when port-owner detection is available.
 
 If no launcher state exists and the port is occupied, the launcher refuses to
 stop anything. It never kills an unknown process merely because it owns the
@@ -99,8 +150,10 @@ The app exposes:
 GET /api/health
 ```
 
-The response is public-safe and does not include storage paths, source paths,
-filenames, DB URLs, passwords, tokens, or API keys. Fields include:
+The route is auth-exempt so launcher polling works when
+`BLOMBOORU_REQUIRE_AUTH=true`. The response is public-safe and does not include
+storage paths, source paths, filenames, DB URLs, passwords, tokens, or API keys.
+Fields include:
 
 ```json
 {
@@ -140,8 +193,9 @@ Example public-safe shape:
 - This MVP is Windows-first and uses Tkinter from the Python standard library.
 - It does not add a Windows service, tray app, installer, scheduled task, or
   production auto-start.
-- It does not change the existing app startup lifecycle. The launcher phase
-  itself does not run migrations, imports, tagging, localization, sync,
+- It does not add an approved path for running schema migrations from the
+  launcher. Launcher safe startup blocks those startup maintenance writes.
+- The launcher phase itself does not run imports, tagging, localization, sync,
   provider calls, SourceConcept, or Entity bridge operations.
 - Full production start/stop smoke should be run only from the canonical repo
   after the preflight passes.

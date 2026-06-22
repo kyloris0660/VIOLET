@@ -281,17 +281,38 @@ def _prod_launcher_mvp_summary(**overrides: object) -> dict:
             "port": True,
             "venv": True,
             "worktree_dev_refusal": True,
+            "destructive_e2e_disabled": True,
+            "malformed_app_port_failure": True,
+        },
+        "startup_write_policy": {
+            "normal_startup_maintenance_documented": True,
+            "launcher_safe_startup_mode_enabled": True,
+            "schema_migration_allowed": False,
+            "schema_migration_blocked_by_launcher_safe_mode": True,
+            "destructive_cleanup_allowed": False,
+            "import_tagging_sync_jobs_allowed": False,
+            "operator_intent_required_for_startup_maintenance": True,
         },
         "stop_safety": {
             "refuses_unknown_process": True,
             "managed_identity_required": True,
+            "refuses_unverified_stale_pid": True,
+            "verifies_process_create_time": True,
+            "verifies_python_executable": True,
+            "verifies_port_owner_when_available": True,
             "force_kill_same_verified_only": True,
+        },
+        "start_safety": {
+            "serialized": True,
+            "start_already_in_progress_status": True,
+            "atomic_state_writes": True,
         },
         "state_file": {
             "local_ignored": True,
             "path": ".local_manifests/production_launcher/violet-production-launcher-state.json",
         },
         "health_status": {
+            "auth_exempt_for_launcher": True,
             "public_safe": True,
             "no_paths": True,
             "no_secrets": True,
@@ -324,6 +345,12 @@ def _prod_launcher_mvp_summary(**overrides: object) -> dict:
             "stale_pid": True,
             "managed_stop": True,
             "unknown_process_refusal": True,
+            "health_auth_exempt": True,
+            "startup_write_policy": True,
+            "destructive_e2e_denial": True,
+            "unverified_pid_refusal": True,
+            "start_serialization": True,
+            "malformed_app_port": True,
         },
         "validation": {"focused_tests_passed": True, "contract_passed": True},
         "safety": {
@@ -333,6 +360,7 @@ def _prod_launcher_mvp_summary(**overrides: object) -> dict:
             "no_db_migrations": True,
             "no_destructive_operations": True,
             "no_source_icloud_mutation": True,
+            "destructive_e2e_allowed": False,
         },
         "forbidden_operations": {
             "import_jobs": False,
@@ -1578,6 +1606,33 @@ def test_prod_launcher_mvp_contract_rejects_forbidden_operation_enabled() -> Non
     result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
 
     assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_health_auth_not_exempt() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["health_status"]["auth_exempt_for_launcher"] = False
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_required_proof_failed" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_schema_migration_allowed() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["startup_write_policy"]["schema_migration_allowed"] = True
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_missing_start_serialization() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["start_safety"]["serialized"] = False
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_required_proof_failed" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:

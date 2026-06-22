@@ -1286,10 +1286,24 @@ def _check_prod_launcher_mvp(
         "preflight_gates.port",
         "preflight_gates.venv",
         "preflight_gates.worktree_dev_refusal",
+        "preflight_gates.destructive_e2e_disabled",
+        "preflight_gates.malformed_app_port_failure",
+        "startup_write_policy.normal_startup_maintenance_documented",
+        "startup_write_policy.launcher_safe_startup_mode_enabled",
+        "startup_write_policy.schema_migration_blocked_by_launcher_safe_mode",
+        "startup_write_policy.operator_intent_required_for_startup_maintenance",
         "stop_safety.refuses_unknown_process",
         "stop_safety.managed_identity_required",
+        "stop_safety.refuses_unverified_stale_pid",
+        "stop_safety.verifies_process_create_time",
+        "stop_safety.verifies_python_executable",
+        "stop_safety.verifies_port_owner_when_available",
         "stop_safety.force_kill_same_verified_only",
+        "start_safety.serialized",
+        "start_safety.start_already_in_progress_status",
+        "start_safety.atomic_state_writes",
         "state_file.local_ignored",
+        "health_status.auth_exempt_for_launcher",
         "health_status.public_safe",
         "health_status.no_paths",
         "health_status.no_secrets",
@@ -1299,6 +1313,12 @@ def _check_prod_launcher_mvp(
         "tests.stale_pid",
         "tests.managed_stop",
         "tests.unknown_process_refusal",
+        "tests.health_auth_exempt",
+        "tests.startup_write_policy",
+        "tests.destructive_e2e_denial",
+        "tests.unverified_pid_refusal",
+        "tests.start_serialization",
+        "tests.malformed_app_port",
         "validation.focused_tests_passed",
         "validation.contract_passed",
         "safety.no_import_tagging_localization_sync_jobs",
@@ -1358,6 +1378,10 @@ def _check_prod_launcher_mvp(
         "forbidden_operations.db_migrations",
         "forbidden_operations.destructive_operations",
         "forbidden_operations.source_icloud_mutation",
+        "startup_write_policy.schema_migration_allowed",
+        "startup_write_policy.destructive_cleanup_allowed",
+        "startup_write_policy.import_tagging_sync_jobs_allowed",
+        "safety.destructive_e2e_allowed",
     )
     _check_explicit_false_paths(
         summary,
@@ -1367,7 +1391,7 @@ def _check_prod_launcher_mvp(
         message="Launcher MVP summary must explicitly report forbidden operations as false.",
     )
 
-    for payload_path in ("health_status.status_example", "diagnostics.status_json_example", "public_json_payload"):
+    for payload_path in ("health_status.status_example", "diagnostics.status_json_example", "startup_write_policy", "public_json_payload"):
         payload = _get(summary, payload_path, MISSING)
         if payload is MISSING:
             continue

@@ -25,6 +25,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/admin/first-run",
             "/api/admin/onboarding",
             "/api/admin/current-theme",
+            "/api/health",
             "/favicon.ico",
             "/manifest.json",
             "/sw.js",

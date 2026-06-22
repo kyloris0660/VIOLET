@@ -20,6 +20,9 @@ class ProductionLauncherApp(tk.Tk):
         self.geometry("820x560")
         self.minsize(760, 520)
         self.result_queue: queue.Queue[tuple[str, control.ControlResult]] = queue.Queue()
+        self.action_lock = threading.Lock()
+        self.action_running = False
+        self.action_buttons: dict[str, ttk.Button] = {}
         self.status_vars = {
             "Status": tk.StringVar(value="Stopped"),
             "Environment": tk.StringVar(value="production"),
@@ -79,7 +82,9 @@ class ProductionLauncherApp(tk.Tk):
             ("Copy Diagnostic Summary", self.copy_diagnostics),
         ]
         for col, (text, command) in enumerate(button_specs):
-            ttk.Button(buttons, text=text, command=command).grid(row=0, column=col, sticky="ew", padx=4)
+            button = ttk.Button(buttons, text=text, command=command)
+            button.grid(row=0, column=col, sticky="ew", padx=4)
+            self.action_buttons[text] = button
 
     def set_busy(self, label: str) -> None:
         if label == "Start":
@@ -90,19 +95,52 @@ class ProductionLauncherApp(tk.Tk):
             self.status_vars["Status"].set("Stopping")
 
     def run_action(self, label: str, func: Callable[[], control.ControlResult]) -> None:
+        with self.action_lock:
+            if label in {"Start", "Restart"}:
+                if self.action_running:
+                    self.apply_result(
+                        control.ControlResult(
+                            ok=False,
+                            status="blocked",
+                            message="Another Start or Restart action is already in progress.",
+                            errors=["start_already_in_progress"],
+                        )
+                    )
+                    return
+                self.action_running = True
+                self._set_action_buttons_enabled(False)
         self.set_busy(label)
 
         def worker() -> None:
-            result = func()
+            try:
+                result = func()
+            except Exception as exc:
+                result = control.ControlResult(
+                    ok=False,
+                    status="error",
+                    message="Launcher action failed.",
+                    errors=[control.public_error(exc)],
+                )
             self.result_queue.put((label, result))
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _set_action_buttons_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        for text in ("Start Production", "Restart"):
+            button = self.action_buttons.get(text)
+            if button is not None:
+                button.configure(state=state)
+
     def _drain_queue(self) -> None:
         try:
             while True:
-                _label, result = self.result_queue.get_nowait()
+                label, result = self.result_queue.get_nowait()
                 self.apply_result(result)
+                if label in {"Start", "Restart"}:
+                    with self.action_lock:
+                        self.action_running = False
+                        self._set_action_buttons_enabled(True)
         except queue.Empty:
             pass
         self.after(250, self._drain_queue)

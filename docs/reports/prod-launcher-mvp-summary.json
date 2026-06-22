@@ -29,7 +29,11 @@
     "child_env_overrides": {
       "VIOLET_ENV": "production",
       "BLOMBOORU_DEBUG": "false",
-      "APP_PORT": "resolved"
+      "APP_PORT": "resolved",
+      "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP": "true",
+      "VIOLET_ALLOW_DESTRUCTIVE_E2E": "false",
+      "VIOLET_RUN_REAL_E2E": "false",
+      "TAG_TRANSLATION_BACKGROUND_ENABLED": "false"
     }
   },
   "preflight_gates": {
@@ -42,14 +46,44 @@
     "worktree_dev_refusal": true,
     "dotenv_exists": true,
     "settings_initialized": true,
-    "no_startup_mutation_automation": true
+    "no_startup_mutation_automation": true,
+    "destructive_e2e_disabled": true,
+    "malformed_app_port_failure": true
+  },
+  "startup_write_policy": {
+    "normal_startup_maintenance_documented": true,
+    "normal_startup_maintenance": [
+      "init_engine",
+      "init_db_create_all_and_schema_migration",
+      "upload_temp_chunk_cleanup",
+      "stale_scan_ai_translation_classification_job_recovery",
+      "static_tag_translation_seed",
+      "periodic_upload_temp_cleanup_task",
+      "background_tag_translation_worker_if_enabled"
+    ],
+    "launcher_safe_startup_mode_enabled": true,
+    "schema_migration_allowed": false,
+    "schema_migration_blocked_by_launcher_safe_mode": true,
+    "destructive_cleanup_allowed": false,
+    "upload_temp_cleanup_blocked_by_launcher_safe_mode": true,
+    "import_tagging_sync_jobs_allowed": false,
+    "operator_intent_required_for_startup_maintenance": true
   },
   "stop_safety": {
     "refuses_unknown_process": true,
     "managed_identity_required": true,
+    "refuses_unverified_stale_pid": true,
+    "verifies_process_create_time": true,
+    "verifies_python_executable": true,
+    "verifies_port_owner_when_available": true,
     "force_kill_same_verified_only": true,
     "stale_pid_cleanup": true,
     "port_release_verified": true
+  },
+  "start_safety": {
+    "serialized": true,
+    "start_already_in_progress_status": true,
+    "atomic_state_writes": true
   },
   "state_file": {
     "local_ignored": true,
@@ -59,6 +93,7 @@
   },
   "health_status": {
     "endpoint": "GET /api/health",
+    "auth_exempt_for_launcher": true,
     "public_safe": true,
     "no_paths": true,
     "no_secrets": true,
@@ -82,7 +117,16 @@
       "env": "production",
       "debug": false,
       "db_reachable": true,
-      "health_ok": true
+      "health_ok": true,
+      "destructive_e2e_allowed": false,
+      "app_port_resolved": true,
+      "startup_write_policy": {
+        "normal_startup_maintenance_documented": true,
+        "schema_migration_allowed": false,
+        "destructive_cleanup_allowed": false,
+        "import_tagging_sync_jobs_allowed": false,
+        "operator_intent_required_for_startup_maintenance": true
+      }
     }
   },
   "reports": {
@@ -97,7 +141,13 @@
     "managed_stop": true,
     "unknown_process_refusal": true,
     "status_json_public_safe": true,
-    "command_no_debug": true
+    "command_no_debug": true,
+    "health_auth_exempt": true,
+    "startup_write_policy": true,
+    "destructive_e2e_denial": true,
+    "unverified_pid_refusal": true,
+    "start_serialization": true,
+    "malformed_app_port": true
   },
   "validation": {
     "focused_tests_passed": true,
@@ -124,6 +174,7 @@
     "no_provider_calls": true,
     "no_sourceconcept_or_entity": true,
     "no_db_migrations": true,
+    "destructive_e2e_allowed": false,
     "no_destructive_operations": true,
     "no_source_icloud_mutation": true,
     "no_push_main": true,
