@@ -41,6 +41,7 @@ extend a contract first.
 - `dynamic_library_sync_contract_v1`
 - `phase47_s2_baseline_contract_v1`
 - `production_development_separation_contract_v1`
+- `prod_launcher_mvp_contract_v1`
 - `s2g1x_probe_contract_v1`
 - `s2g_s3a_f1_foundation_contract_v1`
 - `s2g_real1_bounded_ai_tagging_validation_contract_v1`

@@ -254,6 +254,158 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
     return summary
 
 
+def _prod_launcher_mvp_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "prod_launcher_mvp_contract_v1",
+            "status": "target_met",
+            "claims": {"target_met": True, "safe_to_merge": True},
+        },
+        "mainline_sync": {
+            "latest_main_after_pr120_included": True,
+            "merge_base_origin_main_is_ancestor": True,
+            "pr119_contract_preserved": True,
+            "pr120_contract_preserved": True,
+            "prod_launcher_contract_preserved": True,
+        },
+        "launcher_code": {
+            "control_exists": True,
+            "cli_control_exists": True,
+            "visual_launcher_exists": True,
+            "cmd_entry_exists": True,
+        },
+        "start_command": {
+            "production_mode": True,
+            "no_debug": True,
+            "debug": False,
+            "command": ["python.exe", "run.py"],
+        },
+        "preflight_gates": {
+            "env": True,
+            "debug_disabled": True,
+            "storage_root": True,
+            "db": True,
+            "port": True,
+            "venv": True,
+            "worktree_dev_refusal": True,
+            "destructive_e2e_disabled": True,
+            "dangerous_dev_test_flags_disabled": True,
+            "malformed_app_port_failure": True,
+            "malformed_db_port_failure": True,
+        },
+        "startup_write_policy": {
+            "normal_startup_maintenance_documented": True,
+            "launcher_safe_startup_mode_enabled": True,
+            "schema_migration_allowed": False,
+            "schema_migration_blocked_by_launcher_safe_mode": True,
+            "destructive_cleanup_allowed": False,
+            "import_tagging_sync_jobs_allowed": False,
+            "operator_intent_required_for_startup_maintenance": True,
+        },
+        "stop_safety": {
+            "refuses_unknown_process": True,
+            "managed_identity_required": True,
+            "refuses_unverified_stale_pid": True,
+            "verifies_process_create_time": True,
+            "platform_aware_create_time": True,
+            "verifies_python_executable": True,
+            "verifies_port_owner_when_available": True,
+            "force_kill_same_verified_only": True,
+        },
+        "start_safety": {
+            "serialized": True,
+            "start_already_in_progress_status": True,
+            "atomic_state_writes": True,
+            "stale_lock_reclaim": True,
+        },
+        "state_file": {
+            "local_ignored": True,
+            "path": ".local_manifests/production_launcher/violet-production-launcher-state.json",
+        },
+        "public_json_safety": {
+            "log_tail_in_public_json": False,
+            "log_tail_redacted": True,
+        },
+        "health_status": {
+            "auth_exempt_for_launcher": True,
+            "public_safe": True,
+            "no_paths": True,
+            "safe_fields_only": True,
+            "schema_compatible_check": True,
+            "read_only_schema_check": True,
+            "status_example": {
+                "ok": True,
+                "app_name": "V.I.O.L.E.T.",
+                "version": "1.41.0",
+                "env": "production",
+                "db_reachable": True,
+                "schema_compatible": True,
+                "schema_status": "compatible",
+                "storage_configured": True,
+                "debug": False,
+            },
+        },
+        "diagnostics": {
+            "status_json_example": {
+                "running": True,
+                "managed_by_launcher": True,
+                "port": 8000,
+                "url": "http://127.0.0.1:8000",
+                "env": "production",
+                "debug": False,
+                "db_reachable": True,
+                "schema_compatible": True,
+                "schema_status": "compatible",
+                "health_ok": True,
+            }
+        },
+        "reports": {"redacted": True},
+        "tests": {
+            "preflight_failure": True,
+            "port_occupied": True,
+            "stale_pid": True,
+            "managed_stop": True,
+            "unknown_process_refusal": True,
+            "health_auth_exempt": True,
+            "startup_write_policy": True,
+            "destructive_e2e_denial": True,
+            "unverified_pid_refusal": True,
+            "start_serialization": True,
+            "malformed_app_port": True,
+            "malformed_db_port": True,
+            "log_tail_public_json": True,
+            "stale_lock_reclaim": True,
+            "posix_process_verification": True,
+            "health_schema_compatibility": True,
+        },
+        "validation": {"focused_tests_passed": True, "contract_passed": True},
+        "safety": {
+            "no_import_tagging_localization_sync_jobs": True,
+            "no_provider_calls": True,
+            "no_sourceconcept_or_entity": True,
+            "no_db_migrations": True,
+            "no_destructive_operations": True,
+            "no_source_icloud_mutation": True,
+            "destructive_e2e_allowed": False,
+        },
+        "forbidden_operations": {
+            "import_jobs": False,
+            "tagging_jobs": False,
+            "localization_jobs": False,
+            "sync_jobs": False,
+            "provider_calls": False,
+            "sourceconcept": False,
+            "entity_bridge": False,
+            "db_migrations": False,
+            "destructive_operations": False,
+            "source_icloud_mutation": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _s2g1x_summary(**overrides: object) -> dict:
     head = _current_test_head()
     summary = {
@@ -1431,6 +1583,127 @@ def test_production_development_separation_rejects_forbidden_current_phase_autho
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "production_development_forbidden_current_phase_authorization" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_accepts_safe_launcher_summary() -> None:
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", _prod_launcher_mvp_summary())
+
+    assert result.passed is True
+
+
+def test_prod_launcher_mvp_contract_rejects_debug_start_command() -> None:
+    summary = _prod_launcher_mvp_summary(
+        start_command={
+            "production_mode": True,
+            "no_debug": False,
+            "debug": True,
+            "command": ["python.exe", "run.py", "--debug"],
+        }
+    )
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "prod_launcher_required_proof_failed" in codes
+    assert "prod_launcher_start_command_debug_enabled" in codes
+
+
+def test_prod_launcher_mvp_contract_rejects_nonignored_state_file() -> None:
+    summary = _prod_launcher_mvp_summary(state_file={"local_ignored": True, "path": "data/runtime/state.json"})
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_state_file_not_local_ignored" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_public_status_path_leak() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["health_status"]["status_example"]["storage_root"] = r"C:\Users\name\Pictures\private"
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_public_status_not_safe" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_forbidden_operation_enabled() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["forbidden_operations"]["provider_calls"] = True
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_health_auth_not_exempt() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["health_status"]["auth_exempt_for_launcher"] = False
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_required_proof_failed" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_schema_migration_allowed() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["startup_write_policy"]["schema_migration_allowed"] = True
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_missing_start_serialization() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["start_safety"]["serialized"] = False
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_required_proof_failed" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_public_log_tail_key() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["diagnostics"]["status_json_example"]["recent_log_tail"] = ["safe looking line"]
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_log_tail_public_json" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_health_ok_without_schema_compatibility() -> None:
+    summary = _prod_launcher_mvp_summary()
+    del summary["health_status"]["status_example"]["schema_compatible"]
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_health_ok_without_schema_compatible" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_missing_latest_main_proof() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["mainline_sync"]["latest_main_after_pr120_included"] = False
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_required_proof_failed" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_missing_malformed_db_port_proof() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["preflight_gates"]["malformed_db_port_failure"] = False
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_required_proof_failed" in _error_codes(result)
+
+
+def test_prod_launcher_mvp_contract_rejects_log_tail_public_json_enabled() -> None:
+    summary = _prod_launcher_mvp_summary()
+    summary["public_json_safety"]["log_tail_in_public_json"] = True
+
+    result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
+
+    assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:
