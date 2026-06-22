@@ -1,0 +1,231 @@
+{
+  "phase": "PROD-LAUNCHER-UX1/PF1",
+  "pipeline_contract": {
+    "contract_id": "prod_launcher_ux1_production_profile_contract_v1",
+    "status": "implementation_complete_pending_manual_acceptance",
+    "claims": {
+      "target_met": false,
+      "safe_to_merge": false
+    }
+  },
+  "mainline_sync": {
+    "latest_main_used": true,
+    "base_head_sha": "a0883879f1a1658c1fb7233287eef8de1efac83c",
+    "pr119_merge_commit_included": true,
+    "pr119_merge_commit_sha": "2e0465a1fef23e32080d3a97de2d7cd2633ed0c1",
+    "pr120_merge_commit_included": true,
+    "pr120_merge_commit_sha": "061850c13f97373d50e395ae81a47e2ba80fd301",
+    "pr121_merge_commit_included": true,
+    "pr121_merge_commit_sha": "a0883879f1a1658c1fb7233287eef8de1efac83c"
+  },
+  "production_profile": {
+    "profile_id": "production-default",
+    "path": ".local_manifests/production_launcher/production-profile.json",
+    "local_ignored_path": true,
+    "separate_from_development_dotenv": true,
+    "development_dotenv_modified": false,
+    "development_dotenv_required_for_production": false,
+    "child_env_from_profile": true,
+    "profile_overrides_development_dotenv_for_child": true,
+    "storage_root_not_invented": true,
+    "storage_root_not_copied_from_dotenv": true,
+    "db_access_value_not_copied_from_dotenv": true,
+    "incomplete_profile_state_explicit": true,
+    "profile_discovery": {
+      "safe_inferred": [
+        "profile_id",
+        "env",
+        "repo_root identity",
+        "python candidate",
+        "app_port default or safe dotenv default",
+        "db host default or safe dotenv default",
+        "db port default or safe dotenv default",
+        "db name default or safe dotenv default",
+        "db user default or safe dotenv default"
+      ],
+      "remaining_user_selected": [
+        "production storage root",
+        "db password if production DB requires one"
+      ],
+      "private_values_invented": false
+    }
+  },
+  "electron_launcher": {
+    "exists": true,
+    "package_path": "launcher/package.json",
+    "primary_documented_entrypoint": true,
+    "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
+    "calls_python_control_plane": true,
+    "raw_json_hidden_from_main_screen": true,
+    "advanced_diagnostics_collapsed_by_default": true,
+    "copy_diagnostic_summary": true,
+    "checklist_groups": [
+      "Production Profile",
+      "Environment",
+      "Storage",
+      "Database",
+      "Schema",
+      "Port",
+      "Safety Flags",
+      "Startup Policy"
+    ],
+    "top_level_states": [
+      "No Production Profile",
+      "Profile Incomplete",
+      "Ready",
+      "Blocked",
+      "Starting",
+      "Running",
+      "Unhealthy",
+      "Stopped",
+      "Error"
+    ]
+  },
+  "preflight_mapping": {
+    "violet_env_production": true,
+    "violet_env_production_message": "Development .env is not used for production. Create or repair the production profile.",
+    "storage_root_explicit": true,
+    "storage_root_explicit_message": "Production profile is missing storage root.",
+    "production_storage_root_shape": true,
+    "production_storage_root_shape_message": "Production storage root is invalid or unsafe.",
+    "db_readonly_reachable": true,
+    "db_readonly_reachable_message": "Database check is skipped until production profile and storage gates pass.",
+    "no_startup_mutation_automation": true,
+    "no_startup_mutation_automation_message": "Production profile must disable startup automation flags."
+  },
+  "controller_changes": {
+    "commands_added": [
+      "profile-status",
+      "profile-discover",
+      "profile-init",
+      "profile-update",
+      "test-db",
+      "diagnostic-summary"
+    ],
+    "profile_aware_commands": [
+      "preflight",
+      "status",
+      "start",
+      "stop",
+      "restart",
+      "open-browser"
+    ],
+    "safe_startup_requires_initialized_settings": true,
+    "profile_active_db_env_overrides_settings_json": true,
+    "development_env_legacy_function_test_path_preserved": true
+  },
+  "health_status": {
+    "endpoint": "GET /api/health",
+    "auth_exempt_for_launcher": true,
+    "public_safe": true,
+    "schema_required_columns_check": true,
+    "status_example": {
+      "ok": true,
+      "app_name": "V.I.O.L.E.T.",
+      "env": "production",
+      "db_reachable": true,
+      "schema_compatible": true,
+      "schema_status": "compatible",
+      "storage_configured": true,
+      "debug": false
+    }
+  },
+  "start_safety": {
+    "launched_pid_verified": true,
+    "health_identity_verified": true,
+    "managed_unhealthy_is_unhealthy": true,
+    "start_lock_stale_recovery_preserved": true
+  },
+  "stop_safety": {
+    "refuses_unknown_process": true,
+    "posix_unknown_port_owner_fails_closed": true,
+    "force_kill_same_verified_only": true
+  },
+  "public_json_safety": {
+    "log_tail_in_public_json": false,
+    "profile_paths_redacted": true,
+    "advanced_diagnostics_public_safe": true
+  },
+  "manual_acceptance_required_before_merge": true,
+  "manual_acceptance_completed": false,
+  "merge_allowed": false,
+  "validation": {
+    "python_env_check": "passed",
+    "python_executable_redacted": true,
+    "py_compile_status": "passed",
+    "python_tests_status": "passed",
+    "python_tests_result": "195 passed",
+    "electron_install_status": "passed",
+    "electron_tests_status": "passed",
+    "electron_lint_status": "passed",
+    "electron_audit_status": "passed_zero_vulnerabilities",
+    "contract_check_status": "passed",
+    "public_redaction_json_status": "passed",
+    "public_redaction_markdown_status": "passed",
+    "manual_acceptance_status": "manual_acceptance_required_before_merge"
+  },
+  "safety": {
+    "no_push_main": true,
+    "no_merge": true,
+    "no_import_tagging_localization_sync_jobs": true,
+    "no_provider_calls": true,
+    "no_sourceconcept_or_entity": true,
+    "no_db_migrations": true,
+    "no_destructive_operations": true,
+    "no_source_icloud_mutation": true,
+    "no_db_import": true,
+    "no_classification": true,
+    "no_ai_tagging": true,
+    "no_llm_call": true
+  },
+  "forbidden_operations": {
+    "import_jobs": false,
+    "tagging_jobs": false,
+    "localization_jobs": false,
+    "sync_jobs": false,
+    "provider_calls": false,
+    "sourceconcept": false,
+    "entity_bridge": false,
+    "db_migrations": false,
+    "destructive_operations": false,
+    "source_icloud_mutation": false
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "path": "scripts/violet_production_control.py",
+        "classification": "reusable validation/safety tool",
+        "committed": true
+      },
+      {
+        "path": "launcher/",
+        "classification": "durable production code",
+        "committed": true
+      },
+      {
+        "path": ".local_manifests/production_launcher/production-profile.json",
+        "classification": "one-off local/private",
+        "committed": false
+      },
+      {
+        "path": "docs/production-launcher.md",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      },
+      {
+        "path": "docs/reports/prod-launcher-ux1-production-profile-summary.json",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      },
+      {
+        "path": "docs/reports/prod-launcher-ux1-production-profile.md",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      }
+    ]
+  },
+  "merge_recommendation": "do_not_merge_until_manual_acceptance_completed"
+}

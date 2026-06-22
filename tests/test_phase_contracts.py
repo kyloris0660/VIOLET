@@ -406,6 +406,114 @@ def _prod_launcher_mvp_summary(**overrides: object) -> dict:
     return summary
 
 
+def _prod_launcher_ux1_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "prod_launcher_ux1_production_profile_contract_v1",
+            "status": "implementation_complete_pending_manual_acceptance",
+            "claims": {"target_met": False, "safe_to_merge": False},
+        },
+        "mainline_sync": {
+            "latest_main_used": True,
+            "pr119_merge_commit_included": True,
+            "pr120_merge_commit_included": True,
+            "pr121_merge_commit_included": True,
+        },
+        "production_profile": {
+            "path": ".local_manifests/production_launcher/production-profile.json",
+            "local_ignored_path": True,
+            "separate_from_development_dotenv": True,
+            "development_dotenv_modified": False,
+            "child_env_from_profile": True,
+            "profile_overrides_development_dotenv_for_child": True,
+            "storage_root_not_invented": True,
+            "incomplete_profile_state_explicit": True,
+        },
+        "electron_launcher": {
+            "exists": True,
+            "primary_documented_entrypoint": True,
+            "calls_python_control_plane": True,
+            "raw_json_hidden_from_main_screen": True,
+            "advanced_diagnostics_collapsed_by_default": True,
+            "checklist_groups": [
+                "Production Profile",
+                "Environment",
+                "Storage",
+                "Database",
+                "Schema",
+                "Port",
+                "Safety Flags",
+                "Startup Policy",
+            ],
+        },
+        "preflight_mapping": {
+            "violet_env_production": True,
+            "storage_root_explicit": True,
+            "production_storage_root_shape": True,
+            "db_readonly_reachable": True,
+            "no_startup_mutation_automation": True,
+        },
+        "health_status": {
+            "auth_exempt_for_launcher": True,
+            "public_safe": True,
+            "schema_required_columns_check": True,
+            "status_example": {
+                "ok": True,
+                "app_name": "V.I.O.L.E.T.",
+                "env": "production",
+                "db_reachable": True,
+                "schema_compatible": True,
+                "schema_status": "compatible",
+                "storage_configured": True,
+                "debug": False,
+            },
+        },
+        "start_safety": {
+            "launched_pid_verified": True,
+            "health_identity_verified": True,
+            "managed_unhealthy_is_unhealthy": True,
+        },
+        "stop_safety": {
+            "refuses_unknown_process": True,
+            "posix_unknown_port_owner_fails_closed": True,
+        },
+        "public_json_safety": {
+            "log_tail_in_public_json": False,
+            "profile_paths_redacted": True,
+        },
+        "manual_acceptance_required_before_merge": True,
+        "manual_acceptance_completed": False,
+        "merge_allowed": False,
+        "validation": {
+            "python_tests_status": "pending",
+            "electron_tests_status": "pending",
+        },
+        "safety": {
+            "no_import_tagging_localization_sync_jobs": True,
+            "no_provider_calls": True,
+            "no_sourceconcept_or_entity": True,
+            "no_db_migrations": True,
+            "no_destructive_operations": True,
+            "no_source_icloud_mutation": True,
+        },
+        "forbidden_operations": {
+            "import_jobs": False,
+            "tagging_jobs": False,
+            "localization_jobs": False,
+            "sync_jobs": False,
+            "provider_calls": False,
+            "sourceconcept": False,
+            "entity_bridge": False,
+            "db_migrations": False,
+            "destructive_operations": False,
+            "source_icloud_mutation": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _s2g1x_summary(**overrides: object) -> dict:
     head = _current_test_head()
     summary = {
@@ -1704,6 +1812,47 @@ def test_prod_launcher_mvp_contract_rejects_log_tail_public_json_enabled() -> No
     result = check_phase_contract("prod_launcher_mvp_contract_v1", summary)
 
     assert "prod_launcher_forbidden_operation_enabled" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_accepts_pending_manual_acceptance_summary() -> None:
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", _prod_launcher_ux1_summary())
+
+    assert result.passed is True
+
+
+def test_prod_launcher_ux1_contract_rejects_development_dotenv_mutation() -> None:
+    summary = _prod_launcher_ux1_summary()
+    summary["production_profile"]["development_dotenv_modified"] = True
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_development_dotenv_modified" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_rejects_merge_allowed_before_manual_acceptance() -> None:
+    summary = _prod_launcher_ux1_summary(merge_allowed=True)
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_merge_allowed_before_manual_acceptance" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_rejects_raw_log_tail_public_json() -> None:
+    summary = _prod_launcher_ux1_summary()
+    summary["public_json_payload"] = {"recent_log_tail": ["line"]}
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_log_tail_public_json" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_rejects_missing_checklist_group() -> None:
+    summary = _prod_launcher_ux1_summary()
+    summary["electron_launcher"]["checklist_groups"] = ["Production Profile"]
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_missing_checklist_groups" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:

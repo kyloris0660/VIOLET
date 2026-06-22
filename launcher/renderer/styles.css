@@ -1,0 +1,321 @@
+:root {
+  --bg: #f7f8fb;
+  --panel: #ffffff;
+  --text: #17202f;
+  --muted: #667085;
+  --border: #d9dee8;
+  --green: #15803d;
+  --green-bg: #e8f6ee;
+  --red: #b42318;
+  --red-bg: #fde8e7;
+  --yellow: #a15c07;
+  --yellow-bg: #fff3d6;
+  --gray: #667085;
+  --gray-bg: #eef1f5;
+  --blue: #1f5eff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", Arial, sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  width: min(1180px, calc(100vw - 40px));
+  margin: 0 auto;
+  padding: 24px 0 28px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 16px;
+}
+
+.state {
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 800;
+}
+
+.state-green {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.state-red {
+  color: var(--red);
+  background: var(--red-bg);
+}
+
+.state-yellow {
+  color: var(--yellow);
+  background: var(--yellow-bg);
+}
+
+.state-gray {
+  color: var(--gray);
+  background: var(--gray-bg);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.summary-grid div,
+.panel,
+.advanced {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.summary-grid div {
+  padding: 12px;
+  min-height: 72px;
+}
+
+.summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.summary-grid strong {
+  display: block;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.panel {
+  padding: 16px;
+}
+
+.message {
+  min-height: 44px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+label span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #fbfcff;
+  color: var(--text);
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+button:hover {
+  border-color: #9aa7ba;
+  background: #f8fafc;
+}
+
+button.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #ffffff;
+}
+
+button.danger {
+  color: var(--red);
+  border-color: #f0b6b1;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#lastChecked {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.checklist {
+  display: grid;
+  gap: 14px;
+}
+
+.group {
+  display: grid;
+  gap: 8px;
+}
+
+.group-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.check-item {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.dot {
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--gray);
+}
+
+.passed .dot {
+  background: var(--green);
+}
+
+.failed .dot {
+  background: var(--red);
+}
+
+.warning .dot {
+  background: var(--yellow);
+}
+
+.not-checked .dot {
+  background: var(--gray);
+}
+
+.check-label {
+  font-weight: 750;
+  margin-bottom: 3px;
+}
+
+.check-message {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.advanced {
+  margin-top: 14px;
+  padding: 12px 16px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+pre {
+  max-height: 280px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 6px;
+  background: #101828;
+  color: #e5edf9;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+  .summary-grid,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .state {
+    width: 100%;
+  }
+}

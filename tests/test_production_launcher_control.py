@@ -55,6 +55,40 @@ def _write_fake_repo(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     return repo, storage, env
 
 
+def _write_fake_profile(repo: Path, storage: Path, *, profile_id: str = control.DEFAULT_PROFILE_ID) -> Path:
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    profile_path.parent.mkdir(parents=True)
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": profile_id,
+                "env": "production",
+                "repo_root": str(repo),
+                "python": sys.executable,
+                "app_port": 8123,
+                "storage_root": str(storage),
+                "db": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "blombooru",
+                    "user": "postgres",
+                    "password": "",
+                },
+                "safe_startup": True,
+                "automation_flags": {
+                    "dynamic_library_auto_sync": False,
+                    "ai_auto_tag_after_import": False,
+                    "content_classification_auto_after_import": False,
+                    "tag_translation_auto": False,
+                    "tag_translation_background": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return profile_path
+
+
 @pytest.fixture()
 def safe_backends(monkeypatch):
     monkeypatch.setattr(control, "_append_launcher_event", lambda *args, **kwargs: None)
@@ -87,6 +121,90 @@ def test_preflight_blocks_non_production_env(tmp_path, safe_backends):
 
     assert result.ok is False
     assert "violet_env_production" in result.errors
+
+
+def test_profile_status_reports_missing_profile_without_using_development_env(tmp_path, safe_backends):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    env["VIOLET_ENV"] = "development"
+    env["VIOLET_STORAGE_ROOT"] = ""
+
+    result = control.profile_status(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID, base_env=env)
+
+    assert result.ok is False
+    assert result.status == "no_profile"
+    assert "production_profile_exists" in result.errors
+    assert result.data["profile"]["development_dotenv_required"] is False
+    assert result.data["profile"]["development_dotenv_modified"] is False
+    serialized = json.dumps(result.to_public_dict(), sort_keys=True)
+    assert str(repo) not in serialized
+
+
+def test_profile_preflight_uses_profile_not_development_dotenv(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    env["VIOLET_ENV"] = "development"
+    env["VIOLET_STORAGE_ROOT"] = ""
+    settings_path = storage / "data" / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["secret_key"] = "test-secret-key"
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+    _write_fake_profile(repo, storage)
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "state.json",
+    )
+
+    assert result.ok is True
+    assert result.data["config_source"] == "production_profile"
+    assert result.data["env"] == "production"
+    assert "violet_env_production" not in result.errors
+    config = control.resolve_config(repo, base_env=env, profile_id=control.DEFAULT_PROFILE_ID)
+    child_env = control._child_environment(config)
+    assert child_env["VIOLET_ENV"] == "production"
+    assert child_env["VIOLET_STORAGE_ROOT"] == str(storage)
+    assert child_env["VIOLET_PRODUCTION_PROFILE_ACTIVE"] == "true"
+
+
+def test_profile_preflight_blocks_missing_secret_key_to_avoid_settings_import_write(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage)
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "state.json",
+    )
+
+    assert result.ok is False
+    assert "settings_import_write_safe" in result.errors
+
+
+def test_profile_update_writes_local_ignored_profile_without_touching_dotenv(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    dotenv_before = (repo / ".env").read_text(encoding="utf-8")
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={
+            "storage_root": str(storage),
+            "app_port": "8124",
+            "db": {"host": "localhost", "port": "5432", "name": "blombooru", "user": "postgres"},
+        },
+    )
+
+    assert result.data["profile"]["profile_path_local_ignored"] is True
+    assert (repo / ".env").read_text(encoding="utf-8") == dotenv_before
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert payload["storage_root"] == str(storage)
+    assert payload["app_port"] == "8124"
 
 
 def test_preflight_blocks_unknown_process_on_target_port(tmp_path, safe_backends, monkeypatch):
@@ -511,9 +629,12 @@ def test_status_json_summary_is_public_safe(tmp_path, safe_backends, monkeypatch
         "fetch_health",
         lambda url, timeout=2.0: {
             "ok": True,
+            "app_name": "V.I.O.L.E.T.",
             "env": "production",
             "debug": False,
             "db_reachable": True,
+            "schema_compatible": True,
+            "schema_status": "compatible",
             "storage_configured": True,
         },
     )
@@ -525,6 +646,36 @@ def test_status_json_summary_is_public_safe(tmp_path, safe_backends, monkeypatch
     assert summary["health_ok"] is True
     assert str(storage) not in serialized
     assert str(repo) not in serialized
+
+
+def test_status_reports_managed_unhealthy_process_as_unhealthy(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "state_version": control.STATE_VERSION,
+                "app_name": control.APP_NAME,
+                "started_by": "violet_production_launcher",
+                "pid": 1234,
+                "pid_create_time": 100.0,
+                "start_time": "1970-01-01T00:00:00+00:00",
+                "repo_root": str(repo),
+                "port": 8123,
+                "env": "production",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid == 1234)
+    monkeypatch.setattr(control, "process_snapshot", lambda pid: _managed_snapshot(pid))
+    monkeypatch.setattr(control, "fetch_health", lambda url, timeout=2.0: None)
+
+    result = control.status(repo_root=repo, base_env=env, state_path=state_path)
+
+    assert result.status == "unhealthy"
+    assert result.data["running"] is True
+    assert result.data["health_ok"] is False
 
 
 def test_health_reports_schema_compatible_true_without_writes(monkeypatch):
@@ -557,7 +708,10 @@ def test_health_reports_schema_compatible_true_without_writes(monkeypatch):
     monkeypatch.setattr(
         health,
         "inspect",
-        lambda engine: SimpleNamespace(get_table_names=lambda: list(health.REQUIRED_CORE_TABLES)),
+        lambda engine: SimpleNamespace(
+            get_table_names=lambda: list(health.REQUIRED_CORE_TABLES),
+            get_columns=lambda table_name: [{"name": name} for name in health.REQUIRED_CORE_COLUMNS[table_name]],
+        ),
     )
 
     import asyncio
@@ -597,7 +751,14 @@ def test_health_reports_schema_incompatible_when_core_table_missing(monkeypatch)
     monkeypatch.setattr(health.database, "engine", fake_engine)
     monkeypatch.setattr(health.database, "init_engine", lambda: fake_engine)
     monkeypatch.setattr(health, "settings", fake_settings)
-    monkeypatch.setattr(health, "inspect", lambda engine: SimpleNamespace(get_table_names=lambda: list(tables)))
+    monkeypatch.setattr(
+        health,
+        "inspect",
+        lambda engine: SimpleNamespace(
+            get_table_names=lambda: list(tables),
+            get_columns=lambda table_name: [{"name": name} for name in health.REQUIRED_CORE_COLUMNS.get(table_name, set())],
+        ),
+    )
 
     import asyncio
 
@@ -607,6 +768,53 @@ def test_health_reports_schema_incompatible_when_core_table_missing(monkeypatch)
     assert payload["db_reachable"] is True
     assert payload["schema_compatible"] is False
     assert payload["schema_status"] == "missing_required_tables"
+
+
+def test_health_reports_schema_incompatible_when_core_column_missing(monkeypatch):
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, statement):
+            return None
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    fake_engine = FakeEngine()
+    fake_settings = SimpleNamespace(
+        IS_FIRST_RUN=False,
+        STORAGE_ROOT_EXPLICITLY_SET=True,
+        DEBUG=False,
+        VIOLET_ENV="production",
+    )
+    monkeypatch.setattr(health.database, "engine", fake_engine)
+    monkeypatch.setattr(health.database, "init_engine", lambda: fake_engine)
+    monkeypatch.setattr(health, "settings", fake_settings)
+
+    def fake_columns(table_name):
+        columns = set(health.REQUIRED_CORE_COLUMNS[table_name])
+        if table_name == "blombooru_media_tags":
+            columns.remove("source")
+        return [{"name": name} for name in columns]
+
+    monkeypatch.setattr(
+        health,
+        "inspect",
+        lambda engine: SimpleNamespace(get_table_names=lambda: list(health.REQUIRED_CORE_TABLES), get_columns=fake_columns),
+    )
+
+    import asyncio
+
+    payload = asyncio.run(health.get_health())
+
+    assert payload["ok"] is False
+    assert payload["schema_compatible"] is False
+    assert payload["schema_status"] == "missing_required_columns:blombooru_media_tags"
 
 
 def test_health_route_allows_anonymous_get_when_auth_required(monkeypatch):

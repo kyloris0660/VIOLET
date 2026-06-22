@@ -31,6 +31,8 @@ STATE_DIR = ROOT / ".local_manifests" / "production_launcher"
 STATE_FILE = STATE_DIR / "violet-production-launcher-state.json"
 LOG_FILE = STATE_DIR / "violet-production.log"
 START_LOCK_FILE = STATE_DIR / "violet-production-launcher-start.lock"
+DEFAULT_PROFILE_ID = "production-default"
+PROFILE_FILE_NAME = "production-profile.json"
 RUN_PY = ROOT / "run.py"
 
 APP_NAME = "V.I.O.L.E.T."
@@ -47,6 +49,14 @@ AUTOMATION_FLAGS = (
     "TAG_TRANSLATION_AUTO_ENABLED",
     "TAG_TRANSLATION_BACKGROUND_ENABLED",
 )
+
+PROFILE_AUTOMATION_FLAGS = {
+    "dynamic_library_auto_sync": "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED",
+    "ai_auto_tag_after_import": "AI_AUTO_TAG_AFTER_IMPORT",
+    "content_classification_auto_after_import": "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT",
+    "tag_translation_auto": "TAG_TRANSLATION_AUTO_ENABLED",
+    "tag_translation_background": "TAG_TRANSLATION_BACKGROUND_ENABLED",
+}
 
 DANGEROUS_PRODUCTION_FLAGS = (
     "VIOLET_ALLOW_DESTRUCTIVE_E2E",
@@ -101,6 +111,12 @@ class RuntimeConfig:
     db_port_raw: str = ""
     db_port_valid: bool = True
     db_port_error: str | None = None
+    config_source: str = "development_env"
+    profile_id: str | None = None
+    profile_path: Path | None = None
+    profile_exists: bool = False
+    profile_data: dict[str, Any] = field(default_factory=dict)
+    profile_errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -316,6 +332,16 @@ def load_settings_json(path: Path | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def profile_file_for_repo(repo_root: Path = ROOT) -> Path:
+    return repo_root / ".local_manifests" / "production_launcher" / PROFILE_FILE_NAME
+
+
+def profile_file_is_local_ignored(path: Path, repo_root: Path = ROOT) -> bool:
+    normalized = _normalize_path(path)
+    root_normalized = _normalize_path(repo_root)
+    return normalized.startswith(root_normalized + "/.local_manifests/production_launcher/")
+
+
 def expected_venv_python(repo_root: Path) -> Path:
     candidates = [
         repo_root / "venv" / "Scripts" / "python.exe",
@@ -329,15 +355,192 @@ def expected_venv_python(repo_root: Path) -> Path:
     return candidates[0] if platform.system() == "Windows" else candidates[2]
 
 
+def _safe_dotenv_defaults(repo_root: Path) -> dict[str, str]:
+    values = parse_dotenv(repo_root / ".env")
+    safe_keys = {
+        "APP_PORT",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "VIOLET_PRODUCTION_PYTHON",
+        "VIOLET_CANONICAL_REPO_ROOT",
+    }
+    return {key: value for key, value in values.items() if key in safe_keys and str(value).strip()}
+
+
+def _default_profile_payload(repo_root: Path = ROOT, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, Any]:
+    safe_defaults = _safe_dotenv_defaults(repo_root)
+    app_port, app_port_ok, _app_port_error, _app_port_raw = _parse_port(safe_defaults.get("APP_PORT") or DEFAULT_PORT)
+    if not app_port_ok:
+        app_port = DEFAULT_PORT
+    db_port, db_port_ok, _db_port_error, _db_port_raw = _parse_named_port(
+        "POSTGRES_PORT",
+        safe_defaults.get("POSTGRES_PORT"),
+        explicit=bool(safe_defaults.get("POSTGRES_PORT")),
+    )
+    if not db_port_ok:
+        db_port = 5432
+    return {
+        "profile_id": profile_id,
+        "env": "production",
+        "repo_root": str(repo_root),
+        "python": safe_defaults.get("VIOLET_PRODUCTION_PYTHON") or str(expected_venv_python(repo_root)),
+        "app_port": app_port,
+        "storage_root": "",
+        "db": {
+            "host": safe_defaults.get("POSTGRES_HOST") or "localhost",
+            "port": db_port,
+            "name": safe_defaults.get("POSTGRES_DB") or "blombooru",
+            "user": safe_defaults.get("POSTGRES_USER") or "postgres",
+            "password": "",
+        },
+        "safe_startup": True,
+        "automation_flags": {name: False for name in PROFILE_AUTOMATION_FLAGS},
+    }
+
+
+def _load_profile_payload(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    if not path.exists():
+        return None, ["profile_missing"]
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None, ["profile_json_invalid"]
+    except OSError:
+        return None, ["profile_unreadable"]
+    if not isinstance(payload, dict):
+        return None, ["profile_not_object"]
+    return payload, []
+
+
+def _coerce_profile_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+) -> dict[str, Any]:
+    base = _default_profile_payload(repo_root, profile_id)
+    if not payload:
+        return base
+    profile = dict(base)
+    for key in ("profile_id", "env", "repo_root", "python", "storage_root"):
+        if key in payload and payload.get(key) is not None:
+            profile[key] = str(payload.get(key))
+    if "app_port" in payload:
+        profile["app_port"] = payload.get("app_port")
+    if "safe_startup" in payload:
+        profile["safe_startup"] = bool(payload.get("safe_startup"))
+    if isinstance(payload.get("db"), Mapping):
+        db = dict(profile["db"])
+        for key in ("host", "name", "user", "password"):
+            if key in payload["db"] and payload["db"].get(key) is not None:
+                db[key] = str(payload["db"].get(key))
+        if "port" in payload["db"]:
+            db["port"] = payload["db"].get("port")
+        profile["db"] = db
+    if isinstance(payload.get("automation_flags"), Mapping):
+        flags = dict(profile["automation_flags"])
+        for key in PROFILE_AUTOMATION_FLAGS:
+            if key in payload["automation_flags"]:
+                flags[key] = bool(payload["automation_flags"].get(key))
+        profile["automation_flags"] = flags
+    return profile
+
+
+def load_production_profile(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+) -> tuple[dict[str, Any] | None, Path, list[str]]:
+    path = profile_path or profile_file_for_repo(repo_root)
+    payload, errors = _load_profile_payload(path)
+    if payload is None:
+        return None, path, errors
+    profile = _coerce_profile_payload(payload, repo_root=repo_root, profile_id=profile_id)
+    if profile.get("profile_id") != profile_id:
+        errors.append("profile_id_mismatch")
+    return profile, path, errors
+
+
+def write_production_profile(
+    profile: Mapping[str, Any],
+    *,
+    repo_root: Path = ROOT,
+    profile_path: Path | None = None,
+) -> Path:
+    path = profile_path or profile_file_for_repo(repo_root)
+    if not profile_file_is_local_ignored(path, repo_root):
+        raise ValueError("Production profile path must stay under .local_manifests/production_launcher.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        temp_path.write_text(json.dumps(dict(profile), indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temp_path, path)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+    return path
+
+
+def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> dict[str, str]:
+    db = profile.get("db", {}) if isinstance(profile.get("db"), Mapping) else {}
+    storage_root = str(profile.get("storage_root") or "").strip()
+    profile_env = {
+        "VIOLET_ENV": "production",
+        "BLOMBOORU_DEBUG": "false",
+        "APP_PORT": str(profile.get("app_port") or DEFAULT_PORT),
+        "VIOLET_STORAGE_ROOT": storage_root,
+        "VIOLET_CANONICAL_REPO_ROOT": str(profile.get("repo_root") or repo_root),
+        "VIOLET_PRODUCTION_PYTHON": str(profile.get("python") or expected_venv_python(repo_root)),
+        "VIOLET_PRODUCTION_PROFILE_ACTIVE": "true",
+        "VIOLET_PRODUCTION_PROFILE_ID": str(profile.get("profile_id") or DEFAULT_PROFILE_ID),
+        STARTUP_SAFE_MODE_ENV: "true",
+        STARTUP_MAINTENANCE_APPROVAL_ENV: "false",
+        "POSTGRES_HOST": str(db.get("host") or "localhost"),
+        "POSTGRES_PORT": str(db.get("port") or 5432),
+        "POSTGRES_DB": str(db.get("name") or "blombooru"),
+        "POSTGRES_USER": str(db.get("user") or "postgres"),
+        "POSTGRES_PASSWORD": str(db.get("password") or ""),
+    }
+    for flag in AUTOMATION_FLAGS:
+        profile_env[flag] = "false"
+    for flag in DANGEROUS_PRODUCTION_FLAGS:
+        profile_env[flag] = "false"
+    return profile_env
+
+
 def resolve_config(
     repo_root: Path = ROOT,
     *,
     base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
 ) -> RuntimeConfig:
     dotenv_path = repo_root / ".env"
-    dotenv_values = parse_dotenv(dotenv_path)
-    merged = dict(dotenv_values)
-    merged.update(dict(base_env or os.environ))
+    profile, resolved_profile_path, profile_errors = (None, profile_path or profile_file_for_repo(repo_root), [])
+    if profile_id is None:
+        dotenv_values = parse_dotenv(dotenv_path)
+        merged = dict(dotenv_values)
+        merged.update(dict(base_env or os.environ))
+        config_source = "development_env"
+        profile_exists = False
+        profile_data: dict[str, Any] = {}
+    else:
+        loaded_profile, resolved_profile_path, profile_errors = load_production_profile(
+            repo_root=repo_root,
+            profile_id=profile_id,
+            profile_path=profile_path,
+        )
+        profile = loaded_profile or _default_profile_payload(repo_root, profile_id)
+        merged = dict(base_env or os.environ)
+        merged.update(_profile_to_env(profile, repo_root=repo_root))
+        config_source = "production_profile"
+        profile_exists = loaded_profile is not None
+        profile_data = dict(profile)
 
     storage_raw = (merged.get("VIOLET_STORAGE_ROOT") or "").strip()
     storage_root = Path(storage_raw).expanduser() if storage_raw else None
@@ -356,7 +559,12 @@ def resolve_config(
         merged.get("POSTGRES_PORT"),
         explicit=env_port_present,
     )
-    if settings_port_present:
+    if config_source == "production_profile":
+        db_port = env_port
+        db_port_raw = env_port_raw
+        db_port_valid = env_port_valid
+        db_port_error = env_port_error
+    elif settings_port_present:
         db_port = settings_port
         db_port_raw = settings_port_raw
     elif env_port_present:
@@ -365,16 +573,26 @@ def resolve_config(
     else:
         db_port = 5432
         db_port_raw = "5432"
-    db_port_valid = settings_port_valid and env_port_valid
-    db_port_error = settings_port_error or env_port_error
+    if config_source != "production_profile":
+        db_port_valid = settings_port_valid and env_port_valid
+        db_port_error = settings_port_error or env_port_error
 
-    db = {
-        "host": settings_db.get("host") or merged.get("POSTGRES_HOST") or "localhost",
-        "port": db_port,
-        "name": settings_db.get("name") or merged.get("POSTGRES_DB") or "blombooru",
-        "user": settings_db.get("user") or merged.get("POSTGRES_USER") or "postgres",
-        "password": settings_db.get("password") or merged.get("POSTGRES_PASSWORD") or "",
-    }
+    if config_source == "production_profile":
+        db = {
+            "host": merged.get("POSTGRES_HOST") or "localhost",
+            "port": db_port,
+            "name": merged.get("POSTGRES_DB") or "blombooru",
+            "user": merged.get("POSTGRES_USER") or "postgres",
+            "password": merged.get("POSTGRES_PASSWORD") or "",
+        }
+    else:
+        db = {
+            "host": settings_db.get("host") or merged.get("POSTGRES_HOST") or "localhost",
+            "port": db_port,
+            "name": settings_db.get("name") or merged.get("POSTGRES_DB") or "blombooru",
+            "user": settings_db.get("user") or merged.get("POSTGRES_USER") or "postgres",
+            "password": settings_db.get("password") or merged.get("POSTGRES_PASSWORD") or "",
+        }
 
     port, port_resolved, port_error, port_raw = _parse_port(merged.get("APP_PORT") or str(DEFAULT_PORT))
     accepted_raw = (
@@ -404,6 +622,12 @@ def resolve_config(
         db_port_raw=db_port_raw,
         db_port_valid=db_port_valid,
         db_port_error=db_port_error,
+        config_source=config_source,
+        profile_id=profile_id,
+        profile_path=resolved_profile_path,
+        profile_exists=profile_exists,
+        profile_data=profile_data,
+        profile_errors=list(profile_errors),
     )
 
 
@@ -808,7 +1032,9 @@ def verify_managed_process(state: Mapping[str, Any] | None, config: RuntimeConfi
             if abs(snapshot.create_time - recorded_create_time) > 2.0:
                 reasons.append("pid_create_time_mismatch")
         owner = port_owner_pid(config.port)
-        if owner is not None and owner != pid:
+        if is_port_open(config.port) and owner is None:
+            reasons.append("target_port_owner_unavailable")
+        elif owner is not None and owner != pid:
             reasons.append("target_port_owned_by_different_pid")
     return not reasons, reasons
 
@@ -870,6 +1096,314 @@ def _settings_initialized(settings_json: Mapping[str, Any]) -> bool:
     return isinstance(settings_json.get("database"), Mapping)
 
 
+def _settings_import_write_safe(settings_json: Mapping[str, Any]) -> bool:
+    return bool(settings_json.get("secret_key"))
+
+
+def _profile_automation_enabled(profile: Mapping[str, Any]) -> list[str]:
+    flags = profile.get("automation_flags", {}) if isinstance(profile.get("automation_flags"), Mapping) else {}
+    enabled: list[str] = []
+    for profile_key, env_key in PROFILE_AUTOMATION_FLAGS.items():
+        if bool(flags.get(profile_key, False)):
+            enabled.append(env_key)
+    return enabled
+
+
+def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
+    db = config.db
+    automation_enabled = _profile_automation_enabled(config.profile_data)
+    return {
+        "profile_id": config.profile_id or DEFAULT_PROFILE_ID,
+        "exists": config.profile_exists,
+        "profile_path_local_ignored": bool(config.profile_path and profile_file_is_local_ignored(config.profile_path, config.repo_root)),
+        "config_source": config.config_source,
+        "env": config.env.get("VIOLET_ENV", "development").strip().lower(),
+        "app_port": config.port,
+        "app_port_resolved": config.port_resolved,
+        "storage_root_configured": config.storage_root is not None,
+        "storage_root_status": "configured" if config.storage_root else "missing",
+        "db": {
+            "host_configured": bool(str(db.get("host") or "").strip()),
+            "port": db.get("port"),
+            "port_valid": config.db_port_valid,
+            "name": db.get("name"),
+            "user_configured": bool(str(db.get("user") or "").strip()),
+            "password_present": bool(str(db.get("password") or "").strip()),
+            "password_value_recorded": False,
+        },
+        "python_configured": bool(str(config.expected_python or "").strip()),
+        "python_exists": config.expected_python.is_file(),
+        "safe_startup": bool(config.profile_data.get("safe_startup", False)) if config.profile_data else False,
+        "automation_flags_disabled": not automation_enabled,
+        "automation_flags_enabled": automation_enabled,
+        "development_dotenv_required": False,
+        "development_dotenv_modified": False,
+        "profile_errors": list(config.profile_errors),
+    }
+
+
+GATE_UI_MAP: dict[str, tuple[str, str, str]] = {
+    "production_profile_exists": (
+        "Production Profile",
+        "Production profile",
+        "Create or repair the local production profile. Development .env is not used for production startup.",
+    ),
+    "production_profile_env": (
+        "Production Profile",
+        "Profile environment",
+        "Production profile must declare env=production.",
+    ),
+    "production_profile_local_ignored": (
+        "Production Profile",
+        "Profile storage",
+        "Production profile must live under the local ignored .local_manifests/production_launcher directory.",
+    ),
+    "violet_env_production": (
+        "Environment",
+        "Production environment",
+        "Development .env is not used for production. Create or repair the production profile.",
+    ),
+    "debug_disabled": ("Environment", "Debug disabled", "Production startup must run with BLOMBOORU_DEBUG=false."),
+    "canonical_venv_python": ("Environment", "Python runtime", "Launcher must run under the configured production Python."),
+    "storage_root_explicit": ("Storage", "Storage root", "Production profile is missing storage root."),
+    "production_storage_root_shape": ("Storage", "Storage safety", "Production storage root is invalid or unsafe."),
+    "settings_initialized": ("Storage", "Production settings", "Production storage must contain initialized data/settings.json."),
+    "settings_import_write_safe": (
+        "Startup Policy",
+        "Settings import safety",
+        "Production settings must already contain secret_key so safe startup does not write settings before the guard.",
+    ),
+    "db_settings_present": ("Database", "Database profile", "Production profile must contain database host, port, name, and user."),
+    "db_port_valid": ("Database", "Database port", "Database port must be an integer between 1 and 65535."),
+    "db_readonly_reachable": (
+        "Database",
+        "Read-only DB check",
+        "Database check is skipped until production profile and storage gates pass.",
+    ),
+    "health_schema_columns": ("Schema", "Health schema check", "Health checks required core table columns."),
+    "app_port_resolved": ("Port", "App port", "APP_PORT must be an integer between 1 and 65535."),
+    "target_port_available_or_managed": ("Port", "Port ownership", "Target port must be free or verified as launcher-managed."),
+    "destructive_e2e_disabled": ("Safety Flags", "Destructive E2E", "Destructive E2E flags must be disabled."),
+    "dangerous_dev_test_flags_disabled": ("Safety Flags", "Real E2E", "Development/test run flags must be disabled."),
+    "no_startup_mutation_automation": (
+        "Safety Flags",
+        "Startup automation",
+        "Production profile must disable startup automation flags.",
+    ),
+    "startup_write_policy_explicit": (
+        "Startup Policy",
+        "Write policy",
+        "Safe startup blocks schema migration, cleanup, import/tagging/sync jobs, and background workers.",
+    ),
+    "launcher_safe_startup_mode": (
+        "Startup Policy",
+        "Safe startup mode",
+        "Child process will set VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true.",
+    ),
+}
+
+
+CHECKLIST_GROUP_ORDER = (
+    "Production Profile",
+    "Environment",
+    "Storage",
+    "Database",
+    "Schema",
+    "Port",
+    "Safety Flags",
+    "Startup Policy",
+    "Health",
+)
+
+
+def _gate_ui_message(gate: Gate) -> str:
+    mapping = GATE_UI_MAP.get(gate.name)
+    if mapping is None:
+        return gate.message
+    default_message = mapping[2]
+    if gate.passed:
+        return gate.message
+    if gate.name == "db_readonly_reachable" and "skipped" in gate.message:
+        return default_message
+    return default_message or gate.message
+
+
+def _gate_ui_status(gate: Gate) -> str:
+    if gate.passed:
+        return "passed"
+    if not gate.hard or (gate.name == "db_readonly_reachable" and "skipped" in gate.message):
+        return "warning"
+    return "failed"
+
+
+def checklist_from_gates(gates: list[Gate]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for gate in gates:
+        group, label, _message = GATE_UI_MAP.get(gate.name, ("Startup Policy", gate.name, gate.message))
+        items.append(
+            {
+                "group": group,
+                "label": label,
+                "gate": gate.name,
+                "status": _gate_ui_status(gate),
+                "message": _gate_ui_message(gate),
+                "hard": gate.hard,
+            }
+        )
+    group_order = {name: index for index, name in enumerate(CHECKLIST_GROUP_ORDER)}
+    return sorted(items, key=lambda item: (group_order.get(str(item["group"]), 999), str(item["label"])))
+
+
+def _profile_gates(config: RuntimeConfig) -> list[Gate]:
+    profile = config.profile_data
+    automation_enabled = _profile_automation_enabled(profile)
+    return [
+        Gate("production_profile_exists", config.profile_exists, "Production profile exists."),
+        Gate(
+            "production_profile_local_ignored",
+            bool(config.profile_path and profile_file_is_local_ignored(config.profile_path, config.repo_root)),
+            "Production profile path is local and ignored.",
+        ),
+        Gate(
+            "production_profile_env",
+            str(profile.get("env") or "").strip().lower() == "production",
+            "Production profile declares env=production.",
+        ),
+        Gate("app_port_resolved", config.port_resolved and 1 <= config.port <= 65535, config.port_error or "App port is valid."),
+        Gate("storage_root_explicit", config.storage_root is not None, "Production profile has a storage root."),
+        Gate("db_port_valid", config.db_port_valid, config.db_port_error or "DB port is valid."),
+        Gate(
+            "db_settings_present",
+            config.db_port_valid and all(str(config.db.get(key, "")).strip() for key in ("host", "name", "user")),
+            "Production profile has DB host, port, name, and user.",
+        ),
+        Gate(
+            "launcher_safe_startup_mode",
+            bool(profile.get("safe_startup", False)),
+            "Production profile enables launcher safe startup.",
+        ),
+        Gate(
+            "no_startup_mutation_automation",
+            not automation_enabled,
+            "Production profile disables startup automation flags.",
+        ),
+    ]
+
+
+def profile_status(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+    base_env: Mapping[str, str] | None = None,
+) -> ControlResult:
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
+    gates = _profile_gates(config)
+    hard_failures = [gate.name for gate in gates if gate.hard and not gate.passed]
+    if not config.profile_exists:
+        status_text = "no_profile"
+        message = "No production profile exists. Create one before running production preflight."
+    elif hard_failures:
+        status_text = "profile_incomplete"
+        message = "Production profile is incomplete."
+    else:
+        status_text = "ready"
+        message = "Production profile is complete enough for preflight."
+    data = {
+        "profile": _profile_public(config),
+        "checklist": checklist_from_gates(gates),
+        "manual_acceptance_required_before_merge": True,
+        "manual_acceptance_completed": False,
+        "merge_allowed": False,
+    }
+    return ControlResult(
+        ok=not hard_failures and config.profile_exists,
+        status=status_text,
+        message=message,
+        data=data,
+        gates=gates,
+        errors=hard_failures,
+    )
+
+
+def profile_discover(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+) -> ControlResult:
+    existing, path, errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
+    discovered = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
+    data = {
+        "profile_exists": existing is not None,
+        "profile_path_local_ignored": profile_file_is_local_ignored(path, repo_root),
+        "safe_inferred_fields": {
+            "profile_id": discovered["profile_id"],
+            "env": discovered["env"],
+            "app_port": discovered["app_port"],
+            "python_configured": bool(discovered.get("python")),
+            "db_host": discovered["db"]["host"],
+            "db_port": discovered["db"]["port"],
+            "db_name": discovered["db"]["name"],
+            "db_user_configured": bool(discovered["db"].get("user")),
+            "password_copied_from_dotenv": False,
+            "storage_root_copied_from_dotenv": False,
+        },
+        "remaining_user_selected": ["storage_root"],
+        "discovery_notes": [
+            "Existing development .env is read only for non-private generic defaults.",
+            "Storage root and DB password are not invented or copied from development .env.",
+        ],
+        "profile_errors": errors,
+    }
+    return ControlResult(ok=True, status="discovered", message="Production profile discovery completed.", data=data)
+
+
+def profile_init(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+) -> ControlResult:
+    existing, path, _errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
+    profile = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
+    write_production_profile(profile, repo_root=repo_root, profile_path=path)
+    result = profile_status(repo_root=repo_root, profile_id=profile_id, profile_path=path)
+    result.message = "Production profile created or repaired. Complete any remaining fields before preflight."
+    return result
+
+
+def profile_update(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+    base_env: Mapping[str, str] | None = None,
+    updates: Mapping[str, Any] | None = None,
+) -> ControlResult:
+    existing, path, _errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
+    profile = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
+    updates = dict(updates or {})
+    for key in ("storage_root", "python", "repo_root"):
+        if key in updates and updates[key] is not None:
+            profile[key] = str(updates[key])
+    if "app_port" in updates and updates["app_port"] is not None:
+        profile["app_port"] = updates["app_port"]
+    db_updates = updates.get("db")
+    if isinstance(db_updates, Mapping):
+        db = dict(profile["db"])
+        for key in ("host", "name", "user", "password"):
+            if key in db_updates and db_updates[key] is not None:
+                db[key] = str(db_updates[key])
+        if "port" in db_updates and db_updates["port"] is not None:
+            db["port"] = db_updates["port"]
+        profile["db"] = db
+    write_production_profile(profile, repo_root=repo_root, profile_path=path)
+    result = profile_status(repo_root=repo_root, profile_id=profile_id, profile_path=path, base_env=base_env)
+    result.message = "Production profile updated."
+    return result
+
+
 def _storage_root_looks_production(config: RuntimeConfig) -> tuple[bool, str]:
     storage = config.storage_root
     if storage is None:
@@ -897,16 +1431,22 @@ def preflight(
     *,
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
     db_check: Callable[[RuntimeConfig], tuple[bool, str]] = check_database_readonly,
     state_path: Path = STATE_FILE,
 ) -> ControlResult:
-    config = resolve_config(repo_root, base_env=base_env)
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
     gates: list[Gate] = []
 
     def gate(name: str, passed: bool, message: str, hard: bool = True) -> None:
         gates.append(Gate(name=name, passed=passed, message=message, hard=hard))
 
     worktree = detect_git_worktree(repo_root)
+    if config.config_source == "production_profile":
+        for profile_gate in _profile_gates(config):
+            if profile_gate.name in {"production_profile_exists", "production_profile_local_ignored", "production_profile_env"}:
+                gate(profile_gate.name, profile_gate.passed, profile_gate.message, profile_gate.hard)
     gate("canonical_repo_root", worktree is False and not _repo_root_is_codex_worktree(repo_root), "Running from canonical repo root, not a git worktree.")
     gate("run_py_exists", (repo_root / "run.py").is_file(), "run.py exists in the production repo root.")
     configured_root = config.env.get("VIOLET_CANONICAL_REPO_ROOT", "").strip()
@@ -918,7 +1458,12 @@ def preflight(
         )
 
     env_is_production = config.env.get("VIOLET_ENV", "development").strip().lower() == "production"
-    gate("violet_env_production", env_is_production, "VIOLET_ENV must resolve to production.")
+    env_message = (
+        "Production profile sets child VIOLET_ENV=production; development .env is not used."
+        if config.config_source == "production_profile"
+        else "VIOLET_ENV must resolve to production."
+    )
+    gate("violet_env_production", env_is_production and (config.profile_exists or config.config_source != "production_profile"), env_message)
     debug_disabled = not _truthy(config.env.get("BLOMBOORU_DEBUG"))
     gate("debug_disabled", debug_disabled, "BLOMBOORU_DEBUG must not be true.")
     destructive_e2e_enabled = _truthy(config.env.get("VIOLET_ALLOW_DESTRUCTIVE_E2E"))
@@ -939,18 +1484,27 @@ def preflight(
         True,
         "Child process will set VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true.",
     )
-    gate("run_command_no_debug", "--debug" not in production_command(config), "Production command does not pass --debug.")
+    gate("run_command_no_debug", not any("--debug" in part for part in production_command(config)), "Production command does not pass --debug.")
     gate(
         "canonical_venv_python",
         _normalize_path(sys.executable) == _normalize_path(config.expected_python) and config.expected_python.is_file(),
         "Launcher must run under the canonical project venv Python.",
     )
-    gate("dotenv_exists", config.dotenv_path.is_file(), ".env exists and is readable.")
+    if config.config_source == "production_profile":
+        gate("dotenv_exists", True, "Development .env is not required for production profile startup.", hard=False)
+    else:
+        gate("dotenv_exists", config.dotenv_path.is_file(), ".env exists and is readable.")
     gate("storage_root_explicit", config.storage_root is not None, "VIOLET_STORAGE_ROOT is explicitly set.")
     storage_ok, storage_message = _storage_root_looks_production(config)
     gate("production_storage_root_shape", storage_ok, storage_message)
     settings_initialized = config.settings_path is not None and config.settings_path.is_file() and _settings_initialized(config.settings_json)
     gate("settings_initialized", settings_initialized, "data/settings.json exists and looks initialized.")
+    settings_import_safe = settings_initialized and _settings_import_write_safe(config.settings_json)
+    gate(
+        "settings_import_write_safe",
+        settings_import_safe,
+        "data/settings.json already contains secret_key, so safe startup will not write settings before the guard.",
+    )
     gate("db_port_valid", config.db_port_valid, config.db_port_error or "DB port is absent/defaulted or configured as a valid integer port.")
     db_settings_present = (
         config.db_port_valid
@@ -958,7 +1512,15 @@ def preflight(
         and int(config.db.get("port") or 0) > 0
     )
     gate("db_settings_present", db_settings_present, "DB host, port, name, and user are configured.")
-    if env_is_production and debug_disabled and storage_ok and settings_initialized and db_settings_present:
+    if (
+        env_is_production
+        and debug_disabled
+        and (config.profile_exists or config.config_source != "production_profile")
+        and storage_ok
+        and settings_initialized
+        and settings_import_safe
+        and db_settings_present
+    ):
         db_ok, db_message = db_check(config)
     else:
         db_ok, db_message = False, "db_check_skipped_until_env_storage_settings_gates_pass"
@@ -986,6 +1548,8 @@ def preflight(
         message="Production preflight passed." if ok else "Production preflight blocked startup.",
         gates=gates,
         data={
+            "config_source": config.config_source,
+            "profile": _profile_public(config) if config.config_source == "production_profile" else None,
             "env": config.env.get("VIOLET_ENV", "development").strip().lower(),
             "debug": _truthy(config.env.get("BLOMBOORU_DEBUG")),
             "port": config.port,
@@ -1000,6 +1564,10 @@ def preflight(
             "log_tail_in_public_json": False,
             "log_tail_redacted": True,
             "startup_write_policy": startup_write_policy_public(config),
+            "checklist": checklist_from_gates(gates),
+            "manual_acceptance_required_before_merge": True,
+            "manual_acceptance_completed": False,
+            "merge_allowed": False,
         },
         errors=[gate_item.name for gate_item in gates if gate_item.hard and not gate_item.passed],
     )
@@ -1032,6 +1600,20 @@ def _child_environment(config: RuntimeConfig) -> dict[str, str]:
     return env
 
 
+def health_matches_expected(health: Mapping[str, Any] | None) -> bool:
+    if not health:
+        return False
+    return (
+        bool(health.get("ok"))
+        and health.get("app_name") == APP_NAME
+        and str(health.get("env") or "").strip().lower() == "production"
+        and not bool(health.get("debug"))
+        and bool(health.get("db_reachable"))
+        and bool(health.get("schema_compatible"))
+        and bool(health.get("storage_configured"))
+    )
+
+
 def fetch_health(url: str, *, timeout: float = 2.0) -> dict[str, Any] | None:
     request = urllib.request.Request(url.rstrip("/") + HEALTH_PATH, headers={"Accept": "application/json"})
     try:
@@ -1058,11 +1640,13 @@ def start_production(
     *,
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
     state_path: Path = STATE_FILE,
     start_lock_path: Path = START_LOCK_FILE,
     _lock_already_held: bool = False,
 ) -> ControlResult:
-    config = resolve_config(repo_root, base_env=base_env)
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
     lock_status = StartLockStatus(acquired=True)
     if not _lock_already_held:
         lock_status = _acquire_start_lock(start_lock_path)
@@ -1089,16 +1673,16 @@ def start_production(
         return result
 
     try:
-        existing = status(repo_root=repo_root, base_env=base_env, state_path=state_path)
+        existing = status(repo_root=repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path, state_path=state_path)
         if existing.data.get("running") and existing.data.get("managed_by_launcher"):
             return with_lock_context(ControlResult(
                 ok=True,
-                status="running",
-                message="Production server is already running under launcher management.",
+                status=existing.status,
+                message=existing.message,
                 data=existing.data,
             ))
 
-        preflight_result = preflight(repo_root=repo_root, base_env=base_env, state_path=state_path)
+        preflight_result = preflight(repo_root=repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path, state_path=state_path)
         if not preflight_result.ok:
             return with_lock_context(preflight_result)
 
@@ -1169,6 +1753,25 @@ def start_production(
         health = poll_health(config.url)
         log_handle.close()
         if health:
+            verified, verification_failures = verify_managed_process(state, config)
+            expected_health = health_matches_expected(health)
+            if not verified or not expected_health:
+                result = ControlResult(
+                    ok=False,
+                    status="unhealthy",
+                    message="Production process started, but identity or health verification failed.",
+                    data={
+                        "running": process_exists(process.pid),
+                        "managed_by_launcher": verified,
+                        "health_ok": bool(health.get("ok")),
+                        "port": config.port,
+                        "url": config.url,
+                        "verification_failures": verification_failures,
+                    },
+                    errors=(verification_failures or []) + ([] if expected_health else ["health_identity_mismatch"]),
+                )
+                _append_launcher_event("start_unhealthy_verification_failed", result.to_public_dict())
+                return with_lock_context(result)
             return with_lock_context(ControlResult(
                 ok=True,
                 status="running",
@@ -1192,9 +1795,12 @@ def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health:
     pid = state_pid(state)
     managed = is_managed_process(state, config)
     running = bool(pid and managed)
+    health_ok = health_matches_expected(health)
     return {
         "running": running,
         "managed_by_launcher": managed,
+        "config_source": config.config_source,
+        "profile": _profile_public(config) if config.config_source == "production_profile" else None,
         "port": config.port,
         "app_port_resolved": config.port_resolved,
         "url": config.url,
@@ -1207,9 +1813,9 @@ def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health:
         "schema_status": (health or {}).get("schema_status"),
         "storage_configured": bool((health or {}).get("storage_configured", config.storage_root is not None)),
         "storage_root_status": "configured" if config.storage_root else "missing",
-        "health_ok": bool((health or {}).get("ok", False)),
+        "health_ok": health_ok,
         "last_health_check": now_iso() if health else None,
-        "last_error": None if health else "health_unavailable",
+        "last_error": None if health_ok else ("health_identity_mismatch_or_unhealthy" if health else "health_unavailable"),
         "destructive_e2e_allowed": False,
         "log_tail_in_public_json": False,
         "log_tail_redacted": True,
@@ -1222,9 +1828,11 @@ def status(
     *,
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
     state_path: Path = STATE_FILE,
 ) -> ControlResult:
-    config = resolve_config(repo_root, base_env=base_env)
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
     stale_state_cleanup(config, state_path)
     state = _load_state(state_path)
     health = fetch_health(config.url)
@@ -1233,8 +1841,16 @@ def status(
         data["running"] = False
         data["managed_by_launcher"] = False
         data["last_error"] = "target_port_owned_by_unknown_process"
-    message = "Production server is running." if data["running"] else "Production server is stopped."
-    result = ControlResult(ok=True, status="running" if data["running"] else "stopped", message=message, data=data)
+    if data["running"] and not data.get("health_ok"):
+        message = "Production server process is managed, but health is unavailable or failing."
+        result_status = "unhealthy"
+    elif data["running"]:
+        message = "Production server is running."
+        result_status = "running"
+    else:
+        message = "Production server is stopped."
+        result_status = "stopped"
+    result = ControlResult(ok=True, status=result_status, message=message, data=data)
     return result
 
 
@@ -1265,10 +1881,12 @@ def stop_production(
     *,
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
     state_path: Path = STATE_FILE,
     terminate: Callable[[int, bool], None] | None = None,
 ) -> ControlResult:
-    config = resolve_config(repo_root, base_env=base_env)
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
     state = _load_state(state_path)
     pid = state_pid(state)
     if pid is None or not state:
@@ -1347,7 +1965,7 @@ def restart_production(**kwargs: Any) -> ControlResult:
     if not lock_status.acquired:
         repo_root = kwargs.get("repo_root", ROOT)
         base_env = kwargs.get("base_env")
-        config = resolve_config(repo_root, base_env=base_env)
+        config = resolve_config(repo_root, base_env=base_env, profile_id=kwargs.get("profile_id"), profile_path=kwargs.get("profile_path"))
         result = ControlResult(
             ok=False,
             status="blocked",
@@ -1372,6 +1990,8 @@ def restart_production(**kwargs: Any) -> ControlResult:
         result = start_production(
             repo_root=kwargs.get("repo_root", ROOT),
             base_env=kwargs.get("base_env"),
+            profile_id=kwargs.get("profile_id"),
+            profile_path=kwargs.get("profile_path"),
             state_path=kwargs.get("state_path", STATE_FILE),
             start_lock_path=start_lock_path,
             _lock_already_held=True,
@@ -1386,16 +2006,18 @@ def open_browser_target(
     *,
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
     open_func: Callable[[str], bool] = webbrowser.open,
 ) -> ControlResult:
-    config = resolve_config(repo_root, base_env=base_env)
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
     opened = open_func(config.url)
     return ControlResult(ok=bool(opened), status="opened" if opened else "error", message="Browser open requested.", data={"url": config.url, "port": config.port})
 
 
-def diagnostic_summary(repo_root: Path = ROOT) -> dict[str, Any]:
-    config = resolve_config(repo_root)
-    current = status(repo_root=repo_root)
+def diagnostic_summary(repo_root: Path = ROOT, *, profile_id: str | None = None, profile_path: Path | None = None) -> dict[str, Any]:
+    config = resolve_config(repo_root, profile_id=profile_id, profile_path=profile_path)
+    current = status(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
     return {
         "running": bool(current.data.get("running")),
         "managed_by_launcher": bool(current.data.get("managed_by_launcher")),
@@ -1416,12 +2038,76 @@ def diagnostic_summary(repo_root: Path = ROOT) -> dict[str, Any]:
     }
 
 
+def test_database(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+    db_check: Callable[[RuntimeConfig], tuple[bool, str]] = check_database_readonly,
+) -> ControlResult:
+    config = resolve_config(repo_root, profile_id=profile_id, profile_path=profile_path)
+    if not config.profile_exists:
+        return ControlResult(
+            ok=False,
+            status="profile_incomplete",
+            message="Create the production profile before testing the database.",
+            data={"profile": _profile_public(config), "checklist": checklist_from_gates(_profile_gates(config))},
+            errors=["production_profile_exists"],
+        )
+    db_settings_present = config.db_port_valid and all(str(config.db.get(key, "")).strip() for key in ("host", "name", "user"))
+    if not db_settings_present:
+        return ControlResult(
+            ok=False,
+            status="profile_incomplete",
+            message="Database profile is incomplete.",
+            data={"profile": _profile_public(config), "checklist": checklist_from_gates(_profile_gates(config))},
+            errors=["db_settings_present"],
+        )
+    db_ok, db_message = db_check(config)
+    return ControlResult(
+        ok=db_ok,
+        status="passed" if db_ok else "blocked",
+        message="Database read-only check passed." if db_ok else "Database read-only check failed.",
+        data={
+            "profile": _profile_public(config),
+            "db_readonly_reachable": db_ok,
+            "db_message": db_message,
+        },
+        errors=[] if db_ok else ["db_readonly_reachable"],
+    )
+
+
+def _add_json_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true", help="Print public-safe JSON.")
+
+
+def _add_profile_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--profile", default=DEFAULT_PROFILE_ID, help="Production profile id.")
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Control the local V.I.O.L.E.T. production launcher.")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("preflight", "status", "start", "stop", "restart", "open-browser"):
+    for name in ("preflight", "status", "start", "stop", "restart", "open-browser", "diagnostic-summary", "test-db"):
         cmd = sub.add_parser(name)
-        cmd.add_argument("--json", action="store_true", help="Print public-safe JSON.")
+        _add_json_arg(cmd)
+        _add_profile_arg(cmd)
+    for name in ("profile-status", "profile-discover", "profile-init"):
+        cmd = sub.add_parser(name)
+        _add_json_arg(cmd)
+        _add_profile_arg(cmd)
+    update = sub.add_parser("profile-update")
+    _add_json_arg(update)
+    _add_profile_arg(update)
+    update.add_argument("--storage-root")
+    update.add_argument("--python")
+    update.add_argument("--repo-root")
+    update.add_argument("--app-port")
+    update.add_argument("--db-host")
+    update.add_argument("--db-port")
+    update.add_argument("--db-name")
+    update.add_argument("--db-user")
+    update.add_argument("--db-password")
     return parser
 
 
@@ -1437,20 +2123,46 @@ def _print_result(result: ControlResult, *, json_output: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = make_parser().parse_args(argv)
     if args.command == "preflight":
-        result = preflight()
+        result = preflight(profile_id=args.profile)
     elif args.command == "status":
-        result = status()
-        if args.json:
-            print(json.dumps(diagnostic_summary(), indent=2, sort_keys=True))
-            return 0 if result.ok else 1
+        result = status(profile_id=args.profile)
     elif args.command == "start":
-        result = start_production()
+        result = start_production(profile_id=args.profile)
     elif args.command == "stop":
-        result = stop_production()
+        result = stop_production(profile_id=args.profile)
     elif args.command == "restart":
-        result = restart_production()
+        result = restart_production(profile_id=args.profile)
     elif args.command == "open-browser":
-        result = open_browser_target()
+        result = open_browser_target(profile_id=args.profile)
+    elif args.command == "diagnostic-summary":
+        payload = diagnostic_summary(profile_id=args.profile)
+        if args.json:
+            print(json.dumps(_public_payload(payload), indent=2, sort_keys=True))
+        else:
+            print(json.dumps(_public_payload(payload), indent=2, sort_keys=True))
+        return 0
+    elif args.command == "test-db":
+        result = test_database(profile_id=args.profile)
+    elif args.command == "profile-status":
+        result = profile_status(profile_id=args.profile)
+    elif args.command == "profile-discover":
+        result = profile_discover(profile_id=args.profile)
+    elif args.command == "profile-init":
+        result = profile_init(profile_id=args.profile)
+    elif args.command == "profile-update":
+        updates: dict[str, Any] = {}
+        for attr, key in (("storage_root", "storage_root"), ("python", "python"), ("repo_root", "repo_root"), ("app_port", "app_port")):
+            value = getattr(args, attr)
+            if value is not None:
+                updates[key] = value
+        db_updates: dict[str, Any] = {}
+        for attr, key in (("db_host", "host"), ("db_port", "port"), ("db_name", "name"), ("db_user", "user"), ("db_password", "password")):
+            value = getattr(args, attr)
+            if value is not None:
+                db_updates[key] = value
+        if db_updates:
+            updates["db"] = db_updates
+        result = profile_update(profile_id=args.profile, updates=updates)
     else:
         raise AssertionError(args.command)
 

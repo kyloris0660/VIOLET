@@ -1,0 +1,15 @@
+{
+  "name": "violet-production-launcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electron production launcher for V.I.O.L.E.T.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/launcher-contract.test.js",
+    "lint": "node tests/lint.js"
+  },
+  "devDependencies": {
+    "electron": "^42.4.1"
+  }
+}

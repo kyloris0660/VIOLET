@@ -1451,6 +1451,158 @@ def _check_prod_launcher_mvp(
             )
 
 
+def _check_prod_launcher_ux1_production_profile(
+    _contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult
+) -> None:
+    required_true = (
+        "mainline_sync.pr119_merge_commit_included",
+        "mainline_sync.pr120_merge_commit_included",
+        "mainline_sync.pr121_merge_commit_included",
+        "production_profile.local_ignored_path",
+        "production_profile.separate_from_development_dotenv",
+        "production_profile.child_env_from_profile",
+        "production_profile.profile_overrides_development_dotenv_for_child",
+        "production_profile.storage_root_not_invented",
+        "production_profile.incomplete_profile_state_explicit",
+        "electron_launcher.exists",
+        "electron_launcher.primary_documented_entrypoint",
+        "electron_launcher.calls_python_control_plane",
+        "electron_launcher.raw_json_hidden_from_main_screen",
+        "electron_launcher.advanced_diagnostics_collapsed_by_default",
+        "preflight_mapping.violet_env_production",
+        "preflight_mapping.storage_root_explicit",
+        "preflight_mapping.production_storage_root_shape",
+        "preflight_mapping.db_readonly_reachable",
+        "preflight_mapping.no_startup_mutation_automation",
+        "health_status.auth_exempt_for_launcher",
+        "health_status.public_safe",
+        "health_status.schema_required_columns_check",
+        "start_safety.launched_pid_verified",
+        "start_safety.health_identity_verified",
+        "start_safety.managed_unhealthy_is_unhealthy",
+        "stop_safety.refuses_unknown_process",
+        "stop_safety.posix_unknown_port_owner_fails_closed",
+        "public_json_safety.profile_paths_redacted",
+        "manual_acceptance_required_before_merge",
+        "safety.no_import_tagging_localization_sync_jobs",
+        "safety.no_provider_calls",
+        "safety.no_sourceconcept_or_entity",
+        "safety.no_db_migrations",
+        "safety.no_destructive_operations",
+        "safety.no_source_icloud_mutation",
+    )
+    _check_required_boolean_paths(
+        summary,
+        result,
+        required_true,
+        code="prod_launcher_ux1_required_proof_failed",
+        message="UX1/PF1 requires separate production profile, Electron UI, mapped blockers, safety preservation, and pending manual acceptance.",
+    )
+
+    if _as_bool(_get(summary, "production_profile.development_dotenv_modified", True)):
+        result.fail(
+            "prod_launcher_ux1_development_dotenv_modified",
+            "Production launcher repair must not modify the development .env.",
+            path="production_profile.development_dotenv_modified",
+            expected=False,
+            actual=_get(summary, "production_profile.development_dotenv_modified", None),
+        )
+    if _as_bool(_get(summary, "manual_acceptance_completed", False)):
+        result.fail(
+            "prod_launcher_ux1_manual_acceptance_must_be_real",
+            "Manual acceptance must remain false unless the user has completed real Electron validation from the canonical production checkout.",
+            path="manual_acceptance_completed",
+            expected=False,
+            actual=True,
+        )
+    if _as_bool(_get(summary, "merge_allowed", False)):
+        result.fail(
+            "prod_launcher_ux1_merge_allowed_before_manual_acceptance",
+            "Merge must remain blocked until real manual acceptance is complete.",
+            path="merge_allowed",
+            expected=False,
+            actual=True,
+        )
+    if _as_bool(_get(summary, "pipeline_contract.claims.safe_to_merge", False)) or _as_bool(_get(summary, "pipeline_contract.safe_to_merge", False)):
+        result.fail(
+            "prod_launcher_ux1_safe_to_merge_claimed_before_manual_acceptance",
+            "UX1/PF1 must not claim safe_to_merge before manual acceptance.",
+            path="pipeline_contract.claims.safe_to_merge",
+            expected=False,
+            actual=True,
+        )
+    if _as_bool(_get(summary, "pipeline_contract.claims.target_met", False)):
+        result.fail(
+            "prod_launcher_ux1_target_met_claimed_before_manual_acceptance",
+            "UX1/PF1 can be implementation-complete, but target_met is reserved for real user acceptance.",
+            path="pipeline_contract.claims.target_met",
+            expected=False,
+            actual=True,
+        )
+
+    checklist_groups = set(str(item) for item in (_get(summary, "electron_launcher.checklist_groups", []) or []))
+    required_groups = {
+        "Production Profile",
+        "Environment",
+        "Storage",
+        "Database",
+        "Schema",
+        "Port",
+        "Safety Flags",
+        "Startup Policy",
+    }
+    missing_groups = sorted(required_groups - checklist_groups)
+    if missing_groups:
+        result.fail(
+            "prod_launcher_ux1_missing_checklist_groups",
+            "Electron launcher checklist must expose the required production preflight groups.",
+            path="electron_launcher.checklist_groups",
+            expected=sorted(required_groups),
+            actual=sorted(checklist_groups),
+        )
+
+    forbidden_false = (
+        "public_json_safety.log_tail_in_public_json",
+        "forbidden_operations.import_jobs",
+        "forbidden_operations.tagging_jobs",
+        "forbidden_operations.localization_jobs",
+        "forbidden_operations.sync_jobs",
+        "forbidden_operations.provider_calls",
+        "forbidden_operations.sourceconcept",
+        "forbidden_operations.entity_bridge",
+        "forbidden_operations.db_migrations",
+        "forbidden_operations.destructive_operations",
+        "forbidden_operations.source_icloud_mutation",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        forbidden_false,
+        code="prod_launcher_ux1_forbidden_operation_enabled",
+        message="UX1/PF1 summary must explicitly report public log tail and forbidden operations as false.",
+    )
+
+    for payload_path in ("health_status.status_example", "diagnostics.status_json_example", "public_json_payload"):
+        payload = _get(summary, payload_path, MISSING)
+        if payload is MISSING:
+            continue
+        if _payload_has_any_key(payload, {"recent_log_tail", "log_tail"}):
+            result.fail(
+                "prod_launcher_ux1_log_tail_public_json",
+                "Production launcher public JSON must not include raw log tail fields.",
+                path=payload_path,
+                expected="no recent_log_tail or log_tail in public JSON",
+            )
+        findings = scan_public_payload(payload)
+        if findings:
+            result.fail(
+                "prod_launcher_ux1_public_payload_not_safe",
+                "UX1/PF1 public examples must not leak local paths, filenames, secrets, or private provenance.",
+                path=payload_path,
+                actual=findings[:5],
+            )
+
+
 def _payload_has_any_key(payload: Any, keys: set[str]) -> bool:
     if isinstance(payload, Mapping):
         for key, value in payload.items():
@@ -5410,6 +5562,7 @@ CUSTOM_CHECKS = {
     "entity_truth_bridge": _check_entity_truth_bridge,
     "production_development_separation": _check_production_development_separation,
     "prod_launcher_mvp": _check_prod_launcher_mvp,
+    "prod_launcher_ux1_production_profile": _check_prod_launcher_ux1_production_profile,
     "dynamic_library_sync": _check_dynamic_library_sync,
     "s2g1x_probe": _check_s2g1x_probe,
     "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,
