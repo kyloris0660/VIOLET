@@ -15,10 +15,14 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 - Max items: `1`.
 - Full-library fallback: `False`.
 - Public path redaction: `paths_and_filenames_redacted`.
+- Protected input gate passed: `True`.
+- Source safety gate passed: `True`.
+- Source safety blockers: `0`.
 
 ## Preflight
 
 - Model cache status: `cached`.
+- Model download performed: `False`.
 - Local files only: `True`.
 - DirectML available: `True`.
 - CPU fallback available: `True`.
@@ -58,11 +62,11 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 - Provider preference: `['DmlExecutionProvider', 'CPUExecutionProvider']`.
 - Processed: `1`.
 - Failed: `0`.
-- Tags added: `9`.
-- Suggestions added: `1`.
+- Tags added: `8`.
+- Suggestions added: `5`.
 - Skipped locked: `0`.
-- Ignored low confidence: `10848`.
-- Media tags before/after/delta: `0` / `10` / `10`.
+- Ignored low confidence: `10845`.
+- Media tags before/after/delta: `0` / `13` / `13`.
 - Media with AI tags delta: `1`.
 - First-time insertion proven: `True`.
 
@@ -75,10 +79,10 @@ Public summary: `docs/reports/s3a-prod1-operator-incremental-sync-summary.json`.
 
 ## Localization
 
-- Candidate tags: `10`.
-- Reused translations: `8`.
+- Candidate tags: `13`.
+- Reused translations: `10`.
 - New translations: `0`.
-- Missing/deferred: `2`.
+- Missing/deferred: `3`.
 - Failed: `0`.
 - External provider used: `False`.
 - Deferred reason: `external_llm_provider_not_approved_for_s3a_prod1`.

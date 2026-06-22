@@ -47,12 +47,12 @@
   },
   "cpu_fallback_validation": {
     "dry_run": true,
-    "elapsed_seconds": 2.1376,
+    "elapsed_seconds": 2.5015,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": false,
-    "ignored_low_confidence": 10848,
+    "ignored_low_confidence": 10845,
     "job_record_created": false,
     "label": "cpu_fallback_dry_run",
     "load_control": {
@@ -83,8 +83,8 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 10,
-    "media_tags_count_before": 10,
+    "media_tags_count_after": 13,
+    "media_tags_count_before": 13,
     "media_tags_count_delta": 0,
     "media_with_ai_tags_after": 1,
     "media_with_ai_tags_before": 1,
@@ -119,12 +119,12 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10848,
+        "ignored_low_confidence": 10845,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 1,
-        "tags_added": 9
+        "suggestions_added": 5,
+        "tags_added": 8
       }
     ],
     "reported": true,
@@ -200,11 +200,11 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 1,
+    "suggestions_added": 5,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 9
+    "tags_added": 8
   },
   "db_session": {
     "available": true,
@@ -213,12 +213,12 @@
   },
   "directml_ai_tagging": {
     "dry_run": false,
-    "elapsed_seconds": 0.2697,
+    "elapsed_seconds": 0.2183,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 10848,
+    "ignored_low_confidence": 10845,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
@@ -250,14 +250,14 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 10,
+    "media_tags_count_after": 13,
     "media_tags_count_before": 0,
-    "media_tags_count_delta": 10,
+    "media_tags_count_delta": 13,
     "media_with_ai_tags_after": 1,
     "media_with_ai_tags_before": 0,
     "media_with_ai_tags_delta": 1,
     "no_media_tags_writes": null,
-    "operator_guard_elapsed_seconds": 0.2709,
+    "operator_guard_elapsed_seconds": 0.22,
     "predicted_tag_count": 10858,
     "prediction_category_counts": {
       "character": 2751,
@@ -290,12 +290,12 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10848,
+        "ignored_low_confidence": 10845,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 1,
-        "tags_added": 9
+        "suggestions_added": 5,
+        "tags_added": 8
       }
     ],
     "reported": true,
@@ -374,20 +374,20 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 1,
+    "suggestions_added": 5,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 9
+    "tags_added": 8
   },
   "directml_provider_probe": {
     "dry_run": true,
-    "elapsed_seconds": 1.7295,
+    "elapsed_seconds": 1.8275,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": false,
-    "ignored_low_confidence": 10848,
+    "ignored_low_confidence": 10845,
     "job_record_created": false,
     "label": "directml_prewrite_probe",
     "load_control": {
@@ -426,7 +426,7 @@
     "media_with_ai_tags_before": 0,
     "media_with_ai_tags_delta": 0,
     "no_media_tags_writes": true,
-    "operator_guard_elapsed_seconds": 1.7312,
+    "operator_guard_elapsed_seconds": 1.8294,
     "predicted_tag_count": 10858,
     "prediction_category_counts": {
       "character": 2751,
@@ -459,12 +459,12 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10848,
+        "ignored_low_confidence": 10845,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 1,
-        "tags_added": 9
+        "suggestions_added": 5,
+        "tags_added": 8
       }
     ],
     "reported": true,
@@ -543,11 +543,11 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 1,
+    "suggestions_added": 5,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 9
+    "tags_added": 8
   },
   "forbidden_operations": {
     "cleanup_delete_reset_drop_truncate": false,
@@ -559,7 +559,7 @@
     "sourceconcept_r1_r2_r1r": false,
     "unattended_s3b": false
   },
-  "generated_at": "2026-06-21T14:24:39.023984+00:00",
+  "generated_at": "2026-06-22T04:13:12.159788+00:00",
   "import_reuse": {
     "app_managed_storage_writes": 1,
     "created_files_public_count": 1,
@@ -601,10 +601,14 @@
     "local_files_only": true,
     "model_cache_cached": true,
     "model_download_not_allowed": true,
+    "model_download_not_performed": true,
     "no_full_library_fallback": true,
     "no_over_cap_input": true,
     "passed": true,
+    "protected_input_gate_passed": true,
+    "provider_preference_dml_then_cpu": true,
     "scope_valid": true,
+    "source_safety_gate_passed": true,
     "write_requested": true
   },
   "load_control_observations": {
@@ -626,16 +630,16 @@
   },
   "localization": {
     "attempted": true,
-    "candidate_tags_count": 10,
+    "candidate_tags_count": 13,
     "candidate_tags_reported_as": "count_only_public_report",
     "deferred_reason": "external_llm_provider_not_approved_for_s3a_prod1",
     "external_provider_used": false,
     "failed": 0,
     "llm_external_provider_used": false,
-    "missing_or_deferred": 2,
+    "missing_or_deferred": 3,
     "new_translations": 0,
     "reported": true,
-    "reused_translations": 8,
+    "reused_translations": 10,
     "status": "validated_reuse_and_deferred_missing"
   },
   "model_cache": {
@@ -668,6 +672,7 @@
       "label_file_cached": true,
       "local_files_only": true,
       "model_download_allowed": false,
+      "model_download_performed": false,
       "model_file_cached": true,
       "status": "cached"
     },
@@ -676,6 +681,20 @@
       "max_items": 1,
       "over_cap_count": 0,
       "passed": true
+    },
+    "protected_input_gate": {
+      "blocked_count": 0,
+      "passed": true,
+      "paths_redacted": true,
+      "protected_root_labels": [
+        "settings.STORAGE_ROOT",
+        "settings.MEDIA_DIR",
+        "settings.ORIGINAL_DIR",
+        "settings.THUMBNAIL_DIR",
+        "settings.CACHE_DIR",
+        "settings.DATA_DIR"
+      ],
+      "reported": true
     },
     "provider_availability": {
       "available_providers": [
@@ -699,16 +718,82 @@
       "public_path_redaction": "paths_and_filenames_redacted"
     },
     "reported": true,
-    "selected_count": 1
+    "selected_count": 1,
+    "source_safety_gate": {
+      "blocked_count": 0,
+      "cloud_detection": {
+        "conservative_fallback": false,
+        "method": "SourceIngestionGate.evaluate_path_source metadata_only",
+        "platform_specific_cloud_files_detection": true
+      },
+      "cloud_placeholder_blocked_count": 0,
+      "hydration_policy_enabled": false,
+      "local_readable_files": 1,
+      "nonzero_files": 1,
+      "passed": true,
+      "protected_path_blocked_count": 0,
+      "public_item_results": [
+        {
+          "blocked": false,
+          "cloud_detection_supported_platform": true,
+          "label": "item_001",
+          "local_readable": true,
+          "nonzero_size": true,
+          "paths_redacted": true,
+          "protected_root_labels": [],
+          "protected_root_overlap": false,
+          "reason": "source_available",
+          "source_gate": {
+            "allowed": true,
+            "blocked": false,
+            "cloud_state": {
+              "attribute_names": [
+                "archive"
+              ],
+              "attributes_hex": "0x00000020",
+              "attributes_raw": 32,
+              "error_code": null,
+              "error_message": null,
+              "exists": true,
+              "is_file": true,
+              "likely_cloud_placeholder": false,
+              "offline": false,
+              "pinned": false,
+              "recall_on_data_access": false,
+              "recall_on_open": false,
+              "reparse_point": false,
+              "sparse_file": false,
+              "supported_platform": true,
+              "unpinned": false
+            },
+            "paths_redacted": true,
+            "reason": "path_source_available",
+            "required_policy": null,
+            "safe_label": "item_001",
+            "source_kind": "path_source"
+          },
+          "stable_enough": true,
+          "supported_extension": true
+        }
+      ],
+      "read_probe_used": false,
+      "reported": true,
+      "stability_policy": {
+        "enabled": false,
+        "reason": "no_s3a_prod1_min_age_policy_configured",
+        "stable_enough": true
+      },
+      "supported_extension_files": 1
+    }
   },
   "primary_provider_validation": {
     "dry_run": false,
-    "elapsed_seconds": 0.2697,
+    "elapsed_seconds": 0.2183,
     "error_state": false,
     "executed": true,
     "failed": 0,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 10848,
+    "ignored_low_confidence": 10845,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
@@ -740,14 +825,14 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 10,
+    "media_tags_count_after": 13,
     "media_tags_count_before": 0,
-    "media_tags_count_delta": 10,
+    "media_tags_count_delta": 13,
     "media_with_ai_tags_after": 1,
     "media_with_ai_tags_before": 0,
     "media_with_ai_tags_delta": 1,
     "no_media_tags_writes": null,
-    "operator_guard_elapsed_seconds": 0.2709,
+    "operator_guard_elapsed_seconds": 0.22,
     "predicted_tag_count": 10858,
     "prediction_category_counts": {
       "character": 2751,
@@ -780,12 +865,12 @@
     ],
     "public_item_results": [
       {
-        "ignored_low_confidence": 10848,
+        "ignored_low_confidence": 10845,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 1,
-        "tags_added": 9
+        "suggestions_added": 5,
+        "tags_added": 8
       }
     ],
     "reported": true,
@@ -864,11 +949,11 @@
     "selected_media_count": 1,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 1,
+    "suggestions_added": 5,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 9
+    "tags_added": 8
   },
   "private_ledger": {
     "committed": false,
@@ -898,9 +983,13 @@
     "no_cpu_only_write_path": true,
     "passed": true,
     "probe_actual_provider": "DmlExecutionProvider",
+    "probe_error_state": false,
     "probe_executed": true,
     "probe_failed": 0,
+    "probe_rollback_error": false,
     "probe_status": "completed",
+    "provider_preference_dml_then_cpu": true,
+    "provider_preference_includes_cpu_fallback": true,
     "provider_preference_includes_directml": true,
     "reported": true,
     "requested_provider_preference": [
@@ -987,6 +1076,7 @@
     "ai_tagging_write_without_confirmation": false,
     "broad_production_sync_enabled": false,
     "cleanup_delete_reset_drop_truncate": false,
+    "cloud_hydration_or_recall_triggered": false,
     "confirmed_entity_assignments": false,
     "db_import": true,
     "desired_media_backfill": false,
@@ -1004,12 +1094,14 @@
     "private_locator_values_recorded": false,
     "production_automation_enabled": false,
     "production_write_without_confirmation": false,
+    "protected_app_storage_input": false,
     "provider_pixiv_gallery_dl_saucenao_google_calls": false,
     "public_redaction_passed": true,
     "scheduled_automation_enabled": false,
     "selected_input_explicit_bounded": true,
     "single_operator_triggered_run_only": true,
     "source_icloud_mutation": false,
+    "source_safety_gate_passed": true,
     "sourceconcept_r1_r2_r1r": false,
     "unattended_s3b_enabled": false
   },
@@ -1028,15 +1120,95 @@
     "over_cap_blocked_before_selection": false,
     "over_cap_count": 0,
     "private_locator_values_recorded": false,
+    "protected_input_gate": {
+      "blocked_count": 0,
+      "passed": true,
+      "paths_redacted": true,
+      "protected_root_labels": [
+        "settings.STORAGE_ROOT",
+        "settings.MEDIA_DIR",
+        "settings.ORIGINAL_DIR",
+        "settings.THUMBNAIL_DIR",
+        "settings.CACHE_DIR",
+        "settings.DATA_DIR"
+      ],
+      "reported": true
+    },
     "public_path_redaction": "paths_and_filenames_redacted",
     "selected_count": 1,
     "selected_labels": [
       "item_001"
     ],
+    "source_safety_gate": {
+      "blocked_count": 0,
+      "cloud_detection": {
+        "conservative_fallback": false,
+        "method": "SourceIngestionGate.evaluate_path_source metadata_only",
+        "platform_specific_cloud_files_detection": true
+      },
+      "cloud_placeholder_blocked_count": 0,
+      "hydration_policy_enabled": false,
+      "local_readable_files": 1,
+      "nonzero_files": 1,
+      "passed": true,
+      "protected_path_blocked_count": 0,
+      "public_item_results": [
+        {
+          "blocked": false,
+          "cloud_detection_supported_platform": true,
+          "label": "item_001",
+          "local_readable": true,
+          "nonzero_size": true,
+          "paths_redacted": true,
+          "protected_root_labels": [],
+          "protected_root_overlap": false,
+          "reason": "source_available",
+          "source_gate": {
+            "allowed": true,
+            "blocked": false,
+            "cloud_state": {
+              "attribute_names": [
+                "archive"
+              ],
+              "attributes_hex": "0x00000020",
+              "attributes_raw": 32,
+              "error_code": null,
+              "error_message": null,
+              "exists": true,
+              "is_file": true,
+              "likely_cloud_placeholder": false,
+              "offline": false,
+              "pinned": false,
+              "recall_on_data_access": false,
+              "recall_on_open": false,
+              "reparse_point": false,
+              "sparse_file": false,
+              "supported_platform": true,
+              "unpinned": false
+            },
+            "paths_redacted": true,
+            "reason": "path_source_available",
+            "required_policy": null,
+            "safe_label": "item_001",
+            "source_kind": "path_source"
+          },
+          "stable_enough": true,
+          "supported_extension": true
+        }
+      ],
+      "read_probe_used": false,
+      "reported": true,
+      "stability_policy": {
+        "enabled": false,
+        "reason": "no_s3a_prod1_min_age_policy_configured",
+        "stable_enough": true
+      },
+      "supported_extension_files": 1
+    },
     "supported_files": 1,
     "unsupported_files": 0
   },
-  "started_at": "2026-06-21T14:24:33.851937+00:00",
+  "started_at": "2026-06-22T04:13:06.746879+00:00",
   "title": "Operator-Triggered Production Incremental Sync Guard",
   "validation": {
     "preflight_completed": true,

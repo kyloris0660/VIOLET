@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -35,11 +36,15 @@ CPU_PROVIDER_PREFERENCE = "CPUExecutionProvider"
 SOURCE_LABEL = "violet:s3a-prod1:operator-incremental-sync-guard"
 
 SelectedCandidate = pilot.SelectedCandidate
-discover_input_candidates = pilot.discover_input_candidates
+SUPPORTED_EXTENSIONS = pilot.SUPPORTED_EXTENSIONS
 
 
 def provider_list(raw: str) -> list[str]:
     return pilot.provider_list(raw)
+
+
+def provider_preference_is_bounded_directml_cpu(provider_preference: str) -> bool:
+    return provider_list(provider_preference) == ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 
 def provider_preference_includes_directml(provider_preference: str) -> bool:
@@ -72,6 +77,243 @@ def check_provider_availability(provider_preference: str) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         result.update({"status": "blocked_provider_check_failed", "error_type": exc.__class__.__name__})
     return result
+
+
+def safe_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+    except OSError:
+        return False
+
+
+def protected_input_roots() -> list[tuple[str, Path]]:
+    from backend.app.config import settings
+
+    roots: list[tuple[str, Path]] = [
+        ("settings.STORAGE_ROOT", Path(settings.STORAGE_ROOT)),
+        ("settings.MEDIA_DIR", Path(settings.MEDIA_DIR)),
+        ("settings.ORIGINAL_DIR", Path(settings.ORIGINAL_DIR)),
+        ("settings.THUMBNAIL_DIR", Path(settings.THUMBNAIL_DIR)),
+        ("settings.CACHE_DIR", Path(settings.CACHE_DIR)),
+        ("settings.DATA_DIR", Path(settings.DATA_DIR)),
+        ("repo.data", ROOT / "data"),
+        ("repo.media", ROOT / "media"),
+    ]
+    unique: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for label, root in roots:
+        try:
+            key = str(root.resolve()).casefold()
+        except OSError:
+            key = str(root).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((label, root))
+    return unique
+
+
+def protected_root_labels_for_path(path: Path, roots: list[tuple[str, Path]]) -> list[str]:
+    return [label for label, root in roots if safe_is_relative_to(path, root)]
+
+
+def source_safety_entry(path: Path, *, safe_label: str, protected_roots: list[tuple[str, Path]]) -> tuple[bool, dict[str, Any], int | None]:
+    entry: dict[str, Any] = {
+        "label": safe_label,
+        "paths_redacted": True,
+        "supported_extension": path.suffix.casefold() in SUPPORTED_EXTENSIONS,
+        "protected_root_overlap": False,
+        "protected_root_labels": [],
+        "source_gate": None,
+        "local_readable": False,
+        "nonzero_size": False,
+        "stable_enough": True,
+        "blocked": False,
+        "reason": "source_available",
+    }
+    if not entry["supported_extension"]:
+        entry.update({"blocked": True, "reason": "unsupported_extension"})
+        return False, entry, None
+
+    protected_labels = protected_root_labels_for_path(path, protected_roots)
+    if protected_labels:
+        entry.update(
+            {
+                "protected_root_overlap": True,
+                "protected_root_labels": protected_labels,
+                "blocked": True,
+                "reason": "protected_app_storage_input",
+            }
+        )
+        return False, entry, None
+
+    from backend.app.services.source_ingestion_gate import SourceIngestionGate
+
+    gate = SourceIngestionGate.evaluate_path_source(path, safe_label=safe_label, hydration_policy_enabled=False)
+    entry["source_gate"] = gate.to_public_dict()
+    if entry["source_gate"].get("cloud_state") is not None:
+        entry["cloud_detection_supported_platform"] = bool(entry["source_gate"]["cloud_state"].get("supported_platform"))
+    if gate.blocked:
+        entry.update({"blocked": True, "reason": gate.reason})
+        return False, entry, None
+
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        entry.update({"blocked": True, "reason": "stat_error", "error_type": exc.__class__.__name__})
+        return False, entry, None
+
+    size_bytes = int(stat.st_size)
+    entry["local_readable"] = bool(os.access(path, os.R_OK))
+    entry["nonzero_size"] = size_bytes > 0
+    if not entry["local_readable"]:
+        entry.update({"blocked": True, "reason": "source_not_readable"})
+        return False, entry, size_bytes
+    if size_bytes <= 0:
+        entry.update({"blocked": True, "reason": "zero_byte_source"})
+        return False, entry, size_bytes
+    return True, entry, size_bytes
+
+
+def discover_input_candidates(input_paths: list[str], *, max_items: int) -> tuple[list[SelectedCandidate], dict[str, Any]]:
+    protected_roots = protected_input_roots()
+    discovered: list[Path] = []
+    missing_inputs = 0
+    directory_inputs = 0
+    file_inputs = 0
+    unsupported_seen = 0
+    path_entries: list[dict[str, Any]] = []
+
+    for raw in input_paths:
+        path = Path(raw).expanduser().resolve()
+        protected_labels = protected_root_labels_for_path(path, protected_roots)
+        if protected_labels:
+            path_entries.append(
+                {
+                    "label": f"input_{len(path_entries) + 1:03d}",
+                    "paths_redacted": True,
+                    "blocked": True,
+                    "reason": "protected_app_storage_input",
+                    "protected_root_overlap": True,
+                    "protected_root_labels": protected_labels,
+                }
+            )
+            continue
+        if not path.exists():
+            missing_inputs += 1
+            continue
+        if path.is_dir():
+            directory_inputs += 1
+            for item in sorted(path.iterdir(), key=lambda p: p.name.casefold()):
+                if not item.is_file():
+                    continue
+                if item.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                    discovered.append(item.resolve())
+                else:
+                    unsupported_seen += 1
+        elif path.is_file():
+            file_inputs += 1
+            if path.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                discovered.append(path)
+            else:
+                unsupported_seen += 1
+        else:
+            missing_inputs += 1
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in discovered:
+        key = str(path).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+
+    safe_paths: list[tuple[Path, int]] = []
+    for index, path in enumerate(unique, start=1):
+        safe_label = f"item_{index:03d}"
+        allowed, entry, size_bytes = source_safety_entry(path, safe_label=safe_label, protected_roots=protected_roots)
+        path_entries.append(entry)
+        if allowed and size_bytes is not None:
+            safe_paths.append((path, size_bytes))
+
+    blocked_entries = [entry for entry in path_entries if entry.get("blocked")]
+    over_cap_count = max(0, len(safe_paths) - max_items)
+    selection_blocked = bool(blocked_entries or over_cap_count)
+    selected_paths = [] if selection_blocked else safe_paths
+    candidates = [
+        SelectedCandidate(
+            label=f"item_{index:03d}",
+            path=path,
+            suffix=path.suffix.casefold(),
+            size_bytes=size_bytes,
+        )
+        for index, (path, size_bytes) in enumerate(selected_paths, start=1)
+    ]
+    protected_blocked = sum(1 for entry in blocked_entries if entry.get("reason") == "protected_app_storage_input")
+    cloud_blocked = sum(1 for entry in blocked_entries if str(entry.get("reason", "")).startswith("cloud_"))
+    platform_support_values = [
+        bool(entry.get("cloud_detection_supported_platform"))
+        for entry in path_entries
+        if "cloud_detection_supported_platform" in entry
+    ]
+    platform_detection_supported = all(platform_support_values) if platform_support_values else sys.platform.startswith("win")
+    source_safety_passed = not blocked_entries
+    scope = {
+        "input_mode": "input_path",
+        "explicit_input_path_supplied": bool(input_paths),
+        "explicit_input_path_redacted": True,
+        "input_path_count": len(input_paths),
+        "file_inputs": file_inputs,
+        "directory_inputs": directory_inputs,
+        "missing_input_count": missing_inputs,
+        "discovered_files": len(unique),
+        "supported_files": len(unique),
+        "unsupported_files": unsupported_seen,
+        "selected_count": len(candidates),
+        "selected_labels": [candidate.label for candidate in candidates],
+        "over_cap_count": over_cap_count,
+        "over_cap_blocked_before_selection": bool(over_cap_count),
+        "default_truncation_disabled": True,
+        "max_items": max_items,
+        "no_full_library_fallback": True,
+        "private_locator_values_recorded": False,
+        "public_path_redaction": "paths_and_filenames_redacted",
+        "protected_input_gate": {
+            "reported": True,
+            "passed": protected_blocked == 0,
+            "blocked_count": protected_blocked,
+            "protected_root_labels": [label for label, _root in protected_roots],
+            "paths_redacted": True,
+        },
+        "source_safety_gate": {
+            "reported": True,
+            "passed": source_safety_passed,
+            "blocked_count": len(blocked_entries),
+            "cloud_placeholder_blocked_count": cloud_blocked,
+            "protected_path_blocked_count": protected_blocked,
+            "local_readable_files": sum(1 for entry in path_entries if entry.get("local_readable")),
+            "nonzero_files": sum(1 for entry in path_entries if entry.get("nonzero_size")),
+            "supported_extension_files": sum(1 for entry in path_entries if entry.get("supported_extension")),
+            "read_probe_used": False,
+            "hydration_policy_enabled": False,
+            "cloud_detection": {
+                "method": "SourceIngestionGate.evaluate_path_source metadata_only",
+                "platform_specific_cloud_files_detection": platform_detection_supported,
+                "conservative_fallback": not platform_detection_supported,
+            },
+            "stability_policy": {
+                "enabled": False,
+                "stable_enough": True,
+                "reason": "no_s3a_prod1_min_age_policy_configured",
+            },
+            "public_item_results": path_entries,
+        },
+    }
+    return candidates, scope
 
 
 def empty_ai_tagging_result(
@@ -139,10 +381,15 @@ def build_provider_write_gate(
 ) -> dict[str, Any]:
     requested = provider_list(provider_preference)
     preference_includes_directml = "DmlExecutionProvider" in requested
+    preference_includes_cpu = "CPUExecutionProvider" in requested
+    preference_dml_then_cpu = requested == ["DmlExecutionProvider", "CPUExecutionProvider"]
     directml_available = bool(provider_availability.get("directml_available"))
     cpu_available = bool(provider_availability.get("cpu_fallback_available"))
     probe_executed = bool(provider_probe.get("executed"))
+    probe_status = provider_probe.get("status")
     probe_failed = int(provider_probe.get("failed", 0) or 0)
+    probe_rollback_error = bool(provider_probe.get("rollback_error"))
+    probe_error_state = bool(provider_probe.get("error_state"))
     probe_actual = provider_probe.get("provider", {}).get("actual_provider")
     blockers: list[str] = []
 
@@ -150,15 +397,26 @@ def build_provider_write_gate(
         blockers.append("production_write_not_requested")
     if production_write_requested and not production_confirmed:
         blockers.append("exact_confirmation_missing")
-    if production_confirmed and not preference_includes_directml:
-        blockers.append("provider_preference_missing_directml")
+    if production_confirmed and not preference_dml_then_cpu:
+        if not preference_includes_directml:
+            blockers.append("provider_preference_missing_directml")
+        if not preference_includes_cpu:
+            blockers.append("provider_preference_missing_cpu_fallback")
+        if preference_includes_directml and preference_includes_cpu:
+            blockers.append("provider_preference_not_dml_then_cpu")
     if production_confirmed and not directml_available:
         blockers.append("directml_unavailable")
-    if production_confirmed and preference_includes_directml and directml_available:
+    if production_confirmed and preference_dml_then_cpu and directml_available:
         if not probe_executed:
             blockers.append("directml_probe_not_executed")
+        if probe_status != "completed":
+            blockers.append("directml_probe_status_not_completed")
         if probe_failed:
             blockers.append("directml_probe_failed")
+        if probe_rollback_error:
+            blockers.append("directml_probe_rollback_error")
+        if probe_error_state:
+            blockers.append("directml_probe_error_state")
         if probe_actual != "DmlExecutionProvider":
             blockers.append("directml_probe_actual_provider_not_directml")
 
@@ -170,15 +428,19 @@ def build_provider_write_gate(
         "requested_provider_preference": requested,
         "requires_directml_provider": True,
         "provider_preference_includes_directml": preference_includes_directml,
+        "provider_preference_includes_cpu_fallback": preference_includes_cpu,
+        "provider_preference_dml_then_cpu": preference_dml_then_cpu,
         "directml_available": directml_available,
         "cpu_fallback_available": cpu_available,
         "probe_executed": probe_executed,
-        "probe_status": provider_probe.get("status"),
+        "probe_status": probe_status,
         "probe_failed": probe_failed,
+        "probe_rollback_error": probe_rollback_error,
+        "probe_error_state": probe_error_state,
         "probe_actual_provider": probe_actual,
         "passed": passed,
         "write_allowed": passed,
-        "no_cpu_only_write_path": preference_includes_directml and probe_actual != "CPUExecutionProvider",
+        "no_cpu_only_write_path": preference_dml_then_cpu and probe_actual != "CPUExecutionProvider",
         "blockers": blockers,
     }
 
@@ -201,10 +463,13 @@ def build_preflight(scope: dict[str, Any], model_cache: dict[str, Any], provider
             "model_file_cached": model_cache.get("model_file_cached"),
             "label_file_cached": model_cache.get("label_file_cached"),
             "model_download_allowed": model_cache.get("model_download_allowed"),
+            "model_download_performed": model_cache.get("model_download_performed"),
         },
         "provider_availability": provider_availability,
         "directml_available": bool(provider_availability.get("directml_available")),
         "cpu_fallback_available": bool(provider_availability.get("cpu_fallback_available")),
+        "protected_input_gate": scope.get("protected_input_gate"),
+        "source_safety_gate": scope.get("source_safety_gate"),
         "no_full_library_fallback": True,
         "public_private_path_redaction": {
             "public_path_redaction": scope.get("public_path_redaction"),
@@ -219,6 +484,7 @@ def build_import_write_preconditions(
     scope: dict[str, Any],
     model_cache: dict[str, Any],
     provider_availability: dict[str, Any],
+    provider_preference: str,
     *,
     production_write_requested: bool,
     production_confirmed: bool,
@@ -233,8 +499,12 @@ def build_import_write_preconditions(
         "local_files_only": bool(local_files_only),
         "model_cache_cached": model_cache.get("status") == "cached",
         "model_download_not_allowed": not bool(model_cache.get("model_download_allowed")),
+        "model_download_not_performed": not bool(model_cache.get("model_download_performed")),
+        "provider_preference_dml_then_cpu": provider_preference_is_bounded_directml_cpu(provider_preference),
         "directml_available": bool(provider_availability.get("directml_available")),
         "cpu_fallback_available": bool(provider_availability.get("cpu_fallback_available")),
+        "protected_input_gate_passed": bool(scope.get("protected_input_gate", {}).get("passed", False)),
+        "source_safety_gate_passed": bool(scope.get("source_safety_gate", {}).get("passed", False)),
         "scope_valid": 1 <= selected_count <= max_items <= MAX_ALLOWED_ITEMS,
         "no_over_cap_input": over_cap_count == 0,
         "no_full_library_fallback": bool(scope.get("no_full_library_fallback")),
@@ -245,8 +515,12 @@ def build_import_write_preconditions(
         "local_files_only",
         "model_cache_cached",
         "model_download_not_allowed",
+        "model_download_not_performed",
+        "provider_preference_dml_then_cpu",
         "directml_available",
         "cpu_fallback_available",
+        "protected_input_gate_passed",
+        "source_safety_gate_passed",
         "scope_valid",
         "no_over_cap_input",
         "no_full_library_fallback",
@@ -336,6 +610,10 @@ def production_write_completed(summary: dict[str, Any]) -> bool:
 def derive_status(summary: dict[str, Any]) -> str:
     scope = summary.get("scope", {})
     config = summary.get("run_configuration", {})
+    if int(scope.get("protected_input_gate", {}).get("blocked_count", 0) or 0):
+        return "blocked_protected_input_path"
+    if int(scope.get("source_safety_gate", {}).get("blocked_count", 0) or 0):
+        return "blocked_source_safety_gate"
     if int(scope.get("over_cap_count", 0) or 0):
         return "blocked_input_over_cap"
     if int(scope.get("selected_count", 0) or 0) <= 0:
@@ -344,6 +622,8 @@ def derive_status(summary: dict[str, Any]) -> str:
         return "blocked_model_download_allowed"
     if summary.get("model_cache", {}).get("status") != "cached":
         return "blocked_model_cache_missing"
+    if not provider_preference_is_bounded_directml_cpu(",".join(config.get("provider_preference_requested", []) or [])):
+        return "blocked_provider_preference_invalid"
     if not summary.get("preflight", {}).get("directml_available"):
         return "blocked_directml_unavailable"
     if not summary.get("preflight", {}).get("cpu_fallback_available"):
@@ -434,6 +714,9 @@ def build_safety(summary: dict[str, Any]) -> dict[str, Any]:
         "desired_media_backfill": False,
         "cleanup_delete_reset_drop_truncate": False,
         "source_icloud_mutation": False,
+        "protected_app_storage_input": bool(summary.get("scope", {}).get("protected_input_gate", {}).get("blocked_count", 0)),
+        "source_safety_gate_passed": bool(summary.get("scope", {}).get("source_safety_gate", {}).get("passed", False)),
+        "cloud_hydration_or_recall_triggered": False,
         "model_download": bool(config.get("model_download_allowed", False)),
         "local_files_only": bool(config.get("local_files_only", False)),
         "public_redaction_passed": bool(summary.get("public_redaction", {}).get("passed", False)),
@@ -474,10 +757,14 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"- Max items: `{config.get('max_items')}`.",
         f"- Full-library fallback: `{not scope.get('no_full_library_fallback', False)}`.",
         f"- Public path redaction: `{scope.get('public_path_redaction')}`.",
+        f"- Protected input gate passed: `{scope.get('protected_input_gate', {}).get('passed')}`.",
+        f"- Source safety gate passed: `{scope.get('source_safety_gate', {}).get('passed')}`.",
+        f"- Source safety blockers: `{scope.get('source_safety_gate', {}).get('blocked_count')}`.",
         "",
         "## Preflight",
         "",
         f"- Model cache status: `{summary.get('model_cache', {}).get('status')}`.",
+        f"- Model download performed: `{summary.get('model_cache', {}).get('model_download_performed')}`.",
         f"- Local files only: `{config.get('local_files_only')}`.",
         f"- DirectML available: `{preflight.get('directml_available')}`.",
         f"- CPU fallback available: `{preflight.get('cpu_fallback_available')}`.",
@@ -670,6 +957,7 @@ def main(argv: list[str] | None = None) -> int:
             scope,
             model_cache,
             provider_availability,
+            args.provider_preference,
             production_write_requested=production_write_requested,
             production_confirmed=production_confirmed,
             local_files_only=local_files_only,
@@ -762,11 +1050,21 @@ def main(argv: list[str] | None = None) -> int:
                     write_blockers=list(import_write_preconditions.get("blockers") or []),
                 )
 
-                classification = classify_media_scope(db, downstream_media_ids)
+                downstream_allowed = bool(downstream_media_ids) and (
+                    not production_confirmed or bool(import_write_preconditions.get("passed"))
+                )
+                if downstream_allowed:
+                    classification = classify_media_scope(db, downstream_media_ids)
+                else:
+                    classification = empty_classification_result(
+                        status="not_run_import_write_preconditions_blocked"
+                        if production_confirmed and not import_write_preconditions.get("passed")
+                        else "not_run_no_downstream_media"
+                    )
 
-                if model_cache.get("status") == "cached" and local_files_only and downstream_media_ids:
+                if model_cache.get("status") == "cached" and local_files_only and downstream_allowed:
                     if production_confirmed:
-                        can_probe_directml = provider_preference_includes_directml(args.provider_preference) and bool(
+                        can_probe_directml = provider_preference_is_bounded_directml_cpu(args.provider_preference) and bool(
                             provider_availability.get("directml_available")
                         )
                         if can_probe_directml:
