@@ -35,18 +35,35 @@ The profile is the production source of truth for launcher startup:
 - `safe_startup=true`
 - startup automation flags set to false
 
-The existing development `.env` may still be read for non-private generic
-defaults during profile discovery, such as a default port or DB name. The
-launcher does not copy a development storage root, does not copy private DB
-credentials, does not modify `.env`, and does not require
-`VIOLET_ENV=production` in `.env`.
+The existing development `.env` and local `data/settings.json` may be read for
+best-effort local bootstrap. Values inferred from those local records are
+written only to the ignored production profile and are not returned in public
+launcher JSON. The launcher does not modify `.env` and does not require
+`VIOLET_ENV=production` or `VIOLET_STORAGE_ROOT` in `.env`.
 
-If storage root or private DB values cannot be safely inferred, the Electron UI
-shows `Profile Incomplete` and asks the operator to select or enter them once.
+If a value truly cannot be inferred, the Electron UI shows `Profile Incomplete`
+and asks the operator to select or enter only the missing value. `Create /
+Repair Production Profile` also resets profile invariants: `env=production`,
+`safe_startup=true`, and startup automation/destructive flags disabled.
 
 ## Start The Launcher
 
-From the canonical repository checkout, double-click:
+Daily use should be through the packaged Windows executable. Build it once from
+the canonical repository checkout:
+
+```powershell
+cd launcher
+npm install
+npm run package
+```
+
+Then double-click:
+
+```text
+launcher\dist\V.I.O.L.E.T. Production Launcher.exe
+```
+
+The fallback development entrypoint remains:
 
 ```text
 scripts\start_violet_production_launcher.cmd
@@ -58,15 +75,24 @@ The command starts the Electron launcher from:
 launcher/
 ```
 
-Install launcher dependencies once:
+It starts the Electron launcher from `launcher/` with `npm start`; it is useful
+for development or troubleshooting but is no longer the preferred production
+entrypoint.
+
+If npm or Electron downloads hang behind the local proxy, create a local ignored
+launcher npm config:
 
 ```powershell
-cd launcher
-npm install
+.\scripts\setup_launcher_npm_proxy.ps1 -Proxy http://127.0.0.1:7897
 ```
 
-The old Tkinter launcher remains as a fallback script, but it is no longer the
-primary documented daily production UI.
+Clear it with:
+
+```powershell
+.\scripts\setup_launcher_npm_proxy.ps1 -Clear
+```
+
+The generated `launcher/.npmrc` is ignored and must not be committed.
 
 ## Controller Commands
 
@@ -77,6 +103,7 @@ JavaScript:
 python scripts\violet_production_control.py profile-status --profile production-default --json
 python scripts\violet_production_control.py profile-discover --profile production-default --json
 python scripts\violet_production_control.py profile-init --profile production-default --json
+python scripts\violet_production_control.py profile-repair --profile production-default --json
 python scripts\violet_production_control.py profile-update --profile production-default --json
 python scripts\violet_production_control.py preflight --profile production-default --json
 python scripts\violet_production_control.py test-db --profile production-default --json
@@ -127,6 +154,7 @@ BLOMBOORU_DEBUG=false
 VIOLET_STORAGE_ROOT=<profile storage root>
 APP_PORT=<profile port>
 VIOLET_PRODUCTION_PROFILE_ACTIVE=true
+VIOLET_SKIP_DOTENV=1
 VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true
 DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED=false
 AI_AUTO_TAG_AFTER_IMPORT=false
@@ -143,6 +171,10 @@ Python controller through stdin JSON, not command-line argv.
 In this profile-active safe-startup mode, backend DB settings prefer the profile
 environment over storage `settings.json`. This override is deliberately narrow
 and does not affect normal development or test startup.
+
+`run.py` and backend config both honor `VIOLET_SKIP_DOTENV=1`, so production
+profile startup does not reload the development `.env` after the controller has
+constructed the production child environment.
 
 ## Startup Write Policy
 
@@ -181,6 +213,29 @@ Start success verifies:
 Managed but unhealthy processes are reported as `Unhealthy`, not `Running`.
 Stop refuses unknown or unverified processes. On POSIX-like platforms, an open
 target port with unknown owner fails closed instead of being marked managed.
+
+Launcher stop uses a bounded graceful shutdown and may force only the verified
+managed process if the process identity still matches. The user emergency stop
+for a launcher-owned process is:
+
+```powershell
+taskkill /PID <launcher-managed-pid> /T
+```
+
+Use `/F` only if the graceful command does not exit and the PID is still the
+same launcher-managed process. Do not kill unknown Python or Node processes.
+
+## Direct Safe-Start Notes
+
+Do not document or use `--log-config none`; it is not a valid `uvicorn` CLI
+value. Prefer `python run.py` through the production launcher profile, or use
+normal `uvicorn` log-level options only when running a temporary manual command.
+
+The shutdown hang observed after a temporary direct startup was investigated in
+this phase. Safe-start mode skips periodic/background tasks. Normal startup
+periodic tasks are now tracked and cancelled during FastAPI shutdown. A
+temporary safe-start run on a non-production test port reached `/api/health`,
+accepted Ctrl+Break, exited without force, and released the port.
 
 ## Manual Acceptance
 

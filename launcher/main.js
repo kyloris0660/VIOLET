@@ -8,7 +8,31 @@ const {
   runController: runPythonController
 } = require('./controller-runner');
 
-const repoRoot = path.resolve(__dirname, '..');
+function looksLikeRepoRoot(candidate) {
+  return fs.existsSync(path.join(candidate, 'run.py')) &&
+    fs.existsSync(path.join(candidate, 'scripts', 'violet_production_control.py'));
+}
+
+function resolveRepoRoot() {
+  const candidates = [
+    process.env.VIOLET_REPO_ROOT,
+    process.cwd(),
+    path.resolve(__dirname, '..'),
+    path.resolve(__dirname, '..', '..'),
+    path.resolve(path.dirname(process.execPath), '..'),
+    path.resolve(path.dirname(process.execPath), '..', '..'),
+    path.resolve(path.dirname(process.execPath), '..', '..', '..')
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    if (looksLikeRepoRoot(resolved)) {
+      return resolved;
+    }
+  }
+  return path.resolve(__dirname, '..');
+}
+
+const repoRoot = resolveRepoRoot();
 const controllerScript = path.join(repoRoot, 'scripts', 'violet_production_control.py');
 const profileId = 'production-default';
 

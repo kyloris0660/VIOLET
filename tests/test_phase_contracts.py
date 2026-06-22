@@ -425,6 +425,11 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
             "separate_from_development_dotenv": True,
             "development_dotenv_modified": False,
             "child_env_from_profile": True,
+            "child_env_skips_dotenv": True,
+            "clean_allowlisted_process_environment": True,
+            "profile_mismatch_fails_closed": True,
+            "repair_resets_invariants": True,
+            "local_bootstrap_supported": True,
             "profile_overrides_development_dotenv_for_child": True,
             "storage_root_not_invented": True,
             "incomplete_profile_state_explicit": True,
@@ -432,6 +437,7 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
         "electron_launcher": {
             "exists": True,
             "primary_documented_entrypoint": True,
+            "windows_executable_packaging": True,
             "calls_python_control_plane": True,
             "raw_json_hidden_from_main_screen": True,
             "advanced_diagnostics_collapsed_by_default": True,
@@ -445,6 +451,10 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
                 "Safety Flags",
                 "Startup Policy",
             ],
+        },
+        "npm_proxy_setup": {
+            "local_ignored_npmrc": True,
+            "reset_supported": True,
         },
         "preflight_mapping": {
             "violet_env_production": True,
@@ -477,9 +487,14 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
             "refuses_unknown_process": True,
             "posix_unknown_port_owner_fails_closed": True,
         },
+        "shutdown_safety": {
+            "safe_startup_skips_background_tasks": True,
+            "tracked_background_tasks_cancelled": True,
+        },
         "public_json_safety": {
             "log_tail_in_public_json": False,
             "profile_paths_redacted": True,
+            "forward_slash_windows_paths_redacted": True,
         },
         "manual_acceptance_required_before_merge": True,
         "manual_acceptance_completed": False,
@@ -1871,6 +1886,15 @@ def test_prod_launcher_ux1_contract_rejects_failed_electron_validation() -> None
     result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
 
     assert "prod_launcher_ux1_electron_validation_not_passed" in _error_codes(result)
+
+
+def test_prod_launcher_ux1_contract_rejects_missing_skip_dotenv_proof() -> None:
+    summary = _prod_launcher_ux1_summary()
+    summary["production_profile"]["child_env_skips_dotenv"] = False
+
+    result = check_phase_contract("prod_launcher_ux1_production_profile_contract_v1", summary)
+
+    assert "prod_launcher_ux1_required_proof_failed" in _error_codes(result)
 
 
 def test_s2g1x_probe_contract_accepts_safe_probe_and_shared_decision() -> None:

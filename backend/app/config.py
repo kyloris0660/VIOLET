@@ -9,16 +9,19 @@ from dotenv import load_dotenv
 from sqlalchemy.engine import URL
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=False)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().casefold() in {"true", "1", "yes", "on"}
+
+
+if not _truthy_env("VIOLET_SKIP_DOTENV"):
+    load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=False)
 
 APP_VERSION = "1.41.0"
 SCHEMA_VERSION = 6
 
 _VALID_ENVS = ("development", "test", "production")
-
-
-def _truthy_env(name: str) -> bool:
-    return os.getenv(name, "").strip().casefold() in {"true", "1", "yes", "on"}
 
 
 def _production_profile_active() -> bool:

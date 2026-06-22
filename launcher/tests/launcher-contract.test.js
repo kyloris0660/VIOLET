@@ -3,21 +3,30 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
+const repo = path.resolve(root, '..');
 const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 const controllerRunner = fs.readFileSync(path.join(root, 'controller-runner.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'renderer', 'index.html'), 'utf8');
 const renderer = fs.readFileSync(path.join(root, 'renderer', 'renderer.js'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const gitignore = fs.readFileSync(path.join(repo, '.gitignore'), 'utf8');
 
 assert.strictEqual(pkg.scripts.start, 'electron .');
 assert(pkg.scripts.test.includes('controller-runner.test.js'));
 assert(pkg.scripts.test.includes('renderer-behavior.test.js'));
 assert.strictEqual(pkg.scripts.lint, 'node tests/lint.js');
+assert.strictEqual(pkg.scripts.package, 'electron-builder --win portable');
+assert.strictEqual(pkg.build.productName, 'V.I.O.L.E.T. Production Launcher');
+assert(fs.existsSync(path.join(repo, 'scripts', 'setup_launcher_npm_proxy.ps1')));
+assert(gitignore.includes('launcher/dist/'));
+assert(gitignore.includes('launcher/out/'));
+assert(gitignore.includes('launcher/.npmrc'));
 
 for (const command of [
   'profile-status',
   'profile-discover',
   'profile-init',
+  'profile-repair',
   'profile-update',
   'preflight',
   'test-db',

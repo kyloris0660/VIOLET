@@ -60,6 +60,32 @@ def _production_launcher_safe_startup() -> bool:
     return settings.VIOLET_ENV == "production" and _truthy_env("VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP")
 
 
+def _background_tasks(app: FastAPI) -> list[asyncio.Task]:
+    tasks = getattr(app.state, "violet_background_tasks", None)
+    if tasks is None:
+        tasks = []
+        app.state.violet_background_tasks = tasks
+    return tasks
+
+
+def _track_background_task(app: FastAPI, coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background_tasks(app).append(task)
+    return task
+
+
+async def _cancel_background_tasks(app: FastAPI, timeout_seconds: float = 5.0) -> None:
+    tasks = [task for task in _background_tasks(app) if not task.done()]
+    if not tasks:
+        return
+    for task in tasks:
+        task.cancel()
+    try:
+        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        logger.warning("Timed out while cancelling startup background tasks during shutdown.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler (startup and shutdown)"""
@@ -126,7 +152,7 @@ async def lifespan(app: FastAPI):
                         except Exception as e:
                             logger.error(f"Upload chunks cleanup error: {e}")
 
-                asyncio.create_task(periodic_upload_chunks_cleanup())
+                _track_background_task(app, periodic_upload_chunks_cleanup())
 
                 # Start background tag translation worker
                 try:
@@ -144,6 +170,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    try:
+        await _cancel_background_tasks(app)
+    except Exception as e:
+        logger.error(f"Error cancelling background tasks during shutdown: {e}")
     try:
         from .services.tag_translation_worker import stop_worker as stop_translation_worker
         stop_translation_worker()

@@ -287,6 +287,11 @@ def _redact_private_text(text: str) -> str:
         if raw:
             text = text.replace(raw, "[repo-local]")
             text = text.replace(raw.replace("\\", "/"), "[repo-local]")
+    text = re.sub(r"(^|[^A-Za-z])([A-Za-z]:[\\/][^\s'\"`<>|]+)", r"\1[path]", text)
+    text = re.sub(r"/(?:Users|home)/[^\s'\"`<>|]+", "[path]", text)
+    text = re.sub(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", r"\1 [redacted]", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(password|passwd|token|secret|api[_-]?key)\s*[:=]\s*[^\s'\"`]+", r"\1=[redacted]", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{8,}|xox[baprs]-[A-Za-z0-9-]{8,})\b", "[token]", text)
     return text
 
 
@@ -401,6 +406,48 @@ def _safe_dotenv_defaults(repo_root: Path) -> dict[str, str]:
     return {key: value for key, value in values.items() if key in safe_keys and str(value).strip()}
 
 
+def _local_dotenv_profile_values(repo_root: Path) -> dict[str, str]:
+    values = parse_dotenv(repo_root / ".env")
+    local_keys = {
+        "APP_PORT",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "VIOLET_STORAGE_ROOT",
+        "VIOLET_PRODUCTION_STORAGE_ROOT",
+        "VIOLET_ACCEPTED_PRODUCTION_STORAGE_ROOT",
+        "VIOLET_PRODUCTION_PYTHON",
+        "VIOLET_CANONICAL_REPO_ROOT",
+    }
+    return {key: value for key, value in values.items() if key in local_keys and str(value).strip()}
+
+
+def _settings_candidates_for_profile(repo_root: Path, storage_root: str) -> list[Path]:
+    candidates: list[Path] = []
+    if storage_root:
+        candidates.append(Path(storage_root).expanduser() / "data" / "settings.json")
+    candidates.append(repo_root / "data" / "settings.json")
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for candidate in candidates:
+        normalized = _normalize_path(candidate)
+        if normalized and normalized not in seen:
+            unique.append(candidate)
+            seen.add(normalized)
+    return unique
+
+
+def _first_existing_settings_json(candidates: list[Path]) -> tuple[dict[str, Any], Path | None]:
+    for candidate in candidates:
+        if candidate.is_file():
+            payload = load_settings_json(candidate)
+            if payload:
+                return payload, candidate
+    return {}, None
+
+
 def _default_profile_payload(repo_root: Path = ROOT, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, Any]:
     safe_defaults = _safe_dotenv_defaults(repo_root)
     app_port, app_port_ok, _app_port_error, _app_port_raw = _parse_port(safe_defaults.get("APP_PORT") or DEFAULT_PORT)
@@ -430,6 +477,85 @@ def _default_profile_payload(repo_root: Path = ROOT, profile_id: str = DEFAULT_P
         "safe_startup": True,
         "automation_flags": {name: False for name in PROFILE_AUTOMATION_FLAGS},
     }
+
+
+def _repair_profile_invariants(profile: Mapping[str, Any], *, repo_root: Path = ROOT, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, Any]:
+    repaired = dict(profile)
+    repaired["profile_id"] = profile_id
+    repaired["env"] = "production"
+    repaired["repo_root"] = str(repo_root)
+    repaired["safe_startup"] = True
+    flags = dict(repaired.get("automation_flags", {}) if isinstance(repaired.get("automation_flags"), Mapping) else {})
+    for key in PROFILE_AUTOMATION_FLAGS:
+        flags[key] = False
+    repaired["automation_flags"] = flags
+    return repaired
+
+
+def discover_local_profile_payload(
+    repo_root: Path = ROOT,
+    *,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    existing: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    local_values = _local_dotenv_profile_values(repo_root)
+    profile = _repair_profile_invariants(
+        _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id),
+        repo_root=repo_root,
+        profile_id=profile_id,
+    )
+
+    storage_root = (
+        str(profile.get("storage_root") or "").strip()
+        or local_values.get("VIOLET_STORAGE_ROOT", "").strip()
+        or local_values.get("VIOLET_PRODUCTION_STORAGE_ROOT", "").strip()
+        or local_values.get("VIOLET_ACCEPTED_PRODUCTION_STORAGE_ROOT", "").strip()
+    )
+    if not storage_root and (repo_root / "data" / "settings.json").is_file():
+        storage_root = str(repo_root)
+    if storage_root:
+        profile["storage_root"] = storage_root
+
+    if local_values.get("VIOLET_PRODUCTION_PYTHON"):
+        profile["python"] = local_values["VIOLET_PRODUCTION_PYTHON"]
+    elif not Path(str(profile.get("python") or "")).is_file():
+        profile["python"] = str(expected_venv_python(repo_root))
+
+    if local_values.get("APP_PORT") and not str(profile.get("app_port") or "").strip():
+        profile["app_port"] = local_values["APP_PORT"]
+
+    settings_json, settings_path = _first_existing_settings_json(_settings_candidates_for_profile(repo_root, storage_root))
+    settings_db = settings_json.get("database", {}) if isinstance(settings_json.get("database"), Mapping) else {}
+    existing_db = existing.get("db", {}) if isinstance(existing, Mapping) and isinstance(existing.get("db"), Mapping) else {}
+    db = dict(profile.get("db", {}) if isinstance(profile.get("db"), Mapping) else {})
+    for key, dotenv_key in (
+        ("host", "POSTGRES_HOST"),
+        ("port", "POSTGRES_PORT"),
+        ("name", "POSTGRES_DB"),
+        ("user", "POSTGRES_USER"),
+        ("password", "POSTGRES_PASSWORD"),
+    ):
+        if existing_db.get(key) not in (None, ""):
+            continue
+        settings_value = settings_db.get(key) if isinstance(settings_db, Mapping) else None
+        if settings_value not in (None, ""):
+            db[key] = settings_value
+        elif local_values.get(dotenv_key):
+            db[key] = local_values[dotenv_key]
+    profile["db"] = db
+
+    inferred = {
+        "storage_root_from": (
+            "existing_profile"
+            if existing and str(existing.get("storage_root") or "").strip()
+            else ("local_settings" if storage_root and _normalize_path(storage_root) == _normalize_path(repo_root) else ("dotenv" if storage_root else None))
+        ),
+        "settings_path_found": settings_path is not None,
+        "db_from_settings": bool(settings_db),
+        "db_from_dotenv": any(local_values.get(key) for key in ("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")),
+        "local_access_values_written_to_profile": True,
+    }
+    return profile, inferred
 
 
 def _load_profile_payload(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
@@ -530,6 +656,7 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
         "VIOLET_PRODUCTION_PYTHON": str(profile.get("python") or expected_venv_python(repo_root)),
         "VIOLET_PRODUCTION_PROFILE_ACTIVE": "true",
         "VIOLET_PRODUCTION_PROFILE_ID": str(profile.get("profile_id") or DEFAULT_PROFILE_ID),
+        "VIOLET_SKIP_DOTENV": "1",
         STARTUP_SAFE_MODE_ENV: "true",
         STARTUP_MAINTENANCE_APPROVAL_ENV: "false",
         "POSTGRES_HOST": str(db.get("host") or "localhost"),
@@ -1239,6 +1366,11 @@ GATE_UI_MAP: dict[str, tuple[str, str, str]] = {
         "Profile environment",
         "Production profile must declare env=production.",
     ),
+    "production_profile_valid": (
+        "Production Profile",
+        "Profile error",
+        "Production profile has an ID or JSON mismatch. Use Create / Repair Production Profile.",
+    ),
     "production_profile_local_ignored": (
         "Production Profile",
         "Profile storage",
@@ -1346,6 +1478,11 @@ def _profile_gates(config: RuntimeConfig) -> list[Gate]:
     return [
         Gate("production_profile_exists", config.profile_exists, "Production profile exists."),
         Gate(
+            "production_profile_valid",
+            not config.profile_errors,
+            "Production profile has no structural or profile id errors.",
+        ),
+        Gate(
             "production_profile_local_ignored",
             bool(config.profile_path and profile_file_is_local_ignored(config.profile_path, config.repo_root)),
             "Production profile path is local and ignored.",
@@ -1386,9 +1523,13 @@ def profile_status(
     config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
     gates = _profile_gates(config)
     hard_failures = [gate.name for gate in gates if gate.hard and not gate.passed]
+    public_errors = list(dict.fromkeys(list(config.profile_errors) + hard_failures))
     if not config.profile_exists:
         status_text = "no_profile"
         message = "No production profile exists. Create one before running production preflight."
+    elif config.profile_errors:
+        status_text = "profile_error"
+        message = "Production profile has an ID or JSON mismatch. Repair it before preflight."
     elif hard_failures:
         status_text = "profile_incomplete"
         message = "Production profile is incomplete."
@@ -1408,7 +1549,7 @@ def profile_status(
         message=message,
         data=data,
         gates=gates,
-        errors=hard_failures,
+        errors=public_errors,
     )
 
 
@@ -1419,7 +1560,7 @@ def profile_discover(
     profile_path: Path | None = None,
 ) -> ControlResult:
     existing, path, errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
-    discovered = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
+    discovered, inferred = discover_local_profile_payload(repo_root, profile_id=profile_id, existing=existing)
     data = {
         "profile_exists": existing is not None,
         "profile_path_local_ignored": profile_file_is_local_ignored(path, repo_root),
@@ -1433,14 +1574,21 @@ def profile_discover(
             "db_name": discovered["db"]["name"],
             "db_user": discovered["db"].get("user") or "",
             "db_user_configured": bool(discovered["db"].get("user")),
-            "password_copied_from_dotenv": False,
+            "db_access_value_available_locally": bool(discovered["db"].get("password")),
             "storage_root_copied_from_dotenv": False,
+            "storage_root_inferred_locally": bool(discovered.get("storage_root")),
         },
-        "remaining_user_selected": ["storage_root"],
+        "remaining_user_selected": [] if discovered.get("storage_root") else ["storage_root"],
         "discovery_notes": [
-            "Existing development .env is read only for non-private generic defaults.",
-            "Storage root and DB password are not invented or copied from development .env.",
+            "Existing local .env and settings are read to bootstrap the local ignored production profile.",
+            "Private values are written only to the ignored local profile and are not returned in public JSON.",
         ],
+        "local_inference": {
+            "settings_path_found": bool(inferred.get("settings_path_found")),
+            "db_from_settings": bool(inferred.get("db_from_settings")),
+            "db_from_dotenv": bool(inferred.get("db_from_dotenv")),
+            "local_access_values_written_to_profile": False,
+        },
         "profile_errors": errors,
     }
     return ControlResult(ok=True, status="discovered", message="Production profile discovery completed.", data=data)
@@ -1453,10 +1601,30 @@ def profile_init(
     profile_path: Path | None = None,
 ) -> ControlResult:
     existing, path, _errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
-    profile = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
+    profile, _inferred = discover_local_profile_payload(repo_root, profile_id=profile_id, existing=existing)
     write_production_profile(profile, repo_root=repo_root, profile_path=path)
     result = profile_status(repo_root=repo_root, profile_id=profile_id, profile_path=path)
     result.message = "Production profile created or repaired. Complete any remaining fields before preflight."
+    return result
+
+
+def profile_repair(
+    *,
+    repo_root: Path = ROOT,
+    profile_id: str = DEFAULT_PROFILE_ID,
+    profile_path: Path | None = None,
+) -> ControlResult:
+    existing, path, _errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
+    profile, inferred = discover_local_profile_payload(repo_root, profile_id=profile_id, existing=existing)
+    write_production_profile(profile, repo_root=repo_root, profile_path=path)
+    result = profile_status(repo_root=repo_root, profile_id=profile_id, profile_path=path)
+    result.message = "Production profile repaired from local evidence."
+    result.data["local_inference"] = {
+        "settings_path_found": bool(inferred.get("settings_path_found")),
+        "db_from_settings": bool(inferred.get("db_from_settings")),
+        "db_from_dotenv": bool(inferred.get("db_from_dotenv")),
+        "local_access_values_written_to_profile": bool(inferred.get("local_access_values_written_to_profile")),
+    }
     return result
 
 
@@ -1499,6 +1667,12 @@ def _storage_root_looks_production(config: RuntimeConfig) -> tuple[bool, str]:
         return False, "VIOLET_STORAGE_ROOT must be an absolute path."
     normalized = _normalize_path(storage)
     repo_normalized = _normalize_path(config.repo_root)
+    if normalized == repo_normalized:
+        if _repo_root_is_codex_worktree(config.repo_root) or detect_git_worktree(config.repo_root) is not False:
+            return False, "Storage root must not be an agent worktree or unverified git worktree."
+        if config.settings_path and config.settings_path.is_file():
+            return True, "Storage root is the canonical production checkout with initialized local settings."
+        return False, "Canonical co-located storage requires initialized data/settings.json."
     if normalized == repo_normalized or _is_relative_to(storage, config.repo_root):
         return False, "Storage root must not be inside the code repository."
     blocked_fragments = ("/.codex/", "/worktrees/", "/tmp/", "/temp/")
@@ -1532,7 +1706,7 @@ def preflight(
     worktree = detect_git_worktree(repo_root)
     if config.config_source == "production_profile":
         for profile_gate in _profile_gates(config):
-            if profile_gate.name in {"production_profile_exists", "production_profile_local_ignored", "production_profile_env"}:
+            if profile_gate.name in {"production_profile_exists", "production_profile_valid", "production_profile_local_ignored", "production_profile_env"}:
                 gate(profile_gate.name, profile_gate.passed, profile_gate.message, profile_gate.hard)
     gate("canonical_repo_root", worktree is False and not _repo_root_is_codex_worktree(repo_root), "Running from canonical repo root, not a git worktree.")
     gate("run_py_exists", (repo_root / "run.py").is_file(), "run.py exists in the production repo root.")
@@ -2211,7 +2385,7 @@ def make_parser() -> argparse.ArgumentParser:
         cmd = sub.add_parser(name)
         _add_json_arg(cmd)
         _add_profile_arg(cmd)
-    for name in ("profile-status", "profile-discover", "profile-init"):
+    for name in ("profile-status", "profile-discover", "profile-init", "profile-repair"):
         cmd = sub.add_parser(name)
         _add_json_arg(cmd)
         _add_profile_arg(cmd)
@@ -2268,6 +2442,8 @@ def main(argv: list[str] | None = None) -> int:
         result = profile_discover(profile_id=args.profile)
     elif args.command == "profile-init":
         result = profile_init(profile_id=args.profile)
+    elif args.command == "profile-repair":
+        result = profile_repair(profile_id=args.profile)
     elif args.command == "profile-update":
         updates = _profile_update_args_to_payload(args)
         if args.stdin_json:

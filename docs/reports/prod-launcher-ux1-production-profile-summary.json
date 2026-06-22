@@ -26,43 +26,57 @@
     "development_dotenv_modified": false,
     "development_dotenv_required_for_production": false,
     "child_env_from_profile": true,
+    "child_env_skips_dotenv": true,
     "clean_allowlisted_process_environment": true,
     "arbitrary_development_env_inheritance": false,
     "dangerous_development_variables_stripped": true,
     "profile_overrides_development_dotenv_for_child": true,
+    "profile_mismatch_fails_closed": true,
+    "repair_resets_invariants": true,
+    "local_bootstrap_supported": true,
     "storage_root_not_invented": true,
-    "storage_root_not_copied_from_dotenv": true,
-    "db_access_value_not_copied_from_dotenv": true,
     "incomplete_profile_state_explicit": true,
+    "canonical_ignored_profile_created": true,
+    "canonical_ignored_profile_committed": false,
     "profile_discovery": {
+      "local_evidence_checked": [
+        "local .env",
+        "data/settings.json",
+        ".local_manifests",
+        "production and launcher reports"
+      ],
       "safe_inferred": [
         "profile_id",
         "env",
         "repo_root identity",
         "python candidate",
-        "app_port default or safe dotenv default",
-        "db host default or safe dotenv default",
-        "db port default or safe dotenv default",
-        "db name default or safe dotenv default",
-        "db user default or safe dotenv default"
+        "app_port",
+        "storage root from initialized local settings or explicit local record",
+        "DB host",
+        "DB port",
+        "DB name",
+        "DB user",
+        "DB access value presence"
       ],
-      "remaining_user_selected": [
-        "production storage root",
-        "private DB credential if production DB requires one"
-      ],
-      "private_values_invented": false
+      "remaining_user_selected": [],
+      "private_values_invented": false,
+      "private_values_publicly_recorded": false
     }
   },
   "electron_launcher": {
     "exists": true,
     "package_path": "launcher/package.json",
     "primary_documented_entrypoint": true,
+    "windows_executable_packaging": true,
+    "packaged_exe_repo_relative": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
     "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
+    "cmd_entry_role": "fallback/development",
     "calls_python_control_plane": true,
     "raw_json_hidden_from_main_screen": true,
     "advanced_diagnostics_collapsed_by_default": true,
     "copy_diagnostic_summary": true,
     "profile_missing_state_precedence": true,
+    "profile_error_state_visible": true,
     "preserves_existing_db_user": true,
     "save_profile_uses_stdin_json": true,
     "checklist_groups": [
@@ -78,6 +92,7 @@
     "top_level_states": [
       "No Production Profile",
       "Profile Incomplete",
+      "Profile Error",
       "Ready",
       "Blocked",
       "Starting",
@@ -86,6 +101,13 @@
       "Stopped",
       "Error"
     ]
+  },
+  "npm_proxy_setup": {
+    "script_path": "scripts/setup_launcher_npm_proxy.ps1",
+    "local_ignored_npmrc": true,
+    "reset_supported": true,
+    "personal_proxy_value_committed": false,
+    "package_retry_after_local_proxy": "passed"
   },
   "preflight_mapping": {
     "violet_env_production": true,
@@ -104,6 +126,7 @@
       "profile-status",
       "profile-discover",
       "profile-init",
+      "profile-repair",
       "profile-update",
       "test-db",
       "diagnostic-summary"
@@ -116,11 +139,18 @@
       "restart",
       "open-browser"
     ],
+    "skip_dotenv_set_for_profile_child": true,
+    "run_py_skip_dotenv_supported": true,
+    "backend_config_skip_dotenv_supported": true,
+    "profile_mismatch_blocks_preflight_and_start": true,
+    "repair_forces_profile_invariants": true,
     "safe_startup_requires_initialized_settings": true,
     "profile_active_db_env_overrides_settings_json": true,
     "profile_update_private_db_value_uses_stdin_json": true,
     "controller_empty_stdout_is_error": true,
     "controller_stderr_redacted": true,
+    "controller_forward_slash_windows_paths_redacted": true,
+    "controller_http_urls_preserved": true,
     "posix_port_owner_lookup": "lsof_then_ss",
     "development_env_legacy_function_test_path_preserved": true
   },
@@ -149,26 +179,37 @@
   "stop_safety": {
     "refuses_unknown_process": true,
     "posix_unknown_port_owner_fails_closed": true,
-    "force_kill_same_verified_only": true
+    "force_kill_same_verified_only": true,
+    "bounded_graceful_timeout": true
+  },
+  "shutdown_safety": {
+    "safe_startup_skips_background_tasks": true,
+    "tracked_background_tasks_cancelled": true,
+    "direct_safe_start_ctrl_break_result": "passed",
+    "port_released_after_temp_run": true,
+    "invalid_uvicorn_log_config_documented_absent": true
   },
   "public_json_safety": {
     "log_tail_in_public_json": false,
     "profile_paths_redacted": true,
     "controller_stderr_redacted": true,
     "controller_error_length_capped": true,
-    "advanced_diagnostics_public_safe": true
+    "advanced_diagnostics_public_safe": true,
+    "forward_slash_windows_paths_redacted": true,
+    "http_urls_preserved": true,
+    "profile_private_values_publicly_recorded": false
   },
   "review_fix_round": {
-    "base_head_sha": "bf0edb669ac912b7b10cc5732c1efacf6a51b31f",
+    "base_head_sha": "e357dc634ed95e50d51e33a8dbca8262ff63b545",
     "fixed": [
-      "P1 clean allowlisted production profile environment replaces inherited development environment",
-      "P2 profile status/discovery expose public-safe DB user and renderer preserves custom DB users",
-      "P2 missing/incomplete profile state takes precedence over generic stopped runtime state",
-      "P2 missing controller JSON and spawn/crash failures return structured actionable errors",
-      "P2 controller stderr is redacted before renderer diagnostics",
-      "P2 private DB credential profile updates use stdin JSON instead of argv",
-      "P2 POSIX port owner lookup uses lsof/ss and unknown owners remain fail-closed",
-      "P2 UX1 contract requires Python and Electron validation statuses to be passed"
+      "P1 run.py and backend config honor VIOLET_SKIP_DOTENV for profile startup",
+      "P2 profile id mismatch fails closed for status, preflight, and start",
+      "P2 forward-slash Windows paths are redacted without corrupting http URLs",
+      "P2 profile repair resets env, safe startup, and automation invariants",
+      "local production profile bootstrap writes only the ignored profile",
+      "Windows portable Electron executable packaging was added and validated",
+      "local ignored npm proxy setup and reset script was added",
+      "safe-start shutdown avoids background tasks and tracked tasks are cancelled"
     ]
   },
   "manual_acceptance_required_before_merge": true,
@@ -179,16 +220,19 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "204 passed",
+    "python_tests_result": "216 passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",
     "electron_tests_result": "launcher contract checks passed; controller runner tests passed; renderer behavior tests passed",
     "electron_lint_status": "passed",
     "electron_audit_status": "passed_zero_vulnerabilities",
+    "electron_package_status": "passed",
     "contract_check_status": "passed",
     "public_redaction_json_status": "passed",
-    "public_redaction_markdown_status": "passed",
-    "manual_acceptance_status": "manual_acceptance_required_before_merge"
+    "manual_acceptance_status": "manual_acceptance_required_before_merge",
+    "canonical_profile_status": "ready",
+    "canonical_preflight_status": "passed",
+    "direct_safe_start_shutdown_status": "passed"
   },
   "safety": {
     "no_push_main": true,
@@ -225,12 +269,22 @@
       },
       {
         "path": "launcher/",
-        "classification": "durable production code",
+        "classification": "durable production launcher UI",
+        "committed": true
+      },
+      {
+        "path": "scripts/setup_launcher_npm_proxy.ps1",
+        "classification": "reusable local setup helper",
         "committed": true
       },
       {
         "path": ".local_manifests/production_launcher/production-profile.json",
         "classification": "one-off local/private",
+        "committed": false
+      },
+      {
+        "path": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
+        "classification": "one-off local build output",
         "committed": false
       },
       {

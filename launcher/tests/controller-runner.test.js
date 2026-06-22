@@ -52,6 +52,12 @@ async function main() {
   assert(!redacted.includes('ghp_123456789abcdef'));
   assert(!redacted.includes(repoRoot));
 
+  const slashRedacted = sanitizeControllerStderr('Traceback D:/Storage/private/file.jpg C:/Users/kyloris/.codex/worktrees/private/profile.json token=sk-forward-secret', { repoRoot });
+  assert(!slashRedacted.includes('D:/Storage'));
+  assert(!slashRedacted.includes('C:/Users'));
+  assert(!slashRedacted.includes('sk-forward-secret'));
+  assert.strictEqual(sanitizeControllerStderr('open http://127.0.0.1:8000', { repoRoot }), 'open http://127.0.0.1:8000');
+
   const spawnFailure = await runController({
     command: 'profile-status',
     spawnImpl() {

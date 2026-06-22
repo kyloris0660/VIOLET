@@ -39,6 +39,7 @@ let initialFieldValues = {};
 
 const stateLabels = {
   no_profile: 'No Production Profile',
+  profile_error: 'Profile Error',
   profile_incomplete: 'Profile Incomplete',
   ready: 'Ready',
   passed: 'Ready',
@@ -56,7 +57,7 @@ const stateLabels = {
 function stateClass(label) {
   if (label === 'Ready' || label === 'Running') return 'state state-green';
   if (label === 'Blocked' || label === 'Error') return 'state state-red';
-  if (label === 'Profile Incomplete' || label === 'No Production Profile' || label === 'Starting' || label === 'Unhealthy') {
+  if (label === 'Profile Incomplete' || label === 'No Production Profile' || label === 'Profile Error' || label === 'Starting' || label === 'Unhealthy') {
     return 'state state-yellow';
   }
   return 'state state-gray';
@@ -73,6 +74,7 @@ function deriveState(payload) {
   if (payload && payload.status === 'error') return 'Error';
   if (payload && payload.status === 'no_profile') return 'No Production Profile';
   if (data.profile && data.profile.exists === false) return 'No Production Profile';
+  if (payload && payload.status === 'profile_error') return 'Profile Error';
   if (payload && (payload.status === 'profile_incomplete' || payload.status === 'discovered' || payload.status === 'cancelled')) {
     return 'Profile Incomplete';
   }
@@ -191,7 +193,7 @@ function formPayload() {
   return payload;
 }
 
-buttons.createProfile.addEventListener('click', () => run('profile-init'));
+buttons.createProfile.addEventListener('click', () => run('profile-repair'));
 buttons.selectStorage.addEventListener('click', async () => {
   setBusy(true);
   try {
@@ -244,7 +246,7 @@ async function boot() {
   rememberInitialFields();
   const profilePayload = await run('profile-status');
   rememberInitialFields();
-  if (profilePayload.status === 'no_profile' || profilePayload.status === 'profile_incomplete') {
+  if (profilePayload.status === 'no_profile' || profilePayload.status === 'profile_incomplete' || profilePayload.status === 'profile_error') {
     return;
   }
   await run('status');

@@ -29,3 +29,8 @@ reports/
 
 # Privacy-safe: full-path manifests stay local
 .local_manifests/
+
+# Local Electron launcher build/config artifacts
+launcher/dist/
+launcher/out/
+launcher/.npmrc

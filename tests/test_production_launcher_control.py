@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import sys
 import time
+import asyncio
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -18,6 +22,7 @@ if str(ROOT / "scripts") not in sys.path:
 
 import violet_production_control as control  # noqa: E402
 import backend.app.auth_middleware as auth_middleware  # noqa: E402
+from backend.app import main as app_main  # noqa: E402
 from backend.app.routes import health  # noqa: E402
 from backend.app.auth_middleware import AuthMiddleware  # noqa: E402
 
@@ -60,8 +65,11 @@ def _write_fake_profile(
     storage: Path,
     *,
     profile_id: str = control.DEFAULT_PROFILE_ID,
+    profile_env: str = "production",
+    safe_startup: bool = True,
     db_user: str = "postgres",
     db_password: str = "",
+    automation_flags: dict[str, bool] | None = None,
 ) -> Path:
     profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
     profile_path.parent.mkdir(parents=True)
@@ -69,7 +77,7 @@ def _write_fake_profile(
         json.dumps(
             {
                 "profile_id": profile_id,
-                "env": "production",
+                "env": profile_env,
                 "repo_root": str(repo),
                 "python": sys.executable,
                 "app_port": 8123,
@@ -81,8 +89,8 @@ def _write_fake_profile(
                     "user": db_user,
                     "password": db_password,
                 },
-                "safe_startup": True,
-                "automation_flags": {
+                "safe_startup": safe_startup,
+                "automation_flags": automation_flags or {
                     "dynamic_library_auto_sync": False,
                     "ai_auto_tag_after_import": False,
                     "content_classification_auto_after_import": False,
@@ -211,6 +219,95 @@ def test_profile_launch_environment_strips_development_variables(tmp_path, safe_
     assert (repo / ".env").read_text(encoding="utf-8") == dotenv_before
 
 
+def test_profile_launch_sets_skip_dotenv_and_backend_profile_markers(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    env["BLOMBOORU_REQUIRE_AUTH"] = "true"
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    config = control.resolve_config(repo, base_env=env, profile_id=control.DEFAULT_PROFILE_ID)
+    child_env = control._child_environment(config)
+
+    assert child_env["VIOLET_SKIP_DOTENV"] == "1"
+    assert child_env["VIOLET_PRODUCTION_PROFILE_ACTIVE"] == "true"
+    assert child_env["VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP"] == "true"
+    assert child_env["POSTGRES_USER"] == "violet_prod"
+    assert "BLOMBOORU_REQUIRE_AUTH" not in child_env
+
+
+def test_run_py_skip_dotenv_prevents_development_dotenv_reload(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shutil.copyfile(ROOT / "run.py", repo / "run.py")
+    (repo / ".env").write_text("BLOMBOORU_REQUIRE_AUTH=true\nOPENAI_API_KEY=sk-development-secret\n", encoding="utf-8")
+    script = "import os, run; assert 'BLOMBOORU_REQUIRE_AUTH' not in os.environ; assert 'OPENAI_API_KEY' not in os.environ"
+    env = os.environ.copy()
+    env["VIOLET_SKIP_DOTENV"] = "1"
+    env.pop("BLOMBOORU_REQUIRE_AUTH", None)
+    env.pop("OPENAI_API_KEY", None)
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_backend_config_skip_dotenv_keeps_profile_values(tmp_path):
+    repo = tmp_path / "repo"
+    config_dir = repo / "backend" / "app"
+    config_dir.mkdir(parents=True)
+    (repo / "backend" / "__init__.py").write_text("", encoding="utf-8")
+    (config_dir / "__init__.py").write_text("", encoding="utf-8")
+    shutil.copyfile(ROOT / "backend" / "app" / "config.py", config_dir / "config.py")
+    storage = tmp_path / "profile-storage"
+    (storage / "data").mkdir(parents=True)
+    (storage / "data" / "settings.json").write_text(
+        json.dumps({"first_run": False, "database": {"name": "settings_db"}, "secret_key": "stable"}),
+        encoding="utf-8",
+    )
+    (repo / ".env").write_text("POSTGRES_DB=development_db\nBLOMBOORU_REQUIRE_AUTH=true\n", encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": str(repo),
+            "VIOLET_SKIP_DOTENV": "1",
+            "VIOLET_ENV": "production",
+            "VIOLET_PRODUCTION_PROFILE_ACTIVE": "true",
+            "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP": "true",
+            "VIOLET_STORAGE_ROOT": str(storage),
+            "POSTGRES_DB": "profile_db",
+            "POSTGRES_USER": "violet_prod",
+            "POSTGRES_HOST": "localhost",
+            "POSTGRES_PORT": "5432",
+        }
+    )
+    script = "\n".join(
+        [
+            "import os",
+            "from backend.app.config import settings",
+            "assert settings.DB_NAME == 'profile_db'",
+            "assert settings.DB_USER == 'violet_prod'",
+            "assert 'BLOMBOORU_REQUIRE_AUTH' not in os.environ",
+        ]
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_profile_status_and_discovery_expose_public_safe_db_user(tmp_path, safe_backends):
     repo, storage, env = _write_fake_repo(tmp_path)
     _write_fake_profile(repo, storage, db_user="violet_prod")
@@ -261,6 +358,136 @@ def test_profile_update_stdin_json_accepts_password_payload_without_argv(tmp_pat
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     assert result.data["profile"]["db"]["password_present"] is True
     assert profile["db"]["password"] == "secret-db-password"
+
+
+def test_profile_mismatch_fails_closed_for_status_preflight_and_start(tmp_path, safe_backends, monkeypatch):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, profile_id="wrong-profile")
+
+    status = control.profile_status(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID, base_env=env)
+    preflight = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "state.json",
+    )
+    monkeypatch.setattr(control.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("start must not launch on mismatched profile"))
+    started = control.start_production(
+        repo_root=repo,
+        base_env=env,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        state_path=tmp_path / "state.json",
+        start_lock_path=tmp_path / "start.lock",
+    )
+
+    assert status.status == "profile_error"
+    assert "profile_id_mismatch" in status.errors
+    assert preflight.ok is False
+    assert "production_profile_valid" in preflight.errors
+    assert started.ok is False
+    assert "production_profile_valid" in started.errors
+
+
+def test_profile_repair_resets_invalid_invariants_and_flags(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(
+        repo,
+        storage,
+        profile_id="wrong-profile",
+        profile_env="development",
+        safe_startup=False,
+        automation_flags={
+            "dynamic_library_auto_sync": True,
+            "ai_auto_tag_after_import": True,
+            "content_classification_auto_after_import": True,
+            "tag_translation_auto": True,
+            "tag_translation_background": True,
+        },
+    )
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert result.status in {"ready", "profile_incomplete"}
+    assert payload["profile_id"] == control.DEFAULT_PROFILE_ID
+    assert payload["env"] == "production"
+    assert payload["safe_startup"] is True
+    assert all(value is False for value in payload["automation_flags"].values())
+
+
+def test_profile_repair_bootstraps_local_storage_and_db_from_dotenv_and_settings(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    settings_path = storage / "data" / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["database"] = {
+        "host": "db.local",
+        "port": 5544,
+        "name": "prod_db",
+        "user": "violet_prod",
+        "password": "local-private-db-value",
+    }
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+    (repo / ".env").write_text(
+        "\n".join(
+            [
+                "VIOLET_STORAGE_ROOT=" + str(storage),
+                "POSTGRES_DB=dotenv_db",
+                "POSTGRES_USER=dotenv_user",
+                "POSTGRES_PASSWORD=dotenv-private",
+                "APP_PORT=8129",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    serialized_public = json.dumps(result.to_public_dict(), sort_keys=True)
+    assert payload["storage_root"] == str(storage)
+    assert payload["app_port"] == 8129
+    assert payload["db"]["name"] == "prod_db"
+    assert payload["db"]["user"] == "violet_prod"
+    assert payload["db"]["password"] == "local-private-db-value"
+    assert "local-private-db-value" not in serialized_public
+    assert "dotenv-private" not in serialized_public
+
+
+def test_profile_repair_can_infer_canonical_colocated_storage_from_settings(tmp_path, monkeypatch):
+    repo, _storage, _env = _write_fake_repo(tmp_path)
+    (repo / ".env").write_text("POSTGRES_DB=blombooru\n", encoding="utf-8")
+    (repo / "data").mkdir()
+    (repo / "data" / "settings.json").write_text(
+        json.dumps({"first_run": False, "database": {"name": "blombooru", "user": "violet_prod"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(control, "detect_git_worktree", lambda repo_root=control.ROOT: False)
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    profile = json.loads((repo / ".local_manifests" / "production_launcher" / "production-profile.json").read_text(encoding="utf-8"))
+    config = control.resolve_config(repo, profile_id=control.DEFAULT_PROFILE_ID)
+    storage_ok, storage_message = control._storage_root_looks_production(config)
+
+    assert profile["storage_root"] == str(repo)
+    assert result.data["profile"]["storage_root_configured"] is True
+    assert storage_ok is True
+    assert "canonical production checkout" in storage_message
+
+
+def test_colocated_storage_is_rejected_for_worktree(tmp_path, monkeypatch):
+    repo, _storage, _env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, repo)
+    monkeypatch.setattr(control, "detect_git_worktree", lambda repo_root=control.ROOT: True)
+    monkeypatch.setattr(control, "_repo_root_is_codex_worktree", lambda repo_root: False)
+    config = control.resolve_config(repo, profile_id=control.DEFAULT_PROFILE_ID)
+
+    storage_ok, storage_message = control._storage_root_looks_production(config)
+
+    assert storage_ok is False
+    assert "worktree" in storage_message
 
 
 def test_profile_preflight_blocks_missing_secret_key_to_avoid_settings_import_write(tmp_path, safe_backends):
@@ -419,6 +646,23 @@ def test_public_json_omits_raw_log_tail_with_paths_and_tokens(tmp_path, safe_bac
     assert "sk-test-secret-token" not in serialized
     assert public["data"]["log_tail_in_public_json"] is False
     assert public["data"]["log_tail_redacted"] is True
+
+
+def test_python_public_redaction_handles_forward_slash_windows_paths_and_private_values():
+    text = (
+        "Trace D:/Storage/private/file.jpg "
+        "C:/Users/kyloris/.codex/worktrees/private/profile.json "
+        "Authorization: Bearer sk-development-secret "
+        "password=local-private-db-value"
+    )
+
+    redacted = control._redact_private_text(text)
+
+    assert "D:/Storage" not in redacted
+    assert "C:/Users" not in redacted
+    assert "sk-development-secret" not in redacted
+    assert "local-private-db-value" not in redacted
+    assert control._redact_private_text("open http://127.0.0.1:8000") == "open http://127.0.0.1:8000"
 
 
 def test_posix_port_owner_pid_uses_lsof_when_available(monkeypatch):
@@ -824,6 +1068,39 @@ def test_status_reports_managed_unhealthy_process_as_unhealthy(tmp_path, safe_ba
     assert result.status == "unhealthy"
     assert result.data["running"] is True
     assert result.data["health_ok"] is False
+
+
+def test_safe_startup_lifespan_does_not_create_background_tasks(monkeypatch):
+    created: list[object] = []
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP", "true")
+    monkeypatch.setattr(app_main, "init_engine", lambda: object())
+    monkeypatch.setattr(app_main.asyncio, "create_task", lambda coro: created.append(coro) or pytest.fail("safe startup must not create background tasks"))
+    app_main.settings.settings["first_run"] = False
+
+    async def exercise():
+        app = SimpleNamespace(state=SimpleNamespace())
+        async with app_main.lifespan(app):
+            assert getattr(app.state, "violet_background_tasks", []) == []
+
+    asyncio.run(exercise())
+    assert created == []
+
+
+def test_shutdown_helper_cancels_tracked_background_tasks():
+    async def sleeper():
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            raise
+
+    async def exercise():
+        app = SimpleNamespace(state=SimpleNamespace())
+        task = app_main._track_background_task(app, sleeper())
+        await app_main._cancel_background_tasks(app, timeout_seconds=1.0)
+        return task.cancelled()
+
+    assert asyncio.run(exercise()) is True
 
 
 def test_health_reports_schema_compatible_true_without_writes(monkeypatch):

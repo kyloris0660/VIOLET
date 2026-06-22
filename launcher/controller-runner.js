@@ -8,6 +8,7 @@ const allowedCommands = new Set([
   'profile-status',
   'profile-discover',
   'profile-init',
+  'profile-repair',
   'profile-update',
   'preflight',
   'test-db',
@@ -59,7 +60,7 @@ function sanitizeControllerStderr(stderr, { repoRoot = '' } = {}) {
   for (const root of redactionRoots) {
     text = replaceBothPathForms(text, root, root === home ? '[home]' : '[repo-local]');
   }
-  text = text.replace(/[A-Za-z]:\\[^\s'"`<>|]+/g, '[path]');
+  text = text.replace(/(^|[^A-Za-z])([A-Za-z]:[\\/][^\s'"`<>|]+)/g, '$1[path]');
   text = text.replace(/\/(?:Users|home)\/[^\s'"`<>|]+/g, '[path]');
   text = text.replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]');
   text = text.replace(/\b(password|passwd|token|secret|api[_-]?key)\s*[:=]\s*[^\s'"`]+/gi, '$1=[redacted]');
