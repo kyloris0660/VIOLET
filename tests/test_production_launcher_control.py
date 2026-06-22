@@ -3,16 +3,22 @@ from __future__ import annotations
 import json
 import sys
 import time
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
-from starlette.responses import PlainTextResponse
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import violet_production_control as control  # noqa: E402
+import backend.app.auth_middleware as auth_middleware  # noqa: E402
+from backend.app.routes import health  # noqa: E402
 from backend.app.auth_middleware import AuthMiddleware  # noqa: E402
 
 
@@ -114,6 +120,41 @@ def test_preflight_blocks_malformed_app_port(tmp_path, safe_backends):
     assert result.data["app_port_resolved"] is False
 
 
+def test_preflight_blocks_malformed_postgres_port(tmp_path, safe_backends):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    env["POSTGRES_PORT"] = "abc"
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "state.json",
+    )
+
+    assert result.ok is False
+    assert "db_port_valid" in result.errors
+    assert result.data["db_port_valid"] is False
+
+
+def test_preflight_blocks_malformed_settings_db_port(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    settings_path = storage / "data" / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["database"]["port"] = "abc"
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "state.json",
+    )
+
+    assert result.ok is False
+    assert "db_port_valid" in result.errors
+    assert result.data["db_port_valid"] is False
+
+
 def test_preflight_blocks_destructive_e2e_flag(tmp_path, safe_backends):
     repo, _storage, env = _write_fake_repo(tmp_path)
     env["VIOLET_ALLOW_DESTRUCTIVE_E2E"] = "1"
@@ -128,6 +169,43 @@ def test_preflight_blocks_destructive_e2e_flag(tmp_path, safe_backends):
     assert result.ok is False
     assert "destructive_e2e_disabled" in result.errors
     assert result.data["destructive_e2e_allowed"] is False
+
+
+def test_preflight_blocks_real_e2e_flag(tmp_path, safe_backends):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    env["VIOLET_RUN_REAL_E2E"] = "true"
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "state.json",
+    )
+
+    assert result.ok is False
+    assert "dangerous_dev_test_flags_disabled" in result.errors
+    assert result.data["destructive_e2e_allowed"] is False
+
+
+def test_public_json_omits_raw_log_tail_with_paths_and_tokens(tmp_path, safe_backends, monkeypatch):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    unsafe_lines = [
+        f"STORAGE_ROOT={storage}\\private-file.jpg",
+        "Authorization: Bearer sk-test-secret-token",
+    ]
+    monkeypatch.setattr(control, "tail_log", lambda lines=20: unsafe_lines)
+    monkeypatch.setattr(control, "fetch_health", lambda url, timeout=2.0: None)
+
+    result = control.status(repo_root=repo, base_env=env, state_path=tmp_path / "state.json")
+    public = result.to_public_dict()
+    serialized = json.dumps(public, sort_keys=True)
+
+    assert "recent_log_tail" in result.data
+    assert "recent_log_tail" not in serialized
+    assert str(storage) not in serialized
+    assert "sk-test-secret-token" not in serialized
+    assert public["data"]["log_tail_in_public_json"] is False
+    assert public["data"]["log_tail_redacted"] is True
 
 
 def test_preflight_reports_explicit_startup_write_policy(tmp_path, safe_backends):
@@ -249,6 +327,79 @@ def test_stop_refuses_reused_or_unverified_pid(tmp_path, safe_backends, monkeypa
     assert "pid_created_before_launcher_state" in result.data["verification_failures"]
 
 
+def test_posix_missing_create_time_can_verify_with_cwd_cmd_and_port(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    config = control.resolve_config(repo, base_env=env)
+    state = {
+        "state_version": control.STATE_VERSION,
+        "app_name": control.APP_NAME,
+        "started_by": "violet_production_launcher",
+        "pid": 1234,
+        "start_time": "2026-01-01T00:00:00+00:00",
+        "repo_root": str(repo),
+        "port": 8123,
+        "env": "production",
+    }
+    monkeypatch.setattr(control.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid == 1234)
+    monkeypatch.setattr(control, "port_owner_pid", lambda port: 1234)
+    monkeypatch.setattr(
+        control,
+        "process_snapshot",
+        lambda pid: control.ProcessSnapshot(
+            pid=pid,
+            exists=True,
+            command_line=f"{sys.executable} run.py",
+            executable_path=sys.executable,
+            create_time=None,
+            cwd=str(repo),
+        ),
+    )
+
+    verified, reasons = control.verify_managed_process(state, config)
+
+    assert verified is True
+    assert reasons == []
+
+
+def test_posix_verification_refuses_mismatched_cwd_or_port(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    other_repo = tmp_path / "other"
+    other_repo.mkdir()
+    config = control.resolve_config(repo, base_env=env)
+    state = {
+        "state_version": control.STATE_VERSION,
+        "app_name": control.APP_NAME,
+        "started_by": "violet_production_launcher",
+        "pid": 1234,
+        "start_time": "2026-01-01T00:00:00+00:00",
+        "repo_root": str(repo),
+        "port": 8123,
+        "env": "production",
+    }
+    monkeypatch.setattr(control.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid == 1234)
+    monkeypatch.setattr(control, "port_owner_pid", lambda port: 9999)
+    monkeypatch.setattr(
+        control,
+        "process_snapshot",
+        lambda pid: control.ProcessSnapshot(
+            pid=pid,
+            exists=True,
+            command_line=f"{sys.executable} run.py",
+            executable_path=sys.executable,
+            create_time=None,
+            cwd=str(other_repo),
+        ),
+    )
+
+    verified, reasons = control.verify_managed_process(state, config)
+
+    assert verified is False
+    assert "process_cwd_mismatch" in reasons
+    assert "target_port_owned_by_different_pid" in reasons
+
+
 def test_stop_refuses_unknown_process_on_port(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
     monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: True)
@@ -286,13 +437,71 @@ def test_production_command_and_child_env_never_enable_debug(tmp_path, safe_back
 
 def test_start_returns_single_flight_status_when_lock_exists(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
-    monkeypatch.setattr(control, "_acquire_start_lock", lambda: False)
+    monkeypatch.setattr(
+        control,
+        "_acquire_start_lock",
+        lambda path=control.START_LOCK_FILE: control.StartLockStatus(acquired=False, reason="active_start_lock"),
+    )
 
     result = control.start_production(repo_root=repo, base_env=env, state_path=tmp_path / "state.json")
 
     assert result.ok is False
     assert result.status == "blocked"
     assert "start_already_in_progress" in result.errors
+
+
+def test_stale_start_lock_with_dead_pid_is_reclaimed(tmp_path, safe_backends, monkeypatch):
+    lock_path = tmp_path / "start.lock"
+    lock_path.write_text(json.dumps({"pid": 987654, "created_at": control.now_iso()}), encoding="utf-8")
+    monkeypatch.setattr(control, "process_exists", lambda pid: False)
+
+    status = control._acquire_start_lock(lock_path)
+
+    assert status.acquired is True
+    assert status.stale_reclaimed is True
+    control._release_start_lock(lock_path)
+
+
+def test_active_start_lock_with_live_pid_blocks(tmp_path, safe_backends, monkeypatch):
+    lock_path = tmp_path / "start.lock"
+    lock_path.write_text(json.dumps({"pid": 1234, "created_at": control.now_iso()}), encoding="utf-8")
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid == 1234)
+    monkeypatch.setattr(control, "process_command_line", lambda pid: f"{sys.executable} scripts/violet_production_control.py start")
+
+    status = control._acquire_start_lock(lock_path)
+
+    assert status.acquired is False
+    assert status.reason == "active_start_lock"
+
+
+def test_malformed_start_lock_is_reclaimed(tmp_path, safe_backends, monkeypatch):
+    lock_path = tmp_path / "start.lock"
+    lock_path.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(control, "process_exists", lambda pid: False)
+
+    status = control._acquire_start_lock(lock_path)
+
+    assert status.acquired is True
+    assert status.stale_reclaimed is True
+    control._release_start_lock(lock_path)
+
+
+def test_start_reports_reclaimed_stale_lock(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    env["VIOLET_ENV"] = "development"
+    lock_path = tmp_path / "start.lock"
+    lock_path.write_text(json.dumps({"pid": 987654, "created_at": control.now_iso()}), encoding="utf-8")
+    monkeypatch.setattr(control, "process_exists", lambda pid: False)
+
+    result = control.start_production(
+        repo_root=repo,
+        base_env=env,
+        state_path=tmp_path / "state.json",
+        start_lock_path=lock_path,
+    )
+
+    assert result.ok is False
+    assert result.data["stale_lock_reclaimed"] is True
 
 
 def test_status_json_summary_is_public_safe(tmp_path, safe_backends, monkeypatch):
@@ -316,6 +525,117 @@ def test_status_json_summary_is_public_safe(tmp_path, safe_backends, monkeypatch
     assert summary["health_ok"] is True
     assert str(storage) not in serialized
     assert str(repo) not in serialized
+
+
+def test_health_reports_schema_compatible_true_without_writes(monkeypatch):
+    statements: list[str] = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, statement):
+            statements.append(str(statement))
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    fake_engine = FakeEngine()
+    fake_settings = SimpleNamespace(
+        IS_FIRST_RUN=False,
+        STORAGE_ROOT_EXPLICITLY_SET=True,
+        DEBUG=False,
+        VIOLET_ENV="production",
+    )
+    monkeypatch.setattr(health.database, "engine", fake_engine)
+    monkeypatch.setattr(health.database, "init_engine", lambda: fake_engine)
+    monkeypatch.setattr(health, "settings", fake_settings)
+    monkeypatch.setattr(
+        health,
+        "inspect",
+        lambda engine: SimpleNamespace(get_table_names=lambda: list(health.REQUIRED_CORE_TABLES)),
+    )
+
+    import asyncio
+
+    payload = asyncio.run(health.get_health())
+
+    assert payload["ok"] is True
+    assert payload["schema_compatible"] is True
+    assert payload["schema_status"] == "compatible"
+    assert statements == ["SELECT 1"]
+
+
+def test_health_reports_schema_incompatible_when_core_table_missing(monkeypatch):
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, statement):
+            return None
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    fake_engine = FakeEngine()
+    fake_settings = SimpleNamespace(
+        IS_FIRST_RUN=False,
+        STORAGE_ROOT_EXPLICITLY_SET=True,
+        DEBUG=False,
+        VIOLET_ENV="production",
+    )
+    tables = set(health.REQUIRED_CORE_TABLES)
+    tables.remove("blombooru_media")
+    monkeypatch.setattr(health.database, "engine", fake_engine)
+    monkeypatch.setattr(health.database, "init_engine", lambda: fake_engine)
+    monkeypatch.setattr(health, "settings", fake_settings)
+    monkeypatch.setattr(health, "inspect", lambda engine: SimpleNamespace(get_table_names=lambda: list(tables)))
+
+    import asyncio
+
+    payload = asyncio.run(health.get_health())
+
+    assert payload["ok"] is False
+    assert payload["db_reachable"] is True
+    assert payload["schema_compatible"] is False
+    assert payload["schema_status"] == "missing_required_tables"
+
+
+def test_health_route_allows_anonymous_get_when_auth_required(monkeypatch):
+    async def health_route(_request):
+        return JSONResponse(
+            {
+                "ok": False,
+                "app_name": "V.I.O.L.E.T.",
+                "env": "production",
+                "db_reachable": True,
+                "schema_compatible": False,
+                "schema_status": "missing_required_tables",
+                "storage_configured": True,
+                "debug": False,
+            }
+        )
+
+    monkeypatch.setattr(auth_middleware, "settings", SimpleNamespace(REQUIRE_AUTH=True))
+    app = Starlette(routes=[Route("/api/health", health_route)])
+    app.add_middleware(AuthMiddleware)
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_compatible"] is False
+    assert "storage_root" not in body
+    assert "password" not in json.dumps(body).lower()
 
 
 def test_health_route_is_public_for_launcher_polling():

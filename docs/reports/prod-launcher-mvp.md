@@ -13,7 +13,14 @@ Tkinter UI:
 - `scripts/start_violet_production_launcher.cmd`: double-click entry that
   prefers the project venv Python.
 - `GET /api/health`: public-safe health endpoint for launcher readiness checks.
-  The route is auth-exempt for launcher polling under `REQUIRE_AUTH=true`.
+  The route is auth-exempt for launcher polling under `REQUIRE_AUTH=true` and
+  checks core schema compatibility read-only before reporting `ok=true`.
+
+The PR branch has been updated with latest `main` after the already-merged
+PR #119 and PR #120. The preserved contracts are
+`s3a_prod1_operator_incremental_sync_contract_v1`,
+`s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1`, and
+`prod_launcher_mvp_contract_v1`.
 
 ## Scope
 
@@ -41,6 +48,7 @@ Production start is blocked unless the preflight confirms:
 - DB settings present and DB reachable through a read-only check;
 - valid `APP_PORT`;
 - malformed `APP_PORT` blocks preflight cleanly;
+- malformed configured DB port blocks preflight cleanly;
 - port free or owned by launcher state;
 - no stale PID state;
 - no startup import/tagging/localization/sync automation flags.
@@ -51,7 +59,10 @@ Stop is stateful and conservative. The launcher refuses to stop any process
 unless its local state verifies the PID, repo root, port, and V.I.O.L.E.T.
 runtime identity, including process create time, configured/canonical Python,
 and target port owner when available. If the target port is occupied without
-launcher state, stop is blocked.
+launcher state, stop is blocked. Process create time is used as a strong
+Windows stale-PID guard; on POSIX-like platforms where it is unavailable,
+matching command line, cwd/repo root, port ownership when available, state
+repo/port/env, and no debug flag are required instead.
 
 Normal plain `python run.py` startup can perform maintenance writes:
 `init_db()`/schema checks and migrations, upload temp cleanup, stale job
@@ -65,12 +76,16 @@ background workers. The launcher does not claim normal startup is write-free.
 ## Implementation
 
 - State/logs live under ignored `.local_manifests/production_launcher/`.
-- State writes are atomic, and Start/Restart actions are serialized.
+- State writes are atomic, and Start/Restart actions are serialized. The start
+  lock records PID and timestamp, reclaims stale dead-PID or malformed locks,
+  and returns `start_already_in_progress` for active locks.
 - `status --json` returns public-safe fields only: running, managed status,
   port, URL, env, debug, DB reachability, health, destructive E2E denial, and
-  startup write policy.
+  startup write policy. Raw log tail is not included in public CLI JSON; it
+  remains local UI-only display.
 - `GET /api/health` exposes only public fields: app name/version, env,
-  `db_reachable`, `storage_configured`, and `debug`.
+  `db_reachable`, `schema_compatible`, `schema_status`,
+  `storage_configured`, and `debug`.
 - The Tkinter UI shows status, environment, port, URL, DB name, storage root
   status, health check time, last error, and recent log tail.
 - The Tkinter UI disables Start/Restart while one of those actions is already
@@ -81,14 +96,15 @@ background workers. The launcher does not claim normal startup is write-free.
 Recorded validation:
 
 ```text
-python -m py_compile scripts/violet_production_control.py scripts/violet_production_launcher.py backend/app/routes/health.py backend/app/main.py backend/app/auth_middleware.py
-pytest tests/test_production_launcher_control.py -v
-pytest tests/test_phase_contracts.py -k prod_launcher_mvp -v
-pytest tests/test_production_launcher_control.py tests/test_phase_contracts.py -v
-python scripts/check_phase_contract.py --contract prod_launcher_mvp_contract_v1 --summary docs/reports/prod-launcher-mvp-summary.json
-python -m json.tool docs/reports/prod-launcher-mvp-summary.json
-git diff --check
-git diff --cached --check
+scripts/check_python_env.py --expected-python <canonical venv python>: PASS
+python -m py_compile scripts/violet_production_control.py scripts/violet_production_launcher.py backend/app/routes/health.py backend/app/main.py backend/app/auth_middleware.py scripts/phase_contracts/contract_registry.py scripts/phase_contracts/contract_checks.py tests/test_production_launcher_control.py tests/test_phase_contracts.py: PASS
+pytest tests/test_production_launcher_control.py tests/test_phase_contracts.py -v: 184 passed
+python scripts/check_phase_contract.py --contract prod_launcher_mvp_contract_v1 --summary docs/reports/prod-launcher-mvp-summary.json: PASS
+python -m json.tool docs/reports/prod-launcher-mvp-summary.json: PASS
+public redaction scan over docs/reports/prod-launcher-mvp-summary.json and docs/reports/prod-launcher-mvp.md: PASS
+python scripts/violet_production_control.py preflight --json: blocked as expected from agent worktree
+git diff --check: PASS, with Windows line-ending warnings only
+git diff --cached --check: PASS
 ```
 
 The real production start/stop smoke was not run from the agent worktree. That
@@ -126,13 +142,19 @@ the target port is released, and no launcher-managed process remains.
 - [x] Focused launcher control tests passed.
 - [x] Phase contract tests for launcher passed.
 - [x] Health route auth-exempt behavior covered.
+- [x] Health schema compatibility behavior covered.
 - [x] Startup write policy covered.
 - [x] Destructive E2E denial covered.
 - [x] Process-stop unverified PID refusal covered.
+- [x] POSIX missing create-time stop verification covered.
 - [x] Start/Restart serialization covered.
+- [x] Stale start lock reclaim covered.
 - [x] Malformed `APP_PORT` handling covered.
+- [x] Malformed DB port handling covered.
+- [x] Public JSON log-tail omission covered.
 - [x] `prod_launcher_mvp_contract_v1` passed against the public summary JSON.
 - [x] Summary JSON is valid JSON.
+- [x] Public JSON and Markdown report redaction scans passed.
 - [x] Whitespace diff checks passed.
 - [ ] Real production start/stop smoke, not run from worktree by design.
 - [ ] Manual review / user validation.
@@ -165,5 +187,5 @@ and did not run SourceConcept, similarity, or Entity bridge operations.
 
 ## Next Step
 
-Review and merge the PR, then run the manual canonical start/stop smoke from the
-production checkout.
+Request reviewer re-review, wait for the latest head to pass review, then run
+the manual canonical start/stop smoke from the production checkout before merge.

@@ -60,6 +60,8 @@ Startup is blocked unless all hard gates pass:
 - Initialized `data/settings.json` exists under the configured storage root.
 - DB settings are present.
 - DB is reachable through a read-only `SELECT 1` check.
+- Configured DB port is either absent/defaulted or a valid integer port;
+  malformed `POSTGRES_PORT` or settings JSON DB port values block startup.
 - `APP_PORT` is configured or defaulted to a valid port; malformed values such
   as `APP_PORT=abc` are reported as preflight failures instead of crashing the
   launcher.
@@ -134,6 +136,11 @@ Do not commit files from that directory.
 - process is not a debug server.
 - target port owner matches the state PID when port-owner detection is available.
 
+On Windows, process create time is used as a strong stale-PID and PID-reuse
+guard. On POSIX-like platforms where create time is unavailable, stop does not
+fail only because create time is missing; it still requires the other identity
+checks to match, and ambiguous identity is refused.
+
 If no launcher state exists and the port is occupied, the launcher refuses to
 stop anything. It never kills an unknown process merely because it owns the
 target port.
@@ -141,6 +148,13 @@ target port.
 The stop path first asks the verified process to exit, waits for shutdown, then
 uses force only if the same verified process is still present. It clears stale
 state only when the state PID is no longer running.
+
+## Start Lock
+
+Start and Restart are serialized in both the Tkinter UI and controller. The
+controller start lock records PID and timestamp. If a previous launcher crashed,
+dead-PID, expired-unverified, or malformed locks are reclaimed; active locks
+return `start_already_in_progress`.
 
 ## Health And Diagnostics
 
@@ -162,10 +176,16 @@ Fields include:
   "version": "1.41.0",
   "env": "production",
   "db_reachable": true,
+  "schema_compatible": true,
+  "schema_status": "compatible",
   "storage_configured": true,
   "debug": false
 }
 ```
+
+`ok=true` requires DB reachability, read-only core schema compatibility,
+configured storage, and debug disabled. Health does not run migrations or
+startup maintenance writes.
 
 CLI diagnostics:
 
@@ -184,9 +204,16 @@ Example public-safe shape:
   "env": "production",
   "debug": false,
   "db_reachable": true,
+  "schema_compatible": true,
+  "schema_status": "compatible",
+  "db_port_valid": true,
   "health_ok": true
 }
 ```
+
+Public CLI JSON does not include raw log tail. The recent log tail is shown only
+inside the local Tkinter UI and is not serialized into public diagnostics or
+reports.
 
 ## Known Limitations
 

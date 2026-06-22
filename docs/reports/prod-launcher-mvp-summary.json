@@ -5,8 +5,22 @@
     "status": "target_met",
     "claims": {
       "target_met": true,
-      "safe_to_merge": true
+      "safe_to_merge": false
     }
+  },
+  "mainline_sync": {
+    "base_updated_to_latest_main": true,
+    "latest_main_after_pr120_included": true,
+    "latest_main_after_pr120_sha": "061850c13f97373d50e395ae81a47e2ba80fd301",
+    "merge_base_origin_main_is_ancestor": true,
+    "pr119_contract_preserved": true,
+    "pr120_contract_preserved": true,
+    "prod_launcher_contract_preserved": true,
+    "preserved_contracts": [
+      "s3a_prod1_operator_incremental_sync_contract_v1",
+      "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+      "prod_launcher_mvp_contract_v1"
+    ]
   },
   "launcher_code": {
     "control_exists": true,
@@ -48,7 +62,9 @@
     "settings_initialized": true,
     "no_startup_mutation_automation": true,
     "destructive_e2e_disabled": true,
-    "malformed_app_port_failure": true
+    "dangerous_dev_test_flags_disabled": true,
+    "malformed_app_port_failure": true,
+    "malformed_db_port_failure": true
   },
   "startup_write_policy": {
     "normal_startup_maintenance_documented": true,
@@ -74,6 +90,7 @@
     "managed_identity_required": true,
     "refuses_unverified_stale_pid": true,
     "verifies_process_create_time": true,
+    "platform_aware_create_time": true,
     "verifies_python_executable": true,
     "verifies_port_owner_when_available": true,
     "force_kill_same_verified_only": true,
@@ -83,7 +100,9 @@
   "start_safety": {
     "serialized": true,
     "start_already_in_progress_status": true,
-    "atomic_state_writes": true
+    "atomic_state_writes": true,
+    "stale_lock_reclaim": true,
+    "stale_lock_contains_pid_and_timestamp": true
   },
   "state_file": {
     "local_ignored": true,
@@ -91,18 +110,27 @@
     "log_path": ".local_manifests/production_launcher/violet-production.log",
     "committed": false
   },
+  "public_json_safety": {
+    "log_tail_in_public_json": false,
+    "log_tail_redacted": true,
+    "raw_log_tail_ui_local_only": true
+  },
   "health_status": {
     "endpoint": "GET /api/health",
     "auth_exempt_for_launcher": true,
     "public_safe": true,
     "no_paths": true,
-    "no_secrets": true,
+    "safe_fields_only": true,
+    "schema_compatible_check": true,
+    "read_only_schema_check": true,
     "status_example": {
       "ok": true,
       "app_name": "V.I.O.L.E.T.",
       "version": "1.41.0",
       "env": "production",
       "db_reachable": true,
+      "schema_compatible": true,
+      "schema_status": "compatible",
       "storage_configured": true,
       "debug": false
     }
@@ -117,9 +145,14 @@
       "env": "production",
       "debug": false,
       "db_reachable": true,
+      "schema_compatible": true,
+      "schema_status": "compatible",
       "health_ok": true,
       "destructive_e2e_allowed": false,
       "app_port_resolved": true,
+      "db_port_valid": true,
+      "log_tail_in_public_json": false,
+      "log_tail_redacted": true,
       "startup_write_policy": {
         "normal_startup_maintenance_documented": true,
         "schema_migration_allowed": false,
@@ -147,15 +180,23 @@
     "destructive_e2e_denial": true,
     "unverified_pid_refusal": true,
     "start_serialization": true,
-    "malformed_app_port": true
+    "malformed_app_port": true,
+    "malformed_db_port": true,
+    "log_tail_public_json": true,
+    "stale_lock_reclaim": true,
+    "posix_process_verification": true,
+    "health_schema_compatibility": true
   },
   "validation": {
     "focused_tests_passed": true,
     "contract_passed": true,
     "py_compile_passed": true,
     "json_tool_passed": true,
+    "public_redaction_json_passed": true,
+    "public_redaction_markdown_passed": true,
     "git_diff_check_passed": true,
     "git_diff_cached_check_passed": true,
+    "preflight_dry_run_executed": true,
     "preflight_dry_run": "blocked_as_expected_from_agent_worktree",
     "preflight_dry_run_blockers": [
       "canonical_repo_root",

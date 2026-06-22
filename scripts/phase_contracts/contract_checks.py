@@ -1273,6 +1273,11 @@ def _check_prod_launcher_mvp(
     _contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult
 ) -> None:
     required_true = (
+        "mainline_sync.latest_main_after_pr120_included",
+        "mainline_sync.merge_base_origin_main_is_ancestor",
+        "mainline_sync.pr119_contract_preserved",
+        "mainline_sync.pr120_contract_preserved",
+        "mainline_sync.prod_launcher_contract_preserved",
         "launcher_code.control_exists",
         "launcher_code.cli_control_exists",
         "launcher_code.visual_launcher_exists",
@@ -1287,7 +1292,9 @@ def _check_prod_launcher_mvp(
         "preflight_gates.venv",
         "preflight_gates.worktree_dev_refusal",
         "preflight_gates.destructive_e2e_disabled",
+        "preflight_gates.dangerous_dev_test_flags_disabled",
         "preflight_gates.malformed_app_port_failure",
+        "preflight_gates.malformed_db_port_failure",
         "startup_write_policy.normal_startup_maintenance_documented",
         "startup_write_policy.launcher_safe_startup_mode_enabled",
         "startup_write_policy.schema_migration_blocked_by_launcher_safe_mode",
@@ -1296,17 +1303,22 @@ def _check_prod_launcher_mvp(
         "stop_safety.managed_identity_required",
         "stop_safety.refuses_unverified_stale_pid",
         "stop_safety.verifies_process_create_time",
+        "stop_safety.platform_aware_create_time",
         "stop_safety.verifies_python_executable",
         "stop_safety.verifies_port_owner_when_available",
         "stop_safety.force_kill_same_verified_only",
         "start_safety.serialized",
         "start_safety.start_already_in_progress_status",
         "start_safety.atomic_state_writes",
+        "start_safety.stale_lock_reclaim",
         "state_file.local_ignored",
+        "public_json_safety.log_tail_redacted",
         "health_status.auth_exempt_for_launcher",
         "health_status.public_safe",
         "health_status.no_paths",
-        "health_status.no_secrets",
+        "health_status.safe_fields_only",
+        "health_status.schema_compatible_check",
+        "health_status.read_only_schema_check",
         "reports.redacted",
         "tests.preflight_failure",
         "tests.port_occupied",
@@ -1319,6 +1331,11 @@ def _check_prod_launcher_mvp(
         "tests.unverified_pid_refusal",
         "tests.start_serialization",
         "tests.malformed_app_port",
+        "tests.malformed_db_port",
+        "tests.log_tail_public_json",
+        "tests.stale_lock_reclaim",
+        "tests.posix_process_verification",
+        "tests.health_schema_compatibility",
         "validation.focused_tests_passed",
         "validation.contract_passed",
         "safety.no_import_tagging_localization_sync_jobs",
@@ -1382,6 +1399,7 @@ def _check_prod_launcher_mvp(
         "startup_write_policy.destructive_cleanup_allowed",
         "startup_write_policy.import_tagging_sync_jobs_allowed",
         "safety.destructive_e2e_allowed",
+        "public_json_safety.log_tail_in_public_json",
     )
     _check_explicit_false_paths(
         summary,
@@ -1395,6 +1413,13 @@ def _check_prod_launcher_mvp(
         payload = _get(summary, payload_path, MISSING)
         if payload is MISSING:
             continue
+        if _payload_has_any_key(payload, {"recent_log_tail", "log_tail"}):
+            result.fail(
+                "prod_launcher_log_tail_public_json",
+                "Production launcher public JSON must not include raw log tail fields.",
+                path=payload_path,
+                expected="no recent_log_tail or log_tail in public JSON",
+            )
         findings = scan_public_payload(payload)
         if findings:
             result.fail(
@@ -1404,6 +1429,38 @@ def _check_prod_launcher_mvp(
                 expected="no secrets, local paths, filenames, or private provenance",
                 actual=findings[:5],
             )
+    health_example = _get(summary, "health_status.status_example", {})
+    if isinstance(health_example, Mapping) and _as_bool(health_example.get("ok")):
+        if not _as_bool(health_example.get("schema_compatible")):
+            result.fail(
+                "prod_launcher_health_ok_without_schema_compatible",
+                "Health examples that report ok=true must also prove schema_compatible=true.",
+                path="health_status.status_example.schema_compatible",
+                expected=True,
+                actual=health_example.get("schema_compatible"),
+            )
+    diagnostics_example = _get(summary, "diagnostics.status_json_example", {})
+    if isinstance(diagnostics_example, Mapping) and _as_bool(diagnostics_example.get("health_ok")):
+        if not _as_bool(diagnostics_example.get("schema_compatible")):
+            result.fail(
+                "prod_launcher_diagnostics_health_ok_without_schema_compatible",
+                "Launcher diagnostics that report health_ok=true must also include schema_compatible=true.",
+                path="diagnostics.status_json_example.schema_compatible",
+                expected=True,
+                actual=diagnostics_example.get("schema_compatible"),
+            )
+
+
+def _payload_has_any_key(payload: Any, keys: set[str]) -> bool:
+    if isinstance(payload, Mapping):
+        for key, value in payload.items():
+            if str(key) in keys:
+                return True
+            if _payload_has_any_key(value, keys):
+                return True
+    if isinstance(payload, list):
+        return any(_payload_has_any_key(item, keys) for item in payload)
+    return False
 
 
 def _check_dynamic_library_sync(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:

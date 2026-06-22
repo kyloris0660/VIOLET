@@ -38,6 +38,7 @@ STATE_VERSION = 1
 DEFAULT_PORT = 8000
 HEALTH_PATH = "/api/health"
 READY_TIMEOUT_SECONDS = 45.0
+START_LOCK_TTL_SECONDS = 600.0
 
 AUTOMATION_FLAGS = (
     "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED",
@@ -97,6 +98,9 @@ class RuntimeConfig:
     port_raw: str = ""
     port_resolved: bool = True
     port_error: str | None = None
+    db_port_raw: str = ""
+    db_port_valid: bool = True
+    db_port_error: str | None = None
 
 
 @dataclass
@@ -107,6 +111,13 @@ class ProcessSnapshot:
     executable_path: str = ""
     create_time: float | None = None
     cwd: str = ""
+
+
+@dataclass
+class StartLockStatus:
+    acquired: bool
+    stale_reclaimed: bool = False
+    reason: str | None = None
 
 
 @dataclass
@@ -175,6 +186,21 @@ def _parse_port(value: Any, *, default: int = DEFAULT_PORT) -> tuple[int, bool, 
     return port, True, None, raw
 
 
+def _parse_named_port(name: str, value: Any, *, default: int = 5432, explicit: bool = False) -> tuple[int, bool, str | None, str]:
+    raw = str(value if value is not None else "").strip()
+    if not raw and not explicit:
+        return default, True, None, str(default)
+    if not raw and explicit:
+        return default, False, f"{name} must be an integer between 1 and 65535.", raw
+    try:
+        port = int(raw)
+    except (TypeError, ValueError):
+        return default, False, f"{name} must be an integer between 1 and 65535.", raw
+    if not (1 <= port <= 65535):
+        return default, False, f"{name} must be between 1 and 65535.", raw
+    return port, True, None, raw
+
+
 def _parse_int(value: Any, *, default: int) -> int:
     try:
         return int(value)
@@ -228,6 +254,8 @@ def _public_payload(value: Any) -> Any:
                 "dotenv_path",
                 "state_file",
                 "log_file",
+                "recent_log_tail",
+                "log_tail",
                 "command",
                 "python_executable",
             }:
@@ -316,7 +344,29 @@ def resolve_config(
     settings_path = storage_root / "data" / "settings.json" if storage_root else repo_root / "data" / "settings.json"
     settings_json = load_settings_json(settings_path)
     settings_db = settings_json.get("database", {}) if isinstance(settings_json.get("database"), dict) else {}
-    db_port = _parse_int(settings_db.get("port") or merged.get("POSTGRES_PORT") or 5432, default=5432)
+    settings_port_present = "port" in settings_db and str(settings_db.get("port") or "").strip() != ""
+    env_port_present = "POSTGRES_PORT" in merged and str(merged.get("POSTGRES_PORT") or "").strip() != ""
+    settings_port, settings_port_valid, settings_port_error, settings_port_raw = _parse_named_port(
+        "settings database port",
+        settings_db.get("port"),
+        explicit=settings_port_present,
+    )
+    env_port, env_port_valid, env_port_error, env_port_raw = _parse_named_port(
+        "POSTGRES_PORT",
+        merged.get("POSTGRES_PORT"),
+        explicit=env_port_present,
+    )
+    if settings_port_present:
+        db_port = settings_port
+        db_port_raw = settings_port_raw
+    elif env_port_present:
+        db_port = env_port
+        db_port_raw = env_port_raw
+    else:
+        db_port = 5432
+        db_port_raw = "5432"
+    db_port_valid = settings_port_valid and env_port_valid
+    db_port_error = settings_port_error or env_port_error
 
     db = {
         "host": settings_db.get("host") or merged.get("POSTGRES_HOST") or "localhost",
@@ -351,6 +401,9 @@ def resolve_config(
         port_raw=port_raw,
         port_resolved=port_resolved,
         port_error=port_error,
+        db_port_raw=db_port_raw,
+        db_port_valid=db_port_valid,
+        db_port_error=db_port_error,
     )
 
 
@@ -418,16 +471,64 @@ def _clear_state(path: Path = STATE_FILE) -> None:
         return
 
 
-def _acquire_start_lock(path: Path = START_LOCK_FILE) -> bool:
+def _read_start_lock(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _lock_age_seconds(payload: Mapping[str, Any] | None) -> float | None:
+    created = _parse_iso_timestamp((payload or {}).get("created_at"))
+    if created is None:
+        return None
+    return max(0.0, time.time() - created)
+
+
+def _start_lock_reclaimable(path: Path, *, ttl_seconds: float = START_LOCK_TTL_SECONDS) -> tuple[bool, str]:
+    payload = _read_start_lock(path)
+    if not payload:
+        return True, "malformed_lock_reclaimed"
+    try:
+        pid = int(payload.get("pid"))
+    except (TypeError, ValueError):
+        return True, "malformed_lock_reclaimed"
+    if pid <= 0:
+        return True, "malformed_lock_reclaimed"
+    pid_alive = process_exists(pid)
+    if not pid_alive:
+        return True, "dead_pid_lock_reclaimed"
+    age = _lock_age_seconds(payload)
+    if age is not None and age > ttl_seconds:
+        command_line = process_command_line(pid).casefold()
+        if not command_line or "violet_production" not in command_line:
+            return True, "expired_unverified_lock_reclaimed"
+    return False, "active_start_lock"
+
+
+def _acquire_start_lock(path: Path = START_LOCK_FILE) -> StartLockStatus:
     path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    stale_reclaimed = False
     try:
         fd = os.open(path, flags)
     except FileExistsError:
-        return False
+        reclaimable, reason = _start_lock_reclaimable(path)
+        if not reclaimable:
+            return StartLockStatus(acquired=False, stale_reclaimed=False, reason=reason)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        stale_reclaimed = True
+        try:
+            fd = os.open(path, flags)
+        except FileExistsError:
+            return StartLockStatus(acquired=False, stale_reclaimed=True, reason="start_lock_race")
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(json.dumps({"pid": os.getpid(), "created_at": now_iso()}, sort_keys=True))
-    return True
+    return StartLockStatus(acquired=True, stale_reclaimed=stale_reclaimed)
 
 
 def _release_start_lock(path: Path = START_LOCK_FILE) -> None:
@@ -572,7 +673,24 @@ def process_snapshot(pid: int) -> ProcessSnapshot:
                 create_time=_parse_windows_cim_datetime(payload.get("CreationDate")),
             )
     command_line = process_command_line(pid)
-    return ProcessSnapshot(pid=pid, exists=bool(command_line), command_line=command_line)
+    executable_path = ""
+    cwd = ""
+    proc_root = Path("/proc") / str(pid)
+    try:
+        executable_path = os.readlink(proc_root / "exe")
+    except OSError:
+        executable_path = ""
+    try:
+        cwd = os.readlink(proc_root / "cwd")
+    except OSError:
+        cwd = ""
+    return ProcessSnapshot(
+        pid=pid,
+        exists=bool(command_line),
+        command_line=command_line,
+        executable_path=executable_path,
+        cwd=cwd,
+    )
 
 
 def _parse_iso_timestamp(value: Any) -> float | None:
@@ -676,9 +794,13 @@ def verify_managed_process(state: Mapping[str, Any] | None, config: RuntimeConfi
             executable_ok = expected_python in command_normalized
         if not executable_ok:
             reasons.append("python_executable_unverified")
+        if snapshot.cwd:
+            if _normalize_path(snapshot.cwd) != _normalize_path(config.repo_root):
+                reasons.append("process_cwd_mismatch")
         state_start = _parse_iso_timestamp(state.get("start_time"))
         if snapshot.create_time is None:
-            reasons.append("process_create_time_unavailable")
+            if platform.system() == "Windows":
+                reasons.append("process_create_time_unavailable")
         elif state_start is not None and snapshot.create_time + 2.0 < state_start:
             reasons.append("pid_created_before_launcher_state")
         recorded_create_time = _state_float(state.get("pid_create_time"))
@@ -829,7 +951,12 @@ def preflight(
     gate("production_storage_root_shape", storage_ok, storage_message)
     settings_initialized = config.settings_path is not None and config.settings_path.is_file() and _settings_initialized(config.settings_json)
     gate("settings_initialized", settings_initialized, "data/settings.json exists and looks initialized.")
-    db_settings_present = all(str(config.db.get(key, "")).strip() for key in ("host", "name", "user")) and int(config.db.get("port") or 0) > 0
+    gate("db_port_valid", config.db_port_valid, config.db_port_error or "DB port is absent/defaulted or configured as a valid integer port.")
+    db_settings_present = (
+        config.db_port_valid
+        and all(str(config.db.get(key, "")).strip() for key in ("host", "name", "user"))
+        and int(config.db.get("port") or 0) > 0
+    )
     gate("db_settings_present", db_settings_present, "DB host, port, name, and user are configured.")
     if env_is_production and debug_disabled and storage_ok and settings_initialized and db_settings_present:
         db_ok, db_message = db_check(config)
@@ -865,10 +992,13 @@ def preflight(
             "app_port_resolved": config.port_resolved,
             "url": config.url,
             "db_name": config.db.get("name"),
+            "db_port_valid": config.db_port_valid,
             "storage_root_status": "configured" if storage_ok else "blocked",
             "state_file_local_ignored": _state_file_is_local_ignored(state_path),
             "health_endpoint": HEALTH_PATH,
             "destructive_e2e_allowed": False,
+            "log_tail_in_public_json": False,
+            "log_tail_redacted": True,
             "startup_write_policy": startup_write_policy_public(config),
         },
         errors=[gate_item.name for gate_item in gates if gate_item.hard and not gate_item.passed],
@@ -929,36 +1059,48 @@ def start_production(
     repo_root: Path = ROOT,
     base_env: Mapping[str, str] | None = None,
     state_path: Path = STATE_FILE,
+    start_lock_path: Path = START_LOCK_FILE,
     _lock_already_held: bool = False,
 ) -> ControlResult:
     config = resolve_config(repo_root, base_env=base_env)
-    lock_acquired = False
+    lock_status = StartLockStatus(acquired=True)
     if not _lock_already_held:
-        lock_acquired = _acquire_start_lock()
-        if not lock_acquired:
+        lock_status = _acquire_start_lock(start_lock_path)
+        if not lock_status.acquired:
             result = ControlResult(
                 ok=False,
                 status="blocked",
                 message="Another Start or Restart action is already in progress.",
-                data={"running": False, "managed_by_launcher": False, "port": config.port, "url": config.url},
+                data={
+                    "running": False,
+                    "managed_by_launcher": False,
+                    "port": config.port,
+                    "url": config.url,
+                    "stale_lock_reclaimed": False,
+                    "start_lock_status": lock_status.reason or "active_start_lock",
+                },
                 errors=["start_already_in_progress"],
             )
             _append_launcher_event("start_refused_already_in_progress", result.to_public_dict())
             return result
 
+    def with_lock_context(result: ControlResult) -> ControlResult:
+        result.data.setdefault("stale_lock_reclaimed", lock_status.stale_reclaimed)
+        return result
+
     try:
         existing = status(repo_root=repo_root, base_env=base_env, state_path=state_path)
         if existing.data.get("running") and existing.data.get("managed_by_launcher"):
-            return ControlResult(
+            return with_lock_context(ControlResult(
                 ok=True,
                 status="running",
                 message="Production server is already running under launcher management.",
                 data=existing.data,
-            )
+            ))
 
         preflight_result = preflight(repo_root=repo_root, base_env=base_env, state_path=state_path)
         if not preflight_result.ok:
-            return preflight_result
+            return with_lock_context(preflight_result)
 
         command = production_command(config)
         command_text = " ".join(command).lower()
@@ -971,7 +1113,7 @@ def start_production(
                 errors=forbidden,
             )
             _append_launcher_event("start_blocked_forbidden_command", result.to_public_dict())
-            return result
+            return with_lock_context(result)
 
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         log_handle = LOG_FILE.open("a", encoding="utf-8")
@@ -1003,7 +1145,7 @@ def start_production(
                 errors=[public_error(exc)],
             )
             _append_launcher_event("start_failed", result.to_public_dict())
-            return result
+            return with_lock_context(result)
 
         snapshot = process_snapshot(process.pid)
         state = {
@@ -1027,23 +1169,23 @@ def start_production(
         health = poll_health(config.url)
         log_handle.close()
         if health:
-            return ControlResult(
+            return with_lock_context(ControlResult(
                 ok=True,
                 status="running",
                 message="Production server started and health check passed.",
                 data=_status_data(config, state, health),
-            )
+            ))
 
-        return ControlResult(
+        return with_lock_context(ControlResult(
             ok=False,
             status="error",
             message="Production server started but did not become healthy before timeout.",
             data={"running": process_exists(process.pid), "managed_by_launcher": True, "port": config.port, "url": config.url},
             errors=["health_timeout"],
-        )
+        ))
     finally:
-        if lock_acquired:
-            _release_start_lock()
+        if not _lock_already_held and lock_status.acquired:
+            _release_start_lock(start_lock_path)
 
 
 def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -1059,13 +1201,18 @@ def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health:
         "env": (health or {}).get("env") or config.env.get("VIOLET_ENV", "development").strip().lower(),
         "debug": bool((health or {}).get("debug", _truthy(config.env.get("BLOMBOORU_DEBUG")))),
         "db_name": config.db.get("name"),
+        "db_port_valid": config.db_port_valid,
         "db_reachable": bool((health or {}).get("db_reachable", False)),
+        "schema_compatible": bool((health or {}).get("schema_compatible", False)),
+        "schema_status": (health or {}).get("schema_status"),
         "storage_configured": bool((health or {}).get("storage_configured", config.storage_root is not None)),
         "storage_root_status": "configured" if config.storage_root else "missing",
         "health_ok": bool((health or {}).get("ok", False)),
         "last_health_check": now_iso() if health else None,
         "last_error": None if health else "health_unavailable",
         "destructive_e2e_allowed": False,
+        "log_tail_in_public_json": False,
+        "log_tail_redacted": True,
         "startup_write_policy": startup_write_policy_public(config),
         "recent_log_tail": tail_log(20),
     }
@@ -1195,7 +1342,9 @@ def stop_production(
 
 
 def restart_production(**kwargs: Any) -> ControlResult:
-    if not _acquire_start_lock():
+    start_lock_path = kwargs.pop("start_lock_path", START_LOCK_FILE)
+    lock_status = _acquire_start_lock(start_lock_path)
+    if not lock_status.acquired:
         repo_root = kwargs.get("repo_root", ROOT)
         base_env = kwargs.get("base_env")
         config = resolve_config(repo_root, base_env=base_env)
@@ -1203,7 +1352,14 @@ def restart_production(**kwargs: Any) -> ControlResult:
             ok=False,
             status="blocked",
             message="Another Start or Restart action is already in progress.",
-            data={"running": False, "managed_by_launcher": False, "port": config.port, "url": config.url},
+            data={
+                "running": False,
+                "managed_by_launcher": False,
+                "port": config.port,
+                "url": config.url,
+                "stale_lock_reclaimed": False,
+                "start_lock_status": lock_status.reason or "active_start_lock",
+            },
             errors=["start_already_in_progress"],
         )
         _append_launcher_event("restart_refused_already_in_progress", result.to_public_dict())
@@ -1211,15 +1367,19 @@ def restart_production(**kwargs: Any) -> ControlResult:
     try:
         stopped = stop_production(**kwargs)
         if not stopped.ok:
+            stopped.data.setdefault("stale_lock_reclaimed", lock_status.stale_reclaimed)
             return stopped
-        return start_production(
+        result = start_production(
             repo_root=kwargs.get("repo_root", ROOT),
             base_env=kwargs.get("base_env"),
             state_path=kwargs.get("state_path", STATE_FILE),
+            start_lock_path=start_lock_path,
             _lock_already_held=True,
         )
+        result.data.setdefault("stale_lock_reclaimed", lock_status.stale_reclaimed)
+        return result
     finally:
-        _release_start_lock()
+        _release_start_lock(start_lock_path)
 
 
 def open_browser_target(
@@ -1244,9 +1404,14 @@ def diagnostic_summary(repo_root: Path = ROOT) -> dict[str, Any]:
         "env": current.data.get("env"),
         "debug": bool(current.data.get("debug")),
         "db_reachable": bool(current.data.get("db_reachable")),
+        "schema_compatible": bool(current.data.get("schema_compatible")),
+        "schema_status": current.data.get("schema_status"),
         "health_ok": bool(current.data.get("health_ok")),
         "app_port_resolved": config.port_resolved,
+        "db_port_valid": config.db_port_valid,
         "destructive_e2e_allowed": False,
+        "log_tail_in_public_json": False,
+        "log_tail_redacted": True,
         "startup_write_policy": startup_write_policy_public(config),
     }
 
