@@ -463,6 +463,11 @@ class Settings:
         )
 
     @property
+    def AI_TAGGING_ALLOW_PROVIDER_FALLBACK(self) -> bool:
+        val = os.getenv("AI_TAGGING_ALLOW_PROVIDER_FALLBACK", "true").strip().lower()
+        return val in ("true", "1", "yes", "on")
+
+    @property
     def AI_TAGGING_CPU_INTRA_OP_THREADS(self) -> int:
         return max(1, int(os.getenv("AI_TAGGING_CPU_INTRA_OP_THREADS", "4")))
 
@@ -594,6 +599,64 @@ class Settings:
         """
         val = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "false")
         return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_UNATTENDED_SYNC_ENABLED(self) -> bool:
+        """Future unattended S3B sync master switch.
+
+        This must stay disabled by default. S3A-PROD2/S3B-D1 may inspect this
+        setting for reporting, but must not start background work from it.
+        """
+        val = os.getenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_SCHEDULED_SYNC_ENABLED(self) -> bool:
+        """Future scheduled S3B sync switch, disabled by default."""
+        val = os.getenv("S3B_SCHEDULED_SYNC_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_SYNC_MAX_ITEMS(self) -> int:
+        """Maximum future unattended sync batch size.
+
+        Default zero means no unattended item selection is allowed.
+        """
+        raw = os.getenv("S3B_SYNC_MAX_ITEMS", "0").strip()
+        return max(0, int(raw or "0"))
+
+    @property
+    def S3B_SYNC_SOURCE_ROOTS(self) -> List[Path]:
+        """Explicit future S3B roots. Empty by default forbids auto scope."""
+        raw = os.getenv("S3B_SYNC_SOURCE_ROOTS", "")
+        if not raw:
+            return []
+        roots = []
+        for value in raw.split("|"):
+            value = value.strip()
+            if value:
+                roots.append(Path(value))
+        return roots
+
+    @property
+    def S3B_REQUIRE_OPERATOR_CONFIRMATION(self) -> bool:
+        val = os.getenv("S3B_REQUIRE_OPERATOR_CONFIRMATION", "true")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_DRY_RUN_ONLY(self) -> bool:
+        val = os.getenv("S3B_DRY_RUN_ONLY", "true")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def S3B_SYNC_MIN_STABLE_AGE_SECONDS(self) -> int:
+        raw = os.getenv("S3B_SYNC_MIN_STABLE_AGE_SECONDS", "60").strip()
+        return max(0, int(raw or "60"))
+
+    @property
+    def S3B_SYNC_STABILITY_WAIT_SECONDS(self) -> float:
+        raw = os.getenv("S3B_SYNC_STABILITY_WAIT_SECONDS", "0.25").strip()
+        return max(0.0, float(raw or "0.25"))
 
     @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:

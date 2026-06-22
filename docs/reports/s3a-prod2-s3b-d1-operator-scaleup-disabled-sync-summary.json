@@ -1,0 +1,1512 @@
+{
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "durable production code",
+        "committed": true,
+        "path": "backend/app/services/s3b_unattended_sync_policy.py"
+      },
+      {
+        "classification": "phase-scoped operational runner",
+        "committed": true,
+        "path": "scripts/run_s3a_prod2_bounded_operator_sync_scaleup.py"
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-summary.json",
+        "redacted": true
+      },
+      {
+        "classification": "public report / handoff",
+        "committed": true,
+        "path": "docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync.md",
+        "redacted": true
+      }
+    ]
+  },
+  "backlog": [
+    "Future S3A ledger/watermark production design should promote item-level cursor state before unattended scheduling.",
+    "S3B unattended and scheduled automation remain disabled and must require a later explicit approval phase."
+  ],
+  "classification": {
+    "classified_count": 3,
+    "content_class_distribution": {
+      "anime": 1,
+      "unknown": 2
+    },
+    "dry_run": true,
+    "executed": true,
+    "failed_count": 0,
+    "method": "heuristic",
+    "public_item_results": [
+      {
+        "content_class": "anime",
+        "dry_run": true,
+        "status": "completed"
+      },
+      {
+        "content_class": "unknown",
+        "dry_run": true,
+        "status": "completed"
+      },
+      {
+        "content_class": "unknown",
+        "dry_run": true,
+        "status": "completed"
+      }
+    ],
+    "reported": true,
+    "reused_classification_count": 0,
+    "status": "completed"
+  },
+  "cpu_fallback_validation": {
+    "dry_run": true,
+    "elapsed_seconds": 2.183,
+    "error_state": false,
+    "executed": true,
+    "failed": 0,
+    "first_time_media_tag_insertion_count": 0,
+    "first_time_media_tag_insertion_proven": false,
+    "ignored_low_confidence": 10835,
+    "job_record_created": false,
+    "label": "cpu_fallback_dry_run",
+    "load_control": {
+      "allow_provider_fallback": true,
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+      "batch_max_items": 1,
+      "batch_size": 1,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 1,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+      "provider_preference": [
+        "CPUExecutionProvider"
+      ],
+      "valid_for_runtime": true,
+      "validation_errors": [],
+      "worker_count": 1
+    },
+    "local_files_only": true,
+    "media_tags_count_after": 23,
+    "media_tags_count_before": 23,
+    "media_tags_count_delta": 0,
+    "media_with_ai_tags_after": 1,
+    "media_with_ai_tags_before": 1,
+    "media_with_ai_tags_delta": 0,
+    "no_media_tags_writes": true,
+    "predicted_tag_count": 10858,
+    "prediction_category_counts": {
+      "character": 2751,
+      "general": 8106,
+      "rating": 1
+    },
+    "processed": 1,
+    "provider": {
+      "actual_onnx_provider_loaded": "CPUExecutionProvider",
+      "actual_provider": "CPUExecutionProvider",
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": false,
+      "fallback_reason": null,
+      "loaded_providers": [
+        "CPUExecutionProvider"
+      ],
+      "provider_load_errors": [],
+      "requested_provider_preference": [
+        "CPUExecutionProvider"
+      ]
+    },
+    "provider_preference_requested": [
+      "CPUExecutionProvider"
+    ],
+    "public_item_results": [
+      {
+        "ignored_low_confidence": 10835,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 7,
+        "tags_added": 16
+      }
+    ],
+    "reported": true,
+    "rollback_error": false,
+    "runtime_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "configured_batch_size": 2,
+        "effective_batch_size": 1,
+        "load_control_effective_batch_size": 1,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 1,
+      "configured_batch_size": 2,
+      "effective_batch_size": 1,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "batch_size": 1,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 1,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "CPUExecutionProvider",
+        "actual_provider": "CPUExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "selected_media_count": 1,
+    "skipped_locked": 0,
+    "status": "completed",
+    "suggestions_added": 7,
+    "tag_source_values_used": [
+      "ai_wd"
+    ],
+    "tags_added": 16
+  },
+  "directml_ai_tagging": {
+    "dry_run": false,
+    "elapsed_seconds": 2.3327,
+    "error_state": false,
+    "executed": true,
+    "failed": 0,
+    "first_time_media_tag_insertion_count": 2,
+    "first_time_media_tag_insertion_proven": true,
+    "ignored_low_confidence": 32521,
+    "job_record_created": false,
+    "label": "directml_primary",
+    "load_control": {
+      "allow_provider_fallback": false,
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_cap_source": "configured",
+      "batch_max_items": 5,
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 2,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+      "provider_preference": [
+        "DmlExecutionProvider"
+      ],
+      "valid_for_runtime": true,
+      "validation_errors": [],
+      "worker_count": 1
+    },
+    "local_files_only": true,
+    "media_tags_count_after": 53,
+    "media_tags_count_before": 23,
+    "media_tags_count_delta": 30,
+    "media_with_ai_tags_after": 3,
+    "media_with_ai_tags_before": 1,
+    "media_with_ai_tags_delta": 2,
+    "no_media_tags_writes": null,
+    "predicted_tag_count": 32574,
+    "prediction_category_counts": {
+      "character": 8253,
+      "general": 24318,
+      "rating": 3
+    },
+    "processed": 3,
+    "provider": {
+      "actual_onnx_provider_loaded": "DmlExecutionProvider",
+      "actual_provider": "DmlExecutionProvider",
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": false,
+      "fallback_reason": null,
+      "loaded_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "provider_load_errors": [],
+      "requested_provider_preference": [
+        "DmlExecutionProvider"
+      ]
+    },
+    "provider_preference_requested": [
+      "DmlExecutionProvider"
+    ],
+    "public_item_results": [
+      {
+        "ignored_low_confidence": 10835,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 7,
+        "tags_added": 16
+      },
+      {
+        "ignored_low_confidence": 10840,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 9,
+        "tags_added": 9
+      },
+      {
+        "ignored_low_confidence": 10846,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 1,
+        "tags_added": 11
+      }
+    ],
+    "reported": true,
+    "rollback_error": false,
+    "runtime_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 5,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "effective_batch_size": 2,
+      "load_control": {
+        "allow_provider_fallback": false,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "configured",
+        "batch_max_items": 5,
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 2,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "DmlExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "DmlExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "selected_media_count": 3,
+    "skipped_locked": 0,
+    "status": "completed",
+    "suggestions_added": 17,
+    "tag_source_values_used": [
+      "ai_wd"
+    ],
+    "tags_added": 36
+  },
+  "directml_provider_probe": {
+    "dry_run": true,
+    "elapsed_seconds": 1.9126,
+    "error_state": false,
+    "executed": true,
+    "failed": 0,
+    "first_time_media_tag_insertion_count": 0,
+    "first_time_media_tag_insertion_proven": false,
+    "ignored_low_confidence": 10835,
+    "job_record_created": false,
+    "label": "directml_prewrite_probe",
+    "load_control": {
+      "allow_provider_fallback": true,
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+      "batch_max_items": 1,
+      "batch_size": 1,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 1,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+      "provider_preference": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "valid_for_runtime": true,
+      "validation_errors": [],
+      "worker_count": 1
+    },
+    "local_files_only": true,
+    "media_tags_count_after": 23,
+    "media_tags_count_before": 23,
+    "media_tags_count_delta": 0,
+    "media_with_ai_tags_after": 1,
+    "media_with_ai_tags_before": 1,
+    "media_with_ai_tags_delta": 0,
+    "no_media_tags_writes": true,
+    "predicted_tag_count": 10858,
+    "prediction_category_counts": {
+      "character": 2751,
+      "general": 8106,
+      "rating": 1
+    },
+    "processed": 1,
+    "provider": {
+      "actual_onnx_provider_loaded": "DmlExecutionProvider",
+      "actual_provider": "DmlExecutionProvider",
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": false,
+      "fallback_reason": null,
+      "loaded_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "provider_load_errors": [],
+      "requested_provider_preference": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    },
+    "provider_preference_requested": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "public_item_results": [
+      {
+        "ignored_low_confidence": 10835,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 7,
+        "tags_added": 16
+      }
+    ],
+    "reported": true,
+    "rollback_error": false,
+    "runtime_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "configured_batch_size": 2,
+        "effective_batch_size": 1,
+        "load_control_effective_batch_size": 1,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 1,
+      "configured_batch_size": 2,
+      "effective_batch_size": 1,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "AI_TAGGING_BATCH_MAX_ITEMS",
+        "batch_max_items": 1,
+        "batch_size": 1,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 1,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "selected_media_count": 1,
+    "skipped_locked": 0,
+    "status": "completed",
+    "suggestions_added": 7,
+    "tag_source_values_used": [
+      "ai_wd"
+    ],
+    "tags_added": 16
+  },
+  "failure_budget": {
+    "ai_tagging_failed": 0,
+    "classification_failed_count": 0,
+    "cpu_fallback_failed": 0,
+    "import_failed_count": 0,
+    "passed": true,
+    "public_redaction_finding_count": 0,
+    "target_requires_all_zero": true
+  },
+  "forbidden_operations": {
+    "cleanup_delete_reset_drop_truncate": false,
+    "desired_media_backfill": false,
+    "entity_bridge": false,
+    "full_library_import_or_tagging": false,
+    "provider_pixiv_gallery_dl_saucenao_google": false,
+    "scheduled_automation": false,
+    "source_mutation": false,
+    "sourceconcept_r1_r2_r1r": false,
+    "unattended_automation": false
+  },
+  "generated_at": "2026-06-22T07:22:45.089422+00:00",
+  "import_reuse": {
+    "app_managed_storage_writes": 2,
+    "created_files_public_count": 2,
+    "downstream_media_count": 3,
+    "exact_confirmation_present": true,
+    "executed": true,
+    "failed_count": 0,
+    "files_discovered": 3,
+    "files_supported": 3,
+    "imported_count": 2,
+    "input_mode": "input_path",
+    "no_full_library_fallback": true,
+    "private_locator_values_recorded": false,
+    "public_item_results": [
+      {
+        "has_media_id": true,
+        "label": "item_001",
+        "message": "",
+        "status": "reused_existing_hash"
+      },
+      {
+        "has_media_id": true,
+        "label": "item_002",
+        "message": "",
+        "status": "imported"
+      },
+      {
+        "has_media_id": true,
+        "label": "item_003",
+        "message": "",
+        "status": "imported"
+      }
+    ],
+    "public_path_redaction": "paths_and_filenames_redacted",
+    "reported": true,
+    "reused_count": 1,
+    "skipped_count": 0,
+    "source_icloud_mutation": false,
+    "status": "completed",
+    "would_import_count": 0,
+    "write_blockers": [],
+    "write_preconditions_passed": true,
+    "write_requested": true
+  },
+  "job_concurrency": {
+    "active_ai_tagging_jobs": 0,
+    "active_ai_tagging_memory_job": false,
+    "active_import_jobs": 0,
+    "background_job_started_by_runner": false,
+    "concurrency_claim_scope": "durable_operator_lock_plus_immediate_rechecks",
+    "durable_lock_held": true,
+    "lock_scope": "s3a_prod2_operator_sync_write_window",
+    "no_concurrent_import_or_tagging_jobs": true,
+    "operator_sync_lock": {
+      "acquired": true,
+      "acquisition_attempted": true,
+      "durable_lock_held": true,
+      "error": null,
+      "held_through_report_finalization": true,
+      "lock_path": ".local_manifests/s3a_prod2_operator_sync/active.lock",
+      "lock_path_redacted": true,
+      "lock_scope": "s3a_prod2_operator_sync_write_window",
+      "reported": true
+    },
+    "operator_sync_lock_acquired": true,
+    "operator_sync_lock_acquisition_attempted": true,
+    "reported": true,
+    "single_active_sync_job_policy": true,
+    "write_window_protection_mode": "lock_file_atomic_create_plus_immediate_recheck",
+    "write_window_rechecked": true
+  },
+  "load_control_observations": {
+    "actual_provider": "DmlExecutionProvider",
+    "appeared_bounded": true,
+    "batch_cap_source": "configured",
+    "batch_size": 2,
+    "configured_batch_size": 2,
+    "cpu_inter_op_threads": 1,
+    "cpu_intra_op_threads": 4,
+    "effective_batch_size": 2,
+    "execution_mode": "ORT_SEQUENTIAL",
+    "max_concurrent_ai_jobs": 1,
+    "preprocess_workers": 2,
+    "warnings": [
+      "onnxruntime_directml_partial_node_assignment_warning_observed_or_possible"
+    ]
+  },
+  "localization": {
+    "attempted": true,
+    "candidate_tags_count": 41,
+    "deferred_reason": "external_llm_provider_not_approved_for_s3a_prod2_s3b_d1",
+    "external_provider_used": false,
+    "failed": 0,
+    "llm_external_provider_used": false,
+    "missing_or_deferred": 1,
+    "new_translations": 0,
+    "reported": true,
+    "reused_translations": 40,
+    "status": "validated_reuse_and_deferred_missing"
+  },
+  "model_cache": {
+    "blocker": null,
+    "label_file_cached": true,
+    "local_files_only": true,
+    "model_download_allowed": false,
+    "model_download_performed": false,
+    "model_file_cached": true,
+    "model_name": "wd-swinv2-tagger-v3",
+    "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+    "status": "cached"
+  },
+  "phase": "S3A-PROD2/S3B-D1",
+  "pipeline_contract": {
+    "claims": {
+      "full_chain_complete": true,
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+    "status": "target_met_with_bounded_write"
+  },
+  "primary_provider_validation": {
+    "dry_run": false,
+    "elapsed_seconds": 2.3327,
+    "error_state": false,
+    "executed": true,
+    "failed": 0,
+    "first_time_media_tag_insertion_count": 2,
+    "first_time_media_tag_insertion_proven": true,
+    "ignored_low_confidence": 32521,
+    "job_record_created": false,
+    "label": "directml_primary",
+    "load_control": {
+      "allow_provider_fallback": false,
+      "applied_session_options": {
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "execution_mode": "ORT_SEQUENTIAL"
+      },
+      "batch_cap_source": "configured",
+      "batch_max_items": 5,
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "cpu_inter_op_threads": 1,
+      "cpu_intra_op_threads": 4,
+      "effective_batch_size": 2,
+      "execution_mode": "ORT_SEQUENTIAL",
+      "max_concurrent_jobs": 1,
+      "preprocess_workers": 2,
+      "process_priority": "below_normal",
+      "process_priority_applied": false,
+      "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+      "provider_preference": [
+        "DmlExecutionProvider"
+      ],
+      "valid_for_runtime": true,
+      "validation_errors": [],
+      "worker_count": 1
+    },
+    "local_files_only": true,
+    "media_tags_count_after": 53,
+    "media_tags_count_before": 23,
+    "media_tags_count_delta": 30,
+    "media_with_ai_tags_after": 3,
+    "media_with_ai_tags_before": 1,
+    "media_with_ai_tags_delta": 2,
+    "no_media_tags_writes": null,
+    "predicted_tag_count": 32574,
+    "prediction_category_counts": {
+      "character": 8253,
+      "general": 24318,
+      "rating": 3
+    },
+    "processed": 3,
+    "provider": {
+      "actual_onnx_provider_loaded": "DmlExecutionProvider",
+      "actual_provider": "DmlExecutionProvider",
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": false,
+      "fallback_reason": null,
+      "loaded_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "provider_load_errors": [],
+      "requested_provider_preference": [
+        "DmlExecutionProvider"
+      ]
+    },
+    "provider_preference_requested": [
+      "DmlExecutionProvider"
+    ],
+    "public_item_results": [
+      {
+        "ignored_low_confidence": 10835,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 7,
+        "tags_added": 16
+      },
+      {
+        "ignored_low_confidence": 10840,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 9,
+        "tags_added": 9
+      },
+      {
+        "ignored_low_confidence": 10846,
+        "predictions": 10858,
+        "skipped_locked": 0,
+        "status": "completed",
+        "suggestions_added": 1,
+        "tags_added": 11
+      }
+    ],
+    "reported": true,
+    "rollback_error": false,
+    "runtime_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 5,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "effective_batch_size": 2,
+      "load_control": {
+        "allow_provider_fallback": false,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "configured",
+        "batch_max_items": 5,
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 2,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "DmlExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": false,
+        "fallback_reason": null,
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "DmlExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "selected_media_count": 3,
+    "skipped_locked": 0,
+    "status": "completed",
+    "suggestions_added": 17,
+    "tag_source_values_used": [
+      "ai_wd"
+    ],
+    "tags_added": 36
+  },
+  "protected_input_gate": {
+    "blocked_count": 0,
+    "passed": true,
+    "paths_redacted": true,
+    "protected_root_labels": [
+      "settings.STORAGE_ROOT",
+      "settings.MEDIA_DIR",
+      "settings.ORIGINAL_DIR",
+      "settings.THUMBNAIL_DIR",
+      "settings.CACHE_DIR",
+      "settings.DATA_DIR",
+      "repo.data",
+      "repo.media"
+    ],
+    "public_item_results": [],
+    "reported": true
+  },
+  "provider_availability": {
+    "available_providers": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "cpu_available": true,
+    "cpu_fallback_available": true,
+    "directml_available": true,
+    "error": null,
+    "reported": true
+  },
+  "provider_write_gate": {
+    "actual_write_provider_preference": [
+      "DmlExecutionProvider"
+    ],
+    "actual_write_requires_directml_only": true,
+    "blockers": [],
+    "cpu_fallback_available": true,
+    "cpu_fallback_validation_dry_run_only": true,
+    "cpu_fallback_write_allowed": false,
+    "directml_available": true,
+    "exact_confirmation_present": true,
+    "passed": true,
+    "probe_actual_provider": "DmlExecutionProvider",
+    "probe_error_state": false,
+    "probe_executed": true,
+    "probe_failed": 0,
+    "probe_rollback_error": false,
+    "probe_status": "completed",
+    "provider_preference_dml_then_cpu": true,
+    "provider_preference_includes_cpu_fallback": true,
+    "provider_preference_includes_directml": true,
+    "reported": true,
+    "requested_provider_preference": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "requires_directml_provider": true,
+    "write_allowed": true,
+    "write_preconditions_passed": true,
+    "write_requested": true
+  },
+  "public_redaction": {
+    "clean_before_public_write": true,
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true,
+    "scan_scope": "public_json_and_markdown",
+    "unsafe_public_report_written": false
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync.md",
+    "path_style": "repo_relative_public_artifacts",
+    "summary_json_path": "docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-summary.json"
+  },
+  "run_configuration": {
+    "actual_write_provider_preference": [
+      "DmlExecutionProvider"
+    ],
+    "cpu_fallback_provider_preference": [
+      "CPUExecutionProvider"
+    ],
+    "cpu_fallback_write_allowed": false,
+    "input_mode": "input_path",
+    "local_files_only": true,
+    "max_items": 5,
+    "max_items_cap": 20,
+    "min_stable_age_seconds": 60,
+    "mode": "execute",
+    "model_download_allowed": false,
+    "no_full_library_fallback": true,
+    "operator_confirmation_exact": true,
+    "operator_triggered_only": true,
+    "provider_fallback_disabled_for_actual_write": true,
+    "provider_preference_requested": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "required_confirmation_string_public": "exact_s3a_prod2_operator_confirmation",
+    "s3a_production_automation_enabled": false,
+    "scheduled_s3b_enabled": false,
+    "stability_wait_seconds": 0.25,
+    "unattended_s3b_enabled": false,
+    "write_requested": true
+  },
+  "s3a_boundary": {
+    "broad_production_sync_enabled": false,
+    "no_full_library_fallback": true,
+    "operator_triggered_only": true,
+    "production_execution_enabled": false,
+    "scheduled_automation_enabled": false,
+    "stages": [
+      {
+        "name": "preflight",
+        "operator_write_executed": false
+      },
+      {
+        "name": "import_reuse",
+        "operator_write_executed": true
+      },
+      {
+        "name": "classification",
+        "operator_write_executed": false
+      },
+      {
+        "name": "directml_ai_tagging",
+        "operator_write_executed": true
+      },
+      {
+        "name": "cpu_fallback",
+        "operator_write_executed": false
+      },
+      {
+        "name": "localization",
+        "operator_write_executed": false
+      },
+      {
+        "name": "s3b_disabled_scaffold",
+        "operator_write_executed": false
+      }
+    ],
+    "unattended_enabled": false
+  },
+  "s3b_disabled_scaffold": {
+    "automatic_writes_started": false,
+    "background_job_started": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "cloud_file_policy": {
+      "conservative_fallback": "skip unless local readable, nonzero, stable size and mtime, supported extension, and no cloud placeholder metadata risk",
+      "paths_redacted": true,
+      "skip_reasons": [
+        "cloud_offline",
+        "cloud_recall_on_open",
+        "cloud_recall_on_data_access",
+        "cloud_reparse_point",
+        "cloud_sparse_file",
+        "cloud_hydration_failed",
+        "zero_byte_file",
+        "unreadable_source",
+        "unstable_size_or_mtime",
+        "recently_modified",
+        "hidden_temp_system_or_placeholder",
+        "unsupported_extension"
+      ]
+    },
+    "decision": {
+      "allowed_to_scan": false,
+      "allowed_to_write": false,
+      "dry_run_only": true,
+      "gates": [
+        {
+          "name": "unattended_disabled",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "scheduled_disabled",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "dry_run_only",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "operator_confirmation_required",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "explicit_roots_only",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "no_full_library_fallback",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "no_source_mutation",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "no_destructive_operations",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "single_active_sync_job_policy",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "block_concurrent_import_or_tagging",
+          "passed": true,
+          "reason": "ok"
+        },
+        {
+          "name": "private_paths_excluded_from_public_report",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "status": "disabled_scaffold_ready"
+    },
+    "policy": {
+      "app_storage_writes_after_gates_only": true,
+      "block_concurrent_import_or_tagging": true,
+      "dry_run_only": true,
+      "duplicate_hash_reuses_existing": true,
+      "explicit_roots_only": true,
+      "local_files_only": true,
+      "max_items": 0,
+      "min_stable_age_seconds": 60,
+      "no_destructive_operations": true,
+      "no_full_library_fallback": true,
+      "no_source_mutation": true,
+      "private_paths_excluded_from_public_report": true,
+      "public_redaction_required": true,
+      "require_operator_confirmation": true,
+      "root_count": 0,
+      "roots_read_only": true,
+      "roots_redacted": true,
+      "scheduled_enabled": false,
+      "settings_status": "disabled_by_default",
+      "single_active_sync_job": true,
+      "skip_cloud_placeholders": true,
+      "skip_hidden_temp_system": true,
+      "skip_recent_or_unstable": true,
+      "skip_unsupported": true,
+      "skip_zero_byte": true,
+      "stability_wait_seconds": 0.25,
+      "unattended_enabled": false
+    },
+    "roots_redacted": true,
+    "run_summary": {
+      "app_storage_writes": false,
+      "failed_count": 0,
+      "imported_count": 0,
+      "public_redaction_required": true,
+      "reused_count": 0,
+      "run_id_required": true,
+      "skipped_count": 0,
+      "source_mutation": false,
+      "status": "disabled_scaffold_only"
+    },
+    "scheduler_started": false,
+    "scope": {
+      "explicit_roots_only": true,
+      "max_items": 0,
+      "no_full_library_fallback": true,
+      "root_count": 0,
+      "roots_redacted": true
+    },
+    "source_mutation": false,
+    "status": "disabled_scaffold_ready",
+    "trigger": {
+      "background_job_started": false,
+      "operator_required": true,
+      "scheduled": false,
+      "scheduler_started": false,
+      "trigger_type": "disabled_future_scheduled_or_unattended",
+      "unattended": false
+    },
+    "watermark": {
+      "decision_ledger_strategy": "per_run_item_decision_rows",
+      "file_fingerprint_strategy": "size_mtime_ns_optional_content_hash",
+      "identity_strategy": "root_identity_hash_plus_relative_path_hash",
+      "imported_or_reused_counts_recorded": true,
+      "last_scan_timestamp_recorded": false,
+      "retry_after_for_failures": true,
+      "run_id_required": true,
+      "trigger_source_recorded": true
+    }
+  },
+  "safety": {
+    "app_managed_storage_writes_only_after_gates": true,
+    "automatic_writes_started": false,
+    "background_job_started": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "confirmed_entity_assignments": false,
+    "desired_media_backfill": false,
+    "drop_truncate_reset": false,
+    "entity_bridge": false,
+    "external_llm_provider_used": false,
+    "local_files_only": true,
+    "max_items_lte_20": true,
+    "model_download": false,
+    "no_ai_tagging": false,
+    "no_classification": false,
+    "no_db_import": false,
+    "no_entity_resolver_similarity": true,
+    "no_full_library_fallback": true,
+    "no_full_library_run": true,
+    "private_locator_values_recorded": false,
+    "production_s3a_automation_enabled": false,
+    "provider_pixiv_gallery_dl_saucenao_google_calls": false,
+    "public_redaction_passed": true,
+    "scheduled_s3b_enabled": false,
+    "scheduler_started": false,
+    "selected_input_explicit_bounded": true,
+    "source_icloud_mutation": false,
+    "source_mutation": false,
+    "sourceconcept_r1_r2_r1r": false,
+    "unattended_s3b_enabled": false,
+    "write_without_confirmation": false
+  },
+  "scope": {
+    "default_truncation_disabled": true,
+    "directory_inputs": 0,
+    "discovered_files": 3,
+    "explicit_input_path_redacted": true,
+    "explicit_input_path_supplied": true,
+    "file_inputs": 3,
+    "input_mode": "input_path",
+    "input_path_count": 3,
+    "max_items": 5,
+    "max_items_cap": 20,
+    "missing_input_count": 0,
+    "no_full_library_fallback": true,
+    "over_cap_blocked_before_selection": false,
+    "over_cap_count": 0,
+    "private_locator_values_recorded": false,
+    "protected_input_gate": {
+      "blocked_count": 0,
+      "passed": true,
+      "paths_redacted": true,
+      "protected_root_labels": [
+        "settings.STORAGE_ROOT",
+        "settings.MEDIA_DIR",
+        "settings.ORIGINAL_DIR",
+        "settings.THUMBNAIL_DIR",
+        "settings.CACHE_DIR",
+        "settings.DATA_DIR",
+        "repo.data",
+        "repo.media"
+      ],
+      "public_item_results": [],
+      "reported": true
+    },
+    "public_path_redaction": "paths_and_filenames_redacted",
+    "selected_count": 3,
+    "selected_labels": [
+      "item_001",
+      "item_002",
+      "item_003"
+    ],
+    "source_file_preflight_eligible_count": 3,
+    "source_file_preflight_skipped_count": 0,
+    "supported_files": 3,
+    "unsupported_files": 0
+  },
+  "source_file_preflight": {
+    "cloud_placeholder_skipped": 0,
+    "eligible_count": 3,
+    "evaluated_count": 3,
+    "failed_count": 0,
+    "hidden_temp_system_skipped": 0,
+    "local_files_only": true,
+    "paths_redacted": true,
+    "protected_input_blocked_count": 0,
+    "protected_input_child_blocked_count": 0,
+    "public_item_results": [
+      {
+        "cloud_gate": {
+          "allowed": true,
+          "blocked": false,
+          "cloud_state": {
+            "attribute_names": [
+              "archive"
+            ],
+            "attributes_hex": "0x00000020",
+            "attributes_raw": 32,
+            "error_code": null,
+            "error_message": null,
+            "exists": true,
+            "is_file": true,
+            "likely_cloud_placeholder": false,
+            "offline": false,
+            "pinned": false,
+            "recall_on_data_access": false,
+            "recall_on_open": false,
+            "reparse_point": false,
+            "sparse_file": false,
+            "supported_platform": true,
+            "unpinned": false
+          },
+          "paths_redacted": true,
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "item_001",
+          "source_kind": "path_source"
+        },
+        "eligible": true,
+        "paths_redacted": true,
+        "reason": "local_readable_stable_supported_file",
+        "recently_modified": false,
+        "safe_label": "item_001",
+        "size_bytes": 1320666,
+        "source_state": "available",
+        "stable_size_mtime": true,
+        "supported_extension": true
+      },
+      {
+        "cloud_gate": {
+          "allowed": true,
+          "blocked": false,
+          "cloud_state": {
+            "attribute_names": [
+              "archive"
+            ],
+            "attributes_hex": "0x00000020",
+            "attributes_raw": 32,
+            "error_code": null,
+            "error_message": null,
+            "exists": true,
+            "is_file": true,
+            "likely_cloud_placeholder": false,
+            "offline": false,
+            "pinned": false,
+            "recall_on_data_access": false,
+            "recall_on_open": false,
+            "reparse_point": false,
+            "sparse_file": false,
+            "supported_platform": true,
+            "unpinned": false
+          },
+          "paths_redacted": true,
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "item_002",
+          "source_kind": "path_source"
+        },
+        "eligible": true,
+        "paths_redacted": true,
+        "reason": "local_readable_stable_supported_file",
+        "recently_modified": false,
+        "safe_label": "item_002",
+        "size_bytes": 1413,
+        "source_state": "available",
+        "stable_size_mtime": true,
+        "supported_extension": true
+      },
+      {
+        "cloud_gate": {
+          "allowed": true,
+          "blocked": false,
+          "cloud_state": {
+            "attribute_names": [
+              "archive"
+            ],
+            "attributes_hex": "0x00000020",
+            "attributes_raw": 32,
+            "error_code": null,
+            "error_message": null,
+            "exists": true,
+            "is_file": true,
+            "likely_cloud_placeholder": false,
+            "offline": false,
+            "pinned": false,
+            "recall_on_data_access": false,
+            "recall_on_open": false,
+            "reparse_point": false,
+            "sparse_file": false,
+            "supported_platform": true,
+            "unpinned": false
+          },
+          "paths_redacted": true,
+          "reason": "path_source_available",
+          "required_policy": null,
+          "safe_label": "item_003",
+          "source_kind": "path_source"
+        },
+        "eligible": true,
+        "paths_redacted": true,
+        "reason": "local_readable_stable_supported_file",
+        "recently_modified": false,
+        "safe_label": "item_003",
+        "size_bytes": 1653,
+        "source_state": "available",
+        "stable_size_mtime": true,
+        "supported_extension": true
+      }
+    ],
+    "reason_counts": {
+      "local_readable_stable_supported_file": 3
+    },
+    "reported": true,
+    "skipped_count": 0,
+    "unstable_or_recent_skipped": 0,
+    "unsupported_extension_skipped": 0,
+    "zero_byte_skipped": 0
+  },
+  "started_at": "2026-06-22T07:22:37.065236+00:00",
+  "title": "Bounded Operator Sync Scale-Up and Disabled Unattended Sync Design",
+  "validation": {
+    "dry_run_or_preflight_completed": true,
+    "runner_command": "python scripts/run_s3a_prod2_bounded_operator_sync_scaleup.py",
+    "s3b_scaffold_reported": true,
+    "write_completed": true
+  },
+  "write_preconditions": {
+    "blockers": [],
+    "cpu_fallback_available": true,
+    "directml_provider_available": true,
+    "exact_confirmation_present": true,
+    "input_path_mode": true,
+    "local_files_only": true,
+    "model_cache_cached": true,
+    "model_download_not_allowed": true,
+    "no_concurrent_import_or_tagging_jobs": true,
+    "no_full_library_fallback": true,
+    "no_over_cap_input": true,
+    "passed": true,
+    "protected_input_blocked_count": 0,
+    "protected_input_gate_passed": true,
+    "provider_preference_dml_then_cpu": true,
+    "reported": true,
+    "requested_provider_preference": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "s3b_automatic_writes_started": false,
+    "s3b_background_job_started": false,
+    "s3b_disabled_state_passed": true,
+    "s3b_scheduled_enabled": false,
+    "s3b_scheduler_started": false,
+    "s3b_unattended_enabled": false,
+    "scope_valid": true,
+    "write_requested": true
+  },
+  "write_provider_policy": {
+    "actual_write_provider_preference": [
+      "DmlExecutionProvider"
+    ],
+    "actual_write_requires_directml_only": true,
+    "cpu_fallback_validation_dry_run_only": true,
+    "cpu_fallback_write_allowed": false,
+    "no_cpu_fallback_write_path": true,
+    "prewrite_probe_provider_preference": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "provider_fallback_disabled_for_actual_write": true,
+    "reported": true
+  },
+  "write_window_protection": {
+    "ai_write_recheck": {
+      "active_ai_tagging_jobs": 0,
+      "active_ai_tagging_memory_job": false,
+      "active_import_jobs": 0,
+      "background_job_started_by_runner": false,
+      "executed": true,
+      "no_concurrent_import_or_tagging_jobs": true,
+      "passed": true,
+      "reported": true,
+      "single_active_sync_job_policy": true,
+      "stage": "before_ai_write",
+      "status": "passed"
+    },
+    "blockers": [],
+    "durable_lock_deferred": false,
+    "durable_lock_held": true,
+    "exact_confirmation_present": true,
+    "import_recheck": {
+      "active_ai_tagging_jobs": 0,
+      "active_ai_tagging_memory_job": false,
+      "active_import_jobs": 0,
+      "background_job_started_by_runner": false,
+      "executed": true,
+      "no_concurrent_import_or_tagging_jobs": true,
+      "passed": true,
+      "reported": true,
+      "single_active_sync_job_policy": true,
+      "stage": "before_import_write",
+      "status": "passed"
+    },
+    "lock_scope": "s3a_prod2_operator_sync_write_window",
+    "mode": "lock_file_atomic_create_plus_immediate_recheck",
+    "no_concurrent_import_or_tagging_jobs": true,
+    "operator_sync_lock": {
+      "acquired": true,
+      "acquisition_attempted": true,
+      "durable_lock_held": true,
+      "error": null,
+      "held_through_report_finalization": true,
+      "lock_path": ".local_manifests/s3a_prod2_operator_sync/active.lock",
+      "lock_path_redacted": true,
+      "lock_scope": "s3a_prod2_operator_sync_write_window",
+      "reported": true
+    },
+    "reported": true,
+    "write_preconditions_passed": true,
+    "write_requested": true,
+    "write_window_rechecked": true
+  }
+}
