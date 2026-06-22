@@ -60,6 +60,8 @@ function sanitizeControllerStderr(stderr, { repoRoot = '' } = {}) {
   for (const root of redactionRoots) {
     text = replaceBothPathForms(text, root, root === home ? '[home]' : '[repo-local]');
   }
+  text = text.replace(/\[repo-local\][\\/]+\.local_manifests[\\/]+production_launcher(?:[\\/]+production-profile\.json)?/gi, '[repo-local]');
+  text = text.replace(/(^|[^\w])\.local_manifests[\\/]+production_launcher(?:[\\/]+production-profile\.json)?/gi, '$1[profile-path]');
   text = text.replace(/(^|[^A-Za-z])([A-Za-z]:[\\/][^\s'"`<>|]+)/g, '$1[path]');
   text = text.replace(/\/(?:Users|home)\/[^\s'"`<>|]+/g, '[path]');
   text = text.replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]');

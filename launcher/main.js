@@ -70,7 +70,7 @@ function createWindow() {
     height: 780,
     minWidth: 920,
     minHeight: 640,
-    title: 'V.I.O.L.E.T. Production Launcher',
+    title: 'V.I.O.L.E.T. 生产启动器',
     backgroundColor: '#f7f8fb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -86,11 +86,11 @@ app.whenReady().then(() => {
   ipcMain.handle('launcher:save-profile', (_event, form) => runController('profile-update', ['--stdin-json'], { stdinJson: profileUpdatePayload(form || {}) }));
   ipcMain.handle('launcher:select-storage-root', async () => {
     const result = await dialog.showOpenDialog({
-      title: 'Select Production Storage Root',
+      title: '选择生产存储根目录',
       properties: ['openDirectory']
     });
     if (result.canceled || !result.filePaths.length) {
-      return { ok: false, status: 'cancelled', message: 'Storage root selection cancelled.', data: {} };
+      return { ok: false, status: 'cancelled', message: '已取消选择存储根目录。', data: {} };
     }
     return runController('profile-update', ['--storage-root', result.filePaths[0]]);
   });

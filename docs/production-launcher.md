@@ -69,15 +69,13 @@ The fallback development entrypoint remains:
 scripts\start_violet_production_launcher.cmd
 ```
 
-The command starts the Electron launcher from:
+The fallback command starts the Electron launcher from:
 
 ```text
 launcher/
 ```
-
-It starts the Electron launcher from `launcher/` with `npm start`; it is useful
-for development or troubleshooting but is no longer the preferred production
-entrypoint.
+with `npm start`; it is useful for development or troubleshooting but is no
+longer the preferred production entrypoint.
 
 If npm or Electron downloads hang behind the local proxy, create a local ignored
 launcher npm config:
@@ -114,23 +112,24 @@ python scripts\violet_production_control.py stop --profile production-default --
 
 ## Electron UI
 
-The main screen shows:
+The main screen is zh-CN first for daily operation. It shows:
 
 - Production profile status.
 - Environment, storage, database, schema, port, safety flags, startup policy,
   and health checklist groups.
-- `Create / Repair Production Profile`.
-- `Select Production Storage Root`.
-- `Test Database`.
-- `Run Preflight`.
-- `Start Production`.
-- `Open Browser`.
-- `Stop`.
-- `Restart`.
-- `Copy Diagnostic Summary`.
+- `创建 / 修复生产配置`.
+- `选择生产存储根目录`.
+- `测试数据库`.
+- `运行启动前检查`.
+- `启动生产服务`.
+- `打开浏览器`.
+- `停止`.
+- `重启`.
+- `复制诊断摘要`.
 
-Raw JSON is not shown on the main screen. `Show Advanced Diagnostics` is
-collapsed by default and contains only public-safe JSON.
+Raw JSON is not shown on the main screen. `显示高级诊断` is collapsed by
+default and contains only public-safe JSON. Copying diagnostics does not reset
+the current status badge or checklist.
 
 Observed #121 blockers are mapped to user-facing actions:
 
@@ -210,9 +209,14 @@ Start success verifies:
   debug disabled;
 - port owner matches when owner detection is available.
 
-Managed but unhealthy processes are reported as `Unhealthy`, not `Running`.
-Stop refuses unknown or unverified processes. On POSIX-like platforms, an open
-target port with unknown owner fails closed instead of being marked managed.
+Managed but unhealthy processes are reported as `不健康` / `Unhealthy`, not
+`Running`. Start returns failure for an existing launcher-managed but unhealthy
+process so DB/schema/storage health failures remain visible. If a newly
+launched process fails post-start identity or health verification, the launcher
+attempts bounded cleanup of that exact launch and clears matching launcher
+state. Stop refuses unknown or unverified processes. On POSIX-like platforms,
+an open target port with unknown owner fails closed instead of being marked
+managed.
 
 Launcher stop uses a bounded graceful shutdown and may force only the verified
 managed process if the process identity still matches. The user emergency stop

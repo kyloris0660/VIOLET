@@ -287,6 +287,18 @@ def _redact_private_text(text: str) -> str:
         if raw:
             text = text.replace(raw, "[repo-local]")
             text = text.replace(raw.replace("\\", "/"), "[repo-local]")
+    text = re.sub(
+        r"\[repo-local\][\\/]+\.local_manifests[\\/]+production_launcher(?:[\\/]+production-profile\.json)?",
+        "[repo-local]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"(^|[^\w])\.local_manifests[\\/]+production_launcher(?:[\\/]+production-profile\.json)?",
+        r"\1[profile-path]",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"(^|[^A-Za-z])([A-Za-z]:[\\/][^\s'\"`<>|]+)", r"\1[path]", text)
     text = re.sub(r"/(?:Users|home)/[^\s'\"`<>|]+", "[path]", text)
     text = re.sub(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", r"\1 [redacted]", text, flags=re.IGNORECASE)
@@ -1892,12 +1904,77 @@ def fetch_health(url: str, *, timeout: float = 2.0) -> dict[str, Any] | None:
 
 def poll_health(url: str, timeout_seconds: float = READY_TIMEOUT_SECONDS) -> dict[str, Any] | None:
     deadline = time.time() + timeout_seconds
+    latest_health: dict[str, Any] | None = None
     while time.time() < deadline:
         health = fetch_health(url)
-        if health and health.get("ok"):
-            return health
+        if health:
+            latest_health = health
+            if health.get("ok"):
+                return health
         time.sleep(0.75)
-    return None
+    return latest_health
+
+
+def _state_belongs_to_launch(state: Mapping[str, Any] | None, config: RuntimeConfig, pid: int) -> bool:
+    return state_pid(state) == pid and is_launcher_managed_state(state, config)
+
+
+def _cleanup_failed_launch(
+    *,
+    pid: int,
+    config: RuntimeConfig,
+    state_path: Path,
+    terminate: Callable[[int, bool], None] | None = None,
+    wait: Callable[[int, float], bool] | None = None,
+) -> dict[str, Any]:
+    current_state = _load_state(state_path)
+    cleanup: dict[str, Any] = {
+        "cleanup_attempted": True,
+        "cleanup_succeeded": False,
+        "cleanup_state_cleared": False,
+        "cleanup_refused_unknown_process": False,
+        "safe_recovery": "Use Stop only if the launcher still verifies the process; otherwise inspect the PID and port before manual taskkill.",
+    }
+    if not _state_belongs_to_launch(current_state, config, pid):
+        cleanup["cleanup_refused_unknown_process"] = True
+        cleanup["cleanup_error"] = "launcher_state_no_longer_matches_failed_launch"
+        return cleanup
+
+    terminator = terminate or (lambda target_pid, force=False: _terminate_verified_pid(target_pid, force=force))
+    wait_fn = wait or wait_for_exit
+    if not process_exists(pid):
+        _clear_state(state_path)
+        cleanup["cleanup_succeeded"] = True
+        cleanup["cleanup_state_cleared"] = True
+        return cleanup
+
+    try:
+        terminator(pid, False)
+    except Exception as exc:
+        cleanup["cleanup_error"] = public_error(exc)
+        return cleanup
+
+    if not wait_fn(pid, 10.0):
+        current_state = _load_state(state_path)
+        if not _state_belongs_to_launch(current_state, config, pid):
+            cleanup["cleanup_refused_unknown_process"] = True
+            cleanup["cleanup_error"] = "launcher_state_changed_during_failed_start_cleanup"
+            return cleanup
+        try:
+            terminator(pid, True)
+        except Exception as exc:
+            cleanup["cleanup_error"] = public_error(exc)
+            return cleanup
+        if not wait_fn(pid, 5.0):
+            cleanup["cleanup_error"] = "failed_launch_process_still_running"
+            return cleanup
+
+    current_state = _load_state(state_path)
+    if _state_belongs_to_launch(current_state, config, pid):
+        _clear_state(state_path)
+        cleanup["cleanup_state_cleared"] = True
+    cleanup["cleanup_succeeded"] = True
+    return cleanup
 
 
 def start_production(
@@ -1939,11 +2016,19 @@ def start_production(
     try:
         existing = status(repo_root=repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path, state_path=state_path)
         if existing.data.get("running") and existing.data.get("managed_by_launcher"):
+            if existing.status == "running" and existing.data.get("health_ok") is True:
+                return with_lock_context(ControlResult(
+                    ok=True,
+                    status=existing.status,
+                    message=existing.message,
+                    data=existing.data,
+                ))
             return with_lock_context(ControlResult(
-                ok=True,
-                status=existing.status,
-                message=existing.message,
+                ok=False,
+                status="unhealthy",
+                message="Existing launcher-managed production process is unhealthy. Start is blocked until health is restored or the process is stopped.",
                 data=existing.data,
+                errors=[str(existing.data.get("last_error") or "managed_process_unhealthy")],
             ))
 
         preflight_result = preflight(repo_root=repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path, state_path=state_path)
@@ -2020,19 +2105,21 @@ def start_production(
             verified, verification_failures = verify_managed_process(state, config)
             expected_health = health_matches_expected(health)
             if not verified or not expected_health:
+                cleanup = _cleanup_failed_launch(pid=process.pid, config=config, state_path=state_path)
+                status_data = _status_data(config, state, health)
+                status_data.update(cleanup)
+                status_data["running"] = process_exists(process.pid)
+                status_data["managed_by_launcher"] = bool(status_data["running"] and verified)
+                status_data["verification_failures"] = verification_failures
                 result = ControlResult(
                     ok=False,
                     status="unhealthy",
-                    message="Production process started, but identity or health verification failed.",
-                    data={
-                        "running": process_exists(process.pid),
-                        "managed_by_launcher": verified,
-                        "health_ok": bool(health.get("ok")),
-                        "port": config.port,
-                        "url": config.url,
-                        "verification_failures": verification_failures,
-                    },
-                    errors=(verification_failures or []) + ([] if expected_health else ["health_identity_mismatch"]),
+                    message=(
+                        "Production process started, but identity or health verification failed. "
+                        "The launcher attempted to stop the newly started process."
+                    ),
+                    data=status_data,
+                    errors=(verification_failures or []) + ([] if expected_health else ["health_identity_mismatch"]) + ([] if cleanup.get("cleanup_succeeded") else ["failed_launch_cleanup_incomplete"]),
                 )
                 _append_launcher_event("start_unhealthy_verification_failed", result.to_public_dict())
                 return with_lock_context(result)
@@ -2043,12 +2130,19 @@ def start_production(
                 data=_status_data(config, state, health),
             ))
 
+        cleanup = _cleanup_failed_launch(pid=process.pid, config=config, state_path=state_path)
         return with_lock_context(ControlResult(
             ok=False,
             status="error",
-            message="Production server started but did not become healthy before timeout.",
-            data={"running": process_exists(process.pid), "managed_by_launcher": True, "port": config.port, "url": config.url},
-            errors=["health_timeout"],
+            message="Production server started but did not return health before timeout. The launcher attempted to stop the newly started process.",
+            data={
+                "running": process_exists(process.pid),
+                "managed_by_launcher": False,
+                "port": config.port,
+                "url": config.url,
+                **cleanup,
+            },
+            errors=["health_timeout"] + ([] if cleanup.get("cleanup_succeeded") else ["failed_launch_cleanup_incomplete"]),
         ))
     finally:
         if not _lock_already_held and lock_status.acquired:

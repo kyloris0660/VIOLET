@@ -46,6 +46,11 @@ assert(!main.includes('VIOLET_STORAGE_ROOT='), 'Electron must not construct prod
 assert(html.includes('id="checklist"'), 'Main screen must include a checklist container.');
 assert(html.includes('id="advancedPanel"'), 'Advanced diagnostics must be present.');
 assert(!html.includes('<details id="advancedPanel" class="advanced" open'), 'Advanced diagnostics must be collapsed by default.');
+assert(html.includes('V.I.O.L.E.T. 生产启动器'), 'Launcher visible title must be zh-CN first.');
+assert(html.includes('创建 / 修复生产配置'), 'Create/repair button must be zh-CN first.');
+assert(html.includes('选择生产存储根目录'), 'Storage selection button must be zh-CN first.');
+assert(html.includes('运行启动前检查'), 'Preflight button must be zh-CN first.');
+assert(html.includes('显示高级诊断'), 'Advanced diagnostics label must be zh-CN first.');
 assert(renderer.includes('renderChecklist'), 'Renderer must render human-readable checklist items.');
 assert(renderer.includes('JSON.stringify(payload, null, 2)'), 'Raw JSON must be limited to advanced diagnostics.');
 

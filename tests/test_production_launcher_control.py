@@ -123,6 +123,19 @@ def _managed_snapshot(pid: int, *, create_time: float = 100.0) -> control.Proces
     )
 
 
+def _healthy_payload() -> dict[str, object]:
+    return {
+        "ok": True,
+        "app_name": "V.I.O.L.E.T.",
+        "env": "production",
+        "debug": False,
+        "db_reachable": True,
+        "schema_compatible": True,
+        "schema_status": "compatible",
+        "storage_configured": True,
+    }
+
+
 def test_preflight_blocks_non_production_env(tmp_path, safe_backends):
     repo, _storage, env = _write_fake_repo(tmp_path)
     env["VIOLET_ENV"] = "development"
@@ -663,6 +676,9 @@ def test_python_public_redaction_handles_forward_slash_windows_paths_and_private
     assert "sk-development-secret" not in redacted
     assert "local-private-db-value" not in redacted
     assert control._redact_private_text("open http://127.0.0.1:8000") == "open http://127.0.0.1:8000"
+    mixed_profile = r"[repo-local]/.local_manifests\production_launcher/production-profile.json"
+    assert ".local_manifests" not in control._redact_private_text(mixed_profile)
+    assert "production-profile.json" not in control._redact_private_text(mixed_profile)
 
 
 def test_posix_port_owner_pid_uses_lsof_when_available(monkeypatch):
@@ -1012,6 +1028,128 @@ def test_start_reports_reclaimed_stale_lock(tmp_path, safe_backends, monkeypatch
 
     assert result.ok is False
     assert result.data["stale_lock_reclaimed"] is True
+
+
+def test_start_existing_managed_healthy_process_returns_success(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    existing = control.ControlResult(
+        ok=True,
+        status="running",
+        message="Production server is running.",
+        data={
+            "running": True,
+            "managed_by_launcher": True,
+            "health_ok": True,
+            "db_reachable": True,
+            "schema_compatible": True,
+            "storage_configured": True,
+            "port": 8123,
+            "url": "http://127.0.0.1:8123",
+        },
+    )
+    monkeypatch.setattr(control, "status", lambda **kwargs: existing)
+    monkeypatch.setattr(control, "preflight", lambda **kwargs: pytest.fail("healthy existing process must not rerun preflight"))
+    monkeypatch.setattr(control.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("healthy existing process must not launch again"))
+
+    result = control.start_production(repo_root=repo, base_env=env, state_path=tmp_path / "state.json", start_lock_path=tmp_path / "start.lock")
+
+    assert result.ok is True
+    assert result.status == "running"
+    assert result.data["health_ok"] is True
+
+
+def test_start_existing_managed_unhealthy_process_returns_failure(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    existing = control.ControlResult(
+        ok=True,
+        status="unhealthy",
+        message="Production server process is managed, but health is unavailable or failing.",
+        data={
+            "running": True,
+            "managed_by_launcher": True,
+            "health_ok": False,
+            "db_reachable": False,
+            "schema_compatible": False,
+            "storage_configured": True,
+            "last_error": "health_identity_mismatch_or_unhealthy",
+            "port": 8123,
+            "url": "http://127.0.0.1:8123",
+        },
+    )
+    monkeypatch.setattr(control, "status", lambda **kwargs: existing)
+    monkeypatch.setattr(control, "preflight", lambda **kwargs: pytest.fail("unhealthy existing process must not continue to start"))
+    monkeypatch.setattr(control.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("unhealthy existing process must not launch again"))
+
+    result = control.start_production(repo_root=repo, base_env=env, state_path=tmp_path / "state.json", start_lock_path=tmp_path / "start.lock")
+
+    assert result.ok is False
+    assert result.status == "unhealthy"
+    assert result.data["health_ok"] is False
+    assert result.data["db_reachable"] is False
+    assert result.data["schema_compatible"] is False
+    assert "health_identity_mismatch_or_unhealthy" in result.errors
+
+
+def test_start_verification_failure_cleans_new_process_and_state(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    state_path = tmp_path / "state.json"
+    alive = {"value": True}
+    terminated: list[tuple[int, bool]] = []
+
+    class FakeProcess:
+        pid = 2468
+
+    monkeypatch.setattr(control, "preflight", lambda **kwargs: control.ControlResult(ok=True, status="passed", message="ok", data={}))
+    monkeypatch.setattr(control.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(control, "poll_health", lambda url, timeout_seconds=control.READY_TIMEOUT_SECONDS: _healthy_payload())
+    monkeypatch.setattr(control, "verify_managed_process", lambda state, config: (False, ["target_port_owner_unavailable"]))
+    monkeypatch.setattr(control, "process_snapshot", lambda pid: _managed_snapshot(pid))
+    monkeypatch.setattr(control, "process_exists", lambda pid: alive["value"] if pid == 2468 else False)
+
+    def fake_terminate(pid: int, force: bool = False) -> None:
+        terminated.append((pid, force))
+        alive["value"] = False
+
+    monkeypatch.setattr(control, "_terminate_verified_pid", fake_terminate)
+
+    result = control.start_production(repo_root=repo, base_env=env, state_path=state_path, start_lock_path=tmp_path / "start.lock")
+
+    assert result.ok is False
+    assert result.status == "unhealthy"
+    assert result.data["cleanup_attempted"] is True
+    assert result.data["cleanup_succeeded"] is True
+    assert result.data["cleanup_state_cleared"] is True
+    assert terminated == [(2468, False)]
+    assert not state_path.exists()
+
+
+def test_failed_launch_cleanup_refuses_unknown_or_changed_state(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    config = control.resolve_config(repo, base_env=env)
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "state_version": control.STATE_VERSION,
+                "app_name": control.APP_NAME,
+                "started_by": "violet_production_launcher",
+                "pid": 9999,
+                "repo_root": str(repo),
+                "port": 8123,
+                "env": "production",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def forbidden_terminate(pid: int, force: bool = False) -> None:
+        raise AssertionError("changed or unknown state must not be terminated")
+
+    cleanup = control._cleanup_failed_launch(pid=2468, config=config, state_path=state_path, terminate=forbidden_terminate)
+
+    assert cleanup["cleanup_succeeded"] is False
+    assert cleanup["cleanup_refused_unknown_process"] is True
+    assert state_path.exists()
 
 
 def test_status_json_summary_is_public_safe(tmp_path, safe_backends, monkeypatch):

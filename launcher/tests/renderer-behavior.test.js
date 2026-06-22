@@ -19,5 +19,9 @@ assert(!renderer.includes("db_user_configured ? 'postgres' : ''"), 'Renderer mus
 assert(renderer.includes('inferred.db_user'), 'Renderer must populate DB user from public-safe profile discovery.');
 assert(renderer.includes('initialFieldValues'), 'Renderer must track initial profile form values.');
 assert(renderer.includes("trimmed !== String(initialFieldValues[key]"), 'Renderer must send only changed non-empty profile fields.');
+assert(renderer.includes("return '不健康'"), 'Renderer must map unhealthy status to zh-CN Unhealthy.');
+assert(renderer.includes('const diagnosticPayload = await window.violetLauncher.copyDiagnostics()'), 'Copy diagnostics must capture diagnostics separately.');
+assert(renderer.includes('advancedDiagnostics.textContent = JSON.stringify(diagnosticPayload, null, 2)'), 'Copy diagnostics must update advanced diagnostics only.');
+assert(!renderer.includes('applyPayload(await window.violetLauncher.copyDiagnostics())'), 'Copy diagnostics must not replace the current launcher state.');
 
 console.log('renderer behavior tests passed');

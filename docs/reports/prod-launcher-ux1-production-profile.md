@@ -3,10 +3,10 @@
 ## Summary
 
 This repair round keeps PR #122 on the same branch and fixes the current-head
-reviewer P1/P2 findings. Production startup is now isolated from development
-`.env`, the production profile can be bootstrapped from local durable evidence,
-and the Electron launcher can be packaged as a double-clickable Windows
-portable executable.
+reviewer P1/P2/P3 findings. Production startup is now isolated from
+development `.env`, the production profile can be bootstrapped from local
+durable evidence, the Electron launcher is zh-CN first, and the launcher can be
+packaged as a double-clickable Windows portable executable.
 
 The phase remains implementation-complete but not merge-ready until real user
 manual acceptance is completed from the canonical production checkout.
@@ -75,6 +75,12 @@ The Electron UI remains the primary production launcher. It keeps raw JSON out
 of the main screen, keeps Advanced Diagnostics collapsed by default, preserves
 missing/incomplete/profile-error states over generic runtime states, and maps
 blocked preflight gates to checklist rows.
+
+Visible daily-use UI labels are zh-CN first, including status badges, summary
+labels, action buttons, checklist group labels, and common blocker messages.
+English technical identifiers remain available inside Advanced Diagnostics.
+Copy Diagnostic Summary now copies and refreshes advanced diagnostics without
+replacing the current status badge or checklist.
 
 Observed blocker mapping remains:
 
@@ -168,6 +174,16 @@ Current-head P1/P2 findings fixed:
 - P2: forward-slash Windows paths are redacted without corrupting `http://`
   URLs.
 - P2: profile repair resets invalid production invariants.
+- P2: Start now returns `ok=false`, `status=unhealthy` for an existing
+  launcher-managed but unhealthy process; healthy existing managed processes
+  still return success.
+- P2: when a newly launched process fails post-start identity or health
+  verification, the launcher attempts bounded cleanup of that exact launch and
+  clears matching launcher state.
+- P2: controller stderr redacts production profile path suffixes with mixed
+  separators.
+- P2: Electron visible UI is zh-CN first.
+- P3: Copy Diagnostic Summary no longer clears the current UI state.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and
@@ -189,7 +205,7 @@ npm run package
 
 Observed results:
 
-- Focused Python tests: `216 passed`
+- Focused Python tests: `220 passed`
 - Electron tests: passed
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities

@@ -58,6 +58,20 @@ async function main() {
   assert(!slashRedacted.includes('sk-forward-secret'));
   assert.strictEqual(sanitizeControllerStderr('open http://127.0.0.1:8000', { repoRoot }), 'open http://127.0.0.1:8000');
 
+  const mixedProfilePath = sanitizeControllerStderr(
+    `${repoRoot}/.local_manifests\\production_launcher/production-profile.json`,
+    { repoRoot }
+  );
+  assert(!mixedProfilePath.includes('.local_manifests'));
+  assert(!mixedProfilePath.includes('production-profile.json'));
+
+  const relativeProfilePath = sanitizeControllerStderr(
+    'failed at .local_manifests\\production_launcher\\production-profile.json',
+    { repoRoot }
+  );
+  assert(!relativeProfilePath.includes('.local_manifests'));
+  assert(!relativeProfilePath.includes('production-profile.json'));
+
   const spawnFailure = await runController({
     command: 'profile-status',
     spawnImpl() {

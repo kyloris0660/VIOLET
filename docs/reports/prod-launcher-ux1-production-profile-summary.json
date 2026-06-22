@@ -68,6 +68,8 @@
     "package_path": "launcher/package.json",
     "primary_documented_entrypoint": true,
     "windows_executable_packaging": true,
+    "zh_cn_primary_visible_ui": true,
+    "copy_diagnostics_preserves_state": true,
     "packaged_exe_repo_relative": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
     "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
     "cmd_entry_role": "fallback/development",
@@ -79,6 +81,8 @@
     "profile_error_state_visible": true,
     "preserves_existing_db_user": true,
     "save_profile_uses_stdin_json": true,
+    "main_status_labels_zh_cn": true,
+    "checklist_groups_zh_cn_in_renderer": true,
     "checklist_groups": [
       "Production Profile",
       "Environment",
@@ -150,6 +154,7 @@
     "controller_empty_stdout_is_error": true,
     "controller_stderr_redacted": true,
     "controller_forward_slash_windows_paths_redacted": true,
+    "controller_profile_suffix_redacted": true,
     "controller_http_urls_preserved": true,
     "posix_port_owner_lookup": "lsof_then_ss",
     "development_env_legacy_function_test_path_preserved": true
@@ -174,6 +179,12 @@
     "launched_pid_verified": true,
     "health_identity_verified": true,
     "managed_unhealthy_is_unhealthy": true,
+    "existing_managed_unhealthy_blocks_start": true,
+    "existing_managed_healthy_start_is_success": true,
+    "failed_start_verification_cleanup": true,
+    "failed_start_state_cleared": true,
+    "failed_start_unknown_process_not_killed": true,
+    "failed_start_health_details_preserved": true,
     "start_lock_stale_recovery_preserved": true
   },
   "stop_safety": {
@@ -195,6 +206,7 @@
     "controller_stderr_redacted": true,
     "controller_error_length_capped": true,
     "advanced_diagnostics_public_safe": true,
+    "production_profile_suffix_redacted": true,
     "forward_slash_windows_paths_redacted": true,
     "http_urls_preserved": true,
     "profile_private_values_publicly_recorded": false
@@ -210,6 +222,13 @@
       "Windows portable Electron executable packaging was added and validated",
       "local ignored npm proxy setup and reset script was added",
       "safe-start shutdown avoids background tasks and tracked tasks are cancelled"
+    ],
+    "fixed_after_head_ef04264": [
+      "P2 Start returns unhealthy failure for existing managed unhealthy processes",
+      "P2 failed post-start verification attempts bounded cleanup of the newly launched process and clears matching launcher state",
+      "P2 controller stderr redacts production profile suffixes with mixed path separators",
+      "P2 Electron visible launcher UI is zh-CN first while Advanced Diagnostics keeps technical JSON",
+      "P3 Copy Diagnostic Summary no longer replaces current status or checklist"
     ]
   },
   "manual_acceptance_required_before_merge": true,
@@ -220,7 +239,7 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "216 passed",
+    "python_tests_result": "220 passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",
     "electron_tests_result": "launcher contract checks passed; controller runner tests passed; renderer behavior tests passed",

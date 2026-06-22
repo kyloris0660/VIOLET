@@ -438,6 +438,8 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
             "exists": True,
             "primary_documented_entrypoint": True,
             "windows_executable_packaging": True,
+            "zh_cn_primary_visible_ui": True,
+            "copy_diagnostics_preserves_state": True,
             "calls_python_control_plane": True,
             "raw_json_hidden_from_main_screen": True,
             "advanced_diagnostics_collapsed_by_default": True,
@@ -482,6 +484,9 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
             "launched_pid_verified": True,
             "health_identity_verified": True,
             "managed_unhealthy_is_unhealthy": True,
+            "existing_managed_unhealthy_blocks_start": True,
+            "failed_start_verification_cleanup": True,
+            "failed_start_state_cleared": True,
         },
         "stop_safety": {
             "refuses_unknown_process": True,
@@ -494,6 +499,7 @@ def _prod_launcher_ux1_summary(**overrides: object) -> dict:
         "public_json_safety": {
             "log_tail_in_public_json": False,
             "profile_paths_redacted": True,
+            "production_profile_suffix_redacted": True,
             "forward_slash_windows_paths_redacted": True,
         },
         "manual_acceptance_required_before_merge": True,
