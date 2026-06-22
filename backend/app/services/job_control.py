@@ -107,6 +107,8 @@ class ProviderSelection:
 def select_onnx_provider(
     requested_provider_preference: str | Sequence[str] | None,
     available_providers: Sequence[str],
+    *,
+    allow_fallback: bool = True,
 ) -> ProviderSelection:
     requested = parse_provider_preference(requested_provider_preference)
     available = tuple(str(provider) for provider in available_providers)
@@ -154,10 +156,10 @@ def select_onnx_provider(
     if selected is None:
         fallback_reasons.append("no_requested_providers_available")
 
-    if selected is None and "CPUExecutionProvider" in available_set:
+    if allow_fallback and selected is None and "CPUExecutionProvider" in available_set:
         selected = "CPUExecutionProvider"
         candidates = ("CPUExecutionProvider",)
-    elif selected is None and available:
+    elif allow_fallback and selected is None and available:
         selected = available[0]
         candidates = (selected,)
 
@@ -310,6 +312,9 @@ def build_ai_tagging_load_control_config(settings_obj: Any) -> LoadControlConfig
         ),
         provider_preference=parse_provider_preference(
             getattr(settings_obj, "AI_TAGGING_PROVIDER_PREFERENCE", DEFAULT_PROVIDER_PREFERENCE)
+        ),
+        allow_provider_fallback=bool(
+            getattr(settings_obj, "AI_TAGGING_ALLOW_PROVIDER_FALLBACK", True)
         ),
         cpu_intra_op_threads=coerce_positive_int(
             getattr(settings_obj, "AI_TAGGING_CPU_INTRA_OP_THREADS", DEFAULT_CPU_INTRA_OP_THREADS),

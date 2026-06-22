@@ -5,6 +5,9 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = ROOT / "scripts" / "run_s3a_prod2_bounded_operator_sync_scaleup.py"
@@ -18,6 +21,10 @@ _spec.loader.exec_module(s3a_prod2)
 from backend.app.services.s3b_unattended_sync_policy import (  # noqa: E402
     build_disabled_scaffold,
     evaluate_source_file,
+)
+from backend.app.services.job_control import (  # noqa: E402
+    build_ai_tagging_load_control_config,
+    select_onnx_provider,
 )
 from scripts.phase_contracts import check_phase_contract  # noqa: E402
 from scripts.phase_contracts import contract_checks  # noqa: E402
@@ -34,9 +41,10 @@ class FakeS3BSettings:
     S3B_SYNC_STABILITY_WAIT_SECONDS = 0.25
 
 
-def _provider(actual: str = "DmlExecutionProvider") -> dict:
+def _provider(actual: str = "DmlExecutionProvider", requested: list[str] | None = None) -> dict:
+    requested = requested or ["DmlExecutionProvider"]
     return {
-        "requested_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "requested_provider_preference": requested,
         "available_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
         "actual_provider": actual,
         "actual_onnx_provider_loaded": actual,
@@ -47,7 +55,13 @@ def _provider(actual: str = "DmlExecutionProvider") -> dict:
     }
 
 
-def _base_ai(*, dry_run: bool = True, actual: str = "DmlExecutionProvider") -> dict:
+def _base_ai(
+    *,
+    dry_run: bool = True,
+    actual: str = "DmlExecutionProvider",
+    requested: list[str] | None = None,
+) -> dict:
+    requested = requested or ["DmlExecutionProvider"]
     delta = 0 if dry_run else 12
     return {
         "reported": True,
@@ -55,7 +69,7 @@ def _base_ai(*, dry_run: bool = True, actual: str = "DmlExecutionProvider") -> d
         "status": "completed",
         "dry_run": dry_run,
         "local_files_only": True,
-        "provider_preference_requested": ["DmlExecutionProvider", "CPUExecutionProvider"],
+        "provider_preference_requested": requested,
         "selected_media_count": 3,
         "processed": 3,
         "tags_added": 12,
@@ -72,7 +86,7 @@ def _base_ai(*, dry_run: bool = True, actual: str = "DmlExecutionProvider") -> d
         "first_time_media_tag_insertion_proven": not dry_run,
         "first_time_media_tag_insertion_count": 3 if not dry_run else 0,
         "no_media_tags_writes": dry_run,
-        "provider": _provider(actual),
+        "provider": _provider(actual, requested),
         "load_control": {
             "effective_batch_size": 2,
             "batch_size": 2,
@@ -90,7 +104,7 @@ def _base_ai(*, dry_run: bool = True, actual: str = "DmlExecutionProvider") -> d
 def _s3a_prod2_summary(*, write: bool = False) -> dict:
     directml = _base_ai(dry_run=not write)
     probe = {
-        **_base_ai(dry_run=True),
+        **_base_ai(dry_run=True, requested=["DmlExecutionProvider", "CPUExecutionProvider"]),
         "label": "directml_prewrite_probe",
         "executed": write,
         "status": "completed" if write else "not_required_preflight_only",
@@ -127,7 +141,7 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
         **_base_ai(dry_run=True, actual="CPUExecutionProvider"),
         "label": "cpu_fallback_dry_run",
         "provider_preference_requested": ["CPUExecutionProvider"],
-        "provider": _provider("CPUExecutionProvider"),
+        "provider": _provider("CPUExecutionProvider", ["CPUExecutionProvider"]),
         "selected_media_count": 1,
         "processed": 1,
     }
@@ -168,6 +182,9 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "write_requested": write,
             "operator_confirmation_exact": write,
             "provider_preference_requested": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "actual_write_provider_preference": ["DmlExecutionProvider"],
+            "cpu_fallback_write_allowed": False,
+            "provider_fallback_disabled_for_actual_write": True,
             "s3a_production_automation_enabled": False,
             "unattended_s3b_enabled": False,
             "scheduled_s3b_enabled": False,
@@ -182,7 +199,19 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "missing_input_count": 0,
             "explicit_input_path_supplied": True,
             "no_full_library_fallback": True,
+            "protected_input_gate": {
+                "reported": True,
+                "passed": True,
+                "blocked_count": 0,
+                "paths_redacted": True,
+            },
             "private_locator_values_recorded": False,
+        },
+        "protected_input_gate": {
+            "reported": True,
+            "passed": True,
+            "blocked_count": 0,
+            "paths_redacted": True,
         },
         "source_file_preflight": {
             "reported": True,
@@ -213,9 +242,49 @@ def _s3a_prod2_summary(*, write: bool = False) -> dict:
             "model_cache_cached": True,
             "directml_provider_available": True,
             "provider_preference_dml_then_cpu": True,
+            "protected_input_gate_passed": True,
+            "protected_input_blocked_count": 0,
             "cpu_fallback_available": True,
             "s3b_disabled_state_passed": True,
             "no_concurrent_import_or_tagging_jobs": True,
+        },
+        "write_provider_policy": {
+            "reported": True,
+            "prewrite_probe_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "actual_write_provider_preference": ["DmlExecutionProvider"],
+            "actual_write_requires_directml_only": True,
+            "provider_fallback_disabled_for_actual_write": True,
+            "cpu_fallback_write_allowed": False,
+            "cpu_fallback_validation_dry_run_only": True,
+            "no_cpu_fallback_write_path": True,
+        },
+        "write_window_protection": {
+            "reported": True,
+            "mode": "immediate_recheck_no_durable_lock",
+            "durable_lock_held": False,
+            "durable_lock_deferred": True,
+            "write_requested": write,
+            "exact_confirmation_present": write,
+            "write_preconditions_passed": write,
+            "write_window_rechecked": write,
+            "no_concurrent_import_or_tagging_jobs": write,
+            "import_recheck": {
+                "reported": True,
+                "stage": "before_import_write",
+                "executed": write,
+                "status": "passed" if write else "not_run",
+                "passed": write,
+                "no_concurrent_import_or_tagging_jobs": write,
+            },
+            "ai_write_recheck": {
+                "reported": True,
+                "stage": "before_ai_write",
+                "executed": write,
+                "status": "passed" if write else "not_run",
+                "passed": write,
+                "no_concurrent_import_or_tagging_jobs": write,
+            },
+            "blockers": [],
         },
         "import_reuse": import_reuse,
         "classification": {
@@ -370,6 +439,85 @@ def test_discover_input_candidates_uses_preflight_size_after_stat_race(monkeypat
     assert result.candidates[0].size_bytes == 7
 
 
+def test_discover_input_candidates_blocks_original_dir_before_source_preflight(monkeypatch, tmp_path: Path) -> None:
+    original_dir = tmp_path / "storage" / "media" / "original"
+    original_dir.mkdir(parents=True)
+    source = original_dir / "protected.png"
+    source.write_bytes(b"x")
+
+    monkeypatch.setattr(
+        s3a_prod2,
+        "protected_input_roots",
+        lambda: [("settings.ORIGINAL_DIR", original_dir)],
+    )
+
+    def fail_if_called(*args, **kwargs):
+        pytest.fail("protected input must block before source preflight")
+
+    monkeypatch.setattr(s3a_prod2, "evaluate_source_file", fail_if_called)
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(source)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert result.candidates == []
+    assert result.scope["protected_input_gate"]["passed"] is False
+    assert result.scope["protected_input_gate"]["blocked_count"] == 1
+    assert result.source_file_preflight["evaluated_count"] == 0
+    assert "protected.png" not in str(result.scope)
+
+
+def test_discover_input_candidates_blocks_storage_root_before_import(monkeypatch, tmp_path: Path) -> None:
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    source = storage_root / "protected.jpg"
+    source.write_bytes(b"x")
+
+    monkeypatch.setattr(
+        s3a_prod2,
+        "protected_input_roots",
+        lambda: [("settings.STORAGE_ROOT", storage_root)],
+    )
+
+    result = s3a_prod2.discover_input_candidates(
+        [str(source)],
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    assert result.candidates == []
+    assert result.scope["protected_input_gate"]["passed"] is False
+    assert result.scope["protected_input_gate"]["paths_redacted"] is True
+    assert result.scope["selected_count"] == 0
+    assert "protected.jpg" not in str(result.scope)
+
+
+def test_discover_input_candidates_blocks_repo_data_and_media_without_path_leak() -> None:
+    blocked_inputs = [
+        str(ROOT / "data" / "synthetic_private_input.png"),
+        str(ROOT / "media" / "synthetic_private_input.png"),
+    ]
+
+    result = s3a_prod2.discover_input_candidates(
+        blocked_inputs,
+        max_items=5,
+        min_stable_age_seconds=0,
+        stability_wait_seconds=0,
+    )
+
+    gate = result.scope["protected_input_gate"]
+    assert result.candidates == []
+    assert gate["reported"] is True
+    assert gate["passed"] is False
+    assert gate["blocked_count"] == 2
+    assert gate["paths_redacted"] is True
+    assert "synthetic_private_input.png" not in str(result.scope)
+
+
 def test_derive_status_blocks_unconfirmed_write() -> None:
     summary = _s3a_prod2_summary(write=False)
     summary["run_configuration"]["write_requested"] = True
@@ -386,6 +534,48 @@ def test_derive_status_blocks_cpu_only_provider_before_write() -> None:
     assert s3a_prod2.derive_status(summary) == "blocked_provider_preference_invalid"
 
 
+def test_provider_selection_can_disable_cpu_fallback_for_actual_write() -> None:
+    selection = select_onnx_provider(
+        ["DmlExecutionProvider"],
+        ["CPUExecutionProvider"],
+        allow_fallback=False,
+    )
+
+    assert selection.selected_provider is None
+    assert selection.candidate_provider_order == ()
+    assert selection.fallback_occurred is True
+
+
+def test_load_control_config_honors_provider_fallback_disable() -> None:
+    settings = SimpleNamespace(
+        AI_TAGGING_BATCH_SIZE=2,
+        AI_TAGGING_BATCH_MAX_ITEMS=5,
+        AI_TAGGING_MAX_CONCURRENT_JOBS=1,
+        AI_TAGGING_PREPROCESS_WORKERS=2,
+        AI_TAGGING_PROVIDER_PREFERENCE=("DmlExecutionProvider",),
+        AI_TAGGING_ALLOW_PROVIDER_FALLBACK=False,
+        AI_TAGGING_CPU_INTRA_OP_THREADS=4,
+        AI_TAGGING_CPU_INTER_OP_THREADS=1,
+        AI_TAGGING_EXECUTION_MODE="ORT_SEQUENTIAL",
+        AI_TAGGING_PROCESS_PRIORITY="below_normal",
+    )
+
+    config = build_ai_tagging_load_control_config(settings)
+
+    assert config.provider_preference == ("DmlExecutionProvider",)
+    assert config.allow_provider_fallback is False
+
+
+def test_derive_status_blocks_failed_ai_write_window_recheck() -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["write_window_protection"]["ai_write_recheck"]["passed"] = False
+    summary["write_window_protection"]["ai_write_recheck"]["status"] = "blocked_concurrent_job_active"
+    summary["write_window_protection"]["no_concurrent_import_or_tagging_jobs"] = False
+    summary["write_window_protection"]["blockers"] = ["ai_write_concurrency_recheck_not_passed"]
+
+    assert s3a_prod2.derive_status(summary) == "blocked_write_window_concurrency"
+
+
 def test_contract_accepts_bounded_write_summary(monkeypatch, tmp_path: Path) -> None:
     summary = _s3a_prod2_summary(write=True)
     _write_public_report(monkeypatch, tmp_path, summary)
@@ -396,6 +586,85 @@ def test_contract_accepts_bounded_write_summary(monkeypatch, tmp_path: Path) -> 
     )
 
     assert result.passed, result.to_dict()
+
+
+def test_contract_rejects_cpu_only_write_provider(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["directml_ai_tagging"]["provider_preference_requested"] = ["CPUExecutionProvider"]
+    summary["directml_ai_tagging"]["provider"] = _provider("CPUExecutionProvider", ["CPUExecutionProvider"])
+    summary["write_provider_policy"]["actual_write_provider_preference"] = ["CPUExecutionProvider"]
+    summary["write_provider_policy"]["cpu_fallback_write_allowed"] = True
+    summary["write_provider_policy"]["provider_fallback_disabled_for_actual_write"] = False
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    codes = _error_codes(result)
+    assert "s3a_prod2_ai_write_provider_preference_not_dml_only" in codes
+    assert "s3a_prod2_fallback_write_provider_not_allowed" in codes
+    assert "s3a_prod2_cpu_fallback_write_path_allowed" in codes
+
+
+def test_contract_rejects_dml_cpu_write_fallback_and_requires_zero_delta_on_block(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["directml_ai_tagging"]["provider_preference_requested"] = [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    summary["directml_ai_tagging"]["provider"] = _provider(
+        "CPUExecutionProvider",
+        ["DmlExecutionProvider", "CPUExecutionProvider"],
+    )
+    summary["directml_ai_tagging"]["media_tags_count_before"] = 0
+    summary["directml_ai_tagging"]["media_tags_count_after"] = 0
+    summary["directml_ai_tagging"]["media_tags_count_delta"] = 0
+    summary["directml_ai_tagging"]["first_time_media_tag_insertion_count"] = 0
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    codes = _error_codes(result)
+    assert summary["directml_ai_tagging"]["media_tags_count_delta"] == 0
+    assert "s3a_prod2_ai_write_provider_preference_not_dml_only" in codes
+    assert "s3a_prod2_fallback_write_provider_not_allowed" in codes
+
+
+def test_contract_rejects_inconsistent_media_tags_delta(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["directml_ai_tagging"]["media_tags_count_before"] = 0
+    summary["directml_ai_tagging"]["media_tags_count_after"] = 0
+    summary["directml_ai_tagging"]["media_tags_count_delta"] = 9
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    assert "s3a_prod2_media_tags_delta_inconsistent" in _error_codes(result)
+
+
+def test_contract_rejects_missing_write_window_recheck(monkeypatch, tmp_path: Path) -> None:
+    summary = _s3a_prod2_summary(write=True)
+    summary["write_window_protection"]["write_window_rechecked"] = False
+    summary["write_window_protection"]["ai_write_recheck"]["passed"] = False
+    summary["write_window_protection"]["no_concurrent_import_or_tagging_jobs"] = False
+    _write_public_report(monkeypatch, tmp_path, summary)
+
+    result = check_phase_contract(
+        "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync_contract_v1",
+        summary,
+    )
+
+    codes = _error_codes(result)
+    assert "s3a_prod2_write_window_not_protected" in codes
+    assert "s3a_prod2_write_without_window_recheck" in codes
 
 
 def test_contract_rejects_ai_write_when_write_preconditions_failed(monkeypatch, tmp_path: Path) -> None:

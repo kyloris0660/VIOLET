@@ -463,6 +463,11 @@ class Settings:
         )
 
     @property
+    def AI_TAGGING_ALLOW_PROVIDER_FALLBACK(self) -> bool:
+        val = os.getenv("AI_TAGGING_ALLOW_PROVIDER_FALLBACK", "true").strip().lower()
+        return val in ("true", "1", "yes", "on")
+
+    @property
     def AI_TAGGING_CPU_INTRA_OP_THREADS(self) -> int:
         return max(1, int(os.getenv("AI_TAGGING_CPU_INTRA_OP_THREADS", "4")))
 
@@ -617,7 +622,8 @@ class Settings:
 
         Default zero means no unattended item selection is allowed.
         """
-        return max(0, int(os.getenv("S3B_SYNC_MAX_ITEMS", "0")))
+        raw = os.getenv("S3B_SYNC_MAX_ITEMS", "0").strip()
+        return max(0, int(raw or "0"))
 
     @property
     def S3B_SYNC_SOURCE_ROOTS(self) -> List[Path]:
@@ -644,11 +650,13 @@ class Settings:
 
     @property
     def S3B_SYNC_MIN_STABLE_AGE_SECONDS(self) -> int:
-        return max(0, int(os.getenv("S3B_SYNC_MIN_STABLE_AGE_SECONDS", "60")))
+        raw = os.getenv("S3B_SYNC_MIN_STABLE_AGE_SECONDS", "60").strip()
+        return max(0, int(raw or "60"))
 
     @property
     def S3B_SYNC_STABILITY_WAIT_SECONDS(self) -> float:
-        return max(0.0, float(os.getenv("S3B_SYNC_STABILITY_WAIT_SECONDS", "0.25")))
+        raw = os.getenv("S3B_SYNC_STABILITY_WAIT_SECONDS", "0.25").strip()
+        return max(0.0, float(raw or "0.25"))
 
     @property
     def LOCAL_LIBRARY_PATHS(self) -> List[Path]:

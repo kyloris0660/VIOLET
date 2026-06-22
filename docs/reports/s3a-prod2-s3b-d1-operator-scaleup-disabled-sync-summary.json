@@ -32,8 +32,8 @@
   "classification": {
     "classified_count": 3,
     "content_class_distribution": {
-      "anime": 2,
-      "unknown": 1
+      "anime": 1,
+      "unknown": 2
     },
     "dry_run": true,
     "executed": true,
@@ -41,17 +41,17 @@
     "method": "heuristic",
     "public_item_results": [
       {
+        "content_class": "anime",
+        "dry_run": true,
+        "status": "completed"
+      },
+      {
         "content_class": "unknown",
         "dry_run": true,
         "status": "completed"
       },
       {
-        "content_class": "anime",
-        "dry_run": true,
-        "status": "completed"
-      },
-      {
-        "content_class": "anime",
+        "content_class": "unknown",
         "dry_run": true,
         "status": "completed"
       }
@@ -62,7 +62,7 @@
   },
   "cpu_fallback_validation": {
     "dry_run": true,
-    "elapsed_seconds": 2.7178,
+    "elapsed_seconds": 2.792,
     "error_state": false,
     "executed": true,
     "failed": 0,
@@ -224,17 +224,17 @@
   },
   "directml_ai_tagging": {
     "dry_run": false,
-    "elapsed_seconds": 2.7178,
+    "elapsed_seconds": 2.4568,
     "error_state": false,
     "executed": true,
     "failed": 0,
-    "first_time_media_tag_insertion_count": 1,
+    "first_time_media_tag_insertion_count": 2,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 32405,
+    "ignored_low_confidence": 32515,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
-      "allow_provider_fallback": true,
+      "allow_provider_fallback": false,
       "applied_session_options": {
         "cpu_inter_op_threads": 1,
         "cpu_intra_op_threads": 4,
@@ -254,20 +254,19 @@
       "process_priority_applied": false,
       "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
       "provider_preference": [
-        "DmlExecutionProvider",
-        "CPUExecutionProvider"
+        "DmlExecutionProvider"
       ],
       "valid_for_runtime": true,
       "validation_errors": [],
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 169,
-    "media_tags_count_before": 146,
-    "media_tags_count_delta": 23,
+    "media_tags_count_after": 59,
+    "media_tags_count_before": 23,
+    "media_tags_count_delta": 36,
     "media_with_ai_tags_after": 3,
-    "media_with_ai_tags_before": 2,
-    "media_with_ai_tags_delta": 1,
+    "media_with_ai_tags_before": 1,
+    "media_with_ai_tags_delta": 2,
     "no_media_tags_writes": null,
     "predicted_tag_count": 32574,
     "prediction_category_counts": {
@@ -291,13 +290,11 @@
       ],
       "provider_load_errors": [],
       "requested_provider_preference": [
-        "DmlExecutionProvider",
-        "CPUExecutionProvider"
+        "DmlExecutionProvider"
       ]
     },
     "provider_preference_requested": [
-      "DmlExecutionProvider",
-      "CPUExecutionProvider"
+      "DmlExecutionProvider"
     ],
     "public_item_results": [
       {
@@ -309,20 +306,20 @@
         "tags_added": 16
       },
       {
-        "ignored_low_confidence": 10785,
+        "ignored_low_confidence": 10839,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 21,
-        "tags_added": 52
+        "suggestions_added": 7,
+        "tags_added": 12
       },
       {
-        "ignored_low_confidence": 10785,
+        "ignored_low_confidence": 10841,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 24,
-        "tags_added": 49
+        "suggestions_added": 7,
+        "tags_added": 10
       }
     ],
     "reported": true,
@@ -342,7 +339,7 @@
       "configured_batch_size": 2,
       "effective_batch_size": 2,
       "load_control": {
-        "allow_provider_fallback": true,
+        "allow_provider_fallback": false,
         "applied_session_options": {
           "cpu_inter_op_threads": 1,
           "cpu_intra_op_threads": 4,
@@ -362,8 +359,7 @@
         "process_priority_applied": false,
         "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
         "provider_preference": [
-          "DmlExecutionProvider",
-          "CPUExecutionProvider"
+          "DmlExecutionProvider"
         ],
         "valid_for_runtime": true,
         "validation_errors": [],
@@ -386,8 +382,7 @@
         ],
         "provider_load_errors": [],
         "requested_provider_preference": [
-          "DmlExecutionProvider",
-          "CPUExecutionProvider"
+          "DmlExecutionProvider"
         ]
       },
       "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
@@ -401,15 +396,15 @@
     "selected_media_count": 3,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 52,
+    "suggestions_added": 21,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 117
+    "tags_added": 38
   },
   "directml_provider_probe": {
     "dry_run": true,
-    "elapsed_seconds": 1.9219,
+    "elapsed_seconds": 1.9711,
     "error_state": false,
     "executed": true,
     "failed": 0,
@@ -447,11 +442,11 @@
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 0,
-    "media_tags_count_before": 0,
+    "media_tags_count_after": 23,
+    "media_tags_count_before": 23,
     "media_tags_count_delta": 0,
-    "media_with_ai_tags_after": 0,
-    "media_with_ai_tags_before": 0,
+    "media_with_ai_tags_after": 1,
+    "media_with_ai_tags_before": 1,
     "media_with_ai_tags_delta": 0,
     "no_media_tags_writes": true,
     "predicted_tag_count": 10858,
@@ -596,17 +591,17 @@
     "sourceconcept_r1_r2_r1r": false,
     "unattended_automation": false
   },
-  "generated_at": "2026-06-22T04:44:37.768679+00:00",
+  "generated_at": "2026-06-22T06:40:30.896656+00:00",
   "import_reuse": {
-    "app_managed_storage_writes": 1,
-    "created_files_public_count": 1,
+    "app_managed_storage_writes": 2,
+    "created_files_public_count": 2,
     "downstream_media_count": 3,
     "exact_confirmation_present": true,
     "executed": true,
     "failed_count": 0,
     "files_discovered": 3,
     "files_supported": 3,
-    "imported_count": 1,
+    "imported_count": 2,
     "input_mode": "input_path",
     "no_full_library_fallback": true,
     "private_locator_values_recorded": false,
@@ -615,24 +610,24 @@
         "has_media_id": true,
         "label": "item_001",
         "message": "",
-        "status": "imported"
+        "status": "reused_existing_hash"
       },
       {
         "has_media_id": true,
         "label": "item_002",
         "message": "",
-        "status": "reused_existing_hash"
+        "status": "imported"
       },
       {
         "has_media_id": true,
         "label": "item_003",
         "message": "",
-        "status": "reused_existing_hash"
+        "status": "imported"
       }
     ],
     "public_path_redaction": "paths_and_filenames_redacted",
     "reported": true,
-    "reused_count": 2,
+    "reused_count": 1,
     "skipped_count": 0,
     "source_icloud_mutation": false,
     "status": "completed",
@@ -646,9 +641,13 @@
     "active_ai_tagging_memory_job": false,
     "active_import_jobs": 0,
     "background_job_started_by_runner": false,
+    "concurrency_claim_scope": "preflight_plus_immediate_rechecks_no_durable_lock",
+    "durable_lock_held": false,
     "no_concurrent_import_or_tagging_jobs": true,
     "reported": true,
-    "single_active_sync_job_policy": true
+    "single_active_sync_job_policy": true,
+    "write_window_protection_mode": "immediate_recheck_no_durable_lock",
+    "write_window_rechecked": true
   },
   "load_control_observations": {
     "actual_provider": "DmlExecutionProvider",
@@ -668,15 +667,15 @@
   },
   "localization": {
     "attempted": true,
-    "candidate_tags_count": 139,
-    "deferred_reason": "external_llm_provider_not_approved_for_s3a_pilot1",
+    "candidate_tags_count": 45,
+    "deferred_reason": "external_llm_provider_not_approved_for_s3a_prod2_s3b_d1",
     "external_provider_used": false,
     "failed": 0,
     "llm_external_provider_used": false,
     "missing_or_deferred": 1,
     "new_translations": 0,
     "reported": true,
-    "reused_translations": 138,
+    "reused_translations": 44,
     "status": "validated_reuse_and_deferred_missing"
   },
   "model_cache": {
@@ -702,17 +701,17 @@
   },
   "primary_provider_validation": {
     "dry_run": false,
-    "elapsed_seconds": 2.7178,
+    "elapsed_seconds": 2.4568,
     "error_state": false,
     "executed": true,
     "failed": 0,
-    "first_time_media_tag_insertion_count": 1,
+    "first_time_media_tag_insertion_count": 2,
     "first_time_media_tag_insertion_proven": true,
-    "ignored_low_confidence": 32405,
+    "ignored_low_confidence": 32515,
     "job_record_created": false,
     "label": "directml_primary",
     "load_control": {
-      "allow_provider_fallback": true,
+      "allow_provider_fallback": false,
       "applied_session_options": {
         "cpu_inter_op_threads": 1,
         "cpu_intra_op_threads": 4,
@@ -732,20 +731,19 @@
       "process_priority_applied": false,
       "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
       "provider_preference": [
-        "DmlExecutionProvider",
-        "CPUExecutionProvider"
+        "DmlExecutionProvider"
       ],
       "valid_for_runtime": true,
       "validation_errors": [],
       "worker_count": 1
     },
     "local_files_only": true,
-    "media_tags_count_after": 169,
-    "media_tags_count_before": 146,
-    "media_tags_count_delta": 23,
+    "media_tags_count_after": 59,
+    "media_tags_count_before": 23,
+    "media_tags_count_delta": 36,
     "media_with_ai_tags_after": 3,
-    "media_with_ai_tags_before": 2,
-    "media_with_ai_tags_delta": 1,
+    "media_with_ai_tags_before": 1,
+    "media_with_ai_tags_delta": 2,
     "no_media_tags_writes": null,
     "predicted_tag_count": 32574,
     "prediction_category_counts": {
@@ -769,13 +767,11 @@
       ],
       "provider_load_errors": [],
       "requested_provider_preference": [
-        "DmlExecutionProvider",
-        "CPUExecutionProvider"
+        "DmlExecutionProvider"
       ]
     },
     "provider_preference_requested": [
-      "DmlExecutionProvider",
-      "CPUExecutionProvider"
+      "DmlExecutionProvider"
     ],
     "public_item_results": [
       {
@@ -787,20 +783,20 @@
         "tags_added": 16
       },
       {
-        "ignored_low_confidence": 10785,
+        "ignored_low_confidence": 10839,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 21,
-        "tags_added": 52
+        "suggestions_added": 7,
+        "tags_added": 12
       },
       {
-        "ignored_low_confidence": 10785,
+        "ignored_low_confidence": 10841,
         "predictions": 10858,
         "skipped_locked": 0,
         "status": "completed",
-        "suggestions_added": 24,
-        "tags_added": 49
+        "suggestions_added": 7,
+        "tags_added": 10
       }
     ],
     "reported": true,
@@ -820,7 +816,7 @@
       "configured_batch_size": 2,
       "effective_batch_size": 2,
       "load_control": {
-        "allow_provider_fallback": true,
+        "allow_provider_fallback": false,
         "applied_session_options": {
           "cpu_inter_op_threads": 1,
           "cpu_intra_op_threads": 4,
@@ -840,8 +836,7 @@
         "process_priority_applied": false,
         "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
         "provider_preference": [
-          "DmlExecutionProvider",
-          "CPUExecutionProvider"
+          "DmlExecutionProvider"
         ],
         "valid_for_runtime": true,
         "validation_errors": [],
@@ -864,8 +859,7 @@
         ],
         "provider_load_errors": [],
         "requested_provider_preference": [
-          "DmlExecutionProvider",
-          "CPUExecutionProvider"
+          "DmlExecutionProvider"
         ]
       },
       "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
@@ -879,11 +873,28 @@
     "selected_media_count": 3,
     "skipped_locked": 0,
     "status": "completed",
-    "suggestions_added": 52,
+    "suggestions_added": 21,
     "tag_source_values_used": [
       "ai_wd"
     ],
-    "tags_added": 117
+    "tags_added": 38
+  },
+  "protected_input_gate": {
+    "blocked_count": 0,
+    "passed": true,
+    "paths_redacted": true,
+    "protected_root_labels": [
+      "settings.STORAGE_ROOT",
+      "settings.MEDIA_DIR",
+      "settings.ORIGINAL_DIR",
+      "settings.THUMBNAIL_DIR",
+      "settings.CACHE_DIR",
+      "settings.DATA_DIR",
+      "repo.data",
+      "repo.media"
+    ],
+    "public_item_results": [],
+    "reported": true
   },
   "provider_availability": {
     "available_providers": [
@@ -897,8 +908,14 @@
     "reported": true
   },
   "provider_write_gate": {
+    "actual_write_provider_preference": [
+      "DmlExecutionProvider"
+    ],
+    "actual_write_requires_directml_only": true,
     "blockers": [],
     "cpu_fallback_available": true,
+    "cpu_fallback_validation_dry_run_only": true,
+    "cpu_fallback_write_allowed": false,
     "directml_available": true,
     "exact_confirmation_present": true,
     "passed": true,
@@ -933,9 +950,13 @@
     "summary_json_path": "docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-summary.json"
   },
   "run_configuration": {
+    "actual_write_provider_preference": [
+      "DmlExecutionProvider"
+    ],
     "cpu_fallback_provider_preference": [
       "CPUExecutionProvider"
     ],
+    "cpu_fallback_write_allowed": false,
     "input_mode": "input_path",
     "local_files_only": true,
     "max_items": 5,
@@ -946,6 +967,7 @@
     "no_full_library_fallback": true,
     "operator_confirmation_exact": true,
     "operator_triggered_only": true,
+    "provider_fallback_disabled_for_actual_write": true,
     "provider_preference_requested": [
       "DmlExecutionProvider",
       "CPUExecutionProvider"
@@ -1198,6 +1220,23 @@
     "over_cap_blocked_before_selection": false,
     "over_cap_count": 0,
     "private_locator_values_recorded": false,
+    "protected_input_gate": {
+      "blocked_count": 0,
+      "passed": true,
+      "paths_redacted": true,
+      "protected_root_labels": [
+        "settings.STORAGE_ROOT",
+        "settings.MEDIA_DIR",
+        "settings.ORIGINAL_DIR",
+        "settings.THUMBNAIL_DIR",
+        "settings.CACHE_DIR",
+        "settings.DATA_DIR",
+        "repo.data",
+        "repo.media"
+      ],
+      "public_item_results": [],
+      "reported": true
+    },
     "public_path_redaction": "paths_and_filenames_redacted",
     "selected_count": 3,
     "selected_labels": [
@@ -1218,6 +1257,7 @@
     "hidden_temp_system_skipped": 0,
     "local_files_only": true,
     "paths_redacted": true,
+    "protected_input_blocked_count": 0,
     "public_item_results": [
       {
         "cloud_gate": {
@@ -1294,7 +1334,7 @@
         "reason": "local_readable_stable_supported_file",
         "recently_modified": false,
         "safe_label": "item_002",
-        "size_bytes": 837393,
+        "size_bytes": 1413,
         "source_state": "available",
         "stable_size_mtime": true,
         "supported_extension": true
@@ -1334,7 +1374,7 @@
         "reason": "local_readable_stable_supported_file",
         "recently_modified": false,
         "safe_label": "item_003",
-        "size_bytes": 125704,
+        "size_bytes": 1529,
         "source_state": "available",
         "stable_size_mtime": true,
         "supported_extension": true
@@ -1349,7 +1389,7 @@
     "unsupported_extension_skipped": 0,
     "zero_byte_skipped": 0
   },
-  "started_at": "2026-06-22T04:44:28.857287+00:00",
+  "started_at": "2026-06-22T06:40:22.045001+00:00",
   "title": "Bounded Operator Sync Scale-Up and Disabled Unattended Sync Design",
   "validation": {
     "dry_run_or_preflight_completed": true,
@@ -1370,6 +1410,8 @@
     "no_full_library_fallback": true,
     "no_over_cap_input": true,
     "passed": true,
+    "protected_input_blocked_count": 0,
+    "protected_input_gate_passed": true,
     "provider_preference_dml_then_cpu": true,
     "reported": true,
     "requested_provider_preference": [
@@ -1384,5 +1426,58 @@
     "s3b_unattended_enabled": false,
     "scope_valid": true,
     "write_requested": true
+  },
+  "write_provider_policy": {
+    "actual_write_provider_preference": [
+      "DmlExecutionProvider"
+    ],
+    "actual_write_requires_directml_only": true,
+    "cpu_fallback_validation_dry_run_only": true,
+    "cpu_fallback_write_allowed": false,
+    "no_cpu_fallback_write_path": true,
+    "prewrite_probe_provider_preference": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "provider_fallback_disabled_for_actual_write": true,
+    "reported": true
+  },
+  "write_window_protection": {
+    "ai_write_recheck": {
+      "active_ai_tagging_jobs": 0,
+      "active_ai_tagging_memory_job": false,
+      "active_import_jobs": 0,
+      "background_job_started_by_runner": false,
+      "executed": true,
+      "no_concurrent_import_or_tagging_jobs": true,
+      "passed": true,
+      "reported": true,
+      "single_active_sync_job_policy": true,
+      "stage": "before_ai_write",
+      "status": "passed"
+    },
+    "blockers": [],
+    "durable_lock_deferred": true,
+    "durable_lock_held": false,
+    "exact_confirmation_present": true,
+    "import_recheck": {
+      "active_ai_tagging_jobs": 0,
+      "active_ai_tagging_memory_job": false,
+      "active_import_jobs": 0,
+      "background_job_started_by_runner": false,
+      "executed": true,
+      "no_concurrent_import_or_tagging_jobs": true,
+      "passed": true,
+      "reported": true,
+      "single_active_sync_job_policy": true,
+      "stage": "before_import_write",
+      "status": "passed"
+    },
+    "mode": "immediate_recheck_no_durable_lock",
+    "no_concurrent_import_or_tagging_jobs": true,
+    "reported": true,
+    "write_preconditions_passed": true,
+    "write_requested": true,
+    "write_window_rechecked": true
   }
 }

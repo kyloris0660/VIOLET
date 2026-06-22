@@ -324,6 +324,27 @@ class TestS3BDisabledSyncSettings:
             assert s.S3B_REQUIRE_OPERATOR_CONFIRMATION is True
             assert s.S3B_DRY_RUN_ONLY is True
 
+    def test_s3b_blank_numeric_env_values_use_safe_defaults(self, tmp_path):
+        env = {
+            "VIOLET_ENV": "test",
+            "POSTGRES_DB": "blombooru_test",
+            "VIOLET_STORAGE_ROOT": str(tmp_path / "storage"),
+            "TEST_DATABASE_URL": "",
+            "S3B_UNATTENDED_SYNC_ENABLED": "false",
+            "S3B_SCHEDULED_SYNC_ENABLED": "false",
+            "S3B_SYNC_MAX_ITEMS": "",
+            "S3B_SYNC_MIN_STABLE_AGE_SECONDS": "",
+            "S3B_SYNC_STABILITY_WAIT_SECONDS": "",
+            "S3B_SYNC_SOURCE_ROOTS": "",
+            "S3B_REQUIRE_OPERATOR_CONFIRMATION": "true",
+            "S3B_DRY_RUN_ONLY": "true",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            s = _reload_settings(tmp_path)
+            assert s.S3B_SYNC_MAX_ITEMS == 0
+            assert s.S3B_SYNC_MIN_STABLE_AGE_SECONDS == 60
+            assert s.S3B_SYNC_STABILITY_WAIT_SECONDS == 0.25
+
     def test_s3b_settings_parse_explicit_env(self, tmp_path):
         env = {
             "VIOLET_ENV": "test",

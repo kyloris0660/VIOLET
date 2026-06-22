@@ -50,6 +50,7 @@ WRITE_CONFIRMATION = "I APPROVE S3A-PROD2 BOUNDED OPERATOR SYNC"
 DEFAULT_MAX_ITEMS = 5
 MAX_ALLOWED_ITEMS = 20
 DEFAULT_PROVIDER_PREFERENCE = "DmlExecutionProvider,CPUExecutionProvider"
+DIRECTML_WRITE_PROVIDER_PREFERENCE = "DmlExecutionProvider"
 CPU_PROVIDER_PREFERENCE = "CPUExecutionProvider"
 SOURCE_LABEL = "violet:s3a-prod2:bounded-operator-sync-scaleup"
 SUPPORTED_EXTENSIONS = pilot.SUPPORTED_EXTENSIONS
@@ -99,6 +100,81 @@ def prod2_runtime_env(max_items: int, provider_preference: str) -> Iterator[None
 
 def provider_preference_is_bounded_directml_cpu(raw: str) -> bool:
     return provider_list(raw) == ["DmlExecutionProvider", "CPUExecutionProvider"]
+
+
+def safe_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def protected_input_roots() -> list[tuple[str, Path]]:
+    from backend.app.config import settings
+
+    roots: list[tuple[str, Path]] = [
+        ("settings.STORAGE_ROOT", Path(settings.STORAGE_ROOT)),
+        ("settings.MEDIA_DIR", Path(settings.MEDIA_DIR)),
+        ("settings.ORIGINAL_DIR", Path(settings.ORIGINAL_DIR)),
+        ("settings.THUMBNAIL_DIR", Path(settings.THUMBNAIL_DIR)),
+        ("settings.CACHE_DIR", Path(settings.CACHE_DIR)),
+        ("settings.DATA_DIR", Path(settings.DATA_DIR)),
+        ("repo.data", ROOT / "data"),
+        ("repo.media", ROOT / "media"),
+    ]
+    unique: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for label, root in roots:
+        try:
+            key = str(root.resolve()).casefold()
+        except OSError:
+            key = str(root).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((label, root))
+    return unique
+
+
+def protected_root_labels_for_path(path: Path, roots: list[tuple[str, Path]]) -> list[str]:
+    return [label for label, root in roots if safe_is_relative_to(path, root)]
+
+
+def split_protected_input_paths(input_paths: list[str]) -> tuple[list[str], dict[str, Any]]:
+    roots = protected_input_roots()
+    allowed: list[str] = []
+    blocked_entries: list[dict[str, Any]] = []
+    for index, raw in enumerate(input_paths, start=1):
+        path = Path(raw).expanduser()
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path.absolute()
+        labels = protected_root_labels_for_path(resolved, roots)
+        if labels:
+            blocked_entries.append(
+                {
+                    "label": f"input_{index:03d}",
+                    "blocked": True,
+                    "reason": "protected_app_storage_input",
+                    "protected_root_overlap": True,
+                    "protected_root_labels": labels,
+                    "paths_redacted": True,
+                }
+            )
+            continue
+        allowed.append(raw)
+
+    blocked_count = len(blocked_entries)
+    return allowed, {
+        "reported": True,
+        "passed": blocked_count == 0,
+        "blocked_count": blocked_count,
+        "protected_root_labels": [label for label, _root in roots],
+        "public_item_results": blocked_entries,
+        "paths_redacted": True,
+    }
 
 
 def _iter_explicit_input_files(input_paths: list[str]) -> tuple[list[Path], dict[str, int], list[SourceFileDecision]]:
@@ -183,7 +259,10 @@ def discover_input_candidates(
     min_stable_age_seconds: int = 60,
     stability_wait_seconds: float = 0.25,
 ) -> PreflightResult:
-    discovered, counts, missing_decisions = _iter_explicit_input_files(input_paths)
+    allowed_input_paths, protected_input_gate = split_protected_input_paths(input_paths)
+    if not protected_input_gate["passed"]:
+        allowed_input_paths = []
+    discovered, counts, missing_decisions = _iter_explicit_input_files(allowed_input_paths)
     unique = _dedupe_paths(discovered)
     over_cap_count = max(0, len(unique) - max_items)
     decisions: list[SourceFileDecision] = list(missing_decisions)
@@ -235,6 +314,7 @@ def discover_input_candidates(
             dict(skipped_by_reason).get("hidden_temp_system_or_placeholder", 0)
         ),
         "unsupported_extension_skipped": counts["unsupported_files"],
+        "protected_input_blocked_count": int(protected_input_gate.get("blocked_count") or 0),
         "reason_counts": dict(sorted(dict(skipped_by_reason).items())),
         "public_item_results": preflight_counts.get("public_item_results", []),
         "paths_redacted": True,
@@ -258,6 +338,7 @@ def discover_input_candidates(
         "max_items": max_items,
         "max_items_cap": MAX_ALLOWED_ITEMS,
         "no_full_library_fallback": True,
+        "protected_input_gate": protected_input_gate,
         "private_locator_values_recorded": False,
         "public_path_redaction": "paths_and_filenames_redacted",
         "source_file_preflight_eligible_count": len(candidates),
@@ -350,6 +431,8 @@ def build_write_preconditions(
         blockers.append("explicit_input_missing_or_disappeared")
     if not bool(scope.get("no_full_library_fallback")):
         blockers.append("full_library_fallback_not_allowed")
+    if not bool(scope.get("protected_input_gate", {}).get("passed", False)):
+        blockers.append("protected_input_root_not_allowed")
     if int(scope.get("selected_count") or 0) <= 0:
         blockers.append("no_eligible_input_files")
     if int(scope.get("over_cap_count") or 0) > 0:
@@ -398,6 +481,8 @@ def build_write_preconditions(
         ),
         "no_over_cap_input": int(scope.get("over_cap_count") or 0) == 0,
         "no_full_library_fallback": bool(scope.get("no_full_library_fallback")),
+        "protected_input_gate_passed": bool(scope.get("protected_input_gate", {}).get("passed", False)),
+        "protected_input_blocked_count": int(scope.get("protected_input_gate", {}).get("blocked_count") or 0),
         "requested_provider_preference": requested_providers,
         "provider_preference_dml_then_cpu": provider_preference_is_bounded_directml_cpu(provider_preference),
         "directml_provider_available": bool(provider_availability.get("directml_available")),
@@ -508,6 +593,10 @@ def build_provider_write_gate(
         "exact_confirmation_present": write_confirmed,
         "write_preconditions_passed": write_preconditions_passed,
         "requested_provider_preference": requested,
+        "actual_write_provider_preference": provider_list(DIRECTML_WRITE_PROVIDER_PREFERENCE),
+        "actual_write_requires_directml_only": True,
+        "cpu_fallback_write_allowed": False,
+        "cpu_fallback_validation_dry_run_only": True,
         "requires_directml_provider": True,
         "provider_preference_includes_directml": "DmlExecutionProvider" in requested,
         "provider_preference_includes_cpu_fallback": "CPUExecutionProvider" in requested,
@@ -526,6 +615,94 @@ def build_provider_write_gate(
     }
 
 
+def build_write_provider_policy(provider_preference: str) -> dict[str, Any]:
+    return {
+        "reported": True,
+        "prewrite_probe_provider_preference": provider_list(provider_preference),
+        "actual_write_provider_preference": provider_list(DIRECTML_WRITE_PROVIDER_PREFERENCE),
+        "actual_write_requires_directml_only": True,
+        "provider_fallback_disabled_for_actual_write": True,
+        "cpu_fallback_write_allowed": False,
+        "cpu_fallback_validation_dry_run_only": True,
+        "no_cpu_fallback_write_path": True,
+    }
+
+
+def _job_recheck_not_run(status: str, stage: str) -> dict[str, Any]:
+    return {
+        "reported": True,
+        "stage": stage,
+        "executed": False,
+        "status": status,
+        "passed": False,
+        "no_concurrent_import_or_tagging_jobs": False,
+        "active_import_jobs": None,
+        "active_ai_tagging_jobs": None,
+        "active_ai_tagging_memory_job": None,
+    }
+
+
+def job_concurrency_recheck(db: Any, *, stage: str) -> dict[str, Any]:
+    result = dict(job_concurrency_preflight(db))
+    passed = bool(result.get("no_concurrent_import_or_tagging_jobs"))
+    result.update(
+        {
+            "stage": stage,
+            "executed": True,
+            "status": "passed" if passed else "blocked_concurrent_job_active",
+            "passed": passed,
+        }
+    )
+    return result
+
+
+def build_write_window_protection(
+    *,
+    write_requested: bool,
+    write_confirmed: bool,
+    write_preconditions_passed: bool,
+    import_recheck: Mapping[str, Any] | None = None,
+    ai_write_recheck: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    import_check = dict(import_recheck or _job_recheck_not_run("not_run", "before_import_write"))
+    ai_check = dict(ai_write_recheck or _job_recheck_not_run("not_run", "before_ai_write"))
+    write_path_active = bool(write_requested and write_confirmed and write_preconditions_passed)
+    blockers: list[str] = []
+    if write_path_active:
+        if not bool(import_check.get("passed")):
+            blockers.append("import_write_concurrency_recheck_not_passed")
+        if not bool(ai_check.get("passed")):
+            blockers.append("ai_write_concurrency_recheck_not_passed")
+    rechecked = bool(import_check.get("executed")) and bool(ai_check.get("executed"))
+    no_concurrent = bool(import_check.get("passed")) and bool(ai_check.get("passed"))
+    return {
+        "reported": True,
+        "mode": "immediate_recheck_no_durable_lock",
+        "durable_lock_held": False,
+        "durable_lock_deferred": True,
+        "write_requested": write_requested,
+        "exact_confirmation_present": write_confirmed,
+        "write_preconditions_passed": write_preconditions_passed,
+        "write_window_rechecked": rechecked,
+        "no_concurrent_import_or_tagging_jobs": no_concurrent,
+        "import_recheck": import_check,
+        "ai_write_recheck": ai_check,
+        "blockers": blockers,
+    }
+
+
+def add_write_precondition_blocker(preconditions: dict[str, Any], blocker: str) -> dict[str, Any]:
+    blockers = list(preconditions.get("blockers") or [])
+    if blocker not in blockers:
+        blockers.append(blocker)
+    updated = dict(preconditions)
+    updated["passed"] = False
+    updated["blockers"] = blockers
+    if blocker.startswith("concurrent_"):
+        updated["no_concurrent_import_or_tagging_jobs"] = False
+    return updated
+
+
 def _augment_ai_result(result: dict[str, Any]) -> dict[str, Any]:
     delta = int(result.get("media_with_ai_tags_delta") or 0)
     result["first_time_media_tag_insertion_count"] = max(0, delta)
@@ -536,6 +713,8 @@ def _augment_ai_result(result: dict[str, Any]) -> dict[str, Any]:
 
 def validate_localization(db: Any, touched_tags: list[str]) -> dict[str, Any]:
     result = pilot.validate_localization_reuse(db, touched_tags)
+    if result.get("deferred_reason") == "external_llm_provider_not_approved_for_s3a_pilot1":
+        result["deferred_reason"] = "external_llm_provider_not_approved_for_s3a_prod2_s3b_d1"
     result["deferred_reason"] = (
         result.get("deferred_reason")
         or "external_llm_provider_not_approved_for_s3a_prod2_s3b_d1"
@@ -576,6 +755,7 @@ def derive_status(summary: Mapping[str, Any]) -> str:
     gate = summary.get("provider_write_gate", {})
     cpu = summary.get("cpu_fallback_validation", {})
     s3b = summary.get("s3b_disabled_scaffold", {})
+    window = summary.get("write_window_protection", {})
 
     if not bool(summary.get("public_redaction", {}).get("passed", True)):
         return "blocked_public_redaction_failed"
@@ -585,6 +765,8 @@ def derive_status(summary: Mapping[str, Any]) -> str:
         return "blocked_input_over_cap"
     if not bool(scope.get("explicit_input_path_supplied")):
         return "blocked_scope_invalid"
+    if int(scope.get("protected_input_gate", {}).get("blocked_count") or 0) > 0:
+        return "blocked_protected_input_root"
     if not bool(scope.get("no_full_library_fallback")):
         return "blocked_full_library_fallback"
     if not bool(config.get("local_files_only")) or bool(config.get("model_download_allowed")):
@@ -611,6 +793,13 @@ def derive_status(summary: Mapping[str, Any]) -> str:
         preconditions.get("passed")
     ):
         return "blocked_write_preconditions"
+    if bool(config.get("write_requested")) and bool(config.get("operator_confirmation_exact")):
+        import_recheck = window.get("import_recheck", {}) if isinstance(window.get("import_recheck", {}), Mapping) else {}
+        ai_recheck = window.get("ai_write_recheck", {}) if isinstance(window.get("ai_write_recheck", {}), Mapping) else {}
+        if bool(import_recheck.get("executed")) and not bool(import_recheck.get("passed")):
+            return "blocked_write_window_concurrency"
+        if bool(ai_recheck.get("executed")) and not bool(ai_recheck.get("passed")):
+            return "blocked_write_window_concurrency"
     if int(import_reuse.get("failed_count") or 0) > 0:
         return "blocked_import_item_failures"
     if int(classification.get("failed_count") or 0) > 0:
@@ -729,6 +918,9 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     failure_budget = summary.get("failure_budget", {})
     load = summary.get("load_control_observations", {})
     s3b = summary.get("s3b_disabled_scaffold", {})
+    protected_gate = scope.get("protected_input_gate", {}) if isinstance(scope.get("protected_input_gate", {}), Mapping) else {}
+    write_provider_policy = summary.get("write_provider_policy", {})
+    write_window = summary.get("write_window_protection", {})
     provider = ai.get("provider", {}) if isinstance(ai.get("provider", {}), Mapping) else {}
     return "\n".join(
         [
@@ -749,6 +941,8 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- Max items: `{summary.get('run_configuration', {}).get('max_items')}`.",
             f"- Full-library fallback: `{not bool(scope.get('no_full_library_fallback'))}`.",
             f"- Public path redaction: `{scope.get('public_path_redaction')}`.",
+            f"- Protected input gate passed: `{protected_gate.get('passed')}`.",
+            f"- Protected input blocked count: `{protected_gate.get('blocked_count')}`.",
             "",
             "## Source File Preflight",
             "",
@@ -785,6 +979,8 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- Executed: `{ai.get('executed')}`.",
             f"- Dry run: `{ai.get('dry_run')}`.",
             f"- Provider preference: `{ai.get('provider_preference_requested')}`.",
+            f"- Actual write provider preference: `{write_provider_policy.get('actual_write_provider_preference')}`.",
+            f"- CPU fallback write allowed: `{write_provider_policy.get('cpu_fallback_write_allowed')}`.",
             f"- Actual provider: `{provider.get('actual_provider')}`.",
             f"- Processed: `{ai.get('processed')}`.",
             f"- Failed: `{ai.get('failed')}`.",
@@ -799,6 +995,10 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- Prewrite DirectML probe provider: `{probe.get('provider', {}).get('actual_provider')}`.",
             f"- Provider write gate passed: `{gate.get('passed')}`.",
             f"- Provider write gate blockers: `{gate.get('blockers')}`.",
+            f"- Write window protection mode: `{write_window.get('mode')}`.",
+            f"- Durable lock held: `{write_window.get('durable_lock_held')}`.",
+            f"- Write window rechecked: `{write_window.get('write_window_rechecked')}`.",
+            f"- Write window blockers: `{write_window.get('blockers')}`.",
             "",
             "## CPU Fallback",
             "",
@@ -974,6 +1174,16 @@ def main(argv: list[str] | None = None) -> int:
         provider_preference=args.provider_preference,
     )
     provider_write_gate: dict[str, Any] = {}
+    write_provider_policy = build_write_provider_policy(args.provider_preference)
+    import_concurrency_recheck = _job_recheck_not_run("not_run", "before_import_write")
+    ai_write_concurrency_recheck = _job_recheck_not_run("not_run", "before_ai_write")
+    write_window_protection = build_write_window_protection(
+        write_requested=write_requested,
+        write_confirmed=write_confirmed,
+        write_preconditions_passed=False,
+        import_recheck=import_concurrency_recheck,
+        ai_write_recheck=ai_write_concurrency_recheck,
+    )
     cpu_fallback: dict[str, Any] = _not_run_ai_result("not_run")
     localization: dict[str, Any] = {"reported": True, "status": "not_run", "failed": 0, "llm_external_provider_used": False}
     downstream_media_ids: list[int] = []
@@ -995,6 +1205,25 @@ def main(argv: list[str] | None = None) -> int:
                 write_requested=write_requested,
                 write_confirmed=write_confirmed,
                 local_files_only=local_files_only,
+            )
+            if bool(write_preconditions.get("passed")):
+                import_concurrency_recheck = job_concurrency_recheck(db, stage="before_import_write")
+                if not bool(import_concurrency_recheck.get("passed")):
+                    write_preconditions = add_write_precondition_blocker(
+                        write_preconditions,
+                        "concurrent_job_active_before_import_write",
+                    )
+            else:
+                import_concurrency_recheck = _job_recheck_not_run(
+                    "not_run_write_preconditions_blocked",
+                    "before_import_write",
+                )
+            write_window_protection = build_write_window_protection(
+                write_requested=write_requested,
+                write_confirmed=write_confirmed,
+                write_preconditions_passed=bool(write_preconditions.get("passed")),
+                import_recheck=import_concurrency_recheck,
+                ai_write_recheck=ai_write_concurrency_recheck,
             )
             import_reuse, downstream_media_ids = pilot.import_or_reuse_from_input(
                 db,
@@ -1054,20 +1283,41 @@ def main(argv: list[str] | None = None) -> int:
                         write_preconditions_passed=bool(write_preconditions.get("passed")),
                     )
                     if provider_write_gate.get("passed"):
-                        directml_ai_tagging, touched_tags = pilot.run_ai_tagging_pass(
-                            db,
-                            label="directml_primary",
-                            media_ids=downstream_media_ids,
-                            dry_run=False,
-                            provider_preference=args.provider_preference,
-                            max_items=max_items,
-                            local_files_only=local_files_only,
+                        ai_write_concurrency_recheck = job_concurrency_recheck(db, stage="before_ai_write")
+                        write_window_protection = build_write_window_protection(
+                            write_requested=write_requested,
+                            write_confirmed=write_confirmed,
+                            write_preconditions_passed=bool(write_preconditions.get("passed")),
+                            import_recheck=import_concurrency_recheck,
+                            ai_write_recheck=ai_write_concurrency_recheck,
                         )
-                        directml_ai_tagging = _augment_ai_result(directml_ai_tagging)
+                        if bool(ai_write_concurrency_recheck.get("passed")):
+                            with pilot.temporary_env({"AI_TAGGING_ALLOW_PROVIDER_FALLBACK": "false"}):
+                                directml_ai_tagging, touched_tags = pilot.run_ai_tagging_pass(
+                                    db,
+                                    label="directml_primary",
+                                    media_ids=downstream_media_ids,
+                                    dry_run=False,
+                                    provider_preference=DIRECTML_WRITE_PROVIDER_PREFERENCE,
+                                    max_items=max_items,
+                                    local_files_only=local_files_only,
+                                )
+                            directml_ai_tagging = _augment_ai_result(directml_ai_tagging)
+                        else:
+                            provider_write_gate = dict(provider_write_gate)
+                            blockers = list(provider_write_gate.get("blockers") or [])
+                            blockers.append("concurrent_job_active_before_ai_write")
+                            provider_write_gate.update({"passed": False, "write_allowed": False, "blockers": blockers})
+                            directml_ai_tagging = _not_run_ai_result(
+                                "not_run_write_window_concurrency_blocked",
+                                provider_preference=DIRECTML_WRITE_PROVIDER_PREFERENCE,
+                                selected_media_count=len(downstream_media_ids),
+                            )
+                            directml_ai_tagging["write_gate_blockers"] = blockers
                     else:
                         directml_ai_tagging = _not_run_ai_result(
                             "not_run_provider_write_gate_blocked",
-                            provider_preference=args.provider_preference,
+                            provider_preference=DIRECTML_WRITE_PROVIDER_PREFERENCE,
                             selected_media_count=len(downstream_media_ids),
                         )
                         directml_ai_tagging["write_gate_blockers"] = list(
@@ -1139,6 +1389,15 @@ def main(argv: list[str] | None = None) -> int:
 
     import_executed = bool(import_reuse.get("executed"))
     ai_write_executed = bool(directml_ai_tagging.get("executed")) and not bool(directml_ai_tagging.get("dry_run"))
+    job_concurrency = dict(job_concurrency)
+    job_concurrency.update(
+        {
+            "write_window_rechecked": bool(write_window_protection.get("write_window_rechecked")),
+            "write_window_protection_mode": write_window_protection.get("mode"),
+            "durable_lock_held": bool(write_window_protection.get("durable_lock_held")),
+            "concurrency_claim_scope": "preflight_plus_immediate_rechecks_no_durable_lock",
+        }
+    )
     summary: dict[str, Any] = {
         "phase": PHASE,
         "title": "Bounded Operator Sync Scale-Up and Disabled Unattended Sync Design",
@@ -1155,7 +1414,10 @@ def main(argv: list[str] | None = None) -> int:
             "max_items": max_items,
             "max_items_cap": MAX_ALLOWED_ITEMS,
             "provider_preference_requested": provider_list(args.provider_preference),
+            "actual_write_provider_preference": provider_list(DIRECTML_WRITE_PROVIDER_PREFERENCE),
             "cpu_fallback_provider_preference": [CPU_PROVIDER_PREFERENCE],
+            "cpu_fallback_write_allowed": False,
+            "provider_fallback_disabled_for_actual_write": True,
             "local_files_only": local_files_only,
             "model_download_allowed": not local_files_only,
             "write_requested": write_requested,
@@ -1178,11 +1440,14 @@ def main(argv: list[str] | None = None) -> int:
             "stability_wait_seconds": stability_wait_seconds,
         },
         "scope": preflight.scope,
+        "protected_input_gate": preflight.scope.get("protected_input_gate"),
         "source_file_preflight": preflight.source_file_preflight,
         "model_cache": model_cache,
         "provider_availability": provider_availability,
         "job_concurrency": job_concurrency,
         "write_preconditions": write_preconditions,
+        "write_provider_policy": write_provider_policy,
+        "write_window_protection": write_window_protection,
         "import_reuse": import_reuse,
         "classification": classification,
         "directml_provider_probe": directml_provider_probe,

@@ -15,6 +15,8 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 - Max items: `5`.
 - Full-library fallback: `False`.
 - Public path redaction: `paths_and_filenames_redacted`.
+- Protected input gate passed: `True`.
+- Protected input blocked count: `0`.
 
 ## Source File Preflight
 
@@ -31,11 +33,11 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 
 - Executed write: `True`.
 - Exact confirmation present: `True`.
-- Imported: `1`.
-- Reused: `2`.
+- Imported: `2`.
+- Reused: `1`.
 - Skipped: `0`.
 - Failed: `0`.
-- App-managed storage writes: `1`.
+- App-managed storage writes: `2`.
 - Source/iCloud mutation: `False`.
 
 ## Classification
@@ -44,27 +46,33 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 - Classified: `3`.
 - Reused classification: `0`.
 - Failed: `0`.
-- Distribution: `{'anime': 2, 'unknown': 1}`.
+- Distribution: `{'anime': 1, 'unknown': 2}`.
 
 ## DirectML AI Tagging
 
 - Executed: `True`.
 - Dry run: `False`.
-- Provider preference: `['DmlExecutionProvider', 'CPUExecutionProvider']`.
+- Provider preference: `['DmlExecutionProvider']`.
+- Actual write provider preference: `['DmlExecutionProvider']`.
+- CPU fallback write allowed: `False`.
 - Actual provider: `DmlExecutionProvider`.
 - Processed: `3`.
 - Failed: `0`.
-- Tags added: `117`.
-- Suggestions added: `52`.
+- Tags added: `38`.
+- Suggestions added: `21`.
 - Skipped locked: `0`.
-- Ignored low confidence: `32405`.
-- Media tags delta: `23`.
-- Media with AI tags delta: `1`.
-- First-time insertion count: `1`.
+- Ignored low confidence: `32515`.
+- Media tags delta: `36`.
+- Media with AI tags delta: `2`.
+- First-time insertion count: `2`.
 - Prewrite DirectML probe status: `completed`.
 - Prewrite DirectML probe provider: `DmlExecutionProvider`.
 - Provider write gate passed: `True`.
 - Provider write gate blockers: `[]`.
+- Write window protection mode: `immediate_recheck_no_durable_lock`.
+- Durable lock held: `False`.
+- Write window rechecked: `True`.
+- Write window blockers: `[]`.
 
 ## CPU Fallback
 
@@ -76,7 +84,7 @@ Public summary: `docs/reports/s3a-prod2-s3b-d1-operator-scaleup-disabled-sync-su
 
 ## Localization
 
-- Reused translations: `138`.
+- Reused translations: `44`.
 - New local/static translations: `0`.
 - Missing/deferred: `1`.
 - Failed: `0`.
