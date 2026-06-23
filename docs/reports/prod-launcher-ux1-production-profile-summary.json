@@ -606,6 +606,8 @@
     "electron_audit_status": "passed_zero_vulnerabilities",
     "electron_package_status": "passed",
     "root_launcher_install_status": "passed",
+    "root_launcher_gui_validation_status": "passed",
+    "root_launcher_gui_validation_result": "Computer Use launched the canonical root-level executable, loaded the production profile without manual configuration, passed preflight, started production with Health OK and runtime status panel, opened the browser, stopped production, completed a second Start-Stop cycle, and released port 8000.",
     "contract_check_status": "passed",
     "public_redaction_json_status": "passed",
     "manual_acceptance_status": "manual_acceptance_required_before_merge",

@@ -396,6 +396,12 @@ Observed results:
 - Electron audit: 0 vulnerabilities
 - Electron package: passed
 - Root-level daily launcher install: passed
+- Root-level GUI validation: passed with Computer Use from the canonical root
+  executable. The launcher loaded the production profile without manual
+  configuration, preflight passed, Start reached Running / Health OK, the detail
+  panel showed runtime status instead of the stale preflight placeholder, Open
+  Browser opened V.I.O.L.E.T. in Chrome, Stop released the service, and a second
+  Start -> Stop cycle returned to stopped with port 8000 released.
 - Canonical ignored profile status: ready, auth policy explicit
 - Canonical public preflight: passed
 - Direct safe-start shutdown validation: passed
