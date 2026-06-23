@@ -414,8 +414,13 @@ Observed results:
 - Electron audit: 0 vulnerabilities
 - Electron package: passed
 - Root-level daily launcher install: passed
-- Root-level GUI validation: pending rerun after the primary Start action was
-  changed to automatic preflight.
+- Root-level GUI validation: Computer Use launched the canonical root-level
+  executable, confirmed the `V.I.O.L.E.T. 启动器` title, loaded the production
+  profile without manual configuration, clicked `启动` without manually running
+  preflight, observed automatic preflight then production startup, reached
+  `运行中` / Health OK with the runtime status panel, opened the browser, stopped
+  production, completed a second Start-Stop cycle, and confirmed port 8000 was
+  released.
 - Canonical ignored profile status: ready, auth policy explicit
 - Canonical public preflight: passed
 - Direct safe-start shutdown validation: passed
