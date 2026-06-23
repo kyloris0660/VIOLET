@@ -46,6 +46,12 @@ default `require_auth=true`. Profile startup emits `BLOMBOORU_REQUIRE_AUTH`
 from the profile into the child environment, so skipping development `.env`
 does not accidentally make the production UI/API unauthenticated.
 
+In production-profile-active mode, backend config now resolves
+`BLOMBOORU_REQUIRE_AUTH` from the profile child environment before
+`data/settings.json`. This lets the local production profile override a stale
+storage `require_auth=false` value. Normal development mode keeps the previous
+settings-before-env auth precedence.
+
 ## Profile Bootstrap
 
 The controller now supports:
@@ -227,6 +233,9 @@ Current-head P1/P2 findings fixed:
   inferred local profile values.
 - Acceptance-unblocking pass: identity profile edits are blocked while a
   launcher-managed server is running.
+- Tiny final safety patch: production-profile-active backend config now lets
+  profile auth override storage settings, while development auth precedence is
+  unchanged.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and
@@ -347,7 +356,7 @@ npm run package
 
 Observed results:
 
-- Focused Python tests: `230 passed`
+- Focused Python tests: `233 passed`
 - Electron tests: passed
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities

@@ -413,12 +413,14 @@ class Settings:
     
     @property
     def REQUIRE_AUTH(self) -> bool:
+        env_val = os.getenv("BLOMBOORU_REQUIRE_AUTH")
+        if _production_profile_active() and env_val is not None:
+            return env_val.strip().casefold() in ("true", "1", "yes", "on")
         val = self.file_settings.get("require_auth")
         if val is not None:
             return bool(val)
-        env_val = os.getenv("BLOMBOORU_REQUIRE_AUTH")
         if env_val is not None:
-            return env_val.lower() in ("true", "1", "yes")
+            return env_val.strip().casefold() in ("true", "1", "yes", "on")
         return self.settings.get("require_auth", False)
     
     @property

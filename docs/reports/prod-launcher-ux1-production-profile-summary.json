@@ -36,6 +36,7 @@
     "local_bootstrap_supported": true,
     "auth_policy_explicit": true,
     "child_env_sets_require_auth": true,
+    "profile_auth_overrides_storage_settings": true,
     "create_repair_persists_inferred_values": true,
     "partial_update_bootstraps_inferred_values": true,
     "storage_root_not_invented": true,
@@ -159,6 +160,7 @@
     "profile_auth_policy_inferred_from_existing_settings_or_dotenv": true,
     "profile_unknown_auth_policy_defaults_to_required": true,
     "profile_child_env_sets_require_auth": true,
+    "profile_child_auth_env_overrides_storage_settings": true,
     "profile_create_repair_writes_inferred_local_values": true,
     "profile_partial_update_bootstraps_inferred_local_values": true,
     "safe_startup_requires_initialized_settings": true,
@@ -555,6 +557,10 @@
       "Create/Repair and first partial Save persist inferred local profile values instead of dropping DB/storage fields",
       "identity profile edits are blocked while a launcher-managed production server is running"
     ],
+    "fixed_after_head_f3b9c8a": [
+      "production-profile-active config now resolves BLOMBOORU_REQUIRE_AUTH from the profile child environment before storage settings.json",
+      "development mode keeps the existing settings.json-before-env auth precedence"
+    ],
     "intentionally_deferred_current_windows_mvp": [
       "POSIX/Linux port owner completeness beyond existing fail-closed behavior: current acceptance path is the Windows local packaged launcher",
       "full schema preflight before spawn: current temporary launcher requires health OK during acceptance and keeps health schema checks public-safe",
@@ -570,7 +576,8 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "230 passed",
+    "python_tests_result": "233 passed",
+    "config_precedence_auth_tests_status": "passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",
     "electron_tests_result": "launcher contract checks passed; controller runner tests passed; renderer behavior tests passed",

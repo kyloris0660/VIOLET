@@ -324,6 +324,115 @@ def test_backend_config_skip_dotenv_keeps_profile_values(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize(
+    ("storage_require_auth", "profile_env_auth", "expected_auth"),
+    [
+        (False, "true", True),
+        (True, "false", False),
+    ],
+)
+def test_backend_config_profile_auth_env_overrides_storage_settings(
+    tmp_path,
+    storage_require_auth,
+    profile_env_auth,
+    expected_auth,
+):
+    repo = tmp_path / "repo"
+    config_dir = repo / "backend" / "app"
+    config_dir.mkdir(parents=True)
+    (repo / "backend" / "__init__.py").write_text("", encoding="utf-8")
+    (config_dir / "__init__.py").write_text("", encoding="utf-8")
+    shutil.copyfile(ROOT / "backend" / "app" / "config.py", config_dir / "config.py")
+    storage = tmp_path / "profile-storage"
+    (storage / "data").mkdir(parents=True)
+    (storage / "data" / "settings.json").write_text(
+        json.dumps(
+            {
+                "first_run": False,
+                "secret_key": "stable",
+                "require_auth": storage_require_auth,
+                "database": {"name": "settings_db"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": str(repo),
+            "VIOLET_SKIP_DOTENV": "1",
+            "VIOLET_ENV": "production",
+            "VIOLET_PRODUCTION_PROFILE_ACTIVE": "true",
+            "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP": "true",
+            "VIOLET_STORAGE_ROOT": str(storage),
+            "BLOMBOORU_REQUIRE_AUTH": profile_env_auth,
+        }
+    )
+    script = "\n".join(
+        [
+            "from backend.app.config import settings",
+            f"assert settings.REQUIRE_AUTH is {expected_auth!r}",
+        ]
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_backend_config_development_auth_settings_still_override_env(tmp_path):
+    repo = tmp_path / "repo"
+    config_dir = repo / "backend" / "app"
+    config_dir.mkdir(parents=True)
+    (repo / "backend" / "__init__.py").write_text("", encoding="utf-8")
+    (config_dir / "__init__.py").write_text("", encoding="utf-8")
+    shutil.copyfile(ROOT / "backend" / "app" / "config.py", config_dir / "config.py")
+    storage = tmp_path / "development-storage"
+    (storage / "data").mkdir(parents=True)
+    (storage / "data" / "settings.json").write_text(
+        json.dumps(
+            {
+                "first_run": False,
+                "secret_key": "stable",
+                "require_auth": False,
+                "database": {"name": "settings_db"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": str(repo),
+            "VIOLET_SKIP_DOTENV": "1",
+            "VIOLET_ENV": "development",
+            "VIOLET_STORAGE_ROOT": str(storage),
+            "BLOMBOORU_REQUIRE_AUTH": "true",
+        }
+    )
+    env.pop("VIOLET_PRODUCTION_PROFILE_ACTIVE", None)
+    env.pop("VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP", None)
+    script = "from backend.app.config import settings\nassert settings.REQUIRE_AUTH is False"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_profile_status_and_discovery_expose_public_safe_db_user(tmp_path, safe_backends):
     repo, storage, env = _write_fake_repo(tmp_path)
     _write_fake_profile(repo, storage, db_user="violet_prod")
@@ -469,6 +578,7 @@ def test_profile_repair_preserves_auth_from_dotenv(tmp_path, safe_backends):
     child_env = control._child_environment(config)
 
     assert result.data["local_inference"]["auth_policy_from"] == "dotenv"
+    assert result.data["profile"]["auth_policy_configured"] is True
     assert payload["require_auth"] is True
     assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
 
@@ -487,6 +597,7 @@ def test_profile_repair_preserves_auth_from_settings_json(tmp_path, safe_backend
     child_env = control._child_environment(config)
 
     assert result.data["local_inference"]["auth_policy_from"] == "settings_json"
+    assert result.data["profile"]["auth_policy_configured"] is True
     assert payload["require_auth"] is True
     assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
 
@@ -506,6 +617,7 @@ def test_profile_repair_defaults_unknown_auth_policy_to_enabled(tmp_path, safe_b
     child_env = control._child_environment(config)
 
     assert result.data["local_inference"]["auth_policy_from"] == "safe_default_true"
+    assert result.data["profile"]["auth_policy_configured"] is True
     assert payload["require_auth"] is True
     assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
 
