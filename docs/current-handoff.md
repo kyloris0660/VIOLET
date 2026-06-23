@@ -10,7 +10,7 @@
 |------|-------|
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
-| Local path | `C:\Users\kyloris\Documents\AnimeLocalBooru` |
+| Local path | `[canonical local checkout path]` |
 | Current phase | `PD1-A-R1: Post-#122 Roadmap Reconciliation and Production/Development Gate Foundation` |
 | Baseline main | PR #122 merge `aece424df2814ef0d840f9fe472a9d19478d2020` |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript + Electron launcher |
@@ -32,7 +32,7 @@
 - PR #113 / Phase 4.7-S2 is merged. It established the real production baseline library through controlled baseline import, classification, AI tagging, tag localization, public redaction, and real browser validation.
 - PR #122 / `PROD-LAUNCHER-UX1/PF1` is merged. Merge commit: `aece424df2814ef0d840f9fe472a9d19478d2020`. It added the Electron production launcher, local production profile/runtime config, root-level Windows entrypoint, and production/development runtime separation.
 - The V.I.O.L.E.T. root-level Windows launcher is now the accepted personal production entrypoint for current daily library operation.
-- Current root-level daily entry: `C:\Users\kyloris\Documents\AnimeLocalBooru\V.I.O.L.E.T. Production Launcher.exe`.
+- Current root-level daily entry: root-level `V.I.O.L.E.T. Production Launcher.exe` in the canonical local checkout.
 - The launcher uses local ignored production profile/runtime config. Development `.env` must not be converted into production and must not be treated as the production source of truth.
 - Production/development split is the current temporary operational policy. Future production execution phases must bind to explicit production profile/runtime config instead of development `.env`.
 - Launcher deferred reviewer issues are non-blocking for the current Windows personal launcher path. Track them as future runtime/schema hardening debt, not active blockers for this reconciliation phase.
@@ -46,7 +46,7 @@
 Accepted near-term order:
 
 1. `PD1-A-R1`: reconcile roadmap/handoff/contract state after PR #122. No production writes.
-2. `S2G`: consolidated GPU / AI Tagging Execution Foundation.
+2. `S2G: GPU / AI Tagging Execution Foundation`: consolidated phase.
 3. `R1R`: SourceConcept route redo under GOV3 contracts; no confirmed Entity assignments and no new provider/Pixiv live calls unless separately approved.
 4. `A1R`: rerun route audit after R1R outputs exist.
 5. `Pixiv/source metadata strategy polish`: settle Pixiv/source metadata reliability before adding providers.

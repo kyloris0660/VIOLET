@@ -38,7 +38,7 @@ production sync.
      contract.
    - No production writes.
 
-2. `S2G` - GPU / AI Tagging Execution Foundation.
+2. `S2G: GPU / AI Tagging Execution Foundation`.
    - The next production utility foundation after PD1-A-R1.
    - Single consolidated phase, not split into S2G-1 and S2G-2/3.
    - Covers GPU / AI tagging capability probe and benchmark, provider

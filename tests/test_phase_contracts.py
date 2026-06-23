@@ -192,6 +192,7 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
         "no_db_mutation": True,
         "no_source_icloud_mutation": True,
         "no_provider_calls": True,
+        "safety": {"no_llm_calls": True},
         "no_sourceconcept_mutation": True,
         "no_entity_truth_write": True,
         "pipeline_contract": {
@@ -1752,6 +1753,50 @@ def test_production_development_separation_rejects_split_s2g_route() -> None:
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "production_development_next_phase_not_consolidated_s2g" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    "next_phase",
+    [
+        "Provider-2 before S2G",
+        "A1R then S2G",
+        "R1R before S2G",
+        "S2G-2/3",
+    ],
+)
+def test_production_development_separation_requires_s2g_as_immediate_exact_next_phase(next_phase: str) -> None:
+    summary = _pd1a_governance_summary()
+    summary["phase_boundaries"]["next_recommended_phase"] = next_phase
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_next_phase_not_consolidated_s2g" in _error_codes(result)
+
+
+@pytest.mark.parametrize("stage", ["s2g", "gpu_benchmark", "ai_tagging_execution"])
+def test_production_development_separation_rejects_s2g_execution_stages(stage: str) -> None:
+    summary = _pd1a_governance_summary(executed_stages=[stage])
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "forbidden_stage_executed" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_no_llm_calls_false() -> None:
+    summary = _pd1a_governance_summary()
+    summary["safety"]["no_llm_calls"] = False
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_llm_calls_not_forbidden" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_llm_executed_stage() -> None:
+    summary = _pd1a_governance_summary(executed_stages=["llm_call"])
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "forbidden_stage_executed" in _error_codes(result)
 
 
 def test_prod_launcher_mvp_contract_accepts_safe_launcher_summary() -> None:

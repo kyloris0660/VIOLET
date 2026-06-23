@@ -41,7 +41,7 @@ turning this phase into a broad planning essay.
    - Does not start S2G, R1R, A1R, S3A, S3B, provider work, SourceConcept
      mutation, Entity truth writes, or DB mutation.
 
-2. `S2G` - GPU / AI Tagging Execution Foundation.
+2. `S2G: GPU / AI Tagging Execution Foundation`.
    - Single consolidated phase, not two phases.
    - Includes GPU / AI tagging capability probe and benchmark.
    - Includes provider abstraction, provenance, batch/concurrency/throttle

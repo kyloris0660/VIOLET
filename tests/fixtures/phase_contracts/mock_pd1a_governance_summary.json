@@ -79,6 +79,9 @@
     "schema_setup_ran": false,
     "schema_setup_requested": false
   },
+  "safety": {
+    "no_llm_calls": true
+  },
   "provider_entity_truth_blocked": true,
   "r1r_required_before_r2": true,
   "s2g_consolidated_route": true,

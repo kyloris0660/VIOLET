@@ -63,6 +63,9 @@
       "safe_to_merge": true
     }
   },
+  "safety": {
+    "no_llm_calls": true
+  },
   "post_122_launcher_merged": true,
   "production_launcher_entry_documented": true,
   "production_profile_runtime_config_documented": true,

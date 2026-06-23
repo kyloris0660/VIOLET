@@ -1139,6 +1139,7 @@ def _check_production_development_separation(
             "no_db_mutation",
             "no_source_icloud_mutation",
             "no_provider_calls",
+            "safety.no_llm_calls",
             "no_sourceconcept_mutation",
             "no_entity_truth_write",
             "governance_lanes.production.explicit",
@@ -1195,12 +1196,13 @@ def _check_production_development_separation(
             expected="PD1-A-R1",
             actual=_get(summary, "phase_boundaries.current_phase", None),
         )
-    next_phase = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).casefold()
-    split_s2g_tokens = ("s2g-1", "s2g_1", "s2g-2", "s2g_2", "s2g-3", "s2g_3")
-    if "s2g" not in next_phase or any(token in next_phase for token in split_s2g_tokens):
+    next_phase_raw = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).strip()
+    next_phase = re.sub(r"\s+", " ", next_phase_raw).casefold()
+    expected_next_phase = "s2g: gpu / ai tagging execution foundation"
+    if next_phase != expected_next_phase:
         result.fail(
             "production_development_next_phase_not_consolidated_s2g",
-            "The immediate recommended next phase after PD1-A-R1 must be consolidated S2G, not split S2G-1/S2G-2/3.",
+            "The immediate recommended next phase after PD1-A-R1 must be exactly the consolidated S2G phase.",
             path="phase_boundaries.next_recommended_phase",
             expected="S2G: GPU / AI Tagging Execution Foundation",
             actual=_get(summary, "phase_boundaries.next_recommended_phase", None),
@@ -1225,6 +1227,15 @@ def _check_production_development_separation(
         code="production_development_forbidden_current_phase_authorization",
         message="PD1-A may mention future work but must not authorize future execution phases or production automation.",
     )
+    for path in ("safety.no_llm_calls", "safety_no_mutation_proof.no_llm_calls"):
+        if _has(summary, path) and not _as_bool(_get(summary, path)):
+            result.fail(
+                "production_development_llm_calls_not_forbidden",
+                "PD1-A-R1 must explicitly forbid LLM calls.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path),
+            )
 
     requested_writes = _production_write_requested(summary)
     result.details["production_write_requests"] = requested_writes
