@@ -131,6 +131,15 @@ Raw JSON is not shown on the main screen. `显示高级诊断` is collapsed by
 default and contains only public-safe JSON. Copying diagnostics does not reset
 the current status badge or checklist.
 
+`打开浏览器` is also state-preserving on success: it opens the configured
+production URL but does not replace the current profile, health, or checklist
+view with the controller's minimal open-browser payload.
+
+Leaving `DB 访问值` blank preserves any existing local profile value. To clear a
+saved value, explicitly check `清除已保存 DB 访问值` and save the profile. DB access
+value updates are sent to the Python controller through stdin JSON, not
+command-line arguments.
+
 Observed #121 blockers are mapped to user-facing actions:
 
 - `violet_env_production`: development `.env` is not used for production;

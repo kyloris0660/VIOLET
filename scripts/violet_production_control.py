@@ -299,6 +299,7 @@ def _redact_private_text(text: str) -> str:
         text,
         flags=re.IGNORECASE,
     )
+    text = re.sub(r"(^|[^:])(?:\\\\|//)[A-Za-z0-9._$-]+[\\/][^\s'\"`<>|]+", r"\1[unc-path]", text)
     text = re.sub(r"(^|[^A-Za-z])([A-Za-z]:[\\/][^\s'\"`<>|]+)", r"\1[path]", text)
     text = re.sub(r"/(?:Users|home)/[^\s'\"`<>|]+", "[path]", text)
     text = re.sub(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", r"\1 [redacted]", text, flags=re.IGNORECASE)
@@ -1924,6 +1925,7 @@ def _cleanup_failed_launch(
     pid: int,
     config: RuntimeConfig,
     state_path: Path,
+    launched_process: subprocess.Popen[Any] | None = None,
     terminate: Callable[[int, bool], None] | None = None,
     wait: Callable[[int, float], bool] | None = None,
 ) -> dict[str, Any]:
@@ -1933,6 +1935,8 @@ def _cleanup_failed_launch(
         "cleanup_succeeded": False,
         "cleanup_state_cleared": False,
         "cleanup_refused_unknown_process": False,
+        "cleanup_verified_same_child": False,
+        "cleanup_reaped_child": False,
         "safe_recovery": "Use Stop only if the launcher still verifies the process; otherwise inspect the PID and port before manual taskkill.",
     }
     if not _state_belongs_to_launch(current_state, config, pid):
@@ -1940,9 +1944,39 @@ def _cleanup_failed_launch(
         cleanup["cleanup_error"] = "launcher_state_no_longer_matches_failed_launch"
         return cleanup
 
+    if launched_process is not None and getattr(launched_process, "pid", None) != pid:
+        cleanup["cleanup_refused_unknown_process"] = True
+        cleanup["cleanup_error"] = "launched_process_pid_mismatch"
+        return cleanup
+
+    if launched_process is not None:
+        try:
+            child_status = launched_process.poll()
+        except Exception:
+            child_status = None
+        if child_status is not None:
+            try:
+                launched_process.wait(timeout=0)
+                cleanup["cleanup_reaped_child"] = True
+            except Exception:
+                pass
+            _clear_state(state_path)
+            cleanup["cleanup_succeeded"] = True
+            cleanup["cleanup_state_cleared"] = True
+            cleanup["cleanup_verified_same_child"] = True
+            return cleanup
+        cleanup["cleanup_verified_same_child"] = True
+    else:
+        verified, verification_failures = verify_managed_process(current_state, config)
+        if not verified:
+            cleanup["cleanup_refused_unknown_process"] = True
+            cleanup["cleanup_error"] = "failed_launch_pid_identity_unverified"
+            cleanup["verification_failures"] = verification_failures
+            return cleanup
+
     terminator = terminate or (lambda target_pid, force=False: _terminate_verified_pid(target_pid, force=force))
     wait_fn = wait or wait_for_exit
-    if not process_exists(pid):
+    if launched_process is None and not process_exists(pid):
         _clear_state(state_path)
         cleanup["cleanup_succeeded"] = True
         cleanup["cleanup_state_cleared"] = True
@@ -1954,18 +1988,44 @@ def _cleanup_failed_launch(
         cleanup["cleanup_error"] = public_error(exc)
         return cleanup
 
-    if not wait_fn(pid, 10.0):
+    if launched_process is not None and wait is None:
+        try:
+            launched_process.wait(timeout=10.0)
+            cleanup["cleanup_reaped_child"] = True
+            exited = True
+        except subprocess.TimeoutExpired:
+            exited = False
+    else:
+        exited = wait_fn(pid, 10.0)
+
+    if not exited:
         current_state = _load_state(state_path)
         if not _state_belongs_to_launch(current_state, config, pid):
             cleanup["cleanup_refused_unknown_process"] = True
             cleanup["cleanup_error"] = "launcher_state_changed_during_failed_start_cleanup"
             return cleanup
+        if launched_process is None:
+            verified, verification_failures = verify_managed_process(current_state, config)
+            if not verified:
+                cleanup["cleanup_refused_unknown_process"] = True
+                cleanup["cleanup_error"] = "failed_launch_pid_identity_unverified_before_force"
+                cleanup["verification_failures"] = verification_failures
+                return cleanup
         try:
             terminator(pid, True)
         except Exception as exc:
             cleanup["cleanup_error"] = public_error(exc)
             return cleanup
-        if not wait_fn(pid, 5.0):
+        if launched_process is not None and wait is None:
+            try:
+                launched_process.wait(timeout=5.0)
+                cleanup["cleanup_reaped_child"] = True
+                force_exited = True
+            except subprocess.TimeoutExpired:
+                force_exited = False
+        else:
+            force_exited = wait_fn(pid, 5.0)
+        if not force_exited:
             cleanup["cleanup_error"] = "failed_launch_process_still_running"
             return cleanup
 
@@ -2105,10 +2165,10 @@ def start_production(
             verified, verification_failures = verify_managed_process(state, config)
             expected_health = health_matches_expected(health)
             if not verified or not expected_health:
-                cleanup = _cleanup_failed_launch(pid=process.pid, config=config, state_path=state_path)
+                cleanup = _cleanup_failed_launch(pid=process.pid, config=config, state_path=state_path, launched_process=process)
                 status_data = _status_data(config, state, health)
                 status_data.update(cleanup)
-                status_data["running"] = process_exists(process.pid)
+                status_data["running"] = process.poll() is None and process_exists(process.pid)
                 status_data["managed_by_launcher"] = bool(status_data["running"] and verified)
                 status_data["verification_failures"] = verification_failures
                 result = ControlResult(
@@ -2130,13 +2190,13 @@ def start_production(
                 data=_status_data(config, state, health),
             ))
 
-        cleanup = _cleanup_failed_launch(pid=process.pid, config=config, state_path=state_path)
+        cleanup = _cleanup_failed_launch(pid=process.pid, config=config, state_path=state_path, launched_process=process)
         return with_lock_context(ControlResult(
             ok=False,
             status="error",
             message="Production server started but did not return health before timeout. The launcher attempted to stop the newly started process.",
             data={
-                "running": process_exists(process.pid),
+                "running": process.poll() is None and process_exists(process.pid),
                 "managed_by_launcher": False,
                 "port": config.port,
                 "url": config.url,

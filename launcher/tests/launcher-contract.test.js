@@ -33,6 +33,7 @@ for (const command of [
   'start',
   'stop',
   'restart',
+  'open-browser',
   'diagnostic-summary'
 ]) {
   assert(controllerRunner.includes(`'${command}'`), `controller-runner.js must allow ${command}`);
@@ -50,6 +51,7 @@ assert(html.includes('V.I.O.L.E.T. 生产启动器'), 'Launcher visible title mu
 assert(html.includes('创建 / 修复生产配置'), 'Create/repair button must be zh-CN first.');
 assert(html.includes('选择生产存储根目录'), 'Storage selection button must be zh-CN first.');
 assert(html.includes('运行启动前检查'), 'Preflight button must be zh-CN first.');
+assert(html.includes('清除已保存 DB 访问值'), 'DB password clearing must be an explicit zh-CN control.');
 assert(html.includes('显示高级诊断'), 'Advanced diagnostics label must be zh-CN first.');
 assert(renderer.includes('renderChecklist'), 'Renderer must render human-readable checklist items.');
 assert(renderer.includes('JSON.stringify(payload, null, 2)'), 'Raw JSON must be limited to advanced diagnostics.');

@@ -373,6 +373,22 @@ def test_profile_update_stdin_json_accepts_password_payload_without_argv(tmp_pat
     assert profile["db"]["password"] == "secret-db-password"
 
 
+def test_profile_update_can_clear_existing_db_password_explicitly(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_password="old-secret")
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        updates={"db": {"password": ""}},
+    )
+    profile, _path, _errors = control.load_production_profile(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+
+    assert result.ok is True
+    assert result.data["profile"]["db"]["password_present"] is False
+    assert profile["db"]["password"] == ""
+
+
 def test_profile_mismatch_fails_closed_for_status_preflight_and_start(tmp_path, safe_backends, monkeypatch):
     repo, storage, env = _write_fake_repo(tmp_path)
     _write_fake_profile(repo, storage, profile_id="wrong-profile")
@@ -666,7 +682,10 @@ def test_python_public_redaction_handles_forward_slash_windows_paths_and_private
         "Trace D:/Storage/private/file.jpg "
         "C:/Users/kyloris/.codex/worktrees/private/profile.json "
         "Authorization: Bearer sk-development-secret "
-        "password=local-private-db-value"
+        "password=local-private-db-value "
+        r"\\nas-private\share\library\settings.json "
+        "//nas-private/share/library/file.jpg "
+        "https://example.test/ok"
     )
 
     redacted = control._redact_private_text(text)
@@ -675,6 +694,9 @@ def test_python_public_redaction_handles_forward_slash_windows_paths_and_private
     assert "C:/Users" not in redacted
     assert "sk-development-secret" not in redacted
     assert "local-private-db-value" not in redacted
+    assert "nas-private" not in redacted
+    assert "share/library" not in redacted
+    assert "https://example.test/ok" in redacted
     assert control._redact_private_text("open http://127.0.0.1:8000") == "open http://127.0.0.1:8000"
     mixed_profile = r"[repo-local]/.local_manifests\production_launcher/production-profile.json"
     assert ".local_manifests" not in control._redact_private_text(mixed_profile)
@@ -1099,6 +1121,22 @@ def test_start_verification_failure_cleans_new_process_and_state(tmp_path, safe_
     class FakeProcess:
         pid = 2468
 
+        def poll(self):
+            return None if alive["value"] else 0
+
+        def terminate(self) -> None:
+            terminated.append((self.pid, False))
+            alive["value"] = False
+
+        def kill(self) -> None:
+            terminated.append((self.pid, True))
+            alive["value"] = False
+
+        def wait(self, timeout=None):
+            if alive["value"]:
+                raise subprocess.TimeoutExpired(cmd="fake", timeout=timeout)
+            return 0
+
     monkeypatch.setattr(control, "preflight", lambda **kwargs: control.ControlResult(ok=True, status="passed", message="ok", data={}))
     monkeypatch.setattr(control.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
     monkeypatch.setattr(control, "poll_health", lambda url, timeout_seconds=control.READY_TIMEOUT_SECONDS: _healthy_payload())
@@ -1119,7 +1157,57 @@ def test_start_verification_failure_cleans_new_process_and_state(tmp_path, safe_
     assert result.data["cleanup_attempted"] is True
     assert result.data["cleanup_succeeded"] is True
     assert result.data["cleanup_state_cleared"] is True
+    assert result.data["cleanup_verified_same_child"] is True
+    assert result.data["cleanup_reaped_child"] is True
     assert terminated == [(2468, False)]
+    assert not state_path.exists()
+
+
+def test_start_health_timeout_cleans_new_process_and_state(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    state_path = tmp_path / "state.json"
+    alive = {"value": True}
+    terminated: list[tuple[int, bool]] = []
+
+    class FakeProcess:
+        pid = 8642
+
+        def poll(self):
+            return None if alive["value"] else 0
+
+        def terminate(self) -> None:
+            terminated.append((self.pid, False))
+            alive["value"] = False
+
+        def kill(self) -> None:
+            terminated.append((self.pid, True))
+            alive["value"] = False
+
+        def wait(self, timeout=None):
+            if alive["value"]:
+                raise subprocess.TimeoutExpired(cmd="fake", timeout=timeout)
+            return 0
+
+    monkeypatch.setattr(control, "preflight", lambda **kwargs: control.ControlResult(ok=True, status="passed", message="ok", data={}))
+    monkeypatch.setattr(control.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(control, "poll_health", lambda url, timeout_seconds=control.READY_TIMEOUT_SECONDS: None)
+    monkeypatch.setattr(control, "process_snapshot", lambda pid: _managed_snapshot(pid))
+    monkeypatch.setattr(control, "process_exists", lambda pid: alive["value"] if pid == 8642 else False)
+
+    def fake_terminate(pid: int, force: bool = False) -> None:
+        terminated.append((pid, force))
+        alive["value"] = False
+
+    monkeypatch.setattr(control, "_terminate_verified_pid", fake_terminate)
+
+    result = control.start_production(repo_root=repo, base_env=env, state_path=state_path, start_lock_path=tmp_path / "start.lock")
+
+    assert result.ok is False
+    assert result.status == "error"
+    assert "health_timeout" in result.errors
+    assert result.data["cleanup_succeeded"] is True
+    assert result.data["cleanup_state_cleared"] is True
+    assert terminated == [(8642, False)]
     assert not state_path.exists()
 
 
@@ -1150,6 +1238,86 @@ def test_failed_launch_cleanup_refuses_unknown_or_changed_state(tmp_path, safe_b
     assert cleanup["cleanup_succeeded"] is False
     assert cleanup["cleanup_refused_unknown_process"] is True
     assert state_path.exists()
+
+
+def test_failed_launch_cleanup_reverifies_state_process_before_terminating(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    config = control.resolve_config(repo, base_env=env)
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "state_version": control.STATE_VERSION,
+                "app_name": control.APP_NAME,
+                "started_by": "violet_production_launcher",
+                "pid": 2468,
+                "repo_root": str(repo),
+                "port": 8123,
+                "env": "production",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(control, "verify_managed_process", lambda state, config: (False, ["pid_reused_or_identity_changed"]))
+
+    def forbidden_terminate(pid: int, force: bool = False) -> None:
+        raise AssertionError("unverified failed-start PID must not be terminated")
+
+    cleanup = control._cleanup_failed_launch(pid=2468, config=config, state_path=state_path, terminate=forbidden_terminate)
+
+    assert cleanup["cleanup_succeeded"] is False
+    assert cleanup["cleanup_refused_unknown_process"] is True
+    assert cleanup["cleanup_error"] == "failed_launch_pid_identity_unverified"
+    assert cleanup["verification_failures"] == ["pid_reused_or_identity_changed"]
+    assert state_path.exists()
+
+
+def test_failed_launch_cleanup_reaps_exited_child_and_clears_matching_state(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    config = control.resolve_config(repo, base_env=env)
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "state_version": control.STATE_VERSION,
+                "app_name": control.APP_NAME,
+                "started_by": "violet_production_launcher",
+                "pid": 1357,
+                "repo_root": str(repo),
+                "port": 8123,
+                "env": "production",
+            }
+        ),
+        encoding="utf-8",
+    )
+    waited = {"value": False}
+
+    class ExitedProcess:
+        pid = 1357
+
+        def poll(self):
+            return 1
+
+        def wait(self, timeout=None):
+            waited["value"] = True
+            return 1
+
+        def terminate(self):
+            raise AssertionError("already-exited child must not receive terminate")
+
+        def kill(self):
+            raise AssertionError("already-exited child must not receive kill")
+
+    monkeypatch.setattr(control, "process_exists", lambda pid: True)
+
+    cleanup = control._cleanup_failed_launch(pid=1357, config=config, state_path=state_path, launched_process=ExitedProcess())
+
+    assert cleanup["cleanup_succeeded"] is True
+    assert cleanup["cleanup_state_cleared"] is True
+    assert cleanup["cleanup_verified_same_child"] is True
+    assert cleanup["cleanup_reaped_child"] is True
+    assert waited["value"] is True
+    assert not state_path.exists()
 
 
 def test_status_json_summary_is_public_safe(tmp_path, safe_backends, monkeypatch):

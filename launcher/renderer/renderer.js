@@ -10,7 +10,8 @@ const fields = {
   dbPort: document.getElementById('dbPortInput'),
   dbName: document.getElementById('dbNameInput'),
   dbUser: document.getElementById('dbUserInput'),
-  dbPassword: document.getElementById('dbPasswordInput')
+  dbPassword: document.getElementById('dbPasswordInput'),
+  clearDbPassword: document.getElementById('clearDbPasswordInput')
 };
 
 const summaries = {
@@ -275,7 +276,8 @@ function currentFieldValues() {
     dbPort: fields.dbPort.value,
     dbName: fields.dbName.value,
     dbUser: fields.dbUser.value,
-    dbPassword: fields.dbPassword.value
+    dbPassword: fields.dbPassword.value,
+    clearDbPassword: fields.clearDbPassword.checked
   };
 }
 
@@ -287,6 +289,13 @@ function formPayload() {
   const current = currentFieldValues();
   const payload = {};
   for (const [key, value] of Object.entries(current)) {
+    if (key === 'clearDbPassword') {
+      continue;
+    }
+    if (key === 'dbPassword' && current.clearDbPassword) {
+      payload.dbPassword = '';
+      continue;
+    }
     const trimmed = String(value || '').trim();
     if (trimmed && trimmed !== String(initialFieldValues[key] || '').trim()) {
       payload[key] = trimmed;
@@ -311,6 +320,7 @@ buttons.saveProfile.addEventListener('click', async () => {
     applyPayload(payload);
     if (payload.ok) {
       fields.dbPassword.value = '';
+      fields.clearDbPassword.checked = false;
       rememberInitialFields();
     }
   } finally {
@@ -323,7 +333,20 @@ buttons.start.addEventListener('click', async () => {
   applyPayload({ ok: false, status: 'starting', message: '正在启动生产服务...', data: (latestPayload && latestPayload.data) || {} });
   await run('start');
 });
-buttons.openBrowser.addEventListener('click', () => run('open-browser'));
+buttons.openBrowser.addEventListener('click', async () => {
+  setBusy(true);
+  try {
+    const browserPayload = await window.violetLauncher.run('open-browser');
+    if (browserPayload && browserPayload.ok === false) {
+      applyPayload(browserPayload);
+      return;
+    }
+    advancedDiagnostics.textContent = JSON.stringify(browserPayload, null, 2);
+    primaryMessage.textContent = '已打开浏览器，当前生产状态保持不变。';
+  } finally {
+    setBusy(false);
+  }
+});
 buttons.stop.addEventListener('click', () => run('stop'));
 buttons.restart.addEventListener('click', () => run('restart'));
 buttons.copyDiagnostics.addEventListener('click', async () => {

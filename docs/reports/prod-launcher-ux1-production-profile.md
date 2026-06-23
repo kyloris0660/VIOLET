@@ -82,6 +82,14 @@ English technical identifiers remain available inside Advanced Diagnostics.
 Copy Diagnostic Summary now copies and refreshes advanced diagnostics without
 replacing the current status badge or checklist.
 
+Open Browser is now treated as an auxiliary action: on success it opens the
+browser and refreshes Advanced Diagnostics without replacing the current
+Running/Unhealthy/Blocked status or clearing the checklist.
+
+The DB access value field preserves existing local credentials by default. To
+clear a saved local DB access value, the operator must explicitly check
+`清除已保存 DB 访问值`; the empty value is then sent over stdin JSON, never argv.
+
 Observed blocker mapping remains:
 
 - `violet_env_production`: Development `.env` is not used for production.
@@ -184,10 +192,98 @@ Current-head P1/P2 findings fixed:
   separators.
 - P2: Electron visible UI is zh-CN first.
 - P3: Copy Diagnostic Summary no longer clears the current UI state.
+- P2: DB access value clearing is now explicit through a zh-CN checkbox and stdin
+  JSON payload.
+- P2: Open Browser no longer overwrites health/profile/checklist state on
+  success.
+- P2: failed-start cleanup reaps the `Popen` child and clears matching state for
+  already-exited children.
+- P1: failed-start cleanup re-verifies state/process identity before signaling
+  non-`Popen` fallback PIDs.
+- P2: controller stderr redacts UNC/NAS path forms while preserving normal
+  `http://` and `https://` URLs.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and
   validation-status contract requirements.
+
+## Reviewer Ledger Summary
+
+The public-safe reviewer ledger was rebuilt across PR #121 and PR #122 instead
+of treating the latest comments as isolated patches. The ledger now covers these
+classes:
+
+- startup writes and safe startup;
+- health auth exemption and public-safe health payload;
+- health table/column schema compatibility;
+- process stop verification and stale PID refusal;
+- destructive E2E denial and development/test flag stripping;
+- start/restart serialization and stale lock reclaim;
+- malformed app/database port handling;
+- public log tail removal from JSON;
+- `run.py` / backend config dotenv skipping;
+- development environment inheritance removal;
+- profile ID mismatch and invariant repair;
+- DB user preservation and explicit DB access value clearing;
+- controller empty stdout / crash errors;
+- stderr, drive path, mixed profile path, UNC/NAS path, token, and DB access
+  value
+  redaction;
+- POSIX port ownership lookup / fail-closed behavior;
+- existing managed unhealthy Start refusal;
+- post-start verification failure cleanup;
+- zh-CN-first Electron UI;
+- Copy Diagnostics and Open Browser preserving current UI state.
+
+Every ledger item records root cause, fix location, same-class sweep, test
+coverage, manual-acceptance impact, and status in the JSON summary. All listed
+items are fixed for the current implementation; manual acceptance remains
+required before merge.
+
+## State Machine Audit
+
+The production launcher state machine was audited end to end:
+
+- No profile, Profile incomplete, and Profile error stay visible in the UI and
+  do not get overwritten by generic Stopped.
+- Preflight blocked never spawns a process and keeps the checklist actionable.
+- Start requested / Start in progress is serialized by the start lock.
+- Child process spawned writes state only for the new PID.
+- Health timeout, health-unhealthy, or identity-mismatch after spawn attempts
+  bounded cleanup of the same `Popen` child and clears only matching state.
+- If cleanup cannot verify the process identity, it refuses to signal and
+  returns a safe recovery message.
+- Existing managed healthy processes can return Start success.
+- Existing managed unhealthy processes return `ok=false`, `status=unhealthy`.
+- Stop only targets verified launcher-managed processes; unknown processes are
+  refused.
+- Restart is stop-then-start under the same serialization gate.
+- Copy Diagnostics and Open Browser do not replace the current UI state.
+
+Dangerous transitions are covered by focused tests: existing unhealthy start,
+post-start verification failure cleanup, health-timeout cleanup, changed state
+or unverified PID refusal, profile mismatch, invariant repair, diagnostics state
+preservation, and open-browser state preservation.
+
+## Same-Class Sweep
+
+The final sweep checked the adjacent failure classes that caused repeated repair
+rounds:
+
+- Environment isolation: `run.py`, backend config, controller env construction,
+  Electron runner, and start scripts were checked. Profile startup sets
+  `VIOLET_SKIP_DOTENV=1` and uses an explicit allowlist baseline.
+- Diagnostics redaction: controller stdout/stderr, Electron IPC responses,
+  Advanced Diagnostics, Copy Diagnostics, public reports, and
+  `ControlResult.to_public_dict()` were checked. DB access values, tokens,
+  home, repo, profile, storage, drive-letter, mixed profile suffix, and UNC/NAS
+  path forms are redacted; ordinary URLs are preserved.
+- Start/Stop cleanup: every return after `subprocess.Popen` was checked. Failed
+  launches either clean up the same child/state or return explicit safe recovery;
+  unknown processes are not killed.
+- UI mapping: `deriveState`, `applyPayload`, boot precedence, Copy Diagnostics,
+  and Open Browser were checked. Unhealthy cannot render as Running, and
+  auxiliary minimal payloads do not erase the status/checklist.
 
 ## Validation
 
@@ -205,7 +301,7 @@ npm run package
 
 Observed results:
 
-- Focused Python tests: `220 passed`
+- Focused Python tests: `224 passed`
 - Electron tests: passed
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities

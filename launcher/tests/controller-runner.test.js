@@ -38,6 +38,8 @@ async function main() {
   assert(args.includes('--stdin-json'));
   assert.strictEqual(payload.db.password, 'secret-db-password');
   assert.strictEqual(payload.app_port, '8123');
+  const clearPasswordPayload = profileUpdatePayload({ dbPassword: '' });
+  assert.strictEqual(clearPasswordPayload.db.password, '');
 
   const emptyPayload = normalizeControllerOutput('', 'Traceback at C:\\Users\\kyloris\\.codex\\worktrees\\2d4a\\AnimeLocalBooru\\.local_manifests\\production_launcher\\production-profile.json token=sk-secret-token', 1, { repoRoot });
   const emptySerialized = JSON.stringify(emptyPayload);
@@ -57,6 +59,12 @@ async function main() {
   assert(!slashRedacted.includes('C:/Users'));
   assert(!slashRedacted.includes('sk-forward-secret'));
   assert.strictEqual(sanitizeControllerStderr('open http://127.0.0.1:8000', { repoRoot }), 'open http://127.0.0.1:8000');
+  assert.strictEqual(sanitizeControllerStderr('open https://example.test/path', { repoRoot }), 'open https://example.test/path');
+
+  const uncRedacted = sanitizeControllerStderr('Trace \\\\nas-private\\share\\library\\settings.json //nas-private/share/library/file.jpg', { repoRoot });
+  assert(!uncRedacted.includes('nas-private'));
+  assert(!uncRedacted.includes('share\\library'));
+  assert(!uncRedacted.includes('share/library'));
 
   const mixedProfilePath = sanitizeControllerStderr(
     `${repoRoot}/.local_manifests\\production_launcher/production-profile.json`,

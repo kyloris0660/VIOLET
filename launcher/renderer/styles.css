@@ -172,6 +172,22 @@ input {
   color: var(--text);
 }
 
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.inline-check input {
+  width: auto;
+  min-height: 0;
+}
+
+.inline-check span {
+  margin: 0;
+}
+
 .button-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
