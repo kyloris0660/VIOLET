@@ -57,6 +57,8 @@ assert(main.includes('runtimeConfig.repo_root'), 'Runtime config must be able to
 assert(main.includes('runtimeConfig.python'), 'Runtime config must be able to pin canonical Python.');
 assert(main.includes("assets', 'violet.ico'"), 'BrowserWindow must use the V.I.O.L.E.T. icon.');
 assert(main.includes('setAppUserModelId'), 'Windows taskbar identity must be set for the launcher.');
+assert(main.includes('PORTABLE_EXECUTABLE_FILE'), 'Portable launcher must inspect the original executable path when Electron exposes it.');
+assert(main.includes("path.join(os.homedir(), 'Documents', 'AnimeLocalBooru')"), 'Packaged launcher must fall back to the canonical Windows checkout path.');
 assert(html.includes('id="checklist"'), 'Main screen must include a checklist container.');
 assert(html.includes('id="detailPanelTitle"'), 'Runtime/checklist panel title must be updateable.');
 assert(html.includes('id="advancedPanel"'), 'Advanced diagnostics must be present.');

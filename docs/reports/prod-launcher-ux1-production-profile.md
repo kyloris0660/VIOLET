@@ -267,6 +267,9 @@ Current-head P1/P2 findings fixed:
   the running state shows a runtime status panel instead of the stale preflight
   placeholder, and `npm run package` installs an ignored root-level launcher
   executable for daily double-click use.
+- Final packaged-path fix: the root-level portable launcher now resolves the
+  canonical checkout through the original portable executable directory when
+  Electron exposes it, with a Windows Documents checkout fallback.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and

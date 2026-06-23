@@ -1,6 +1,7 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
   allowedCommands,
@@ -30,10 +31,16 @@ function uniquePaths(candidates) {
 
 function runtimeConfigCandidates() {
   const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+  const portableFileDir = process.env.PORTABLE_EXECUTABLE_FILE
+    ? path.dirname(process.env.PORTABLE_EXECUTABLE_FILE)
+    : '';
+  const defaultCanonicalRoot = path.join(os.homedir(), 'Documents', 'AnimeLocalBooru');
   return uniquePaths([
     process.env.VIOLET_LAUNCHER_RUNTIME,
+    portableFileDir ? path.join(portableFileDir, '.local_manifests', 'production_launcher', 'launcher-runtime.json') : '',
     portableDir ? path.join(portableDir, '..', '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json') : '',
     portableDir ? path.join(portableDir, '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json') : '',
+    path.join(defaultCanonicalRoot, '.local_manifests', 'production_launcher', 'launcher-runtime.json'),
     path.join(process.cwd(), '.local_manifests', 'production_launcher', 'launcher-runtime.json'),
     path.join(__dirname, '..', '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json'),
     path.join(path.dirname(process.execPath), '..', '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json')
@@ -61,9 +68,15 @@ const runtimeConfig = loadRuntimeConfig();
 
 function resolveRepoRoot() {
   const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+  const portableFileDir = process.env.PORTABLE_EXECUTABLE_FILE
+    ? path.dirname(process.env.PORTABLE_EXECUTABLE_FILE)
+    : '';
+  const defaultCanonicalRoot = path.join(os.homedir(), 'Documents', 'AnimeLocalBooru');
   const candidates = uniquePaths([
     runtimeConfig.repo_root || runtimeConfig.repoRoot,
     process.env.VIOLET_REPO_ROOT,
+    portableFileDir,
+    defaultCanonicalRoot,
     portableDir ? path.join(portableDir, '..', '..') : '',
     portableDir ? path.join(portableDir, '..') : '',
     process.cwd(),

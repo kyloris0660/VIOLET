@@ -579,6 +579,7 @@
       "V.I.O.L.E.T. icon is configured for the Electron window/taskbar and electron-builder Windows package",
       "running services render a public-safe runtime status panel instead of the stale preflight unchecked placeholder",
       "npm run package installs an ignored root-level daily launcher executable for double-click use",
+      "root-level packaged launcher resolution includes the original portable executable directory and canonical Windows checkout fallback",
       "README and production launcher documentation now describe this temporary personal Windows production entrypoint"
     ],
     "intentionally_deferred_current_windows_mvp": [
