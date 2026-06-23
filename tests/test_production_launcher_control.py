@@ -1192,6 +1192,94 @@ def test_posix_missing_create_time_can_verify_with_cwd_cmd_and_port(tmp_path, sa
     assert reasons == []
 
 
+def test_windows_venv_redirector_child_port_owner_can_verify(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    config = control.resolve_config(repo, base_env=env)
+    state = {
+        "state_version": control.STATE_VERSION,
+        "app_name": control.APP_NAME,
+        "started_by": "violet_production_launcher",
+        "pid": 1234,
+        "start_time": "2026-01-01T00:00:00+00:00",
+        "repo_root": str(repo),
+        "port": 8123,
+        "env": "production",
+    }
+    monkeypatch.setattr(control.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid in {1234, 5678})
+    monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: True)
+    monkeypatch.setattr(control, "port_owner_pid", lambda port: 5678)
+
+    def fake_snapshot(pid: int) -> control.ProcessSnapshot:
+        if pid == 5678:
+            return control.ProcessSnapshot(
+                pid=pid,
+                exists=True,
+                command_line='"C:\\Python312\\python.exe" run.py',
+                executable_path="C:\\Python312\\python.exe",
+                create_time=None,
+                parent_pid=1234,
+            )
+        return control.ProcessSnapshot(
+            pid=pid,
+            exists=True,
+            command_line=f"{sys.executable} run.py",
+            executable_path=sys.executable,
+            create_time=None,
+        )
+
+    monkeypatch.setattr(control, "process_snapshot", fake_snapshot)
+
+    verified, reasons = control.verify_managed_process(state, config)
+
+    assert verified is True
+    assert reasons == []
+
+
+def test_windows_child_port_owner_must_still_match_run_py(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    config = control.resolve_config(repo, base_env=env)
+    state = {
+        "state_version": control.STATE_VERSION,
+        "app_name": control.APP_NAME,
+        "started_by": "violet_production_launcher",
+        "pid": 1234,
+        "start_time": "2026-01-01T00:00:00+00:00",
+        "repo_root": str(repo),
+        "port": 8123,
+        "env": "production",
+    }
+    monkeypatch.setattr(control.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid in {1234, 5678})
+    monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: True)
+    monkeypatch.setattr(control, "port_owner_pid", lambda port: 5678)
+
+    def fake_snapshot(pid: int) -> control.ProcessSnapshot:
+        if pid == 5678:
+            return control.ProcessSnapshot(
+                pid=pid,
+                exists=True,
+                command_line='"C:\\Python312\\python.exe" other.py',
+                executable_path="C:\\Python312\\python.exe",
+                create_time=None,
+                parent_pid=1234,
+            )
+        return control.ProcessSnapshot(
+            pid=pid,
+            exists=True,
+            command_line=f"{sys.executable} run.py",
+            executable_path=sys.executable,
+            create_time=None,
+        )
+
+    monkeypatch.setattr(control, "process_snapshot", fake_snapshot)
+
+    verified, reasons = control.verify_managed_process(state, config)
+
+    assert verified is False
+    assert "port_owner_expected_run_py_missing" in reasons
+
+
 def test_posix_verification_refuses_mismatched_cwd_or_port(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
     other_repo = tmp_path / "other"

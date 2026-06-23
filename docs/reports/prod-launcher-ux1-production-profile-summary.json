@@ -80,6 +80,8 @@
     "open_browser_preserves_state": true,
     "db_access_value_clear_explicit": true,
     "packaged_exe_repo_relative": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
+    "packaged_runtime_config_supported": true,
+    "portable_executable_repo_resolution": true,
     "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
     "cmd_entry_role": "fallback/development",
     "calls_python_control_plane": true,
@@ -203,6 +205,7 @@
     "failed_start_health_timeout_cleanup": true,
     "failed_start_unknown_process_not_killed": true,
     "failed_start_health_details_preserved": true,
+    "windows_venv_redirector_child_port_owner_supported": true,
     "profile_identity_updates_blocked_while_running": true,
     "start_lock_stale_recovery_preserved": true
   },
@@ -561,6 +564,10 @@
       "production-profile-active config now resolves BLOMBOORU_REQUIRE_AUTH from the profile child environment before storage settings.json",
       "development mode keeps the existing settings.json-before-env auth precedence"
     ],
+    "fixed_after_local_packaged_acceptance_probe": [
+      "packaged portable Electron launcher resolves the canonical checkout through local runtime config and electron-builder PORTABLE_EXECUTABLE_DIR",
+      "Windows venv redirector launches are accepted only when the listener owner is a verified child process still running run.py"
+    ],
     "intentionally_deferred_current_windows_mvp": [
       "POSIX/Linux port owner completeness beyond existing fail-closed behavior: current acceptance path is the Windows local packaged launcher",
       "full schema preflight before spawn: current temporary launcher requires health OK during acceptance and keeps health schema checks public-safe",
@@ -576,7 +583,7 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "233 passed",
+    "python_tests_result": "254 passed",
     "config_precedence_auth_tests_status": "passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",

@@ -159,6 +159,7 @@ class ProcessSnapshot:
     executable_path: str = ""
     create_time: float | None = None
     cwd: str = ""
+    parent_pid: int | None = None
 
 
 @dataclass
@@ -1087,7 +1088,7 @@ def process_snapshot(pid: int) -> ProcessSnapshot:
         command = (
             "Get-CimInstance Win32_Process "
             f"-Filter \"ProcessId={pid}\" | "
-            "Select-Object ProcessId,CommandLine,ExecutablePath,CreationDate | ConvertTo-Json -Compress"
+            "Select-Object ProcessId,ParentProcessId,CommandLine,ExecutablePath,CreationDate | ConvertTo-Json -Compress"
         )
         try:
             completed = subprocess.run(
@@ -1110,6 +1111,7 @@ def process_snapshot(pid: int) -> ProcessSnapshot:
                 command_line=str(payload.get("CommandLine") or "").strip(),
                 executable_path=str(payload.get("ExecutablePath") or "").strip(),
                 create_time=_parse_windows_cim_datetime(payload.get("CreationDate")),
+                parent_pid=_optional_int(payload.get("ParentProcessId")),
             )
     command_line = process_command_line(pid)
     executable_path = ""
@@ -1222,6 +1224,53 @@ def _port_owner_pid_posix(port: int) -> int | None:
     return None
 
 
+def _optional_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _process_is_descendant(pid: int, ancestor_pid: int, *, max_depth: int = 5) -> bool:
+    current = pid
+    seen: set[int] = set()
+    for _depth in range(max_depth):
+        if current <= 0 or current in seen:
+            return False
+        seen.add(current)
+        snapshot = process_snapshot(current)
+        parent_pid = snapshot.parent_pid
+        if parent_pid is None:
+            return False
+        if parent_pid == ancestor_pid:
+            return True
+        current = parent_pid
+    return False
+
+
+def _port_owner_is_verified_child(owner_pid: int, launcher_pid: int, config: RuntimeConfig | None = None) -> tuple[bool, list[str]]:
+    if platform.system() != "Windows":
+        return False, ["target_port_owned_by_different_pid"]
+    if not _process_is_descendant(owner_pid, launcher_pid):
+        return False, ["target_port_owned_by_different_pid"]
+    snapshot = process_snapshot(owner_pid)
+    command_line = snapshot.command_line.strip()
+    command_lower = command_line.casefold()
+    reasons: list[str] = []
+    if not command_line:
+        reasons.append("port_owner_command_line_unavailable")
+    if "run.py" not in command_lower and "backend.app.main" not in command_lower:
+        reasons.append("port_owner_expected_run_py_missing")
+    if "--debug" in command_lower:
+        reasons.append("port_owner_debug_process_refused")
+    if config is not None and snapshot.cwd:
+        if _normalize_path(snapshot.cwd) != _normalize_path(config.repo_root):
+            reasons.append("port_owner_cwd_mismatch")
+    return not reasons, reasons
+
+
 def state_pid(state: Mapping[str, Any] | None) -> int | None:
     if not state:
         return None
@@ -1278,12 +1327,12 @@ def verify_managed_process(state: Mapping[str, Any] | None, config: RuntimeConfi
             if _normalize_path(snapshot.cwd) != _normalize_path(config.repo_root):
                 reasons.append("process_cwd_mismatch")
         state_start = _parse_iso_timestamp(state.get("start_time"))
+        recorded_create_time = _state_float(state.get("pid_create_time"))
         if snapshot.create_time is None:
-            if platform.system() == "Windows":
+            if platform.system() == "Windows" and recorded_create_time is not None:
                 reasons.append("process_create_time_unavailable")
         elif state_start is not None and snapshot.create_time + 2.0 < state_start:
             reasons.append("pid_created_before_launcher_state")
-        recorded_create_time = _state_float(state.get("pid_create_time"))
         if recorded_create_time is not None and snapshot.create_time is not None:
             if abs(snapshot.create_time - recorded_create_time) > 2.0:
                 reasons.append("pid_create_time_mismatch")
@@ -1291,7 +1340,9 @@ def verify_managed_process(state: Mapping[str, Any] | None, config: RuntimeConfi
         if is_port_open(config.port) and owner is None:
             reasons.append("target_port_owner_unavailable")
         elif owner is not None and owner != pid:
-            reasons.append("target_port_owned_by_different_pid")
+            owner_verified, owner_reasons = _port_owner_is_verified_child(owner, pid, config)
+            if not owner_verified:
+                reasons.extend(owner_reasons)
     return not reasons, reasons
 
 

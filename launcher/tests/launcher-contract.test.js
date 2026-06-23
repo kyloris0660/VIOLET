@@ -44,6 +44,11 @@ assert(controllerRunner.includes('--profile'), 'Electron controller calls must p
 assert(main.includes('--stdin-json'), 'Electron profile save must use stdin JSON.');
 assert(!main.includes('--db-password'), 'Electron must not pass DB password on argv.');
 assert(!main.includes('VIOLET_STORAGE_ROOT='), 'Electron must not construct production env itself.');
+assert(main.includes('launcher-runtime.json'), 'Packaged launcher must read local ignored runtime config.');
+assert(main.includes('VIOLET_LAUNCHER_RUNTIME'), 'Packaged launcher must support an explicit runtime config path.');
+assert(main.includes('PORTABLE_EXECUTABLE_DIR'), 'Packaged launcher must resolve repo root from electron-builder portable location.');
+assert(main.includes('runtimeConfig.repo_root'), 'Runtime config must be able to pin canonical repo root.');
+assert(main.includes('runtimeConfig.python'), 'Runtime config must be able to pin canonical Python.');
 assert(html.includes('id="checklist"'), 'Main screen must include a checklist container.');
 assert(html.includes('id="advancedPanel"'), 'Advanced diagnostics must be present.');
 assert(!html.includes('<details id="advancedPanel" class="advanced" open'), 'Advanced diagnostics must be collapsed by default.');

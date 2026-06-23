@@ -13,36 +13,89 @@ function looksLikeRepoRoot(candidate) {
     fs.existsSync(path.join(candidate, 'scripts', 'violet_production_control.py'));
 }
 
+function uniquePaths(candidates) {
+  const seen = new Set();
+  return candidates
+    .filter(Boolean)
+    .map((candidate) => path.resolve(candidate))
+    .filter((candidate) => {
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function runtimeConfigCandidates() {
+  const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+  return uniquePaths([
+    process.env.VIOLET_LAUNCHER_RUNTIME,
+    portableDir ? path.join(portableDir, '..', '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json') : '',
+    portableDir ? path.join(portableDir, '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json') : '',
+    path.join(process.cwd(), '.local_manifests', 'production_launcher', 'launcher-runtime.json'),
+    path.join(__dirname, '..', '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json'),
+    path.join(path.dirname(process.execPath), '..', '..', '.local_manifests', 'production_launcher', 'launcher-runtime.json')
+  ]);
+}
+
+function loadRuntimeConfig() {
+  for (const candidate of runtimeConfigCandidates()) {
+    try {
+      if (!fs.existsSync(candidate)) {
+        continue;
+      }
+      const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (_error) {
+      // Ignore malformed local runtime config and continue with repo-root discovery.
+    }
+  }
+  return {};
+}
+
+const runtimeConfig = loadRuntimeConfig();
+
 function resolveRepoRoot() {
-  const candidates = [
+  const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+  const candidates = uniquePaths([
+    runtimeConfig.repo_root || runtimeConfig.repoRoot,
     process.env.VIOLET_REPO_ROOT,
+    portableDir ? path.join(portableDir, '..', '..') : '',
+    portableDir ? path.join(portableDir, '..') : '',
     process.cwd(),
     path.resolve(__dirname, '..'),
     path.resolve(__dirname, '..', '..'),
     path.resolve(path.dirname(process.execPath), '..'),
     path.resolve(path.dirname(process.execPath), '..', '..'),
     path.resolve(path.dirname(process.execPath), '..', '..', '..')
-  ].filter(Boolean);
+  ]);
   for (const candidate of candidates) {
-    const resolved = path.resolve(candidate);
-    if (looksLikeRepoRoot(resolved)) {
-      return resolved;
+    if (looksLikeRepoRoot(candidate)) {
+      return candidate;
     }
   }
   return path.resolve(__dirname, '..');
 }
 
 const repoRoot = resolveRepoRoot();
-const controllerScript = path.join(repoRoot, 'scripts', 'violet_production_control.py');
-const profileId = 'production-default';
+const runtimeController = runtimeConfig.controller || runtimeConfig.controller_script || runtimeConfig.controllerScript;
+const controllerScript = runtimeController && fs.existsSync(runtimeController)
+  ? path.resolve(runtimeController)
+  : path.join(repoRoot, 'scripts', 'violet_production_control.py');
+const profileId = runtimeConfig.profile || runtimeConfig.profile_id || runtimeConfig.profileId || 'production-default';
 
 function resolvePython() {
   const candidates = [
+    runtimeConfig.python,
     path.join(repoRoot, 'venv', 'Scripts', 'python.exe'),
     path.join(repoRoot, '.venv', 'Scripts', 'python.exe'),
     path.join(repoRoot, 'venv', 'bin', 'python'),
     path.join(repoRoot, '.venv', 'bin', 'python')
-  ];
+  ].filter(Boolean);
   const found = candidates.find((candidate) => fs.existsSync(candidate));
   return found || 'python';
 }

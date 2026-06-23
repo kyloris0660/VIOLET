@@ -111,6 +111,14 @@ Open Browser is now treated as an auxiliary action: on success it opens the
 browser and refreshes Advanced Diagnostics without replacing the current
 Running/Unhealthy/Blocked status or clearing the checklist.
 
+Packaged Windows portable launches can read the local ignored runtime config and
+resolve the canonical checkout even when Electron runs from a temporary
+extraction directory.
+
+Windows venv redirector launches are accepted only when the port listener owner
+is a verified child of the launcher-started process and still runs `run.py`;
+unrelated owners remain blocked.
+
 The DB access value field preserves existing local credentials by default. To
 clear a saved local DB access value, the operator must explicitly check
 `清除已保存 DB 访问值`; the empty value is then sent over stdin JSON, never argv.
@@ -345,7 +353,7 @@ path, which is the Windows canonical checkout plus packaged Electron launcher:
 Passed during this round:
 
 ```powershell
-python -m pytest tests\test_production_launcher_control.py tests\test_phase_contracts.py -q
+python -m pytest tests\test_production_launcher_control.py tests\test_phase_contracts.py tests\test_config_precedence.py -v
 cd launcher
 npm install
 npm test
@@ -356,7 +364,7 @@ npm run package
 
 Observed results:
 
-- Focused Python tests: `233 passed`
+- Focused Python tests: `254 passed`
 - Electron tests: passed
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities
