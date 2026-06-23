@@ -423,6 +423,7 @@ def _local_dotenv_profile_values(repo_root: Path) -> dict[str, str]:
     values = parse_dotenv(repo_root / ".env")
     local_keys = {
         "APP_PORT",
+        "BLOMBOORU_REQUIRE_AUTH",
         "POSTGRES_HOST",
         "POSTGRES_PORT",
         "POSTGRES_DB",
@@ -435,6 +436,19 @@ def _local_dotenv_profile_values(repo_root: Path) -> dict[str, str]:
         "VIOLET_CANONICAL_REPO_ROOT",
     }
     return {key: value for key, value in values.items() if key in local_keys and str(value).strip()}
+
+
+def _auth_policy_bool(value: Any, *, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    text = str(value).strip().casefold()
+    if text in {"true", "1", "yes", "on"}:
+        return True
+    if text in {"false", "0", "no", "off"}:
+        return False
+    return default
 
 
 def _settings_candidates_for_profile(repo_root: Path, storage_root: str) -> list[Path]:
@@ -480,6 +494,7 @@ def _default_profile_payload(repo_root: Path = ROOT, profile_id: str = DEFAULT_P
         "python": safe_defaults.get("VIOLET_PRODUCTION_PYTHON") or str(expected_venv_python(repo_root)),
         "app_port": app_port,
         "storage_root": "",
+        "require_auth": True,
         "db": {
             "host": safe_defaults.get("POSTGRES_HOST") or "localhost",
             "port": db_port,
@@ -498,6 +513,7 @@ def _repair_profile_invariants(profile: Mapping[str, Any], *, repo_root: Path = 
     repaired["env"] = "production"
     repaired["repo_root"] = str(repo_root)
     repaired["safe_startup"] = True
+    repaired["require_auth"] = _auth_policy_bool(repaired.get("require_auth"), default=True)
     flags = dict(repaired.get("automation_flags", {}) if isinstance(repaired.get("automation_flags"), Mapping) else {})
     for key in PROFILE_AUTOMATION_FLAGS:
         flags[key] = False
@@ -538,6 +554,18 @@ def discover_local_profile_payload(
         profile["app_port"] = local_values["APP_PORT"]
 
     settings_json, settings_path = _first_existing_settings_json(_settings_candidates_for_profile(repo_root, storage_root))
+    if isinstance(existing, Mapping) and "require_auth" in existing:
+        profile["require_auth"] = _auth_policy_bool(existing.get("require_auth"), default=True)
+        auth_source = "existing_profile"
+    elif "require_auth" in settings_json:
+        profile["require_auth"] = _auth_policy_bool(settings_json.get("require_auth"), default=True)
+        auth_source = "settings_json"
+    elif local_values.get("BLOMBOORU_REQUIRE_AUTH"):
+        profile["require_auth"] = _auth_policy_bool(local_values.get("BLOMBOORU_REQUIRE_AUTH"), default=True)
+        auth_source = "dotenv"
+    else:
+        profile["require_auth"] = True
+        auth_source = "safe_default_true"
     settings_db = settings_json.get("database", {}) if isinstance(settings_json.get("database"), Mapping) else {}
     existing_db = existing.get("db", {}) if isinstance(existing, Mapping) and isinstance(existing.get("db"), Mapping) else {}
     db = dict(profile.get("db", {}) if isinstance(profile.get("db"), Mapping) else {})
@@ -566,6 +594,7 @@ def discover_local_profile_payload(
         "settings_path_found": settings_path is not None,
         "db_from_settings": bool(settings_db),
         "db_from_dotenv": any(local_values.get(key) for key in ("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")),
+        "auth_policy_from": auth_source,
         "local_access_values_written_to_profile": True,
     }
     return profile, inferred
@@ -602,6 +631,8 @@ def _coerce_profile_payload(
         profile["app_port"] = payload.get("app_port")
     if "safe_startup" in payload:
         profile["safe_startup"] = bool(payload.get("safe_startup"))
+    if "require_auth" in payload:
+        profile["require_auth"] = _auth_policy_bool(payload.get("require_auth"), default=True)
     if isinstance(payload.get("db"), Mapping):
         db = dict(profile["db"])
         for key in ("host", "name", "user", "password"):
@@ -664,6 +695,7 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
         "VIOLET_ENV": "production",
         "BLOMBOORU_DEBUG": "false",
         "APP_PORT": str(profile.get("app_port") or DEFAULT_PORT),
+        "BLOMBOORU_REQUIRE_AUTH": "true" if _auth_policy_bool(profile.get("require_auth"), default=True) else "false",
         "VIOLET_STORAGE_ROOT": storage_root,
         "VIOLET_CANONICAL_REPO_ROOT": str(profile.get("repo_root") or repo_root),
         "VIOLET_PRODUCTION_PYTHON": str(profile.get("python") or expected_venv_python(repo_root)),
@@ -1347,6 +1379,8 @@ def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
         "app_port_resolved": config.port_resolved,
         "storage_root_configured": config.storage_root is not None,
         "storage_root_status": "configured" if config.storage_root else "missing",
+        "require_auth": _auth_policy_bool(config.profile_data.get("require_auth"), default=True),
+        "auth_policy_configured": "require_auth" in config.profile_data,
         "db": {
             "host_configured": bool(str(db.get("host") or "").strip()),
             "port": db.get("port"),
@@ -1420,6 +1454,11 @@ GATE_UI_MAP: dict[str, tuple[str, str, str]] = {
         "Safety Flags",
         "Startup automation",
         "Production profile must disable startup automation flags.",
+    ),
+    "production_auth_policy": (
+        "Safety Flags",
+        "Auth policy",
+        "Production profile must explicitly preserve the production auth policy.",
     ),
     "startup_write_policy_explicit": (
         "Startup Policy",
@@ -1523,6 +1562,11 @@ def _profile_gates(config: RuntimeConfig) -> list[Gate]:
             not automation_enabled,
             "Production profile disables startup automation flags.",
         ),
+        Gate(
+            "production_auth_policy",
+            "require_auth" in profile,
+            "Production profile preserves production auth policy.",
+        ),
     ]
 
 
@@ -1588,6 +1632,8 @@ def profile_discover(
             "db_user": discovered["db"].get("user") or "",
             "db_user_configured": bool(discovered["db"].get("user")),
             "db_access_value_available_locally": bool(discovered["db"].get("password")),
+            "require_auth": _auth_policy_bool(discovered.get("require_auth"), default=True),
+            "auth_policy_configured": "require_auth" in discovered,
             "storage_root_copied_from_dotenv": False,
             "storage_root_inferred_locally": bool(discovered.get("storage_root")),
         },
@@ -1600,6 +1646,7 @@ def profile_discover(
             "settings_path_found": bool(inferred.get("settings_path_found")),
             "db_from_settings": bool(inferred.get("db_from_settings")),
             "db_from_dotenv": bool(inferred.get("db_from_dotenv")),
+            "auth_policy_from": inferred.get("auth_policy_from"),
             "local_access_values_written_to_profile": False,
         },
         "profile_errors": errors,
@@ -1636,9 +1683,23 @@ def profile_repair(
         "settings_path_found": bool(inferred.get("settings_path_found")),
         "db_from_settings": bool(inferred.get("db_from_settings")),
         "db_from_dotenv": bool(inferred.get("db_from_dotenv")),
+        "auth_policy_from": inferred.get("auth_policy_from"),
         "local_access_values_written_to_profile": bool(inferred.get("local_access_values_written_to_profile")),
     }
     return result
+
+
+def _profile_identity_update_fields(updates: Mapping[str, Any]) -> list[str]:
+    fields: list[str] = []
+    for key in ("repo_root", "python", "app_port", "storage_root"):
+        if key in updates and updates[key] is not None:
+            fields.append(key)
+    db_updates = updates.get("db")
+    if isinstance(db_updates, Mapping):
+        for key in ("host", "port", "name", "user"):
+            if key in db_updates and db_updates[key] is not None:
+                fields.append(f"db.{key}")
+    return fields
 
 
 def profile_update(
@@ -1648,15 +1709,39 @@ def profile_update(
     profile_path: Path | None = None,
     base_env: Mapping[str, str] | None = None,
     updates: Mapping[str, Any] | None = None,
+    state_path: Path = STATE_FILE,
 ) -> ControlResult:
     existing, path, _errors = load_production_profile(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
-    profile = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
     updates = dict(updates or {})
+    identity_fields = _profile_identity_update_fields(updates)
+    if identity_fields and existing is not None:
+        current_config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=path)
+        state = _load_state(state_path)
+        managed_running, _reasons = verify_managed_process(state, current_config)
+        if managed_running:
+            return ControlResult(
+                ok=False,
+                status="blocked",
+                message="请先停止生产服务，再修改生产配置。",
+                data={
+                    "profile": _profile_public(current_config),
+                    "checklist": checklist_from_gates(_profile_gates(current_config)),
+                    "managed_by_launcher": True,
+                    "blocked_identity_fields": identity_fields,
+                },
+                errors=["profile_identity_update_blocked_while_running"],
+            )
+    if existing is None:
+        profile, _inferred = discover_local_profile_payload(repo_root, profile_id=profile_id, existing=None)
+    else:
+        profile = _coerce_profile_payload(existing, repo_root=repo_root, profile_id=profile_id)
     for key in ("storage_root", "python", "repo_root"):
         if key in updates and updates[key] is not None:
             profile[key] = str(updates[key])
     if "app_port" in updates and updates["app_port"] is not None:
         profile["app_port"] = updates["app_port"]
+    if "require_auth" in updates and updates["require_auth"] is not None:
+        profile["require_auth"] = _auth_policy_bool(updates["require_auth"], default=True)
     db_updates = updates.get("db")
     if isinstance(db_updates, Mapping):
         db = dict(profile["db"])

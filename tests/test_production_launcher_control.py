@@ -67,6 +67,7 @@ def _write_fake_profile(
     profile_id: str = control.DEFAULT_PROFILE_ID,
     profile_env: str = "production",
     safe_startup: bool = True,
+    require_auth: bool = True,
     db_user: str = "postgres",
     db_password: str = "",
     automation_flags: dict[str, bool] | None = None,
@@ -82,6 +83,7 @@ def _write_fake_profile(
                 "python": sys.executable,
                 "app_port": 8123,
                 "storage_root": str(storage),
+                "require_auth": require_auth,
                 "db": {
                     "host": "localhost",
                     "port": 5432,
@@ -212,7 +214,7 @@ def test_profile_launch_environment_strips_development_variables(tmp_path, safe_
             "TAG_TRANSLATION_BACKGROUND_ENABLED": "true",
         }
     )
-    _write_fake_profile(repo, storage, db_user="violet_prod")
+    _write_fake_profile(repo, storage, db_user="violet_prod", require_auth=False)
 
     config = control.resolve_config(repo, base_env=env, profile_id=control.DEFAULT_PROFILE_ID)
     child_env = control._child_environment(config)
@@ -224,7 +226,7 @@ def test_profile_launch_environment_strips_development_variables(tmp_path, safe_
     assert child_env["VIOLET_ALLOW_DESTRUCTIVE_E2E"] == "false"
     assert child_env["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
     assert child_env["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
-    assert "BLOMBOORU_REQUIRE_AUTH" not in child_env
+    assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "false"
     assert "OPENAI_API_KEY" not in child_env
     assert "LLM_PROVIDER" not in child_env
     assert "REDIS_URL" not in child_env
@@ -244,7 +246,7 @@ def test_profile_launch_sets_skip_dotenv_and_backend_profile_markers(tmp_path, s
     assert child_env["VIOLET_PRODUCTION_PROFILE_ACTIVE"] == "true"
     assert child_env["VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP"] == "true"
     assert child_env["POSTGRES_USER"] == "violet_prod"
-    assert "BLOMBOORU_REQUIRE_AUTH" not in child_env
+    assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
 
 
 def test_run_py_skip_dotenv_prevents_development_dotenv_reload(tmp_path):
@@ -297,6 +299,7 @@ def test_backend_config_skip_dotenv_keeps_profile_values(tmp_path):
             "POSTGRES_USER": "violet_prod",
             "POSTGRES_HOST": "localhost",
             "POSTGRES_PORT": "5432",
+            "BLOMBOORU_REQUIRE_AUTH": "true",
         }
     )
     script = "\n".join(
@@ -305,7 +308,7 @@ def test_backend_config_skip_dotenv_keeps_profile_values(tmp_path):
             "from backend.app.config import settings",
             "assert settings.DB_NAME == 'profile_db'",
             "assert settings.DB_USER == 'violet_prod'",
-            "assert 'BLOMBOORU_REQUIRE_AUTH' not in os.environ",
+            "assert settings.REQUIRE_AUTH is True",
         ]
     )
 
@@ -443,7 +446,68 @@ def test_profile_repair_resets_invalid_invariants_and_flags(tmp_path, safe_backe
     assert payload["profile_id"] == control.DEFAULT_PROFILE_ID
     assert payload["env"] == "production"
     assert payload["safe_startup"] is True
+    assert payload["require_auth"] is True
     assert all(value is False for value in payload["automation_flags"].values())
+
+
+def test_profile_repair_preserves_auth_from_dotenv(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    (repo / ".env").write_text(
+        "\n".join(
+            [
+                "VIOLET_STORAGE_ROOT=" + str(storage),
+                "BLOMBOORU_REQUIRE_AUTH=true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    config = control.resolve_config(repo, profile_id=control.DEFAULT_PROFILE_ID)
+    child_env = control._child_environment(config)
+
+    assert result.data["local_inference"]["auth_policy_from"] == "dotenv"
+    assert payload["require_auth"] is True
+    assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
+
+
+def test_profile_repair_preserves_auth_from_settings_json(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    settings_path = storage / "data" / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["require_auth"] = True
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    config = control.resolve_config(repo, profile_id=control.DEFAULT_PROFILE_ID)
+    child_env = control._child_environment(config)
+
+    assert result.data["local_inference"]["auth_policy_from"] == "settings_json"
+    assert payload["require_auth"] is True
+    assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
+
+
+def test_profile_repair_defaults_unknown_auth_policy_to_enabled(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    settings_path = storage / "data" / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings.pop("require_auth", None)
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+    (repo / ".env").write_text("VIOLET_STORAGE_ROOT=" + str(storage), encoding="utf-8")
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    config = control.resolve_config(repo, profile_id=control.DEFAULT_PROFILE_ID)
+    child_env = control._child_environment(config)
+
+    assert result.data["local_inference"]["auth_policy_from"] == "safe_default_true"
+    assert payload["require_auth"] is True
+    assert child_env["BLOMBOORU_REQUIRE_AUTH"] == "true"
 
 
 def test_profile_repair_bootstraps_local_storage_and_db_from_dotenv_and_settings(tmp_path, safe_backends):
@@ -478,6 +542,51 @@ def test_profile_repair_bootstraps_local_storage_and_db_from_dotenv_and_settings
     serialized_public = json.dumps(result.to_public_dict(), sort_keys=True)
     assert payload["storage_root"] == str(storage)
     assert payload["app_port"] == 8129
+    assert payload["db"]["name"] == "prod_db"
+    assert payload["db"]["user"] == "violet_prod"
+    assert payload["db"]["password"] == "local-private-db-value"
+    assert "local-private-db-value" not in serialized_public
+    assert "dotenv-private" not in serialized_public
+
+
+def test_profile_update_bootstraps_inferred_db_before_partial_storage_update(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    settings_path = storage / "data" / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["database"] = {
+        "host": "db.local",
+        "port": 5544,
+        "name": "prod_db",
+        "user": "violet_prod",
+        "password": "local-private-db-value",
+    }
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+    (repo / ".env").write_text(
+        "\n".join(
+            [
+                "VIOLET_STORAGE_ROOT=" + str(storage),
+                "POSTGRES_DB=dotenv_db",
+                "POSTGRES_USER=dotenv_user",
+                "POSTGRES_PASSWORD=dotenv-private",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={"storage_root": str(storage)},
+    )
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    serialized_public = json.dumps(result.to_public_dict(), sort_keys=True)
+    assert result.data["profile"]["profile_path_local_ignored"] is True
+    assert payload["storage_root"] == str(storage)
+    assert payload["db"]["host"] == "db.local"
+    assert payload["db"]["port"] == 5544
     assert payload["db"]["name"] == "prod_db"
     assert payload["db"]["user"] == "violet_prod"
     assert payload["db"]["password"] == "local-private-db-value"
@@ -556,6 +665,67 @@ def test_profile_update_writes_local_ignored_profile_without_touching_dotenv(tmp
     payload = json.loads(profile_path.read_text(encoding="utf-8"))
     assert payload["storage_root"] == str(storage)
     assert payload["app_port"] == "8124"
+
+
+def test_profile_update_blocks_identity_changes_while_managed_process_running(tmp_path, safe_backends, monkeypatch):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+    state_path = tmp_path / "state.json"
+    pid = 4242
+    state_path.write_text(
+        json.dumps(
+            {
+                "pid": pid,
+                "app_name": control.APP_NAME,
+                "state_version": control.STATE_VERSION,
+                "started_by": "violet_production_launcher",
+                "port": 8123,
+                "repo_root": str(repo),
+                "python": sys.executable,
+                "env": "production",
+                "profile_id": control.DEFAULT_PROFILE_ID,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(control, "process_snapshot", lambda target_pid: _managed_snapshot(target_pid))
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={"app_port": "8124", "db": {"user": "other_user"}},
+        state_path=state_path,
+    )
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert result.ok is False
+    assert result.status == "blocked"
+    assert result.message == "请先停止生产服务，再修改生产配置。"
+    assert "profile_identity_update_blocked_while_running" in result.errors
+    assert set(result.data["blocked_identity_fields"]) == {"app_port", "db.user"}
+    assert payload["app_port"] == 8123
+    assert payload["db"]["user"] == "violet_prod"
+
+
+def test_profile_update_allows_identity_changes_when_stopped(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={"app_port": "8124", "db": {"user": "other_user"}},
+        state_path=tmp_path / "state.json",
+    )
+
+    profile_path = repo / ".local_manifests" / "production_launcher" / "production-profile.json"
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert result.ok is True
+    assert payload["app_port"] == "8124"
+    assert payload["db"]["user"] == "other_user"
 
 
 def test_preflight_blocks_unknown_process_on_target_port(tmp_path, safe_backends, monkeypatch):

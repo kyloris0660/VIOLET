@@ -19,6 +19,14 @@ assert(!renderer.includes("db_user_configured ? 'postgres' : ''"), 'Renderer mus
 assert(renderer.includes('inferred.db_user'), 'Renderer must populate DB user from public-safe profile discovery.');
 assert(renderer.includes('initialFieldValues'), 'Renderer must track initial profile form values.');
 assert(renderer.includes("trimmed !== String(initialFieldValues[key]"), 'Renderer must send only changed non-empty profile fields.');
+const discoverIndex = renderer.indexOf("const discovered = await run('profile-discover')");
+const statusIndex = renderer.indexOf("const profilePayload = await run('profile-status')");
+const firstRememberAfterDiscover = renderer.indexOf('rememberInitialFields();', discoverIndex);
+assert(discoverIndex !== -1 && statusIndex !== -1, 'Boot must discover then check profile status.');
+assert(
+  firstRememberAfterDiscover === -1 || firstRememberAfterDiscover > statusIndex,
+  'Inferred no-profile fields must not be marked saved before a profile file exists.'
+);
 assert(renderer.includes('clearDbPassword'), 'Renderer must expose an explicit DB password clear control.');
 assert(renderer.includes("payload.dbPassword = ''"), 'Renderer must send an explicit empty DB password only when clearing is requested.');
 assert(renderer.includes("return '不健康'"), 'Renderer must map unhealthy status to zh-CN Unhealthy.');

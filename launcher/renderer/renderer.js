@@ -88,6 +88,7 @@ const checklistLabels = {
   'Destructive E2E': '破坏性 E2E',
   'Real E2E': '真实 E2E',
   'Startup automation': '启动自动化',
+  'Auth policy': '认证策略',
   'Write policy': '写入策略',
   'Safe startup mode': '安全启动模式'
 };
@@ -131,6 +132,9 @@ const messageLabels = {
   'Production storage root is invalid or unsafe.': '生产存储根目录无效或不安全。',
   'Database check is skipped until production profile and storage gates pass.': '数据库检查会等生产配置和存储检查通过后再运行。',
   'Production profile must disable startup automation flags.': '生产配置必须关闭启动自动化开关。',
+  'Production profile must explicitly preserve the production auth policy.': '生产配置必须明确保留生产认证策略。',
+  'Production profile preserves production auth policy.': '生产配置已保留生产认证策略。',
+  '请先停止生产服务，再修改生产配置。': '请先停止生产服务，再修改生产配置。',
   'Target port must be free or verified as launcher-managed.': '目标端口必须空闲，或确认由启动器管理。',
   'APP_PORT must be an integer between 1 and 65535.': 'APP_PORT 必须是 1 到 65535 之间的整数。',
   'Database port must be an integer between 1 and 65535.': '数据库端口必须是 1 到 65535 之间的整数。',
@@ -369,12 +373,14 @@ async function boot() {
   fields.dbPort.value = inferred.db_port || '';
   fields.dbName.value = inferred.db_name || '';
   fields.dbUser.value = inferred.db_user || '';
-  rememberInitialFields();
   const profilePayload = await run('profile-status');
-  rememberInitialFields();
   if (profilePayload.status === 'no_profile' || profilePayload.status === 'profile_incomplete' || profilePayload.status === 'profile_error') {
+    if (profilePayload.data && profilePayload.data.profile && profilePayload.data.profile.exists) {
+      rememberInitialFields();
+    }
     return;
   }
+  rememberInitialFields();
   await run('status');
 }
 

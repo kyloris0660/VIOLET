@@ -34,6 +34,10 @@
     "profile_mismatch_fails_closed": true,
     "repair_resets_invariants": true,
     "local_bootstrap_supported": true,
+    "auth_policy_explicit": true,
+    "child_env_sets_require_auth": true,
+    "create_repair_persists_inferred_values": true,
+    "partial_update_bootstraps_inferred_values": true,
     "storage_root_not_invented": true,
     "incomplete_profile_state_explicit": true,
     "canonical_ignored_profile_created": true,
@@ -56,7 +60,8 @@
         "DB port",
         "DB name",
         "DB user",
-        "DB access value presence"
+        "DB access value presence",
+        "production auth policy"
       ],
       "remaining_user_selected": [],
       "private_values_invented": false,
@@ -69,6 +74,7 @@
     "primary_documented_entrypoint": true,
     "windows_executable_packaging": true,
     "zh_cn_primary_visible_ui": true,
+    "inferred_values_not_marked_saved_without_profile": true,
     "copy_diagnostics_preserves_state": true,
     "open_browser_preserves_state": true,
     "db_access_value_clear_explicit": true,
@@ -150,6 +156,11 @@
     "backend_config_skip_dotenv_supported": true,
     "profile_mismatch_blocks_preflight_and_start": true,
     "repair_forces_profile_invariants": true,
+    "profile_auth_policy_inferred_from_existing_settings_or_dotenv": true,
+    "profile_unknown_auth_policy_defaults_to_required": true,
+    "profile_child_env_sets_require_auth": true,
+    "profile_create_repair_writes_inferred_local_values": true,
+    "profile_partial_update_bootstraps_inferred_local_values": true,
     "safe_startup_requires_initialized_settings": true,
     "profile_active_db_env_overrides_settings_json": true,
     "profile_update_private_db_value_uses_stdin_json": true,
@@ -190,6 +201,7 @@
     "failed_start_health_timeout_cleanup": true,
     "failed_start_unknown_process_not_killed": true,
     "failed_start_health_details_preserved": true,
+    "profile_identity_updates_blocked_while_running": true,
     "start_lock_stale_recovery_preserved": true
   },
   "stop_safety": {
@@ -320,6 +332,15 @@
         "status": "fixed"
       },
       {
+        "finding": "production auth policy preservation",
+        "root_cause": "profile startup skipped development .env but did not persist or emit an explicit production auth policy",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "existing profile, settings JSON, local .env discovery, profile repair, child environment",
+        "tests": "auth inference from settings/.env, safe default, and child environment tests",
+        "manual_acceptance_impact": "production UI/API does not silently become unauthenticated when profile startup skips development .env",
+        "status": "fixed"
+      },
+      {
         "finding": "profile_id mismatch",
         "root_cause": "profile_errors were not hard startup blockers",
         "fix_location": "scripts/violet_production_control.py",
@@ -344,6 +365,15 @@
         "same_class_sweep": "profile-discover/status public-safe DB user exposure and changed-field form submit",
         "tests": "custom DB user preservation tests",
         "manual_acceptance_impact": "saving unrelated fields does not break DB connectivity",
+        "status": "fixed"
+      },
+      {
+        "finding": "inferred profile values dropped on first update",
+        "root_cause": "no-profile discovery values were treated as saved by the renderer and profile-update started from defaults",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "Create/Repair, partial Save Profile, inferred DB/storage/app port, changed-field tracking",
+        "tests": "partial storage update bootstraps inferred DB values; renderer no-profile inference is not marked saved",
+        "manual_acceptance_impact": "operator does not need to manually reconstruct known local production DB/profile fields",
         "status": "fixed"
       },
       {
@@ -401,6 +431,15 @@
         "status": "fixed"
       },
       {
+        "finding": "identity profile edits while managed server running",
+        "root_cause": "changing profile identity fields during a running managed process could make later Stop compare against the wrong profile",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "repo root, python, app port, storage root, DB host/port/name/user identity fields",
+        "tests": "running managed identity update blocked; stopped identity update allowed; blocked update leaves profile unchanged",
+        "manual_acceptance_impact": "Stop remains safe and usable after profile editing attempts",
+        "status": "fixed"
+      },
+      {
         "finding": "zh-CN-first UI",
         "root_cause": "primary production entrypoint used English labels",
         "fix_location": "launcher/renderer/index.html; launcher/renderer/renderer.js; launcher/main.js",
@@ -451,6 +490,7 @@
       "state changed or identity unverified -> no termination",
       "profile mismatch -> no preflight/start",
       "invalid profile -> repair resets invariants",
+      "running managed process -> identity profile update is blocked",
       "copy diagnostics/open browser -> no UI reset"
     ]
   },
@@ -476,6 +516,11 @@
         "area": "UI status mapping",
         "searched": ["deriveState", "applyPayload", "copy diagnostics", "open browser", "boot missing profile precedence"],
         "result": "Unhealthy is not rendered as Running; auxiliary minimal payloads do not erase status/checklist"
+      },
+      {
+        "area": "profile edit safety",
+        "searched": ["profile-update", "renderer changed-field tracking", "launcher-managed state verification"],
+        "result": "first create/repair persists inferred values; partial updates bootstrap inferred values; identity fields are blocked while a managed server is running"
       }
     ]
   },
@@ -504,6 +549,17 @@
       "P2 failed-start cleanup reaps the Popen child and clears matching state for already-exited children",
       "P1 failed-start cleanup re-verifies state/process identity before signaling non-Popen fallback PIDs",
       "P2 controller stderr redacts UNC/NAS path forms without corrupting normal http(s) URLs"
+    ],
+    "fixed_after_head_a1d25263": [
+      "production auth policy is explicit in the profile, inferred from existing local evidence, and emitted into the child environment",
+      "Create/Repair and first partial Save persist inferred local profile values instead of dropping DB/storage fields",
+      "identity profile edits are blocked while a launcher-managed production server is running"
+    ],
+    "intentionally_deferred_current_windows_mvp": [
+      "POSIX/Linux port owner completeness beyond existing fail-closed behavior: current acceptance path is the Windows local packaged launcher",
+      "full schema preflight before spawn: current temporary launcher requires health OK during acceptance and keeps health schema checks public-safe",
+      "broad multi-user/global production profile architecture: this PR is a personal local launcher bridge",
+      "cosmetic diagnostics edge cases that do not leak secrets and do not affect Start/Stop"
     ]
   },
   "manual_acceptance_required_before_merge": true,
@@ -514,7 +570,7 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "224 passed",
+    "python_tests_result": "230 passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",
     "electron_tests_result": "launcher contract checks passed; controller runner tests passed; renderer behavior tests passed",
@@ -524,7 +580,7 @@
     "contract_check_status": "passed",
     "public_redaction_json_status": "passed",
     "manual_acceptance_status": "manual_acceptance_required_before_merge",
-    "canonical_profile_status": "ready",
+    "canonical_profile_status": "ready_auth_policy_explicit",
     "canonical_preflight_status": "passed",
     "direct_safe_start_shutdown_status": "passed"
   },

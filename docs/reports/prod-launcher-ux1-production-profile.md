@@ -39,6 +39,13 @@ In profile mode the child environment comes from a clean allowlisted baseline
 plus profile values. Arbitrary development `BLOMBOORU_*`, `VIOLET_*`, provider,
 LLM, Redis, sync, test, and E2E variables are not inherited.
 
+The production profile now carries an explicit `require_auth` policy. Discovery
+and repair infer it from the existing local profile, `data/settings.json`, or
+local `.env` `BLOMBOORU_REQUIRE_AUTH`; if none exists, repair uses the safe
+default `require_auth=true`. Profile startup emits `BLOMBOORU_REQUIRE_AUTH`
+from the profile into the child environment, so skipping development `.env`
+does not accidentally make the production UI/API unauthenticated.
+
 ## Profile Bootstrap
 
 The controller now supports:
@@ -63,11 +70,23 @@ If a profile is hand-edited incorrectly, repair now forces:
 
 - `profile_id=production-default`
 - `env=production`
+- `require_auth=true` when the policy was previously unknown
 - `safe_startup=true`
 - startup automation and destructive flags disabled
 
 If a profile file exists with a mismatched embedded `profile_id`, status shows
 `Profile Error`, preflight cannot pass, and start cannot run until repair.
+
+When no profile exists, Create / Repair writes all inferred local values into
+the ignored profile instead of treating discovery output as already saved. A
+first partial Save Profile also bootstraps the inferred DB/storage/app values
+before applying the explicit edit, so selecting storage cannot drop a known DB
+host, port, name, user, or local access value.
+
+While a launcher-managed server is running, identity profile edits are blocked:
+`repo_root`, `python`, `app_port`, `storage_root`, and DB host/port/name/user.
+The launcher returns `请先停止生产服务，再修改生产配置。` and leaves the profile
+unchanged. This keeps Stop comparing against the launch-time state safely.
 
 ## Electron UI Behavior
 
@@ -202,6 +221,12 @@ Current-head P1/P2 findings fixed:
   non-`Popen` fallback PIDs.
 - P2: controller stderr redacts UNC/NAS path forms while preserving normal
   `http://` and `https://` URLs.
+- Acceptance-unblocking pass: production auth policy is explicit in the profile
+  and child environment.
+- Acceptance-unblocking pass: Create / Repair and first partial Save persist
+  inferred local profile values.
+- Acceptance-unblocking pass: identity profile edits are blocked while a
+  launcher-managed server is running.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and
@@ -224,6 +249,9 @@ classes:
 - `run.py` / backend config dotenv skipping;
 - development environment inheritance removal;
 - profile ID mismatch and invariant repair;
+- production auth policy preservation;
+- first create/repair inferred-value persistence;
+- identity profile edit blocking while a managed process is running;
 - DB user preservation and explicit DB access value clearing;
 - controller empty stdout / crash errors;
 - stderr, drive path, mixed profile path, UNC/NAS path, token, and DB access
@@ -255,6 +283,7 @@ The production launcher state machine was audited end to end:
   returns a safe recovery message.
 - Existing managed healthy processes can return Start success.
 - Existing managed unhealthy processes return `ok=false`, `status=unhealthy`.
+- Running managed processes block identity profile updates until Stop succeeds.
 - Stop only targets verified launcher-managed processes; unknown processes are
   refused.
 - Restart is stop-then-start under the same serialization gate.
@@ -262,8 +291,9 @@ The production launcher state machine was audited end to end:
 
 Dangerous transitions are covered by focused tests: existing unhealthy start,
 post-start verification failure cleanup, health-timeout cleanup, changed state
-or unverified PID refusal, profile mismatch, invariant repair, diagnostics state
-preservation, and open-browser state preservation.
+or unverified PID refusal, profile mismatch, invariant repair, running-process
+identity edit blocking, diagnostics state preservation, and open-browser state
+preservation.
 
 ## Same-Class Sweep
 
@@ -284,6 +314,22 @@ rounds:
 - UI mapping: `deriveState`, `applyPayload`, boot precedence, Copy Diagnostics,
   and Open Browser were checked. Unhealthy cannot render as Running, and
   auxiliary minimal payloads do not erase the status/checklist.
+- Profile edit safety: `profile-update`, renderer changed-field tracking, and
+  launcher-managed state verification were checked. First create/repair
+  persists inferred values, partial Save bootstraps inferred values, and
+  identity edits are blocked while managed production is running.
+
+## Explicit Deferrals For This Temporary Windows Launcher
+
+The following are intentionally non-blocking for this PR's current acceptance
+path, which is the Windows canonical checkout plus packaged Electron launcher:
+
+- POSIX/Linux port owner completeness beyond the existing fail-closed behavior.
+- Full schema preflight before spawn; this temporary launcher requires health
+  OK during acceptance and keeps public health schema checks.
+- Broad multi-user/global production profile architecture.
+- Cosmetic diagnostics edge cases that do not leak secrets and do not affect
+  Start/Stop.
 
 ## Validation
 
@@ -301,12 +347,12 @@ npm run package
 
 Observed results:
 
-- Focused Python tests: `224 passed`
+- Focused Python tests: `230 passed`
 - Electron tests: passed
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities
 - Electron package: passed
-- Canonical ignored profile status: ready
+- Canonical ignored profile status: ready, auth policy explicit
 - Canonical public preflight: passed
 - Direct safe-start shutdown validation: passed
 
