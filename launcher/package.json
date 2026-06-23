@@ -8,7 +8,7 @@
     "start": "electron .",
     "test": "node tests/launcher-contract.test.js && node tests/controller-runner.test.js && node tests/renderer-behavior.test.js",
     "lint": "node tests/lint.js",
-    "package": "electron-builder --win portable"
+    "package": "electron-builder --win portable && powershell -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\install_production_launcher_root_entry.ps1"
   },
   "build": {
     "appId": "local.violet.production-launcher",
@@ -18,10 +18,12 @@
       "controller-runner.js",
       "main.js",
       "preload.js",
+      "assets/**/*",
       "renderer/**/*",
       "package.json"
     ],
     "win": {
+      "icon": "assets/violet.ico",
       "target": [
         "portable"
       ]

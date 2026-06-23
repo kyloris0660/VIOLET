@@ -115,9 +115,18 @@ Packaged Windows portable launches can read the local ignored runtime config and
 resolve the canonical checkout even when Electron runs from a temporary
 extraction directory.
 
+The Electron window, Windows taskbar entry, and packaged executable now use the
+existing V.I.O.L.E.T. icon asset via `launcher/assets/violet.ico`.
+
 Windows venv redirector launches are accepted only when the port listener owner
 is a verified child of the launcher-started process and still runs `run.py`;
 unrelated owners remain blocked.
+
+After the production service is running, the right-side detail panel switches
+from the preflight placeholder to a public-safe runtime panel. It shows health,
+port, launcher-managed PID, uptime, DB/schema/storage status, and the latest
+public-safe error. While the service is running the renderer polls status every
+few seconds, and polling stops after the service is stopped.
 
 The DB access value field preserves existing local credentials by default. To
 clear a saved local DB access value, the operator must explicitly check
@@ -140,7 +149,13 @@ fields.
 
 ## Windows Executable
 
-Daily launch should use the portable executable:
+Daily launch should use the ignored root-level executable:
+
+```text
+V.I.O.L.E.T. Production Launcher.exe
+```
+
+The packaged executable is also available under:
 
 ```text
 launcher/dist/V.I.O.L.E.T. Production Launcher.exe
@@ -153,6 +168,10 @@ cd launcher
 npm install
 npm run package
 ```
+
+`npm run package` builds the portable executable, applies the V.I.O.L.E.T. icon,
+and copies the generated executable to the project root. The root executable and
+`launcher/dist/` are ignored local outputs and are not committed.
 
 `scripts\start_violet_production_launcher.cmd` remains as a fallback and
 development entrypoint, not the preferred daily production path.
@@ -244,6 +263,10 @@ Current-head P1/P2 findings fixed:
 - Tiny final safety patch: production-profile-active backend config now lets
   profile auth override storage settings, while development auth precedence is
   unchanged.
+- Final polish: V.I.O.L.E.T. icon is configured for the window/taskbar/package,
+  the running state shows a runtime status panel instead of the stale preflight
+  placeholder, and `npm run package` installs an ignored root-level launcher
+  executable for daily double-click use.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and
@@ -369,6 +392,7 @@ Observed results:
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities
 - Electron package: passed
+- Root-level daily launcher install: passed
 - Canonical ignored profile status: ready, auth policy explicit
 - Canonical public preflight: passed
 - Direct safe-start shutdown validation: passed
@@ -408,8 +432,14 @@ manual_acceptance_required_before_merge
   guard.
 - `backend/app/main.py`: durable startup/shutdown safety.
 - `launcher/`: durable production launcher UI.
+- `launcher/assets/violet.ico`: durable launcher icon asset derived from the
+  existing V.I.O.L.E.T. logo.
+- `scripts/install_production_launcher_root_entry.ps1`: reusable local install
+  helper for the ignored root-level daily executable.
 - `scripts/setup_launcher_npm_proxy.ps1`: reusable local setup helper.
 - `.local_manifests/production_launcher/production-profile.json`: local/private,
   ignored, not committed.
 - `launcher/dist/`: local build output, ignored, not committed.
+- `V.I.O.L.E.T. Production Launcher.exe`: local root-level daily launcher output,
+  ignored, not committed.
 - `docs/production-launcher.md` and this report family: public report/handoff.

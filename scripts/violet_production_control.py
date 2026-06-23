@@ -2353,6 +2353,8 @@ def _status_data(config: RuntimeConfig, state: Mapping[str, Any] | None, health:
     return {
         "running": running,
         "managed_by_launcher": managed,
+        "pid": pid if running else None,
+        "started_at": state.get("start_time") if running and state else None,
         "config_source": config.config_source,
         "profile": _profile_public(config) if config.config_source == "production_profile" else None,
         "port": config.port,

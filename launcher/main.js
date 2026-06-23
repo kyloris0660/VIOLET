@@ -87,6 +87,7 @@ const controllerScript = runtimeController && fs.existsSync(runtimeController)
   ? path.resolve(runtimeController)
   : path.join(repoRoot, 'scripts', 'violet_production_control.py');
 const profileId = runtimeConfig.profile || runtimeConfig.profile_id || runtimeConfig.profileId || 'production-default';
+const appIcon = path.join(__dirname, 'assets', 'violet.ico');
 
 function resolvePython() {
   const candidates = [
@@ -124,6 +125,7 @@ function createWindow() {
     minWidth: 920,
     minHeight: 640,
     title: 'V.I.O.L.E.T. 生产启动器',
+    icon: appIcon,
     backgroundColor: '#f7f8fb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -135,6 +137,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  app.setAppUserModelId('local.violet.production-launcher');
   ipcMain.handle('launcher:run', (_event, command, extraArgs = []) => runController(command, extraArgs));
   ipcMain.handle('launcher:save-profile', (_event, form) => runController('profile-update', ['--stdin-json'], { stdinJson: profileUpdatePayload(form || {}) }));
   ipcMain.handle('launcher:select-storage-root', async () => {

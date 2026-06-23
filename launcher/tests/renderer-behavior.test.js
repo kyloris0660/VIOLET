@@ -36,5 +36,12 @@ assert(!renderer.includes('applyPayload(await window.violetLauncher.copyDiagnost
 assert(renderer.includes("const browserPayload = await window.violetLauncher.run('open-browser')"), 'Open browser must capture its minimal payload separately.');
 assert(renderer.includes('已打开浏览器，当前生产状态保持不变。'), 'Open browser success must preserve the current status view.');
 assert(!renderer.includes("buttons.openBrowser.addEventListener('click', () => run('open-browser'))"), 'Open browser must not replace the current launcher state on success.');
+assert(renderer.includes('renderRuntimeStatus'), 'Renderer must replace the stale preflight placeholder with a runtime status panel.');
+assert(renderer.includes("detailPanelTitle.textContent = '运行状态'"), 'Runtime panel must use a zh-CN running status title.');
+assert(renderer.includes("['PID'"), 'Runtime panel must show the managed process PID.');
+assert(renderer.includes("['运行时间'"), 'Runtime panel must show uptime when available.');
+assert(renderer.includes("window.setInterval"), 'Renderer must poll status while production is running.');
+assert(renderer.includes("window.clearInterval"), 'Renderer must stop runtime polling after service stop.');
+assert(renderer.includes("shouldRenderRuntime(payload) && !hasChecklist(payload)"), 'Runtime state must not render the stale no-checks placeholder.');
 
 console.log('renderer behavior tests passed');

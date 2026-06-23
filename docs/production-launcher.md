@@ -1,7 +1,9 @@
 # V.I.O.L.E.T. Production Launcher
 
-`PROD-LAUNCHER-UX1/PF1` replaces the daily production launcher experience with
-an Electron UI backed by the Python control plane.
+`PROD-LAUNCHER-UX1/PF1` is the first production launcher implementation: a
+temporary personal Windows entrypoint for the current development/production
+split. It is backed by an Electron UI and the Python control plane. It is not
+the final long-term production/development configuration architecture.
 
 The launcher starts the existing runtime entry point:
 
@@ -48,8 +50,14 @@ Repair Production Profile` also resets profile invariants: `env=production`,
 
 ## Start The Launcher
 
-Daily use should be through the packaged Windows executable. Build it once from
-the canonical repository checkout:
+Daily use should be through the root-level generated Windows executable:
+
+```text
+V.I.O.L.E.T. Production Launcher.exe
+```
+
+If it is missing, build and install it once from the canonical repository
+checkout:
 
 ```powershell
 cd launcher
@@ -57,7 +65,12 @@ npm install
 npm run package
 ```
 
-Then double-click:
+`npm run package` builds the portable Electron launcher, applies the
+V.I.O.L.E.T. icon to the packaged executable, and copies the generated executable
+to the repository root. The build output and root executable are ignored and
+must not be committed.
+
+The packaged executable also remains available under:
 
 ```text
 launcher\dist\V.I.O.L.E.T. Production Launcher.exe
@@ -91,6 +104,16 @@ Clear it with:
 ```
 
 The generated `launcher/.npmrc` is ignored and must not be committed.
+
+The packaged launcher can also read the ignored local runtime anchor:
+
+```text
+.local_manifests/production_launcher/launcher-runtime.json
+```
+
+This lets the portable executable resolve the canonical checkout, Python venv,
+controller path, and production profile even when Electron itself is running
+from a temporary extraction directory.
 
 ## Controller Commands
 
@@ -130,6 +153,12 @@ The main screen is zh-CN first for daily operation. It shows:
 Raw JSON is not shown on the main screen. `显示高级诊断` is collapsed by
 default and contains only public-safe JSON. Copying diagnostics does not reset
 the current status badge or checklist.
+
+After production is running, the right panel switches from startup checks to
+`运行状态` and shows public-safe runtime fields: health, port, managed PID,
+uptime when available, DB reachability, schema compatibility, storage status,
+and the latest public-safe error. The launcher polls status while the service is
+running and stops polling after the service is stopped.
 
 `打开浏览器` is also state-preserving on success: it opens the configured
 production URL but does not replace the current profile, health, or checklist

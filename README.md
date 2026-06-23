@@ -77,6 +77,50 @@ Open <http://localhost:8000>. First run shows onboarding; later runs load the
 gallery. Default local development credentials after onboarding are
 `admin` / `admin123`; do not expose those credentials on a public network.
 
+## Production Launcher
+
+The first production launcher is a temporary personal Windows entrypoint for the
+current development/production split. It does not convert the development
+`.env` into production and does not ask developers or CodeX worktrees to run
+with production settings.
+
+Daily production use should be through the generated root entry:
+
+```text
+V.I.O.L.E.T. Production Launcher.exe
+```
+
+If the root entry is missing, build and install it from the canonical checkout:
+
+```powershell
+cd launcher
+npm install
+npm run package
+```
+
+`npm run package` builds the portable Electron launcher and copies it to the
+repository root. In the launcher UI, run `运行启动前检查`, then `启动生产服务`,
+`打开浏览器`, and `停止`; `重启` is available after the same preflight/profile
+guards.
+
+Production startup uses the ignored local profile and runtime anchor under:
+
+```text
+.local_manifests/production_launcher/
+```
+
+Those files may contain machine-local paths or DB access values and must not be
+committed. Build output is ignored as well. Manual acceptance is still required
+before merging launcher changes:
+
+```json
+{
+  "manual_acceptance_required_before_merge": true,
+  "manual_acceptance_completed": false,
+  "merge_allowed": false
+}
+```
+
 ## Safety And Privacy Model
 
 - Local/source files are never mutated by default.

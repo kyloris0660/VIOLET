@@ -15,12 +15,18 @@ assert.strictEqual(pkg.scripts.start, 'electron .');
 assert(pkg.scripts.test.includes('controller-runner.test.js'));
 assert(pkg.scripts.test.includes('renderer-behavior.test.js'));
 assert.strictEqual(pkg.scripts.lint, 'node tests/lint.js');
-assert.strictEqual(pkg.scripts.package, 'electron-builder --win portable');
+assert(pkg.scripts.package.includes('electron-builder --win portable'));
+assert(pkg.scripts.package.includes('install_production_launcher_root_entry.ps1'));
 assert.strictEqual(pkg.build.productName, 'V.I.O.L.E.T. Production Launcher');
+assert.strictEqual(pkg.build.win.icon, 'assets/violet.ico');
+assert(pkg.build.files.includes('assets/**/*'));
+assert(fs.existsSync(path.join(root, 'assets', 'violet.ico')));
 assert(fs.existsSync(path.join(repo, 'scripts', 'setup_launcher_npm_proxy.ps1')));
+assert(fs.existsSync(path.join(repo, 'scripts', 'install_production_launcher_root_entry.ps1')));
 assert(gitignore.includes('launcher/dist/'));
 assert(gitignore.includes('launcher/out/'));
 assert(gitignore.includes('launcher/.npmrc'));
+assert(gitignore.includes('/V.I.O.L.E.T. Production Launcher.exe'));
 
 for (const command of [
   'profile-status',
@@ -49,7 +55,10 @@ assert(main.includes('VIOLET_LAUNCHER_RUNTIME'), 'Packaged launcher must support
 assert(main.includes('PORTABLE_EXECUTABLE_DIR'), 'Packaged launcher must resolve repo root from electron-builder portable location.');
 assert(main.includes('runtimeConfig.repo_root'), 'Runtime config must be able to pin canonical repo root.');
 assert(main.includes('runtimeConfig.python'), 'Runtime config must be able to pin canonical Python.');
+assert(main.includes("assets', 'violet.ico'"), 'BrowserWindow must use the V.I.O.L.E.T. icon.');
+assert(main.includes('setAppUserModelId'), 'Windows taskbar identity must be set for the launcher.');
 assert(html.includes('id="checklist"'), 'Main screen must include a checklist container.');
+assert(html.includes('id="detailPanelTitle"'), 'Runtime/checklist panel title must be updateable.');
 assert(html.includes('id="advancedPanel"'), 'Advanced diagnostics must be present.');
 assert(!html.includes('<details id="advancedPanel" class="advanced" open'), 'Advanced diagnostics must be collapsed by default.');
 assert(html.includes('V.I.O.L.E.T. 生产启动器'), 'Launcher visible title must be zh-CN first.');

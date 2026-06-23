@@ -80,6 +80,13 @@
     "open_browser_preserves_state": true,
     "db_access_value_clear_explicit": true,
     "packaged_exe_repo_relative": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
+    "root_level_daily_entry_repo_relative": "V.I.O.L.E.T. Production Launcher.exe",
+    "root_level_daily_entry_ignored": true,
+    "app_icon_configured": true,
+    "window_taskbar_icon_configured": true,
+    "package_icon_configured": true,
+    "runtime_status_panel_after_running": true,
+    "runtime_status_polling_while_running": true,
     "packaged_runtime_config_supported": true,
     "portable_executable_repo_resolution": true,
     "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
@@ -568,6 +575,12 @@
       "packaged portable Electron launcher resolves the canonical checkout through local runtime config and electron-builder PORTABLE_EXECUTABLE_DIR",
       "Windows venv redirector launches are accepted only when the listener owner is a verified child process still running run.py"
     ],
+    "fixed_after_final_polish_pass": [
+      "V.I.O.L.E.T. icon is configured for the Electron window/taskbar and electron-builder Windows package",
+      "running services render a public-safe runtime status panel instead of the stale preflight unchecked placeholder",
+      "npm run package installs an ignored root-level daily launcher executable for double-click use",
+      "README and production launcher documentation now describe this temporary personal Windows production entrypoint"
+    ],
     "intentionally_deferred_current_windows_mvp": [
       "POSIX/Linux port owner completeness beyond existing fail-closed behavior: current acceptance path is the Windows local packaged launcher",
       "full schema preflight before spawn: current temporary launcher requires health OK during acceptance and keeps health schema checks public-safe",
@@ -591,6 +604,7 @@
     "electron_lint_status": "passed",
     "electron_audit_status": "passed_zero_vulnerabilities",
     "electron_package_status": "passed",
+    "root_launcher_install_status": "passed",
     "contract_check_status": "passed",
     "public_redaction_json_status": "passed",
     "manual_acceptance_status": "manual_acceptance_required_before_merge",
@@ -637,6 +651,16 @@
         "committed": true
       },
       {
+        "path": "launcher/assets/violet.ico",
+        "classification": "durable production launcher icon asset",
+        "committed": true
+      },
+      {
+        "path": "scripts/install_production_launcher_root_entry.ps1",
+        "classification": "reusable local setup helper",
+        "committed": true
+      },
+      {
         "path": "scripts/setup_launcher_npm_proxy.ps1",
         "classification": "reusable local setup helper",
         "committed": true
@@ -649,6 +673,11 @@
       {
         "path": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
         "classification": "one-off local build output",
+        "committed": false
+      },
+      {
+        "path": "V.I.O.L.E.T. Production Launcher.exe",
+        "classification": "one-off local root-level daily launcher output",
         "committed": false
       },
       {

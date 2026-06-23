@@ -3,6 +3,7 @@ const primaryMessage = document.getElementById('primaryMessage');
 const checklistEl = document.getElementById('checklist');
 const advancedDiagnostics = document.getElementById('advancedDiagnostics');
 const lastChecked = document.getElementById('lastChecked');
+const detailPanelTitle = document.getElementById('detailPanelTitle');
 
 const fields = {
   appPort: document.getElementById('appPortInput'),
@@ -37,6 +38,7 @@ const buttons = {
 
 let latestPayload = null;
 let initialFieldValues = {};
+let statusPollTimer = null;
 
 const stateLabels = {
   no_profile: '无生产配置',
@@ -208,6 +210,7 @@ function updateSummary(payload) {
 }
 
 function renderChecklist(items) {
+  detailPanelTitle.textContent = '启动前检查';
   const grouped = new Map();
   for (const item of items || []) {
     const group = item.group || 'Startup Policy';
@@ -250,6 +253,97 @@ function renderChecklist(items) {
   }
 }
 
+function boolStatus(value, positive = 'OK', negative = '未通过') {
+  if (value === true) return positive;
+  if (value === false) return negative;
+  return '未检查';
+}
+
+function formatDuration(startedAt) {
+  if (!startedAt) return '未运行';
+  const started = new Date(startedAt);
+  if (Number.isNaN(started.getTime())) return '未检查';
+  const seconds = Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+  if (minutes > 0) return `${minutes} 分钟 ${remainingSeconds} 秒`;
+  return `${remainingSeconds} 秒`;
+}
+
+function runtimeRows(payload) {
+  const data = payload.data || {};
+  const running = data.running === true || payload.status === 'running';
+  return [
+    ['健康', data.health_ok === true ? 'OK' : (payload.status === 'unhealthy' ? '不健康' : '未通过')],
+    ['端口', data.port || '未检查'],
+    ['PID', running && data.pid ? data.pid : '未运行'],
+    ['运行时间', running ? formatDuration(data.started_at) : '未运行'],
+    ['数据库', boolStatus(data.db_reachable, 'reachable', 'not reachable')],
+    ['Schema', boolStatus(data.schema_compatible, 'compatible', 'not compatible')],
+    ['存储', boolStatus(data.storage_configured, 'configured', 'not configured')],
+    ['最近一次错误', data.last_error ? localizeMessage(data.last_error) : '无']
+  ];
+}
+
+function renderRuntimeStatus(payload) {
+  detailPanelTitle.textContent = '运行状态';
+  checklistEl.innerHTML = '';
+  const data = payload.data || {};
+  const summary = document.createElement('div');
+  summary.className = `runtime-summary ${payload.status === 'running' ? 'runtime-ok' : payload.status === 'unhealthy' ? 'runtime-warning' : 'runtime-stopped'}`;
+  const heading = document.createElement('div');
+  heading.className = 'runtime-heading';
+  heading.textContent = data.running === true || payload.status === 'running'
+    ? '生产服务正在运行'
+    : payload.status === 'unhealthy'
+      ? '生产服务不健康'
+      : '生产服务已停止';
+  summary.appendChild(heading);
+
+  const grid = document.createElement('dl');
+  grid.className = 'runtime-grid';
+  for (const [label, value] of runtimeRows(payload)) {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const desc = document.createElement('dd');
+    desc.textContent = String(value);
+    grid.appendChild(term);
+    grid.appendChild(desc);
+  }
+  summary.appendChild(grid);
+  checklistEl.appendChild(summary);
+}
+
+function hasChecklist(payload) {
+  return Boolean(payload && payload.data && Array.isArray(payload.data.checklist) && payload.data.checklist.length);
+}
+
+function shouldRenderRuntime(payload) {
+  if (!payload) return false;
+  if (payload.status === 'running' || payload.status === 'unhealthy' || payload.status === 'stopped') return true;
+  return Boolean(payload.data && payload.data.running === true);
+}
+
+function syncRuntimePolling(payload) {
+  const shouldPoll = Boolean(payload && (payload.status === 'running' || payload.status === 'unhealthy' || (payload.data && payload.data.running === true)));
+  if (shouldPoll && !statusPollTimer) {
+    statusPollTimer = window.setInterval(async () => {
+      try {
+        const statusPayload = await window.violetLauncher.run('status');
+        applyPayload(statusPayload);
+      } catch (error) {
+        applyPayload({ ok: false, status: 'error', message: error.message || '状态轮询失败。', data: (latestPayload && latestPayload.data) || {} });
+      }
+    }, 4000);
+  }
+  if (!shouldPoll && statusPollTimer) {
+    window.clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+}
+
 function applyPayload(payload) {
   latestPayload = payload;
   const label = deriveState(payload);
@@ -257,9 +351,14 @@ function applyPayload(payload) {
   stateBadge.className = stateClass(label);
   primaryMessage.textContent = localizeMessage(payload.message || 'No message returned.');
   updateSummary(payload);
-  renderChecklist((payload.data && payload.data.checklist) || []);
+  if (shouldRenderRuntime(payload) && !hasChecklist(payload)) {
+    renderRuntimeStatus(payload);
+  } else {
+    renderChecklist((payload.data && payload.data.checklist) || []);
+  }
   advancedDiagnostics.textContent = JSON.stringify(payload, null, 2);
   lastChecked.textContent = new Date().toLocaleTimeString();
+  syncRuntimePolling(payload);
 }
 
 async function run(command, extraArgs = []) {
