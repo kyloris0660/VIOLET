@@ -43,5 +43,11 @@ assert(renderer.includes("['运行时间'"), 'Runtime panel must show uptime whe
 assert(renderer.includes("window.setInterval"), 'Renderer must poll status while production is running.');
 assert(renderer.includes("window.clearInterval"), 'Renderer must stop runtime polling after service stop.');
 assert(renderer.includes("shouldRenderRuntime(payload) && !hasChecklist(payload)"), 'Runtime state must not render the stale no-checks placeholder.');
+assert(renderer.includes('startWithAutomaticPreflight'), 'Start button must use the automatic preflight workflow.');
+assert(renderer.includes("message: '正在进行启动前检查...'"), 'Start workflow must show that automatic preflight is running.');
+const autoPreflightIndex = renderer.indexOf("window.violetLauncher.run('preflight')");
+const autoStartIndex = renderer.indexOf("window.violetLauncher.run('start')");
+assert(autoPreflightIndex !== -1 && autoStartIndex !== -1, 'Start workflow must call preflight and start.');
+assert(autoPreflightIndex < autoStartIndex, 'Start workflow must run preflight before start.');
 
 console.log('renderer behavior tests passed');

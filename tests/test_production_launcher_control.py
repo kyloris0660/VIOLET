@@ -1084,6 +1084,70 @@ def test_status_removes_stale_launcher_pid_state(tmp_path, safe_backends, monkey
     assert not state_path.exists()
 
 
+def test_preflight_removes_dead_stale_state_after_profile_identity_change(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    old_repo = tmp_path / "old-repo"
+    old_repo.mkdir()
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "state_version": control.STATE_VERSION,
+                "app_name": control.APP_NAME,
+                "started_by": "violet_production_launcher",
+                "pid": 424242,
+                "start_time": "1970-01-01T00:00:00+00:00",
+                "repo_root": str(old_repo),
+                "port": 8999,
+                "env": "production",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(control, "process_exists", lambda pid: False)
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        db_check=lambda config: (True, "ok"),
+        state_path=state_path,
+    )
+
+    assert not state_path.exists()
+    no_stale_gate = next(gate for gate in result.gates if gate.name == "no_stale_pid_claim")
+    assert no_stale_gate.passed is True
+
+
+def test_stale_state_cleanup_keeps_live_mismatched_state(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    old_repo = tmp_path / "old-repo"
+    old_repo.mkdir()
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "state_version": control.STATE_VERSION,
+                "app_name": control.APP_NAME,
+                "started_by": "violet_production_launcher",
+                "pid": 424242,
+                "start_time": "1970-01-01T00:00:00+00:00",
+                "repo_root": str(old_repo),
+                "port": 8999,
+                "env": "production",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(control, "process_exists", lambda pid: True)
+    config = control.resolve_config(repo, base_env=env)
+
+    removed, reason = control.stale_state_cleanup(config, state_path)
+
+    assert removed is False
+    assert reason is None
+    assert state_path.exists()
+
+
 def test_stop_managed_process_terminates_and_clears_state(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
     state_path = tmp_path / "state.json"

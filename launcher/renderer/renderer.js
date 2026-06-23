@@ -372,6 +372,43 @@ async function run(command, extraArgs = []) {
   }
 }
 
+async function startWithAutomaticPreflight() {
+  setBusy(true);
+  try {
+    const current = latestPayload || {};
+    const currentData = current.data || {};
+    if (current.status === 'running' || currentData.running === true) {
+      const statusPayload = await window.violetLauncher.run('status');
+      applyPayload(statusPayload);
+      return statusPayload;
+    }
+
+    applyPayload({
+      ok: false,
+      status: 'starting',
+      message: '正在进行启动前检查...',
+      data: currentData
+    });
+    const preflightPayload = await window.violetLauncher.run('preflight');
+    applyPayload(preflightPayload);
+    if (!preflightPayload || preflightPayload.ok !== true) {
+      return preflightPayload;
+    }
+
+    applyPayload({
+      ok: false,
+      status: 'starting',
+      message: '启动前检查已通过，正在启动生产服务...',
+      data: preflightPayload.data || {}
+    });
+    const startPayload = await window.violetLauncher.run('start');
+    applyPayload(startPayload);
+    return startPayload;
+  } finally {
+    setBusy(false);
+  }
+}
+
 function currentFieldValues() {
   return {
     appPort: fields.appPort.value,
@@ -432,10 +469,7 @@ buttons.saveProfile.addEventListener('click', async () => {
 });
 buttons.testDb.addEventListener('click', () => run('test-db'));
 buttons.preflight.addEventListener('click', () => run('preflight'));
-buttons.start.addEventListener('click', async () => {
-  applyPayload({ ok: false, status: 'starting', message: '正在启动生产服务...', data: (latestPayload && latestPayload.data) || {} });
-  await run('start');
-});
+buttons.start.addEventListener('click', () => startWithAutomaticPreflight());
 buttons.openBrowser.addEventListener('click', async () => {
   setBusy(true);
   try {

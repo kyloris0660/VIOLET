@@ -1,9 +1,10 @@
-# V.I.O.L.E.T. Production Launcher
+# V.I.O.L.E.T. 启动器 / Production Launcher
 
 `PROD-LAUNCHER-UX1/PF1` is the first production launcher implementation: a
 temporary personal Windows entrypoint for the current development/production
-split. It is backed by an Electron UI and the Python control plane. It is not
-the final long-term production/development configuration architecture.
+split. The visible app title is `V.I.O.L.E.T. 启动器`. It is backed by an
+Electron UI and the Python control plane. It is not the final long-term
+production/development configuration architecture.
 
 The launcher starts the existing runtime entry point:
 
@@ -50,7 +51,8 @@ Repair Production Profile` also resets profile invariants: `env=production`,
 
 ## Start The Launcher
 
-Daily use should be through the root-level generated Windows executable:
+Daily use should be through the root-level generated Windows executable. The
+file keeps the current stable name for compatibility:
 
 ```text
 V.I.O.L.E.T. Production Launcher.exe
@@ -89,6 +91,19 @@ launcher/
 ```
 with `npm start`; it is useful for development or troubleshooting but is no
 longer the preferred production entrypoint.
+
+Normal daily workflow:
+
+1. Double-click the root-level executable.
+2. Click `启动`.
+3. The launcher automatically runs startup preflight.
+4. If preflight fails, startup stops and the checklist stays visible.
+5. If preflight passes, the launcher starts production automatically.
+6. Confirm `运行中` and Health `OK`; the right panel shows `运行状态`.
+7. Use `打开浏览器`, `停止`, or `重启`.
+
+`手动启动前检查` remains available as a secondary diagnostic action, but it is
+not required in the normal Start flow.
 
 If npm or Electron downloads hang behind the local proxy, create a local ignored
 launcher npm config:
@@ -143,8 +158,8 @@ The main screen is zh-CN first for daily operation. It shows:
 - `创建 / 修复生产配置`.
 - `选择生产存储根目录`.
 - `测试数据库`.
-- `运行启动前检查`.
-- `启动生产服务`.
+- `手动启动前检查` as a secondary diagnostic action.
+- `启动`, which automatically runs preflight before starting.
 - `打开浏览器`.
 - `停止`.
 - `重启`.
@@ -159,6 +174,9 @@ After production is running, the right panel switches from startup checks to
 uptime when available, DB reachability, schema compatibility, storage status,
 and the latest public-safe error. The launcher polls status while the service is
 running and stops polling after the service is stopped.
+
+Open Browser and Copy Diagnostics do not replace the current status/checklist or
+runtime panel.
 
 `打开浏览器` is also state-preserving on success: it opens the configured
 production URL but does not replace the current profile, health, or checklist
@@ -284,13 +302,13 @@ accepted Ctrl+Break, exited without force, and released the port.
 This phase is not merge-ready until real manual acceptance is completed from
 the canonical production checkout:
 
-1. Launch Electron from the canonical repo.
+1. Launch the root-level executable from the canonical repo.
 2. Confirm missing or incomplete profile does not ask to edit development `.env`.
 3. Create or repair the production profile.
 4. Select production storage root.
-5. Run preflight until green.
-6. Start production.
-7. Confirm health OK.
+5. Click `启动` without manually running preflight.
+6. Confirm automatic preflight runs and only then starts production.
+7. Confirm health OK and the runtime panel is visible.
 8. Open browser.
 9. Stop production.
 10. Confirm port release and restart.

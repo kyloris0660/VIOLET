@@ -99,9 +99,12 @@ npm run package
 ```
 
 `npm run package` builds the portable Electron launcher and copies it to the
-repository root. In the launcher UI, run `运行启动前检查`, then `启动生产服务`,
-`打开浏览器`, and `停止`; `重启` is available after the same preflight/profile
-guards.
+repository root. The window title is `V.I.O.L.E.T. 启动器`, while the stable
+root executable keeps its existing filename for compatibility. In normal daily
+use, click `启动`: the launcher automatically runs startup preflight first,
+continues only if the checks pass, then shows runtime health. Use `打开浏览器`,
+`停止`, or `重启` from the same launcher. The manual preflight button is kept as
+a secondary diagnostic action, not as a required normal step.
 
 Production startup uses the ignored local profile and runtime anchor under:
 

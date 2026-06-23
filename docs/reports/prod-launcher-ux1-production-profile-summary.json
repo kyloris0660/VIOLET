@@ -75,6 +75,9 @@
     "primary_documented_entrypoint": true,
     "windows_executable_packaging": true,
     "zh_cn_primary_visible_ui": true,
+    "visible_app_title": "V.I.O.L.E.T. 启动器",
+    "start_auto_runs_preflight": true,
+    "manual_preflight_secondary_action": true,
     "inferred_values_not_marked_saved_without_profile": true,
     "copy_diagnostics_preserves_state": true,
     "open_browser_preserves_state": true,
@@ -214,6 +217,8 @@
     "failed_start_health_details_preserved": true,
     "windows_venv_redirector_child_port_owner_supported": true,
     "profile_identity_updates_blocked_while_running": true,
+    "dead_stale_state_cleared_after_profile_identity_change": true,
+    "live_or_ambiguous_mismatched_state_preserved": true,
     "start_lock_stale_recovery_preserved": true
   },
   "stop_safety": {
@@ -477,10 +482,10 @@
       {"state": "No profile", "ui_state": "No Production Profile / 无生产配置", "control_ok": false, "control_status": "no_profile", "process_state": "none", "state_file": "absent or ignored", "cleanup_required": false, "user_action_required": "create_or_repair_profile"},
       {"state": "Profile incomplete", "ui_state": "Profile Incomplete / 配置不完整", "control_ok": false, "control_status": "profile_incomplete", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "repair_or_select_missing_fields"},
       {"state": "Profile error", "ui_state": "Profile Error / 配置错误", "control_ok": false, "control_status": "profile_error", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "repair_profile"},
-      {"state": "Profile ready", "ui_state": "Ready / 就绪", "control_ok": true, "control_status": "ready", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "run_preflight"},
+      {"state": "Profile ready", "ui_state": "Ready / 就绪", "control_ok": true, "control_status": "ready", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "click_start_auto_preflight"},
       {"state": "Preflight blocked", "ui_state": "Blocked / 已阻塞", "control_ok": false, "control_status": "blocked", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "fix_checklist"},
       {"state": "Preflight passed", "ui_state": "Ready / 就绪", "control_ok": true, "control_status": "passed", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "start_production"},
-      {"state": "Start requested", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "starting", "process_state": "not_yet_spawned", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "wait"},
+      {"state": "Start requested", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "auto_preflight_then_start", "process_state": "not_yet_spawned", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "wait"},
       {"state": "Start in progress", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "blocked_if_locked", "process_state": "single_flight", "state_file": "lock_present", "cleanup_required": false, "user_action_required": "wait_or_reclaim_stale_lock"},
       {"state": "Child process spawned", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "pending_health", "process_state": "new_pid", "state_file": "written_for_new_pid", "cleanup_required": "if_later_failure", "user_action_required": "wait"},
       {"state": "Health timeout", "ui_state": "Error / 错误", "control_ok": false, "control_status": "error", "process_state": "new_pid_cleanup_attempted", "state_file": "cleared_if_matching", "cleanup_required": true, "user_action_required": "read_safe_recovery_if_cleanup_incomplete"},
@@ -503,6 +508,8 @@
       "profile mismatch -> no preflight/start",
       "invalid profile -> repair resets invariants",
       "running managed process -> identity profile update is blocked",
+      "dead stale launcher state after profile identity change -> cleared only when PID is dead",
+      "Start click -> automatic preflight -> start only after preflight passes",
       "copy diagnostics/open browser -> no UI reset"
     ]
   },
@@ -582,9 +589,15 @@
       "root-level packaged launcher resolution includes the original portable executable directory and canonical Windows checkout fallback",
       "README and production launcher documentation now describe this temporary personal Windows production entrypoint"
     ],
+    "fixed_after_head_dfa297b": [
+      "dead launcher state from an older profile identity is cleared safely when the recorded PID is no longer running",
+      "Start automatically runs preflight before production startup and stops on preflight failure",
+      "manual preflight was demoted to a secondary diagnostic action",
+      "visible app title and main heading were simplified to V.I.O.L.E.T. 启动器"
+    ],
     "intentionally_deferred_current_windows_mvp": [
       "POSIX/Linux port owner completeness beyond existing fail-closed behavior: current acceptance path is the Windows local packaged launcher",
-      "full schema preflight before spawn: current temporary launcher requires health OK during acceptance and keeps health schema checks public-safe",
+      "full schema preflight before spawn: current temporary launcher requires Health OK plus real app/browser validation during acceptance and keeps health schema checks public-safe; complete migration-state gating belongs to later production schema work",
       "broad multi-user/global production profile architecture: this PR is a personal local launcher bridge",
       "cosmetic diagnostics edge cases that do not leak secrets and do not affect Start/Stop"
     ]
@@ -597,7 +610,7 @@
     "python_executable_redacted": true,
     "py_compile_status": "passed",
     "python_tests_status": "passed",
-    "python_tests_result": "254 passed",
+    "python_tests_result": "256 passed",
     "config_precedence_auth_tests_status": "passed",
     "electron_install_status": "passed",
     "electron_tests_status": "passed",
@@ -606,8 +619,8 @@
     "electron_audit_status": "passed_zero_vulnerabilities",
     "electron_package_status": "passed",
     "root_launcher_install_status": "passed",
-    "root_launcher_gui_validation_status": "passed",
-    "root_launcher_gui_validation_result": "Computer Use launched the canonical root-level executable, loaded the production profile without manual configuration, passed preflight, started production with Health OK and runtime status panel, opened the browser, stopped production, completed a second Start-Stop cycle, and released port 8000.",
+    "root_launcher_gui_validation_status": "pending_rerun_after_auto_preflight_change",
+    "root_launcher_gui_validation_result": "Pending rerun after Start was changed to run automatic preflight.",
     "contract_check_status": "passed",
     "public_redaction_json_status": "passed",
     "manual_acceptance_status": "manual_acceptance_required_before_merge",

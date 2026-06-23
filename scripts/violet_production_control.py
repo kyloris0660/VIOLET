@@ -1356,7 +1356,7 @@ def stale_state_cleanup(config: RuntimeConfig, state_path: Path = STATE_FILE) ->
     pid = state_pid(state)
     if not state or pid is None:
         return False, None
-    if is_launcher_managed_state(state, config) and not process_exists(pid):
+    if is_launcher_managed_state(state, None) and not process_exists(pid):
         _clear_state(state_path)
         _append_launcher_event("stale_state_removed", {"pid": pid, "port": config.port})
         return True, "stale_state_removed"

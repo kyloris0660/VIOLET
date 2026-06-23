@@ -137,7 +137,7 @@ function createWindow() {
     height: 780,
     minWidth: 920,
     minHeight: 640,
-    title: 'V.I.O.L.E.T. 生产启动器',
+    title: 'V.I.O.L.E.T. 启动器',
     icon: appIcon,
     backgroundColor: '#f7f8fb',
     webPreferences: {

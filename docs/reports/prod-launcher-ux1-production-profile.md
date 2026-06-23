@@ -96,7 +96,9 @@ unchanged. This keeps Stop comparing against the launch-time state safely.
 
 ## Electron UI Behavior
 
-The Electron UI remains the primary production launcher. It keeps raw JSON out
+The Electron UI remains the primary production launcher. Its visible window and
+main heading are now `V.I.O.L.E.T. 启动器`, while the root executable keeps the
+existing stable file name for compatibility. It keeps raw JSON out
 of the main screen, keeps Advanced Diagnostics collapsed by default, preserves
 missing/incomplete/profile-error states over generic runtime states, and maps
 blocked preflight gates to checklist rows.
@@ -110,6 +112,12 @@ replacing the current status badge or checklist.
 Open Browser is now treated as an auxiliary action: on success it opens the
 browser and refreshes Advanced Diagnostics without replacing the current
 Running/Unhealthy/Blocked status or clearing the checklist.
+
+The normal daily Start flow no longer requires a separate manual preflight
+click. The primary `启动` button disables controls, shows
+`正在进行启动前检查...`, runs preflight, leaves the checklist visible if preflight
+fails, and continues to `start` only after preflight passes. `手动启动前检查`
+remains available as a secondary diagnostic action.
 
 Packaged Windows portable launches can read the local ignored runtime config and
 resolve the canonical checkout even when Electron runs from a temporary
@@ -270,6 +278,14 @@ Current-head P1/P2 findings fixed:
 - Final packaged-path fix: the root-level portable launcher now resolves the
   canonical checkout through the original portable executable directory when
   Electron exposes it, with a Windows Documents checkout fallback.
+- Final usability pass: dead launcher state from a previous profile identity is
+  cleared only when the recorded launcher PID is dead; live or ambiguous state is
+  preserved.
+- Final usability pass: the primary Start button now runs preflight
+  automatically and only starts after preflight passes; the manual preflight
+  control was demoted to a secondary diagnostic action.
+- Final usability pass: visible app title and main heading were simplified to
+  `V.I.O.L.E.T. 启动器`.
 - Previous P1/P2 fixes are preserved: clean environment allowlist, DB user
   preservation, no-profile state precedence, structured controller errors,
   stderr redaction, stdin JSON profile updates, POSIX fail-closed ownership, and
@@ -369,7 +385,9 @@ path, which is the Windows canonical checkout plus packaged Electron launcher:
 
 - POSIX/Linux port owner completeness beyond the existing fail-closed behavior.
 - Full schema preflight before spawn; this temporary launcher requires health
-  OK during acceptance and keeps public health schema checks.
+  OK during acceptance plus real app/browser validation, and keeps public health
+  schema checks. A complete migration-state gate belongs to later production
+  schema work, not this final Windows launcher usability pass.
 - Broad multi-user/global production profile architecture.
 - Cosmetic diagnostics edge cases that do not leak secrets and do not affect
   Start/Stop.
@@ -390,18 +408,14 @@ npm run package
 
 Observed results:
 
-- Focused Python tests: `254 passed`
+- Focused Python tests: `256 passed`
 - Electron tests: passed
 - Electron lint: passed
 - Electron audit: 0 vulnerabilities
 - Electron package: passed
 - Root-level daily launcher install: passed
-- Root-level GUI validation: passed with Computer Use from the canonical root
-  executable. The launcher loaded the production profile without manual
-  configuration, preflight passed, Start reached Running / Health OK, the detail
-  panel showed runtime status instead of the stale preflight placeholder, Open
-  Browser opened V.I.O.L.E.T. in Chrome, Stop released the service, and a second
-  Start -> Stop cycle returned to stopped with port 8000 released.
+- Root-level GUI validation: pending rerun after the primary Start action was
+  changed to automatic preflight.
 - Canonical ignored profile status: ready, auth policy explicit
 - Canonical public preflight: passed
 - Direct safe-start shutdown validation: passed

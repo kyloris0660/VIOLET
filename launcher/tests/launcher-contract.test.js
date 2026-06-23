@@ -63,10 +63,13 @@ assert(html.includes('id="checklist"'), 'Main screen must include a checklist co
 assert(html.includes('id="detailPanelTitle"'), 'Runtime/checklist panel title must be updateable.');
 assert(html.includes('id="advancedPanel"'), 'Advanced diagnostics must be present.');
 assert(!html.includes('<details id="advancedPanel" class="advanced" open'), 'Advanced diagnostics must be collapsed by default.');
-assert(html.includes('V.I.O.L.E.T. 生产启动器'), 'Launcher visible title must be zh-CN first.');
+assert(html.includes('V.I.O.L.E.T. 启动器'), 'Launcher visible title must be zh-CN first and simplified.');
+assert(main.includes("title: 'V.I.O.L.E.T. 启动器'"), 'Window title must use the simplified zh-CN launcher title.');
 assert(html.includes('创建 / 修复生产配置'), 'Create/repair button must be zh-CN first.');
 assert(html.includes('选择生产存储根目录'), 'Storage selection button must be zh-CN first.');
-assert(html.includes('运行启动前检查'), 'Preflight button must be zh-CN first.');
+assert(html.includes('手动启动前检查'), 'Manual preflight button must be zh-CN first.');
+assert(!html.includes('id="preflightButton" class="primary"'), 'Manual preflight must not remain a primary required action.');
+assert(html.includes('id="startButton" class="primary">启动</button>'), 'Start must be the primary normal-flow action.');
 assert(html.includes('清除已保存 DB 访问值'), 'DB password clearing must be an explicit zh-CN control.');
 assert(html.includes('显示高级诊断'), 'Advanced diagnostics label must be zh-CN first.');
 assert(renderer.includes('renderChecklist'), 'Renderer must render human-readable checklist items.');
