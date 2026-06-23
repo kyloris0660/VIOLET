@@ -178,6 +178,22 @@ def _dynamic_sync_summary(**overrides: object) -> dict:
 
 def _pd1a_governance_summary(**overrides: object) -> dict:
     summary = {
+        "phase": "PD1-A-R1",
+        "post_122_launcher_merged": True,
+        "production_launcher_entry_documented": True,
+        "production_profile_runtime_config_documented": True,
+        "development_dotenv_not_production_source": True,
+        "production_execution_requires_profile_or_runtime_config": True,
+        "s2g_consolidated_route": True,
+        "r1r_required_before_r2": True,
+        "a1r_required_before_route_approval": True,
+        "provider_entity_truth_blocked": True,
+        "no_production_writes": True,
+        "no_db_mutation": True,
+        "no_source_icloud_mutation": True,
+        "no_provider_calls": True,
+        "no_sourceconcept_mutation": True,
+        "no_entity_truth_write": True,
         "pipeline_contract": {
             "contract_id": "production_development_separation_contract_v1",
             "status": "target_met",
@@ -224,8 +240,8 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
             "private_ledgers_committed": False,
         },
         "phase_boundaries": {
-            "current_phase": "PD1-A",
-            "next_recommended_phase": "S2G-1 GPU AI tagging capability probe and benchmark",
+            "current_phase": "PD1-A-R1",
+            "next_recommended_phase": "S2G: GPU / AI Tagging Execution Foundation",
             "future_mentions_are_non_authorizing": True,
             "authorizes_s3": False,
             "authorizes_provider_calls": False,
@@ -234,6 +250,7 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
             "authorizes_entity_bridge": False,
             "authorizes_confirmed_assignments": False,
             "authorizes_automatic_production_sync": False,
+            "authorizes_s2g_execution": False,
             "authorizes_gpu_benchmark": False,
             "authorizes_desired_media_backfill": False,
         },
@@ -1726,6 +1743,15 @@ def test_production_development_separation_rejects_forbidden_current_phase_autho
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "production_development_forbidden_current_phase_authorization" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_split_s2g_route() -> None:
+    summary = _pd1a_governance_summary()
+    summary["phase_boundaries"]["next_recommended_phase"] = "S2G-1 GPU AI tagging capability probe and benchmark"
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_next_phase_not_consolidated_s2g" in _error_codes(result)
 
 
 def test_prod_launcher_mvp_contract_accepts_safe_launcher_summary() -> None:

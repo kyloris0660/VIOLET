@@ -1126,6 +1126,21 @@ def _check_production_development_separation(
         summary,
         result,
         (
+            "post_122_launcher_merged",
+            "production_launcher_entry_documented",
+            "production_profile_runtime_config_documented",
+            "development_dotenv_not_production_source",
+            "production_execution_requires_profile_or_runtime_config",
+            "s2g_consolidated_route",
+            "r1r_required_before_r2",
+            "a1r_required_before_route_approval",
+            "provider_entity_truth_blocked",
+            "no_production_writes",
+            "no_db_mutation",
+            "no_source_icloud_mutation",
+            "no_provider_calls",
+            "no_sourceconcept_mutation",
+            "no_entity_truth_write",
             "governance_lanes.production.explicit",
             "governance_lanes.development.explicit",
             "production_promotion.required_for_production_writes",
@@ -1142,7 +1157,7 @@ def _check_production_development_separation(
             "validation.focused_tests_passed",
         ),
         code="production_development_required_proof_failed",
-        message="Post-S2 production/development separation requires explicit lanes, promotion gates, redacted artifacts, and focused tests.",
+        message="Post-S2 production/development separation requires post-#122 launcher state, consolidated S2G routing, explicit lanes, no-mutation proof, redacted artifacts, and focused tests.",
     )
     _check_required_false_paths(
         summary,
@@ -1172,21 +1187,22 @@ def _check_production_development_separation(
         )
 
     current_phase = str(_get(summary, "phase_boundaries.current_phase", "")).casefold()
-    if current_phase not in {"pd1-a", "pd1_a"}:
+    if current_phase not in {"pd1-a", "pd1_a", "pd1-a-r1", "pd1_a_r1"}:
         result.fail(
             "production_development_current_phase_mismatch",
-            "This governance summary must identify PD1-A as the current phase.",
+            "This governance summary must identify PD1-A or PD1-A-R1 as the current phase.",
             path="phase_boundaries.current_phase",
-            expected="PD1-A",
+            expected="PD1-A-R1",
             actual=_get(summary, "phase_boundaries.current_phase", None),
         )
     next_phase = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).casefold()
-    if "s2g-1" not in next_phase and "s2g_1" not in next_phase:
+    split_s2g_tokens = ("s2g-1", "s2g_1", "s2g-2", "s2g_2", "s2g-3", "s2g_3")
+    if "s2g" not in next_phase or any(token in next_phase for token in split_s2g_tokens):
         result.fail(
-            "production_development_next_phase_not_s2g1",
-            "The immediate recommended next phase after PD1-A must remain S2G-1.",
+            "production_development_next_phase_not_consolidated_s2g",
+            "The immediate recommended next phase after PD1-A-R1 must be consolidated S2G, not split S2G-1/S2G-2/3.",
             path="phase_boundaries.next_recommended_phase",
-            expected="S2G-1",
+            expected="S2G: GPU / AI Tagging Execution Foundation",
             actual=_get(summary, "phase_boundaries.next_recommended_phase", None),
         )
 
@@ -1198,6 +1214,7 @@ def _check_production_development_separation(
         "phase_boundaries.authorizes_entity_bridge",
         "phase_boundaries.authorizes_confirmed_assignments",
         "phase_boundaries.authorizes_automatic_production_sync",
+        "phase_boundaries.authorizes_s2g_execution",
         "phase_boundaries.authorizes_gpu_benchmark",
         "phase_boundaries.authorizes_desired_media_backfill",
     )

@@ -1,0 +1,309 @@
+{
+  "phase": "PD1-A-R1",
+  "contract_id": "production_development_separation_contract_v1",
+  "public_json_payload": {
+    "phase": "PD1-A-R1",
+    "contract_id": "production_development_separation_contract_v1",
+    "post_122_launcher": {
+      "pr_number": 122,
+      "merged": true,
+      "merge_commit": "aece424df2814ef0d840f9fe472a9d19478d2020",
+      "production_entry_role": "accepted temporary Windows personal production entrypoint",
+      "root_level_daily_entry_documented_in_handoff": true,
+      "uses_local_ignored_profile_and_runtime_config": true,
+      "development_dotenv_required_for_production": false,
+      "long_term_configuration_architecture": "deferred",
+      "deferred_reviewer_items_current_blockers": false
+    },
+    "route_after": [
+      "PD1-A-R1",
+      "S2G: GPU / AI Tagging Execution Foundation",
+      "R1R",
+      "A1R",
+      "Pixiv/source metadata strategy polish",
+      "S3A",
+      "S3B",
+      "S2F0"
+    ],
+    "route_restrictions": {
+      "s2g_consolidated": true,
+      "r1r_required_before_r2": true,
+      "a1r_required_before_route_approval": true,
+      "sourceconcept_source_layer_only": true,
+      "provider_entity_truth_blocked": true,
+      "s3b_disabled_by_default": true
+    },
+    "safety": {
+      "no_production_writes": true,
+      "no_db_mutation": true,
+      "no_source_icloud_mutation": true,
+      "no_provider_calls": true,
+      "no_llm_calls": true,
+      "no_sourceconcept_mutation": true,
+      "no_entity_truth_write": true,
+      "no_media_tags_mutation": true,
+      "no_launcher_start": true
+    },
+    "validation": {
+      "python_identity": "passed",
+      "production_development_separation_contract_v1": "passed",
+      "public_redaction_contract_v1": "passed_after_bounded_public_payload",
+      "json_tool": "passed",
+      "focused_phase_contract_tests": "passed",
+      "git_diff_check": "passed",
+      "browser_or_electron_validation": "not_applicable_docs_contract_only"
+    },
+    "next_phase_recommendation": "S2G: GPU / AI Tagging Execution Foundation"
+  },
+  "pipeline_contract": {
+    "contract_id": "production_development_separation_contract_v1",
+    "status": "target_met",
+    "claims": {
+      "target_met": true,
+      "safe_to_merge": true
+    }
+  },
+  "post_122_launcher_merged": true,
+  "production_launcher_entry_documented": true,
+  "production_profile_runtime_config_documented": true,
+  "development_dotenv_not_production_source": true,
+  "production_execution_requires_profile_or_runtime_config": true,
+  "s2g_consolidated_route": true,
+  "r1r_required_before_r2": true,
+  "a1r_required_before_route_approval": true,
+  "provider_entity_truth_blocked": true,
+  "no_production_writes": true,
+  "no_db_mutation": true,
+  "no_source_icloud_mutation": true,
+  "no_provider_calls": true,
+  "no_sourceconcept_mutation": true,
+  "no_entity_truth_write": true,
+  "route_before": [
+    "PD1-A",
+    "S2G-1 GPU AI tagging capability probe and benchmark",
+    "S2G-2/3 GPU/provider abstraction, provenance, and load control",
+    "R1R",
+    "Pixiv/source metadata strategy polish",
+    "S3A",
+    "S3B",
+    "S2F0"
+  ],
+  "route_after": [
+    "PD1-A-R1",
+    "S2G: GPU / AI Tagging Execution Foundation",
+    "R1R",
+    "A1R",
+    "Pixiv/source metadata strategy polish",
+    "S3A",
+    "S3B",
+    "S2F0"
+  ],
+  "post_122_launcher_state": {
+    "pr_number": 122,
+    "merged": true,
+    "merge_commit": "aece424df2814ef0d840f9fe472a9d19478d2020",
+    "production_entry_role": "accepted temporary Windows personal production entrypoint",
+    "root_level_daily_entry_documented_in_handoff": true,
+    "uses_local_ignored_profile": true,
+    "uses_local_ignored_runtime_config": true,
+    "development_dotenv_required_for_production": false,
+    "long_term_configuration_architecture": "deferred",
+    "deferred_reviewer_items_current_blockers": false,
+    "deferred_reviewer_items_tracking": "future runtime/schema hardening debt"
+  },
+  "production_development_separation_state": {
+    "current_policy": "temporary production/development split",
+    "development_dotenv_not_production_source": true,
+    "production_execution_requires_profile_or_runtime_config": true,
+    "future_s3a_s3b_bind_to_production_profile_or_runtime_config": true,
+    "development_lane_sources": [
+      "dev_or_test_db",
+      "dev_or_test_storage",
+      "fixtures_or_restored_snapshots"
+    ],
+    "production_profile_runtime_config_documented": true,
+    "long_term_unification_deferred": true
+  },
+  "sourceconcept_provider_entity_restrictions": {
+    "sourceconcept_source_layer_only": true,
+    "old_r1_a1_cannot_approve_r2": true,
+    "r1r_required_before_r2": true,
+    "a1r_required_before_route_approval": true,
+    "provider_2_blocked": true,
+    "r2_blocked": true,
+    "px1b_blocked": true,
+    "entity_bridge_blocked": true,
+    "sourceconcept_truth_promotion_blocked": true,
+    "entity_truth_write_blocked": true,
+    "media_tags_mutation_blocked": true
+  },
+  "governance_lanes": {
+    "production": {
+      "explicit": true
+    },
+    "development": {
+      "explicit": true
+    }
+  },
+  "development_lane": {
+    "allowed_data_sources": [
+      "dev_or_test_db",
+      "dev_or_test_storage",
+      "fixtures_or_restored_snapshots"
+    ],
+    "production_db_as_fixture": false,
+    "production_storage_as_fixture": false,
+    "production_source_roots_as_fixture": false,
+    "production_private_ledgers_as_fixture": false
+  },
+  "production_promotion": {
+    "required_for_production_writes": true,
+    "enabled": false,
+    "operator_confirmation_present": false
+  },
+  "production_write_gates": {
+    "import_classification_ai_localization_requires_promotion": true
+  },
+  "production_source_root_write_gates": {
+    "clean_identity_required": true,
+    "backup_proof_required": true
+  },
+  "schema_setup_gates": {
+    "identity_gates_required": true,
+    "no_schema_setup_when_identity_blocked": true,
+    "schema_setup_requested": false,
+    "schema_setup_ran": false
+  },
+  "artifact_boundary": {
+    "public_reports_aggregate_only": true,
+    "public_reports_path_redacted": true,
+    "public_redaction_contract_passed": true,
+    "private_ledgers_local_ignored": true,
+    "private_ledgers_committed": false
+  },
+  "phase_boundaries": {
+    "current_phase": "PD1-A-R1",
+    "next_recommended_phase": "S2G: GPU / AI Tagging Execution Foundation",
+    "future_mentions_are_non_authorizing": true,
+    "authorizes_s3": false,
+    "authorizes_provider_calls": false,
+    "authorizes_pixiv_gallery_dl_saucenao_google": false,
+    "authorizes_sourceconcept_r1r_r2": false,
+    "authorizes_entity_bridge": false,
+    "authorizes_confirmed_assignments": false,
+    "authorizes_automatic_production_sync": false,
+    "authorizes_s2g_execution": false,
+    "authorizes_gpu_benchmark": false,
+    "authorizes_desired_media_backfill": false
+  },
+  "write_requests": {
+    "production_import": false,
+    "production_classification": false,
+    "production_ai_tagging": false,
+    "production_localization": false,
+    "source_root_registration": false,
+    "source_root_replacement": false,
+    "schema_setup": false,
+    "schema_migration": false
+  },
+  "validation": {
+    "focused_tests_passed": true,
+    "contract_passed": true,
+    "public_redaction_passed": true,
+    "json_tool_passed": true,
+    "git_diff_check_passed": true,
+    "browser_validation_required": false,
+    "browser_validation_reason": "docs_contract_report_only_no_runtime_or_ui_change"
+  },
+  "validation_statuses": {
+    "python_identity": "passed",
+    "production_development_separation_contract_v1": "passed",
+    "public_redaction_contract_v1": "passed",
+    "json_tool": "passed",
+    "focused_phase_contract_tests": "passed",
+    "git_diff_check": "passed",
+    "browser_or_electron_validation": "not_applicable_docs_contract_only"
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "path": "docs/current-handoff.md",
+        "classification": "public report / handoff / roadmap update"
+      },
+      {
+        "path": "docs/project-roadmap.md",
+        "classification": "public report / handoff / roadmap update"
+      },
+      {
+        "path": "docs/roadmap/current-mainline-roadmap.md",
+        "classification": "public report / handoff / roadmap update"
+      },
+      {
+        "path": "docs/roadmap/post-s2-production-roadmap.md",
+        "classification": "public report / handoff / roadmap update"
+      },
+      {
+        "path": "scripts/phase_contracts/contract_checks.py",
+        "classification": "reusable validation/safety tool"
+      },
+      {
+        "path": "scripts/phase_contracts/contract_registry.py",
+        "classification": "reusable validation/safety tool"
+      },
+      {
+        "path": "tests/test_phase_contracts.py",
+        "classification": "reusable validation/safety tool"
+      },
+      {
+        "path": "tests/fixtures/phase_contracts/mock_pd1a_governance_summary.json",
+        "classification": "reusable validation/safety tool"
+      },
+      {
+        "path": "docs/reports/pd1-a-r1-post-122-roadmap-reconciliation.md",
+        "classification": "public report / handoff / roadmap update"
+      },
+      {
+        "path": "docs/reports/pd1-a-r1-post-122-roadmap-reconciliation-summary.json",
+        "classification": "public report / handoff / roadmap update"
+      }
+    ],
+    "private_artifacts_committed": false,
+    "local_ignored_artifacts_created": false
+  },
+  "safety_no_mutation_proof": {
+    "no_production_writes": true,
+    "no_db_mutation": true,
+    "no_source_icloud_mutation": true,
+    "no_provider_calls": true,
+    "no_llm_calls": true,
+    "no_sourceconcept_mutation": true,
+    "no_entity_truth_write": true,
+    "no_media_tags_mutation": true,
+    "no_tag_localization": true,
+    "no_ai_tagging": true,
+    "no_classification": true,
+    "no_sync": true,
+    "no_production_launcher_start": true,
+    "no_browser_electron_computer_use": true,
+    "no_push_main": true,
+    "no_merge": true
+  },
+  "source_files_inspected": [
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md",
+    "docs/roadmap/current-mainline-roadmap.md",
+    "docs/roadmap/post-s2-production-roadmap.md",
+    "docs/production-launcher.md",
+    "docs/reports/prod-launcher-ux1-production-profile-summary.json",
+    "docs/reports/prod-launcher-ux1-production-profile.md",
+    "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json",
+    "docs/reports/phase-4.5-scv2-a1-post-expansion-audit-route-decision-summary.json",
+    "docs/reports/phase-4.7-s2-baseline-full-import-ai-localization-summary.json",
+    "scripts/check_phase_contract.py",
+    "scripts/phase_contracts/contract_checks.py",
+    "scripts/phase_contracts/contract_registry.py",
+    "tests/test_phase_contracts.py",
+    "tests/fixtures/phase_contracts/mock_pd1a_governance_summary.json"
+  ],
+  "next_phase_recommendation": "S2G: GPU / AI Tagging Execution Foundation"
+}

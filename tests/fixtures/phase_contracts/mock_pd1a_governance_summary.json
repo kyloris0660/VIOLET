@@ -1,4 +1,5 @@
 {
+  "a1r_required_before_route_approval": true,
   "artifact_boundary": {
     "private_ledgers_committed": false,
     "private_ledgers_local_ignored": true,
@@ -25,6 +26,14 @@
       "explicit": true
     }
   },
+  "development_dotenv_not_production_source": true,
+  "no_db_mutation": true,
+  "no_entity_truth_write": true,
+  "no_production_writes": true,
+  "no_provider_calls": true,
+  "no_source_icloud_mutation": true,
+  "no_sourceconcept_mutation": true,
+  "phase": "PD1-A-R1",
   "phase_boundaries": {
     "authorizes_automatic_production_sync": false,
     "authorizes_confirmed_assignments": false,
@@ -33,11 +42,12 @@
     "authorizes_gpu_benchmark": false,
     "authorizes_pixiv_gallery_dl_saucenao_google": false,
     "authorizes_provider_calls": false,
+    "authorizes_s2g_execution": false,
     "authorizes_s3": false,
     "authorizes_sourceconcept_r1r_r2": false,
-    "current_phase": "PD1-A",
+    "current_phase": "PD1-A-R1",
     "future_mentions_are_non_authorizing": true,
-    "next_recommended_phase": "S2G-1 GPU AI tagging capability probe and benchmark"
+    "next_recommended_phase": "S2G: GPU / AI Tagging Execution Foundation"
   },
   "pipeline_contract": {
     "claims": {
@@ -47,6 +57,10 @@
     "contract_id": "production_development_separation_contract_v1",
     "status": "target_met"
   },
+  "post_122_launcher_merged": true,
+  "production_execution_requires_profile_or_runtime_config": true,
+  "production_launcher_entry_documented": true,
+  "production_profile_runtime_config_documented": true,
   "production_promotion": {
     "enabled": false,
     "operator_confirmation_present": false,
@@ -65,6 +79,9 @@
     "schema_setup_ran": false,
     "schema_setup_requested": false
   },
+  "provider_entity_truth_blocked": true,
+  "r1r_required_before_r2": true,
+  "s2g_consolidated_route": true,
   "validation": {
     "focused_tests_passed": true
   },
