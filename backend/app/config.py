@@ -9,12 +9,27 @@ from dotenv import load_dotenv
 from sqlalchemy.engine import URL
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=False)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().casefold() in {"true", "1", "yes", "on"}
+
+
+if not _truthy_env("VIOLET_SKIP_DOTENV"):
+    load_dotenv(dotenv_path=_PROJECT_ROOT / ".env", override=False)
 
 APP_VERSION = "1.41.0"
 SCHEMA_VERSION = 6
 
 _VALID_ENVS = ("development", "test", "production")
+
+
+def _production_profile_active() -> bool:
+    return (
+        os.getenv("VIOLET_ENV", "development").strip().lower() == "production"
+        and _truthy_env("VIOLET_PRODUCTION_PROFILE_ACTIVE")
+        and _truthy_env("VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP")
+    )
 
 
 def _detect_worktree() -> Optional[str]:
@@ -66,7 +81,7 @@ class Settings:
         # Persist the generated secret_key immediately so that a manual edit
         # removing the key from settings.json does not silently rotate it on
         # the next restart and invalidate all existing JWT tokens.
-        if "secret_key" not in self.file_settings:
+        if "secret_key" not in self.file_settings and not _production_profile_active():
             self.file_settings["secret_key"] = self.settings["secret_key"]
             try:
                 with open(self.SETTINGS_FILE, 'w') as _f:
@@ -226,24 +241,34 @@ class Settings:
     
     @property
     def DB_USER(self) -> str:
+        if _production_profile_active() and os.getenv("POSTGRES_USER"):
+            return os.getenv("POSTGRES_USER", "")
         return self.file_settings.get("database", {}).get('user') or os.getenv("POSTGRES_USER") or self.settings.get("database", {}).get('user', 'postgres')
 
     @property
     def DB_PASSWORD(self) -> str:
+        if _production_profile_active() and "POSTGRES_PASSWORD" in os.environ:
+            return os.getenv("POSTGRES_PASSWORD", "")
         return self.file_settings.get("database", {}).get('password') or os.getenv("POSTGRES_PASSWORD") or self.settings.get("database", {}).get('password', '')
 
     @property
     def DB_HOST(self) -> str:
+        if _production_profile_active() and os.getenv("POSTGRES_HOST"):
+            return os.getenv("POSTGRES_HOST", "")
         return self.file_settings.get("database", {}).get('host') or os.getenv("POSTGRES_HOST") or self.settings.get("database", {}).get('host', 'localhost')
 
     @property
     def DB_PORT(self) -> int:
+        if _production_profile_active() and os.getenv("POSTGRES_PORT"):
+            return int(os.getenv("POSTGRES_PORT", "5432"))
         return int(self.file_settings.get("database", {}).get('port') or os.getenv("POSTGRES_PORT") or self.settings.get("database", {}).get('port', 5432))
 
     _FORBIDDEN_TEST_DB_NAMES = frozenset({"blombooru", "production", "main", "postgres"})
 
     @property
     def DB_NAME(self) -> str:
+        if _production_profile_active() and os.getenv("POSTGRES_DB"):
+            return os.getenv("POSTGRES_DB", "")
         test_url = os.getenv("TEST_DATABASE_URL", "").strip()
         if self.IS_TEST_ENV:
             if test_url:
@@ -388,12 +413,14 @@ class Settings:
     
     @property
     def REQUIRE_AUTH(self) -> bool:
+        env_val = os.getenv("BLOMBOORU_REQUIRE_AUTH")
+        if _production_profile_active() and env_val is not None:
+            return env_val.strip().casefold() in ("true", "1", "yes", "on")
         val = self.file_settings.get("require_auth")
         if val is not None:
             return bool(val)
-        env_val = os.getenv("BLOMBOORU_REQUIRE_AUTH")
         if env_val is not None:
-            return env_val.lower() in ("true", "1", "yes")
+            return env_val.strip().casefold() in ("true", "1", "yes", "on")
         return self.settings.get("require_auth", False)
     
     @property

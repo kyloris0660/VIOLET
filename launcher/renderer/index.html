@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>V.I.O.L.E.T. 启动器</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="header">
+        <div>
+          <p class="eyebrow">生产配置</p>
+          <h1>V.I.O.L.E.T. 启动器</h1>
+        </div>
+        <div id="stateBadge" class="state state-gray">未检查</div>
+      </section>
+
+      <section id="summaryBar" class="summary-grid" aria-label="生产状态摘要">
+        <div>
+          <span>配置</span>
+          <strong id="profileSummary">未检查</strong>
+        </div>
+        <div>
+          <span>环境</span>
+          <strong id="envSummary">production</strong>
+        </div>
+        <div>
+          <span>存储</span>
+          <strong id="storageSummary">未检查</strong>
+        </div>
+        <div>
+          <span>数据库</span>
+          <strong id="dbSummary">未检查</strong>
+        </div>
+        <div>
+          <span>健康</span>
+          <strong id="healthSummary">未检查</strong>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel controls">
+          <h2>生产配置</h2>
+          <p id="primaryMessage" class="message">正在检查生产配置...</p>
+
+          <div class="form-grid" aria-label="生产配置编辑器">
+            <label>
+              <span>应用端口</span>
+              <input id="appPortInput" inputmode="numeric" placeholder="8000">
+            </label>
+            <label>
+              <span>DB 主机</span>
+              <input id="dbHostInput" placeholder="localhost">
+            </label>
+            <label>
+              <span>DB 端口</span>
+              <input id="dbPortInput" inputmode="numeric" placeholder="5432">
+            </label>
+            <label>
+              <span>DB 名称</span>
+              <input id="dbNameInput" placeholder="blombooru">
+            </label>
+            <label>
+              <span>DB 用户</span>
+              <input id="dbUserInput" placeholder="postgres">
+            </label>
+            <label>
+              <span>DB 访问值</span>
+              <input id="dbPasswordInput" type="password" autocomplete="off" placeholder="可选">
+            </label>
+            <label class="inline-check">
+              <input id="clearDbPasswordInput" type="checkbox">
+              <span>清除已保存 DB 访问值</span>
+            </label>
+          </div>
+
+          <div class="button-grid">
+            <button id="createProfileButton">创建 / 修复生产配置</button>
+            <button id="selectStorageButton">选择生产存储根目录</button>
+            <button id="saveProfileButton">保存配置字段</button>
+            <button id="testDbButton">测试数据库</button>
+            <button id="preflightButton">手动启动前检查</button>
+            <button id="startButton" class="primary">启动</button>
+            <button id="openBrowserButton">打开浏览器</button>
+            <button id="stopButton" class="danger">停止</button>
+            <button id="restartButton">重启</button>
+            <button id="copyDiagnosticsButton">复制诊断摘要</button>
+          </div>
+        </aside>
+
+        <section class="panel checklist-panel">
+          <div class="panel-heading">
+            <h2 id="detailPanelTitle">启动前检查</h2>
+            <span id="lastChecked">未检查</span>
+          </div>
+          <div id="checklist" class="checklist"></div>
+        </section>
+      </section>
+
+      <details id="advancedPanel" class="advanced">
+        <summary>显示高级诊断</summary>
+        <pre id="advancedDiagnostics">{}</pre>
+      </details>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

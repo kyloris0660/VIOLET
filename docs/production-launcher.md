@@ -1,228 +1,324 @@
-# V.I.O.L.E.T. Production Launcher
+# V.I.O.L.E.T. 启动器 / Production Launcher
 
-`PROD-LAUNCHER-MVP` adds a Windows-first visual launcher for the local
-production library. It is a safety wrapper around the existing runtime entry
-point:
+`PROD-LAUNCHER-UX1/PF1` is the first production launcher implementation: a
+temporary personal Windows entrypoint for the current development/production
+split. The visible app title is `V.I.O.L.E.T. 启动器`. It is backed by an
+Electron UI and the Python control plane. It is not the final long-term
+production/development configuration architecture.
+
+The launcher starts the existing runtime entry point:
 
 ```powershell
 python run.py
 ```
 
-The launcher does not use `--debug`.
+It never passes `--debug`.
+
+## Production Profile
+
+Production startup is no longer treated as a mode of the development `.env`.
+The launcher uses a separate local profile:
+
+```text
+.local_manifests/production_launcher/production-profile.json
+```
+
+`.local_manifests/` is gitignored. Do not commit this file; it may contain
+machine-specific paths and DB credentials.
+
+The profile is the production source of truth for launcher startup:
+
+- `profile_id`
+- `env=production`
+- `repo_root`
+- `python`
+- `app_port`
+- `storage_root`
+- DB host, port, name, user, optional private DB credential
+- `safe_startup=true`
+- startup automation flags set to false
+
+The existing development `.env` and local `data/settings.json` may be read for
+best-effort local bootstrap. Values inferred from those local records are
+written only to the ignored production profile and are not returned in public
+launcher JSON. The launcher does not modify `.env` and does not require
+`VIOLET_ENV=production` or `VIOLET_STORAGE_ROOT` in `.env`.
+
+If a value truly cannot be inferred, the Electron UI shows `Profile Incomplete`
+and asks the operator to select or enter only the missing value. `Create /
+Repair Production Profile` also resets profile invariants: `env=production`,
+`safe_startup=true`, and startup automation/destructive flags disabled.
 
 ## Start The Launcher
 
-From the canonical repository checkout, double-click:
+Daily use should be through the root-level generated Windows executable. The
+file keeps the current stable name for compatibility:
+
+```text
+V.I.O.L.E.T. Production Launcher.exe
+```
+
+If it is missing, build and install it once from the canonical repository
+checkout:
+
+```powershell
+cd launcher
+npm install
+npm run package
+```
+
+`npm run package` builds the portable Electron launcher, applies the
+V.I.O.L.E.T. icon to the packaged executable, and copies the generated executable
+to the repository root. The build output and root executable are ignored and
+must not be committed.
+
+The packaged executable also remains available under:
+
+```text
+launcher\dist\V.I.O.L.E.T. Production Launcher.exe
+```
+
+The fallback development entrypoint remains:
 
 ```text
 scripts\start_violet_production_launcher.cmd
 ```
 
-The command file prefers the canonical project venv:
+The fallback command starts the Electron launcher from:
 
 ```text
-venv\Scripts\python.exe
+launcher/
+```
+with `npm start`; it is useful for development or troubleshooting but is no
+longer the preferred production entrypoint.
+
+Normal daily workflow:
+
+1. Double-click the root-level executable.
+2. Click `启动`.
+3. The launcher automatically runs startup preflight.
+4. If preflight fails, startup stops and the checklist stays visible.
+5. If preflight passes, the launcher starts production automatically.
+6. Confirm `运行中` and Health `OK`; the right panel shows `运行状态`.
+7. Use `打开浏览器`, `停止`, or `重启`.
+
+`手动启动前检查` remains available as a secondary diagnostic action, but it is
+not required in the normal Start flow.
+
+If npm or Electron downloads hang behind the local proxy, create a local ignored
+launcher npm config:
+
+```powershell
+.\scripts\setup_launcher_npm_proxy.ps1 -Proxy http://127.0.0.1:7897
 ```
 
-If that venv is not present, it falls back to `python`, but the production
-preflight will still block startup unless the running Python matches the
-configured production Python gate.
+Clear it with:
 
-## Visual Controls
+```powershell
+.\scripts\setup_launcher_npm_proxy.ps1 -Clear
+```
 
-The Tkinter launcher shows:
+The generated `launcher/.npmrc` is ignored and must not be committed.
 
-- Status: `Stopped`, `Starting`, `Running`, `Stopping`, or `Error`.
-- Environment, port, URL, DB name, storage root status.
-- Last health check, last error, and recent local log tail.
+The packaged launcher can also read the ignored local runtime anchor:
 
-Buttons:
+```text
+.local_manifests/production_launcher/launcher-runtime.json
+```
 
-- `Preflight`: runs the production safety gate without starting the server.
-- `Start Production`: starts `python run.py` with `VIOLET_ENV=production`.
-- `Open Browser`: opens the resolved local URL.
-- `Stop`: stops only the launcher-managed V.I.O.L.E.T. process.
-- `Restart`: stop, then start.
-- `Copy Diagnostic Summary`: copies public-safe `status --json` output.
+This lets the portable executable resolve the canonical checkout, Python venv,
+controller path, and production profile even when Electron itself is running
+from a temporary extraction directory.
 
-## Production Gates
+## Controller Commands
 
-Startup is blocked unless all hard gates pass:
+Electron calls the Python controller and does not duplicate safety decisions in
+JavaScript:
 
-- The launcher is running from the canonical repository root, not a worktree.
-- `VIOLET_ENV=production`.
-- `BLOMBOORU_DEBUG` is not true and `--debug` is not passed.
-- The running Python is the configured production/canonical venv Python.
-- `.env` exists and is readable.
-- `VIOLET_STORAGE_ROOT` is explicit, absolute, production-shaped, and not under
-  the repo, temporary agent directories, iCloud/source paths, test paths, or
-  fixture paths.
-- Initialized `data/settings.json` exists under the configured storage root.
-- DB settings are present.
-- DB is reachable through a read-only `SELECT 1` check.
-- Configured DB port is either absent/defaulted or a valid integer port;
-  malformed `POSTGRES_PORT` or settings JSON DB port values block startup.
-- `APP_PORT` is configured or defaulted to a valid port; malformed values such
-  as `APP_PORT=abc` are reported as preflight failures instead of crashing the
-  launcher.
-- The target port is free or owned by the launcher-managed process state.
-- No stale PID claims a running process.
-- Startup automation flags for import/tagging/localization/sync are not enabled.
-- `VIOLET_ALLOW_DESTRUCTIVE_E2E` and real E2E flags are not enabled.
-- The launcher startup write policy is explicit.
+```powershell
+python scripts\violet_production_control.py profile-status --profile production-default --json
+python scripts\violet_production_control.py profile-discover --profile production-default --json
+python scripts\violet_production_control.py profile-init --profile production-default --json
+python scripts\violet_production_control.py profile-repair --profile production-default --json
+python scripts\violet_production_control.py profile-update --profile production-default --json
+python scripts\violet_production_control.py preflight --profile production-default --json
+python scripts\violet_production_control.py test-db --profile production-default --json
+python scripts\violet_production_control.py start --profile production-default --json
+python scripts\violet_production_control.py status --profile production-default --json
+python scripts\violet_production_control.py stop --profile production-default --json
+```
+
+## Electron UI
+
+The main screen is zh-CN first for daily operation. It shows:
+
+- Production profile status.
+- Environment, storage, database, schema, port, safety flags, startup policy,
+  and health checklist groups.
+- `创建 / 修复生产配置`.
+- `选择生产存储根目录`.
+- `测试数据库`.
+- `手动启动前检查` as a secondary diagnostic action.
+- `启动`, which automatically runs preflight before starting.
+- `打开浏览器`.
+- `停止`.
+- `重启`.
+- `复制诊断摘要`.
+
+Raw JSON is not shown on the main screen. `显示高级诊断` is collapsed by
+default and contains only public-safe JSON. Copying diagnostics does not reset
+the current status badge or checklist.
+
+After production is running, the right panel switches from startup checks to
+`运行状态` and shows public-safe runtime fields: health, port, managed PID,
+uptime when available, DB reachability, schema compatibility, storage status,
+and the latest public-safe error. The launcher polls status while the service is
+running and stops polling after the service is stopped.
+
+Open Browser and Copy Diagnostics do not replace the current status/checklist or
+runtime panel.
+
+`打开浏览器` is also state-preserving on success: it opens the configured
+production URL but does not replace the current profile, health, or checklist
+view with the controller's minimal open-browser payload.
+
+Leaving `DB 访问值` blank preserves any existing local profile value. To clear a
+saved value, explicitly check `清除已保存 DB 访问值` and save the profile. DB access
+value updates are sent to the Python controller through stdin JSON, not
+command-line arguments.
+
+Observed #121 blockers are mapped to user-facing actions:
+
+- `violet_env_production`: development `.env` is not used for production;
+  create or repair the production profile.
+- `storage_root_explicit`: production profile is missing storage root.
+- `production_storage_root_shape`: production storage root is invalid or unsafe.
+- `db_readonly_reachable`: DB check is skipped until profile and storage gates
+  pass.
+- `no_startup_mutation_automation`: production profile must disable startup
+  automation flags.
+
+## Startup Environment
+
+The production child process environment is built from a clean allowlisted
+baseline plus the profile:
+
+```text
+VIOLET_ENV=production
+BLOMBOORU_DEBUG=false
+VIOLET_STORAGE_ROOT=<profile storage root>
+APP_PORT=<profile port>
+VIOLET_PRODUCTION_PROFILE_ACTIVE=true
+VIOLET_SKIP_DOTENV=1
+VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true
+DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED=false
+AI_AUTO_TAG_AFTER_IMPORT=false
+CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT=false
+TAG_TRANSLATION_AUTO_ENABLED=false
+TAG_TRANSLATION_BACKGROUND_ENABLED=false
+VIOLET_ALLOW_DESTRUCTIVE_E2E=false
+VIOLET_RUN_REAL_E2E=false
+```
+
+Profile updates that include private DB values are sent from Electron to the
+Python controller through stdin JSON, not command-line argv.
+
+In this profile-active safe-startup mode, backend DB settings prefer the profile
+environment over storage `settings.json`. This override is deliberately narrow
+and does not affect normal development or test startup.
+
+`run.py` and backend config both honor `VIOLET_SKIP_DOTENV=1`, so production
+profile startup does not reload the development `.env` after the controller has
+constructed the production child environment.
 
 ## Startup Write Policy
 
-Normal application startup through plain `python run.py` can perform maintenance
-writes before serving requests:
+Normal application startup can perform maintenance writes such as schema
+create/migrate, upload cleanup, stale job recovery, tag translation seeding, and
+background worker startup.
 
-- DB engine/schema initialization through `init_db()`, including
-  `create_all()` and `check_and_migrate_schema()`.
-- Upload temp chunk cleanup.
-- Stale scan, AI-tagging, tag-translation, and classification job recovery.
-- Static tag translation seeding.
-- Periodic upload temp cleanup task creation.
-- Background tag translation worker startup if its normal app settings enable it.
+The production launcher safe-start path blocks those startup writes. It also
+requires production `data/settings.json` to already contain `secret_key`, so
+importing settings will not write a generated secret before the safe-start
+guard.
 
-The production launcher does not claim that normal app startup is write-free.
-Instead, the launcher child process forces:
+This phase does not add a launcher path for schema migration, import, tagging,
+localization, sync, provider calls, SourceConcept, Entity bridge, cleanup,
+delete, reset, drop, or truncate.
 
-```text
-VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP=true
-```
+## Health And Stop Safety
 
-When this flag is present in production, `backend/app/main.py` initializes the
-DB engine only and skips schema create/migrate, upload cleanup, stale job
-recovery, translation seeding, periodic cleanup, and background worker startup.
-The launcher also forces import/tagging/localization/sync automation flags and
-destructive E2E flags to `false` in the child environment.
+`GET /api/health` remains auth-exempt and public-safe. It now checks required
+core tables and required core columns for:
 
-Public status/report output includes:
+- `blombooru_media`
+- `blombooru_tags`
+- `blombooru_media_tags`
+- `blombooru_users`
 
-```json
-{
-  "startup_write_policy": {
-    "normal_startup_maintenance_documented": true,
-    "schema_migration_allowed": false,
-    "destructive_cleanup_allowed": false,
-    "import_tagging_sync_jobs_allowed": false,
-    "operator_intent_required_for_startup_maintenance": true
-  }
-}
-```
+Start success verifies:
 
-This MVP does not add an operator-approved path for allowing startup schema
-migration or destructive cleanup from the launcher.
+- launched PID still exists;
+- launcher state still verifies process identity;
+- health comes from expected V.I.O.L.E.T. production app;
+- health reports DB reachable, schema compatible, storage configured, and
+  debug disabled;
+- port owner matches when owner detection is available.
 
-The launcher state and log are local ignored artifacts under:
+Managed but unhealthy processes are reported as `不健康` / `Unhealthy`, not
+`Running`. Start returns failure for an existing launcher-managed but unhealthy
+process so DB/schema/storage health failures remain visible. If a newly
+launched process fails post-start identity or health verification, the launcher
+attempts bounded cleanup of that exact launch and clears matching launcher
+state. Stop refuses unknown or unverified processes. On POSIX-like platforms,
+an open target port with unknown owner fails closed instead of being marked
+managed.
 
-```text
-.local_manifests/production_launcher/
-```
-
-Do not commit files from that directory.
-
-## Safe Stop
-
-`Stop` reads the launcher state file and verifies:
-
-- state was created by `violet_production_launcher`;
-- state repo root and port match the current launcher config;
-- PID still exists;
-- PID create time matches the launcher state and is not older than the recorded
-  start time;
-- process executable or command line matches the configured production Python;
-- process command line looks like V.I.O.L.E.T. `run.py` or uvicorn runtime;
-- process is not a debug server.
-- target port owner matches the state PID when port-owner detection is available.
-
-On Windows, process create time is used as a strong stale-PID and PID-reuse
-guard. On POSIX-like platforms where create time is unavailable, stop does not
-fail only because create time is missing; it still requires the other identity
-checks to match, and ambiguous identity is refused.
-
-If no launcher state exists and the port is occupied, the launcher refuses to
-stop anything. It never kills an unknown process merely because it owns the
-target port.
-
-The stop path first asks the verified process to exit, waits for shutdown, then
-uses force only if the same verified process is still present. It clears stale
-state only when the state PID is no longer running.
-
-## Start Lock
-
-Start and Restart are serialized in both the Tkinter UI and controller. The
-controller start lock records PID and timestamp. If a previous launcher crashed,
-dead-PID, expired-unverified, or malformed locks are reclaimed; active locks
-return `start_already_in_progress`.
-
-## Health And Diagnostics
-
-The app exposes:
-
-```text
-GET /api/health
-```
-
-The route is auth-exempt so launcher polling works when
-`BLOMBOORU_REQUIRE_AUTH=true`. The response is public-safe and does not include
-storage paths, source paths, filenames, DB URLs, passwords, tokens, or API keys.
-Fields include:
-
-```json
-{
-  "ok": true,
-  "app_name": "V.I.O.L.E.T.",
-  "version": "1.41.0",
-  "env": "production",
-  "db_reachable": true,
-  "schema_compatible": true,
-  "schema_status": "compatible",
-  "storage_configured": true,
-  "debug": false
-}
-```
-
-`ok=true` requires DB reachability, read-only core schema compatibility,
-configured storage, and debug disabled. Health does not run migrations or
-startup maintenance writes.
-
-CLI diagnostics:
+Launcher stop uses a bounded graceful shutdown and may force only the verified
+managed process if the process identity still matches. The user emergency stop
+for a launcher-owned process is:
 
 ```powershell
-python scripts\violet_production_control.py status --json
+taskkill /PID <launcher-managed-pid> /T
 ```
 
-Example public-safe shape:
+Use `/F` only if the graceful command does not exit and the PID is still the
+same launcher-managed process. Do not kill unknown Python or Node processes.
+
+## Direct Safe-Start Notes
+
+Do not document or use `--log-config none`; it is not a valid `uvicorn` CLI
+value. Prefer `python run.py` through the production launcher profile, or use
+normal `uvicorn` log-level options only when running a temporary manual command.
+
+The shutdown hang observed after a temporary direct startup was investigated in
+this phase. Safe-start mode skips periodic/background tasks. Normal startup
+periodic tasks are now tracked and cancelled during FastAPI shutdown. A
+temporary safe-start run on a non-production test port reached `/api/health`,
+accepted Ctrl+Break, exited without force, and released the port.
+
+## Manual Acceptance
+
+This phase is not merge-ready until real manual acceptance is completed from
+the canonical production checkout:
+
+1. Launch the root-level executable from the canonical repo.
+2. Confirm missing or incomplete profile does not ask to edit development `.env`.
+3. Create or repair the production profile.
+4. Select production storage root.
+5. Click `启动` without manually running preflight.
+6. Confirm automatic preflight runs and only then starts production.
+7. Confirm health OK and the runtime panel is visible.
+8. Open browser.
+9. Stop production.
+10. Confirm port release and restart.
+
+Until that happens:
 
 ```json
 {
-  "running": true,
-  "managed_by_launcher": true,
-  "port": 8000,
-  "url": "http://127.0.0.1:8000",
-  "env": "production",
-  "debug": false,
-  "db_reachable": true,
-  "schema_compatible": true,
-  "schema_status": "compatible",
-  "db_port_valid": true,
-  "health_ok": true
+  "manual_acceptance_required_before_merge": true,
+  "manual_acceptance_completed": false,
+  "merge_allowed": false
 }
 ```
-
-Public CLI JSON does not include raw log tail. The recent log tail is shown only
-inside the local Tkinter UI and is not serialized into public diagnostics or
-reports.
-
-## Known Limitations
-
-- This MVP is Windows-first and uses Tkinter from the Python standard library.
-- It does not add a Windows service, tray app, installer, scheduled task, or
-  production auto-start.
-- It does not add an approved path for running schema migrations from the
-  launcher. Launcher safe startup blocks those startup maintenance writes.
-- The launcher phase itself does not run imports, tagging, localization, sync,
-  provider calls, SourceConcept, or Entity bridge operations.
-- Full production start/stop smoke should be run only from the canonical repo
-  after the preflight passes.

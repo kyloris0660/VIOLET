@@ -12,6 +12,8 @@ from typing import Callable
 
 import violet_production_control as control
 
+PROFILE_ID = control.DEFAULT_PROFILE_ID
+
 
 class ProductionLauncherApp(tk.Tk):
     def __init__(self) -> None:
@@ -74,11 +76,11 @@ class ProductionLauncherApp(tk.Tk):
         for col in range(6):
             buttons.columnconfigure(col, weight=1)
         button_specs: list[tuple[str, Callable[[], None]]] = [
-            ("Preflight", lambda: self.run_action("Preflight", control.preflight)),
-            ("Start Production", lambda: self.run_action("Start", control.start_production)),
-            ("Open Browser", lambda: self.run_action("Open Browser", control.open_browser_target)),
-            ("Stop", lambda: self.run_action("Stop", control.stop_production)),
-            ("Restart", lambda: self.run_action("Restart", control.restart_production)),
+            ("Preflight", lambda: self.run_action("Preflight", lambda: control.preflight(profile_id=PROFILE_ID))),
+            ("Start Production", lambda: self.run_action("Start", lambda: control.start_production(profile_id=PROFILE_ID))),
+            ("Open Browser", lambda: self.run_action("Open Browser", lambda: control.open_browser_target(profile_id=PROFILE_ID))),
+            ("Stop", lambda: self.run_action("Stop", lambda: control.stop_production(profile_id=PROFILE_ID))),
+            ("Restart", lambda: self.run_action("Restart", lambda: control.restart_production(profile_id=PROFILE_ID))),
             ("Copy Diagnostic Summary", self.copy_diagnostics),
         ]
         for col, (text, command) in enumerate(button_specs):
@@ -147,7 +149,7 @@ class ProductionLauncherApp(tk.Tk):
 
     def refresh_status(self) -> None:
         def worker() -> None:
-            self.result_queue.put(("Status", control.status()))
+            self.result_queue.put(("Status", control.status(profile_id=PROFILE_ID)))
 
         threading.Thread(target=worker, daemon=True).start()
         self.after(5000, self.refresh_status)
@@ -181,7 +183,7 @@ class ProductionLauncherApp(tk.Tk):
 
     def copy_diagnostics(self) -> None:
         try:
-            payload = control.diagnostic_summary()
+            payload = control.diagnostic_summary(profile_id=PROFILE_ID)
         except Exception as exc:
             messagebox.showerror("Diagnostic summary", str(exc))
             return

@@ -1,0 +1,720 @@
+{
+  "phase": "PROD-LAUNCHER-UX1/PF1",
+  "pipeline_contract": {
+    "contract_id": "prod_launcher_ux1_production_profile_contract_v1",
+    "status": "implementation_complete_pending_manual_acceptance",
+    "claims": {
+      "target_met": false,
+      "safe_to_merge": false
+    }
+  },
+  "mainline_sync": {
+    "latest_main_used": true,
+    "base_head_sha": "a0883879f1a1658c1fb7233287eef8de1efac83c",
+    "pr119_merge_commit_included": true,
+    "pr119_merge_commit_sha": "2e0465a1fef23e32080d3a97de2d7cd2633ed0c1",
+    "pr120_merge_commit_included": true,
+    "pr120_merge_commit_sha": "061850c13f97373d50e395ae81a47e2ba80fd301",
+    "pr121_merge_commit_included": true,
+    "pr121_merge_commit_sha": "a0883879f1a1658c1fb7233287eef8de1efac83c"
+  },
+  "production_profile": {
+    "profile_id": "production-default",
+    "path": ".local_manifests/production_launcher/production-profile.json",
+    "local_ignored_path": true,
+    "separate_from_development_dotenv": true,
+    "development_dotenv_modified": false,
+    "development_dotenv_required_for_production": false,
+    "child_env_from_profile": true,
+    "child_env_skips_dotenv": true,
+    "clean_allowlisted_process_environment": true,
+    "arbitrary_development_env_inheritance": false,
+    "dangerous_development_variables_stripped": true,
+    "profile_overrides_development_dotenv_for_child": true,
+    "profile_mismatch_fails_closed": true,
+    "repair_resets_invariants": true,
+    "local_bootstrap_supported": true,
+    "auth_policy_explicit": true,
+    "child_env_sets_require_auth": true,
+    "profile_auth_overrides_storage_settings": true,
+    "create_repair_persists_inferred_values": true,
+    "partial_update_bootstraps_inferred_values": true,
+    "storage_root_not_invented": true,
+    "incomplete_profile_state_explicit": true,
+    "canonical_ignored_profile_created": true,
+    "canonical_ignored_profile_committed": false,
+    "profile_discovery": {
+      "local_evidence_checked": [
+        "local .env",
+        "data/settings.json",
+        ".local_manifests",
+        "production and launcher reports"
+      ],
+      "safe_inferred": [
+        "profile_id",
+        "env",
+        "repo_root identity",
+        "python candidate",
+        "app_port",
+        "storage root from initialized local settings or explicit local record",
+        "DB host",
+        "DB port",
+        "DB name",
+        "DB user",
+        "DB access value presence",
+        "production auth policy"
+      ],
+      "remaining_user_selected": [],
+      "private_values_invented": false,
+      "private_values_publicly_recorded": false
+    }
+  },
+  "electron_launcher": {
+    "exists": true,
+    "package_path": "launcher/package.json",
+    "primary_documented_entrypoint": true,
+    "windows_executable_packaging": true,
+    "zh_cn_primary_visible_ui": true,
+    "visible_app_title": "V.I.O.L.E.T. 启动器",
+    "start_auto_runs_preflight": true,
+    "manual_preflight_secondary_action": true,
+    "inferred_values_not_marked_saved_without_profile": true,
+    "copy_diagnostics_preserves_state": true,
+    "open_browser_preserves_state": true,
+    "db_access_value_clear_explicit": true,
+    "packaged_exe_repo_relative": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
+    "root_level_daily_entry_repo_relative": "V.I.O.L.E.T. Production Launcher.exe",
+    "root_level_daily_entry_ignored": true,
+    "app_icon_configured": true,
+    "window_taskbar_icon_configured": true,
+    "package_icon_configured": true,
+    "runtime_status_panel_after_running": true,
+    "runtime_status_polling_while_running": true,
+    "packaged_runtime_config_supported": true,
+    "portable_executable_repo_resolution": true,
+    "cmd_entry_path": "scripts/start_violet_production_launcher.cmd",
+    "cmd_entry_role": "fallback/development",
+    "calls_python_control_plane": true,
+    "raw_json_hidden_from_main_screen": true,
+    "advanced_diagnostics_collapsed_by_default": true,
+    "copy_diagnostic_summary": true,
+    "profile_missing_state_precedence": true,
+    "profile_error_state_visible": true,
+    "preserves_existing_db_user": true,
+    "save_profile_uses_stdin_json": true,
+    "main_status_labels_zh_cn": true,
+    "checklist_groups_zh_cn_in_renderer": true,
+    "checklist_groups": [
+      "Production Profile",
+      "Environment",
+      "Storage",
+      "Database",
+      "Schema",
+      "Port",
+      "Safety Flags",
+      "Startup Policy"
+    ],
+    "top_level_states": [
+      "No Production Profile",
+      "Profile Incomplete",
+      "Profile Error",
+      "Ready",
+      "Blocked",
+      "Starting",
+      "Running",
+      "Unhealthy",
+      "Stopped",
+      "Error"
+    ]
+  },
+  "npm_proxy_setup": {
+    "script_path": "scripts/setup_launcher_npm_proxy.ps1",
+    "local_ignored_npmrc": true,
+    "reset_supported": true,
+    "personal_proxy_value_committed": false,
+    "package_retry_after_local_proxy": "passed"
+  },
+  "preflight_mapping": {
+    "violet_env_production": true,
+    "violet_env_production_message": "Development .env is not used for production. Create or repair the production profile.",
+    "storage_root_explicit": true,
+    "storage_root_explicit_message": "Production profile is missing storage root.",
+    "production_storage_root_shape": true,
+    "production_storage_root_shape_message": "Production storage root is invalid or unsafe.",
+    "db_readonly_reachable": true,
+    "db_readonly_reachable_message": "Database check is skipped until production profile and storage gates pass.",
+    "no_startup_mutation_automation": true,
+    "no_startup_mutation_automation_message": "Production profile must disable startup automation flags."
+  },
+  "controller_changes": {
+    "commands_added": [
+      "profile-status",
+      "profile-discover",
+      "profile-init",
+      "profile-repair",
+      "profile-update",
+      "test-db",
+      "diagnostic-summary"
+    ],
+    "profile_aware_commands": [
+      "preflight",
+      "status",
+      "start",
+      "stop",
+      "restart",
+      "open-browser"
+    ],
+    "skip_dotenv_set_for_profile_child": true,
+    "run_py_skip_dotenv_supported": true,
+    "backend_config_skip_dotenv_supported": true,
+    "profile_mismatch_blocks_preflight_and_start": true,
+    "repair_forces_profile_invariants": true,
+    "profile_auth_policy_inferred_from_existing_settings_or_dotenv": true,
+    "profile_unknown_auth_policy_defaults_to_required": true,
+    "profile_child_env_sets_require_auth": true,
+    "profile_child_auth_env_overrides_storage_settings": true,
+    "profile_create_repair_writes_inferred_local_values": true,
+    "profile_partial_update_bootstraps_inferred_local_values": true,
+    "safe_startup_requires_initialized_settings": true,
+    "profile_active_db_env_overrides_settings_json": true,
+    "profile_update_private_db_value_uses_stdin_json": true,
+    "controller_empty_stdout_is_error": true,
+    "controller_stderr_redacted": true,
+    "controller_forward_slash_windows_paths_redacted": true,
+    "controller_profile_suffix_redacted": true,
+    "controller_http_urls_preserved": true,
+    "posix_port_owner_lookup": "lsof_then_ss",
+    "development_env_legacy_function_test_path_preserved": true
+  },
+  "health_status": {
+    "endpoint": "GET /api/health",
+    "auth_exempt_for_launcher": true,
+    "public_safe": true,
+    "schema_required_columns_check": true,
+    "status_example": {
+      "ok": true,
+      "app_name": "V.I.O.L.E.T.",
+      "env": "production",
+      "db_reachable": true,
+      "schema_compatible": true,
+      "schema_status": "compatible",
+      "storage_configured": true,
+      "debug": false
+    }
+  },
+  "start_safety": {
+    "launched_pid_verified": true,
+    "health_identity_verified": true,
+    "managed_unhealthy_is_unhealthy": true,
+    "existing_managed_unhealthy_blocks_start": true,
+    "existing_managed_healthy_start_is_success": true,
+    "failed_start_verification_cleanup": true,
+    "failed_start_state_cleared": true,
+    "failed_start_pid_reverified_before_signal": true,
+    "failed_start_child_reaped": true,
+    "failed_start_health_timeout_cleanup": true,
+    "failed_start_unknown_process_not_killed": true,
+    "failed_start_health_details_preserved": true,
+    "windows_venv_redirector_child_port_owner_supported": true,
+    "profile_identity_updates_blocked_while_running": true,
+    "dead_stale_state_cleared_after_profile_identity_change": true,
+    "live_or_ambiguous_mismatched_state_preserved": true,
+    "start_lock_stale_recovery_preserved": true
+  },
+  "stop_safety": {
+    "refuses_unknown_process": true,
+    "posix_unknown_port_owner_fails_closed": true,
+    "force_kill_same_verified_only": true,
+    "bounded_graceful_timeout": true
+  },
+  "shutdown_safety": {
+    "safe_startup_skips_background_tasks": true,
+    "tracked_background_tasks_cancelled": true,
+    "direct_safe_start_ctrl_break_result": "passed",
+    "port_released_after_temp_run": true,
+    "invalid_uvicorn_log_config_documented_absent": true
+  },
+  "public_json_safety": {
+    "log_tail_in_public_json": false,
+    "profile_paths_redacted": true,
+    "controller_stderr_redacted": true,
+    "controller_error_length_capped": true,
+    "advanced_diagnostics_public_safe": true,
+    "production_profile_suffix_redacted": true,
+    "forward_slash_windows_paths_redacted": true,
+    "unc_paths_redacted": true,
+    "http_urls_preserved": true,
+    "profile_private_values_publicly_recorded": false
+  },
+  "reviewer_ledger": {
+    "completed": true,
+    "items": [
+      {
+        "finding": "startup writes / safe startup",
+        "root_cause": "normal app startup previously ran maintenance before launcher-safe mode blocked writes",
+        "fix_location": "backend/app/main.py; backend/app/config.py; scripts/violet_production_control.py",
+        "same_class_sweep": "settings import, schema migration, cleanup, background tasks, import/tagging/sync startup paths",
+        "tests": "safe-start lifespan and shutdown tests",
+        "manual_acceptance_impact": "Start should not mutate production before explicit operator acceptance",
+        "status": "fixed"
+      },
+      {
+        "finding": "health auth exemption",
+        "root_cause": "launcher polled /api/health without credentials while auth middleware could require auth",
+        "fix_location": "backend/app/auth_middleware.py; backend/app/routes/health.py",
+        "same_class_sweep": "public launcher health payload remains narrow and public-safe",
+        "tests": "health auth middleware tests",
+        "manual_acceptance_impact": "health can be checked from launcher without login",
+        "status": "fixed"
+      },
+      {
+        "finding": "health schema/table/column compatibility",
+        "root_cause": "health could report OK from SELECT 1 or table names only",
+        "fix_location": "backend/app/routes/health.py",
+        "same_class_sweep": "required core tables and columns checked read-only",
+        "tests": "missing table and missing column health tests",
+        "manual_acceptance_impact": "Start reports Unhealthy instead of success for incompatible schema",
+        "status": "fixed"
+      },
+      {
+        "finding": "process stop verification",
+        "root_cause": "stale launcher state could point at a reused or unknown PID",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "stop, force stop, failed-start cleanup, port ownership",
+        "tests": "stop refuses unknown process; failed-start PID reverify tests",
+        "manual_acceptance_impact": "Stop remains safe during manual acceptance",
+        "status": "fixed"
+      },
+      {
+        "finding": "destructive E2E denial",
+        "root_cause": "test flags could leak from development env into production child",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "dangerous development/test flags forced false in profile child env",
+        "tests": "profile env isolation tests",
+        "manual_acceptance_impact": "launcher cannot start with destructive reset gates open",
+        "status": "fixed"
+      },
+      {
+        "finding": "start/restart serialization",
+        "root_cause": "multiple Start actions could race state and port ownership",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "start lock, stale lock reclaim, UI busy state",
+        "tests": "single-flight and stale lock tests",
+        "manual_acceptance_impact": "double-click Start should not race servers",
+        "status": "fixed"
+      },
+      {
+        "finding": "malformed APP_PORT / DB port",
+        "root_cause": "bad ports could raise or silently fall back",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "profile, .env, settings DB port parsing",
+        "tests": "malformed app and DB port preflight tests",
+        "manual_acceptance_impact": "operator sees actionable blocked checklist",
+        "status": "fixed"
+      },
+      {
+        "finding": "public log tail redaction",
+        "root_cause": "raw app logs could include local roots",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "ControlResult.to_public_dict, diagnostics, reports",
+        "tests": "public status JSON excludes log tail",
+        "manual_acceptance_impact": "copy diagnostics remains public-safe",
+        "status": "fixed"
+      },
+      {
+        "finding": "stale start locks",
+        "root_cause": "crashed Start left a blocking lock file",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "malformed, dead-PID, expired lock cases",
+        "tests": "stale start lock reclaim tests",
+        "manual_acceptance_impact": "operator can recover without hand-editing local lock",
+        "status": "fixed"
+      },
+      {
+        "finding": "run.py dotenv reload",
+        "root_cause": "production child launched run.py, which reloaded development .env",
+        "fix_location": "run.py; backend/app/config.py; scripts/violet_production_control.py",
+        "same_class_sweep": "entrypoints that call load_dotenv or import settings",
+        "tests": "skip-dotenv run.py and backend config tests",
+        "manual_acceptance_impact": "production remains separate from development .env",
+        "status": "fixed"
+      },
+      {
+        "finding": "development env inheritance",
+        "root_cause": "profile mode seeded config from full inherited os.environ",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "BLOMBOORU, VIOLET, provider, LLM, Redis, sync, E2E env classes",
+        "tests": "profile launch env isolation tests",
+        "manual_acceptance_impact": "profile launch is not development mode",
+        "status": "fixed"
+      },
+      {
+        "finding": "production auth policy preservation",
+        "root_cause": "profile startup skipped development .env but did not persist or emit an explicit production auth policy",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "existing profile, settings JSON, local .env discovery, profile repair, child environment",
+        "tests": "auth inference from settings/.env, safe default, and child environment tests",
+        "manual_acceptance_impact": "production UI/API does not silently become unauthenticated when profile startup skips development .env",
+        "status": "fixed"
+      },
+      {
+        "finding": "profile_id mismatch",
+        "root_cause": "profile_errors were not hard startup blockers",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "profile-status, preflight, start",
+        "tests": "profile mismatch fail-closed tests",
+        "manual_acceptance_impact": "wrong local profile cannot silently start",
+        "status": "fixed"
+      },
+      {
+        "finding": "invalid profile invariant repair",
+        "root_cause": "repair preserved env=development and safe_startup=false",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "profile init, repair, update invariants and automation flags",
+        "tests": "profile repair invariant reset tests",
+        "manual_acceptance_impact": "Create / Repair can recover hand-edited profiles",
+        "status": "fixed"
+      },
+      {
+        "finding": "DB user preservation",
+        "root_cause": "renderer defaulted unknown DB user to postgres",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "profile-discover/status public-safe DB user exposure and changed-field form submit",
+        "tests": "custom DB user preservation tests",
+        "manual_acceptance_impact": "saving unrelated fields does not break DB connectivity",
+        "status": "fixed"
+      },
+      {
+        "finding": "inferred profile values dropped on first update",
+        "root_cause": "no-profile discovery values were treated as saved by the renderer and profile-update started from defaults",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "Create/Repair, partial Save Profile, inferred DB/storage/app port, changed-field tracking",
+        "tests": "partial storage update bootstraps inferred DB values; renderer no-profile inference is not marked saved",
+        "manual_acceptance_impact": "operator does not need to manually reconstruct known local production DB/profile fields",
+        "status": "fixed"
+      },
+      {
+        "finding": "DB access value not in argv and explicit clearing",
+        "root_cause": "DB access value was command-line data and a blank value could not be intentionally saved",
+        "fix_location": "launcher/controller-runner.js; launcher/renderer/renderer.js; scripts/violet_production_control.py",
+        "same_class_sweep": "profile-update stdin JSON, diagnostics, renderer form semantics",
+        "tests": "stdin access-value and explicit clear tests",
+        "manual_acceptance_impact": "operator can update or clear local DB access value safely",
+        "status": "fixed"
+      },
+      {
+        "finding": "controller empty stdout / crash errors",
+        "root_cause": "empty stdout became a generic empty object",
+        "fix_location": "launcher/controller-runner.js",
+        "same_class_sweep": "spawn failure, non-JSON stdout, nonzero exit",
+        "tests": "controller runner crash/empty stdout tests",
+        "manual_acceptance_impact": "launcher shows actionable Error",
+        "status": "fixed"
+      },
+      {
+        "finding": "stderr/path/token redaction",
+        "root_cause": "raw traceback paths and tokens could reach diagnostics",
+        "fix_location": "scripts/violet_production_control.py; launcher/controller-runner.js",
+        "same_class_sweep": "drive paths, profile suffixes, UNC paths, home/repo/storage/profile roots, tokens, and DB access values",
+        "tests": "Python and Node redaction tests",
+        "manual_acceptance_impact": "diagnostics can be copied without local path leakage",
+        "status": "fixed"
+      },
+      {
+        "finding": "POSIX port owner fail-closed",
+        "root_cause": "non-Windows owner lookup was unavailable",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "lsof, ss, unknown owner fail-closed status",
+        "tests": "POSIX port owner tests",
+        "manual_acceptance_impact": "Linux/cloud does not mark unknown port as managed",
+        "status": "fixed"
+      },
+      {
+        "finding": "existing managed unhealthy server not ok=true",
+        "root_cause": "existing managed process early path ignored health_ok",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "status, start, renderer status mapping",
+        "tests": "existing healthy/unhealthy start tests; renderer unhealthy mapping test",
+        "manual_acceptance_impact": "DB/schema/storage health failures stay visible",
+        "status": "fixed"
+      },
+      {
+        "finding": "cleanup after post-start verification failure",
+        "root_cause": "new process/state could remain after health identity verification failed",
+        "fix_location": "scripts/violet_production_control.py",
+        "same_class_sweep": "health timeout, identity mismatch, expected-health mismatch, state changed, PID reused, POSIX zombie child",
+        "tests": "failed verification cleanup, health timeout cleanup, PID reverify, exited child reap tests",
+        "manual_acceptance_impact": "failed Start does not leave an unverified managed server",
+        "status": "fixed"
+      },
+      {
+        "finding": "identity profile edits while managed server running",
+        "root_cause": "changing profile identity fields during a running managed process could make later Stop compare against the wrong profile",
+        "fix_location": "scripts/violet_production_control.py; launcher/renderer/renderer.js",
+        "same_class_sweep": "repo root, python, app port, storage root, DB host/port/name/user identity fields",
+        "tests": "running managed identity update blocked; stopped identity update allowed; blocked update leaves profile unchanged",
+        "manual_acceptance_impact": "Stop remains safe and usable after profile editing attempts",
+        "status": "fixed"
+      },
+      {
+        "finding": "zh-CN-first UI",
+        "root_cause": "primary production entrypoint used English labels",
+        "fix_location": "launcher/renderer/index.html; launcher/renderer/renderer.js; launcher/main.js",
+        "same_class_sweep": "status badges, actions, summary labels, checklist groups, common messages",
+        "tests": "launcher contract and renderer behavior tests",
+        "manual_acceptance_impact": "daily UI is readable for the operator",
+        "status": "fixed"
+      },
+      {
+        "finding": "Copy Diagnostic not resetting UI state",
+        "root_cause": "minimal diagnostic payload was passed through applyPayload",
+        "fix_location": "launcher/renderer/renderer.js",
+        "same_class_sweep": "other minimal auxiliary payloads including open-browser",
+        "tests": "copy diagnostics and open-browser state preservation tests",
+        "manual_acceptance_impact": "copy/open auxiliary actions do not erase status/checklist",
+        "status": "fixed"
+      }
+    ]
+  },
+  "state_machine_audit": {
+    "completed": true,
+    "states": [
+      {"state": "No profile", "ui_state": "No Production Profile / 无生产配置", "control_ok": false, "control_status": "no_profile", "process_state": "none", "state_file": "absent or ignored", "cleanup_required": false, "user_action_required": "create_or_repair_profile"},
+      {"state": "Profile incomplete", "ui_state": "Profile Incomplete / 配置不完整", "control_ok": false, "control_status": "profile_incomplete", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "repair_or_select_missing_fields"},
+      {"state": "Profile error", "ui_state": "Profile Error / 配置错误", "control_ok": false, "control_status": "profile_error", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "repair_profile"},
+      {"state": "Profile ready", "ui_state": "Ready / 就绪", "control_ok": true, "control_status": "ready", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "click_start_auto_preflight"},
+      {"state": "Preflight blocked", "ui_state": "Blocked / 已阻塞", "control_ok": false, "control_status": "blocked", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "fix_checklist"},
+      {"state": "Preflight passed", "ui_state": "Ready / 就绪", "control_ok": true, "control_status": "passed", "process_state": "none", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "start_production"},
+      {"state": "Start requested", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "auto_preflight_then_start", "process_state": "not_yet_spawned", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "wait"},
+      {"state": "Start in progress", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "blocked_if_locked", "process_state": "single_flight", "state_file": "lock_present", "cleanup_required": false, "user_action_required": "wait_or_reclaim_stale_lock"},
+      {"state": "Child process spawned", "ui_state": "Starting / 正在启动", "control_ok": false, "control_status": "pending_health", "process_state": "new_pid", "state_file": "written_for_new_pid", "cleanup_required": "if_later_failure", "user_action_required": "wait"},
+      {"state": "Health timeout", "ui_state": "Error / 错误", "control_ok": false, "control_status": "error", "process_state": "new_pid_cleanup_attempted", "state_file": "cleared_if_matching", "cleanup_required": true, "user_action_required": "read_safe_recovery_if_cleanup_incomplete"},
+      {"state": "Health unhealthy", "ui_state": "Unhealthy / 不健康", "control_ok": false, "control_status": "unhealthy", "process_state": "new_pid_cleanup_attempted_or_existing_managed", "state_file": "cleared_if_failed_launch", "cleanup_required": "for_new_failed_launch", "user_action_required": "fix_health_or_stop_existing"},
+      {"state": "Health OK but identity verification failed", "ui_state": "Unhealthy / 不健康", "control_ok": false, "control_status": "unhealthy", "process_state": "new_pid_cleanup_attempted", "state_file": "cleared_if_matching", "cleanup_required": true, "user_action_required": "inspect_safe_recovery_if_cleanup_incomplete"},
+      {"state": "Start success", "ui_state": "Running / 运行中", "control_ok": true, "control_status": "running", "process_state": "verified_pid_health_ok", "state_file": "kept", "cleanup_required": false, "user_action_required": "open_browser_or_stop"},
+      {"state": "Existing managed healthy process", "ui_state": "Running / 运行中", "control_ok": true, "control_status": "running", "process_state": "verified_existing_pid_health_ok", "state_file": "kept", "cleanup_required": false, "user_action_required": "open_browser_or_stop"},
+      {"state": "Existing managed unhealthy process", "ui_state": "Unhealthy / 不健康", "control_ok": false, "control_status": "unhealthy", "process_state": "verified_existing_pid_health_failed", "state_file": "kept", "cleanup_required": false, "user_action_required": "stop_or_fix_health"},
+      {"state": "Stop requested", "ui_state": "Stopped or Blocked", "control_ok": "depends", "control_status": "stopped_or_blocked", "process_state": "verified_pid_only", "state_file": "cleared_on_success", "cleanup_required": true, "user_action_required": "wait_or_read_refusal"},
+      {"state": "Stop refused", "ui_state": "Blocked / 已阻塞", "control_ok": false, "control_status": "blocked", "process_state": "unknown_or_unverified", "state_file": "kept_or_cleared_only_if_stale_safe", "cleanup_required": false, "user_action_required": "manual_inspection"},
+      {"state": "Restart requested", "ui_state": "Starting / 正在启动", "control_ok": "depends", "control_status": "restart_stop_then_start", "process_state": "verified_stop_then_new_start", "state_file": "serialized_by_lock", "cleanup_required": "if_start_fails", "user_action_required": "wait"},
+      {"state": "Copy diagnostics", "ui_state": "unchanged", "control_ok": true, "control_status": "diagnostic-summary", "process_state": "unchanged", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "none"},
+      {"state": "Advanced diagnostics", "ui_state": "collapsed_by_default", "control_ok": "n/a", "control_status": "n/a", "process_state": "unchanged", "state_file": "unchanged", "cleanup_required": false, "user_action_required": "expand_if_needed"}
+    ],
+    "dangerous_transitions_tested": [
+      "existing managed unhealthy -> start ok=false status=unhealthy",
+      "new process -> verification failure -> cleanup same Popen child and matching state",
+      "health timeout -> cleanup same Popen child and matching state",
+      "state changed or identity unverified -> no termination",
+      "profile mismatch -> no preflight/start",
+      "invalid profile -> repair resets invariants",
+      "running managed process -> identity profile update is blocked",
+      "dead stale launcher state after profile identity change -> cleared only when PID is dead",
+      "Start click -> automatic preflight -> start only after preflight passes",
+      "copy diagnostics/open browser -> no UI reset"
+    ]
+  },
+  "same_class_sweep": {
+    "completed": true,
+    "areas": [
+      {
+        "area": "environment isolation",
+        "searched": ["run.py", "backend/app/config.py", "scripts/violet_production_control.py", "Electron controller runner", "start scripts"],
+        "result": "profile child sets skip-dotenv/profile-active flags and uses an explicit allowlist baseline"
+      },
+      {
+        "area": "secrets and private path leakage",
+        "searched": ["controller stdout", "controller stderr", "advanced diagnostics", "copy diagnostics", "public reports", "Electron IPC", "ControlResult.to_public_dict"],
+        "result": "DB access values, tokens, home/repo/profile/storage paths, drive paths, UNC paths, and mixed profile suffixes are redacted; http URLs are preserved"
+      },
+      {
+        "area": "start/stop cleanup",
+        "searched": ["every return after subprocess.Popen", "health timeout", "identity mismatch", "expected health mismatch", "stop graceful and force paths"],
+        "result": "newly spawned failed launches clean up the same Popen child or return explicit safe recovery; unknown processes are not killed"
+      },
+      {
+        "area": "UI status mapping",
+        "searched": ["deriveState", "applyPayload", "copy diagnostics", "open browser", "boot missing profile precedence"],
+        "result": "Unhealthy is not rendered as Running; auxiliary minimal payloads do not erase status/checklist"
+      },
+      {
+        "area": "profile edit safety",
+        "searched": ["profile-update", "renderer changed-field tracking", "launcher-managed state verification"],
+        "result": "first create/repair persists inferred values; partial updates bootstrap inferred values; identity fields are blocked while a managed server is running"
+      }
+    ]
+  },
+  "review_fix_round": {
+    "base_head_sha": "e357dc634ed95e50d51e33a8dbca8262ff63b545",
+    "fixed": [
+      "P1 run.py and backend config honor VIOLET_SKIP_DOTENV for profile startup",
+      "P2 profile id mismatch fails closed for status, preflight, and start",
+      "P2 forward-slash Windows paths are redacted without corrupting http URLs",
+      "P2 profile repair resets env, safe startup, and automation invariants",
+      "local production profile bootstrap writes only the ignored profile",
+      "Windows portable Electron executable packaging was added and validated",
+      "local ignored npm proxy setup and reset script was added",
+      "safe-start shutdown avoids background tasks and tracked tasks are cancelled"
+    ],
+    "fixed_after_head_ef04264": [
+      "P2 Start returns unhealthy failure for existing managed unhealthy processes",
+      "P2 failed post-start verification attempts bounded cleanup of the newly launched process and clears matching launcher state",
+      "P2 controller stderr redacts production profile suffixes with mixed path separators",
+      "P2 Electron visible launcher UI is zh-CN first while Advanced Diagnostics keeps technical JSON",
+      "P3 Copy Diagnostic Summary no longer replaces current status or checklist"
+    ],
+    "fixed_after_head_35800765": [
+      "P2 DB access value clearing is now explicit through a zh-CN checkbox and stdin JSON payload",
+      "P2 Open Browser preserves the current status/checklist on success",
+      "P2 failed-start cleanup reaps the Popen child and clears matching state for already-exited children",
+      "P1 failed-start cleanup re-verifies state/process identity before signaling non-Popen fallback PIDs",
+      "P2 controller stderr redacts UNC/NAS path forms without corrupting normal http(s) URLs"
+    ],
+    "fixed_after_head_a1d25263": [
+      "production auth policy is explicit in the profile, inferred from existing local evidence, and emitted into the child environment",
+      "Create/Repair and first partial Save persist inferred local profile values instead of dropping DB/storage fields",
+      "identity profile edits are blocked while a launcher-managed production server is running"
+    ],
+    "fixed_after_head_f3b9c8a": [
+      "production-profile-active config now resolves BLOMBOORU_REQUIRE_AUTH from the profile child environment before storage settings.json",
+      "development mode keeps the existing settings.json-before-env auth precedence"
+    ],
+    "fixed_after_local_packaged_acceptance_probe": [
+      "packaged portable Electron launcher resolves the canonical checkout through local runtime config and electron-builder PORTABLE_EXECUTABLE_DIR",
+      "Windows venv redirector launches are accepted only when the listener owner is a verified child process still running run.py"
+    ],
+    "fixed_after_final_polish_pass": [
+      "V.I.O.L.E.T. icon is configured for the Electron window/taskbar and electron-builder Windows package",
+      "running services render a public-safe runtime status panel instead of the stale preflight unchecked placeholder",
+      "npm run package installs an ignored root-level daily launcher executable for double-click use",
+      "root-level packaged launcher resolution includes the original portable executable directory and canonical Windows checkout fallback",
+      "README and production launcher documentation now describe this temporary personal Windows production entrypoint"
+    ],
+    "fixed_after_head_dfa297b": [
+      "dead launcher state from an older profile identity is cleared safely when the recorded PID is no longer running",
+      "Start automatically runs preflight before production startup and stops on preflight failure",
+      "manual preflight was demoted to a secondary diagnostic action",
+      "visible app title and main heading were simplified to V.I.O.L.E.T. 启动器"
+    ],
+    "intentionally_deferred_current_windows_mvp": [
+      "POSIX/Linux port owner completeness beyond existing fail-closed behavior: current acceptance path is the Windows local packaged launcher",
+      "full schema preflight before spawn: current temporary launcher requires Health OK plus real app/browser validation during acceptance and keeps health schema checks public-safe; complete migration-state gating belongs to later production schema work",
+      "broad multi-user/global production profile architecture: this PR is a personal local launcher bridge",
+      "cosmetic diagnostics edge cases that do not leak secrets and do not affect Start/Stop"
+    ]
+  },
+  "manual_acceptance_required_before_merge": true,
+  "manual_acceptance_completed": false,
+  "merge_allowed": false,
+  "validation": {
+    "python_env_check": "passed",
+    "python_executable_redacted": true,
+    "py_compile_status": "passed",
+    "python_tests_status": "passed",
+    "python_tests_result": "256 passed",
+    "config_precedence_auth_tests_status": "passed",
+    "electron_install_status": "passed",
+    "electron_tests_status": "passed",
+    "electron_tests_result": "launcher contract checks passed; controller runner tests passed; renderer behavior tests passed",
+    "electron_lint_status": "passed",
+    "electron_audit_status": "passed_zero_vulnerabilities",
+    "electron_package_status": "passed",
+    "root_launcher_install_status": "passed",
+    "root_launcher_gui_validation_status": "passed",
+    "root_launcher_gui_validation_result": "Computer Use launched the canonical root-level executable, confirmed the V.I.O.L.E.T. 启动器 title, loaded the production profile without manual configuration, clicked Start without manual preflight, observed automatic preflight then production start, reached Running / Health OK with the runtime status panel, opened the browser, stopped production, completed a second Start-Stop cycle, and released port 8000.",
+    "contract_check_status": "passed",
+    "public_redaction_json_status": "passed",
+    "manual_acceptance_status": "manual_acceptance_required_before_merge",
+    "canonical_profile_status": "ready_auth_policy_explicit",
+    "canonical_preflight_status": "passed",
+    "direct_safe_start_shutdown_status": "passed"
+  },
+  "safety": {
+    "no_push_main": true,
+    "no_merge": true,
+    "no_import_tagging_localization_sync_jobs": true,
+    "no_provider_calls": true,
+    "no_sourceconcept_or_entity": true,
+    "no_db_migrations": true,
+    "no_destructive_operations": true,
+    "no_source_icloud_mutation": true,
+    "no_db_import": true,
+    "no_classification": true,
+    "no_ai_tagging": true,
+    "no_llm_call": true
+  },
+  "forbidden_operations": {
+    "import_jobs": false,
+    "tagging_jobs": false,
+    "localization_jobs": false,
+    "sync_jobs": false,
+    "provider_calls": false,
+    "sourceconcept": false,
+    "entity_bridge": false,
+    "db_migrations": false,
+    "destructive_operations": false,
+    "source_icloud_mutation": false
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "path": "scripts/violet_production_control.py",
+        "classification": "reusable validation/safety tool",
+        "committed": true
+      },
+      {
+        "path": "launcher/",
+        "classification": "durable production launcher UI",
+        "committed": true
+      },
+      {
+        "path": "launcher/assets/violet.ico",
+        "classification": "durable production launcher icon asset",
+        "committed": true
+      },
+      {
+        "path": "scripts/install_production_launcher_root_entry.ps1",
+        "classification": "reusable local setup helper",
+        "committed": true
+      },
+      {
+        "path": "scripts/setup_launcher_npm_proxy.ps1",
+        "classification": "reusable local setup helper",
+        "committed": true
+      },
+      {
+        "path": ".local_manifests/production_launcher/production-profile.json",
+        "classification": "one-off local/private",
+        "committed": false
+      },
+      {
+        "path": "launcher/dist/V.I.O.L.E.T. Production Launcher.exe",
+        "classification": "one-off local build output",
+        "committed": false
+      },
+      {
+        "path": "V.I.O.L.E.T. Production Launcher.exe",
+        "classification": "one-off local root-level daily launcher output",
+        "committed": false
+      },
+      {
+        "path": "docs/production-launcher.md",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      },
+      {
+        "path": "docs/reports/prod-launcher-ux1-production-profile-summary.json",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      },
+      {
+        "path": "docs/reports/prod-launcher-ux1-production-profile.md",
+        "classification": "public report/handoff",
+        "committed": true,
+        "redacted": true
+      }
+    ]
+  },
+  "merge_recommendation": "do_not_merge_until_manual_acceptance_completed"
+}

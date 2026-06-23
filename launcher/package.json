@@ -1,0 +1,36 @@
+{
+  "name": "violet-production-launcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electron production launcher for V.I.O.L.E.T.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/launcher-contract.test.js && node tests/controller-runner.test.js && node tests/renderer-behavior.test.js",
+    "lint": "node tests/lint.js",
+    "package": "electron-builder --win portable && powershell -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\install_production_launcher_root_entry.ps1"
+  },
+  "build": {
+    "appId": "local.violet.production-launcher",
+    "productName": "V.I.O.L.E.T. Production Launcher",
+    "artifactName": "V.I.O.L.E.T. Production Launcher.${ext}",
+    "files": [
+      "controller-runner.js",
+      "main.js",
+      "preload.js",
+      "assets/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/violet.ico",
+      "target": [
+        "portable"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.1",
+    "electron-builder": "^26.0.12"
+  }
+}

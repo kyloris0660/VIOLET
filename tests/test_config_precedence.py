@@ -13,6 +13,7 @@ This was changed to override=False so that:
     (4) Code defaults remain the lowest priority
 """
 import importlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -255,6 +256,65 @@ class TestDotenvDefaultLoading:
         assert "override=True" not in source, (
             "config.py must NOT call load_dotenv with override=True"
         )
+
+
+class TestProductionProfileAuthPrecedence:
+    """Production profile child env must own auth policy during launcher startup."""
+
+    def _write_settings(self, storage_root: Path, require_auth: bool) -> None:
+        data_dir = storage_root / "data"
+        data_dir.mkdir(parents=True)
+        (data_dir / "settings.json").write_text(
+            json.dumps(
+                {
+                    "first_run": False,
+                    "secret_key": "stable-test-secret",
+                    "require_auth": require_auth,
+                    "database": {"name": "settings_db"},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_profile_auth_true_overrides_storage_settings_false(self, tmp_path):
+        storage = tmp_path / "storage"
+        self._write_settings(storage, require_auth=False)
+        env = {
+            "VIOLET_ENV": "production",
+            "VIOLET_STORAGE_ROOT": str(storage),
+            "VIOLET_PRODUCTION_PROFILE_ACTIVE": "true",
+            "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP": "true",
+            "BLOMBOORU_REQUIRE_AUTH": "true",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            s = _reload_settings(tmp_path)
+            assert s.REQUIRE_AUTH is True
+
+    def test_profile_auth_false_intentionally_overrides_storage_settings_true(self, tmp_path):
+        storage = tmp_path / "storage"
+        self._write_settings(storage, require_auth=True)
+        env = {
+            "VIOLET_ENV": "production",
+            "VIOLET_STORAGE_ROOT": str(storage),
+            "VIOLET_PRODUCTION_PROFILE_ACTIVE": "true",
+            "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP": "true",
+            "BLOMBOORU_REQUIRE_AUTH": "false",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            s = _reload_settings(tmp_path)
+            assert s.REQUIRE_AUTH is False
+
+    def test_development_settings_still_override_auth_env(self, tmp_path):
+        storage = tmp_path / "storage"
+        self._write_settings(storage, require_auth=False)
+        env = {
+            "VIOLET_ENV": "development",
+            "VIOLET_STORAGE_ROOT": str(storage),
+            "BLOMBOORU_REQUIRE_AUTH": "true",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            s = _reload_settings(tmp_path)
+            assert s.REQUIRE_AUTH is False
 
 
 class TestAiTaggingLoadControlSettings:

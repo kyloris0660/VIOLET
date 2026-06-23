@@ -5,7 +5,13 @@ import sys
 import uvicorn
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().casefold() in {"true", "1", "yes", "on"}
+
+
+if not _truthy_env("VIOLET_SKIP_DOTENV"):
+    load_dotenv()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
