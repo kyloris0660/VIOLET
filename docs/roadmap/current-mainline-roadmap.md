@@ -1,7 +1,7 @@
 # Current Mainline Roadmap
 
-Status: active after PR #122 / PROD-LAUNCHER-UX1/PF1 merge and PD1-A-R1
-roadmap reconciliation on 2026-06-23.
+Status: active after PR #123 / PD1-A-R1 merge and S2G-M1 foundation work on
+2026-06-24.
 
 This is the durable short-term routing document for post-#122 work. It keeps
 the accepted sequence visible for ChatGPT, CodeX, and operator sessions without
@@ -27,29 +27,38 @@ turning this phase into a broad planning essay.
   It solves the current production entry problem but is not the long-term
   production configuration architecture.
 - Long-term production/development config unification is deferred.
+- PR #123 / PD1-A-R1 is merged into `main`.
+- Merge commit: `4724530d83767a62b6525a58bb1a1d04e973d48e`.
+- PD1-A-R1 reconciled the post-#122 route and kept the
+  `production_development_separation_contract_v1` gate current.
 - V.I.O.L.E.T. has a real production baseline library. Development work must
   not casually use production DB, production storage, production source roots,
   or production private ledgers as fixtures.
 
 ## Accepted Sequence
 
-1. `PD1-A-R1` - Post-#122 roadmap reconciliation and production/development
-   gate foundation.
-   - Immediate next phase after PR #122.
-   - Reconcile persistent roadmap/handoff/report/contract state.
-   - No production writes.
-   - Does not start S2G, R1R, A1R, S3A, S3B, provider work, SourceConcept
-     mutation, Entity truth writes, or DB mutation.
-
-2. `S2G: GPU / AI Tagging Execution Foundation`.
+1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation`.
    - Single consolidated phase, not two phases.
    - Includes GPU / AI tagging capability probe and benchmark.
    - Includes provider abstraction, provenance, batch/concurrency/throttle
      controls, and CPU fallback.
-   - No production writes unless a later phase explicitly approves them.
+   - Adds manual sync dry-run planning, sync job/ledger foundation, and the
+     controlled import -> classification -> AI tagging -> localization pipeline
+     foundation for dry-run/dev-test mode.
+   - No production writes.
+
+2. `S3A-M1` - Explicit manual-sync execute path plus final UI / production acceptance.
+   - Small follow-up phase after S2G-M1.
+   - Implements or wires the explicit manual-sync execute path, adds the final
+     visible controls, and runs first small production acceptance only after
+     explicit operator approval.
+   - Must bind to production profile/runtime config, not development `.env`.
+   - Must remain manual; no automatic, scheduled, startup, service, or
+     unattended sync.
 
 3. `R1R` - SourceConcept route redo under GOV3 contracts.
-   - Follows S2G unless the user explicitly reprioritizes.
+   - Follows the production utility acceptance unless the user explicitly
+     reprioritizes.
    - Use executable contracts and a review pack.
    - Treat AI proper-noun tags as weak evidence only.
    - Do not create confirmed Entity assignments.
@@ -65,22 +74,14 @@ turning this phase into a broad planning essay.
    - Make the Pixiv/source metadata route reliable before adding providers.
    - Do not introduce new providers before Pixiv/source metadata is settled.
 
-6. `S3A` - Controlled Incremental Sync Pipeline.
-   - Later than S2G and the R1R/A1R/Pixiv route decision unless the user
-     explicitly reprioritizes.
-   - Must bind to production profile/runtime config, not development `.env`.
-   - Production execution still waits for a separate approved phase.
-   - Production execution still requires explicit confirmation and promotion
-     gates.
-
-7. `S3B` - Opt-in automated incremental sync.
+6. `S3B` - Opt-in automated incremental sync.
    - Later.
    - Disabled by default.
    - Must bind to production profile/runtime config, not development `.env`.
    - Scheduled or unattended automation remains opt-in only until explicitly
      approved.
 
-8. `S2F0` - Desired-media gap audit / support decision report.
+7. `S2F0` - Desired-media gap audit / support decision report.
    - Low priority.
    - Audit-only, not implementation.
    - Report unsupported desired-media ratio, extension breakdown, sampled
@@ -90,9 +91,10 @@ turning this phase into a broad planning essay.
 
 ## What Is Intentionally Not Next
 
-- Do not enable production S3A/S3B execution from PD1-A-R1.
-- Do not run S2G during PD1-A-R1; the next PR may start S2G after this
-  reconciliation lands.
+- Do not enable automatic, scheduled, startup, service, or unattended sync from
+  S2G-M1.
+- Do not treat S2G-M1 capability probe or dry-run planner output as production
+  acceptance.
 - Do not run provider, Pixiv, gallery-dl, SauceNAO, Google, or source-enrichment
   work.
 - Do not run SourceConcept R1/R2, Entity bridge, or confirmed assignment
@@ -123,9 +125,9 @@ turning this phase into a broad planning essay.
 
 ## Choosing The Next Work
 
-After PD1-A-R1 merges, the recommended next phase is:
+After S2G-M1 merges, the recommended next phase is:
 
-`S2G: GPU / AI Tagging Execution Foundation`.
+`S3A-M1: explicit manual-sync execute path plus final UI / production acceptance`.
 
 Only change that order if the operator explicitly reprioritizes. If a future
 session is unsure, choose the first unmerged item in `Accepted Sequence` whose

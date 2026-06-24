@@ -1,0 +1,528 @@
+{
+  "ai_execution_profile": {
+    "allow_provider_fallback": true,
+    "batch_size": 2,
+    "concurrency": 1,
+    "dev_test": true,
+    "dry_run": true,
+    "execution_scope": "dry_run_or_dev_test",
+    "fallback_behavior": "try_requested_providers_in_order_then_cpu_if_allowed",
+    "job_timeout_seconds": 600,
+    "llm_calls_enabled": false,
+    "local_files_only": true,
+    "model_name": "wd-swinv2-tagger-v3",
+    "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+    "model_source_public": "huggingface_cache_or_configured_local_model_redacted",
+    "per_image_timeout_seconds": 60,
+    "preprocess_workers": 2,
+    "production_capable": true,
+    "production_writes_enabled": false,
+    "profile_id": "s2g_manual_sync_foundation_default_v1",
+    "provenance_fields": [
+      "source",
+      "model_name",
+      "model_repo_id",
+      "provider_backend",
+      "requested_provider_preference",
+      "actual_provider",
+      "fallback_occurred",
+      "fallback_reason",
+      "confidence",
+      "thresholds",
+      "job_id",
+      "dry_run",
+      "write_mode"
+    ],
+    "provider_backend": "onnxruntime",
+    "provider_network_calls_enabled": false,
+    "provider_preference": [
+      "CUDAExecutionProvider",
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "safe_for_current_phase": true,
+    "thresholds": {
+      "character_threshold": 0.65,
+      "general_threshold": 0.35,
+      "rating_threshold": 0.5,
+      "suggestion_threshold": 0.2
+    },
+    "validation_errors": []
+  },
+  "api_surface": {
+    "auth_required": "require_admin_mode",
+    "automatic_execution_endpoint_added": false,
+    "manual_plan_endpoint": "POST /api/admin/dynamic-library-sync/manual-sync/plan",
+    "manual_status_endpoint": "GET /api/admin/dynamic-library-sync/manual-sync/status",
+    "production_write_endpoint_enabled": false
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "durable production code",
+        "path": "backend/app/services/job_control.py"
+      },
+      {
+        "classification": "durable production code",
+        "path": "backend/app/services/dynamic_library_sync_service.py"
+      },
+      {
+        "classification": "durable production code",
+        "path": "backend/app/routes/admin/dynamic_library_sync.py"
+      },
+      {
+        "classification": "reusable validation/safety tool",
+        "path": "scripts/run_s2g_m1_ai_manual_sync_foundation.py"
+      },
+      {
+        "classification": "reusable validation/safety tool",
+        "path": "scripts/phase_contracts/contract_registry.py"
+      },
+      {
+        "classification": "reusable validation/safety tool",
+        "path": "scripts/phase_contracts/contract_checks.py"
+      },
+      {
+        "classification": "public report / handoff",
+        "path": "docs/reports/s2g-m1-ai-manual-sync-foundation.md"
+      },
+      {
+        "classification": "public report / handoff",
+        "path": "docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json"
+      }
+    ],
+    "local_ignored_artifacts_created": false,
+    "private_artifacts_committed": false
+  },
+  "branch": "codex/s2g-m1-ai-manual-sync-foundation",
+  "capability_probe": {
+    "attempted": true,
+    "blocker": null,
+    "bounded": true,
+    "cpu_fallback_available": true,
+    "cpu_fallback_completed": true,
+    "estimated_runtime_seconds_for_25_item_manual_batch": 1.95,
+    "gpu_acceleration_available": true,
+    "local_files_only": true,
+    "model_cache": {
+      "blocker": null,
+      "label_file_cached": true,
+      "local_files_only": true,
+      "model_download_allowed": false,
+      "model_download_performed": false,
+      "model_file_cached": true,
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "network_download_required": false,
+      "status": "cached"
+    },
+    "onnxruntime": {
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "device": "CPU-DML",
+      "error_code": null,
+      "importable": true,
+      "version": "1.24.4"
+    },
+    "provider_benchmark_timeout_seconds": 60.0,
+    "provider_fallback_decision_recorded": true,
+    "provider_matrix": {
+      "cpu": {
+        "available": true,
+        "batch_size": 2,
+        "loaded": true,
+        "loaded_providers": [
+          "CPUExecutionProvider"
+        ],
+        "model_load_seconds": 1.3069,
+        "practical": true,
+        "provider": "CPUExecutionProvider",
+        "sample_count": 2,
+        "seconds_per_item": 0.4222,
+        "single_image_latency_seconds": 0.4111,
+        "small_batch_latency_seconds": 0.8444,
+        "status": "completed",
+        "throughput_items_per_second": 2.3684
+      },
+      "cuda": {
+        "available": false,
+        "blocker": "provider_not_available",
+        "loaded": false,
+        "practical": false,
+        "provider": "CUDAExecutionProvider",
+        "status": "not_available"
+      },
+      "directml": {
+        "available": true,
+        "batch_size": 2,
+        "loaded": true,
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "model_load_seconds": 1.366,
+        "practical": true,
+        "provider": "DmlExecutionProvider",
+        "sample_count": 2,
+        "seconds_per_item": 0.0781,
+        "single_image_latency_seconds": 0.0386,
+        "small_batch_latency_seconds": 0.1562,
+        "status": "completed",
+        "throughput_items_per_second": 12.8074
+      }
+    },
+    "provider_selection": {
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "candidate_provider_order": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": true,
+      "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider",
+      "requested_provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "selected_provider": "DmlExecutionProvider",
+      "unavailable_requested_providers": [
+        "CUDAExecutionProvider"
+      ],
+      "unsupported_requested_providers": []
+    },
+    "recommended_batch_size": 2,
+    "recommended_concurrency": 1,
+    "recommended_provider": "DmlExecutionProvider",
+    "recommended_seconds_per_item": 0.0781,
+    "sample_count": 2,
+    "status": "completed",
+    "synthetic_input_only": true
+  },
+  "final_button_recommendation": {
+    "first_real_acceptance_batch_size": 5,
+    "launcher_intrusive_prompt": false,
+    "launcher_pending_check_on_startup": "lightweight_count_only_ok",
+    "partial_failure_behavior": "complete successful items, keep failed/deferred item ledger visible, stop only on hard safety gate or failure budget",
+    "placement": "both_launcher_and_web_admin",
+    "primary_call": "POST /api/admin/dynamic-library-sync/manual-sync/plan first; S3A-M1 must implement or wire an explicit execute endpoint/runner before production acceptance",
+    "rollback_supersede_diagnostic_plan": "ledger-driven retry/supersede; no source mutation; diagnose by job id, safe labels, reason counts, and provider provenance",
+    "safe_default_ai_batch_size": 2,
+    "safe_default_concurrency": 1,
+    "safe_default_max_duration_seconds": 600,
+    "safe_default_max_files": 25
+  },
+  "generated_at": "2026-06-24T11:48:55Z",
+  "head_evidence": {
+    "head_evidence_valid": true,
+    "latest_main_after_pr123": true,
+    "origin_main_sha": "4724530d83767a62b6525a58bb1a1d04e973d48e",
+    "post_validation_changes_report_only": true,
+    "pr123_merge_commit": "4724530d83767a62b6525a58bb1a1d04e973d48e",
+    "pr123_merge_is_ancestor_of_origin_main": true,
+    "report_generation_head_sha": "a44c18a133689e94540db37df9fb05855c1edb7e",
+    "validated_implementation_is_ancestor_of_head": true,
+    "validated_implementation_is_not_base_main": true,
+    "validated_implementation_sha": "a44c18a133689e94540db37df9fb05855c1edb7e"
+  },
+  "known_limitations": [
+    "No production execute endpoint or production execute runner is implemented in this PR.",
+    "No final visible production manual-sync button or production acceptance is included in this PR.",
+    "Persistent production execution ledgers remain disabled until S3A-M1 acceptance.",
+    "Controlled pipeline support is a dry-run planning foundation; S3A-M1 must implement or wire explicit execution before production acceptance.",
+    "Capability probe uses synthetic tensors and local model cache only; it does not prove full production throughput."
+  ],
+  "load_control_policy": {
+    "cancelability_or_safe_stop": "existing_ai_job_cancel_flag_and_item_boundary",
+    "failure_isolation_per_image": true,
+    "job_timeout_seconds": 600,
+    "max_batch_size": 2,
+    "max_concurrency": 1,
+    "no_unbounded_production_loop": true,
+    "per_image_timeout_seconds": 60,
+    "present": true,
+    "single_active_ai_execution_guard": true
+  },
+  "manual_sync": {
+    "controlled_pipeline": {
+      "dry_run_only_this_phase": true,
+      "estimated_runtime_seconds": 0.448,
+      "implemented": true,
+      "production_execute_enabled": false,
+      "stages": [
+        {
+          "dry_run_only_this_phase": true,
+          "duration_limited": null,
+          "input_count": 6,
+          "max_duration_seconds": null,
+          "name": "candidate_discovery",
+          "output_count": 1,
+          "production_execution_enabled": false,
+          "state": "completed",
+          "writes_enabled": false
+        },
+        {
+          "dry_run_only_this_phase": true,
+          "duration_limited": null,
+          "estimated_count": 1,
+          "max_duration_seconds": null,
+          "name": "import",
+          "production_execution_enabled": false,
+          "state": "planned",
+          "writes_enabled": false
+        },
+        {
+          "dry_run_only_this_phase": true,
+          "duration_limited": null,
+          "estimated_count": 1,
+          "max_duration_seconds": null,
+          "name": "classification",
+          "production_execution_enabled": false,
+          "state": "planned",
+          "writes_enabled": false
+        },
+        {
+          "batch_size": 2,
+          "concurrency": 1,
+          "dry_run_only_this_phase": true,
+          "duration_limited": null,
+          "estimated_count": 1,
+          "max_duration_seconds": null,
+          "name": "ai_tagging",
+          "production_execution_enabled": false,
+          "profile_id": "s2g_manual_sync_foundation_default_v1",
+          "state": "planned",
+          "writes_enabled": false
+        },
+        {
+          "dry_run_only_this_phase": true,
+          "duration_limited": null,
+          "estimated_count": 1,
+          "llm_calls_enabled": false,
+          "max_duration_seconds": null,
+          "name": "localization",
+          "production_execution_enabled": false,
+          "state": "handoff_planned",
+          "writes_enabled": false
+        },
+        {
+          "dry_run_only_this_phase": true,
+          "duration_limited": false,
+          "estimated_count": 1,
+          "max_duration_seconds": 600,
+          "name": "summary",
+          "production_execution_enabled": false,
+          "state": "planned",
+          "writes_enabled": false
+        }
+      ],
+      "status": "dry_run_planned"
+    },
+    "dry_run_planner": {
+      "app_storage_mutation_performed": false,
+      "db_write_performed": false,
+      "estimated_ai_tagging_count": 1,
+      "estimated_classification_count": 1,
+      "estimated_import_count": 1,
+      "estimated_localization_workload": 1,
+      "failure_reasons": {
+        "corrupted_image": 1,
+        "duplicate_hash": 1,
+        "existing_media_hash": 1,
+        "unsupported_extension": 1,
+        "zero_byte_file": 1
+      },
+      "implemented": true,
+      "public_safe": true,
+      "source_mutation_performed": false,
+      "state_counts": {
+        "ai_tagged_in_test": 0,
+        "candidate": 0,
+        "classified_in_test": 0,
+        "failed": 1,
+        "import_planned": 1,
+        "imported_in_test": 0,
+        "localization_scheduled_in_test": 0,
+        "skipped_changing": 0,
+        "skipped_duplicate": 1,
+        "skipped_existing_media": 1,
+        "skipped_path_policy_error": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 1,
+        "skipped_zero_byte": 1
+      }
+    },
+    "job_ledger_foundation": {
+      "implemented": true,
+      "job_id_present": true,
+      "ledger_mode": "ephemeral_public_plan_current_phase",
+      "mode": "dry_run",
+      "per_file_state_records_present": true,
+      "persistent_tables_available": [
+        "blombooru_dynamic_source_roots",
+        "blombooru_dynamic_source_items",
+        "blombooru_dynamic_sync_runs",
+        "blombooru_dynamic_sync_run_items"
+      ],
+      "state": "planned",
+      "trigger_type": "manual_operator"
+    }
+  },
+  "phase": "S2G-M1",
+  "pipeline_contract": {
+    "claims": {
+      "full_chain_complete": false,
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s2g_manual_sync_foundation_contract_v1",
+    "phase_identity": "S2G-M1",
+    "post_123_route_respected": true,
+    "status": "target_met"
+  },
+  "provenance_policy": {
+    "confidence_recorded": true,
+    "dry_run_vs_write_mode_recorded": true,
+    "job_id_recorded_for_job_runs": true,
+    "manual_locked_tags_not_overwritten": true,
+    "model_name": "wd-swinv2-tagger-v3",
+    "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+    "present": true,
+    "production_writes_enabled": false,
+    "provenance_fields": [
+      "source",
+      "model_name",
+      "model_repo_id",
+      "provider_backend",
+      "requested_provider_preference",
+      "actual_provider",
+      "fallback_occurred",
+      "fallback_reason",
+      "confidence",
+      "thresholds",
+      "job_id",
+      "dry_run",
+      "write_mode"
+    ],
+    "provider_backend": "onnxruntime",
+    "source": "ai_wd",
+    "suggestions_vs_confirmed_recorded": true,
+    "thresholds_recorded": true
+  },
+  "provider_fallback": {
+    "actual_recommended_provider": "DmlExecutionProvider",
+    "cpu_fallback_available": true,
+    "cpu_fallback_completed": true,
+    "decision_recorded": true,
+    "gpu_requested_when_available": true,
+    "selection": {
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "candidate_provider_order": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "fallback_occurred": true,
+      "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider",
+      "requested_provider_preference": [
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "selected_provider": "DmlExecutionProvider",
+      "unavailable_requested_providers": [
+        "CUDAExecutionProvider"
+      ],
+      "unsupported_requested_providers": []
+    }
+  },
+  "public_redaction": {
+    "checked_payloads": [
+      "public_json_payload",
+      "public_markdown_text"
+    ],
+    "clean_before_public_write": true,
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true,
+    "unsafe_public_report_written": false
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s2g-m1-ai-manual-sync-foundation.md",
+    "path_style": "repo_relative_public_artifacts",
+    "summary_json_path": "docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json"
+  },
+  "recommended_next_phase": "S3A-M1 must implement or wire the explicit manual-sync execute path, then add final visible controls and run small-batch production acceptance.",
+  "safety": {
+    "app_managed_production_storage_mutation": false,
+    "automatic_sync_enabled": false,
+    "confirmed_assignment_writes": false,
+    "entity_truth_writes": false,
+    "external_provider_calls": false,
+    "final_production_acceptance_completed": false,
+    "gallery_dl_pixiv_saucenao_google_calls": false,
+    "llm_calls": false,
+    "long_running_daemon_enabled": false,
+    "production_ai_tagging_writes": false,
+    "production_classification": false,
+    "production_db_mutation": false,
+    "production_import": false,
+    "production_localization_writes": false,
+    "production_media_tags_mutation": false,
+    "scheduled_sync_enabled": false,
+    "source_icloud_mutation": false,
+    "sourceconcept_mutation": false,
+    "startup_task_enabled": false,
+    "system_service_enabled": false
+  },
+  "source_files_inspected": [
+    "docs/current-handoff.md",
+    "docs/project-roadmap.md",
+    "docs/roadmap/current-mainline-roadmap.md",
+    "docs/roadmap/post-s2-production-roadmap.md",
+    "docs/production-launcher.md",
+    "docs/dynamic-library-sync.md",
+    "docs/ai-auto-tagging.md",
+    "docs/ai-tagging-jobs.md",
+    "docs/ai-tagging-usage-guide.md",
+    "docs/reports/phase-4.7-s2-baseline-full-import-ai-localization-summary.json",
+    "docs/reports/phase-4.6-fulllib-p0-production-import-ai-tagging-plan.md",
+    "docs/reports/phase-4.6-fulllib-p0-production-import-ai-tagging-plan-summary.json",
+    "docs/reports/pd1-a-r1-post-122-roadmap-reconciliation-summary.json",
+    "backend/app/services/ai_tagging_service.py",
+    "backend/app/services/ai_tagging_job_service.py",
+    "backend/app/routes/admin/ai_tagging.py",
+    "backend/app/routes/admin/ai_tagging_jobs.py",
+    "backend/app/services/classification_job_service.py",
+    "backend/app/services/dynamic_library_sync_service.py",
+    "backend/app/routes/admin/dynamic_library_sync.py",
+    "backend/app/routes/admin/dev_tools.py",
+    "frontend/templates/admin.html",
+    "frontend/static/js/admin.js",
+    "frontend/static/locales/zh-cn.json",
+    "frontend/static/locales/en.json",
+    "scripts/run_s2g1_ai_tagging_capability_probe.py",
+    "scripts/run_s2g_real1_bounded_ai_tagging_validation.py",
+    "scripts/run_phase46_fulllib_e1_production_import_ai_tagging.py",
+    "scripts/run_phase47_s2_baseline_full_import_ai_localization.py",
+    "scripts/phase_contracts/",
+    "tests/test_phase_contracts.py",
+    "docs/test-workflow.md",
+    "AGENTS.md"
+  ],
+  "title": "AI Tagging Execution and Manual Sync Foundation",
+  "validation": {
+    "browser_validation_reason": "backend route and service foundation only; no visible UI or frontend behavior changed",
+    "browser_validation_required": false,
+    "contract_check_status": "run_separately_after_report_generation",
+    "focused_tests_passed": true,
+    "public_redaction_passed": true,
+    "runner_completed": true
+  }
+}

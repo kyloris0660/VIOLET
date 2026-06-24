@@ -21,30 +21,32 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is now the post-#122 mainline route. The canonical current
+The active route is now the post-#123 mainline route. The canonical current
 sequence lives in `docs/roadmap/current-mainline-roadmap.md`. PR #113 /
 Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline library,
-and PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows
-personal production launcher entrypoint. Development work must keep production
+PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows personal
+production launcher entrypoint, and PR #123 / PD1-A-R1 is merged with the
+post-#122 route reconciliation. Development work must keep production
 DB/storage/source roots and private ledgers separate from dev/test fixtures,
 and production execution phases must use explicit production profile/runtime
 config instead of development `.env`.
 
 The accepted short-term sequence is:
 
-1. **PD1-A-R1:** Reconcile roadmap/handoff/contract state after PR #122. No production writes.
-2. **S2G:** GPU / AI Tagging Execution Foundation.
+1. **S2G-M1:** AI tagging execution and manual sync foundation. No production writes.
+2. **S3A-M1:** Explicit manual-sync execute path plus final UI / production acceptance under explicit operator approval.
 3. **R1R:** SourceConcept route redo under GOV3 contracts.
 4. **A1R:** Rerun route audit after R1R outputs exist.
 5. **Pixiv/source metadata strategy polish:** settle Pixiv/source metadata reliability before adding providers.
-6. **S3A:** Controlled incremental sync pipeline, after S2G and the R1R/A1R/Pixiv route decision unless explicitly reprioritized.
-7. **S3B:** Opt-in automated incremental sync, disabled by default until approved.
-8. **S2F0:** Low-priority desired-media gap audit/support decision report.
+6. **S3B:** Opt-in automated incremental sync, disabled by default until approved.
+7. **S2F0:** Low-priority desired-media gap audit/support decision report.
 
-S2G is one consolidated phase, not `S2G-1` plus `S2G-2/3`. It includes GPU /
-AI tagging capability probe and benchmark, provider abstraction, provenance,
-batch/concurrency/throttle controls, CPU fallback, and no production writes
-unless a later phase explicitly approves them.
+S2G-M1 is one consolidated implementation phase, not `S2G-1` plus `S2G-2/3`.
+It includes GPU / AI tagging capability probe and benchmark, provider
+abstraction, provenance, batch/concurrency/load controls, CPU fallback, manual
+sync dry-run planning, sync job/ledger vocabulary, and a controlled
+import/classification/AI/localization pipeline foundation in dry-run/dev-test
+mode. It still performs no production writes.
 
 SourceConcept/provider/entity work remains a separate track. Provider expansion,
 SourceConcept editing, Entity truth work, R2, PX1-B, and Provider-2 remain
@@ -71,7 +73,8 @@ Current accepted state:
 - PR #113 / Phase 4.7-S2 is merged: the production baseline library exists, with controlled baseline import, classification, AI tagging, tag localization, public redaction, and real browser validation already completed.
 - PR #122 / PROD-LAUNCHER-UX1/PF1 is merged: the Electron-based V.I.O.L.E.T. production launcher, local ignored production profile/runtime config, root-level Windows launcher entry, and production/development runtime separation are accepted for the current Windows personal launcher path.
 - PR #122 solved the current production entry problem, but it is not the long-term production configuration architecture. The current production/development split is a temporary operational policy until future runtime/schema hardening and configuration unification are explicitly designed.
-- PD1-A-R1 is current: reconcile post-#122 roadmap/handoff/contract state and update the `production_development_separation_contract_v1` foundation without production writes.
+- PR #123 / PD1-A-R1 is merged: post-#122 roadmap/handoff/contract state is reconciled and `production_development_separation_contract_v1` remains the executable separation gate.
+- S2G-M1 is current: AI tagging execution profile, local capability probe, provider fallback/load-control/provenance foundation, manual sync dry-run planner, manual sync status/plan API surface, public report/summary, and `s2g_manual_sync_foundation_contract_v1` are in scope. Production writes remain out of scope.
 - SourceConcept is source-layer evidence only. It is not Entity truth, not `EntityAlias` truth, not confirmed assignment, and not `media_tags` truth.
 
 Current post-PX1 result:
@@ -82,7 +85,7 @@ Current post-PX1 result:
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
 - Current route is split into two tracks:
-  1. Production utility: PD1-A-R1, then consolidated S2G before any S3A/S3B production sync automation.
+  1. Production utility: S2G-M1, then small S3A-M1 explicit execute path / manual button / production acceptance before any S3B automation.
   2. SourceConcept/provider/entity: R1R full SourceConcept pipeline replay/remediation, A1R route audit rerun, Pixiv/source metadata strategy polish, then any later R2/Provider-2/Entity bridge decision after refreshed route evidence.
 - A1 final route approval remains blocked pending R1R and A1R. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the old A1 pack does not approve R2 during this incident.
 - Old R1/A1 evidence must not approve R2. R1/A1 should not be destructively rolled back; R1R/A1R should supersede/remediate with contract-shaped outputs.
@@ -90,16 +93,15 @@ Current post-PX1 result:
 
 ## Near-Term Route
 
-1. Complete `PD1-A-R1` with post-#122 roadmap reconciliation and `production_development_separation_contract_v1` focused tests. No production writes.
-2. Start consolidated `S2G: GPU / AI Tagging Execution Foundation` next unless the operator explicitly reprioritizes.
-3. Resume `R1R` under `source_concept_full_chain_contract_v1` after S2G. AI proper-noun tags remain weak evidence; no confirmed Entity assignments.
+1. Complete `S2G-M1` with AI tagging execution profile, bounded local capability probe, provider fallback, load/provenance policy, manual sync dry-run planner, job/ledger foundation, dry-run pipeline foundation, and executable contract proof. No production writes.
+2. Start `S3A-M1` next to implement or wire the explicit manual-sync execute path, add the final visible manual-sync controls, and run the first small production acceptance batch, only under explicit operator approval and production profile/runtime identity gates.
+3. Resume `R1R` under `source_concept_full_chain_contract_v1` after the production utility manual-sync acceptance unless the operator explicitly reprioritizes. AI proper-noun tags remain weak evidence; no confirmed Entity assignments.
 4. Run `A1R` after R1R outputs exist before approving R2, Provider-2, PX1-B, Entity bridge, scale-up, or SourceConcept truth promotion.
 5. Polish Pixiv/source metadata strategy after R1R/A1R before introducing new providers.
-6. Start `S3A` controlled incremental sync only after S2G and the R1R/A1R/Pixiv route decision unless explicitly reprioritized.
-7. Keep `S3B` automated sync opt-in and disabled by default until separately approved.
-8. Keep `S2F0` desired-media gap audit low priority and audit-only until evidence shows support/backfill is worth implementing.
-9. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
-10. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
+6. Keep `S3B` automated sync opt-in and disabled by default until separately approved.
+7. Keep `S2F0` desired-media gap audit low priority and audit-only until evidence shows support/backfill is worth implementing.
+8. Keep DEDUP1 deferred because PX1 exact duplicate dry-run groups were 0.
+9. Keep Entity bridge blocked until SourceConcept gaps/needs_review triage are acceptable and a separate preview/manual-confirmation/audit/rollback design is approved.
 
 Explicit ordering:
 
@@ -109,7 +111,7 @@ Explicit ordering:
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment runs and any non-4.7 product utility scale-up require separate policy, budget, ledger, and approval.
 - Provider-2, R2, PX1-B, Entity bridge, SourceConcept truth promotion, and new provider expansion remain blocked until R1R and A1R produce valid route evidence.
-- S3A remains after S2G and the R1R/A1R/Pixiv route decision unless the user explicitly reprioritizes. S3B remains disabled by default and opt-in only.
+- S3A-M1 is the next small production utility acceptance phase after S2G-M1. It must implement or wire the explicit execute path before acceptance, remains manual, explicitly approved, and production-profile-bound. S3B remains disabled by default and opt-in only.
 - Future S3A/S3B production execution must bind to production profile/runtime config, not development `.env`.
 - Dynamic sync automatic production writes are disabled by default. Manual check-for-updates and pending counts are product behavior; threshold-triggered or unattended production writes require explicit user opt-in and visible config.
 - AI tagging and tag localization are one S2 execution chain: baseline import -> AI tagging job -> new tags collected -> `_schedule_localization` -> background worker / auto translate -> `blombooru_tag_translations` -> frontend Chinese display and trusted search aliases.

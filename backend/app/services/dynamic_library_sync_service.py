@@ -8,10 +8,13 @@ AI tagging, or run LLM translation.
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 import os
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+from uuid import uuid4
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -22,13 +25,69 @@ from ..models import (
     DynamicSourceRoot,
     DynamicSyncRun,
     DynamicSyncRunItem,
+    Media,
     TagTranslation,
 )
-from ..utils.local_library_scanner import _is_scannable_file, validate_scan_paths
+from ..services.job_control import build_ai_tagging_execution_profile
+from ..utils.local_library_scanner import (
+    _calculate_file_hash_with_timeout,
+    _is_scannable_file,
+    validate_scan_paths,
+)
 from ..utils.logger import logger
 
 PROPER_NOUN_CATEGORIES = {"character", "copyright", "artist"}
 GENERAL_LOCALIZATION_CATEGORIES = {"general", "meta"}
+
+MANUAL_SYNC_FILE_STATES: tuple[str, ...] = (
+    "candidate",
+    "skipped_unsupported",
+    "skipped_placeholder",
+    "skipped_zero_byte",
+    "skipped_changing",
+    "skipped_path_policy_error",
+    "skipped_duplicate",
+    "skipped_existing_media",
+    "import_planned",
+    "imported_in_test",
+    "classified_in_test",
+    "ai_tagged_in_test",
+    "localization_scheduled_in_test",
+    "failed",
+)
+
+MANUAL_SYNC_PIPELINE_STAGES: tuple[str, ...] = (
+    "candidate_discovery",
+    "import",
+    "classification",
+    "ai_tagging",
+    "localization",
+    "summary",
+)
+
+MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
+    {
+        "cloud_placeholder",
+        "corrupted_image",
+        "duplicate_hash",
+        "existing_media_hash",
+        "file_still_changing",
+        "hidden",
+        "icloud_placeholder",
+        "image_verify_failed",
+        "not_a_file",
+        "path_escape",
+        "read_error",
+        "read_timeout",
+        "source_walk_error",
+        "stat_error",
+        "symlink",
+        "too_large",
+        "unsafe_path",
+        "unsupported_extension",
+        "zero_byte_file",
+    }
+)
 
 
 def _utcnow() -> datetime:
@@ -162,6 +221,447 @@ def serialize_source_root(root: DynamicSourceRoot) -> Dict[str, Any]:
     }
 
 
+def _public_source_identity(path: Path) -> str:
+    return _hash_text(_normalized_path_identity(path))[:16]
+
+
+def _manual_public_reason_code(reason: Optional[str]) -> Optional[str]:
+    if not reason:
+        return None
+    code = str(reason).split(":", 1)[0].strip().casefold().replace("-", "_")
+    if code in MANUAL_SYNC_PUBLIC_REASON_CODES:
+        return code
+    if code.startswith("stat_error"):
+        return "stat_error"
+    if code.startswith("read_timeout") or code == "timeout":
+        return "read_timeout"
+    if code.startswith("read_error") or code.endswith("error"):
+        return "read_error"
+    return "read_error"
+
+
+def _manual_state_for_reason(reason: str) -> str:
+    reason = _manual_public_reason_code(reason) or "read_error"
+    if reason in {"icloud_placeholder", "cloud_placeholder"}:
+        return "skipped_placeholder"
+    if reason == "zero_byte_file":
+        return "skipped_zero_byte"
+    if reason in {"unsupported_extension", "hidden", "too_large"}:
+        return "skipped_unsupported"
+    if reason in {"path_escape", "symlink", "unsafe_path", "not_a_file"}:
+        return "skipped_path_policy_error"
+    if reason == "file_still_changing":
+        return "skipped_changing"
+    if reason in {"corrupted_image", "image_verify_failed"}:
+        return "failed"
+    if reason in {"stat_error", "read_error", "read_timeout"}:
+        return "failed"
+    return "skipped_unsupported"
+
+
+def _public_counter(counter: Counter, keys: Iterable[str]) -> Dict[str, int]:
+    return {key: int(counter.get(key, 0)) for key in keys}
+
+
+def _verify_supported_image_file(path: Path) -> Optional[str]:
+    try:
+        from PIL import Image
+
+        with Image.open(path) as img:
+            img.verify()
+    except Exception:
+        return "corrupted_image"
+    return None
+
+
+def _verify_supported_image_file_worker(path: str, conn) -> None:
+    try:
+        reason = _verify_supported_image_file(Path(path))
+        conn.send(("ok", reason))
+    except Exception:  # noqa: BLE001 - child process returns only public-safe codes.
+        try:
+            conn.send(("error", "corrupted_image"))
+        except Exception:
+            pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _verify_supported_image_file_with_timeout(path: Path, timeout_sec: int) -> Optional[str]:
+    timeout_sec = max(1, int(timeout_sec))
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+    process = multiprocessing.Process(
+        target=_verify_supported_image_file_worker,
+        args=(str(path), child_conn),
+    )
+    process.daemon = True
+    try:
+        process.start()
+        child_conn.close()
+        if parent_conn.poll(timeout_sec):
+            status, payload = parent_conn.recv()
+            process.join(timeout=1)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=1)
+            if status == "ok":
+                return _manual_public_reason_code(payload)
+            return _manual_public_reason_code(payload) or "corrupted_image"
+        process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1)
+        return "read_timeout"
+    except Exception:
+        return "read_error"
+    finally:
+        try:
+            parent_conn.close()
+        except Exception:
+            pass
+        try:
+            child_conn.close()
+        except Exception:
+            pass
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+
+
+def _calculate_manual_plan_file_hash(path: Path, timeout_sec: int) -> tuple[Optional[str], Optional[str]]:
+    status, payload = _calculate_file_hash_with_timeout(path, max(1, int(timeout_sec)))
+    if status == "ok":
+        return str(payload), None
+    if status == "timeout":
+        return None, "read_timeout"
+    return None, "read_error"
+
+
+def _query_existing_media_by_hashes(db: Session, content_hashes: Iterable[str]) -> Dict[str, int]:
+    hashes = sorted({value for value in content_hashes if value})
+    if not hashes:
+        return {}
+    existing: Dict[str, int] = {}
+    chunk_size = 500
+    for index in range(0, len(hashes), chunk_size):
+        chunk = hashes[index : index + chunk_size]
+        rows = db.query(Media.hash, Media.id).filter(Media.hash.in_(chunk)).all()
+        for content_hash, media_id in rows:
+            if content_hash and media_id is not None:
+                existing.setdefault(str(content_hash), int(media_id))
+    return existing
+
+
+def _build_manual_pipeline_stages(
+    *,
+    state_counts: Counter,
+    ai_profile: Dict[str, Any],
+    max_duration_seconds: int,
+    estimated_runtime_seconds: float,
+) -> List[Dict[str, Any]]:
+    import_count = int(state_counts.get("import_planned", 0))
+    duration_limited = estimated_runtime_seconds > max_duration_seconds
+    stage_rows = [
+        {
+            "name": "candidate_discovery",
+            "state": "completed",
+            "writes_enabled": False,
+            "input_count": int(sum(state_counts.values())),
+            "output_count": import_count,
+        },
+        {
+            "name": "import",
+            "state": "planned",
+            "writes_enabled": False,
+            "estimated_count": import_count,
+        },
+        {
+            "name": "classification",
+            "state": "planned",
+            "writes_enabled": False,
+            "estimated_count": import_count,
+        },
+        {
+            "name": "ai_tagging",
+            "state": "planned",
+            "writes_enabled": False,
+            "estimated_count": import_count,
+            "profile_id": ai_profile.get("profile_id"),
+            "batch_size": ai_profile.get("batch_size"),
+            "concurrency": ai_profile.get("concurrency"),
+        },
+        {
+            "name": "localization",
+            "state": "handoff_planned",
+            "writes_enabled": False,
+            "estimated_count": import_count,
+            "llm_calls_enabled": False,
+        },
+        {
+            "name": "summary",
+            "state": "planned",
+            "writes_enabled": False,
+            "estimated_count": 1,
+        },
+    ]
+    for row in stage_rows:
+        row["dry_run_only_this_phase"] = True
+        row["production_execution_enabled"] = False
+    return [
+        {
+            **row,
+            "max_duration_seconds": max_duration_seconds if row["name"] == "summary" else None,
+            "duration_limited": duration_limited if row["name"] == "summary" else None,
+        }
+        for row in stage_rows
+    ]
+
+
+def _estimate_manual_sync_runtime_seconds(
+    *,
+    import_count: int,
+    ai_profile: Dict[str, Any],
+    benchmark: Optional[Dict[str, Any]],
+) -> float:
+    seconds_per_ai_item = None
+    if benchmark:
+        seconds_per_ai_item = benchmark.get("recommended_seconds_per_item")
+        if seconds_per_ai_item is None:
+            seconds_per_ai_item = benchmark.get("single_image_latency_seconds")
+    try:
+        ai_seconds = float(seconds_per_ai_item) if seconds_per_ai_item is not None else 2.0
+    except (TypeError, ValueError):
+        ai_seconds = 2.0
+    batch_size = max(1, int(ai_profile.get("batch_size") or 1))
+    ai_batches = (import_count + batch_size - 1) // batch_size
+    return round(
+        import_count * 0.25
+        + import_count * 0.10
+        + ai_batches * max(ai_seconds, 0.01)
+        + import_count * 0.02,
+        3,
+    )
+
+
+def plan_manual_sync_dry_run(
+    db: Session,
+    *,
+    source_path: str | Path,
+    source_record_id: Optional[int] = None,
+    max_files: Optional[int] = None,
+    hydrated_only: bool = True,
+    stable_age_seconds: Optional[float] = None,
+    include_private_details: bool = False,
+    ai_profile: Optional[Dict[str, Any]] = None,
+    benchmark: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Build a public-safe manual sync dry-run plan without DB or file writes."""
+    if hydrated_only is False:
+        raise ValueError("manual sync dry-run requires hydrated_only=true")
+
+    resolved = validate_source_root_path(source_path)
+    created_at = now or _utcnow()
+    created_ts = created_at.timestamp()
+    effective_max_files = max_files or settings.DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES
+    effective_max_files = max(1, int(effective_max_files))
+    effective_stable_age = (
+        settings.DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS
+        if stable_age_seconds is None
+        else max(0.0, float(stable_age_seconds))
+    )
+    profile = ai_profile or build_ai_tagging_execution_profile(settings).to_public_dict()
+    max_duration_seconds = settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS
+    read_timeout_seconds = max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS))
+
+    state_counts: Counter = Counter()
+    reason_counts: Counter = Counter()
+    public_items: List[Dict[str, Any]] = []
+    private_items: List[Dict[str, Any]] = []
+    candidate_records: List[Dict[str, Any]] = []
+    candidate_hashes: set[str] = set()
+    partial_scan = False
+    walk_errors: List[str] = []
+
+    for index, file_path in enumerate(_iter_source_files(resolved, walk_errors=walk_errors), start=1):
+        if len(candidate_records) >= effective_max_files:
+            partial_scan = True
+            break
+
+        safe_label = f"file-{index:05d}"
+        rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
+        rel_hash = _hash_text(rel)[:16]
+        metadata: Dict[str, Any] = {}
+        reason = _manual_public_reason_code(preflight_reason)
+        content_hash = None
+
+        try:
+            reason = reason or _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
+            metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
+        except OSError:
+            reason = "stat_error"
+
+        if reason is None and effective_stable_age > 0:
+            mtime = metadata.get("mtime")
+            if mtime is not None and created_ts - float(mtime) < effective_stable_age:
+                reason = "file_still_changing"
+
+        if reason is None:
+            reason = _verify_supported_image_file_with_timeout(file_path, read_timeout_seconds)
+
+        if reason is None:
+            content_hash, reason = _calculate_manual_plan_file_hash(file_path, read_timeout_seconds)
+
+        reason = _manual_public_reason_code(reason)
+        if reason is None and content_hash:
+            candidate_hashes.add(content_hash)
+        candidate_records.append(
+            {
+                "safe_label": safe_label,
+                "relative_path": rel,
+                "relative_path_hash": rel_hash,
+                "metadata": metadata,
+                "reason": reason,
+                "content_hash": content_hash,
+            }
+        )
+
+    existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
+    seen_hashes: set[str] = set()
+    for record in candidate_records:
+        reason = record["reason"]
+        content_hash = record["content_hash"]
+        media_id = None
+
+        if reason is None and content_hash:
+            if content_hash in existing_media_by_hash:
+                state = "skipped_existing_media"
+                reason = "existing_media_hash"
+                media_id = existing_media_by_hash.get(content_hash)
+            elif content_hash in seen_hashes:
+                state = "skipped_duplicate"
+                reason = "duplicate_hash"
+            else:
+                state = "import_planned"
+                seen_hashes.add(content_hash)
+        else:
+            state = _manual_state_for_reason(str(reason or "read_error"))
+
+        public_reason = _manual_public_reason_code(reason)
+        state_counts[state] += 1
+        if public_reason:
+            reason_counts[public_reason] += 1
+
+        metadata = record["metadata"]
+        item = {
+            "safe_label": record["safe_label"],
+            "relative_path_hash": record["relative_path_hash"],
+            "initial_state": "candidate",
+            "state": state,
+            "reason": public_reason,
+            "eligible_for_db_import": state == "import_planned",
+            "bytes_copied": 0,
+            "media_id": media_id,
+            "file_size": metadata.get("file_size"),
+            "content_hash_computed": bool(content_hash),
+        }
+        public_items.append(item)
+        if include_private_details:
+            private_items.append({**item, "relative_path": record["relative_path"]})
+
+    if walk_errors:
+        partial_scan = True
+        reason_counts["source_walk_error"] += len(walk_errors)
+
+    import_count = int(state_counts.get("import_planned", 0))
+    estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
+        import_count=import_count,
+        ai_profile=profile,
+        benchmark=benchmark,
+    )
+    stages = _build_manual_pipeline_stages(
+        state_counts=state_counts,
+        ai_profile=profile,
+        max_duration_seconds=max_duration_seconds,
+        estimated_runtime_seconds=estimated_runtime_seconds,
+    )
+    state_counts_public = _public_counter(state_counts, MANUAL_SYNC_FILE_STATES)
+    reason_counts_public = dict(sorted((key, int(value)) for key, value in reason_counts.items()))
+
+    plan: Dict[str, Any] = {
+        "job": {
+            "job_id": f"s2g-m1-plan-{uuid4()}",
+            "mode": "dry_run",
+            "state": "planned",
+            "trigger_type": "manual_operator",
+            "requested_by": "admin_or_cli",
+            "created_at": created_at.isoformat(),
+            "started_at": None,
+            "ended_at": None,
+            "production_execution_enabled": False,
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+        },
+        "source": {
+            "source_record_id": source_record_id,
+            "source_identity_hash": _public_source_identity(resolved),
+            "path_public": False,
+        },
+        "limits": {
+            "max_files": effective_max_files,
+            "hydrated_only": hydrated_only,
+            "stable_age_seconds": effective_stable_age,
+            "max_duration_seconds": max_duration_seconds,
+            "file_read_timeout_seconds": read_timeout_seconds,
+        },
+        "counts": {
+            "total_seen": len(public_items),
+            "estimated_import_count": import_count,
+            "estimated_classification_count": import_count,
+            "estimated_ai_tagging_count": import_count,
+            "estimated_localization_workload": import_count,
+            "state_counts": state_counts_public,
+            "failure_reasons": reason_counts_public,
+            "partial_scan": partial_scan,
+        },
+        "ledger": {
+            "db_write_performed": False,
+            "source_mutation_performed": False,
+            "app_storage_mutation_performed": False,
+            "persistent_tables_available": [
+                "blombooru_dynamic_source_roots",
+                "blombooru_dynamic_source_items",
+                "blombooru_dynamic_sync_runs",
+                "blombooru_dynamic_sync_run_items",
+            ],
+            "ledger_mode": "ephemeral_public_plan_current_phase",
+            "per_file_public_records": public_items,
+            "private_details_included": include_private_details,
+        },
+        "pipeline": {
+            "status": "dry_run_planned",
+            "dry_run_only_this_phase": True,
+            "production_execute_enabled": False,
+            "dev_test_execute_supported_later": True,
+            "stages": stages,
+            "estimated_runtime_seconds": estimated_runtime_seconds,
+            "partial_failure_policy": "item_failures_recorded_and_continues_until_failure_budget_or_hard_gate",
+        },
+        "ai_execution_profile": profile,
+        "public_safe": True,
+    }
+    if include_private_details:
+        plan["private_details"] = {
+            "not_for_public_reports": True,
+            "items": private_items,
+        }
+    return plan
+
+
 def _iter_source_files(root_path: Path, *, walk_errors: Optional[List[str]] = None) -> Iterable[Path]:
     def _on_walk_error(exc: OSError) -> None:
         if walk_errors is not None:
@@ -199,8 +699,8 @@ def _relative_identity_and_preflight_reason(root_path: Path, file_path: Path) ->
         file_resolved.relative_to(root_resolved)
     except ValueError:
         return rel, "path_escape"
-    except OSError as exc:
-        return rel, f"stat_error: {exc}"
+    except OSError:
+        return rel, "stat_error"
     except RuntimeError:
         return rel, "path_escape"
     return rel, None

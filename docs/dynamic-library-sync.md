@@ -101,6 +101,54 @@ Any threshold-triggered or scheduled production write must require explicit
 user opt-in and visible UI/config. S1 exposes a `sync-pending` API surface, but
 it fails closed while manual execution is disabled.
 
+## S2G-M1 manual sync dry-run foundation
+
+S2G-M1 adds a dry-run-only manual sync planner and status API for the later
+S3A-M1 execute-path, final controls, and acceptance phase.
+
+Routes:
+
+- `GET /api/admin/dynamic-library-sync/manual-sync/status`
+- `POST /api/admin/dynamic-library-sync/manual-sync/plan`
+
+The plan endpoint is intentionally implemented as a normal FastAPI `def`
+route, not an `async def` route. FastAPI runs the synchronous filesystem walk,
+PIL verification, and hash reads in its worker threadpool so the event loop is
+not occupied by manual planning.
+
+The plan endpoint accepts exactly one of a registered `root_id` or an explicit
+safe source path. It requires `hydrated_only=true`; cloud-unsafe
+`hydrated_only=false` requests fail closed at both route and service level. It
+validates source-root policy, walks bounded candidates, checks unsupported
+files, iCloud/cloud placeholders, zero-byte files, changing files, corrupt
+images, duplicate hashes, and already-imported media, then returns public-safe
+counts and per-file safe labels. Per-file image verification and hash reads are
+bounded by the scan file-open timeout and report stable reason codes such as
+`read_timeout`, `read_error`, `stat_error`, or `corrupted_image`; one item-level
+timeout does not abort the whole plan. Scanner policy skips such as `hidden`,
+`too_large`, and `not_a_file` remain stable public reason codes and are mapped
+to skipped states rather than failed `read_error` rows. Existing-media detection
+hashes the bounded candidate set first and queries `Media.hash` only for those
+candidate hashes, while same-plan duplicate detection stays in memory. It does
+not write the DB, copy/import media, mutate source files, mutate app-managed
+storage, run classification, run AI tagging, schedule localization, call
+providers, or call LLMs.
+
+The S2G-M1 planner output includes:
+
+- a manual job id, trigger type, mode, and planned state;
+- per-file public records with safe labels and state/reason only;
+- state counts for skipped/planned/failed files;
+- estimated import, classification, AI tagging, and localization workload;
+- dry-run pipeline stages for candidate discovery, import, classification, AI
+  tagging, localization, and summary, all with writes disabled;
+- the AI tagging execution profile that S3A-M1 should reuse.
+
+Production execution remains disabled in this phase. S3A-M1 must add the final
+visible controls and implement or wire the production execute path behind
+explicit operator approval, production identity gates, failure budgets, and a
+small first acceptance batch.
+
 ## AI tagging and tag localization chain
 
 S2 should treat AI tagging and tag localization as one execution chain:
@@ -180,12 +228,25 @@ large-root production checks or S3 automation, this should move to an
 offloaded/background job model so the FastAPI event loop is not occupied by
 large filesystem walks.
 
-## S2 and S3 expectations
+## S2G-M1 and S3 expectations
 
-S2 should run only after explicit approval and after S1 readiness is reviewed.
-It should execute the approved baseline full import, classification, AI tagging,
-and tag localization chain with production DB/storage identity, backup proof,
-dry-run proof, public redaction checks, and relevant GOV3 contracts.
+S2G-M1 is a foundation phase only. It may benchmark local ONNX providers and
+plan manual sync dry-runs against safe fixtures/dev-test state, but it must not
+execute production import, classification, AI tagging, localization, source
+mutation, or app-managed storage mutation.
+
+The S2G-M1 public report runner treats redaction as a publish gate: if the
+public JSON/Markdown scan finds unsafe content, it exits non-zero and does not
+write the tracked public report artifacts. Provider probe rows also have a
+wall-clock timeout around model load and synthetic inference; a timed-out GPU
+row is recorded as `timeout` and the runner continues to CPU fallback when
+available.
+
+S3A-M1 should run only after explicit approval and after S2G-M1 readiness is
+reviewed. It should implement or wire the explicit manual-sync execute path,
+add the final visible controls, and perform a small production acceptance batch
+with production DB/storage identity, backup proof where applicable, dry-run
+proof, public redaction checks, and relevant GOV3 contracts.
 
 S2 has a Gate 0 schema/readiness preparation step before Gate 1 execution
 readiness. If production has not yet run the S1 dynamic sync migration, the S2

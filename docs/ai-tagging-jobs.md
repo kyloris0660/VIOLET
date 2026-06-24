@@ -13,6 +13,46 @@ The AI Tagging Job System extends Phase 2.1's single/batch AI tagging into a man
 - **Cancel support** — graceful cancellation via in-memory flag
 - **Stale recovery** — marks interrupted jobs on startup
 
+## S2G-M1 Execution Foundation
+
+S2G-M1 adds a durable AI tagging execution profile in
+`backend/app/services/job_control.py`. The profile is used by the local
+capability probe and by the manual sync dry-run planner so S3A-M1 can reuse the
+same provider/load/provenance defaults instead of inventing a separate sync
+configuration.
+
+The profile records:
+
+- local backend type: `onnxruntime`;
+- WD model name/repo identity and public-safe model source;
+- general/character/rating/suggestion thresholds;
+- requested provider preference and CPU fallback policy;
+- bounded batch size, concurrency, preprocess workers, per-image timeout, and
+  job timeout;
+- provenance fields for source, model, provider, confidence, thresholds, job
+  id, dry-run/write mode, and fallback decision;
+- dry-run/dev-test/production-capable scope flags;
+- `production_writes_enabled=false` by default for S2G-M1.
+
+S2G-M1 does not add external/cloud AI providers. Model resolution is
+local-files-only in the phase runner, and provider/gallery-dl/Pixiv/SauceNAO/
+Google/LLM calls remain forbidden.
+
+## S2G-M1 Load and Safety Defaults
+
+The S2G-M1 report recommends the following safe defaults for the next S3A-M1
+manual-sync acceptance phase:
+
+- AI batch size: `2`;
+- AI concurrency: `1`;
+- per-image timeout: `60` seconds;
+- job timeout: `600` seconds;
+- one active AI execution at a time;
+- per-image failure isolation;
+- manual/locked tags are not overwritten by AI;
+- AI outputs remain suggestions/AI-sourced tags unless a separately approved
+  write policy promotes them.
+
 ## Database Schema
 
 ### `blombooru_ai_tag_jobs`

@@ -523,6 +523,14 @@ class Settings:
         return max(1, int(os.getenv("AI_TAGGING_MAX_CONCURRENT_JOBS", "1")))
 
     @property
+    def AI_TAGGING_IMAGE_TIMEOUT_SECONDS(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_IMAGE_TIMEOUT_SECONDS", "60")))
+
+    @property
+    def AI_TAGGING_JOB_TIMEOUT_SECONDS(self) -> int:
+        return max(1, int(os.getenv("AI_TAGGING_JOB_TIMEOUT_SECONDS", "600")))
+
+    @property
     def AI_AUTO_TAG_AFTER_IMPORT(self) -> bool:
         val = os.getenv("AI_AUTO_TAG_AFTER_IMPORT", "false")
         return val.lower() in ("true", "1", "yes")
@@ -626,6 +634,21 @@ class Settings:
         """
         val = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "false")
         return val.lower() in ("true", "1", "yes", "on")
+
+    @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES(self) -> int:
+        """Default upper bound for manual sync dry-run planning."""
+        return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES", "1000")))
+
+    @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS(self) -> int:
+        """Files newer than this are deferred as still-changing in manual plans."""
+        return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS", "2")))
+
+    @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS(self) -> int:
+        """Recommended execution time cap for a later manual sync acceptance run."""
+        return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS", "600")))
 
     @property
     def S3B_UNATTENDED_SYNC_ENABLED(self) -> bool:
