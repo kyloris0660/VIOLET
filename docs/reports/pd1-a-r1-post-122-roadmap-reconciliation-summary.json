@@ -64,7 +64,8 @@
     }
   },
   "safety": {
-    "no_llm_calls": true
+    "no_llm_calls": true,
+    "no_media_tags_mutation": true
   },
   "post_122_launcher_merged": true,
   "production_launcher_entry_documented": true,

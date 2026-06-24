@@ -293,22 +293,45 @@ def _executed_stage_names(summary: Mapping[str, Any]) -> set[str]:
     return names
 
 
+def _normalize_stage_name(value: Any) -> str:
+    return re.sub(r"[\s_-]+", "_", str(value).strip().casefold())
+
+
 def _check_forbidden_stages(contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     executed = _executed_stage_names(summary)
-    forbidden_present = sorted(stage for stage in contract.forbidden_stages if _forbidden_stage_present(summary, executed, stage))
+    normalized_executed = {_normalize_stage_name(stage) for stage in executed}
+    forbidden_present = sorted(
+        stage
+        for stage in contract.forbidden_stages
+        if _forbidden_stage_present(summary, executed, normalized_executed, stage)
+    )
     result.details["executed_stages"] = sorted(executed)
+    result.details["executed_stages_normalized"] = sorted(normalized_executed)
     result.details["forbidden_stages_present"] = forbidden_present
     for stage in forbidden_present:
         result.fail("forbidden_stage_executed", f"Forbidden stage {stage!r} is present/executed.", path=stage)
 
 
-def _forbidden_stage_present(summary: Mapping[str, Any], executed: set[str], stage: str) -> bool:
-    if stage in executed or _as_bool(_get(summary, stage, False)):
+def _forbidden_stage_present(
+    summary: Mapping[str, Any], executed: set[str], normalized_executed: set[str], stage: str
+) -> bool:
+    normalized_stage = _normalize_stage_name(stage)
+    if stage in executed or normalized_stage in normalized_executed or _as_bool(_get(summary, stage, False)):
         return True
     for path in ("stages", "pipeline_contract.stages"):
         value = _get(summary, path)
-        if isinstance(value, Mapping) and stage in value:
-            stage_value = value[stage]
+        if isinstance(value, Mapping):
+            stage_key = None
+            if stage in value:
+                stage_key = stage
+            else:
+                stage_key = next(
+                    (candidate for candidate in value if _normalize_stage_name(candidate) == normalized_stage),
+                    None,
+                )
+            if stage_key is None:
+                continue
+            stage_value = value[stage_key]
             if isinstance(stage_value, Mapping):
                 if _as_bool(stage_value.get("executed")):
                     return True
@@ -1140,6 +1163,7 @@ def _check_production_development_separation(
             "no_source_icloud_mutation",
             "no_provider_calls",
             "safety.no_llm_calls",
+            "safety.no_media_tags_mutation",
             "no_sourceconcept_mutation",
             "no_entity_truth_write",
             "governance_lanes.production.explicit",
@@ -1187,14 +1211,23 @@ def _check_production_development_separation(
             actual=sorted(allowed_sources),
         )
 
-    current_phase = str(_get(summary, "phase_boundaries.current_phase", "")).casefold()
-    if current_phase not in {"pd1-a", "pd1_a", "pd1-a-r1", "pd1_a_r1"}:
+    top_level_phase = _get(summary, "phase", None)
+    if top_level_phase != "PD1-A-R1":
+        result.fail(
+            "production_development_phase_mismatch",
+            "This governance summary must identify PD1-A-R1 as the top-level phase.",
+            path="phase",
+            expected="PD1-A-R1",
+            actual=top_level_phase,
+        )
+    current_phase = _get(summary, "phase_boundaries.current_phase", None)
+    if current_phase != "PD1-A-R1":
         result.fail(
             "production_development_current_phase_mismatch",
-            "This governance summary must identify PD1-A or PD1-A-R1 as the current phase.",
+            "This governance summary must identify PD1-A-R1 as the current phase.",
             path="phase_boundaries.current_phase",
             expected="PD1-A-R1",
-            actual=_get(summary, "phase_boundaries.current_phase", None),
+            actual=current_phase,
         )
     next_phase_raw = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).strip()
     next_phase = re.sub(r"\s+", " ", next_phase_raw).casefold()
@@ -1236,26 +1269,28 @@ def _check_production_development_separation(
                 expected=True,
                 actual=_get(summary, path),
             )
+    for path in ("safety.no_media_tags_mutation", "safety_no_mutation_proof.no_media_tags_mutation"):
+        if _has(summary, path) and not _as_bool(_get(summary, path)):
+            result.fail(
+                "production_development_media_tags_mutation_not_forbidden",
+                "PD1-A-R1 must explicitly forbid media_tags and tag-truth mutation.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path),
+            )
 
     requested_writes = _production_write_requested(summary)
     result.details["production_write_requests"] = requested_writes
     if requested_writes:
-        if not _as_bool(_get(summary, "production_promotion.enabled", False)):
+        for path in requested_writes:
             result.fail(
-                "production_write_without_promotion_mode",
-                "Production writes require explicit production/promotion mode.",
-                path="production_promotion.enabled",
-                expected=True,
-                actual=_get(summary, "production_promotion.enabled", None),
+                "production_development_write_request_forbidden",
+                "PD1-A-R1 is a docs/contract reconciliation phase; production write requests are forbidden outright.",
+                path=path,
+                expected=False,
+                actual=True,
             )
-        if not _as_bool(_get(summary, "production_promotion.operator_confirmation_present", False)):
-            result.fail(
-                "production_write_without_operator_confirmation",
-                "Production writes require explicit operator confirmation.",
-                path="production_promotion.operator_confirmation_present",
-                expected=True,
-                actual=_get(summary, "production_promotion.operator_confirmation_present", None),
-            )
+        return
 
     source_root_write_requested = _as_bool(_get(summary, "write_requests.source_root_registration", False)) or _as_bool(
         _get(summary, "write_requests.source_root_replacement", False)

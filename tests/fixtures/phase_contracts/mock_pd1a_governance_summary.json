@@ -80,7 +80,8 @@
     "schema_setup_requested": false
   },
   "safety": {
-    "no_llm_calls": true
+    "no_llm_calls": true,
+    "no_media_tags_mutation": true
   },
   "provider_entity_truth_blocked": true,
   "r1r_required_before_r2": true,

@@ -192,7 +192,7 @@ def _pd1a_governance_summary(**overrides: object) -> dict:
         "no_db_mutation": True,
         "no_source_icloud_mutation": True,
         "no_provider_calls": True,
-        "safety": {"no_llm_calls": True},
+        "safety": {"no_llm_calls": True, "no_media_tags_mutation": True},
         "no_sourceconcept_mutation": True,
         "no_entity_truth_write": True,
         "pipeline_contract": {
@@ -1692,18 +1692,34 @@ def test_production_development_separation_rejects_production_fixtures() -> None
     assert "production_development_forbidden_fixture_or_artifact" in _error_codes(result)
 
 
-def test_production_development_separation_rejects_production_write_without_promotion() -> None:
+@pytest.mark.parametrize(
+    "write_request",
+    [
+        "production_import",
+        "production_classification",
+        "production_ai_tagging",
+        "production_localization",
+        "source_root_registration",
+        "source_root_replacement",
+        "schema_setup",
+        "schema_migration",
+    ],
+)
+def test_production_development_separation_rejects_production_write_requests_outright(write_request: str) -> None:
     summary = _pd1a_governance_summary()
-    summary["write_requests"]["production_import"] = True
+    summary["write_requests"][write_request] = True
+    summary["production_promotion"]["enabled"] = True
+    summary["production_promotion"]["operator_confirmation_present"] = True
 
     result = check_phase_contract("production_development_separation_contract_v1", summary)
     codes = _error_codes(result)
 
-    assert "production_write_without_promotion_mode" in codes
-    assert "production_write_without_operator_confirmation" in codes
+    assert "production_development_write_request_forbidden" in codes
+    assert "production_write_without_promotion_mode" not in codes
+    assert "production_write_without_operator_confirmation" not in codes
 
 
-def test_production_development_separation_rejects_source_root_write_without_identity_backup() -> None:
+def test_production_development_separation_rejects_source_root_write_request_before_identity_gates() -> None:
     summary = _pd1a_governance_summary()
     summary["write_requests"]["source_root_registration"] = True
     summary["production_promotion"]["enabled"] = True
@@ -1717,10 +1733,10 @@ def test_production_development_separation_rejects_source_root_write_without_ide
 
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
-    assert "production_source_root_write_gate_missing" in _error_codes(result)
+    assert "production_development_write_request_forbidden" in _error_codes(result)
 
 
-def test_production_development_separation_rejects_schema_setup_when_identity_blocked() -> None:
+def test_production_development_separation_rejects_schema_write_request_before_identity_gates() -> None:
     summary = _pd1a_governance_summary()
     summary["write_requests"]["schema_setup"] = True
     summary["production_promotion"]["enabled"] = True
@@ -1734,7 +1750,7 @@ def test_production_development_separation_rejects_schema_setup_when_identity_bl
 
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
-    assert "production_schema_setup_identity_blocked" in _error_codes(result)
+    assert "production_development_write_request_forbidden" in _error_codes(result)
 
 
 def test_production_development_separation_rejects_forbidden_current_phase_authorization() -> None:
@@ -1773,8 +1789,32 @@ def test_production_development_separation_requires_s2g_as_immediate_exact_next_
     assert "production_development_next_phase_not_consolidated_s2g" in _error_codes(result)
 
 
-@pytest.mark.parametrize("stage", ["s2g", "gpu_benchmark", "ai_tagging_execution"])
-def test_production_development_separation_rejects_s2g_execution_stages(stage: str) -> None:
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "S2G",
+        "s2g",
+        "S2G_EXECUTION",
+        "s2g-execution",
+        "s2g execution",
+        "gpu_benchmark",
+        "AI_TAGGING_EXECUTION",
+        "LLM_CALL",
+        "llm-call",
+        "llm call",
+        "openai_call",
+    ],
+)
+def test_production_development_separation_rejects_normalized_forbidden_execution_stages(stage: str) -> None:
+    summary = _pd1a_governance_summary(executed_stages=[stage])
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "forbidden_stage_executed" in _error_codes(result)
+
+
+@pytest.mark.parametrize("stage", ["A1R", "route_audit", "route_decision"])
+def test_production_development_separation_rejects_a1r_route_audit_execution(stage: str) -> None:
     summary = _pd1a_governance_summary(executed_stages=[stage])
 
     result = check_phase_contract("production_development_separation_contract_v1", summary)
@@ -1791,12 +1831,48 @@ def test_production_development_separation_rejects_no_llm_calls_false() -> None:
     assert "production_development_llm_calls_not_forbidden" in _error_codes(result)
 
 
-def test_production_development_separation_rejects_llm_executed_stage() -> None:
-    summary = _pd1a_governance_summary(executed_stages=["llm_call"])
+def test_production_development_separation_rejects_no_media_tags_mutation_false() -> None:
+    summary = _pd1a_governance_summary()
+    summary["safety"]["no_media_tags_mutation"] = False
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_media_tags_mutation_not_forbidden" in _error_codes(result)
+
+
+def test_production_development_separation_requires_no_media_tags_mutation_proof() -> None:
+    summary = _pd1a_governance_summary()
+    del summary["safety"]["no_media_tags_mutation"]
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "missing_required_summary_field" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_media_tags_mutation_stage() -> None:
+    summary = _pd1a_governance_summary(executed_stages=["media_tags_mutation"])
 
     result = check_phase_contract("production_development_separation_contract_v1", summary)
 
     assert "forbidden_stage_executed" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_stale_top_level_phase() -> None:
+    summary = _pd1a_governance_summary()
+    summary["phase"] = "PD1-A"
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_phase_mismatch" in _error_codes(result)
+
+
+def test_production_development_separation_rejects_stale_current_phase() -> None:
+    summary = _pd1a_governance_summary()
+    summary["phase_boundaries"]["current_phase"] = "PD1-A"
+
+    result = check_phase_contract("production_development_separation_contract_v1", summary)
+
+    assert "production_development_current_phase_mismatch" in _error_codes(result)
 
 
 def test_prod_launcher_mvp_contract_accepts_safe_launcher_summary() -> None:
