@@ -12,10 +12,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.job_control import (  # noqa: E402
+    AITaggingExecutionProfile,
     LoadControlConfig,
     ProviderCapability,
     ProviderProvenance,
     build_ai_tagging_load_control_config,
+    build_ai_tagging_execution_profile,
     build_s3a_foundation_dry_run_plan,
     select_onnx_provider,
 )
@@ -113,6 +115,66 @@ def test_load_control_config_clamps_operator_overrides_before_runtime_use() -> N
     assert public["execution_mode"] == "ORT_SEQUENTIAL"
     assert public["process_priority"] == "below_normal"
     assert public["validation_errors"] == []
+
+
+def test_ai_tagging_execution_profile_defaults_are_safe_for_s2g_m1() -> None:
+    settings = SimpleNamespace(
+        AI_MODEL_NAME="wd-swinv2-tagger-v3",
+        AI_GENERAL_THRESHOLD=0.35,
+        AI_CHARACTER_THRESHOLD=0.65,
+        AI_RATING_THRESHOLD=0.50,
+        AI_SUGGESTION_THRESHOLD=0.20,
+        AI_TAGGING_BATCH_SIZE=20,
+        AI_TAGGING_BATCH_MAX_ITEMS=10,
+        AI_TAGGING_MAX_CONCURRENT_JOBS=4,
+        AI_TAGGING_PREPROCESS_WORKERS=4,
+        AI_TAGGING_PROVIDER_PREFERENCE=(
+            "DmlExecutionProvider",
+            "CPUExecutionProvider",
+        ),
+        AI_TAGGING_ALLOW_PROVIDER_FALLBACK=True,
+        AI_TAGGING_CPU_INTRA_OP_THREADS=8,
+        AI_TAGGING_CPU_INTER_OP_THREADS=8,
+        AI_TAGGING_EXECUTION_MODE="ORT_PARALLEL",
+        AI_TAGGING_PROCESS_PRIORITY="normal",
+        AI_TAGGING_IMAGE_TIMEOUT_SECONDS=60,
+        AI_TAGGING_JOB_TIMEOUT_SECONDS=600,
+    )
+
+    profile = build_ai_tagging_execution_profile(settings).to_public_dict()
+
+    assert profile["provider_backend"] == "onnxruntime"
+    assert profile["model_name"] == "wd-swinv2-tagger-v3"
+    assert profile["model_repo_id"] == "SmilingWolf/wd-swinv2-tagger-v3"
+    assert profile["batch_size"] == 10
+    assert profile["concurrency"] == 1
+    assert profile["preprocess_workers"] == 2
+    assert profile["per_image_timeout_seconds"] == 60
+    assert profile["job_timeout_seconds"] == 600
+    assert profile["production_capable"] is True
+    assert profile["production_writes_enabled"] is False
+    assert profile["local_files_only"] is True
+    assert profile["provider_network_calls_enabled"] is False
+    assert profile["llm_calls_enabled"] is False
+    assert profile["safe_for_current_phase"] is True
+    assert "actual_provider" in profile["provenance_fields"]
+
+
+def test_ai_tagging_execution_profile_reports_forbidden_write_and_network_modes() -> None:
+    unsafe = AITaggingExecutionProfile(
+        production_writes_enabled=True,
+        local_files_only=False,
+        provider_network_calls_enabled=True,
+        llm_calls_enabled=True,
+        concurrency=2,
+    ).to_public_dict()
+
+    assert unsafe["safe_for_current_phase"] is False
+    assert "production_writes_must_remain_disabled" in unsafe["validation_errors"]
+    assert "model_loading_must_remain_local_files_only" in unsafe["validation_errors"]
+    assert "provider_network_calls_forbidden" in unsafe["validation_errors"]
+    assert "llm_calls_forbidden" in unsafe["validation_errors"]
+    assert "concurrency_must_remain_one" in unsafe["validation_errors"]
 
 
 def test_predict_from_file_loads_model_before_preprocessing() -> None:

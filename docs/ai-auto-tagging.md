@@ -271,3 +271,20 @@ When enabled (`force_suggestions=true` on job creation or `AI_AUTO_TAG_AFTER_IMP
 AI tagging jobs automatically schedule tag localization (auto-translate via LLM) for newly created tags, if `TAG_TRANSLATION_AUTO_ENABLED=true`.
 
 See [AI Tagging Jobs](ai-tagging-jobs.md) for complete API reference, configuration, and Admin UI documentation.
+
+## S2G-M1 Manual Sync Foundation Note
+
+S2G-M1 does not enable production auto-tagging or production sync writes. It
+adds the reusable AI tagging execution profile, local ONNX provider
+probe/benchmark, provider fallback reporting, load-control defaults, provenance
+policy, and manual sync dry-run planning foundation that a later S3A-M1 manual
+acceptance phase can call.
+
+For this foundation:
+
+- provider execution is local ONNX Runtime only;
+- model resolution is local-files-only in the S2G-M1 runner;
+- production writes are disabled by default;
+- automatic/scheduled/startup/service sync is not implemented;
+- provider/gallery-dl/Pixiv/SauceNAO/Google calls and LLM calls are forbidden;
+- manual/locked tags remain protected from AI overwrite.

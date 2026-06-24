@@ -1075,6 +1075,244 @@ def _s2g_real1_summary(**overrides: object) -> dict:
     return summary
 
 
+def _s2g_m1_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S2G-M1",
+        "pipeline_contract": {
+            "contract_id": "s2g_manual_sync_foundation_contract_v1",
+            "status": "target_met",
+            "phase_identity": "S2G-M1",
+            "post_123_route_respected": True,
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": False},
+        },
+        "head_evidence": {
+            "pr123_merge_commit": "4724530d83767a62b6525a58bb1a1d04e973d48e",
+            "pr123_merge_is_ancestor_of_origin_main": True,
+            "latest_main_after_pr123": True,
+        },
+        "ai_execution_profile": {
+            "profile_id": "ai_tagging_execution_profile_v1",
+            "provider_backend": "onnxruntime",
+            "model_name": "wd-swinv2-tagger-v3",
+            "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+            "model_source": "huggingface_local_cache",
+            "thresholds": {"general": 0.35, "character": 0.65, "rating": 0.5},
+            "provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "batch_size": 2,
+            "concurrency": 1,
+            "preprocess_workers": 2,
+            "per_image_timeout_seconds": 60,
+            "job_timeout_seconds": 600,
+            "allow_provider_fallback": True,
+            "execution_scope": "dry_run_or_dev_test",
+            "dry_run": True,
+            "dev_test": True,
+            "production_capable": True,
+            "production_writes_enabled": False,
+            "local_files_only": True,
+            "provider_network_calls_enabled": False,
+            "llm_calls_enabled": False,
+            "provenance_fields": ["source", "model_name", "provider_backend", "confidence", "thresholds", "job_id"],
+        },
+        "capability_probe": {
+            "attempted": True,
+            "bounded": True,
+            "synthetic_input_only": True,
+            "sample_count": 2,
+            "local_files_only": True,
+            "provider_matrix": {
+                "directml": {
+                    "provider": "DmlExecutionProvider",
+                    "available": True,
+                    "loaded": True,
+                    "practical": True,
+                    "status": "completed",
+                    "seconds_per_item": 0.25,
+                },
+                "cpu": {
+                    "provider": "CPUExecutionProvider",
+                    "available": True,
+                    "loaded": True,
+                    "practical": True,
+                    "status": "completed",
+                    "seconds_per_item": 1.5,
+                },
+            },
+            "provider_selection": {
+                "requested_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+                "available_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+                "selected_provider": "DmlExecutionProvider",
+                "fallback_occurred": False,
+                "fallback_reason": None,
+            },
+            "provider_fallback_decision_recorded": True,
+            "cpu_fallback_available": True,
+            "cpu_fallback_completed": True,
+            "recommended_provider": "DmlExecutionProvider",
+            "recommended_batch_size": 2,
+            "recommended_concurrency": 1,
+            "recommended_seconds_per_item": 0.25,
+            "estimated_runtime_seconds_for_25_item_manual_batch": 6.25,
+            "status": "completed",
+            "blocker": None,
+        },
+        "provider_fallback": {
+            "selection": {
+                "requested_provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+                "selected_provider": "DmlExecutionProvider",
+                "fallback_occurred": False,
+            },
+            "decision_recorded": True,
+            "gpu_requested_when_available": True,
+            "cpu_fallback_available": True,
+            "cpu_fallback_completed": True,
+            "actual_recommended_provider": "DmlExecutionProvider",
+        },
+        "load_control_policy": {
+            "present": True,
+            "max_batch_size": 2,
+            "max_concurrency": 1,
+            "per_image_timeout_seconds": 60,
+            "job_timeout_seconds": 600,
+            "single_active_ai_execution_guard": True,
+            "cancelability_or_safe_stop": "item_boundary",
+            "failure_isolation_per_image": True,
+            "no_unbounded_production_loop": True,
+        },
+        "provenance_policy": {
+            "present": True,
+            "source": "ai_wd",
+            "model_name": "wd-swinv2-tagger-v3",
+            "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+            "provider_backend": "onnxruntime",
+            "confidence_recorded": True,
+            "thresholds_recorded": True,
+            "job_id_recorded_for_job_runs": True,
+            "dry_run_vs_write_mode_recorded": True,
+            "manual_locked_tags_not_overwritten": True,
+            "suggestions_vs_confirmed_recorded": True,
+            "production_writes_enabled": False,
+            "provenance_fields": ["source", "model_name", "provider_backend", "confidence", "thresholds", "job_id"],
+        },
+        "manual_sync": {
+            "dry_run_planner": {
+                "implemented": True,
+                "public_safe": True,
+                "db_write_performed": False,
+                "source_mutation_performed": False,
+                "app_storage_mutation_performed": False,
+                "state_counts": {
+                    "candidate": 0,
+                    "skipped_unsupported": 1,
+                    "skipped_placeholder": 1,
+                    "skipped_zero_byte": 1,
+                    "skipped_changing": 0,
+                    "skipped_path_policy_error": 0,
+                    "skipped_duplicate": 1,
+                    "skipped_existing_media": 1,
+                    "import_planned": 1,
+                    "imported_in_test": 0,
+                    "classified_in_test": 0,
+                    "ai_tagged_in_test": 0,
+                    "localization_scheduled_in_test": 0,
+                    "failed": 1,
+                },
+                "failure_reasons": {"corrupted_image": 1},
+                "estimated_import_count": 1,
+                "estimated_classification_count": 1,
+                "estimated_ai_tagging_count": 1,
+                "estimated_localization_workload": 1,
+            },
+            "job_ledger_foundation": {
+                "implemented": True,
+                "job_id_present": True,
+                "mode": "dry_run",
+                "state": "planned",
+                "trigger_type": "manual_operator",
+                "per_file_state_records_present": True,
+                "persistent_tables_available": [
+                    "blombooru_dynamic_sync_runs",
+                    "blombooru_dynamic_sync_run_items",
+                    "blombooru_dynamic_source_items",
+                ],
+                "ledger_mode": "public_summary_plus_optional_private_local_details",
+            },
+            "controlled_pipeline": {
+                "implemented": True,
+                "status": "planned_dry_run_only",
+                "dry_run_only_this_phase": True,
+                "production_execute_enabled": False,
+                "estimated_runtime_seconds": 4.0,
+                "stages": [
+                    {"name": "candidate_discovery", "writes_enabled": False, "production_execution_enabled": False},
+                    {"name": "import", "writes_enabled": False, "production_execution_enabled": False},
+                    {"name": "classification", "writes_enabled": False, "production_execution_enabled": False},
+                    {"name": "ai_tagging", "writes_enabled": False, "production_execution_enabled": False},
+                    {"name": "localization", "writes_enabled": False, "production_execution_enabled": False},
+                    {"name": "summary", "writes_enabled": False, "production_execution_enabled": False},
+                ],
+            },
+        },
+        "api_surface": {
+            "manual_plan_endpoint": "POST /api/admin/dynamic-library-sync/manual-sync/plan",
+            "manual_status_endpoint": "GET /api/admin/dynamic-library-sync/manual-sync/status",
+            "auth_required": "require_admin_mode",
+            "production_write_endpoint_enabled": False,
+            "automatic_execution_endpoint_added": False,
+        },
+        "final_button_recommendation": {
+            "placement": "both_launcher_and_web_admin",
+            "primary_call": "POST /api/admin/dynamic-library-sync/manual-sync/plan",
+            "launcher_pending_check_on_startup": "lightweight_count_only_ok",
+            "launcher_intrusive_prompt": False,
+            "safe_default_max_files": 25,
+            "safe_default_max_duration_seconds": 600,
+            "safe_default_ai_batch_size": 2,
+            "safe_default_concurrency": 1,
+            "partial_failure_behavior": "complete_successful_items_keep_failed_visible",
+            "first_real_acceptance_batch_size": 5,
+            "rollback_supersede_diagnostic_plan": "ledger_driven_retry",
+        },
+        "validation": {
+            "focused_tests_passed": True,
+            "runner_completed": True,
+            "browser_validation_required": False,
+            "browser_validation_reason": "backend route/service only",
+        },
+        "public_reports": {
+            "summary_json_path": "docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json",
+            "markdown_report_path": "docs/reports/s2g-real1-bounded-ai-tagging-validation.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "safety": {
+            "production_db_mutation": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging_writes": False,
+            "production_localization_writes": False,
+            "source_icloud_mutation": False,
+            "app_managed_production_storage_mutation": False,
+            "external_provider_calls": False,
+            "gallery_dl_pixiv_saucenao_google_calls": False,
+            "sourceconcept_mutation": False,
+            "entity_truth_writes": False,
+            "confirmed_assignment_writes": False,
+            "production_media_tags_mutation": False,
+            "llm_calls": False,
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+            "system_service_enabled": False,
+            "startup_task_enabled": False,
+            "long_running_daemon_enabled": False,
+            "final_production_acceptance_completed": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _set_nested(payload: dict, path: str, value: object) -> None:
     cursor = payload
     parts = path.split(".")
@@ -2641,6 +2879,68 @@ def test_s2g_real1_contract_rejects_dry_run_media_tag_delta() -> None:
     assert "s2g_real1_dry_run_media_tags_delta" in codes
     assert "s2g_real1_required_proof_missing" in codes
     assert "s2g_real1_forbidden_safety_flag" in codes
+
+
+def test_s2g_m1_contract_accepts_ai_and_manual_sync_foundation() -> None:
+    result = check_phase_contract(
+        "s2g_manual_sync_foundation_contract_v1",
+        _s2g_m1_summary(),
+    )
+
+    assert result.passed is True
+
+
+def test_s2g_m1_contract_rejects_target_without_focused_tests() -> None:
+    summary = copy.deepcopy(_s2g_m1_summary())
+    summary["validation"]["focused_tests_passed"] = False
+
+    result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", summary)
+
+    assert "s2g_m1_target_without_focused_tests" in _error_codes(result)
+
+
+def test_s2g_m1_contract_rejects_production_writes_and_db_mutation() -> None:
+    summary = copy.deepcopy(_s2g_m1_summary())
+    summary["ai_execution_profile"]["production_writes_enabled"] = True
+    summary["manual_sync"]["dry_run_planner"]["db_write_performed"] = True
+    summary["safety"]["production_db_mutation"] = True
+    summary["safety"]["production_media_tags_mutation"] = True
+
+    result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", summary)
+
+    assert "s2g_m1_forbidden_execution_or_mutation" in _error_codes(result)
+
+
+def test_s2g_m1_contract_rejects_automatic_sync_and_final_acceptance() -> None:
+    summary = copy.deepcopy(_s2g_m1_summary())
+    summary["safety"]["automatic_sync_enabled"] = True
+    summary["safety"]["scheduled_sync_enabled"] = True
+    summary["safety"]["final_production_acceptance_completed"] = True
+
+    result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", summary)
+
+    assert "s2g_m1_forbidden_execution_or_mutation" in _error_codes(result)
+
+
+def test_s2g_m1_contract_rejects_write_enabled_pipeline_stage() -> None:
+    summary = copy.deepcopy(_s2g_m1_summary())
+    summary["manual_sync"]["controlled_pipeline"]["stages"][1]["writes_enabled"] = True
+
+    result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", summary)
+
+    assert "s2g_m1_pipeline_stage_write_enabled" in _error_codes(result)
+
+
+def test_s2g_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_read_s2g_m1_markdown_report",
+        lambda _summary, _result: r"C:\Users\private\Pictures\example.png",
+    )
+
+    result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", _s2g_m1_summary())
+
+    assert "s2g_m1_public_payload_redaction_failed" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

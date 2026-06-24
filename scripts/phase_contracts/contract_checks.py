@@ -2265,6 +2265,59 @@ def _read_s2g_real1_markdown_report(summary: Mapping[str, Any], result: Contract
     return ""
 
 
+def _read_s2g_m1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if path_text is MISSING or not str(path_text).strip():
+        result.fail(
+            "s2g_m1_markdown_report_path_missing",
+            "S2G-M1 summaries must name the public Markdown report path.",
+            path="public_reports.markdown_report_path",
+        )
+        return ""
+    candidate = Path(str(path_text))
+    if candidate.is_absolute():
+        result.fail(
+            "s2g_m1_markdown_report_path_unsafe",
+            "S2G-M1 Markdown report path must be repo-relative.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative path",
+            actual="[redacted-path]",
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s2g_m1_markdown_report_path_escape",
+            "S2G-M1 Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s2g_m1_markdown_report_missing",
+            "S2G-M1 Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s2g_m1_markdown_report_unreadable",
+            "S2G-M1 Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
 def _read_s3a_pilot1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
     path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
     if path_text is MISSING or not str(path_text).strip():
@@ -3145,6 +3198,323 @@ def _check_s2g_real1_bounded_ai_tagging_validation(_contract: PhaseContract, sum
         result.fail(
             "s2g_real1_public_payload_redaction_failed",
             "S2G-REAL1 contract independently found forbidden public JSON or Markdown content.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
+
+def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "target_met",
+        "foundation_ready_pending_validation",
+        "blocked_probe_unavailable",
+        "blocked_manual_sync_foundation",
+        "blocked_public_redaction_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s2g_m1_unknown_status",
+            "S2G-M1 status must explicitly describe the foundation/probe outcome.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "target_met" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s2g_m1_non_completion_status_claimed_completion",
+            "Non-target S2G-M1 statuses must not claim target_met, route approval, full-chain completion, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met for completion claims",
+            actual=result.status,
+        )
+    if status == "target_met" and not _as_bool(_get(summary, "validation.focused_tests_passed", False)):
+        result.fail(
+            "s2g_m1_target_without_focused_tests",
+            "S2G-M1 may claim target_met only after focused tests have passed.",
+            path="validation.focused_tests_passed",
+            expected=True,
+            actual=_get(summary, "validation.focused_tests_passed", None),
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "pipeline_contract.post_123_route_respected",
+            "head_evidence.pr123_merge_is_ancestor_of_origin_main",
+            "head_evidence.latest_main_after_pr123",
+            "capability_probe.attempted",
+            "capability_probe.bounded",
+            "capability_probe.synthetic_input_only",
+            "capability_probe.local_files_only",
+            "capability_probe.provider_fallback_decision_recorded",
+            "provider_fallback.decision_recorded",
+            "load_control_policy.present",
+            "load_control_policy.single_active_ai_execution_guard",
+            "load_control_policy.failure_isolation_per_image",
+            "load_control_policy.no_unbounded_production_loop",
+            "provenance_policy.present",
+            "provenance_policy.manual_locked_tags_not_overwritten",
+            "provenance_policy.suggestions_vs_confirmed_recorded",
+            "manual_sync.dry_run_planner.implemented",
+            "manual_sync.dry_run_planner.public_safe",
+            "manual_sync.job_ledger_foundation.implemented",
+            "manual_sync.job_ledger_foundation.job_id_present",
+            "manual_sync.job_ledger_foundation.per_file_state_records_present",
+            "manual_sync.controlled_pipeline.implemented",
+            "manual_sync.controlled_pipeline.dry_run_only_this_phase",
+            "validation.runner_completed",
+            "public_redaction.passed",
+        ),
+        code="s2g_m1_required_foundation_proof_missing",
+        message="S2G-M1 requires current-main proof, bounded probe proof, load/provenance proof, planner/ledger/pipeline proof, and public redaction proof.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "ai_execution_profile.production_writes_enabled",
+            "ai_execution_profile.provider_network_calls_enabled",
+            "ai_execution_profile.llm_calls_enabled",
+            "provenance_policy.production_writes_enabled",
+            "manual_sync.dry_run_planner.db_write_performed",
+            "manual_sync.dry_run_planner.source_mutation_performed",
+            "manual_sync.dry_run_planner.app_storage_mutation_performed",
+            "manual_sync.controlled_pipeline.production_execute_enabled",
+            "api_surface.production_write_endpoint_enabled",
+            "api_surface.automatic_execution_endpoint_added",
+            "safety.production_db_mutation",
+            "safety.production_import",
+            "safety.production_classification",
+            "safety.production_ai_tagging_writes",
+            "safety.production_localization_writes",
+            "safety.source_icloud_mutation",
+            "safety.app_managed_production_storage_mutation",
+            "safety.external_provider_calls",
+            "safety.gallery_dl_pixiv_saucenao_google_calls",
+            "safety.sourceconcept_mutation",
+            "safety.entity_truth_writes",
+            "safety.confirmed_assignment_writes",
+            "safety.production_media_tags_mutation",
+            "safety.llm_calls",
+            "safety.automatic_sync_enabled",
+            "safety.scheduled_sync_enabled",
+            "safety.system_service_enabled",
+            "safety.startup_task_enabled",
+            "safety.long_running_daemon_enabled",
+            "safety.final_production_acceptance_completed",
+        ),
+        code="s2g_m1_forbidden_execution_or_mutation",
+        message="S2G-M1 must explicitly keep production writes, provider/LLM/entity work, and automatic/scheduled sync disabled.",
+    )
+
+    if str(_get(summary, "pipeline_contract.phase_identity", "")) != "S2G-M1":
+        result.fail(
+            "s2g_m1_phase_identity_mismatch",
+            "S2G-M1 summaries must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S2G-M1",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+
+    profile = _get(summary, "ai_execution_profile", {})
+    if not isinstance(profile, Mapping):
+        result.fail("s2g_m1_profile_not_object", "ai_execution_profile must be an object.", path="ai_execution_profile")
+        profile = {}
+    if str(profile.get("provider_backend") or "") != "onnxruntime":
+        result.fail(
+            "s2g_m1_provider_backend_invalid",
+            "AI tagging execution profile must remain local ONNX Runtime only.",
+            path="ai_execution_profile.provider_backend",
+            expected="onnxruntime",
+            actual=profile.get("provider_backend"),
+        )
+    provider_preference = profile.get("provider_preference")
+    if not isinstance(provider_preference, list) or "CPUExecutionProvider" not in provider_preference:
+        result.fail(
+            "s2g_m1_cpu_fallback_missing_from_profile",
+            "AI tagging execution profile must keep CPU fallback in the provider preference.",
+            path="ai_execution_profile.provider_preference",
+            expected="list containing CPUExecutionProvider",
+            actual=provider_preference,
+        )
+    batch_size = _as_int(profile.get("batch_size", 0))
+    concurrency = _as_int(profile.get("concurrency", 0))
+    per_image_timeout = _as_int(profile.get("per_image_timeout_seconds", 0))
+    job_timeout = _as_int(profile.get("job_timeout_seconds", 0))
+    if not (1 <= batch_size <= 16):
+        result.fail("s2g_m1_batch_size_unbounded", "AI tagging batch size must stay within the phase cap.", path="ai_execution_profile.batch_size", expected="1..16", actual=batch_size)
+    if concurrency != 1:
+        result.fail("s2g_m1_concurrency_unbounded", "AI tagging concurrency must remain one for this foundation phase.", path="ai_execution_profile.concurrency", expected=1, actual=concurrency)
+    if per_image_timeout < 1:
+        result.fail("s2g_m1_per_image_timeout_missing", "Per-image timeout must be a positive integer.", path="ai_execution_profile.per_image_timeout_seconds", expected="positive integer", actual=per_image_timeout)
+    if job_timeout < per_image_timeout:
+        result.fail("s2g_m1_job_timeout_too_small", "Job timeout must be at least the per-image timeout.", path="ai_execution_profile.job_timeout_seconds", expected=f">= {per_image_timeout}", actual=job_timeout)
+    if not _as_bool(profile.get("local_files_only")):
+        result.fail("s2g_m1_model_cache_not_local_only", "S2G-M1 must use local-files-only model resolution.", path="ai_execution_profile.local_files_only", expected=True, actual=profile.get("local_files_only"))
+
+    probe = _get(summary, "capability_probe", {})
+    if not isinstance(probe, Mapping):
+        result.fail("s2g_m1_probe_not_object", "capability_probe must be an object.", path="capability_probe")
+        probe = {}
+    sample_count = _as_int(probe.get("sample_count", 0))
+    if not (1 <= sample_count <= 16):
+        result.fail("s2g_m1_probe_sample_count_unbounded", "Capability probe sample count must be bounded.", path="capability_probe.sample_count", expected="1..16", actual=sample_count)
+    provider_matrix = probe.get("provider_matrix")
+    if not isinstance(provider_matrix, Mapping) or "cpu" not in provider_matrix:
+        result.fail(
+            "s2g_m1_cpu_provider_row_missing",
+            "Capability probe must report CPU fallback status.",
+            path="capability_probe.provider_matrix.cpu",
+            expected="CPU provider row",
+            actual=provider_matrix,
+        )
+    selection = probe.get("provider_selection")
+    if not isinstance(selection, Mapping) or not selection.get("requested_provider_preference"):
+        result.fail(
+            "s2g_m1_provider_selection_missing",
+            "Capability probe must record requested provider preference and selected/fallback result.",
+            path="capability_probe.provider_selection",
+            expected="provider selection object",
+            actual=selection,
+        )
+    completed_provider_rows = [
+        row
+        for row in (provider_matrix or {}).values()
+        if isinstance(row, Mapping) and str(row.get("status")) == "completed"
+    ] if isinstance(provider_matrix, Mapping) else []
+    if not completed_provider_rows and not str(probe.get("blocker") or "").strip():
+        result.fail(
+            "s2g_m1_probe_blocker_missing",
+            "If no provider benchmark completed, the probe must report an explicit blocker.",
+            path="capability_probe.blocker",
+            expected="non-empty blocker when no provider completed",
+            actual=probe.get("blocker"),
+        )
+    recommended_batch = _as_int(probe.get("recommended_batch_size", 0))
+    recommended_concurrency = _as_int(probe.get("recommended_concurrency", 0))
+    if not (1 <= recommended_batch <= 16):
+        result.fail("s2g_m1_recommended_batch_unbounded", "Recommended AI batch size must stay bounded.", path="capability_probe.recommended_batch_size", expected="1..16", actual=recommended_batch)
+    if recommended_concurrency != 1:
+        result.fail("s2g_m1_recommended_concurrency_unbounded", "Recommended concurrency must remain one.", path="capability_probe.recommended_concurrency", expected=1, actual=recommended_concurrency)
+
+    state_counts = _get(summary, "manual_sync.dry_run_planner.state_counts", {})
+    if not isinstance(state_counts, Mapping):
+        result.fail("s2g_m1_state_counts_missing", "Manual sync dry-run planner must report per-state counts.", path="manual_sync.dry_run_planner.state_counts")
+        state_counts = {}
+    expected_states = {
+        "import_planned",
+        "skipped_unsupported",
+        "skipped_zero_byte",
+        "skipped_duplicate",
+        "skipped_existing_media",
+        "failed",
+    }
+    missing_states = sorted(expected_states - set(str(key) for key in state_counts.keys()))
+    if missing_states:
+        result.fail(
+            "s2g_m1_planner_state_coverage_missing",
+            "Manual sync dry-run planner proof must cover candidate, duplicate/existing, unsupported, zero-byte, and failure states.",
+            path="manual_sync.dry_run_planner.state_counts",
+            expected=sorted(expected_states),
+            actual=sorted(state_counts.keys()),
+        )
+    if _as_int(_get(summary, "manual_sync.dry_run_planner.estimated_import_count", 0)) < 1:
+        result.fail(
+            "s2g_m1_no_import_candidate_planned",
+            "The S2G-M1 dry-run fixture proof must include at least one import-planned candidate.",
+            path="manual_sync.dry_run_planner.estimated_import_count",
+            expected=">=1",
+            actual=_get(summary, "manual_sync.dry_run_planner.estimated_import_count", None),
+        )
+
+    stages = _get(summary, "manual_sync.controlled_pipeline.stages", [])
+    stage_names = {
+        str(stage.get("name"))
+        for stage in stages
+        if isinstance(stages, list) and isinstance(stage, Mapping)
+    } if isinstance(stages, list) else set()
+    expected_stages = {"candidate_discovery", "import", "classification", "ai_tagging", "localization", "summary"}
+    missing_stages = sorted(expected_stages - stage_names)
+    if missing_stages:
+        result.fail(
+            "s2g_m1_pipeline_stages_missing",
+            "Controlled pipeline foundation must expose each future manual sync stage.",
+            path="manual_sync.controlled_pipeline.stages",
+            expected=sorted(expected_stages),
+            actual=sorted(stage_names),
+        )
+    elif any(
+        _as_bool(stage.get("writes_enabled", False)) or _as_bool(stage.get("production_execution_enabled", False))
+        for stage in stages
+        if isinstance(stage, Mapping)
+    ):
+        result.fail(
+            "s2g_m1_pipeline_stage_write_enabled",
+            "S2G-M1 controlled pipeline stages must stay dry-run-only with writes disabled.",
+            path="manual_sync.controlled_pipeline.stages",
+            expected="all writes_enabled=false and production_execution_enabled=false",
+        )
+
+    placement = str(_get(summary, "final_button_recommendation.placement", "") or "")
+    if placement not in {"launcher", "web_admin", "both_launcher_and_web_admin"}:
+        result.fail(
+            "s2g_m1_button_placement_invalid",
+            "Final button recommendation must choose launcher, Web Admin, or both.",
+            path="final_button_recommendation.placement",
+            expected=["launcher", "web_admin", "both_launcher_and_web_admin"],
+            actual=placement,
+        )
+    max_files = _as_int(_get(summary, "final_button_recommendation.safe_default_max_files", 0))
+    max_duration = _as_int(_get(summary, "final_button_recommendation.safe_default_max_duration_seconds", 0))
+    if not (1 <= max_files <= 1000):
+        result.fail("s2g_m1_final_button_max_files_unbounded", "Final button safe default max files must be bounded.", path="final_button_recommendation.safe_default_max_files", expected="1..1000", actual=max_files)
+    if not (1 <= max_duration <= 3600):
+        result.fail("s2g_m1_final_button_duration_unbounded", "Final button safe default max duration must be bounded.", path="final_button_recommendation.safe_default_max_duration_seconds", expected="1..3600", actual=max_duration)
+    if _as_int(_get(summary, "final_button_recommendation.safe_default_ai_batch_size", 0)) != batch_size:
+        result.fail(
+            "s2g_m1_button_batch_mismatch",
+            "Final button recommendation should reuse the S2G-M1 AI execution profile batch size.",
+            path="final_button_recommendation.safe_default_ai_batch_size",
+            expected=batch_size,
+            actual=_get(summary, "final_button_recommendation.safe_default_ai_batch_size", None),
+        )
+    if _as_int(_get(summary, "final_button_recommendation.safe_default_concurrency", 0)) != 1:
+        result.fail(
+            "s2g_m1_button_concurrency_unbounded",
+            "Final button recommendation must keep AI concurrency at one by default.",
+            path="final_button_recommendation.safe_default_concurrency",
+            expected=1,
+            actual=_get(summary, "final_button_recommendation.safe_default_concurrency", None),
+        )
+
+    if _as_bool(_get(summary, "validation.browser_validation_required", True)):
+        result.fail(
+            "s2g_m1_browser_validation_unexpectedly_required",
+            "S2G-M1 should not require browser validation unless visible UI behavior changed.",
+            path="validation.browser_validation_required",
+            expected=False,
+            actual=_get(summary, "validation.browser_validation_required", None),
+        )
+
+    redaction_passed = _as_bool(_get(summary, "public_redaction.passed", False))
+    if status == "target_met" and not redaction_passed:
+        result.fail(
+            "s2g_m1_target_with_failed_public_redaction",
+            "S2G-M1 target_met requires public redaction to pass.",
+            path="public_redaction.passed",
+            expected=True,
+            actual=_get(summary, "public_redaction.passed", None),
+        )
+    markdown_text = _read_s2g_m1_markdown_report(summary, result)
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
+    result.details["s2g_m1_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s2g_m1_public_payload_redaction_failed",
+            "S2G-M1 contract independently found forbidden public JSON or Markdown content.",
             path="public_payload",
             expected="no findings",
             actual={"finding_count": len(redaction_findings), "findings_redacted": True},
@@ -5677,6 +6047,7 @@ CUSTOM_CHECKS = {
     "s2g1x_probe": _check_s2g1x_probe,
     "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,
     "s2g_real1_bounded_ai_tagging_validation": _check_s2g_real1_bounded_ai_tagging_validation,
+    "s2g_manual_sync_foundation": _check_s2g_manual_sync_foundation,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

@@ -1,7 +1,7 @@
 # Post-S2 Production Roadmap
 
-Status: accepted production routing reference after PR #122 /
-PROD-LAUNCHER-UX1/PF1 and PD1-A-R1 reconciliation.
+Status: accepted production routing reference after PR #123 / PD1-A-R1 and
+S2G-M1 foundation work.
 
 Canonical short version: `docs/roadmap/current-mainline-roadmap.md`.
 This file keeps the post-S2 production utility track aligned with that current
@@ -26,29 +26,35 @@ production sync.
   the current production entry problem, but the long-term production
   configuration architecture remains deferred.
 - The project has a real production baseline library.
+- PR #123 / PD1-A-R1 is merged.
+- Merge commit: `4724530d83767a62b6525a58bb1a1d04e973d48e`.
+- S2G-M1 is the current production-utility foundation phase for AI execution
+  and manual controlled sync.
 - Production DB, storage, source roots, and private ledgers must stay separate
   from develop/test fixtures and feature-branch validation.
 
 ## Accepted Sequence
 
-1. `PD1-A-R1` - Post-#122 roadmap reconciliation and production/development
-   gate foundation.
-   - Immediate reconciliation phase after #122.
-   - Updates roadmap, handoff, public report, and executable separation
-     contract.
-   - No production writes.
-
-2. `S2G: GPU / AI Tagging Execution Foundation`.
-   - The next production utility foundation after PD1-A-R1.
+1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation`.
+   - The production utility foundation after PD1-A-R1.
    - Single consolidated phase, not split into S2G-1 and S2G-2/3.
    - Covers GPU / AI tagging capability probe and benchmark, provider
      abstraction, provenance, batch/concurrency/throttle controls, and CPU
      fallback.
-   - Does not authorize production writes unless a later phase explicitly
-     approves them.
+   - Adds manual sync dry-run planner, job/ledger foundation, and controlled
+     pipeline foundation in dry-run/dev-test mode.
+   - Does not authorize production writes.
+
+2. `S3A-M1` - Final manual-sync UI / production acceptance.
+   - Small follow-up phase after S2G-M1.
+   - Wires the final visible manual-sync button and runs the first small
+     production acceptance batch only after explicit operator approval.
+   - Must remain manual; no automatic, scheduled, startup, service, or
+     unattended sync.
 
 3. `R1R` - SourceConcept route redo under GOV3 contracts.
-   - Follows S2G unless the user explicitly reprioritizes.
+   - Follows the production utility manual-sync acceptance unless the user
+     explicitly reprioritizes.
    - Required because INC1 found old R1 was deterministic-only.
    - Do not create confirmed Entity assignments.
    - Do not run new provider/Pixiv live calls unless separately approved.
@@ -61,31 +67,52 @@ production sync.
    - Focus on making the Pixiv/source metadata route reliable.
    - Do not introduce new providers before Pixiv/source metadata is settled.
 
-6. `S3A` - Controlled Incremental Sync Pipeline.
-   - Later phase.
-   - Must account for production profile/runtime config instead of development
-     `.env`.
-   - Production execution still waits for a separate approved phase.
-   - This is not one-by-one manual import.
-   - The operator manually triggers a run, then the system automatically
-     performs update check, hydration/read, import/reuse, classification,
-     AI tagging, localization, per-item ledgers, failure budgets, and summary.
-   - Production execution still requires explicit confirmation and promotion
-     gates.
-
-7. `S3B` - Opt-in automated incremental sync.
+6. `S3B` - Opt-in automated incremental sync.
    - Later phase.
    - Disabled by default and opt-in only until explicitly approved.
    - Must account for production profile/runtime config instead of development
      `.env`.
 
-8. `S2F0` - Desired-media gap audit / support decision report.
+7. `S2F0` - Desired-media gap audit / support decision report.
    - Low priority.
    - Audit-only, not implementation.
    - Report unsupported desired-media ratio, extension breakdown, sampled
      relevance, and recommendation.
    - Do not implement HEIC/JFIF/MOV/MP4 support or backfill unless the audit
      proves it is worth doing for the anime-library use case.
+
+## S3A-M1 Acceptance Shape
+
+- The visible manual-sync button should be exposed in both Web Admin and the
+  launcher, but the launcher should only perform a lightweight pending check on
+  startup.
+- The launcher should not show an intrusive automatic prompt by default.
+- The backend should call the S2G-M1 dry-run plan endpoint first:
+  `POST /api/admin/dynamic-library-sync/manual-sync/plan`.
+- Production execution should require a separate S3A-M1 execute endpoint or
+  runner with explicit operator approval, production identity proof, and a small
+  first batch.
+- Safe defaults from S2G-M1 are max files `25`, max duration `600` seconds,
+  AI batch size `2`, and concurrency `1`.
+- Partial failure should complete successful items, keep failed/deferred items
+  visible in the ledger, and stop only on hard safety gates or failure budget
+  breach.
+
+## Later Automated Sync
+
+- S3B is not the same as S3A-M1.
+- Scheduled or unattended sync remains disabled by default.
+- Startup tasks, system services, and long-running daemons require a separate
+  opt-in phase and are not authorized by S2G-M1 or S3A-M1.
+
+## Historical Controlled Sync Shape
+
+- This is not one-by-one manual import.
+- The operator manually triggers a run, then the system automatically
+  performs update check, hydration/read, import/reuse, classification,
+  AI tagging, localization, per-item ledgers, failure budgets, and summary.
+- Production execution still requires explicit confirmation and promotion
+  gates.
 
 ## Production/Development Gate
 
@@ -103,8 +130,8 @@ production sync.
 
 ## Current Non-Goals
 
-PD1-A-R1 does not authorize production import/classification/AI/localization,
-S2G execution, S3A/S3B production execution, S3B automation,
+S2G-M1 does not authorize production import/classification/AI/localization,
+S3A-M1 production acceptance completion, S3B automation,
 provider/Pixiv/gallery-dl/SauceNAO/Google calls, SourceConcept R1/R2, Entity
 bridge, confirmed assignments, desired-media backfill, cleanup, delete, reset,
 drop, truncate, push main, or merge.

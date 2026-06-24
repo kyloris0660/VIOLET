@@ -16,10 +16,11 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.database import Base, migrate_add_dynamic_library_sync_tables  # noqa: E402
-from app.enums import TagCategoryEnum  # noqa: E402
+from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
 from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, TagTranslation  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as service  # noqa: E402
+from app.utils.media_processor import calculate_file_hash  # noqa: E402
 
 
 @pytest.fixture()
@@ -90,6 +91,13 @@ def _seed_source_tree(root: Path) -> None:
     (root / "other.png").write_bytes(b"other image")
     (root / "empty.gif").write_bytes(b"")
     (root / "notes.txt").write_text("not media", encoding="utf-8")
+
+
+def _write_png(path: Path, color: tuple[int, int, int] = (1, 2, 3)) -> None:
+    from PIL import Image
+
+    image = Image.new("RGB", (1, 1), color)
+    image.save(path)
 
 
 def test_dynamic_sync_migration_is_idempotent_and_indexed():
@@ -171,6 +179,90 @@ def test_pending_snapshot_embeds_completed_current_run(app_style_db, tmp_path):
     assert embedded["new_items"] == result["new_items"]
     assert embedded["deferred_items"] == result["deferred_items"]
     assert not (embedded["status"] == "running" and embedded["total_seen"] == 0)
+
+
+def test_manual_sync_dry_run_plan_reports_public_safe_item_states(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "a_new.png", (10, 20, 30))
+    _write_png(source_root / "b_duplicate.png", (10, 20, 30))
+    _write_png(source_root / "c_existing.png", (90, 80, 70))
+    (source_root / "d_empty.jpg").write_bytes(b"")
+    (source_root / "e_notes.txt").write_text("not media", encoding="utf-8")
+    (source_root / "f_corrupt.jpg").write_bytes(b"not an image")
+    (source_root / "g_cloud.icloud").write_bytes(b"placeholder")
+
+    existing_hash = calculate_file_hash(source_root / "c_existing.png")
+    db.add(
+        Media(
+            filename="existing-redacted.png",
+            path="media/original/existing-redacted.png",
+            hash=existing_hash,
+            file_type=FileTypeEnum.image,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=20,
+        stable_age_seconds=0,
+    )
+    counts = plan["counts"]["state_counts"]
+
+    assert plan["job"]["mode"] == "dry_run"
+    assert plan["job"]["production_execution_enabled"] is False
+    assert plan["ledger"]["db_write_performed"] is False
+    assert counts["import_planned"] == 1
+    assert counts["skipped_duplicate"] == 1
+    assert counts["skipped_existing_media"] == 1
+    assert counts["skipped_zero_byte"] == 1
+    assert counts["skipped_unsupported"] == 1
+    assert counts["skipped_placeholder"] == 1
+    assert counts["failed"] == 1
+    assert plan["counts"]["estimated_classification_count"] == 1
+    assert plan["counts"]["estimated_ai_tagging_count"] == 1
+    assert plan["counts"]["estimated_localization_workload"] == 1
+    assert all(item["bytes_copied"] == 0 for item in plan["ledger"]["per_file_public_records"])
+    assert "private_details" not in plan
+    assert "a_new.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_plan_defers_files_that_are_still_changing(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png")
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=3600,
+    )
+
+    assert plan["counts"]["state_counts"]["skipped_changing"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["ledger"]["per_file_public_records"][0]["reason"] == "file_still_changing"
+
+
+def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={"source_path": str(source_root), "max_files": 5, "stable_age_seconds": 0},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["public_safe"] is True
+    assert payload["ledger"]["db_write_performed"] is False
+    assert payload["counts"]["state_counts"]["import_planned"] == 1
+    assert "private_details" not in payload
+    assert "new.png" not in str(payload)
 
 
 def test_update_check_detects_changed_and_missing_items(db, tmp_path):

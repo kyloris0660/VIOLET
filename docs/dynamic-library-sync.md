@@ -101,6 +101,40 @@ Any threshold-triggered or scheduled production write must require explicit
 user opt-in and visible UI/config. S1 exposes a `sync-pending` API surface, but
 it fails closed while manual execution is disabled.
 
+## S2G-M1 manual sync dry-run foundation
+
+S2G-M1 adds a dry-run-only manual sync planner and status API for the later
+S3A-M1 button/acceptance phase.
+
+Routes:
+
+- `GET /api/admin/dynamic-library-sync/manual-sync/status`
+- `POST /api/admin/dynamic-library-sync/manual-sync/plan`
+
+The plan endpoint accepts exactly one of a registered `root_id` or an explicit
+safe source path. It validates source-root policy, walks bounded candidates,
+checks unsupported files, iCloud/cloud placeholders, zero-byte files, changing
+files, corrupt images, duplicate hashes, and already-imported media, then
+returns public-safe counts and per-file safe labels. It does not write the DB,
+copy/import media, mutate source files, mutate app-managed storage, run
+classification, run AI tagging, schedule localization, call providers, or call
+LLMs.
+
+The S2G-M1 planner output includes:
+
+- a manual job id, trigger type, mode, and planned state;
+- per-file public records with safe labels and state/reason only;
+- state counts for skipped/planned/failed files;
+- estimated import, classification, AI tagging, and localization workload;
+- dry-run pipeline stages for candidate discovery, import, classification, AI
+  tagging, localization, and summary, all with writes disabled;
+- the AI tagging execution profile that S3A-M1 should reuse.
+
+Production execution remains disabled in this phase. S3A-M1 must add the final
+visible button and any production execute path behind explicit operator
+approval, production identity gates, failure budgets, and a small first
+acceptance batch.
+
 ## AI tagging and tag localization chain
 
 S2 should treat AI tagging and tag localization as one execution chain:
@@ -180,12 +214,18 @@ large-root production checks or S3 automation, this should move to an
 offloaded/background job model so the FastAPI event loop is not occupied by
 large filesystem walks.
 
-## S2 and S3 expectations
+## S2G-M1 and S3 expectations
 
-S2 should run only after explicit approval and after S1 readiness is reviewed.
-It should execute the approved baseline full import, classification, AI tagging,
-and tag localization chain with production DB/storage identity, backup proof,
-dry-run proof, public redaction checks, and relevant GOV3 contracts.
+S2G-M1 is a foundation phase only. It may benchmark local ONNX providers and
+plan manual sync dry-runs against safe fixtures/dev-test state, but it must not
+execute production import, classification, AI tagging, localization, source
+mutation, or app-managed storage mutation.
+
+S3A-M1 should run only after explicit approval and after S2G-M1 readiness is
+reviewed. It should wire the final visible manual-sync button and perform a
+small production acceptance batch with production DB/storage identity, backup
+proof where applicable, dry-run proof, public redaction checks, and relevant
+GOV3 contracts.
 
 S2 has a Gate 0 schema/readiness preparation step before Gate 1 execution
 readiness. If production has not yet run the S1 dynamic sync migration, the S2

@@ -28,10 +28,36 @@ DEFAULT_PREPROCESS_WORKERS = 2
 DEFAULT_MAX_CONCURRENT_AI_JOBS = 1
 DEFAULT_EXECUTION_MODE = "ORT_SEQUENTIAL"
 DEFAULT_PROCESS_PRIORITY = "below_normal"
+DEFAULT_AI_TAGGING_IMAGE_TIMEOUT_SECONDS = 60
+DEFAULT_AI_TAGGING_JOB_TIMEOUT_SECONDS = 600
 MAX_AI_TAGGING_BATCH_SIZE = 16
 MAX_CPU_INTRA_OP_THREADS = 4
 MAX_CPU_INTER_OP_THREADS = 1
 MAX_PREPROCESS_WORKERS = 2
+
+WD_MODEL_REPOS: Mapping[str, str] = {
+    "wd-eva02-large-tagger-v3": "SmilingWolf/wd-eva02-large-tagger-v3",
+    "wd-vit-tagger-v3": "SmilingWolf/wd-vit-tagger-v3",
+    "wd-swinv2-tagger-v3": "SmilingWolf/wd-swinv2-tagger-v3",
+    "wd-convnext-tagger-v3": "SmilingWolf/wd-convnext-tagger-v3",
+    "wd-vit-large-tagger-v3": "SmilingWolf/wd-vit-large-tagger-v3",
+}
+
+AI_TAGGING_PROVENANCE_FIELDS: tuple[str, ...] = (
+    "source",
+    "model_name",
+    "model_repo_id",
+    "provider_backend",
+    "requested_provider_preference",
+    "actual_provider",
+    "fallback_occurred",
+    "fallback_reason",
+    "confidence",
+    "thresholds",
+    "job_id",
+    "dry_run",
+    "write_mode",
+)
 
 S3A_FOUNDATION_STAGES: tuple[str, ...] = (
     "update_check",
@@ -259,6 +285,72 @@ class LoadControlConfig:
         return payload
 
 
+@dataclass(frozen=True)
+class AITaggingExecutionProfile:
+    """Public-safe AI tagging execution profile for manual sync planning."""
+
+    profile_id: str = "s2g_manual_sync_foundation_default_v1"
+    provider_backend: str = "onnxruntime"
+    model_name: str = "wd-swinv2-tagger-v3"
+    model_repo_id: str | None = WD_MODEL_REPOS.get("wd-swinv2-tagger-v3")
+    model_source_public: str = "huggingface_cache_or_configured_local_model_redacted"
+    thresholds: Mapping[str, float] = field(default_factory=dict)
+    provider_preference: tuple[str, ...] = DEFAULT_PROVIDER_PREFERENCE
+    batch_size: int = DEFAULT_AI_TAGGING_BATCH_SIZE
+    concurrency: int = DEFAULT_MAX_CONCURRENT_AI_JOBS
+    preprocess_workers: int = DEFAULT_PREPROCESS_WORKERS
+    per_image_timeout_seconds: int = DEFAULT_AI_TAGGING_IMAGE_TIMEOUT_SECONDS
+    job_timeout_seconds: int = DEFAULT_AI_TAGGING_JOB_TIMEOUT_SECONDS
+    allow_provider_fallback: bool = True
+    fallback_behavior: str = "try_requested_providers_in_order_then_cpu_if_allowed"
+    provenance_fields: tuple[str, ...] = AI_TAGGING_PROVENANCE_FIELDS
+    execution_scope: str = "dry_run_or_dev_test"
+    dry_run: bool = True
+    dev_test: bool = True
+    production_capable: bool = True
+    production_writes_enabled: bool = False
+    local_files_only: bool = True
+    provider_network_calls_enabled: bool = False
+    llm_calls_enabled: bool = False
+
+    def validation_errors(self) -> list[str]:
+        errors: list[str] = []
+        if self.provider_backend != "onnxruntime":
+            errors.append("provider_backend_must_be_onnxruntime")
+        if not self.model_name:
+            errors.append("model_name_required")
+        if not self.provider_preference:
+            errors.append("provider_preference_required")
+        if not (1 <= self.batch_size <= MAX_AI_TAGGING_BATCH_SIZE):
+            errors.append("batch_size_out_of_bounds")
+        if self.concurrency != 1:
+            errors.append("concurrency_must_remain_one")
+        if not (1 <= self.preprocess_workers <= MAX_PREPROCESS_WORKERS):
+            errors.append("preprocess_workers_out_of_bounds")
+        if self.per_image_timeout_seconds < 1:
+            errors.append("per_image_timeout_must_be_positive")
+        if self.job_timeout_seconds < self.per_image_timeout_seconds:
+            errors.append("job_timeout_must_cover_at_least_one_image")
+        if self.production_writes_enabled:
+            errors.append("production_writes_must_remain_disabled")
+        if not self.local_files_only:
+            errors.append("model_loading_must_remain_local_files_only")
+        if self.provider_network_calls_enabled:
+            errors.append("provider_network_calls_forbidden")
+        if self.llm_calls_enabled:
+            errors.append("llm_calls_forbidden")
+        return errors
+
+    def to_public_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["thresholds"] = dict(self.thresholds)
+        payload["provider_preference"] = list(self.provider_preference)
+        payload["provenance_fields"] = list(self.provenance_fields)
+        payload["validation_errors"] = self.validation_errors()
+        payload["safe_for_current_phase"] = not payload["validation_errors"]
+        return payload
+
+
 def build_ai_tagging_load_control_config(settings_obj: Any) -> LoadControlConfig:
     """Build bounded AI tagging controls from settings-like object values."""
     configured_batch = coerce_positive_int(
@@ -331,6 +423,50 @@ def build_ai_tagging_load_control_config(settings_obj: Any) -> LoadControlConfig
         ),
         execution_mode=execution_mode,
         process_priority=process_priority,
+    )
+
+
+def build_ai_tagging_execution_profile(
+    settings_obj: Any,
+    *,
+    dry_run: bool = True,
+    dev_test: bool = True,
+    execution_scope: str = "dry_run_or_dev_test",
+    production_writes_enabled: bool = False,
+    local_files_only: bool = True,
+) -> AITaggingExecutionProfile:
+    """Build the reusable AI tagging execution profile for S2G/S3A planning."""
+
+    load_control = build_ai_tagging_load_control_config(settings_obj)
+    model_name = str(getattr(settings_obj, "AI_MODEL_NAME", "wd-swinv2-tagger-v3") or "wd-swinv2-tagger-v3")
+    thresholds = {
+        "general_threshold": float(getattr(settings_obj, "AI_GENERAL_THRESHOLD", 0.35)),
+        "character_threshold": float(getattr(settings_obj, "AI_CHARACTER_THRESHOLD", 0.65)),
+        "rating_threshold": float(getattr(settings_obj, "AI_RATING_THRESHOLD", 0.50)),
+        "suggestion_threshold": float(getattr(settings_obj, "AI_SUGGESTION_THRESHOLD", 0.20)),
+    }
+    return AITaggingExecutionProfile(
+        model_name=model_name,
+        model_repo_id=WD_MODEL_REPOS.get(model_name),
+        thresholds=thresholds,
+        provider_preference=load_control.provider_preference,
+        batch_size=load_control.effective_batch_size,
+        concurrency=load_control.max_concurrent_jobs,
+        preprocess_workers=load_control.preprocess_workers,
+        per_image_timeout_seconds=coerce_positive_int(
+            getattr(settings_obj, "AI_TAGGING_IMAGE_TIMEOUT_SECONDS", DEFAULT_AI_TAGGING_IMAGE_TIMEOUT_SECONDS),
+            default=DEFAULT_AI_TAGGING_IMAGE_TIMEOUT_SECONDS,
+        ),
+        job_timeout_seconds=coerce_positive_int(
+            getattr(settings_obj, "AI_TAGGING_JOB_TIMEOUT_SECONDS", DEFAULT_AI_TAGGING_JOB_TIMEOUT_SECONDS),
+            default=DEFAULT_AI_TAGGING_JOB_TIMEOUT_SECONDS,
+        ),
+        allow_provider_fallback=load_control.allow_provider_fallback,
+        execution_scope=execution_scope,
+        dry_run=dry_run,
+        dev_test=dev_test,
+        production_writes_enabled=production_writes_enabled,
+        local_files_only=local_files_only,
     )
 
 
