@@ -2318,6 +2318,59 @@ def _read_s2g_m1_markdown_report(summary: Mapping[str, Any], result: ContractChe
     return ""
 
 
+def _read_s3a_m1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if path_text is MISSING or not str(path_text).strip():
+        result.fail(
+            "s3a_m1_markdown_report_path_missing",
+            "S3A-M1 summaries must name the public Markdown report path.",
+            path="public_reports.markdown_report_path",
+        )
+        return ""
+    candidate = Path(str(path_text))
+    if candidate.is_absolute():
+        result.fail(
+            "s3a_m1_markdown_report_path_unsafe",
+            "S3A-M1 Markdown report path must be repo-relative.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative path",
+            actual="[redacted-path]",
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s3a_m1_markdown_report_path_escape",
+            "S3A-M1 Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s3a_m1_markdown_report_missing",
+            "S3A-M1 Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s3a_m1_markdown_report_unreadable",
+            "S3A-M1 Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
 def _read_s3a_pilot1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
     path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
     if path_text is MISSING or not str(path_text).strip():
@@ -3572,6 +3625,174 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
         result.fail(
             "s2g_m1_public_payload_redaction_failed",
             "S2G-M1 contract independently found forbidden public JSON or Markdown content.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
+
+def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "target_met_dev_test_ready",
+        "blocked_validation_failed",
+        "blocked_execute_gate_failed",
+        "blocked_public_redaction_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m1_unknown_status",
+            "S3A-M1 status must explicitly describe dev/test readiness or the blocking condition.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "target_met_dev_test_ready" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m1_non_completion_status_claimed_completion",
+            "Non-target S3A-M1 statuses must not claim target_met, route approval, full-chain completion, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met_dev_test_ready for completion claims",
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M1":
+        result.fail(
+            "s3a_m1_phase_identity_mismatch",
+            "S3A-M1 summaries must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M1",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "manual_sync.plan_endpoint",
+            "manual_sync.execute_endpoint",
+            "manual_sync.status_endpoint",
+            "manual_sync.job_status_endpoint",
+            "manual_sync.cancel_endpoint",
+            "manual_sync.plan_hash_required",
+            "manual_sync.exact_confirmation_required",
+            "manual_sync.plan_freshness_required",
+            "manual_sync.registered_root_required_for_execute",
+            "manual_sync.hydrated_only_required",
+            "manual_sync.default_execute_disabled",
+            "manual_sync.stale_replan_rejected",
+            "manual_sync.ledger.per_file_records_present",
+            "manual_sync.ledger.dynamic_sync_run_used",
+            "manual_sync.ledger.public_safe",
+            "manual_sync.pipeline.dev_test_execute_supported",
+            "manual_sync.pipeline.production_acceptance_pending",
+            "api_surface.manual_execute_endpoint_added",
+            "ui.web_admin_manual_execute_panel",
+            "ui.web_admin_plan_confirmation_flow",
+            "ui.launcher_manual_sync_entry",
+            "validation.focused_tests_passed",
+            "validation.launcher_tests_passed",
+            "validation.browser_validation_performed",
+            "validation.contract_check_passed",
+            "public_redaction.passed",
+        ),
+        code="s3a_m1_required_proof_missing",
+        message="S3A-M1 requires guarded execute, UI/launcher, validation, and public-redaction proof.",
+    )
+    if status == "target_met_dev_test_ready":
+        _check_required_boolean_paths(
+            summary,
+            result,
+            (
+                "target_met",
+                "manual_sync.dev_test_execute_validation.completed",
+                "manual_sync.dev_test_execute_validation.source_mutation_absent",
+                "manual_sync.dev_test_execute_validation.llm_calls_absent",
+            ),
+            code="s3a_m1_target_validation_missing",
+            message="S3A-M1 target status requires focused dev/test execute validation proof.",
+        )
+
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "ai_execution_profile.llm_calls_enabled",
+            "api_surface.automatic_execution_endpoint_added",
+            "safety.production_execute_performed",
+            "safety.production_import",
+            "safety.production_classification",
+            "safety.production_ai_tagging_writes",
+            "safety.production_localization_writes",
+            "safety.source_icloud_mutation",
+            "safety.app_managed_production_storage_mutation",
+            "safety.external_provider_calls",
+            "safety.llm_calls",
+            "safety.automatic_sync_enabled",
+            "safety.scheduled_sync_enabled",
+            "safety.system_service_enabled",
+            "safety.startup_task_enabled",
+            "safety.production_acceptance_completed",
+        ),
+        code="s3a_m1_forbidden_execution_or_mutation",
+        message="S3A-M1 must keep production writes, source/iCloud mutation, LLM/provider calls, and unattended sync disabled.",
+    )
+
+    profile = _get(summary, "ai_execution_profile", {})
+    if not isinstance(profile, Mapping):
+        result.fail("s3a_m1_profile_not_object", "ai_execution_profile must be an object.", path="ai_execution_profile")
+        profile = {}
+    if str(profile.get("provider_backend") or "") != "onnxruntime":
+        result.fail("s3a_m1_provider_backend_invalid", "S3A-M1 AI execution must stay on local ONNX Runtime.", path="ai_execution_profile.provider_backend", expected="onnxruntime", actual=profile.get("provider_backend"))
+    provider_preference = profile.get("provider_preference")
+    if not isinstance(provider_preference, list) or "CPUExecutionProvider" not in provider_preference:
+        result.fail("s3a_m1_cpu_fallback_missing", "S3A-M1 AI profile must keep CPU fallback.", path="ai_execution_profile.provider_preference", expected="list containing CPUExecutionProvider", actual=provider_preference)
+    if not _as_bool(profile.get("local_files_only")):
+        result.fail("s3a_m1_local_files_only_missing", "S3A-M1 AI execution must enforce local-files-only model loading.", path="ai_execution_profile.local_files_only", expected=True, actual=profile.get("local_files_only"))
+    batch_size = _as_int(profile.get("batch_size", 0))
+    concurrency = _as_int(profile.get("concurrency", 0))
+    if not (1 <= batch_size <= 16):
+        result.fail("s3a_m1_batch_unbounded", "S3A-M1 AI batch size must stay bounded.", path="ai_execution_profile.batch_size", expected="1..16", actual=batch_size)
+    if concurrency != 1:
+        result.fail("s3a_m1_concurrency_unbounded", "S3A-M1 AI concurrency must remain one.", path="ai_execution_profile.concurrency", expected=1, actual=concurrency)
+
+    stages = _get(summary, "manual_sync.pipeline.stages", [])
+    stage_names = {
+        str(stage.get("name"))
+        for stage in stages
+        if isinstance(stages, list) and isinstance(stage, Mapping)
+    } if isinstance(stages, list) else set()
+    expected_stages = {"plan", "import", "classification", "ai_tagging", "localization", "summary"}
+    missing_stages = sorted(expected_stages - stage_names)
+    if missing_stages:
+        result.fail(
+            "s3a_m1_pipeline_stages_missing",
+            "Manual execute pipeline must expose plan, import, classification, AI tagging, localization, and summary stages.",
+            path="manual_sync.pipeline.stages",
+            expected=sorted(expected_stages),
+            actual=sorted(stage_names),
+        )
+
+    max_files = _as_int(_get(summary, "manual_sync.limits.safe_default_max_files", 0))
+    max_duration = _as_int(_get(summary, "manual_sync.limits.max_duration_seconds", 0))
+    if not (1 <= max_files <= 1000):
+        result.fail("s3a_m1_max_files_unbounded", "S3A-M1 safe default max files must stay bounded.", path="manual_sync.limits.safe_default_max_files", expected="1..1000", actual=max_files)
+    if not (1 <= max_duration <= 3600):
+        result.fail("s3a_m1_max_duration_unbounded", "S3A-M1 max duration must stay bounded.", path="manual_sync.limits.max_duration_seconds", expected="1..3600", actual=max_duration)
+
+    phrase = str(_get(summary, "manual_sync.confirmation_phrase_prefix", "") or "")
+    production_phrase = str(_get(summary, "manual_sync.production_confirmation_phrase_prefix", "") or "")
+    if phrase != "I APPROVE S3A-M1 MANUAL SYNC EXECUTE":
+        result.fail("s3a_m1_confirmation_prefix_invalid", "Manual confirmation prefix changed unexpectedly.", path="manual_sync.confirmation_phrase_prefix", expected="I APPROVE S3A-M1 MANUAL SYNC EXECUTE", actual=phrase)
+    if production_phrase != "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE":
+        result.fail("s3a_m1_production_confirmation_prefix_invalid", "Production confirmation prefix changed unexpectedly.", path="manual_sync.production_confirmation_phrase_prefix", expected="I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE", actual=production_phrase)
+
+    markdown_text = _read_s3a_m1_markdown_report(summary, result)
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
+    result.details["s3a_m1_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s3a_m1_public_payload_redaction_failed",
+            "S3A-M1 contract independently found forbidden public JSON or Markdown content.",
             path="public_payload",
             expected="no findings",
             actual={"finding_count": len(redaction_findings), "findings_redacted": True},
@@ -6105,6 +6326,7 @@ CUSTOM_CHECKS = {
     "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,
     "s2g_real1_bounded_ai_tagging_validation": _check_s2g_real1_bounded_ai_tagging_validation,
     "s2g_manual_sync_foundation": _check_s2g_manual_sync_foundation,
+    "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

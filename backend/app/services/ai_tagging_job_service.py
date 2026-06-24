@@ -76,13 +76,21 @@ def create_ai_tag_job(
     return job
 
 
-def start_ai_tag_job(job_id: int) -> None:
+def start_ai_tag_job(job_id: int, *, local_files_only: bool = False, schedule_localization: bool = True) -> None:
     """Launch a background thread for the given AI tag job."""
-    t = threading.Thread(target=run_ai_tag_job, args=(job_id,), daemon=True)
+    t = threading.Thread(
+        target=run_ai_tag_job,
+        args=(job_id,),
+        kwargs={
+            "local_files_only": local_files_only,
+            "schedule_localization": schedule_localization,
+        },
+        daemon=True,
+    )
     t.start()
 
 
-def run_ai_tag_job(job_id: int) -> None:
+def run_ai_tag_job(job_id: int, *, local_files_only: bool = False, schedule_localization: bool = True) -> None:
     """Execute an AI tagging job in a background thread with its own DB session."""
     from ..database import SessionLocal
     from ..services.ai_tagging_service import run_ai_tagging
@@ -137,6 +145,8 @@ def run_ai_tag_job(job_id: int) -> None:
                     db, media_id,
                     dry_run=job.dry_run,
                     force_suggestions=job.force_suggestions,
+                    local_files_only=local_files_only,
+                    schedule_localization=schedule_localization,
                 )
 
                 job.processed += 1
@@ -200,8 +210,11 @@ def run_ai_tag_job(job_id: int) -> None:
         job.finished_at = datetime.now(timezone.utc)
         job.status = "cancelled" if was_cancelled else "completed"
 
-        # Schedule tag localization for new tags
-        _schedule_localization(job, new_tag_names)
+        # Schedule tag localization for new tags when the caller allows it.
+        if schedule_localization:
+            _schedule_localization(job, new_tag_names)
+        else:
+            job.localization_status = "skipped_by_caller"
 
         db.commit()
 

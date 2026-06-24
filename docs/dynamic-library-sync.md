@@ -137,6 +137,7 @@ providers, or call LLMs.
 The S2G-M1 planner output includes:
 
 - a manual job id, trigger type, mode, and planned state;
+- a stable `plan_hash`, expiry timestamp, and exact confirmation phrases;
 - per-file public records with safe labels and state/reason only;
 - state counts for skipped/planned/failed files;
 - estimated import, classification, AI tagging, and localization workload;
@@ -148,6 +149,58 @@ Production execution remains disabled in this phase. S3A-M1 must add the final
 visible controls and implement or wire the production execute path behind
 explicit operator approval, production identity gates, failure budgets, and a
 small first acceptance batch.
+
+## S3A-M1 guarded manual execute
+
+S3A-M1 adds the explicit manual execute surface for dev/test validation and
+future production acceptance. It remains manual-only:
+
+- no automatic sync;
+- no scheduled sync;
+- no startup sync;
+- no system service;
+- no unattended writes.
+
+Routes:
+
+- `POST /api/admin/dynamic-library-sync/manual-sync/execute`
+- `GET /api/admin/dynamic-library-sync/manual-sync/jobs/latest`
+- `GET /api/admin/dynamic-library-sync/manual-sync/jobs/{run_id}`
+- `POST /api/admin/dynamic-library-sync/manual-sync/jobs/{run_id}/cancel`
+
+Execute requires a registered `root_id`; ad hoc `source_path` is allowed for
+planning only. Before any write, the service re-runs the dry-run plan and
+requires:
+
+- `DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED=true`;
+- `hydrated_only=true`;
+- automatic/unattended sync flags disabled;
+- the supplied `expected_plan_hash` matches the current plan;
+- the plan timestamp is still fresh;
+- the confirmation phrase exactly matches the plan's generated phrase.
+
+The execution ledger uses `blombooru_dynamic_sync_runs` and
+`blombooru_dynamic_sync_run_items`. Public summaries use safe labels and
+aggregate counts only. Source files are never mutated. App-managed storage is
+mutated only by the guarded import stage in dev/test or after a separately
+approved production acceptance.
+
+The Web Admin panel now supports the manual flow:
+
+1. Select a registered source root.
+2. Generate a dry-run plan.
+3. Review public-safe counts and the plan hash.
+4. Paste the exact confirmation phrase.
+5. Start execute and poll the manual sync job.
+
+The production launcher exposes an entry that opens the Web Admin manual sync
+section. It does not bypass authentication and does not execute sync itself.
+
+Production acceptance is still pending separate approval. No production
+execute, production import, production classification, production AI tag writes,
+production localization writes, source/iCloud mutation, LLM calls, provider
+calls, or production app-storage mutation are authorized by S3A-M1 implementation
+alone.
 
 ## AI tagging and tag localization chain
 

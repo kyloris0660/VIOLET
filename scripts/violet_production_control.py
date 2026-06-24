@@ -2571,6 +2571,25 @@ def open_browser_target(
     return ControlResult(ok=bool(opened), status="opened" if opened else "error", message="Browser open requested.", data={"url": config.url, "port": config.port})
 
 
+def open_manual_sync_target(
+    *,
+    repo_root: Path = ROOT,
+    base_env: Mapping[str, str] | None = None,
+    profile_id: str | None = None,
+    profile_path: Path | None = None,
+    open_func: Callable[[str], bool] = webbrowser.open,
+) -> ControlResult:
+    config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
+    url = config.url.rstrip("/") + "/admin#dynamic-library-sync-section"
+    opened = open_func(url)
+    return ControlResult(
+        ok=bool(opened),
+        status="opened" if opened else "error",
+        message="Manual sync admin target open requested.",
+        data={"url": url, "port": config.port, "target": "manual_sync_admin"},
+    )
+
+
 def diagnostic_summary(repo_root: Path = ROOT, *, profile_id: str | None = None, profile_path: Path | None = None) -> dict[str, Any]:
     config = resolve_config(repo_root, profile_id=profile_id, profile_path=profile_path)
     current = status(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
@@ -2673,7 +2692,7 @@ def _add_profile_arg(parser: argparse.ArgumentParser) -> None:
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Control the local V.I.O.L.E.T. production launcher.")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("preflight", "status", "start", "stop", "restart", "open-browser", "diagnostic-summary", "test-db"):
+    for name in ("preflight", "status", "start", "stop", "restart", "open-browser", "open-manual-sync", "diagnostic-summary", "test-db"):
         cmd = sub.add_parser(name)
         _add_json_arg(cmd)
         _add_profile_arg(cmd)
@@ -2719,6 +2738,8 @@ def main(argv: list[str] | None = None) -> int:
         result = restart_production(profile_id=args.profile)
     elif args.command == "open-browser":
         result = open_browser_target(profile_id=args.profile)
+    elif args.command == "open-manual-sync":
+        result = open_manual_sync_target(profile_id=args.profile)
     elif args.command == "diagnostic-summary":
         payload = diagnostic_summary(profile_id=args.profile)
         if args.json:

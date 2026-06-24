@@ -141,6 +141,7 @@ def run_ai_tagging(
     dry_run: bool = False,
     force_suggestions: bool = False,
     local_files_only: bool = False,
+    schedule_localization: bool = True,
 ) -> Dict[str, Any]:
     """Run WDv3 inference on a single media item and write tags.
 
@@ -217,7 +218,10 @@ def run_ai_tagging(
 
         db_category = WD_CATEGORY_MAP.get(wd_category, "general")
         tag_objects = get_or_create_tags(
-            db, [tag_name], category_hints={tag_name: db_category}
+            db,
+            [tag_name],
+            category_hints={tag_name: db_category},
+            schedule_localization=schedule_localization,
         )
         if not tag_objects:
             continue
@@ -264,6 +268,7 @@ def run_ai_tagging_batch(
     dry_run: bool = False,
     only_without_ai_tags: bool = True,
     local_files_only: bool = False,
+    schedule_localization: bool = True,
 ) -> Dict[str, Any]:
     """Run AI tagging on a batch of media items.
 
@@ -309,7 +314,13 @@ def run_ai_tagging_batch(
 
     for mid in ids:
         try:
-            result = run_ai_tagging(db, mid, dry_run=dry_run, local_files_only=local_files_only)
+            result = run_ai_tagging(
+                db,
+                mid,
+                dry_run=dry_run,
+                local_files_only=local_files_only,
+                schedule_localization=schedule_localization,
+            )
             if batch_summary["provenance"] is None and result.get("provenance"):
                 batch_summary["provenance"] = result["provenance"]
             batch_summary["processed"] += 1

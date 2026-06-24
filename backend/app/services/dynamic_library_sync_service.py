@@ -8,10 +8,11 @@ AI tagging, or run LLM translation.
 from __future__ import annotations
 
 import hashlib
+import json
 import multiprocessing
 import os
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from uuid import uuid4
@@ -65,6 +66,10 @@ MANUAL_SYNC_PIPELINE_STAGES: tuple[str, ...] = (
     "summary",
 )
 
+S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX = "I APPROVE S3A-M1 MANUAL SYNC EXECUTE"
+S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX = "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE"
+MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
+
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
         "cloud_placeholder",
@@ -96,6 +101,10 @@ def _utcnow() -> datetime:
 
 def _hash_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _stable_json_hash(payload: Dict[str, Any]) -> str:
+    return _hash_text(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str))
 
 
 def _normalized_path_identity(path: Path) -> str:
@@ -447,6 +456,39 @@ def _estimate_manual_sync_runtime_seconds(
     )
 
 
+def _manual_plan_integrity_payload(
+    *,
+    source_record_id: Optional[int],
+    source_identity_hash: str,
+    limits: Dict[str, Any],
+    integrity_items: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "schema": "s3a_m1_manual_sync_plan_integrity_v1",
+        "source": {
+            "source_record_id": source_record_id,
+            "source_identity_hash": source_identity_hash,
+        },
+        "limits": {
+            "max_files": int(limits.get("max_files") or 0),
+            "hydrated_only": bool(limits.get("hydrated_only")),
+            "stable_age_seconds": float(limits.get("stable_age_seconds") or 0.0),
+            "max_duration_seconds": int(limits.get("max_duration_seconds") or 0),
+            "file_read_timeout_seconds": int(limits.get("file_read_timeout_seconds") or 0),
+        },
+        "items": integrity_items,
+    }
+
+
+def manual_sync_execute_confirmation_phrase(plan_hash: str, *, production: bool = False) -> str:
+    prefix = (
+        S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX
+        if production
+        else S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX
+    )
+    return f"{prefix} {str(plan_hash)[:12]}"
+
+
 def plan_manual_sync_dry_run(
     db: Session,
     *,
@@ -494,7 +536,8 @@ def plan_manual_sync_dry_run(
 
         safe_label = f"file-{index:05d}"
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
-        rel_hash = _hash_text(rel)[:16]
+        rel_hash_full = _hash_text(rel)
+        rel_hash = rel_hash_full[:16]
         metadata: Dict[str, Any] = {}
         reason = _manual_public_reason_code(preflight_reason)
         content_hash = None
@@ -524,6 +567,7 @@ def plan_manual_sync_dry_run(
                 "safe_label": safe_label,
                 "relative_path": rel,
                 "relative_path_hash": rel_hash,
+                "relative_path_hash_full": rel_hash_full,
                 "metadata": metadata,
                 "reason": reason,
                 "content_hash": content_hash,
@@ -532,6 +576,7 @@ def plan_manual_sync_dry_run(
 
     existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
     seen_hashes: set[str] = set()
+    integrity_items: List[Dict[str, Any]] = []
     for record in candidate_records:
         reason = record["reason"]
         content_hash = record["content_hash"]
@@ -570,6 +615,17 @@ def plan_manual_sync_dry_run(
             "content_hash_computed": bool(content_hash),
         }
         public_items.append(item)
+        integrity_items.append(
+            {
+                "safe_label": record["safe_label"],
+                "relative_path_hash": record["relative_path_hash_full"],
+                "file_size": metadata.get("file_size"),
+                "mtime_ns": metadata.get("mtime_ns"),
+                "state": state,
+                "reason": public_reason,
+                "content_hash": content_hash,
+            }
+        )
         if include_private_details:
             private_items.append({**item, "relative_path": record["relative_path"]})
 
@@ -591,6 +647,22 @@ def plan_manual_sync_dry_run(
     )
     state_counts_public = _public_counter(state_counts, MANUAL_SYNC_FILE_STATES)
     reason_counts_public = dict(sorted((key, int(value)) for key, value in reason_counts.items()))
+    source_identity_hash = _public_source_identity(resolved)
+    limits = {
+        "max_files": effective_max_files,
+        "hydrated_only": hydrated_only,
+        "stable_age_seconds": effective_stable_age,
+        "max_duration_seconds": max_duration_seconds,
+        "file_read_timeout_seconds": read_timeout_seconds,
+    }
+    integrity_payload = _manual_plan_integrity_payload(
+        source_record_id=source_record_id,
+        source_identity_hash=source_identity_hash,
+        limits=limits,
+        integrity_items=integrity_items,
+    )
+    plan_hash = _stable_json_hash(integrity_payload)
+    expires_at = created_at + timedelta(seconds=MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS)
 
     plan: Dict[str, Any] = {
         "job": {
@@ -608,16 +680,10 @@ def plan_manual_sync_dry_run(
         },
         "source": {
             "source_record_id": source_record_id,
-            "source_identity_hash": _public_source_identity(resolved),
+            "source_identity_hash": source_identity_hash,
             "path_public": False,
         },
-        "limits": {
-            "max_files": effective_max_files,
-            "hydrated_only": hydrated_only,
-            "stable_age_seconds": effective_stable_age,
-            "max_duration_seconds": max_duration_seconds,
-            "file_read_timeout_seconds": read_timeout_seconds,
-        },
+        "limits": limits,
         "counts": {
             "total_seen": len(public_items),
             "estimated_import_count": import_count,
@@ -644,14 +710,26 @@ def plan_manual_sync_dry_run(
         },
         "pipeline": {
             "status": "dry_run_planned",
-            "dry_run_only_this_phase": True,
+            "dry_run_only_this_phase": False,
             "production_execute_enabled": False,
-            "dev_test_execute_supported_later": True,
+            "dev_test_execute_supported": True,
+            "production_execute_requires_separate_operator_approval": True,
             "stages": stages,
             "estimated_runtime_seconds": estimated_runtime_seconds,
             "partial_failure_policy": "item_failures_recorded_and_continues_until_failure_budget_or_hard_gate",
         },
         "ai_execution_profile": profile,
+        "integrity": {
+            "schema": "s3a_m1_manual_sync_plan_integrity_v1",
+            "plan_hash": plan_hash,
+            "hash_algorithm": "sha256",
+            "stale_after_seconds": MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
+            "expires_at": expires_at.isoformat(),
+            "hash_excludes_paths": True,
+            "hash_includes_private_content_fingerprint": True,
+            "confirmation_phrase": manual_sync_execute_confirmation_phrase(plan_hash),
+            "production_confirmation_phrase": manual_sync_execute_confirmation_phrase(plan_hash, production=True),
+        },
         "public_safe": True,
     }
     if include_private_details:

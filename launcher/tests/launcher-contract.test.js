@@ -40,6 +40,7 @@ for (const command of [
   'stop',
   'restart',
   'open-browser',
+  'open-manual-sync',
   'diagnostic-summary'
 ]) {
   assert(controllerRunner.includes(`'${command}'`), `controller-runner.js must allow ${command}`);
@@ -70,6 +71,7 @@ assert(html.includes('选择生产存储根目录'), 'Storage selection button m
 assert(html.includes('手动启动前检查'), 'Manual preflight button must be zh-CN first.');
 assert(!html.includes('id="preflightButton" class="primary"'), 'Manual preflight must not remain a primary required action.');
 assert(html.includes('id="startButton" class="primary">启动</button>'), 'Start must be the primary normal-flow action.');
+assert(html.includes('id="openManualSyncButton"'), 'Launcher must expose the manual sync admin entry.');
 assert(html.includes('清除已保存 DB 访问值'), 'DB password clearing must be an explicit zh-CN control.');
 assert(html.includes('显示高级诊断'), 'Advanced diagnostics label must be zh-CN first.');
 assert(renderer.includes('renderChecklist'), 'Renderer must render human-readable checklist items.');

@@ -1321,6 +1321,106 @@ def _s2g_m1_summary(**overrides: object) -> dict:
     return summary
 
 
+def _s3a_m1_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S3A-M1",
+        "target_met": True,
+        "pipeline_contract": {
+            "contract_id": "s3a_m1_manual_sync_execute_contract_v1",
+            "status": "target_met_dev_test_ready",
+            "phase_identity": "S3A-M1",
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": False},
+        },
+        "manual_sync": {
+            "plan_endpoint": True,
+            "execute_endpoint": True,
+            "status_endpoint": True,
+            "job_status_endpoint": True,
+            "cancel_endpoint": True,
+            "plan_hash_required": True,
+            "exact_confirmation_required": True,
+            "plan_freshness_required": True,
+            "registered_root_required_for_execute": True,
+            "hydrated_only_required": True,
+            "default_execute_disabled": True,
+            "stale_replan_rejected": True,
+            "confirmation_phrase_prefix": "I APPROVE S3A-M1 MANUAL SYNC EXECUTE",
+            "production_confirmation_phrase_prefix": "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE",
+            "limits": {"safe_default_max_files": 25, "max_duration_seconds": 600},
+            "ledger": {
+                "per_file_records_present": True,
+                "dynamic_sync_run_used": True,
+                "public_safe": True,
+            },
+            "pipeline": {
+                "dev_test_execute_supported": True,
+                "production_acceptance_pending": True,
+                "stages": [
+                    {"name": "plan"},
+                    {"name": "import"},
+                    {"name": "classification"},
+                    {"name": "ai_tagging"},
+                    {"name": "localization"},
+                    {"name": "summary"},
+                ],
+            },
+            "dev_test_execute_validation": {
+                "completed": True,
+                "source_mutation_absent": True,
+                "llm_calls_absent": True,
+            },
+        },
+        "ai_execution_profile": {
+            "provider_backend": "onnxruntime",
+            "provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "batch_size": 2,
+            "concurrency": 1,
+            "local_files_only": True,
+            "llm_calls_enabled": False,
+        },
+        "api_surface": {
+            "manual_execute_endpoint_added": True,
+            "automatic_execution_endpoint_added": False,
+        },
+        "ui": {
+            "web_admin_manual_execute_panel": True,
+            "web_admin_plan_confirmation_flow": True,
+            "launcher_manual_sync_entry": True,
+        },
+        "validation": {
+            "focused_tests_passed": True,
+            "launcher_tests_passed": True,
+            "browser_validation_performed": True,
+            "contract_check_passed": True,
+        },
+        "public_reports": {
+            "summary_json_path": "docs/reports/s3a-m1-manual-sync-execute-summary.json",
+            "markdown_report_path": "docs/reports/s3a-m1-manual-sync-execute.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "safety": {
+            "production_execute_performed": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging_writes": False,
+            "production_localization_writes": False,
+            "source_icloud_mutation": False,
+            "app_managed_production_storage_mutation": False,
+            "external_provider_calls": False,
+            "llm_calls": False,
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+            "system_service_enabled": False,
+            "startup_task_enabled": False,
+            "production_acceptance_completed": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _set_nested(payload: dict, path: str, value: object) -> None:
     cursor = payload
     parts = path.split(".")
@@ -2976,6 +3076,59 @@ def test_s2g_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
     result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", _s2g_m1_summary())
 
     assert "s2g_m1_public_payload_redaction_failed" in _error_codes(result)
+
+
+def test_s3a_m1_contract_accepts_manual_sync_execute_ui() -> None:
+    result = check_phase_contract(
+        "s3a_m1_manual_sync_execute_contract_v1",
+        _s3a_m1_summary(),
+    )
+
+    assert result.passed is True
+
+
+def test_s3a_m1_contract_rejects_missing_confirmation_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["exact_confirmation_required"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_production_execute_completion() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["pipeline"]["production_acceptance_pending"] = False
+    summary["safety"]["production_execute_performed"] = True
+    summary["safety"]["production_import"] = True
+    summary["safety"]["production_acceptance_completed"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+    assert "s3a_m1_forbidden_execution_or_mutation" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_launcher_or_browser_validation() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["ui"]["launcher_manual_sync_entry"] = False
+    summary["validation"]["browser_validation_performed"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_read_s3a_m1_markdown_report",
+        lambda _summary, _result: r"C:\Users\private\Pictures\example.png",
+    )
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", _s3a_m1_summary())
+
+    assert "s3a_m1_public_payload_redaction_failed" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:
