@@ -293,22 +293,45 @@ def _executed_stage_names(summary: Mapping[str, Any]) -> set[str]:
     return names
 
 
+def _normalize_stage_name(value: Any) -> str:
+    return re.sub(r"[\s_-]+", "_", str(value).strip().casefold())
+
+
 def _check_forbidden_stages(contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     executed = _executed_stage_names(summary)
-    forbidden_present = sorted(stage for stage in contract.forbidden_stages if _forbidden_stage_present(summary, executed, stage))
+    normalized_executed = {_normalize_stage_name(stage) for stage in executed}
+    forbidden_present = sorted(
+        stage
+        for stage in contract.forbidden_stages
+        if _forbidden_stage_present(summary, executed, normalized_executed, stage)
+    )
     result.details["executed_stages"] = sorted(executed)
+    result.details["executed_stages_normalized"] = sorted(normalized_executed)
     result.details["forbidden_stages_present"] = forbidden_present
     for stage in forbidden_present:
         result.fail("forbidden_stage_executed", f"Forbidden stage {stage!r} is present/executed.", path=stage)
 
 
-def _forbidden_stage_present(summary: Mapping[str, Any], executed: set[str], stage: str) -> bool:
-    if stage in executed or _as_bool(_get(summary, stage, False)):
+def _forbidden_stage_present(
+    summary: Mapping[str, Any], executed: set[str], normalized_executed: set[str], stage: str
+) -> bool:
+    normalized_stage = _normalize_stage_name(stage)
+    if stage in executed or normalized_stage in normalized_executed or _as_bool(_get(summary, stage, False)):
         return True
     for path in ("stages", "pipeline_contract.stages"):
         value = _get(summary, path)
-        if isinstance(value, Mapping) and stage in value:
-            stage_value = value[stage]
+        if isinstance(value, Mapping):
+            stage_key = None
+            if stage in value:
+                stage_key = stage
+            else:
+                stage_key = next(
+                    (candidate for candidate in value if _normalize_stage_name(candidate) == normalized_stage),
+                    None,
+                )
+            if stage_key is None:
+                continue
+            stage_value = value[stage_key]
             if isinstance(stage_value, Mapping):
                 if _as_bool(stage_value.get("executed")):
                     return True
@@ -1126,6 +1149,23 @@ def _check_production_development_separation(
         summary,
         result,
         (
+            "post_122_launcher_merged",
+            "production_launcher_entry_documented",
+            "production_profile_runtime_config_documented",
+            "development_dotenv_not_production_source",
+            "production_execution_requires_profile_or_runtime_config",
+            "s2g_consolidated_route",
+            "r1r_required_before_r2",
+            "a1r_required_before_route_approval",
+            "provider_entity_truth_blocked",
+            "no_production_writes",
+            "no_db_mutation",
+            "no_source_icloud_mutation",
+            "no_provider_calls",
+            "safety.no_llm_calls",
+            "safety.no_media_tags_mutation",
+            "no_sourceconcept_mutation",
+            "no_entity_truth_write",
             "governance_lanes.production.explicit",
             "governance_lanes.development.explicit",
             "production_promotion.required_for_production_writes",
@@ -1142,7 +1182,7 @@ def _check_production_development_separation(
             "validation.focused_tests_passed",
         ),
         code="production_development_required_proof_failed",
-        message="Post-S2 production/development separation requires explicit lanes, promotion gates, redacted artifacts, and focused tests.",
+        message="Post-S2 production/development separation requires post-#122 launcher state, consolidated S2G routing, explicit lanes, no-mutation proof, redacted artifacts, and focused tests.",
     )
     _check_required_false_paths(
         summary,
@@ -1171,22 +1211,33 @@ def _check_production_development_separation(
             actual=sorted(allowed_sources),
         )
 
-    current_phase = str(_get(summary, "phase_boundaries.current_phase", "")).casefold()
-    if current_phase not in {"pd1-a", "pd1_a"}:
+    top_level_phase = _get(summary, "phase", None)
+    if top_level_phase != "PD1-A-R1":
+        result.fail(
+            "production_development_phase_mismatch",
+            "This governance summary must identify PD1-A-R1 as the top-level phase.",
+            path="phase",
+            expected="PD1-A-R1",
+            actual=top_level_phase,
+        )
+    current_phase = _get(summary, "phase_boundaries.current_phase", None)
+    if current_phase != "PD1-A-R1":
         result.fail(
             "production_development_current_phase_mismatch",
-            "This governance summary must identify PD1-A as the current phase.",
+            "This governance summary must identify PD1-A-R1 as the current phase.",
             path="phase_boundaries.current_phase",
-            expected="PD1-A",
-            actual=_get(summary, "phase_boundaries.current_phase", None),
+            expected="PD1-A-R1",
+            actual=current_phase,
         )
-    next_phase = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).casefold()
-    if "s2g-1" not in next_phase and "s2g_1" not in next_phase:
+    next_phase_raw = str(_get(summary, "phase_boundaries.next_recommended_phase", "")).strip()
+    next_phase = re.sub(r"\s+", " ", next_phase_raw).casefold()
+    expected_next_phase = "s2g: gpu / ai tagging execution foundation"
+    if next_phase != expected_next_phase:
         result.fail(
-            "production_development_next_phase_not_s2g1",
-            "The immediate recommended next phase after PD1-A must remain S2G-1.",
+            "production_development_next_phase_not_consolidated_s2g",
+            "The immediate recommended next phase after PD1-A-R1 must be exactly the consolidated S2G phase.",
             path="phase_boundaries.next_recommended_phase",
-            expected="S2G-1",
+            expected="S2G: GPU / AI Tagging Execution Foundation",
             actual=_get(summary, "phase_boundaries.next_recommended_phase", None),
         )
 
@@ -1198,6 +1249,7 @@ def _check_production_development_separation(
         "phase_boundaries.authorizes_entity_bridge",
         "phase_boundaries.authorizes_confirmed_assignments",
         "phase_boundaries.authorizes_automatic_production_sync",
+        "phase_boundaries.authorizes_s2g_execution",
         "phase_boundaries.authorizes_gpu_benchmark",
         "phase_boundaries.authorizes_desired_media_backfill",
     )
@@ -1208,26 +1260,37 @@ def _check_production_development_separation(
         code="production_development_forbidden_current_phase_authorization",
         message="PD1-A may mention future work but must not authorize future execution phases or production automation.",
     )
+    for path in ("safety.no_llm_calls", "safety_no_mutation_proof.no_llm_calls"):
+        if _has(summary, path) and not _as_bool(_get(summary, path)):
+            result.fail(
+                "production_development_llm_calls_not_forbidden",
+                "PD1-A-R1 must explicitly forbid LLM calls.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path),
+            )
+    for path in ("safety.no_media_tags_mutation", "safety_no_mutation_proof.no_media_tags_mutation"):
+        if _has(summary, path) and not _as_bool(_get(summary, path)):
+            result.fail(
+                "production_development_media_tags_mutation_not_forbidden",
+                "PD1-A-R1 must explicitly forbid media_tags and tag-truth mutation.",
+                path=path,
+                expected=True,
+                actual=_get(summary, path),
+            )
 
     requested_writes = _production_write_requested(summary)
     result.details["production_write_requests"] = requested_writes
     if requested_writes:
-        if not _as_bool(_get(summary, "production_promotion.enabled", False)):
+        for path in requested_writes:
             result.fail(
-                "production_write_without_promotion_mode",
-                "Production writes require explicit production/promotion mode.",
-                path="production_promotion.enabled",
-                expected=True,
-                actual=_get(summary, "production_promotion.enabled", None),
+                "production_development_write_request_forbidden",
+                "PD1-A-R1 is a docs/contract reconciliation phase; production write requests are forbidden outright.",
+                path=path,
+                expected=False,
+                actual=True,
             )
-        if not _as_bool(_get(summary, "production_promotion.operator_confirmation_present", False)):
-            result.fail(
-                "production_write_without_operator_confirmation",
-                "Production writes require explicit operator confirmation.",
-                path="production_promotion.operator_confirmation_present",
-                expected=True,
-                actual=_get(summary, "production_promotion.operator_confirmation_present", None),
-            )
+        return
 
     source_root_write_requested = _as_bool(_get(summary, "write_requests.source_root_registration", False)) or _as_bool(
         _get(summary, "write_requests.source_root_replacement", False)

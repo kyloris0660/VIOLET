@@ -1,10 +1,10 @@
 # Current Mainline Roadmap
 
-Status: active after PR #114 / PD1-A merge and S2G-1X operator
-reprioritization on 2026-06-20.
+Status: active after PR #122 / PROD-LAUNCHER-UX1/PF1 merge and PD1-A-R1
+roadmap reconciliation on 2026-06-23.
 
-This is the durable short-term routing document for post-S2 work. It keeps the
-accepted sequence visible for ChatGPT, CodeX, and operator sessions without
+This is the durable short-term routing document for post-#122 work. It keeps
+the accepted sequence visible for ChatGPT, CodeX, and operator sessions without
 turning this phase into a broad planning essay.
 
 ## Current Baseline
@@ -18,71 +18,69 @@ turning this phase into a broad planning essay.
 - Merge commit: `3dcd201c9b8ece6204e088c7dc8af49bd3f4ad07`.
 - PD1-A persisted the production/development executable gate foundation:
   `production_development_separation_contract_v1`.
-- V.I.O.L.E.T. now has a real production baseline library. Development work
-  must not casually use production DB, production storage, production source
-  roots, or production private ledgers as fixtures.
+- PR #122 / PROD-LAUNCHER-UX1/PF1 is merged into `main`.
+- Merge commit: `aece424df2814ef0d840f9fe472a9d19478d2020`.
+- PR #122 added the Electron-based V.I.O.L.E.T. production launcher, local
+  ignored production profile/runtime config, root-level Windows launcher entry,
+  and production/development runtime separation.
+- The launcher is the accepted temporary Windows personal production entrypoint.
+  It solves the current production entry problem but is not the long-term
+  production configuration architecture.
+- Long-term production/development config unification is deferred.
+- V.I.O.L.E.T. has a real production baseline library. Development work must
+  not casually use production DB, production storage, production source roots,
+  or production private ledgers as fixtures.
 
 ## Accepted Sequence
 
-1. `PD1-A` - Post-S2 mainline roadmap persistence and production/development
-   executable gate foundation.
-   - Merged in PR #114.
-   - Persisted the accepted short and long roadmap.
-   - Added a narrow executable production/development separation contract.
+1. `PD1-A-R1` - Post-#122 roadmap reconciliation and production/development
+   gate foundation.
+   - Immediate next phase after PR #122.
+   - Reconcile persistent roadmap/handoff/report/contract state.
    - No production writes.
+   - Does not start S2G, R1R, A1R, S3A, S3B, provider work, SourceConcept
+     mutation, Entity truth writes, or DB mutation.
 
-2. `S2G-1X` - GPU AI tagging probe and S3A integration decision.
-   - Current operator-reprioritized phase.
-   - Evaluates whether S2G GPU/load-control work and S3A controlled
-     incremental sync should share job/progress/throttle/ledger infrastructure.
-   - May add safe probe/scaffold evidence only.
-   - Production S3A execution remains disabled.
+2. `S2G: GPU / AI Tagging Execution Foundation`.
+   - Single consolidated phase, not two phases.
+   - Includes GPU / AI tagging capability probe and benchmark.
+   - Includes provider abstraction, provenance, batch/concurrency/throttle
+     controls, and CPU fallback.
+   - No production writes unless a later phase explicitly approves them.
 
-3. `S2G/S3A shared foundation` - combined foundation if S2G-1X evidence
-   supports it.
-   - Promote only the reviewed shared job/progress/throttle/ledger pieces.
-   - Keep production import/classification/AI/localization/S3A execution
-     disabled until a separate promotion phase.
-   - Preserve manual operator trigger semantics; do not start S3B automation.
-
-4. `S2G-2/3` - GPU/provider abstraction, provenance, and load control.
-   - High priority.
-   - Use S2G-1X capability evidence as the starting point.
-   - Add execution-provider abstraction.
-   - Record provider provenance, model identity, thresholds, batch size, and backend.
-   - Add batch, concurrency, and throttle controls so AI tagging does not make
-     the machine unusable.
-   - Preserve CPU fallback.
-
-5. `R1R` - SourceConcept route redo under GOV3 contracts.
-   - Return to the main Phase 4 source/entity line after S2G.
+3. `R1R` - SourceConcept route redo under GOV3 contracts.
+   - Follows S2G unless the user explicitly reprioritizes.
    - Use executable contracts and a review pack.
    - Treat AI proper-noun tags as weak evidence only.
    - Do not create confirmed Entity assignments.
    - Do not run new provider or Pixiv live calls unless separately approved.
-   - Decide whether the current Pixiv/source metadata strategy is viable or
-     needs larger redesign.
 
-6. `Pixiv/source metadata strategy polish`.
-   - Long-term mainline after R1R.
+4. `A1R` - Route audit rerun after R1R.
+   - Required before R2, PX1-B, Provider-2, scale-up, Entity bridge, or
+     SourceConcept truth promotion can be considered.
+   - Old R1/A1 evidence cannot approve R2 during the INC1 pipeline fidelity
+     incident.
+
+5. `Pixiv/source metadata strategy polish`.
    - Make the Pixiv/source metadata route reliable before adding providers.
    - Do not introduce new providers before Pixiv/source metadata is settled.
 
-7. `S3A` - Controlled Incremental Sync Pipeline.
-   - Important, and now explicitly evaluated for shared S2G infrastructure by
-     S2G-1X.
+6. `S3A` - Controlled Incremental Sync Pipeline.
+   - Later than S2G and the R1R/A1R/Pixiv route decision unless the user
+     explicitly reprioritizes.
+   - Must bind to production profile/runtime config, not development `.env`.
    - Production execution still waits for a separate approved phase.
-   - The operator manually triggers a run; the system performs update check,
-     hydration/read, import/reuse, classification, AI tagging, localization,
-     per-item ledgers, failure budgets, and summary.
-   - Production execution still requires explicit confirmation and promotion gates.
+   - Production execution still requires explicit confirmation and promotion
+     gates.
 
-8. `S3B` - Opt-in automated incremental sync.
+7. `S3B` - Opt-in automated incremental sync.
    - Later.
-   - Scheduled or unattended automation remains disabled by default until
-     explicitly approved.
+   - Disabled by default.
+   - Must bind to production profile/runtime config, not development `.env`.
+   - Scheduled or unattended automation remains opt-in only until explicitly
+     approved.
 
-9. `S2F0` - Desired-media gap audit / support decision report.
+8. `S2F0` - Desired-media gap audit / support decision report.
    - Low priority.
    - Audit-only, not implementation.
    - Report unsupported desired-media ratio, extension breakdown, sampled
@@ -92,21 +90,29 @@ turning this phase into a broad planning essay.
 
 ## What Is Intentionally Not Next
 
-- Do not enable production S3A/S3B execution from PD1-A or S2G-1X.
-- Do not run provider, Pixiv, gallery-dl, SauceNAO, Google, or source-enrichment work.
-- Do not run SourceConcept R1/R2, Entity bridge, or confirmed assignment creation.
+- Do not enable production S3A/S3B execution from PD1-A-R1.
+- Do not run S2G during PD1-A-R1; the next PR may start S2G after this
+  reconciliation lands.
+- Do not run provider, Pixiv, gallery-dl, SauceNAO, Google, or source-enrichment
+  work.
+- Do not run SourceConcept R1/R2, Entity bridge, or confirmed assignment
+  creation.
 - Do not implement desired-media support/backfill.
 - Do not run production import, classification, AI tagging, localization, DB
   migration, source-root write, cleanup, delete, reset, drop, or truncate
   without a separate approved phase and promotion gate.
-- Do not run the GPU benchmark during PD1-A; PD1-A only persists the route and
-  adds the gate foundation.
 
-## Production / development separation
+## Production / Development Separation
 
+- The current Windows personal production launcher uses local ignored
+  production profile/runtime config.
+- Development `.env` must not be converted into production and must not be the
+  production source of truth.
 - Develop/feature branches use dev/test DB, dev/test storage, fixtures, or
   restored snapshots.
 - Production DB/storage/source roots/private ledgers are not casual fixtures.
+- Future production execution phases, including S3A/S3B, must bind to production
+  profile/runtime config rather than development `.env`.
 - Production import/classification/AI/localization/source-root/schema writes
   require explicit production/promotion mode, clean identity gates, backup proof
   where applicable, redacted public artifacts, and local ignored private ledgers.
@@ -117,12 +123,9 @@ turning this phase into a broad planning essay.
 
 ## Choosing The Next Work
 
-After PD1-A merges, the operator-reprioritized immediate phase is
-`S2G-1X GPU AI tagging probe and S3A integration decision`.
+After PD1-A-R1 merges, the recommended next phase is:
 
-If S2G-1X evidence supports the shared-infrastructure route, the recommended
-next phase is a combined S2G/S3A foundation phase that still keeps production
-S3A execution disabled.
+`S2G: GPU / AI Tagging Execution Foundation`.
 
 Only change that order if the operator explicitly reprioritizes. If a future
 session is unsure, choose the first unmerged item in `Accepted Sequence` whose
