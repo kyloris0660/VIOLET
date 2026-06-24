@@ -2,10 +2,13 @@
 
 Contract: `s2g_manual_sync_foundation_contract_v1`.
 Status: `target_met`.
+Validated implementation SHA: `4859193d5f752d6ff6b821b08b1440aa00b4d8d6`.
+Validated implementation ancestor of report head: `True`.
+Post-validation changes report-only: `True`.
 
 ## Purpose
 
-S2G-M1 builds the reusable local AI tagging execution profile and the manual sync dry-run foundation needed before a final production manual-sync acceptance button.
+S2G-M1 builds the reusable local AI tagging execution profile, benchmark, dry-run planner, job/ledger vocabulary, and dry-run pipeline planning foundation needed before S3A-M1 implements an explicit production execute path and final manual-sync controls.
 
 Production execution is intentionally out of scope: this phase proves the foundation with local-only model resolution, synthetic benchmark input, temporary fixture storage, and an in-memory test DB plan.
 
@@ -50,7 +53,7 @@ Production execution is intentionally out of scope: this phase proves the founda
 - Added a durable AI tagging execution profile for local ONNX Runtime execution.
 - Added bounded capability probe/report generation with provider fallback accounting.
 - Extended dynamic sync with a manual sync dry-run planner and public-safe per-file ledger records.
-- Added admin status/plan endpoints for later UI wiring without adding a production execute button.
+- Added admin status/plan endpoints for later UI wiring without adding a production execute endpoint or button.
 - Added `s2g_manual_sync_foundation_contract_v1` and focused positive/negative contract tests.
 
 ## AI Capability / Benchmark
@@ -63,7 +66,7 @@ Production execution is intentionally out of scope: this phase proves the founda
 - CPU fallback available/completed: `True` / `True`.
 - Recommended provider: `DmlExecutionProvider`.
 - Recommended batch size/concurrency: `2` / `1`.
-- Estimated 25-item AI runtime: `2.04` seconds.
+- Estimated 25-item AI runtime: `2.15` seconds.
 - Observed blocker, if any: `None`.
 
 ## Provider / Fallback Decision
@@ -125,7 +128,7 @@ Production execution is intentionally out of scope: this phase proves the founda
 - Pipeline status: `dry_run_planned`.
 - Dry-run only this phase: `True`.
 - Production execute enabled: `False`.
-- Estimated runtime seconds: `0.452`.
+- Estimated runtime seconds: `0.456`.
 
 - Stage `candidate_discovery`: state `completed`, writes `False`, production execution `False`.
 - Stage `import`: state `planned`, writes `False`, production execution `False`.
@@ -157,16 +160,17 @@ Production execution is intentionally out of scope: this phase proves the founda
 - No provider/gallery-dl/Pixiv/SauceNAO/Google calls and no LLM calls.
 - No SourceConcept mutation, Entity truth writes, confirmed assignment writes, or production `media_tags` mutation.
 - No automatic sync, scheduled sync, system service, startup task, or long-running daemon.
+- No production execute endpoint or production execute runner.
 - No final production acceptance; that remains S3A-M1.
 
 ## Why Production Writes Are Deferred
 
-This phase creates production-capable code paths only where they are guarded and disabled by default. Production acceptance requires a separate S3A-M1 approval flow with production runtime identity, backup/recovery proof where applicable, a dry-run plan, a small explicit batch, and post-run diagnostics.
+This phase creates production-capable planning code paths only where they are guarded and disabled by default. S3A-M1 must implement or wire the explicit execute path before production acceptance, then run a separate approval flow with production runtime identity, backup/recovery proof where applicable, a dry-run plan, a small explicit batch, and post-run diagnostics.
 
-## Final Button Recommendation
+## Final Execute / Button Recommendation
 
 - Placement: `both_launcher_and_web_admin`.
-- Backend call: `POST /api/admin/dynamic-library-sync/manual-sync/plan first; later execute endpoint only after explicit S3A-M1 acceptance`.
+- Backend call: `POST /api/admin/dynamic-library-sync/manual-sync/plan first; S3A-M1 must implement or wire an explicit execute endpoint/runner before production acceptance`.
 - Startup pending check: `lightweight_count_only_ok`.
 - Intrusive launcher prompt: `False`.
 - Safe default max files: `25`.
@@ -212,10 +216,12 @@ This phase creates production-capable code paths only where they are guarded and
 
 ## Known Limitations
 
-- No production execution or final visible production manual-sync button is included in this PR.
+- No production execute endpoint or production execute runner is implemented in this PR.
+- No final visible production manual-sync button or production acceptance is included in this PR.
 - Persistent production execution ledgers remain disabled until S3A-M1 acceptance.
+- Controlled pipeline support is a dry-run planning foundation; S3A-M1 must implement or wire explicit execution before production acceptance.
 - Capability probe uses synthetic tensors and local model cache only; it does not prove full production throughput.
 
 ## Next Phase
 
-S3A-M1 final manual-sync UI / production acceptance with explicit small-batch approval.
+S3A-M1 must implement or wire the explicit manual-sync execute path, then add final visible controls and run small-batch production acceptance.

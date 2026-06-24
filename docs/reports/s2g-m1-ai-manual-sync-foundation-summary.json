@@ -101,7 +101,7 @@
     "bounded": true,
     "cpu_fallback_available": true,
     "cpu_fallback_completed": true,
-    "estimated_runtime_seconds_for_25_item_manual_batch": 2.04,
+    "estimated_runtime_seconds_for_25_item_manual_batch": 2.15,
     "gpu_acceleration_available": true,
     "local_files_only": true,
     "model_cache": {
@@ -135,15 +135,15 @@
         "loaded_providers": [
           "CPUExecutionProvider"
         ],
-        "model_load_seconds": 1.3435,
+        "model_load_seconds": 1.4785,
         "practical": true,
         "provider": "CPUExecutionProvider",
         "sample_count": 2,
-        "seconds_per_item": 0.4188,
-        "single_image_latency_seconds": 0.4038,
-        "small_batch_latency_seconds": 0.8375,
+        "seconds_per_item": 0.6064,
+        "single_image_latency_seconds": 0.5511,
+        "small_batch_latency_seconds": 1.2129,
         "status": "completed",
-        "throughput_items_per_second": 2.388
+        "throughput_items_per_second": 1.649
       },
       "cuda": {
         "available": false,
@@ -161,15 +161,15 @@
           "DmlExecutionProvider",
           "CPUExecutionProvider"
         ],
-        "model_load_seconds": 1.387,
+        "model_load_seconds": 1.3715,
         "practical": true,
         "provider": "DmlExecutionProvider",
         "sample_count": 2,
-        "seconds_per_item": 0.0816,
-        "single_image_latency_seconds": 0.0403,
-        "small_batch_latency_seconds": 0.1633,
+        "seconds_per_item": 0.0861,
+        "single_image_latency_seconds": 0.042,
+        "small_batch_latency_seconds": 0.1723,
         "status": "completed",
-        "throughput_items_per_second": 12.2496
+        "throughput_items_per_second": 11.6102
       }
     },
     "provider_selection": {
@@ -197,7 +197,7 @@
     "recommended_batch_size": 2,
     "recommended_concurrency": 1,
     "recommended_provider": "DmlExecutionProvider",
-    "recommended_seconds_per_item": 0.0816,
+    "recommended_seconds_per_item": 0.0861,
     "sample_count": 2,
     "status": "completed",
     "synthetic_input_only": true
@@ -208,24 +208,30 @@
     "launcher_pending_check_on_startup": "lightweight_count_only_ok",
     "partial_failure_behavior": "complete successful items, keep failed/deferred item ledger visible, stop only on hard safety gate or failure budget",
     "placement": "both_launcher_and_web_admin",
-    "primary_call": "POST /api/admin/dynamic-library-sync/manual-sync/plan first; later execute endpoint only after explicit S3A-M1 acceptance",
+    "primary_call": "POST /api/admin/dynamic-library-sync/manual-sync/plan first; S3A-M1 must implement or wire an explicit execute endpoint/runner before production acceptance",
     "rollback_supersede_diagnostic_plan": "ledger-driven retry/supersede; no source mutation; diagnose by job id, safe labels, reason counts, and provider provenance",
     "safe_default_ai_batch_size": 2,
     "safe_default_concurrency": 1,
     "safe_default_max_duration_seconds": 600,
     "safe_default_max_files": 25
   },
-  "generated_at": "2026-06-24T07:24:27Z",
+  "generated_at": "2026-06-24T10:12:14Z",
   "head_evidence": {
-    "current_head_sha": "4724530d83767a62b6525a58bb1a1d04e973d48e",
     "latest_main_after_pr123": true,
     "origin_main_sha": "4724530d83767a62b6525a58bb1a1d04e973d48e",
+    "post_validation_changes_report_only": true,
     "pr123_merge_commit": "4724530d83767a62b6525a58bb1a1d04e973d48e",
-    "pr123_merge_is_ancestor_of_origin_main": true
+    "pr123_merge_is_ancestor_of_origin_main": true,
+    "report_generation_head_sha": "4859193d5f752d6ff6b821b08b1440aa00b4d8d6",
+    "validated_implementation_is_ancestor_of_head": true,
+    "validated_implementation_is_not_base_main": true,
+    "validated_implementation_sha": "4859193d5f752d6ff6b821b08b1440aa00b4d8d6"
   },
   "known_limitations": [
-    "No production execution or final visible production manual-sync button is included in this PR.",
+    "No production execute endpoint or production execute runner is implemented in this PR.",
+    "No final visible production manual-sync button or production acceptance is included in this PR.",
     "Persistent production execution ledgers remain disabled until S3A-M1 acceptance.",
+    "Controlled pipeline support is a dry-run planning foundation; S3A-M1 must implement or wire explicit execution before production acceptance.",
     "Capability probe uses synthetic tensors and local model cache only; it does not prove full production throughput."
   ],
   "load_control_policy": {
@@ -242,7 +248,7 @@
   "manual_sync": {
     "controlled_pipeline": {
       "dry_run_only_this_phase": true,
-      "estimated_runtime_seconds": 0.452,
+      "estimated_runtime_seconds": 0.456,
       "implemented": true,
       "production_execute_enabled": false,
       "stages": [
@@ -448,7 +454,7 @@
     "path_style": "repo_relative_public_artifacts",
     "summary_json_path": "docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json"
   },
-  "recommended_next_phase": "S3A-M1 final manual-sync UI / production acceptance with explicit small-batch approval.",
+  "recommended_next_phase": "S3A-M1 must implement or wire the explicit manual-sync execute path, then add final visible controls and run small-batch production acceptance.",
   "safety": {
     "app_managed_production_storage_mutation": false,
     "automatic_sync_enabled": false,
