@@ -2,7 +2,7 @@
 
 Contract: `s2g_manual_sync_foundation_contract_v1`.
 Status: `target_met`.
-Validated implementation SHA: `4859193d5f752d6ff6b821b08b1440aa00b4d8d6`.
+Validated implementation SHA: `a44c18a133689e94540db37df9fb05855c1edb7e`.
 Validated implementation ancestor of report head: `True`.
 Post-validation changes report-only: `True`.
 
@@ -62,11 +62,12 @@ Production execution is intentionally out of scope: this phase proves the founda
 - Bounded synthetic samples: `2`.
 - Local-files-only model resolution: `True`.
 - Model cache status: `cached`.
+- Provider benchmark wall-clock timeout: `60.0` seconds.
 - GPU acceleration available: `True`.
 - CPU fallback available/completed: `True` / `True`.
 - Recommended provider: `DmlExecutionProvider`.
 - Recommended batch size/concurrency: `2` / `1`.
-- Estimated 25-item AI runtime: `2.15` seconds.
+- Estimated 25-item AI runtime: `1.95` seconds.
 - Observed blocker, if any: `None`.
 
 ## Provider / Fallback Decision
@@ -128,7 +129,7 @@ Production execution is intentionally out of scope: this phase proves the founda
 - Pipeline status: `dry_run_planned`.
 - Dry-run only this phase: `True`.
 - Production execute enabled: `False`.
-- Estimated runtime seconds: `0.456`.
+- Estimated runtime seconds: `0.448`.
 
 - Stage `candidate_discovery`: state `completed`, writes `False`, production execution `False`.
 - Stage `import`: state `planned`, writes `False`, production execution `False`.

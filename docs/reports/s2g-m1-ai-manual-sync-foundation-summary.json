@@ -101,7 +101,7 @@
     "bounded": true,
     "cpu_fallback_available": true,
     "cpu_fallback_completed": true,
-    "estimated_runtime_seconds_for_25_item_manual_batch": 2.15,
+    "estimated_runtime_seconds_for_25_item_manual_batch": 1.95,
     "gpu_acceleration_available": true,
     "local_files_only": true,
     "model_cache": {
@@ -126,6 +126,7 @@
       "importable": true,
       "version": "1.24.4"
     },
+    "provider_benchmark_timeout_seconds": 60.0,
     "provider_fallback_decision_recorded": true,
     "provider_matrix": {
       "cpu": {
@@ -135,15 +136,15 @@
         "loaded_providers": [
           "CPUExecutionProvider"
         ],
-        "model_load_seconds": 1.4785,
+        "model_load_seconds": 1.3069,
         "practical": true,
         "provider": "CPUExecutionProvider",
         "sample_count": 2,
-        "seconds_per_item": 0.6064,
-        "single_image_latency_seconds": 0.5511,
-        "small_batch_latency_seconds": 1.2129,
+        "seconds_per_item": 0.4222,
+        "single_image_latency_seconds": 0.4111,
+        "small_batch_latency_seconds": 0.8444,
         "status": "completed",
-        "throughput_items_per_second": 1.649
+        "throughput_items_per_second": 2.3684
       },
       "cuda": {
         "available": false,
@@ -161,15 +162,15 @@
           "DmlExecutionProvider",
           "CPUExecutionProvider"
         ],
-        "model_load_seconds": 1.3715,
+        "model_load_seconds": 1.366,
         "practical": true,
         "provider": "DmlExecutionProvider",
         "sample_count": 2,
-        "seconds_per_item": 0.0861,
-        "single_image_latency_seconds": 0.042,
-        "small_batch_latency_seconds": 0.1723,
+        "seconds_per_item": 0.0781,
+        "single_image_latency_seconds": 0.0386,
+        "small_batch_latency_seconds": 0.1562,
         "status": "completed",
-        "throughput_items_per_second": 11.6102
+        "throughput_items_per_second": 12.8074
       }
     },
     "provider_selection": {
@@ -197,7 +198,7 @@
     "recommended_batch_size": 2,
     "recommended_concurrency": 1,
     "recommended_provider": "DmlExecutionProvider",
-    "recommended_seconds_per_item": 0.0861,
+    "recommended_seconds_per_item": 0.0781,
     "sample_count": 2,
     "status": "completed",
     "synthetic_input_only": true
@@ -215,17 +216,18 @@
     "safe_default_max_duration_seconds": 600,
     "safe_default_max_files": 25
   },
-  "generated_at": "2026-06-24T10:12:14Z",
+  "generated_at": "2026-06-24T11:48:55Z",
   "head_evidence": {
+    "head_evidence_valid": true,
     "latest_main_after_pr123": true,
     "origin_main_sha": "4724530d83767a62b6525a58bb1a1d04e973d48e",
     "post_validation_changes_report_only": true,
     "pr123_merge_commit": "4724530d83767a62b6525a58bb1a1d04e973d48e",
     "pr123_merge_is_ancestor_of_origin_main": true,
-    "report_generation_head_sha": "4859193d5f752d6ff6b821b08b1440aa00b4d8d6",
+    "report_generation_head_sha": "a44c18a133689e94540db37df9fb05855c1edb7e",
     "validated_implementation_is_ancestor_of_head": true,
     "validated_implementation_is_not_base_main": true,
-    "validated_implementation_sha": "4859193d5f752d6ff6b821b08b1440aa00b4d8d6"
+    "validated_implementation_sha": "a44c18a133689e94540db37df9fb05855c1edb7e"
   },
   "known_limitations": [
     "No production execute endpoint or production execute runner is implemented in this PR.",
@@ -248,7 +250,7 @@
   "manual_sync": {
     "controlled_pipeline": {
       "dry_run_only_this_phase": true,
-      "estimated_runtime_seconds": 0.456,
+      "estimated_runtime_seconds": 0.448,
       "implemented": true,
       "production_execute_enabled": false,
       "stages": [
@@ -445,9 +447,11 @@
       "public_json_payload",
       "public_markdown_text"
     ],
+    "clean_before_public_write": true,
     "finding_count": 0,
     "findings_redacted": true,
-    "passed": true
+    "passed": true,
+    "unsafe_public_report_written": false
   },
   "public_reports": {
     "markdown_report_path": "docs/reports/s2g-m1-ai-manual-sync-foundation.md",
