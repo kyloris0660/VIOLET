@@ -8,6 +8,7 @@ AI tagging, or run LLM translation.
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 import os
 from collections import Counter
 from datetime import datetime, timezone
@@ -28,8 +29,11 @@ from ..models import (
     TagTranslation,
 )
 from ..services.job_control import build_ai_tagging_execution_profile
-from ..utils.local_library_scanner import _is_scannable_file, validate_scan_paths
-from ..utils.media_processor import calculate_file_hash
+from ..utils.local_library_scanner import (
+    _calculate_file_hash_with_timeout,
+    _is_scannable_file,
+    validate_scan_paths,
+)
 from ..utils.logger import logger
 
 PROPER_NOUN_CATEGORIES = {"character", "copyright", "artist"}
@@ -59,6 +63,27 @@ MANUAL_SYNC_PIPELINE_STAGES: tuple[str, ...] = (
     "ai_tagging",
     "localization",
     "summary",
+)
+
+MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
+    {
+        "cloud_placeholder",
+        "corrupted_image",
+        "duplicate_hash",
+        "existing_media_hash",
+        "file_still_changing",
+        "icloud_placeholder",
+        "image_verify_failed",
+        "path_escape",
+        "read_error",
+        "read_timeout",
+        "source_walk_error",
+        "stat_error",
+        "symlink",
+        "unsafe_path",
+        "unsupported_extension",
+        "zero_byte_file",
+    }
 )
 
 
@@ -197,7 +222,23 @@ def _public_source_identity(path: Path) -> str:
     return _hash_text(_normalized_path_identity(path))[:16]
 
 
+def _manual_public_reason_code(reason: Optional[str]) -> Optional[str]:
+    if not reason:
+        return None
+    code = str(reason).split(":", 1)[0].strip().casefold().replace("-", "_")
+    if code in MANUAL_SYNC_PUBLIC_REASON_CODES:
+        return code
+    if code.startswith("stat_error"):
+        return "stat_error"
+    if code.startswith("read_timeout") or code == "timeout":
+        return "read_timeout"
+    if code.startswith("read_error") or code.endswith("error"):
+        return "read_error"
+    return "read_error"
+
+
 def _manual_state_for_reason(reason: str) -> str:
+    reason = _manual_public_reason_code(reason) or "read_error"
     if reason in {"icloud_placeholder", "cloud_placeholder"}:
         return "skipped_placeholder"
     if reason == "zero_byte_file":
@@ -210,7 +251,7 @@ def _manual_state_for_reason(reason: str) -> str:
         return "skipped_changing"
     if reason in {"corrupted_image", "image_verify_failed"}:
         return "failed"
-    if reason.startswith("stat_error") or reason.startswith("read_error"):
+    if reason in {"stat_error", "read_error", "read_timeout"}:
         return "failed"
     return "skipped_unsupported"
 
@@ -228,6 +269,88 @@ def _verify_supported_image_file(path: Path) -> Optional[str]:
     except Exception:
         return "corrupted_image"
     return None
+
+
+def _verify_supported_image_file_worker(path: str, conn) -> None:
+    try:
+        reason = _verify_supported_image_file(Path(path))
+        conn.send(("ok", reason))
+    except Exception:  # noqa: BLE001 - child process returns only public-safe codes.
+        try:
+            conn.send(("error", "corrupted_image"))
+        except Exception:
+            pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _verify_supported_image_file_with_timeout(path: Path, timeout_sec: int) -> Optional[str]:
+    timeout_sec = max(1, int(timeout_sec))
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+    process = multiprocessing.Process(
+        target=_verify_supported_image_file_worker,
+        args=(str(path), child_conn),
+    )
+    process.daemon = True
+    try:
+        process.start()
+        child_conn.close()
+        if parent_conn.poll(timeout_sec):
+            status, payload = parent_conn.recv()
+            process.join(timeout=1)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=1)
+            if status == "ok":
+                return _manual_public_reason_code(payload)
+            return _manual_public_reason_code(payload) or "corrupted_image"
+        process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1)
+        return "read_timeout"
+    except Exception:
+        return "read_error"
+    finally:
+        try:
+            parent_conn.close()
+        except Exception:
+            pass
+        try:
+            child_conn.close()
+        except Exception:
+            pass
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+
+
+def _calculate_manual_plan_file_hash(path: Path, timeout_sec: int) -> tuple[Optional[str], Optional[str]]:
+    status, payload = _calculate_file_hash_with_timeout(path, max(1, int(timeout_sec)))
+    if status == "ok":
+        return str(payload), None
+    if status == "timeout":
+        return None, "read_timeout"
+    return None, "read_error"
+
+
+def _query_existing_media_by_hashes(db: Session, content_hashes: Iterable[str]) -> Dict[str, int]:
+    hashes = sorted({value for value in content_hashes if value})
+    if not hashes:
+        return {}
+    existing: Dict[str, int] = {}
+    chunk_size = 500
+    for index in range(0, len(hashes), chunk_size):
+        chunk = hashes[index : index + chunk_size]
+        rows = db.query(Media.hash, Media.id).filter(Media.hash.in_(chunk)).all()
+        for content_hash, media_id in rows:
+            if content_hash and media_id is not None:
+                existing.setdefault(str(content_hash), int(media_id))
+    return existing
 
 
 def _build_manual_pipeline_stages(
@@ -335,6 +458,9 @@ def plan_manual_sync_dry_run(
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Build a public-safe manual sync dry-run plan without DB or file writes."""
+    if hydrated_only is False:
+        raise ValueError("manual sync dry-run requires hydrated_only=true")
+
     resolved = validate_source_root_path(source_path)
     created_at = now or _utcnow()
     created_ts = created_at.timestamp()
@@ -347,22 +473,19 @@ def plan_manual_sync_dry_run(
     )
     profile = ai_profile or build_ai_tagging_execution_profile(settings).to_public_dict()
     max_duration_seconds = settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS
+    read_timeout_seconds = max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS))
 
-    existing_hashes = {
-        row[0]
-        for row in db.query(Media.hash).filter(Media.hash.isnot(None)).all()
-        if row[0]
-    }
-    seen_hashes: set[str] = set()
     state_counts: Counter = Counter()
     reason_counts: Counter = Counter()
     public_items: List[Dict[str, Any]] = []
     private_items: List[Dict[str, Any]] = []
+    candidate_records: List[Dict[str, Any]] = []
+    candidate_hashes: set[str] = set()
     partial_scan = False
     walk_errors: List[str] = []
 
     for index, file_path in enumerate(_iter_source_files(resolved, walk_errors=walk_errors), start=1):
-        if len(public_items) >= effective_max_files:
+        if len(candidate_records) >= effective_max_files:
             partial_scan = True
             break
 
@@ -370,15 +493,14 @@ def plan_manual_sync_dry_run(
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
         rel_hash = _hash_text(rel)[:16]
         metadata: Dict[str, Any] = {}
-        reason = preflight_reason
+        reason = _manual_public_reason_code(preflight_reason)
         content_hash = None
-        media_id = None
 
         try:
-            reason = reason or _is_scannable_file(file_path, hydrated_only=hydrated_only)
+            reason = reason or _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
             metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
-        except OSError as exc:
-            reason = f"stat_error: {exc.__class__.__name__}"
+        except OSError:
+            reason = "stat_error"
 
         if reason is None and effective_stable_age > 0:
             mtime = metadata.get("mtime")
@@ -386,20 +508,37 @@ def plan_manual_sync_dry_run(
                 reason = "file_still_changing"
 
         if reason is None:
-            reason = _verify_supported_image_file(file_path)
+            reason = _verify_supported_image_file_with_timeout(file_path, read_timeout_seconds)
 
         if reason is None:
-            try:
-                content_hash = calculate_file_hash(file_path)
-            except OSError as exc:
-                reason = f"read_error: {exc.__class__.__name__}"
+            content_hash, reason = _calculate_manual_plan_file_hash(file_path, read_timeout_seconds)
 
-        if reason is None and content_hash is not None:
-            if content_hash in existing_hashes:
+        reason = _manual_public_reason_code(reason)
+        if reason is None and content_hash:
+            candidate_hashes.add(content_hash)
+        candidate_records.append(
+            {
+                "safe_label": safe_label,
+                "relative_path": rel,
+                "relative_path_hash": rel_hash,
+                "metadata": metadata,
+                "reason": reason,
+                "content_hash": content_hash,
+            }
+        )
+
+    existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
+    seen_hashes: set[str] = set()
+    for record in candidate_records:
+        reason = record["reason"]
+        content_hash = record["content_hash"]
+        media_id = None
+
+        if reason is None and content_hash:
+            if content_hash in existing_media_by_hash:
                 state = "skipped_existing_media"
                 reason = "existing_media_hash"
-                existing = db.query(Media.id).filter(Media.hash == content_hash).first()
-                media_id = int(existing[0]) if existing else None
+                media_id = existing_media_by_hash.get(content_hash)
             elif content_hash in seen_hashes:
                 state = "skipped_duplicate"
                 reason = "duplicate_hash"
@@ -407,18 +546,20 @@ def plan_manual_sync_dry_run(
                 state = "import_planned"
                 seen_hashes.add(content_hash)
         else:
-            state = _manual_state_for_reason(str(reason or "unknown"))
+            state = _manual_state_for_reason(str(reason or "read_error"))
 
+        public_reason = _manual_public_reason_code(reason)
         state_counts[state] += 1
-        if reason:
-            reason_counts[str(reason).split(":", 1)[0]] += 1
+        if public_reason:
+            reason_counts[public_reason] += 1
 
+        metadata = record["metadata"]
         item = {
-            "safe_label": safe_label,
-            "relative_path_hash": rel_hash,
+            "safe_label": record["safe_label"],
+            "relative_path_hash": record["relative_path_hash"],
             "initial_state": "candidate",
             "state": state,
-            "reason": reason,
+            "reason": public_reason,
             "eligible_for_db_import": state == "import_planned",
             "bytes_copied": 0,
             "media_id": media_id,
@@ -427,7 +568,7 @@ def plan_manual_sync_dry_run(
         }
         public_items.append(item)
         if include_private_details:
-            private_items.append({**item, "relative_path": rel})
+            private_items.append({**item, "relative_path": record["relative_path"]})
 
     if walk_errors:
         partial_scan = True
@@ -472,6 +613,7 @@ def plan_manual_sync_dry_run(
             "hydrated_only": hydrated_only,
             "stable_age_seconds": effective_stable_age,
             "max_duration_seconds": max_duration_seconds,
+            "file_read_timeout_seconds": read_timeout_seconds,
         },
         "counts": {
             "total_seen": len(public_items),
@@ -554,8 +696,8 @@ def _relative_identity_and_preflight_reason(root_path: Path, file_path: Path) ->
         file_resolved.relative_to(root_resolved)
     except ValueError:
         return rel, "path_escape"
-    except OSError as exc:
-        return rel, f"stat_error: {exc}"
+    except OSError:
+        return rel, "stat_error"
     except RuntimeError:
         return rel, "path_escape"
     return rel, None

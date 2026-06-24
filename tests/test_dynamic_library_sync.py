@@ -246,6 +246,19 @@ def test_manual_sync_dry_run_plan_defers_files_that_are_still_changing(db, tmp_p
     assert plan["ledger"]["per_file_public_records"][0]["reason"] == "file_still_changing"
 
 
+def test_manual_sync_dry_run_plan_rejects_hydrated_only_false_at_service(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+
+    with pytest.raises(ValueError, match="manual sync dry-run requires hydrated_only=true"):
+        service.plan_manual_sync_dry_run(
+            db,
+            source_path=source_root,
+            hydrated_only=False,
+            stable_age_seconds=0,
+        )
+
+
 def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -263,6 +276,156 @@ def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp
     assert payload["counts"]["state_counts"]["import_planned"] == 1
     assert "private_details" not in payload
     assert "new.png" not in str(payload)
+
+
+def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "source_path": str(source_root),
+            "max_files": 5,
+            "hydrated_only": False,
+            "stable_age_seconds": 0,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "manual sync dry-run requires hydrated_only=true"
+
+
+def test_manual_sync_dry_run_hash_timeout_is_item_level_failure(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "a_timeout.png")
+    _write_png(source_root / "b_valid.png")
+
+    def fake_hash(path: Path, _timeout_sec: int):
+        if path.name == "a_timeout.png":
+            return None, "read_timeout"
+        return calculate_file_hash(path), None
+
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", lambda _path, _timeout_sec: None)
+    monkeypatch.setattr(service, "_calculate_manual_plan_file_hash", fake_hash)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=10,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["failed"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
+    assert {item["reason"] for item in plan["ledger"]["per_file_public_records"]} == {"read_timeout", None}
+
+
+def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "a_timeout.png")
+    _write_png(source_root / "b_valid.png")
+
+    def fake_verify(path: Path, _timeout_sec: int):
+        return "read_timeout" if path.name == "a_timeout.png" else None
+
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", fake_verify)
+    monkeypatch.setattr(
+        service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (calculate_file_hash(path), None),
+    )
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=10,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["failed"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
+
+
+def test_manual_sync_dry_run_public_reasons_do_not_leak_oserror_paths(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "private_filename.png")
+    leaked_path = r"C:\Users\kyloris\Pictures\secret-fragment\private_filename.png"
+    original_metadata = service._metadata_for_path
+
+    def fake_metadata(path: Path, *, follow_symlinks: bool = True):
+        if path.name == "private_filename.png":
+            raise OSError(f"cannot stat {leaked_path}")
+        return original_metadata(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(service, "_metadata_for_path", fake_metadata)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    public_text = str(plan)
+
+    assert plan["counts"]["failure_reasons"]["stat_error"] == 1
+    assert plan["ledger"]["per_file_public_records"][0]["reason"] == "stat_error"
+    assert leaked_path not in public_text
+    assert "secret-fragment" not in public_text
+    assert "private_filename.png" not in public_text
+
+
+def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    candidate_path = source_root / "existing.png"
+    _write_png(candidate_path, (50, 60, 70))
+    candidate_hash = calculate_file_hash(candidate_path)
+
+    db.add(
+        Media(
+            filename="existing-redacted.png",
+            path="media/original/existing-redacted.png",
+            hash=candidate_hash,
+            file_type=FileTypeEnum.image,
+        )
+    )
+    for index in range(250):
+        db.add(
+            Media(
+                filename=f"redacted-extra-{index}.png",
+                path=f"media/original/redacted-extra-{index}.png",
+                hash=f"{index:064x}",
+                file_type=FileTypeEnum.image,
+            )
+        )
+    db.commit()
+
+    queried_hashes: list[set[str]] = []
+    original_lookup = service._query_existing_media_by_hashes
+
+    def spy_lookup(db_session, hashes):
+        queried_hashes.append(set(hashes))
+        return original_lookup(db_session, hashes)
+
+    monkeypatch.setattr(service, "_query_existing_media_by_hashes", spy_lookup)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert queried_hashes == [{candidate_hash}]
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
+    assert plan["ledger"]["per_file_public_records"][0]["media_id"] is not None
 
 
 def test_update_check_detects_changed_and_missing_items(db, tmp_path):

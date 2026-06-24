@@ -75,6 +75,21 @@ def git_value(args: Sequence[str]) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    if not ancestor or not descendant:
+        return False
+    return (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
 def public_error_code(exc: BaseException) -> str:
     return (exc.__class__.__name__ or "Error")[:80]
 
@@ -423,13 +438,13 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
     branch = git_value(["branch", "--show-current"])
     head = git_value(["rev-parse", "HEAD"])
     origin_main = git_value(["rev-parse", "origin/main"])
-    merge_base_check = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", PR123_MERGE_COMMIT, "origin/main"],
-        cwd=ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    ).returncode == 0
+    validated_implementation_sha = (args.validated_implementation_sha or head).strip()
+    merge_base_check = git_is_ancestor(PR123_MERGE_COMMIT, "origin/main")
+    validated_is_ancestor = git_is_ancestor(validated_implementation_sha, "HEAD")
+    validated_is_not_base_main = bool(validated_implementation_sha) and validated_implementation_sha not in {
+        PR123_MERGE_COMMIT,
+        origin_main,
+    }
 
     focused_tests_passed = bool(args.validation_focused_tests_passed)
     status = "target_met" if focused_tests_passed else "foundation_ready_pending_validation"
@@ -466,7 +481,11 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at": utc_now(),
         "branch": branch,
         "head_evidence": {
-            "current_head_sha": head,
+            "report_generation_head_sha": head,
+            "validated_implementation_sha": validated_implementation_sha,
+            "validated_implementation_is_ancestor_of_head": validated_is_ancestor,
+            "validated_implementation_is_not_base_main": validated_is_not_base_main,
+            "post_validation_changes_report_only": bool(args.post_validation_changes_report_only),
             "origin_main_sha": origin_main,
             "pr123_merge_commit": PR123_MERGE_COMMIT,
             "pr123_merge_is_ancestor_of_origin_main": merge_base_check,
@@ -557,7 +576,7 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
         },
         "final_button_recommendation": {
             "placement": "both_launcher_and_web_admin",
-            "primary_call": "POST /api/admin/dynamic-library-sync/manual-sync/plan first; later execute endpoint only after explicit S3A-M1 acceptance",
+            "primary_call": "POST /api/admin/dynamic-library-sync/manual-sync/plan first; S3A-M1 must implement or wire an explicit execute endpoint/runner before production acceptance",
             "launcher_pending_check_on_startup": "lightweight_count_only_ok",
             "launcher_intrusive_prompt": False,
             "safe_default_max_files": 25,
@@ -632,11 +651,13 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
             "AGENTS.md",
         ],
         "known_limitations": [
-            "No production execution or final visible production manual-sync button is included in this PR.",
+            "No production execute endpoint or production execute runner is implemented in this PR.",
+            "No final visible production manual-sync button or production acceptance is included in this PR.",
             "Persistent production execution ledgers remain disabled until S3A-M1 acceptance.",
+            "Controlled pipeline support is a dry-run planning foundation; S3A-M1 must implement or wire explicit execution before production acceptance.",
             "Capability probe uses synthetic tensors and local model cache only; it does not prove full production throughput.",
         ],
-        "recommended_next_phase": "S3A-M1 final manual-sync UI / production acceptance with explicit small-batch approval.",
+        "recommended_next_phase": "S3A-M1 must implement or wire the explicit manual-sync execute path, then add final visible controls and run small-batch production acceptance.",
     }
     return summary
 
@@ -652,15 +673,19 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     load_policy = summary["load_control_policy"]
     provenance = summary["provenance_policy"]
     api_surface = summary["api_surface"]
+    head_evidence = summary["head_evidence"]
     lines = [
         f"# {PHASE}: {TITLE}",
         "",
         f"Contract: `{CONTRACT_ID}`.",
         f"Status: `{summary['pipeline_contract']['status']}`.",
+        f"Validated implementation SHA: `{head_evidence['validated_implementation_sha']}`.",
+        f"Validated implementation ancestor of report head: `{head_evidence['validated_implementation_is_ancestor_of_head']}`.",
+        f"Post-validation changes report-only: `{head_evidence['post_validation_changes_report_only']}`.",
         "",
         "## Purpose",
         "",
-        "S2G-M1 builds the reusable local AI tagging execution profile and the manual sync dry-run foundation needed before a final production manual-sync acceptance button.",
+        "S2G-M1 builds the reusable local AI tagging execution profile, benchmark, dry-run planner, job/ledger vocabulary, and dry-run pipeline planning foundation needed before S3A-M1 implements an explicit production execute path and final manual-sync controls.",
         "",
         "Production execution is intentionally out of scope: this phase proves the foundation with local-only model resolution, synthetic benchmark input, temporary fixture storage, and an in-memory test DB plan.",
         "",
@@ -677,7 +702,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "- Added a durable AI tagging execution profile for local ONNX Runtime execution.",
             "- Added bounded capability probe/report generation with provider fallback accounting.",
             "- Extended dynamic sync with a manual sync dry-run planner and public-safe per-file ledger records.",
-            "- Added admin status/plan endpoints for later UI wiring without adding a production execute button.",
+            "- Added admin status/plan endpoints for later UI wiring without adding a production execute endpoint or button.",
             "- Added `s2g_manual_sync_foundation_contract_v1` and focused positive/negative contract tests.",
             "",
         ]
@@ -790,17 +815,18 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "- No provider/gallery-dl/Pixiv/SauceNAO/Google calls and no LLM calls.",
             "- No SourceConcept mutation, Entity truth writes, confirmed assignment writes, or production `media_tags` mutation.",
             "- No automatic sync, scheduled sync, system service, startup task, or long-running daemon.",
+            "- No production execute endpoint or production execute runner.",
             "- No final production acceptance; that remains S3A-M1.",
             "",
             "## Why Production Writes Are Deferred",
             "",
-            "This phase creates production-capable code paths only where they are guarded and disabled by default. Production acceptance requires a separate S3A-M1 approval flow with production runtime identity, backup/recovery proof where applicable, a dry-run plan, a small explicit batch, and post-run diagnostics.",
+            "This phase creates production-capable planning code paths only where they are guarded and disabled by default. S3A-M1 must implement or wire the explicit execute path before production acceptance, then run a separate approval flow with production runtime identity, backup/recovery proof where applicable, a dry-run plan, a small explicit batch, and post-run diagnostics.",
             "",
         ]
     )
     lines.extend(
         [
-            "## Final Button Recommendation",
+            "## Final Execute / Button Recommendation",
             "",
             f"- Placement: `{button['placement']}`.",
             f"- Backend call: `{button['primary_call']}`.",
@@ -872,6 +898,17 @@ def write_reports(summary: dict[str, Any]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--synthetic-samples", type=int, default=DEFAULT_SAMPLE_COUNT)
+    parser.add_argument(
+        "--validated-implementation-sha",
+        default=None,
+        help="Implementation commit SHA validated by this runner; defaults to current HEAD.",
+    )
+    parser.add_argument(
+        "--post-validation-changes-report-only",
+        action="store_true",
+        default=True,
+        help="Set when the final post-validation commit refreshes report artifacts only.",
+    )
     parser.add_argument(
         "--validation-focused-tests-passed",
         action="store_true",

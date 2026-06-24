@@ -34,7 +34,7 @@ config instead of development `.env`.
 The accepted short-term sequence is:
 
 1. **S2G-M1:** AI tagging execution and manual sync foundation. No production writes.
-2. **S3A-M1:** Final manual-sync UI / production acceptance under explicit operator approval.
+2. **S3A-M1:** Explicit manual-sync execute path plus final UI / production acceptance under explicit operator approval.
 3. **R1R:** SourceConcept route redo under GOV3 contracts.
 4. **A1R:** Rerun route audit after R1R outputs exist.
 5. **Pixiv/source metadata strategy polish:** settle Pixiv/source metadata reliability before adding providers.
@@ -85,7 +85,7 @@ Current post-PX1 result:
 - R1's trusted transition moved SourceConcept counts 4214 -> 6094 total, 355 -> 1078 active, 760 -> 1809 `needs_review`, with 1692 concepts influenced by PX1 evidence. The final current-head execute rerun was idempotent over the committed R1 state and verified 6094 total / 1078 active / 1809 `needs_review` after commit.
 - R1 improved source assertion/name/tag connection gaps while increasing total gap signals by 626; A1 should interpret these deltas before any editing or truth bridge.
 - Current route is split into two tracks:
-  1. Production utility: S2G-M1, then small S3A-M1 manual button / production acceptance before any S3B automation.
+  1. Production utility: S2G-M1, then small S3A-M1 explicit execute path / manual button / production acceptance before any S3B automation.
   2. SourceConcept/provider/entity: R1R full SourceConcept pipeline replay/remediation, A1R route audit rerun, Pixiv/source metadata strategy polish, then any later R2/Provider-2/Entity bridge decision after refreshed route evidence.
 - A1 final route approval remains blocked pending R1R and A1R. The durable review-pack policy lives in `docs/chatgpt-review-pack-policy.md`, but uploading the old A1 pack does not approve R2 during this incident.
 - Old R1/A1 evidence must not approve R2. R1/A1 should not be destructively rolled back; R1R/A1R should supersede/remediate with contract-shaped outputs.
@@ -94,7 +94,7 @@ Current post-PX1 result:
 ## Near-Term Route
 
 1. Complete `S2G-M1` with AI tagging execution profile, bounded local capability probe, provider fallback, load/provenance policy, manual sync dry-run planner, job/ledger foundation, dry-run pipeline foundation, and executable contract proof. No production writes.
-2. Start `S3A-M1` next for the final visible manual-sync button and first small production acceptance batch, only under explicit operator approval and production profile/runtime identity gates.
+2. Start `S3A-M1` next to implement or wire the explicit manual-sync execute path, add the final visible manual-sync controls, and run the first small production acceptance batch, only under explicit operator approval and production profile/runtime identity gates.
 3. Resume `R1R` under `source_concept_full_chain_contract_v1` after the production utility manual-sync acceptance unless the operator explicitly reprioritizes. AI proper-noun tags remain weak evidence; no confirmed Entity assignments.
 4. Run `A1R` after R1R outputs exist before approving R2, Provider-2, PX1-B, Entity bridge, scale-up, or SourceConcept truth promotion.
 5. Polish Pixiv/source metadata strategy after R1R/A1R before introducing new providers.
@@ -111,7 +111,7 @@ Explicit ordering:
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment runs and any non-4.7 product utility scale-up require separate policy, budget, ledger, and approval.
 - Provider-2, R2, PX1-B, Entity bridge, SourceConcept truth promotion, and new provider expansion remain blocked until R1R and A1R produce valid route evidence.
-- S3A-M1 is the next small production utility acceptance phase after S2G-M1. It remains manual, explicitly approved, and production-profile-bound. S3B remains disabled by default and opt-in only.
+- S3A-M1 is the next small production utility acceptance phase after S2G-M1. It must implement or wire the explicit execute path before acceptance, remains manual, explicitly approved, and production-profile-bound. S3B remains disabled by default and opt-in only.
 - Future S3A/S3B production execution must bind to production profile/runtime config, not development `.env`.
 - Dynamic sync automatic production writes are disabled by default. Manual check-for-updates and pending counts are product behavior; threshold-triggered or unattended production writes require explicit user opt-in and visible config.
 - AI tagging and tag localization are one S2 execution chain: baseline import -> AI tagging job -> new tags collected -> `_schedule_localization` -> background worker / auto translate -> `blombooru_tag_translations` -> frontend Chinese display and trusted search aliases.

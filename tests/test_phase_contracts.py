@@ -1076,6 +1076,7 @@ def _s2g_real1_summary(**overrides: object) -> dict:
 
 
 def _s2g_m1_summary(**overrides: object) -> dict:
+    current_head = _current_test_head()
     summary = {
         "phase": "S2G-M1",
         "pipeline_contract": {
@@ -1086,6 +1087,12 @@ def _s2g_m1_summary(**overrides: object) -> dict:
             "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": False},
         },
         "head_evidence": {
+            "report_generation_head_sha": current_head,
+            "validated_implementation_sha": current_head,
+            "validated_implementation_is_ancestor_of_head": True,
+            "validated_implementation_is_not_base_main": True,
+            "post_validation_changes_report_only": True,
+            "origin_main_sha": "4724530d83767a62b6525a58bb1a1d04e973d48e",
             "pr123_merge_commit": "4724530d83767a62b6525a58bb1a1d04e973d48e",
             "pr123_merge_is_ancestor_of_origin_main": True,
             "latest_main_after_pr123": True,
@@ -2888,6 +2895,18 @@ def test_s2g_m1_contract_accepts_ai_and_manual_sync_foundation() -> None:
     )
 
     assert result.passed is True
+
+
+def test_s2g_m1_contract_rejects_base_main_only_head_evidence() -> None:
+    summary = copy.deepcopy(_s2g_m1_summary())
+    base_main = summary["head_evidence"]["pr123_merge_commit"]
+    summary["head_evidence"]["validated_implementation_sha"] = base_main
+    summary["head_evidence"]["validated_implementation_is_not_base_main"] = False
+
+    result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s2g_m1_stale_base_main_head_evidence" in codes
 
 
 def test_s2g_m1_contract_rejects_target_without_focused_tests() -> None:

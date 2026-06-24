@@ -3245,6 +3245,9 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
             "pipeline_contract.post_123_route_respected",
             "head_evidence.pr123_merge_is_ancestor_of_origin_main",
             "head_evidence.latest_main_after_pr123",
+            "head_evidence.validated_implementation_is_ancestor_of_head",
+            "head_evidence.validated_implementation_is_not_base_main",
+            "head_evidence.post_validation_changes_report_only",
             "capability_probe.attempted",
             "capability_probe.bounded",
             "capability_probe.synthetic_input_only",
@@ -3317,6 +3320,49 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
             path="pipeline_contract.phase_identity",
             expected="S2G-M1",
             actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+
+    validated_sha = str(_get(summary, "head_evidence.validated_implementation_sha", "") or "").strip()
+    report_head_sha = str(_get(summary, "head_evidence.report_generation_head_sha", "") or "").strip()
+    base_main_sha = str(_get(summary, "head_evidence.pr123_merge_commit", "") or "").strip()
+    origin_main_sha = str(_get(summary, "head_evidence.origin_main_sha", "") or "").strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", validated_sha):
+        result.fail(
+            "s2g_m1_validated_implementation_sha_missing",
+            "S2G-M1 summary must identify the implementation commit validated by the runner.",
+            path="head_evidence.validated_implementation_sha",
+            expected="40-char git sha",
+            actual=validated_sha or None,
+        )
+    elif validated_sha in {base_main_sha, origin_main_sha}:
+        result.fail(
+            "s2g_m1_stale_base_main_head_evidence",
+            "S2G-M1 implementation evidence must not point only at the pre-PR base/main commit.",
+            path="head_evidence.validated_implementation_sha",
+            expected="PR implementation commit, not base main",
+            actual=validated_sha,
+        )
+    elif subprocess.run(
+        ["git", "merge-base", "--is-ancestor", validated_sha, "HEAD"],
+        cwd=CONTRACT_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode != 0:
+        result.fail(
+            "s2g_m1_validated_implementation_not_ancestor",
+            "S2G-M1 validated implementation commit must be an ancestor of the current report head.",
+            path="head_evidence.validated_implementation_sha",
+            expected="ancestor of current HEAD",
+            actual=validated_sha,
+        )
+    if report_head_sha and not re.fullmatch(r"[0-9a-f]{40}", report_head_sha):
+        result.fail(
+            "s2g_m1_report_head_sha_invalid",
+            "S2G-M1 report generation head must be a git SHA when recorded.",
+            path="head_evidence.report_generation_head_sha",
+            expected="40-char git sha",
+            actual=report_head_sha,
         )
 
     profile = _get(summary, "ai_execution_profile", {})

@@ -45,10 +45,11 @@ production sync.
      pipeline foundation in dry-run/dev-test mode.
    - Does not authorize production writes.
 
-2. `S3A-M1` - Final manual-sync UI / production acceptance.
+2. `S3A-M1` - Explicit manual-sync execute path plus final UI / production acceptance.
    - Small follow-up phase after S2G-M1.
-   - Wires the final visible manual-sync button and runs the first small
-     production acceptance batch only after explicit operator approval.
+   - Implements or wires the explicit manual-sync execute path, adds the final
+     visible controls, and runs the first small production acceptance batch
+     only after explicit operator approval.
    - Must remain manual; no automatic, scheduled, startup, service, or
      unattended sync.
 
@@ -89,9 +90,9 @@ production sync.
 - The launcher should not show an intrusive automatic prompt by default.
 - The backend should call the S2G-M1 dry-run plan endpoint first:
   `POST /api/admin/dynamic-library-sync/manual-sync/plan`.
-- Production execution should require a separate S3A-M1 execute endpoint or
-  runner with explicit operator approval, production identity proof, and a small
-  first batch.
+- S3A-M1 must implement or wire a separate execute endpoint or runner before
+  production acceptance. That execute path must require explicit operator
+  approval, production identity proof, and a small first batch.
 - Safe defaults from S2G-M1 are max files `25`, max duration `600` seconds,
   AI batch size `2`, and concurrency `1`.
 - Partial failure should complete successful items, keep failed/deferred items

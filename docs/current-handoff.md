@@ -48,7 +48,7 @@
 Accepted near-term order:
 
 1. `S2G-M1`: implement AI tagging execution profile, bounded local capability probe, provider fallback, load-control/provenance policy, manual sync dry-run planner, sync job/ledger foundation, controlled dry-run pipeline foundation, and a public-safe report/contract. No production writes.
-2. `S3A-M1`: final manual-sync button placement and small production acceptance, with explicit operator approval and production profile/runtime identity gates.
+2. `S3A-M1`: implement or wire the explicit manual-sync execute path, add final visible controls, and run small production acceptance with explicit operator approval and production profile/runtime identity gates.
 3. `R1R`: SourceConcept route redo under GOV3 contracts; no confirmed Entity assignments and no new provider/Pixiv live calls unless separately approved.
 4. `A1R`: rerun route audit after R1R outputs exist.
 5. `Pixiv/source metadata strategy polish`: settle Pixiv/source metadata reliability before adding providers.

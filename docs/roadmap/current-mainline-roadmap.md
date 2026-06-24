@@ -47,10 +47,11 @@ turning this phase into a broad planning essay.
      foundation for dry-run/dev-test mode.
    - No production writes.
 
-2. `S3A-M1` - Final manual-sync UI / production acceptance.
+2. `S3A-M1` - Explicit manual-sync execute path plus final UI / production acceptance.
    - Small follow-up phase after S2G-M1.
-   - Wires the final visible manual-sync button and runs first small production
-     acceptance only after explicit operator approval.
+   - Implements or wires the explicit manual-sync execute path, adds the final
+     visible controls, and runs first small production acceptance only after
+     explicit operator approval.
    - Must bind to production profile/runtime config, not development `.env`.
    - Must remain manual; no automatic, scheduled, startup, service, or
      unattended sync.
@@ -126,7 +127,7 @@ turning this phase into a broad planning essay.
 
 After S2G-M1 merges, the recommended next phase is:
 
-`S3A-M1: final manual-sync UI / production acceptance`.
+`S3A-M1: explicit manual-sync execute path plus final UI / production acceptance`.
 
 Only change that order if the operator explicitly reprioritizes. If a future
 session is unsure, choose the first unmerged item in `Accepted Sequence` whose

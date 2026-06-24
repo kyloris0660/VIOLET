@@ -149,6 +149,11 @@ async def plan_manual_sync(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
+    if body.hydrated_only is False:
+        raise HTTPException(
+            status_code=400,
+            detail="manual sync dry-run requires hydrated_only=true",
+        )
     if bool(body.root_id) == bool(body.source_path):
         raise HTTPException(
             status_code=400,

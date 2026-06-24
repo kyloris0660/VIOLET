@@ -104,7 +104,7 @@ it fails closed while manual execution is disabled.
 ## S2G-M1 manual sync dry-run foundation
 
 S2G-M1 adds a dry-run-only manual sync planner and status API for the later
-S3A-M1 button/acceptance phase.
+S3A-M1 execute-path, final controls, and acceptance phase.
 
 Routes:
 
@@ -112,11 +112,18 @@ Routes:
 - `POST /api/admin/dynamic-library-sync/manual-sync/plan`
 
 The plan endpoint accepts exactly one of a registered `root_id` or an explicit
-safe source path. It validates source-root policy, walks bounded candidates,
-checks unsupported files, iCloud/cloud placeholders, zero-byte files, changing
-files, corrupt images, duplicate hashes, and already-imported media, then
-returns public-safe counts and per-file safe labels. It does not write the DB,
-copy/import media, mutate source files, mutate app-managed storage, run
+safe source path. It requires `hydrated_only=true`; cloud-unsafe
+`hydrated_only=false` requests fail closed at both route and service level. It
+validates source-root policy, walks bounded candidates, checks unsupported
+files, iCloud/cloud placeholders, zero-byte files, changing files, corrupt
+images, duplicate hashes, and already-imported media, then returns public-safe
+counts and per-file safe labels. Per-file image verification and hash reads are
+bounded by the scan file-open timeout and report stable reason codes such as
+`read_timeout`, `read_error`, `stat_error`, or `corrupted_image`; one item-level
+timeout does not abort the whole plan. Existing-media detection hashes the
+bounded candidate set first and queries `Media.hash` only for those candidate
+hashes, while same-plan duplicate detection stays in memory. It does not write
+the DB, copy/import media, mutate source files, mutate app-managed storage, run
 classification, run AI tagging, schedule localization, call providers, or call
 LLMs.
 
@@ -131,9 +138,9 @@ The S2G-M1 planner output includes:
 - the AI tagging execution profile that S3A-M1 should reuse.
 
 Production execution remains disabled in this phase. S3A-M1 must add the final
-visible button and any production execute path behind explicit operator
-approval, production identity gates, failure budgets, and a small first
-acceptance batch.
+visible controls and implement or wire the production execute path behind
+explicit operator approval, production identity gates, failure budgets, and a
+small first acceptance batch.
 
 ## AI tagging and tag localization chain
 
@@ -222,10 +229,10 @@ execute production import, classification, AI tagging, localization, source
 mutation, or app-managed storage mutation.
 
 S3A-M1 should run only after explicit approval and after S2G-M1 readiness is
-reviewed. It should wire the final visible manual-sync button and perform a
-small production acceptance batch with production DB/storage identity, backup
-proof where applicable, dry-run proof, public redaction checks, and relevant
-GOV3 contracts.
+reviewed. It should implement or wire the explicit manual-sync execute path,
+add the final visible controls, and perform a small production acceptance batch
+with production DB/storage identity, backup proof where applicable, dry-run
+proof, public redaction checks, and relevant GOV3 contracts.
 
 S2 has a Gate 0 schema/readiness preparation step before Gate 1 execution
 readiness. If production has not yet run the S1 dynamic sync migration, the S2
