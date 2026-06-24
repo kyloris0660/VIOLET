@@ -72,14 +72,17 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "duplicate_hash",
         "existing_media_hash",
         "file_still_changing",
+        "hidden",
         "icloud_placeholder",
         "image_verify_failed",
+        "not_a_file",
         "path_escape",
         "read_error",
         "read_timeout",
         "source_walk_error",
         "stat_error",
         "symlink",
+        "too_large",
         "unsafe_path",
         "unsupported_extension",
         "zero_byte_file",
@@ -243,9 +246,9 @@ def _manual_state_for_reason(reason: str) -> str:
         return "skipped_placeholder"
     if reason == "zero_byte_file":
         return "skipped_zero_byte"
-    if reason == "unsupported_extension":
+    if reason in {"unsupported_extension", "hidden", "too_large"}:
         return "skipped_unsupported"
-    if reason in {"path_escape", "symlink", "unsafe_path"}:
+    if reason in {"path_escape", "symlink", "unsafe_path", "not_a_file"}:
         return "skipped_path_policy_error"
     if reason == "file_still_changing":
         return "skipped_changing"

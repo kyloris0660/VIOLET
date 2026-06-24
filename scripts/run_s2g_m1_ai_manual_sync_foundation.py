@@ -17,13 +17,16 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import multiprocessing
+import queue
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -303,19 +306,175 @@ def benchmark_provider(
         }
 
 
-def build_capability_probe(profile: Mapping[str, Any], sample_count: int) -> dict[str, Any]:
+def _provider_benchmark_timeout_seconds(profile: Mapping[str, Any]) -> int:
+    per_image_timeout = int(profile.get("per_image_timeout_seconds") or 60)
+    job_timeout = int(profile.get("job_timeout_seconds") or per_image_timeout)
+    return max(1, min(per_image_timeout, job_timeout))
+
+
+def _provider_timeout_row(provider: str, available_providers: Sequence[str], timeout_seconds: float) -> dict[str, Any]:
+    return {
+        "provider": provider,
+        "available": provider in available_providers,
+        "loaded": False,
+        "practical": False,
+        "status": "timeout",
+        "blocker": "provider_benchmark_timeout",
+        "timeout_seconds": timeout_seconds,
+    }
+
+
+def _provider_error_row(provider: str, available_providers: Sequence[str], error_code: str) -> dict[str, Any]:
+    return {
+        "provider": provider,
+        "available": provider in available_providers,
+        "loaded": False,
+        "practical": False,
+        "status": "load_or_inference_failed",
+        "blocker": error_code,
+    }
+
+
+def _benchmark_provider_process_worker(kwargs: dict[str, Any], conn) -> None:
+    try:
+        conn.send(("ok", benchmark_provider(**kwargs)))
+    except Exception as exc:  # noqa: BLE001 - public report records type only.
+        try:
+            conn.send(("error", public_error_code(exc)))
+        except Exception:
+            pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _benchmark_provider_thread_timeout(
+    benchmark_func: Callable[..., dict[str, Any]],
+    kwargs: dict[str, Any],
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    result_queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=1)
+
+    def _target() -> None:
+        try:
+            result_queue.put(("ok", benchmark_func(**kwargs)))
+        except Exception as exc:  # noqa: BLE001 - public report records type only.
+            result_queue.put(("error", public_error_code(exc)))
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+    if thread.is_alive():
+        return _provider_timeout_row(
+            kwargs["provider"],
+            kwargs.get("available_providers") or [],
+            timeout_seconds,
+        )
+    try:
+        status, payload = result_queue.get_nowait()
+    except queue.Empty:
+        return _provider_error_row(
+            kwargs["provider"],
+            kwargs.get("available_providers") or [],
+            "provider_benchmark_no_result",
+        )
+    if status == "ok":
+        return payload
+    return _provider_error_row(
+        kwargs["provider"],
+        kwargs.get("available_providers") or [],
+        str(payload),
+    )
+
+
+def benchmark_provider_with_timeout(
+    *,
+    provider: str,
+    available_providers: Sequence[str],
+    model_path: str | None,
+    profile: Mapping[str, Any],
+    sample_count: int,
+    timeout_seconds: float,
+    benchmark_func: Callable[..., dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    kwargs = {
+        "provider": provider,
+        "available_providers": list(available_providers),
+        "model_path": model_path,
+        "profile": dict(profile),
+        "sample_count": sample_count,
+    }
+    if benchmark_func is not None:
+        return _benchmark_provider_thread_timeout(benchmark_func, kwargs, timeout_seconds)
+
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+    process = multiprocessing.Process(
+        target=_benchmark_provider_process_worker,
+        args=(kwargs, child_conn),
+        daemon=True,
+    )
+    try:
+        process.start()
+        child_conn.close()
+        if parent_conn.poll(timeout_seconds):
+            status, payload = parent_conn.recv()
+            process.join(timeout=1)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=1)
+            if status == "ok":
+                return payload
+            return _provider_error_row(provider, available_providers, str(payload))
+        process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1)
+        return _provider_timeout_row(provider, available_providers, timeout_seconds)
+    except Exception as exc:  # noqa: BLE001 - public report records type only.
+        return _provider_error_row(provider, available_providers, public_error_code(exc))
+    finally:
+        try:
+            parent_conn.close()
+        except Exception:
+            pass
+        try:
+            child_conn.close()
+        except Exception:
+            pass
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+
+
+def build_capability_probe(
+    profile: Mapping[str, Any],
+    sample_count: int,
+    *,
+    benchmark_func: Callable[..., dict[str, Any]] | None = None,
+    provider_timeout_seconds: float | None = None,
+) -> dict[str, Any]:
     onnx = onnxruntime_status()
     model_cache = cached_model_files(str(profile["model_name"]))
     available = list(onnx.get("available_providers") or [])
     model_path = model_cache.get("_model_path") if model_cache.get("status") == "cached" else None
     providers = list(dict.fromkeys([*profile.get("provider_preference", []), "DmlExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]))
+    effective_provider_timeout_seconds = (
+        float(provider_timeout_seconds)
+        if provider_timeout_seconds is not None
+        else float(_provider_benchmark_timeout_seconds(profile))
+    )
     provider_matrix = {
-        provider_key(provider): benchmark_provider(
+        provider_key(provider): benchmark_provider_with_timeout(
             provider=provider,
             available_providers=available,
             model_path=model_path,
             profile=profile,
             sample_count=sample_count,
+            timeout_seconds=effective_provider_timeout_seconds,
+            benchmark_func=benchmark_func,
         )
         for provider in providers
         if provider in DEFAULT_PROVIDER_PREFERENCE
@@ -359,6 +518,7 @@ def build_capability_probe(profile: Mapping[str, Any], sample_count: int) -> dic
         "model_cache": public_model_cache(model_cache),
         "onnxruntime": onnx,
         "provider_matrix": provider_matrix,
+        "provider_benchmark_timeout_seconds": effective_provider_timeout_seconds,
         "gpu_acceleration_available": bool(gpu_completed),
         "cpu_fallback_available": bool(cpu.get("available")),
         "cpu_fallback_completed": cpu.get("status") == "completed",
@@ -445,12 +605,25 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
         PR123_MERGE_COMMIT,
         origin_main,
     }
+    latest_main_after_pr123 = origin_main == PR123_MERGE_COMMIT and merge_base_check
+    head_evidence_valid = (
+        merge_base_check
+        and latest_main_after_pr123
+        and validated_is_ancestor
+        and validated_is_not_base_main
+    )
 
     focused_tests_passed = bool(args.validation_focused_tests_passed)
-    status = "target_met" if focused_tests_passed else "foundation_ready_pending_validation"
+    if focused_tests_passed and head_evidence_valid:
+        status = "target_met"
+    elif focused_tests_passed:
+        status = "blocked_stale_head_evidence"
+    else:
+        status = "foundation_ready_pending_validation"
+    target_claim_allowed = focused_tests_passed and head_evidence_valid
     claims = {
-        "target_met": focused_tests_passed,
-        "safe_to_merge": focused_tests_passed,
+        "target_met": target_claim_allowed,
+        "safe_to_merge": target_claim_allowed,
         "full_chain_complete": False,
     }
     safety = {
@@ -489,7 +662,8 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
             "origin_main_sha": origin_main,
             "pr123_merge_commit": PR123_MERGE_COMMIT,
             "pr123_merge_is_ancestor_of_origin_main": merge_base_check,
-            "latest_main_after_pr123": origin_main == PR123_MERGE_COMMIT and merge_base_check,
+            "latest_main_after_pr123": latest_main_after_pr123,
+            "head_evidence_valid": head_evidence_valid,
         },
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
@@ -715,6 +889,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"- Bounded synthetic samples: `{probe['sample_count']}`.",
             f"- Local-files-only model resolution: `{probe['local_files_only']}`.",
             f"- Model cache status: `{probe['model_cache']['status']}`.",
+            f"- Provider benchmark wall-clock timeout: `{probe['provider_benchmark_timeout_seconds']}` seconds.",
             f"- GPU acceleration available: `{probe['gpu_acceleration_available']}`.",
             f"- CPU fallback available/completed: `{probe['cpu_fallback_available']}` / `{probe['cpu_fallback_completed']}`.",
             f"- Recommended provider: `{probe['recommended_provider']}`.",
@@ -875,7 +1050,16 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_reports(summary: dict[str, Any]) -> None:
+def _clear_completion_claims(summary: dict[str, Any], status: str) -> None:
+    contract = summary.setdefault("pipeline_contract", {})
+    contract["status"] = status
+    claims = contract.setdefault("claims", {})
+    claims["target_met"] = False
+    claims["safe_to_merge"] = False
+    claims["full_chain_complete"] = False
+
+
+def write_reports(summary: dict[str, Any]) -> bool:
     markdown = render_markdown(summary)
     findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown})
     summary["public_redaction"] = {
@@ -883,8 +1067,13 @@ def write_reports(summary: dict[str, Any]) -> None:
         "finding_count": len(findings),
         "findings_redacted": True,
         "checked_payloads": ["public_json_payload", "public_markdown_text"],
+        "clean_before_public_write": not findings,
+        "unsafe_public_report_written": False,
     }
     summary["validation"]["public_redaction_passed"] = not findings
+    if findings:
+        _clear_completion_claims(summary, "blocked_public_redaction_failed")
+        return False
     markdown = render_markdown(summary)
     SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
     SUMMARY_PATH.write_text(
@@ -893,6 +1082,7 @@ def write_reports(summary: dict[str, Any]) -> None:
         newline="\n",
     )
     MARKDOWN_PATH.write_text(markdown, encoding="utf-8", newline="\n")
+    return True
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -921,9 +1111,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     args.synthetic_samples = max(1, min(16, args.synthetic_samples))
     summary = build_summary(args)
-    write_reports(summary)
+    reports_written = write_reports(summary)
     print(json.dumps({"summary": repo_relative(SUMMARY_PATH), "status": summary["pipeline_contract"]["status"]}, indent=2, sort_keys=True))
-    return 0 if summary.get("public_redaction", {}).get("passed") else 1
+    return 0 if reports_written and summary.get("public_redaction", {}).get("passed") else 1
 
 
 if __name__ == "__main__":

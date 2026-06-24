@@ -3211,6 +3211,7 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
         "blocked_probe_unavailable",
         "blocked_manual_sync_foundation",
         "blocked_public_redaction_failed",
+        "blocked_stale_head_evidence",
     }
     status = str(result.status or "").casefold()
     if status not in allowed_statuses:
@@ -3243,10 +3244,6 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
         result,
         (
             "pipeline_contract.post_123_route_respected",
-            "head_evidence.pr123_merge_is_ancestor_of_origin_main",
-            "head_evidence.latest_main_after_pr123",
-            "head_evidence.validated_implementation_is_ancestor_of_head",
-            "head_evidence.validated_implementation_is_not_base_main",
             "head_evidence.post_validation_changes_report_only",
             "capability_probe.attempted",
             "capability_probe.bounded",
@@ -3274,6 +3271,20 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
         code="s2g_m1_required_foundation_proof_missing",
         message="S2G-M1 requires current-main proof, bounded probe proof, load/provenance proof, planner/ledger/pipeline proof, and public redaction proof.",
     )
+    if status == "target_met":
+        _check_required_boolean_paths(
+            summary,
+            result,
+            (
+                "head_evidence.pr123_merge_is_ancestor_of_origin_main",
+                "head_evidence.latest_main_after_pr123",
+                "head_evidence.validated_implementation_is_ancestor_of_head",
+                "head_evidence.validated_implementation_is_not_base_main",
+                "head_evidence.head_evidence_valid",
+            ),
+            code="s2g_m1_target_head_evidence_invalid",
+            message="S2G-M1 target_met requires validated implementation evidence tied to the current PR head.",
+        )
     _check_explicit_false_paths(
         summary,
         result,
@@ -3334,7 +3345,7 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
             expected="40-char git sha",
             actual=validated_sha or None,
         )
-    elif validated_sha in {base_main_sha, origin_main_sha}:
+    elif validated_sha in {base_main_sha, origin_main_sha} and status == "target_met":
         result.fail(
             "s2g_m1_stale_base_main_head_evidence",
             "S2G-M1 implementation evidence must not point only at the pre-PR base/main commit.",

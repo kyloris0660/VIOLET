@@ -144,7 +144,7 @@ async def get_manual_sync_foundation_status(
 
 
 @router.post("/dynamic-library-sync/manual-sync/plan")
-async def plan_manual_sync(
+def plan_manual_sync(
     body: ManualSyncDryRunPlanRequest,
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),

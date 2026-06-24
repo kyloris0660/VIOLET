@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect as py_inspect
 import sys
 from pathlib import Path
 
@@ -278,6 +279,10 @@ def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp
     assert "new.png" not in str(payload)
 
 
+def test_manual_sync_plan_route_is_sync_worker_thread_endpoint() -> None:
+    assert py_inspect.iscoroutinefunction(dynamic_routes.plan_manual_sync) is False
+
+
 def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -295,6 +300,50 @@ def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_
 
     assert response.status_code == 400
     assert response.json()["detail"] == "manual sync dry-run requires hydrated_only=true"
+
+
+@pytest.mark.parametrize("scanner_reason", ["hidden", "too_large"])
+def test_manual_sync_dry_run_preserves_policy_skip_reasons(db, tmp_path, monkeypatch, scanner_reason):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "policy_skip.png")
+
+    monkeypatch.setattr(service, "_is_scannable_file", lambda _path, *, hydrated_only=True: scanner_reason)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    item = plan["ledger"]["per_file_public_records"][0]
+
+    assert item["state"] == "skipped_unsupported"
+    assert item["reason"] == scanner_reason
+    assert item["reason"] != "read_error"
+    assert plan["counts"]["failure_reasons"][scanner_reason] == 1
+    assert plan["counts"]["state_counts"]["failed"] == 0
+
+
+def test_manual_sync_dry_run_maps_not_a_file_to_path_policy_skip(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "policy_skip.png")
+
+    monkeypatch.setattr(service, "_is_scannable_file", lambda _path, *, hydrated_only=True: "not_a_file")
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    item = plan["ledger"]["per_file_public_records"][0]
+
+    assert item["state"] == "skipped_path_policy_error"
+    assert item["reason"] == "not_a_file"
+    assert item["reason"] != "read_error"
+    assert plan["counts"]["state_counts"]["failed"] == 0
 
 
 def test_manual_sync_dry_run_hash_timeout_is_item_level_failure(db, tmp_path, monkeypatch):

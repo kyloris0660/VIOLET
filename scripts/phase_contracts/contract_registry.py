@@ -895,6 +895,7 @@ CONTRACTS: dict[str, PhaseContract] = {
             "head_evidence.validated_implementation_is_ancestor_of_head",
             "head_evidence.validated_implementation_is_not_base_main",
             "head_evidence.post_validation_changes_report_only",
+            "head_evidence.head_evidence_valid",
             "ai_execution_profile.profile_id",
             "ai_execution_profile.provider_backend",
             "ai_execution_profile.model_name",
