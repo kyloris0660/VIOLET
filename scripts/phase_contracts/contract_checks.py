@@ -3680,6 +3680,12 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.hydrated_only_required",
             "manual_sync.default_execute_disabled",
             "manual_sync.stale_replan_rejected",
+            "manual_sync.limits.execute_max_files_exceeded_rejected",
+            "manual_sync.active_job_gates.ai_job_active_blocked",
+            "manual_sync.active_job_gates.classification_job_active_blocked",
+            "manual_sync.runner_outputs.default_report_json_gitignored",
+            "manual_sync.runner_outputs.default_report_md_gitignored",
+            "manual_sync.runner_outputs.docs_reports_require_explicit_flags",
             "manual_sync.translation_side_effect_gates.background_llm_blocked",
             "manual_sync.translation_side_effect_gates.auto_llm_blocked",
             "manual_sync.translation_side_effect_gates.llm_enabled_blocked",
@@ -3815,9 +3821,12 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
         )
 
     max_files = _as_int(_get(summary, "manual_sync.limits.safe_default_max_files", 0))
+    execute_max_files = _as_int(_get(summary, "manual_sync.limits.execute_max_files", 0))
     max_duration = _as_int(_get(summary, "manual_sync.limits.max_duration_seconds", 0))
     if not (1 <= max_files <= 1000):
         result.fail("s3a_m1_max_files_unbounded", "S3A-M1 safe default max files must stay bounded.", path="manual_sync.limits.safe_default_max_files", expected="1..1000", actual=max_files)
+    if not (1 <= execute_max_files <= 5):
+        result.fail("s3a_m1_execute_max_files_unbounded", "S3A-M1 execute max_files cap must stay at or below 5.", path="manual_sync.limits.execute_max_files", expected="1..5", actual=execute_max_files)
     if not (1 <= max_duration <= 3600):
         result.fail("s3a_m1_max_duration_unbounded", "S3A-M1 max duration must stay bounded.", path="manual_sync.limits.max_duration_seconds", expected="1..3600", actual=max_duration)
 

@@ -58,6 +58,7 @@ MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE = 0.05
 MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS = 20
 MANUAL_SYNC_EXECUTE_MAX_CONSECUTIVE_FAILURES = 10
 MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS = 10 * 60
+MANUAL_SYNC_EXECUTE_MAX_FILES = 5
 
 
 def is_manual_sync_execute_active() -> bool:
@@ -130,6 +131,24 @@ def _assert_translation_side_effects_disabled() -> None:
         )
 
 
+def _assert_no_active_ai_or_classification_jobs() -> None:
+    from .ai_tagging_job_service import is_ai_job_active
+    from .classification_job_service import is_classification_job_active
+
+    if is_ai_job_active():
+        raise ManualSyncExecuteError(
+            "ai_job_active_blocks_manual_sync_execute",
+            "Manual sync execute is blocked while an AI tagging job is active.",
+            status_code=409,
+        )
+    if is_classification_job_active():
+        raise ManualSyncExecuteError(
+            "classification_job_active_blocks_manual_sync_execute",
+            "Manual sync execute is blocked while a classification job is active.",
+            status_code=409,
+        )
+
+
 def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[str, Any]:
     return {
         "scheduled": False,
@@ -142,6 +161,7 @@ def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[s
 
 def _budget_policy_payload() -> Dict[str, Any]:
     return {
+        "max_files": MANUAL_SYNC_EXECUTE_MAX_FILES,
         "max_item_failures": MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES,
         "max_failure_rate": MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE,
         "failure_rate_min_items": MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS,
@@ -174,10 +194,24 @@ def _budget_stop_reason(
     return None
 
 
+def _effective_execute_max_files(max_files: Optional[int]) -> int:
+    if max_files is None:
+        return MANUAL_SYNC_EXECUTE_MAX_FILES
+    effective = int(max_files)
+    if effective > MANUAL_SYNC_EXECUTE_MAX_FILES:
+        raise ManualSyncExecuteError(
+            "manual_sync_execute_max_files_exceeded",
+            f"S3A-M1 manual sync execute is capped at {MANUAL_SYNC_EXECUTE_MAX_FILES} files.",
+            status_code=400,
+        )
+    return max(1, effective)
+
+
 def _public_request_payload(
     *,
     root_id: int,
     max_files: Optional[int],
+    effective_max_files: int,
     hydrated_only: bool,
     stable_age_seconds: Optional[float],
     expected_plan_hash: str,
@@ -187,6 +221,8 @@ def _public_request_payload(
     return {
         "root_id": root_id,
         "max_files": max_files,
+        "effective_max_files": effective_max_files,
+        "execute_max_files_cap": MANUAL_SYNC_EXECUTE_MAX_FILES,
         "hydrated_only": hydrated_only,
         "stable_age_seconds": stable_age_seconds,
         "expected_plan_hash": expected_plan_hash,
@@ -218,6 +254,7 @@ def _verify_execute_gates(
             status_code=409,
         )
     _assert_translation_side_effects_disabled()
+    _assert_no_active_ai_or_classification_jobs()
     if not hydrated_only:
         raise ManualSyncExecuteError(
             "hydrated_only_required",
@@ -300,6 +337,7 @@ def _verify_execute_recheck(
             status_code=409,
         )
     _assert_translation_side_effects_disabled()
+    _assert_no_active_ai_or_classification_jobs()
     if not hydrated_only:
         raise ManualSyncExecuteError("hydrated_only_required", "Manual sync execute requires hydrated_only=true.")
     current_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
@@ -361,10 +399,11 @@ def validate_manual_sync_execute_request(
     production_acceptance_approved: bool = False,
 ) -> Dict[str, Any]:
     created = _parse_datetime(plan_created_at)
+    effective_max_files = _effective_execute_max_files(max_files)
     _root, _source_path, plan = _plan_for_root(
         db,
         root_id=root_id,
-        max_files=max_files,
+        max_files=effective_max_files,
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=False,
@@ -408,10 +447,11 @@ def create_manual_sync_execute_run(
             status_code=409,
         )
 
+    effective_max_files = _effective_execute_max_files(max_files)
     plan = validate_manual_sync_execute_request(
         db,
         root_id=root_id,
-        max_files=max_files,
+        max_files=effective_max_files,
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         expected_plan_hash=expected_plan_hash,
@@ -423,7 +463,7 @@ def create_manual_sync_execute_run(
     _root, _source_path, private_plan = _plan_for_root(
         db,
         root_id=root_id,
-        max_files=max_files,
+        max_files=effective_max_files,
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=True,
@@ -458,6 +498,7 @@ def create_manual_sync_execute_run(
                 "request": _public_request_payload(
                     root_id=root_id,
                     max_files=max_files,
+                    effective_max_files=effective_max_files,
                     hydrated_only=hydrated_only,
                     stable_age_seconds=stable_age_seconds,
                     expected_plan_hash=expected_plan_hash,
@@ -809,7 +850,6 @@ def _ensure_clip_model_cache_only() -> tuple[bool, Optional[str]]:
         )
         if not cached_model or not Path(str(cached_model)).exists():
             return False, "classification_model_uncached"
-        classifier.reset_failure()
         classifier._load_session(str(cached_model))
         classifier._load_text_embeddings()
         return True, None

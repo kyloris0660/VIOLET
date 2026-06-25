@@ -10,6 +10,8 @@ from sqlalchemy.pool import StaticPool
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = ROOT / "backend"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -33,6 +35,7 @@ from app.services.manual_sync_execute_service import (  # noqa: E402
     create_manual_sync_execute_run,
     execute_manual_sync_run,
 )
+from scripts import run_s3a_m1_manual_sync_execute as runner  # noqa: E402
 
 
 @pytest.fixture()
@@ -510,6 +513,124 @@ def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(
     assert run.status == "pending"
 
 
+def test_s3a_m1_execute_rejects_max_files_over_cap(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=100000,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "manual_sync_execute_max_files_exceeded"
+
+
+def test_s3a_m1_execute_allows_max_files_within_cap_and_records_cap(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES,
+        stable_age_seconds=0,
+    )
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    execute_payload = run.summary_json["manual_sync_execute"]
+    assert execute_payload["request"]["effective_max_files"] == execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES
+    assert execute_payload["request"]["execute_max_files_cap"] == execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES
+    assert execute_payload["budgets"]["max_files"] == execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES
+
+
+def test_s3a_m1_execute_blocks_active_ai_job(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setattr("app.services.ai_tagging_job_service.is_ai_job_active", lambda: True)
+    monkeypatch.setattr("app.services.classification_job_service.is_classification_job_active", lambda: False)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "ai_job_active_blocks_manual_sync_execute"
+
+
+def test_s3a_m1_execute_blocks_active_classification_job(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setattr("app.services.ai_tagging_job_service.is_ai_job_active", lambda: False)
+    monkeypatch.setattr("app.services.classification_job_service.is_classification_job_active", lambda: True)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "classification_job_active_blocks_manual_sync_execute"
+
+
 def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
@@ -548,12 +669,45 @@ def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monke
     assert result["manual_sync_execute"]["model_downloads_performed"] is False
 
 
+def test_s3a_m1_clip_cache_gate_allows_cached_model_without_reset_failure(tmp_path, monkeypatch):
+    calls = []
+    cached_model = tmp_path / "vision_model.onnx"
+    cached_model.write_bytes(b"cached")
+    embeddings_file = tmp_path / "clip_text_embeddings.npz"
+    embeddings_file.write_bytes(b"cached")
+    fake_classifier = SimpleNamespace(
+        _session=None,
+        _text_embeddings=None,
+        _load_session=lambda path: calls.append(("load_session", Path(path))),
+        _load_text_embeddings=lambda: calls.append(("load_text_embeddings", None)),
+    )
+    fake_clip_module = SimpleNamespace(
+        CLIP_REPO_ID="repo",
+        CLIP_REVISION="rev",
+        CLIP_VISION_FILE="model.onnx",
+        EMBEDDINGS_FILE=embeddings_file,
+        CLIPClassifier=lambda: fake_classifier,
+    )
+    fake_hf_module = SimpleNamespace(
+        try_to_load_from_cache=lambda **_kwargs: calls.append(("cache_lookup", None)) or str(cached_model),
+    )
+    monkeypatch.setitem(sys.modules, "app.services.clip_classifier", fake_clip_module)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_module)
+
+    ready, reason = execute_service._ensure_clip_model_cache_only()
+
+    assert ready is True
+    assert reason is None
+    assert ("cache_lookup", None) in calls
+    assert ("load_session", cached_model) in calls
+    assert ("load_text_embeddings", None) in calls
+
+
 def test_s3a_m1_clip_cache_gate_does_not_enter_download_path(tmp_path, monkeypatch):
     calls = []
     fake_classifier = SimpleNamespace(
         _session=None,
         _text_embeddings=None,
-        reset_failure=lambda: calls.append("reset_failure"),
         _load_session=lambda _path: calls.append("load_session"),
         _load_text_embeddings=lambda: calls.append("load_text_embeddings"),
     )
@@ -576,6 +730,47 @@ def test_s3a_m1_clip_cache_gate_does_not_enter_download_path(tmp_path, monkeypat
     assert reason == "classification_model_uncached"
     assert "cache_lookup" not in calls
     assert "load_session" not in calls
+
+
+def test_s3a_m1_clip_cache_gate_uncached_model_skips_without_download(tmp_path, monkeypatch):
+    calls = []
+    embeddings_file = tmp_path / "clip_text_embeddings.npz"
+    embeddings_file.write_bytes(b"cached")
+    fake_classifier = SimpleNamespace(
+        _session=None,
+        _text_embeddings=None,
+        _load_session=lambda _path: calls.append("load_session"),
+        _load_text_embeddings=lambda: calls.append("load_text_embeddings"),
+    )
+    fake_clip_module = SimpleNamespace(
+        CLIP_REPO_ID="repo",
+        CLIP_REVISION="rev",
+        CLIP_VISION_FILE="model.onnx",
+        EMBEDDINGS_FILE=embeddings_file,
+        CLIPClassifier=lambda: fake_classifier,
+    )
+    fake_hf_module = SimpleNamespace(
+        try_to_load_from_cache=lambda **_kwargs: calls.append("cache_lookup") or None,
+    )
+    monkeypatch.setitem(sys.modules, "app.services.clip_classifier", fake_clip_module)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_module)
+
+    ready, reason = execute_service._ensure_clip_model_cache_only()
+
+    assert ready is False
+    assert reason == "classification_model_uncached"
+    assert calls == ["cache_lookup"]
+
+
+def test_s3a_m1_runner_defaults_to_local_manifest_reports(tmp_path):
+    args = runner.build_parser().parse_args(["--source-path", str(tmp_path / "source")])
+
+    assert ".local_manifests" in args.report_json.parts
+    assert ".local_manifests" in args.report_md.parts
+    assert args.report_json.name == "manual-sync-runner-report.json"
+    assert args.report_md.name == "manual-sync-runner-report.md"
+    assert "docs" not in args.report_json.parts
+    assert "docs" not in args.report_md.parts
 
 
 def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, monkeypatch):

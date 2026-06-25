@@ -1346,7 +1346,21 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "stale_replan_rejected": True,
             "confirmation_phrase_prefix": "I APPROVE S3A-M1 MANUAL SYNC EXECUTE",
             "production_confirmation_phrase_prefix": "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE",
-            "limits": {"safe_default_max_files": 25, "max_duration_seconds": 600},
+            "limits": {
+                "safe_default_max_files": 25,
+                "execute_max_files": 5,
+                "execute_max_files_exceeded_rejected": True,
+                "max_duration_seconds": 600,
+            },
+            "active_job_gates": {
+                "ai_job_active_blocked": True,
+                "classification_job_active_blocked": True,
+            },
+            "runner_outputs": {
+                "default_report_json_gitignored": True,
+                "default_report_md_gitignored": True,
+                "docs_reports_require_explicit_flags": True,
+            },
             "translation_side_effect_gates": {
                 "background_llm_blocked": True,
                 "auto_llm_blocked": True,
@@ -3249,6 +3263,33 @@ def test_s3a_m1_contract_rejects_stale_plan_replay_gap() -> None:
 def test_s3a_m1_contract_rejects_early_stop_pending_loss() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
     summary["manual_sync"]["failure_budget"]["pending_import_preserved_on_early_stop"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_execute_max_files_cap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["limits"]["execute_max_files"] = 100000
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_execute_max_files_unbounded" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_active_job_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["ai_job_active_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_runner_default_docs_report_output() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["runner_outputs"]["default_report_json_gitignored"] = False
 
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
 

@@ -66,6 +66,7 @@
       "continue_within_failure_budget": true
     },
     "failure_budget": {
+      "execute_max_files": 5,
       "max_item_failures": 20,
       "max_failure_rate": 0.05,
       "max_consecutive_failures": 10,
@@ -92,8 +93,19 @@
       "public_safe": true
     },
     "limits": {
+      "execute_max_files": 5,
+      "execute_max_files_exceeded_rejected": true,
       "max_duration_seconds": 600,
       "safe_default_max_files": 25
+    },
+    "active_job_gates": {
+      "ai_job_active_blocked": true,
+      "classification_job_active_blocked": true
+    },
+    "runner_outputs": {
+      "default_report_json_gitignored": true,
+      "default_report_md_gitignored": true,
+      "docs_reports_require_explicit_flags": true
     },
     "pipeline": {
       "dev_test_execute_supported": true,

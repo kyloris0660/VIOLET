@@ -19,6 +19,10 @@ BACKEND_ROOT = ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / "s3a_m1_manual_sync_execute"
+DEFAULT_REPORT_JSON = DEFAULT_OUTPUT_DIR / "manual-sync-runner-report.json"
+DEFAULT_REPORT_MD = DEFAULT_OUTPUT_DIR / "manual-sync-runner-report.md"
+
 from app.config import settings  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.models import DynamicSourceRoot  # noqa: E402
@@ -78,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--confirmation-phrase")
     parser.add_argument("--plan-created-at")
     parser.add_argument("--production-acceptance-approved", action="store_true")
-    parser.add_argument("--report-json", type=Path, default=ROOT / "docs" / "reports" / "s3a-m1-manual-sync-execute-summary.json")
-    parser.add_argument("--report-md", type=Path, default=ROOT / "docs" / "reports" / "s3a-m1-manual-sync-execute.md")
+    parser.add_argument("--report-json", type=Path, default=DEFAULT_REPORT_JSON)
+    parser.add_argument("--report-md", type=Path, default=DEFAULT_REPORT_MD)
     parser.add_argument("--validation-focused-tests-passed", action="store_true")
     return parser
 
