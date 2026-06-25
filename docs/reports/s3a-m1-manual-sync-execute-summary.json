@@ -46,7 +46,10 @@
     "ai_tagging": {
       "item_exception_containment": true,
       "model_uncached_reason": "ai_tagger_model_uncached",
+      "file_missing_reason": "ai_tagger_file_missing",
       "inference_failure_reason": "ai_tagger_inference_failed",
+      "returned_error_sanitized": true,
+      "raw_error_details_public": false,
       "single_item_failure_does_not_fail_whole_run": true
     },
     "active_run_recovery": {
@@ -94,18 +97,23 @@
     },
     "limits": {
       "execute_max_files": 5,
+      "manual_execute_default_max_files": 5,
+      "dry_run_execute_default_max_files_aligned": true,
       "execute_max_files_exceeded_rejected": true,
       "max_duration_seconds": 600,
       "safe_default_max_files": 25
     },
     "active_job_gates": {
       "ai_job_active_blocked": true,
-      "classification_job_active_blocked": true
+      "classification_job_active_blocked": true,
+      "queued_ai_job_blocked": true,
+      "queued_classification_job_blocked": true
     },
     "runner_outputs": {
       "default_report_json_gitignored": true,
       "default_report_md_gitignored": true,
-      "docs_reports_require_explicit_flags": true
+      "docs_reports_require_explicit_flags": true,
+      "execute_report_uses_approved_plan": true
     },
     "pipeline": {
       "dev_test_execute_supported": true,
@@ -179,6 +187,8 @@
   "target_met": true,
   "ui": {
     "launcher_manual_sync_entry": true,
+    "launcher_manual_sync_forces_content_tab": true,
+    "web_admin_default_max_files_visible": true,
     "web_admin_manual_execute_panel": true,
     "web_admin_plan_confirmation_flow": true
   },

@@ -18,7 +18,14 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem
+from ..models import (
+    AITagJob,
+    ClassificationJob,
+    DynamicSourceItem,
+    DynamicSourceRoot,
+    DynamicSyncRun,
+    DynamicSyncRunItem,
+)
 from ..routes.media import process_and_save_media
 from ..schemas import RatingEnum
 from ..utils.logger import logger
@@ -59,6 +66,7 @@ MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS = 20
 MANUAL_SYNC_EXECUTE_MAX_CONSECUTIVE_FAILURES = 10
 MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS = 10 * 60
 MANUAL_SYNC_EXECUTE_MAX_FILES = 5
+_ACTIVE_JOB_STATUSES = ("pending", "running", "cancelling")
 
 
 def is_manual_sync_execute_active() -> bool:
@@ -131,7 +139,7 @@ def _assert_translation_side_effects_disabled() -> None:
         )
 
 
-def _assert_no_active_ai_or_classification_jobs() -> None:
+def _assert_no_active_ai_or_classification_jobs(db: Optional[Session] = None) -> None:
     from .ai_tagging_job_service import is_ai_job_active
     from .classification_job_service import is_classification_job_active
 
@@ -147,6 +155,29 @@ def _assert_no_active_ai_or_classification_jobs() -> None:
             "Manual sync execute is blocked while a classification job is active.",
             status_code=409,
         )
+    if db is not None:
+        queued_ai_job = (
+            db.query(AITagJob.id)
+            .filter(AITagJob.status.in_(_ACTIVE_JOB_STATUSES))
+            .first()
+        )
+        if queued_ai_job is not None:
+            raise ManualSyncExecuteError(
+                "ai_job_active_blocks_manual_sync_execute",
+                "Manual sync execute is blocked while an AI tagging job is pending, running, or cancelling.",
+                status_code=409,
+            )
+        queued_classification_job = (
+            db.query(ClassificationJob.id)
+            .filter(ClassificationJob.status.in_(_ACTIVE_JOB_STATUSES))
+            .first()
+        )
+        if queued_classification_job is not None:
+            raise ManualSyncExecuteError(
+                "classification_job_active_blocks_manual_sync_execute",
+                "Manual sync execute is blocked while a classification job is pending, running, or cancelling.",
+                status_code=409,
+            )
 
 
 def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -194,7 +225,7 @@ def _budget_stop_reason(
     return None
 
 
-def _effective_execute_max_files(max_files: Optional[int]) -> int:
+def manual_sync_execute_effective_max_files(max_files: Optional[int]) -> int:
     if max_files is None:
         return MANUAL_SYNC_EXECUTE_MAX_FILES
     effective = int(max_files)
@@ -205,6 +236,9 @@ def _effective_execute_max_files(max_files: Optional[int]) -> int:
             status_code=400,
         )
     return max(1, effective)
+
+
+_effective_execute_max_files = manual_sync_execute_effective_max_files
 
 
 def _public_request_payload(
@@ -234,6 +268,7 @@ def _public_request_payload(
 
 def _verify_execute_gates(
     *,
+    db: Session,
     plan: Dict[str, Any],
     expected_plan_hash: str,
     confirmation_phrase: str,
@@ -254,7 +289,7 @@ def _verify_execute_gates(
             status_code=409,
         )
     _assert_translation_side_effects_disabled()
-    _assert_no_active_ai_or_classification_jobs()
+    _assert_no_active_ai_or_classification_jobs(db)
     if not hydrated_only:
         raise ManualSyncExecuteError(
             "hydrated_only_required",
@@ -319,6 +354,7 @@ def _verify_execute_gates(
 
 def _verify_execute_recheck(
     *,
+    db: Session,
     plan: Dict[str, Any],
     expected_plan_hash: str,
     hydrated_only: bool,
@@ -337,7 +373,7 @@ def _verify_execute_recheck(
             status_code=409,
         )
     _assert_translation_side_effects_disabled()
-    _assert_no_active_ai_or_classification_jobs()
+    _assert_no_active_ai_or_classification_jobs(db)
     if not hydrated_only:
         raise ManualSyncExecuteError("hydrated_only_required", "Manual sync execute requires hydrated_only=true.")
     current_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
@@ -410,6 +446,7 @@ def validate_manual_sync_execute_request(
         plan_now=created,
     )
     _verify_execute_gates(
+        db=db,
         plan=plan,
         expected_plan_hash=expected_plan_hash,
         confirmation_phrase=confirmation_phrase,
@@ -919,8 +956,11 @@ def _classify_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
     return result
 
 
-def _ai_tagging_failure_reason(exc: BaseException) -> str:
-    text = f"{exc.__class__.__name__}: {exc}".casefold()
+def _ai_tagging_failure_reason(error: Any) -> str:
+    if isinstance(error, BaseException):
+        text = f"{error.__class__.__name__}: {error}".casefold()
+    else:
+        text = str(error or "").casefold()
     cache_markers = (
         "localentrynotfound",
         "local_files_only",
@@ -933,6 +973,9 @@ def _ai_tagging_failure_reason(exc: BaseException) -> str:
     )
     if any(marker in text for marker in cache_markers):
         return "ai_tagger_model_uncached"
+    file_missing_markers = ("file not found", "no such file", "filenotfound")
+    if any(marker in text for marker in file_missing_markers):
+        return "ai_tagger_file_missing"
     return "ai_tagger_inference_failed"
 
 
@@ -997,6 +1040,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         root_path = validate_source_root_path(root.root_path)
         persisted_plan = execute_payload.get("plan") or {}
         _verify_execute_recheck(
+            db=db,
             plan=persisted_plan,
             expected_plan_hash=str(request.get("expected_plan_hash") or ""),
             hydrated_only=bool(request.get("hydrated_only", True)),
@@ -1388,7 +1432,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
                 if item:
                     if result.get("error"):
-                        reason = str(result.get("error") or "ai_tagger_inference_failed")
+                        reason = _ai_tagging_failure_reason(result.get("error"))
+                        result["error"] = reason
                         item.ai_tagging_status = f"failed_{reason}"[:50]
                         item.failure_reason = reason
                         counts["ai_tagging_failed"] += 1

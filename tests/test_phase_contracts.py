@@ -1349,17 +1349,22 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "limits": {
                 "safe_default_max_files": 25,
                 "execute_max_files": 5,
+                "manual_execute_default_max_files": 5,
+                "dry_run_execute_default_max_files_aligned": True,
                 "execute_max_files_exceeded_rejected": True,
                 "max_duration_seconds": 600,
             },
             "active_job_gates": {
                 "ai_job_active_blocked": True,
                 "classification_job_active_blocked": True,
+                "queued_ai_job_blocked": True,
+                "queued_classification_job_blocked": True,
             },
             "runner_outputs": {
                 "default_report_json_gitignored": True,
                 "default_report_md_gitignored": True,
                 "docs_reports_require_explicit_flags": True,
+                "execute_report_uses_approved_plan": True,
             },
             "translation_side_effect_gates": {
                 "background_llm_blocked": True,
@@ -1380,7 +1385,10 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "ai_tagging": {
                 "item_exception_containment": True,
                 "model_uncached_reason": "ai_tagger_model_uncached",
+                "file_missing_reason": "ai_tagger_file_missing",
                 "inference_failure_reason": "ai_tagger_inference_failed",
+                "returned_error_sanitized": True,
+                "raw_error_details_public": False,
                 "single_item_failure_does_not_fail_whole_run": True,
             },
             "active_run_recovery": {
@@ -1458,7 +1466,9 @@ def _s3a_m1_summary(**overrides: object) -> dict:
         "ui": {
             "web_admin_manual_execute_panel": True,
             "web_admin_plan_confirmation_flow": True,
+            "web_admin_default_max_files_visible": True,
             "launcher_manual_sync_entry": True,
+            "launcher_manual_sync_forces_content_tab": True,
         },
         "validation": {
             "focused_tests_passed": True,
@@ -3278,6 +3288,15 @@ def test_s3a_m1_contract_rejects_missing_execute_max_files_cap() -> None:
     assert "s3a_m1_execute_max_files_unbounded" in _error_codes(result)
 
 
+def test_s3a_m1_contract_rejects_unaligned_dry_run_execute_defaults() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["limits"]["dry_run_execute_default_max_files_aligned"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
 def test_s3a_m1_contract_rejects_missing_active_job_gate() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
     summary["manual_sync"]["active_job_gates"]["ai_job_active_blocked"] = False
@@ -3287,9 +3306,47 @@ def test_s3a_m1_contract_rejects_missing_active_job_gate() -> None:
     assert "s3a_m1_required_proof_missing" in _error_codes(result)
 
 
+def test_s3a_m1_contract_rejects_missing_queued_job_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["queued_ai_job_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
 def test_s3a_m1_contract_rejects_runner_default_docs_report_output() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
     summary["manual_sync"]["runner_outputs"]["default_report_json_gitignored"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_runner_execute_report_plan_drift() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["runner_outputs"]["execute_report_uses_approved_plan"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_raw_ai_error_public_details() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ai_tagging"]["returned_error_sanitized"] = False
+    summary["manual_sync"]["ai_tagging"]["raw_error_details_public"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+    assert "s3a_m1_ai_raw_error_public" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_launcher_without_content_tab_target() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["ui"]["launcher_manual_sync_forces_content_tab"] = False
 
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
 

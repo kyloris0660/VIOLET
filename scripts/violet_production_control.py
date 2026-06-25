@@ -2580,7 +2580,7 @@ def open_manual_sync_target(
     open_func: Callable[[str], bool] = webbrowser.open,
 ) -> ControlResult:
     config = resolve_config(repo_root, base_env=base_env, profile_id=profile_id, profile_path=profile_path)
-    url = config.url.rstrip("/") + "/admin#dynamic-library-sync-section"
+    url = config.url.rstrip("/") + "/admin?tab=content#dynamic-library-sync-section"
     opened = open_func(url)
     return ControlResult(
         ok=bool(opened),

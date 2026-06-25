@@ -28,6 +28,7 @@ from app.database import SessionLocal  # noqa: E402
 from app.models import DynamicSourceRoot  # noqa: E402
 from app.services.dynamic_library_sync_service import plan_manual_sync_dry_run  # noqa: E402
 from app.services.manual_sync_execute_service import (  # noqa: E402
+    MANUAL_SYNC_EXECUTE_MAX_FILES,
     ManualSyncExecuteError,
     create_manual_sync_execute_run,
     execute_manual_sync_run,
@@ -38,6 +39,18 @@ def _json_default(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value)
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
@@ -74,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--root-id", type=int, help="Registered DynamicSourceRoot id. Required for execute.")
     source.add_argument("--source-path", help="Ad hoc absolute source path for dry-run planning only.")
-    parser.add_argument("--max-files", type=int)
+    parser.add_argument("--max-files", type=int, default=MANUAL_SYNC_EXECUTE_MAX_FILES)
     parser.add_argument("--stable-age-seconds", type=float, default=0.0)
     parser.add_argument("--hydrated-only", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--execute", action="store_true", help="Execute the guarded manual sync after validating a dry-run plan.")
@@ -119,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             source_record_id = root.id
             source_path = root.root_path
 
+        plan_created_at = _parse_datetime(args.plan_created_at) if args.execute else None
         plan = plan_manual_sync_dry_run(
             db,
             source_path=source_path or "",
@@ -127,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             hydrated_only=args.hydrated_only,
             stable_age_seconds=args.stable_age_seconds,
             include_private_details=False,
+            now=plan_created_at,
         )
         execution = None
         if args.execute:
@@ -141,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
                 plan_created_at=str(args.plan_created_at),
                 production_acceptance_approved=bool(args.production_acceptance_approved),
             )
+            approved_plan = ((run.summary_json or {}).get("manual_sync_execute") or {}).get("plan")
+            if isinstance(approved_plan, dict):
+                plan = approved_plan
             execution = execute_manual_sync_run(db, run_id=run.id)
 
         payload: Dict[str, Any] = {

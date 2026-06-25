@@ -3681,11 +3681,15 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.default_execute_disabled",
             "manual_sync.stale_replan_rejected",
             "manual_sync.limits.execute_max_files_exceeded_rejected",
+            "manual_sync.limits.dry_run_execute_default_max_files_aligned",
             "manual_sync.active_job_gates.ai_job_active_blocked",
             "manual_sync.active_job_gates.classification_job_active_blocked",
+            "manual_sync.active_job_gates.queued_ai_job_blocked",
+            "manual_sync.active_job_gates.queued_classification_job_blocked",
             "manual_sync.runner_outputs.default_report_json_gitignored",
             "manual_sync.runner_outputs.default_report_md_gitignored",
             "manual_sync.runner_outputs.docs_reports_require_explicit_flags",
+            "manual_sync.runner_outputs.execute_report_uses_approved_plan",
             "manual_sync.translation_side_effect_gates.background_llm_blocked",
             "manual_sync.translation_side_effect_gates.auto_llm_blocked",
             "manual_sync.translation_side_effect_gates.llm_enabled_blocked",
@@ -3698,6 +3702,7 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.classification.heuristic_ai_tags_before_classification",
             "manual_sync.classification.clip_cached_path_preserved",
             "manual_sync.ai_tagging.item_exception_containment",
+            "manual_sync.ai_tagging.returned_error_sanitized",
             "manual_sync.ai_tagging.single_item_failure_does_not_fail_whole_run",
             "manual_sync.active_run_recovery.stale_pending_running_finalized",
             "manual_sync.active_run_recovery.stale_cancelling_finalized",
@@ -3725,7 +3730,9 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "api_surface.manual_execute_endpoint_added",
             "ui.web_admin_manual_execute_panel",
             "ui.web_admin_plan_confirmation_flow",
+            "ui.web_admin_default_max_files_visible",
             "ui.launcher_manual_sync_entry",
+            "ui.launcher_manual_sync_forces_content_tab",
             "validation.focused_tests_passed",
             "validation.launcher_tests_passed",
             "validation.browser_validation_performed",
@@ -3779,6 +3786,7 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
         result,
         (
             "manual_sync.classification.model_downloads_allowed",
+            "manual_sync.ai_tagging.raw_error_details_public",
             "manual_sync.localization.scheduled_in_execute",
         ),
         code="s3a_m1_forbidden_model_or_localization_side_effect",
@@ -3822,11 +3830,14 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
 
     max_files = _as_int(_get(summary, "manual_sync.limits.safe_default_max_files", 0))
     execute_max_files = _as_int(_get(summary, "manual_sync.limits.execute_max_files", 0))
+    default_execute_max_files = _as_int(_get(summary, "manual_sync.limits.manual_execute_default_max_files", 0))
     max_duration = _as_int(_get(summary, "manual_sync.limits.max_duration_seconds", 0))
     if not (1 <= max_files <= 1000):
         result.fail("s3a_m1_max_files_unbounded", "S3A-M1 safe default max files must stay bounded.", path="manual_sync.limits.safe_default_max_files", expected="1..1000", actual=max_files)
     if not (1 <= execute_max_files <= 5):
         result.fail("s3a_m1_execute_max_files_unbounded", "S3A-M1 execute max_files cap must stay at or below 5.", path="manual_sync.limits.execute_max_files", expected="1..5", actual=execute_max_files)
+    if default_execute_max_files != execute_max_files:
+        result.fail("s3a_m1_default_execute_max_files_mismatch", "S3A-M1 dry-run/manual execute default max_files must match the execute cap.", path="manual_sync.limits.manual_execute_default_max_files", expected=execute_max_files, actual=default_execute_max_files)
     if not (1 <= max_duration <= 3600):
         result.fail("s3a_m1_max_duration_unbounded", "S3A-M1 max duration must stay bounded.", path="manual_sync.limits.max_duration_seconds", expected="1..3600", actual=max_duration)
 
@@ -3849,11 +3860,16 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
     if not localization_reason:
         result.fail("s3a_m1_localization_block_reason_missing", "S3A-M1 localization state must report why scheduling is blocked.", path="manual_sync.localization.blocked_reason", expected="non-empty reason", actual=localization_reason)
     model_uncached_reason = str(_get(summary, "manual_sync.ai_tagging.model_uncached_reason", "") or "")
+    file_missing_reason = str(_get(summary, "manual_sync.ai_tagging.file_missing_reason", "") or "")
     inference_reason = str(_get(summary, "manual_sync.ai_tagging.inference_failure_reason", "") or "")
     if model_uncached_reason != "ai_tagger_model_uncached":
         result.fail("s3a_m1_ai_model_uncached_reason_invalid", "S3A-M1 must report the stable AI model cache failure reason.", path="manual_sync.ai_tagging.model_uncached_reason", expected="ai_tagger_model_uncached", actual=model_uncached_reason)
+    if file_missing_reason != "ai_tagger_file_missing":
+        result.fail("s3a_m1_ai_file_missing_reason_invalid", "S3A-M1 must report the stable AI file-missing failure reason.", path="manual_sync.ai_tagging.file_missing_reason", expected="ai_tagger_file_missing", actual=file_missing_reason)
     if inference_reason != "ai_tagger_inference_failed":
         result.fail("s3a_m1_ai_inference_reason_invalid", "S3A-M1 must report the stable AI inference failure reason.", path="manual_sync.ai_tagging.inference_failure_reason", expected="ai_tagger_inference_failed", actual=inference_reason)
+    if _as_bool(_get(summary, "manual_sync.ai_tagging.raw_error_details_public", False)):
+        result.fail("s3a_m1_ai_raw_error_public", "S3A-M1 public status/reporting must not expose raw AI tagging error details.", path="manual_sync.ai_tagging.raw_error_details_public", expected=False, actual=True)
 
     phrase = str(_get(summary, "manual_sync.confirmation_phrase_prefix", "") or "")
     production_phrase = str(_get(summary, "manual_sync.production_confirmation_phrase_prefix", "") or "")

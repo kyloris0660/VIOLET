@@ -29,6 +29,7 @@ from ...services.manual_sync_execute_service import (
     create_manual_sync_execute_run,
     get_latest_manual_sync_execute_run,
     is_manual_sync_execute_active,
+    manual_sync_execute_effective_max_files,
     request_manual_sync_execute_cancel,
     serialize_manual_sync_execute_run,
     start_manual_sync_execute_run,
@@ -195,11 +196,13 @@ def plan_manual_sync(
             db,
             source_path=source_path or "",
             source_record_id=source_record_id,
-            max_files=body.max_files,
+            max_files=manual_sync_execute_effective_max_files(body.max_files),
             hydrated_only=body.hydrated_only,
             stable_age_seconds=body.stable_age_seconds,
             include_private_details=False,
         )
+    except ManualSyncExecuteError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

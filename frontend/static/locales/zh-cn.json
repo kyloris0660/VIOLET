@@ -371,7 +371,7 @@
             "manual_update": "手动更新检查",
             "plan_root": "Root",
             "max_files": "最大文件数",
-            "max_files_placeholder": "留空不限制",
+            "max_files_placeholder": "默认/上限：5",
             "hydrated_only": "仅本地可读文件",
             "check_updates": "检查更新",
             "run_dry_run": "Run dry-run",
