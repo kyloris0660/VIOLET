@@ -15,7 +15,16 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
-from app.models import DynamicSourceItem, DynamicSyncRun, DynamicSyncRunItem, Media  # noqa: E402
+from app.models import (  # noqa: E402
+    ContentClassEnum,
+    DynamicSourceItem,
+    DynamicSyncRun,
+    DynamicSyncRunItem,
+    Media,
+    Tag,
+    TagCategoryEnum,
+    blombooru_media_tags,
+)
 from app.services import dynamic_library_sync_service as planner  # noqa: E402
 from app.services import manual_sync_execute_service as execute_service  # noqa: E402
 from app.services.dynamic_library_sync_service import S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX  # noqa: E402
@@ -85,10 +94,19 @@ def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
     image_path = source_root / "private-name.png"
     _write_png(image_path)
 
-    first = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0)
-    second = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0)
+    plan_time = planner._utcnow()
+    first = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0, now=plan_time)
+    second = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0, now=plan_time)
+    later = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+        now=plan_time + timedelta(seconds=1),
+    )
 
     assert first["integrity"]["plan_hash"] == second["integrity"]["plan_hash"]
+    assert first["integrity"]["plan_hash"] != later["integrity"]["plan_hash"]
     assert first["integrity"]["confirmation_phrase"].startswith(S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX)
     assert first["integrity"]["hash_excludes_paths"] is True
     assert first["integrity"]["hash_includes_private_content_fingerprint"] is True
@@ -149,6 +167,45 @@ def test_s3a_m1_execute_rejects_stale_plan_hash(db, tmp_path, monkeypatch):
             expected_plan_hash=plan["integrity"]["plan_hash"],
             confirmation_phrase=plan["integrity"]["confirmation_phrase"],
             plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "stale_or_mismatched_plan_hash"
+    assert db.query(Media).count() == 0
+
+
+def test_s3a_m1_execute_rejects_old_hash_with_forged_fresh_timestamp(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    old_time = planner._utcnow() - timedelta(seconds=30)
+    old_plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        now=old_time,
+    )
+    forged_fresh_plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        now=planner._utcnow(),
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=old_plan["integrity"]["plan_hash"],
+            confirmation_phrase=old_plan["integrity"]["confirmation_phrase"],
+            plan_created_at=forged_fresh_plan["job"]["created_at"],
         )
 
     assert exc.value.code == "stale_or_mismatched_plan_hash"
@@ -281,6 +338,46 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
     assert "private_plan_items" not in str(result)
 
 
+def test_s3a_m1_generic_sync_serializers_redact_private_plan_items(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    source_file = source_root / "private-name.png"
+    _write_png(source_file)
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    private_items = run.summary_json["manual_sync_execute"]["private_plan_items"]
+    private_hash = private_items[0]["content_hash"]
+    assert private_items[0]["relative_path"] == "private-name.png"
+
+    generic = planner.serialize_sync_run(run)
+    dashboard = planner.get_dashboard_state(db)
+    pending = planner.get_pending_summary(db)
+    latest_job = execute_service.serialize_manual_sync_execute_run(run)
+
+    for payload in (generic, dashboard, pending, latest_job):
+        rendered = str(payload)
+        assert "private_plan_items" not in rendered
+        assert "'relative_path':" not in rendered
+        assert "private-name.png" not in rendered
+        assert private_hash not in rendered
+
+
 def test_s3a_m1_execute_blocks_background_translation_llm_side_effects(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
@@ -343,6 +440,74 @@ def test_s3a_m1_execute_blocks_auto_translation_llm_side_effects(db, tmp_path, m
 
     assert exc.value.code == "translation_llm_side_effects_enabled"
     assert db.query(Media).count() == 0
+
+
+def test_s3a_m1_execute_blocks_live_translation_worker_with_flags_disabled(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setattr(
+        execute_service,
+        "_translation_worker_runtime_state",
+        lambda: {"status": "idle", "thread_alive": True, "running": False},
+    )
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "translation_llm_side_effects_enabled"
+    assert "tag_translation_worker_idle" in execute_service._translation_side_effect_blockers()
+
+
+def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setattr(
+        execute_service,
+        "_translation_worker_runtime_state",
+        lambda: {"status": "stopped", "thread_alive": False, "running": False},
+    )
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    assert run.status == "pending"
 
 
 def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monkeypatch):
@@ -411,6 +576,124 @@ def test_s3a_m1_clip_cache_gate_does_not_enter_download_path(tmp_path, monkeypat
     assert reason == "classification_model_uncached"
     assert "cache_lookup" not in calls
     assert "load_session" not in calls
+
+
+def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ANIME_TAG_THRESHOLD", "1")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ANIME_CONFIDENCE_THRESHOLD", "0.5")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    def fake_ai_tagging(db_arg, media_id):
+        media = db_arg.get(Media, media_id)
+        media.content_class_locked = False
+        tag = Tag(name="unit_ai_style", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.99,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        db_arg.commit()
+        return {
+            "media_id": media_id,
+            "tags_added": 1,
+            "suggestions_added": 0,
+            "predictions": [{"name": "unit_ai_style", "confidence": 0.99, "action": "confirmed"}],
+            "provenance": {"provider_backend": "unit"},
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    source_item = db.query(DynamicSourceItem).one()
+    media = db.query(Media).one()
+    assert source_item.ai_tagging_status == "ai_tagged"
+    assert source_item.classification_status == "classified"
+    assert media.content_class == ContentClassEnum.anime
+    stage_rows = {row["name"]: row for row in result["manual_sync_execute"]["stage_rows"]}
+    assert stage_rows["classification"]["method"] == "heuristic"
+    assert stage_rows["classification"]["order"] == "ai_tagging_before_classification"
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.current_metadata_json["ai_tagging"]["status"] == "ai_tagged"
+    assert run_item.current_metadata_json["classification"]["content_class"] == "anime"
+
+
+def test_s3a_m1_ai_tagger_model_failure_is_item_level_not_whole_run(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    def fake_ai_tagging(_db_arg, _media_id):
+        raise FileNotFoundError("model file not found in local cache")
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert result["manual_sync_execute"]["outcome_counts"]["ai_tagger_model_uncached"] == 1
+    source_item = db.query(DynamicSourceItem).one()
+    assert source_item.import_status == "imported"
+    assert source_item.ai_tagging_status == "failed_ai_tagger_model_uncached"
+    assert source_item.failure_reason == "ai_tagger_model_uncached"
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.current_metadata_json["ai_tagging"]["reason"] == "ai_tagger_model_uncached"
+    assert db.get(DynamicSyncRun, run.id).status == "completed"
 
 
 def test_s3a_m1_execute_recovers_stale_active_runs(db, tmp_path, monkeypatch):
@@ -512,7 +795,7 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
 
     source_root = tmp_path / "source"
     for index in range(3):
-        _write_png(source_root / f"missing-{index}.png")
+        _write_png(source_root / f"missing-{index}.png", (index + 1, index + 2, index + 3))
     root = planner.register_source_root(db, path=source_root, label="fixture")
     plan = planner.plan_manual_sync_dry_run(
         db,
@@ -539,6 +822,9 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
     assert result["status"] == "failed"
     assert result["manual_sync_execute"]["status"] == "stopped_by_failure_budget"
     assert result["manual_sync_execute"]["stopped_by"] == "stopped_by_failure_budget"
+    assert result["manual_sync_execute"]["unprocessed_count"] == 1
+    assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 1
+    assert db.get(DynamicSyncRun, run.id).pending_import_items == 1
     assert db.query(DynamicSyncRunItem).count() == 2
 
 
@@ -573,4 +859,7 @@ def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
     assert result["status"] == "failed"
     assert result["manual_sync_execute"]["status"] == "stopped_by_duration_budget"
     assert result["manual_sync_execute"]["stopped_by"] == "stopped_by_duration_budget"
+    assert result["manual_sync_execute"]["unprocessed_count"] == 1
+    assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 1
+    assert db.get(DynamicSyncRun, run.id).pending_import_items == 1
     assert db.query(DynamicSyncRunItem).count() == 0

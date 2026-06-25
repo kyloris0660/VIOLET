@@ -467,9 +467,11 @@ def _manual_plan_integrity_payload(
     source_identity_hash: str,
     limits: Dict[str, Any],
     integrity_items: List[Dict[str, Any]],
+    created_at: datetime,
 ) -> Dict[str, Any]:
     return {
         "schema": "s3a_m1_manual_sync_plan_integrity_v1",
+        "created_at": created_at.isoformat(),
         "source": {
             "source_record_id": source_record_id,
             "source_identity_hash": source_identity_hash,
@@ -483,6 +485,19 @@ def _manual_plan_integrity_payload(
         },
         "items": integrity_items,
     }
+
+
+def _redact_private_sync_payload(value: Any) -> Any:
+    private_keys = {"private_plan_items", "private_details", "relative_path", "content_hash"}
+    if isinstance(value, dict):
+        return {
+            key: _redact_private_sync_payload(item)
+            for key, item in value.items()
+            if key not in private_keys
+        }
+    if isinstance(value, list):
+        return [_redact_private_sync_payload(item) for item in value]
+    return value
 
 
 def manual_sync_execute_confirmation_phrase(plan_hash: str, *, production: bool = False) -> str:
@@ -672,6 +687,7 @@ def plan_manual_sync_dry_run(
         source_identity_hash=source_identity_hash,
         limits=limits,
         integrity_items=integrity_items,
+        created_at=created_at,
     )
     plan_hash = _stable_json_hash(integrity_payload)
     expires_at = created_at + timedelta(seconds=MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS)
@@ -1151,14 +1167,14 @@ def serialize_sync_run(run: DynamicSyncRun, *, pending_summary: Optional[Dict[st
         "failed_items": run.failed_items,
         "missing_items": run.missing_items,
         "pending_import_items": run.pending_import_items,
-        "summary": run.summary_json or {},
+        "summary": _redact_private_sync_payload(run.summary_json or {}),
         "error_message": run.error_message,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
     }
     if pending_summary is not None:
-        payload["pending_summary"] = pending_summary
+        payload["pending_summary"] = _redact_private_sync_payload(pending_summary)
     return payload
 
 

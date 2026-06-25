@@ -3682,19 +3682,35 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.stale_replan_rejected",
             "manual_sync.translation_side_effect_gates.background_llm_blocked",
             "manual_sync.translation_side_effect_gates.auto_llm_blocked",
+            "manual_sync.translation_side_effect_gates.llm_enabled_blocked",
+            "manual_sync.translation_side_effect_gates.live_worker_state_blocked",
             "manual_sync.translation_side_effect_gates.schedule_localization_false_not_sufficient",
             "manual_sync.classification.local_only",
             "manual_sync.classification.clip_cache_only_required",
             "manual_sync.classification.uncached_clip_skips",
+            "manual_sync.classification.method_and_order_reported",
+            "manual_sync.classification.heuristic_ai_tags_before_classification",
+            "manual_sync.classification.clip_cached_path_preserved",
+            "manual_sync.ai_tagging.item_exception_containment",
+            "manual_sync.ai_tagging.single_item_failure_does_not_fail_whole_run",
             "manual_sync.active_run_recovery.stale_pending_running_finalized",
             "manual_sync.active_run_recovery.stale_cancelling_finalized",
+            "manual_sync.plan_replay_protection.plan_hash_binds_created_at",
+            "manual_sync.plan_replay_protection.forged_fresh_timestamp_rejected",
+            "manual_sync.plan_replay_protection.source_change_still_rejected",
             "manual_sync.per_item_failures.source_missing_recorded",
             "manual_sync.per_item_failures.read_error_recorded",
             "manual_sync.per_item_failures.read_timeout_recorded",
             "manual_sync.per_item_failures.continue_within_failure_budget",
             "manual_sync.failure_budget.stopped_by_failure_budget_recorded",
             "manual_sync.failure_budget.stopped_by_duration_budget_recorded",
+            "manual_sync.failure_budget.unprocessed_count_reported",
+            "manual_sync.failure_budget.pending_import_preserved_on_early_stop",
             "manual_sync.localization.blocked_current_phase",
+            "manual_sync.public_serialization.generic_sync_run_redacts_private_plan",
+            "manual_sync.public_serialization.dashboard_state_redacts_private_plan",
+            "manual_sync.public_serialization.pending_summary_redacts_private_plan",
+            "manual_sync.public_serialization.job_serializers_redact_private_plan",
             "manual_sync.ledger.per_file_records_present",
             "manual_sync.ledger.dynamic_sync_run_used",
             "manual_sync.ledger.public_safe",
@@ -3823,6 +3839,12 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
     localization_reason = str(_get(summary, "manual_sync.localization.blocked_reason", "") or "").strip()
     if not localization_reason:
         result.fail("s3a_m1_localization_block_reason_missing", "S3A-M1 localization state must report why scheduling is blocked.", path="manual_sync.localization.blocked_reason", expected="non-empty reason", actual=localization_reason)
+    model_uncached_reason = str(_get(summary, "manual_sync.ai_tagging.model_uncached_reason", "") or "")
+    inference_reason = str(_get(summary, "manual_sync.ai_tagging.inference_failure_reason", "") or "")
+    if model_uncached_reason != "ai_tagger_model_uncached":
+        result.fail("s3a_m1_ai_model_uncached_reason_invalid", "S3A-M1 must report the stable AI model cache failure reason.", path="manual_sync.ai_tagging.model_uncached_reason", expected="ai_tagger_model_uncached", actual=model_uncached_reason)
+    if inference_reason != "ai_tagger_inference_failed":
+        result.fail("s3a_m1_ai_inference_reason_invalid", "S3A-M1 must report the stable AI inference failure reason.", path="manual_sync.ai_tagging.inference_failure_reason", expected="ai_tagger_inference_failed", actual=inference_reason)
 
     phrase = str(_get(summary, "manual_sync.confirmation_phrase_prefix", "") or "")
     production_phrase = str(_get(summary, "manual_sync.production_confirmation_phrase_prefix", "") or "")

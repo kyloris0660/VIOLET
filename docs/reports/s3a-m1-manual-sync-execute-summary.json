@@ -30,18 +30,34 @@
     "translation_side_effect_gates": {
       "background_llm_blocked": true,
       "auto_llm_blocked": true,
+      "llm_enabled_blocked": true,
+      "live_worker_state_blocked": true,
       "schedule_localization_false_not_sufficient": true
     },
     "classification": {
       "local_only": true,
       "clip_cache_only_required": true,
       "uncached_clip_skips": true,
-      "model_downloads_allowed": false
+      "model_downloads_allowed": false,
+      "method_and_order_reported": true,
+      "heuristic_ai_tags_before_classification": true,
+      "clip_cached_path_preserved": true
+    },
+    "ai_tagging": {
+      "item_exception_containment": true,
+      "model_uncached_reason": "ai_tagger_model_uncached",
+      "inference_failure_reason": "ai_tagger_inference_failed",
+      "single_item_failure_does_not_fail_whole_run": true
     },
     "active_run_recovery": {
       "stale_pending_running_finalized": true,
       "stale_cancelling_finalized": true,
       "timeout_seconds": 1800
+    },
+    "plan_replay_protection": {
+      "plan_hash_binds_created_at": true,
+      "forged_fresh_timestamp_rejected": true,
+      "source_change_still_rejected": true
     },
     "per_item_failures": {
       "source_missing_recorded": true,
@@ -55,12 +71,20 @@
       "max_consecutive_failures": 10,
       "max_duration_seconds": 600,
       "stopped_by_failure_budget_recorded": true,
-      "stopped_by_duration_budget_recorded": true
+      "stopped_by_duration_budget_recorded": true,
+      "unprocessed_count_reported": true,
+      "pending_import_preserved_on_early_stop": true
     },
     "localization": {
       "scheduled_in_execute": false,
       "blocked_current_phase": true,
       "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase"
+    },
+    "public_serialization": {
+      "generic_sync_run_redacts_private_plan": true,
+      "dashboard_state_redacts_private_plan": true,
+      "pending_summary_redacts_private_plan": true,
+      "job_serializers_redact_private_plan": true
     },
     "ledger": {
       "dynamic_sync_run_used": true,

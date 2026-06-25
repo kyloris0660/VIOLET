@@ -1350,6 +1350,8 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "translation_side_effect_gates": {
                 "background_llm_blocked": True,
                 "auto_llm_blocked": True,
+                "llm_enabled_blocked": True,
+                "live_worker_state_blocked": True,
                 "schedule_localization_false_not_sufficient": True,
             },
             "classification": {
@@ -1357,11 +1359,25 @@ def _s3a_m1_summary(**overrides: object) -> dict:
                 "clip_cache_only_required": True,
                 "uncached_clip_skips": True,
                 "model_downloads_allowed": False,
+                "method_and_order_reported": True,
+                "heuristic_ai_tags_before_classification": True,
+                "clip_cached_path_preserved": True,
+            },
+            "ai_tagging": {
+                "item_exception_containment": True,
+                "model_uncached_reason": "ai_tagger_model_uncached",
+                "inference_failure_reason": "ai_tagger_inference_failed",
+                "single_item_failure_does_not_fail_whole_run": True,
             },
             "active_run_recovery": {
                 "stale_pending_running_finalized": True,
                 "stale_cancelling_finalized": True,
                 "timeout_seconds": 1800,
+            },
+            "plan_replay_protection": {
+                "plan_hash_binds_created_at": True,
+                "forged_fresh_timestamp_rejected": True,
+                "source_change_still_rejected": True,
             },
             "per_item_failures": {
                 "source_missing_recorded": True,
@@ -1376,11 +1392,19 @@ def _s3a_m1_summary(**overrides: object) -> dict:
                 "max_duration_seconds": 600,
                 "stopped_by_failure_budget_recorded": True,
                 "stopped_by_duration_budget_recorded": True,
+                "unprocessed_count_reported": True,
+                "pending_import_preserved_on_early_stop": True,
             },
             "localization": {
                 "scheduled_in_execute": False,
                 "blocked_current_phase": True,
                 "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase",
+            },
+            "public_serialization": {
+                "generic_sync_run_redacts_private_plan": True,
+                "dashboard_state_redacts_private_plan": True,
+                "pending_summary_redacts_private_plan": True,
+                "job_serializers_redact_private_plan": True,
             },
             "ledger": {
                 "per_file_records_present": True,
@@ -3157,7 +3181,7 @@ def test_s3a_m1_contract_rejects_missing_launcher_or_browser_validation() -> Non
 
 def test_s3a_m1_contract_rejects_missing_translation_side_effect_gate() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
-    summary["manual_sync"]["translation_side_effect_gates"]["background_llm_blocked"] = False
+    summary["manual_sync"]["translation_side_effect_gates"]["live_worker_state_blocked"] = False
 
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
 
@@ -3184,6 +3208,51 @@ def test_s3a_m1_contract_rejects_missing_per_item_failure_budget() -> None:
 
     assert "s3a_m1_required_proof_missing" in _error_codes(result)
     assert "s3a_m1_failure_budget_count_invalid" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_private_plan_serializer_gap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["public_serialization"]["generic_sync_run_redacts_private_plan"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_heuristic_pre_ai_order() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["classification"]["heuristic_ai_tags_before_classification"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_ai_exception_whole_run_failure() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ai_tagging"]["single_item_failure_does_not_fail_whole_run"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_stale_plan_replay_gap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["plan_replay_protection"]["forged_fresh_timestamp_rejected"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_early_stop_pending_loss() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["failure_budget"]["pending_import_preserved_on_early_stop"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
 
 
 def test_s3a_m1_contract_rejects_localization_scheduled_in_execute() -> None:

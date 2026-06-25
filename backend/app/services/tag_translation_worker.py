@@ -89,6 +89,27 @@ def get_worker_status() -> Dict[str, Any]:
     }
 
 
+def get_worker_runtime_state() -> Dict[str, Any]:
+    """Return in-memory worker state without masking live threads by config."""
+    thread_alive = bool(_worker_thread and _worker_thread.is_alive())
+    if _worker_running:
+        status_str = "running"
+    elif _worker_paused and thread_alive:
+        status_str = "paused"
+    elif thread_alive:
+        status_str = "idle"
+    else:
+        status_str = "stopped"
+    return {
+        "status": status_str,
+        "thread_alive": thread_alive,
+        "running": bool(_worker_running),
+        "paused": bool(_worker_paused),
+        "stop_requested": bool(_worker_stop.is_set()),
+        "current_job_id": _current_job_id,
+    }
+
+
 def start_worker():
     """Start the background translation worker thread."""
     global _worker_thread

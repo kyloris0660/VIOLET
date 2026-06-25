@@ -97,11 +97,27 @@ def _aware_utc(value: Optional[datetime]) -> Optional[datetime]:
 
 def _translation_side_effect_blockers() -> List[str]:
     blockers: List[str] = []
+    if settings.TAG_TRANSLATION_LLM_ENABLED:
+        blockers.append("tag_translation_llm_enabled")
     if settings.TAG_TRANSLATION_LLM_ENABLED and settings.TAG_TRANSLATION_BG_ENABLED:
         blockers.append("tag_translation_background_llm_enabled")
     if settings.TAG_TRANSLATION_LLM_ENABLED and settings.TAG_TRANSLATION_AUTO_ENABLED:
         blockers.append("tag_translation_auto_llm_enabled")
+    worker_state = _translation_worker_runtime_state()
+    if worker_state.get("status_unavailable"):
+        blockers.append("tag_translation_worker_status_unavailable")
+    elif worker_state.get("thread_alive") or worker_state.get("running"):
+        blockers.append(f"tag_translation_worker_{worker_state.get('status', 'live')}")
     return blockers
+
+
+def _translation_worker_runtime_state() -> Dict[str, Any]:
+    try:
+        from .tag_translation_worker import get_worker_runtime_state
+
+        return get_worker_runtime_state()
+    except Exception as exc:
+        return {"status_unavailable": True, "error": exc.__class__.__name__}
 
 
 def _assert_translation_side_effects_disabled() -> None:
@@ -209,6 +225,21 @@ def _verify_execute_gates(
             status_code=400,
         )
 
+    created = _parse_datetime(plan_created_at)
+    if created is None:
+        raise ManualSyncExecuteError(
+            "plan_created_at_required",
+            "plan_created_at must be the dry-run plan job.created_at value.",
+            status_code=400,
+        )
+    generated_at = _parse_datetime(str((plan.get("job") or {}).get("created_at") or ""))
+    if generated_at is None or generated_at != created:
+        raise ManualSyncExecuteError(
+            "stale_plan_timestamp_mismatch",
+            "plan_created_at must match the generated dry-run plan timestamp.",
+            status_code=409,
+        )
+
     plan_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
     if not expected_plan_hash or expected_plan_hash != plan_hash:
         raise ManualSyncExecuteError(
@@ -217,13 +248,6 @@ def _verify_execute_gates(
             status_code=409,
         )
 
-    created = _parse_datetime(plan_created_at)
-    if created is None:
-        raise ManualSyncExecuteError(
-            "plan_created_at_required",
-            "plan_created_at must be the dry-run plan job.created_at value.",
-            status_code=400,
-        )
     age = (_utcnow() - created).total_seconds()
     if age < 0 or age > MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS:
         raise ManualSyncExecuteError(
@@ -301,6 +325,7 @@ def _plan_for_root(
     hydrated_only: bool,
     stable_age_seconds: Optional[float],
     include_private_details: bool,
+    plan_now: Optional[datetime] = None,
 ) -> tuple[DynamicSourceRoot, Path, Dict[str, Any]]:
     root = db.get(DynamicSourceRoot, root_id)
     if root is None or not root.is_active:
@@ -318,6 +343,7 @@ def _plan_for_root(
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=include_private_details,
+        now=plan_now,
     )
     return root, source_path, plan
 
@@ -334,6 +360,7 @@ def validate_manual_sync_execute_request(
     plan_created_at: str,
     production_acceptance_approved: bool = False,
 ) -> Dict[str, Any]:
+    created = _parse_datetime(plan_created_at)
     _root, _source_path, plan = _plan_for_root(
         db,
         root_id=root_id,
@@ -341,6 +368,7 @@ def validate_manual_sync_execute_request(
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=False,
+        plan_now=created,
     )
     _verify_execute_gates(
         plan=plan,
@@ -391,6 +419,7 @@ def create_manual_sync_execute_run(
         plan_created_at=plan_created_at,
         production_acceptance_approved=production_acceptance_approved,
     )
+    created = _parse_datetime(plan_created_at)
     _root, _source_path, private_plan = _plan_for_root(
         db,
         root_id=root_id,
@@ -398,6 +427,7 @@ def create_manual_sync_execute_run(
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=True,
+        plan_now=created,
     )
     if str((private_plan.get("integrity") or {}).get("plan_hash") or "") != expected_plan_hash:
         raise ManualSyncExecuteError(
@@ -669,6 +699,36 @@ def _record_run_item(
     return run_item
 
 
+def _annotate_run_item_stage(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    item: DynamicSourceItem,
+    stage: str,
+    status: str,
+    reason: Optional[str] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    run_item = (
+        db.query(DynamicSyncRunItem)
+        .filter(
+            DynamicSyncRunItem.sync_run_id == run.id,
+            DynamicSyncRunItem.source_item_id == item.id,
+        )
+        .first()
+    )
+    if run_item is None:
+        return
+    metadata = dict(run_item.current_metadata_json or {})
+    stage_payload = {"status": status}
+    if reason:
+        stage_payload["reason"] = reason
+    if extra:
+        stage_payload.update(extra)
+    metadata[stage] = stage_payload
+    run_item.current_metadata_json = metadata
+
+
 def _mark_item_skipped(
     db: Session,
     *,
@@ -799,9 +859,10 @@ def _copy_and_import_media(db: Session, source_file: Path) -> tuple[int, int]:
 
 
 def _classify_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
+    method = str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower()
     if not settings.CONTENT_CLASSIFICATION_ENABLED:
-        return {"media_id": media_id, "skipped": True, "reason": "classification_disabled"}
-    if str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() == "clip":
+        return {"media_id": media_id, "skipped": True, "reason": "classification_disabled", "method": method}
+    if method == "clip":
         ready, detail = _ensure_clip_model_cache_only()
         if not ready:
             return {
@@ -809,10 +870,30 @@ def _classify_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
                 "skipped": True,
                 "reason": "classification_model_uncached",
                 "detail": detail,
+                "method": method,
             }
     from .content_classifier import classify_media
 
-    return classify_media(db, media_id)
+    result = classify_media(db, media_id)
+    result.setdefault("method", method)
+    return result
+
+
+def _ai_tagging_failure_reason(exc: BaseException) -> str:
+    text = f"{exc.__class__.__name__}: {exc}".casefold()
+    cache_markers = (
+        "localentrynotfound",
+        "local_files_only",
+        "local files only",
+        "not found in local cache",
+        "cache",
+        "cached",
+        "model file",
+        "label file",
+    )
+    if any(marker in text for marker in cache_markers):
+        return "ai_tagger_model_uncached"
+    return "ai_tagger_inference_failed"
 
 
 def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
@@ -921,6 +1002,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         item_failure_count = 0
         consecutive_failures = 0
         stop_reason: Optional[str] = None
+        processed_plan_items = 0
         run.total_seen = len(private_items)
         for plan_item in private_items:
             if _is_cancel_requested(run_id):
@@ -992,6 +1074,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item_failure_count += 1
                 consecutive_failures += 1
                 processed_items += 1
+                processed_plan_items += 1
                 run.failed_items = int(counts["failed"])
                 db.commit()
                 stop_reason = _budget_stop_reason(
@@ -1008,6 +1091,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 _mark_item_skipped(db, run=run, item=item, state=state, reason=reason, metadata=metadata)
                 counts[state] += 1
                 processed_items += 1
+                processed_plan_items += 1
                 consecutive_failures = 0
                 db.commit()
                 continue
@@ -1039,6 +1123,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 counts["imported"] += 1
                 run.new_items = int(counts["imported"])
                 processed_items += 1
+                processed_plan_items += 1
                 consecutive_failures = 0
                 db.commit()
             except HTTPException as exc:
@@ -1072,11 +1157,13 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 counts[item.sync_state] += 1
                 if duplicate:
                     processed_items += 1
+                    processed_plan_items += 1
                     consecutive_failures = 0
                 else:
                     item_failure_count += 1
                     consecutive_failures += 1
                     processed_items += 1
+                    processed_plan_items += 1
                 db.commit()
             except Exception as exc:
                 db.rollback()
@@ -1108,6 +1195,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item_failure_count += 1
                 consecutive_failures += 1
                 processed_items += 1
+                processed_plan_items += 1
                 db.commit()
             stop_reason = _budget_stop_reason(
                 started_at=run.started_at or _utcnow(),
@@ -1118,6 +1206,17 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             if stop_reason:
                 break
 
+        if run.status == "cancelled" and stop_reason is None:
+            stop_reason = "cancelled"
+        remaining_plan_items = private_items[processed_plan_items:]
+        unprocessed_count = len(remaining_plan_items) if stop_reason or run.status == "cancelled" else 0
+        unprocessed_import_planned_count = (
+            sum(1 for item in remaining_plan_items if str(item.get("state") or "") == "import_planned")
+            if unprocessed_count
+            else 0
+        )
+        if unprocessed_count:
+            counts["deferred_unprocessed"] += unprocessed_count
         import_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
         run.summary_json = _set_stage(
             run.summary_json or {},
@@ -1128,79 +1227,211 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         )
         db.commit()
 
-        for media_id in [] if stop_reason or run.status == "cancelled" else imported_media_ids:
-            if _is_cancel_requested(run_id):
-                run.status = "cancelled"
-                break
-            result = _classify_imported_media(db, media_id)
-            item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
-            if item:
-                if result.get("error"):
-                    item.classification_status = "failed"
-                    counts["classification_failed"] += 1
-                    item_failure_count += 1
-                    consecutive_failures += 1
-                elif result.get("skipped"):
-                    item.classification_status = f"skipped_{result.get('reason', 'unknown')}"[:50]
-                    counts["classification_skipped"] += 1
-                    consecutive_failures = 0
-                else:
-                    item.classification_status = "classified"
-                    counts["classified"] += 1
-                    consecutive_failures = 0
-            db.commit()
-            processed_items += 1
-            stop_reason = _budget_stop_reason(
-                started_at=run.started_at or _utcnow(),
-                processed_items=processed_items,
-                failed_items=item_failure_count,
-                consecutive_failures=consecutive_failures,
-            )
-            if stop_reason:
-                break
-        classification_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
-        run.summary_json = _set_stage(run.summary_json or {}, "classification", status=classification_status, processed=len(imported_media_ids), failed=int(counts["classification_failed"]))
-        db.commit()
+        classification_method = str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower()
+        classification_order = (
+            "ai_tagging_before_classification"
+            if classification_method != "clip"
+            else "classification_before_ai_tagging"
+        )
 
-        for media_id in [] if stop_reason or run.status == "cancelled" else imported_media_ids:
-            if _is_cancel_requested(run_id):
-                run.status = "cancelled"
-                break
-            result = _ai_tag_imported_media(db, media_id)
-            if ai_provenance is None and result.get("provenance"):
-                ai_provenance = result.get("provenance")
-            item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
-            if item:
-                if result.get("error"):
-                    item.ai_tagging_status = "failed"
-                    counts["ai_tagging_failed"] += 1
-                    item_failure_count += 1
-                    consecutive_failures += 1
-                elif result.get("skipped"):
-                    item.ai_tagging_status = f"skipped_{result.get('reason', 'unknown')}"[:50]
-                    counts["ai_tagging_skipped"] += 1
-                    consecutive_failures = 0
-                else:
-                    item.ai_tagging_status = "ai_tagged"
-                    counts["ai_tagged"] += 1
-                    consecutive_failures = 0
-                item.localization_status = "blocked_llm_calls_forbidden"
-            db.commit()
-            processed_items += 1
-            stop_reason = _budget_stop_reason(
+        def _check_stop_budget() -> Optional[str]:
+            return _budget_stop_reason(
                 started_at=run.started_at or _utcnow(),
                 processed_items=processed_items,
                 failed_items=item_failure_count,
                 consecutive_failures=consecutive_failures,
             )
-            if stop_reason:
-                break
-        ai_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
-        run.summary_json = _set_stage(run.summary_json or {}, "ai_tagging", status=ai_status, processed=len(imported_media_ids), failed=int(counts["ai_tagging_failed"]))
+
+        def _run_classification_stage() -> None:
+            nonlocal consecutive_failures, item_failure_count, processed_items, stop_reason
+            stage_processed = 0
+            for media_id in imported_media_ids:
+                if stop_reason or run.status == "cancelled":
+                    break
+                if _is_cancel_requested(run_id):
+                    run.status = "cancelled"
+                    stop_reason = "cancelled"
+                    break
+                try:
+                    result = _classify_imported_media(db, media_id)
+                except Exception as exc:
+                    db.rollback()
+                    result = {
+                        "media_id": media_id,
+                        "error": "classification_failed",
+                        "detail": str(exc)[:200],
+                        "method": classification_method,
+                    }
+                item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
+                if item:
+                    if result.get("error"):
+                        item.classification_status = "failed"
+                        item.failure_reason = "classification_failed"
+                        counts["classification_failed"] += 1
+                        item_failure_count += 1
+                        consecutive_failures += 1
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="classification",
+                            status="failed",
+                            reason="classification_failed",
+                            extra={"method": result.get("method")},
+                        )
+                    elif result.get("skipped"):
+                        reason = str(result.get("reason", "unknown"))
+                        item.classification_status = f"skipped_{reason}"[:50]
+                        counts["classification_skipped"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="classification",
+                            status="skipped",
+                            reason=reason,
+                            extra={"method": result.get("method")},
+                        )
+                    else:
+                        item.classification_status = "classified"
+                        counts["classified"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="classification",
+                            status="classified",
+                            extra={"method": result.get("method"), "content_class": result.get("content_class")},
+                        )
+                db.commit()
+                stage_processed += 1
+                processed_items += 1
+                stop_reason = _check_stop_budget()
+                if stop_reason:
+                    break
+            stage_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
+            run.summary_json = _set_stage(
+                run.summary_json or {},
+                "classification",
+                status=stage_status,
+                processed=stage_processed,
+                failed=int(counts["classification_failed"]),
+                method=classification_method,
+                order=classification_order,
+            )
+            db.commit()
+
+        def _run_ai_tagging_stage() -> None:
+            nonlocal ai_provenance, consecutive_failures, item_failure_count, processed_items, stop_reason
+            stage_processed = 0
+            for media_id in imported_media_ids:
+                if stop_reason or run.status == "cancelled":
+                    break
+                if _is_cancel_requested(run_id):
+                    run.status = "cancelled"
+                    stop_reason = "cancelled"
+                    break
+                try:
+                    result = _ai_tag_imported_media(db, media_id)
+                except Exception as exc:
+                    db.rollback()
+                    reason = _ai_tagging_failure_reason(exc)
+                    result = {
+                        "media_id": media_id,
+                        "error": reason,
+                        "detail": str(exc)[:200],
+                    }
+                if ai_provenance is None and result.get("provenance"):
+                    ai_provenance = result.get("provenance")
+                item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
+                if item:
+                    if result.get("error"):
+                        reason = str(result.get("error") or "ai_tagger_inference_failed")
+                        item.ai_tagging_status = f"failed_{reason}"[:50]
+                        item.failure_reason = reason
+                        counts["ai_tagging_failed"] += 1
+                        counts[reason] += 1
+                        item_failure_count += 1
+                        consecutive_failures += 1
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="failed",
+                            reason=reason,
+                        )
+                    elif result.get("skipped"):
+                        reason = str(result.get("reason", "unknown"))
+                        item.ai_tagging_status = f"skipped_{reason}"[:50]
+                        counts["ai_tagging_skipped"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="skipped",
+                            reason=reason,
+                        )
+                    else:
+                        item.ai_tagging_status = "ai_tagged"
+                        counts["ai_tagged"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="ai_tagged",
+                            extra={
+                                "tags_added": result.get("tags_added", 0),
+                                "suggestions_added": result.get("suggestions_added", 0),
+                            },
+                        )
+                    item.localization_status = "blocked_llm_calls_forbidden"
+                db.commit()
+                stage_processed += 1
+                processed_items += 1
+                stop_reason = _check_stop_budget()
+                if stop_reason:
+                    break
+            stage_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
+            run.summary_json = _set_stage(
+                run.summary_json or {},
+                "ai_tagging",
+                status=stage_status,
+                processed=stage_processed,
+                failed=int(counts["ai_tagging_failed"]),
+            )
+            db.commit()
+
+        if not stop_reason and run.status != "cancelled":
+            if classification_method == "clip":
+                _run_classification_stage()
+                _run_ai_tagging_stage()
+            else:
+                _run_ai_tagging_stage()
+                _run_classification_stage()
+        else:
+            stage_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
+            run.summary_json = _set_stage(
+                run.summary_json or {},
+                "classification",
+                status=stage_status,
+                processed=0,
+                failed=0,
+                method=classification_method,
+                order=classification_order,
+            )
+            run.summary_json = _set_stage(run.summary_json or {}, "ai_tagging", status=stage_status, processed=0, failed=0)
+            db.commit()
         run.summary_json = _set_stage(run.summary_json or {}, "localization", status="blocked", processed=0, failed=0)
 
         run.failed_items = int(counts["failed"] + counts["classification_failed"] + counts["ai_tagging_failed"])
-        run.pending_import_items = 0
+        run.pending_import_items = int(unprocessed_import_planned_count)
         summary_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
         run.summary_json = _set_stage(run.summary_json or {}, "summary", status=summary_status, processed=1, failed=0)
         _update_execute_summary(
@@ -1211,6 +1442,9 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             imported_media_ids=imported_media_ids,
             ai_provider_provenance=ai_provenance,
             stopped_by=stop_reason,
+            stop_reason=stop_reason,
+            unprocessed_count=unprocessed_count,
+            unprocessed_import_planned_count=unprocessed_import_planned_count,
             budgets=_budget_policy_payload(),
             localization=_localization_policy_payload([]),
             source_mutation_performed=False,
@@ -1219,7 +1453,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             external_provider_calls_performed=False,
             model_downloads_performed=False,
         )
-        if stop_reason:
+        if stop_reason and stop_reason != "cancelled":
             run.status = "failed"
             run.error_message = f"Manual sync execute stopped safely: {stop_reason}"
         elif run.status != "cancelled":
