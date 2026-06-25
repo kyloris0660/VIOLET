@@ -3680,6 +3680,21 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.hydrated_only_required",
             "manual_sync.default_execute_disabled",
             "manual_sync.stale_replan_rejected",
+            "manual_sync.translation_side_effect_gates.background_llm_blocked",
+            "manual_sync.translation_side_effect_gates.auto_llm_blocked",
+            "manual_sync.translation_side_effect_gates.schedule_localization_false_not_sufficient",
+            "manual_sync.classification.local_only",
+            "manual_sync.classification.clip_cache_only_required",
+            "manual_sync.classification.uncached_clip_skips",
+            "manual_sync.active_run_recovery.stale_pending_running_finalized",
+            "manual_sync.active_run_recovery.stale_cancelling_finalized",
+            "manual_sync.per_item_failures.source_missing_recorded",
+            "manual_sync.per_item_failures.read_error_recorded",
+            "manual_sync.per_item_failures.read_timeout_recorded",
+            "manual_sync.per_item_failures.continue_within_failure_budget",
+            "manual_sync.failure_budget.stopped_by_failure_budget_recorded",
+            "manual_sync.failure_budget.stopped_by_duration_budget_recorded",
+            "manual_sync.localization.blocked_current_phase",
             "manual_sync.ledger.per_file_records_present",
             "manual_sync.ledger.dynamic_sync_run_used",
             "manual_sync.ledger.public_safe",
@@ -3726,6 +3741,7 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "safety.source_icloud_mutation",
             "safety.app_managed_production_storage_mutation",
             "safety.external_provider_calls",
+            "safety.model_downloads",
             "safety.llm_calls",
             "safety.automatic_sync_enabled",
             "safety.scheduled_sync_enabled",
@@ -3735,6 +3751,16 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
         ),
         code="s3a_m1_forbidden_execution_or_mutation",
         message="S3A-M1 must keep production writes, source/iCloud mutation, LLM/provider calls, and unattended sync disabled.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "manual_sync.classification.model_downloads_allowed",
+            "manual_sync.localization.scheduled_in_execute",
+        ),
+        code="s3a_m1_forbidden_model_or_localization_side_effect",
+        message="S3A-M1 must not allow classification model downloads or execute-time localization scheduling.",
     )
 
     profile = _get(summary, "ai_execution_profile", {})
@@ -3778,6 +3804,25 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
         result.fail("s3a_m1_max_files_unbounded", "S3A-M1 safe default max files must stay bounded.", path="manual_sync.limits.safe_default_max_files", expected="1..1000", actual=max_files)
     if not (1 <= max_duration <= 3600):
         result.fail("s3a_m1_max_duration_unbounded", "S3A-M1 max duration must stay bounded.", path="manual_sync.limits.max_duration_seconds", expected="1..3600", actual=max_duration)
+
+    recovery_timeout = _as_int(_get(summary, "manual_sync.active_run_recovery.timeout_seconds", 0))
+    if not (60 <= recovery_timeout <= 86400):
+        result.fail("s3a_m1_active_recovery_timeout_invalid", "S3A-M1 stale active run recovery timeout must be bounded.", path="manual_sync.active_run_recovery.timeout_seconds", expected="60..86400", actual=recovery_timeout)
+    max_item_failures = _as_int(_get(summary, "manual_sync.failure_budget.max_item_failures", 0))
+    max_consecutive_failures = _as_int(_get(summary, "manual_sync.failure_budget.max_consecutive_failures", 0))
+    max_failure_rate = _as_float(_get(summary, "manual_sync.failure_budget.max_failure_rate", 0.0))
+    failure_duration = _as_int(_get(summary, "manual_sync.failure_budget.max_duration_seconds", 0))
+    if not (1 <= max_item_failures <= 1000):
+        result.fail("s3a_m1_failure_budget_count_invalid", "S3A-M1 failure budget count must be present and bounded.", path="manual_sync.failure_budget.max_item_failures", expected="1..1000", actual=max_item_failures)
+    if not (1 <= max_consecutive_failures <= max_item_failures):
+        result.fail("s3a_m1_consecutive_failure_budget_invalid", "S3A-M1 consecutive failure cap must be present and no higher than the item failure budget.", path="manual_sync.failure_budget.max_consecutive_failures", expected="1..max_item_failures", actual=max_consecutive_failures)
+    if not (0.0 < max_failure_rate <= 1.0):
+        result.fail("s3a_m1_failure_rate_invalid", "S3A-M1 failure rate cap must be a positive fraction.", path="manual_sync.failure_budget.max_failure_rate", expected="0..1", actual=max_failure_rate)
+    if not (1 <= failure_duration <= 3600):
+        result.fail("s3a_m1_failure_duration_invalid", "S3A-M1 duration stop budget must stay bounded.", path="manual_sync.failure_budget.max_duration_seconds", expected="1..3600", actual=failure_duration)
+    localization_reason = str(_get(summary, "manual_sync.localization.blocked_reason", "") or "").strip()
+    if not localization_reason:
+        result.fail("s3a_m1_localization_block_reason_missing", "S3A-M1 localization state must report why scheduling is blocked.", path="manual_sync.localization.blocked_reason", expected="non-empty reason", actual=localization_reason)
 
     phrase = str(_get(summary, "manual_sync.confirmation_phrase_prefix", "") or "")
     production_phrase = str(_get(summary, "manual_sync.production_confirmation_phrase_prefix", "") or "")

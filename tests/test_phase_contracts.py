@@ -1347,6 +1347,41 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "confirmation_phrase_prefix": "I APPROVE S3A-M1 MANUAL SYNC EXECUTE",
             "production_confirmation_phrase_prefix": "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE",
             "limits": {"safe_default_max_files": 25, "max_duration_seconds": 600},
+            "translation_side_effect_gates": {
+                "background_llm_blocked": True,
+                "auto_llm_blocked": True,
+                "schedule_localization_false_not_sufficient": True,
+            },
+            "classification": {
+                "local_only": True,
+                "clip_cache_only_required": True,
+                "uncached_clip_skips": True,
+                "model_downloads_allowed": False,
+            },
+            "active_run_recovery": {
+                "stale_pending_running_finalized": True,
+                "stale_cancelling_finalized": True,
+                "timeout_seconds": 1800,
+            },
+            "per_item_failures": {
+                "source_missing_recorded": True,
+                "read_error_recorded": True,
+                "read_timeout_recorded": True,
+                "continue_within_failure_budget": True,
+            },
+            "failure_budget": {
+                "max_item_failures": 20,
+                "max_failure_rate": 0.05,
+                "max_consecutive_failures": 10,
+                "max_duration_seconds": 600,
+                "stopped_by_failure_budget_recorded": True,
+                "stopped_by_duration_budget_recorded": True,
+            },
+            "localization": {
+                "scheduled_in_execute": False,
+                "blocked_current_phase": True,
+                "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase",
+            },
             "ledger": {
                 "per_file_records_present": True,
                 "dynamic_sync_run_used": True,
@@ -1408,6 +1443,7 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "source_icloud_mutation": False,
             "app_managed_production_storage_mutation": False,
             "external_provider_calls": False,
+            "model_downloads": False,
             "llm_calls": False,
             "automatic_sync_enabled": False,
             "scheduled_sync_enabled": False,
@@ -3117,6 +3153,46 @@ def test_s3a_m1_contract_rejects_missing_launcher_or_browser_validation() -> Non
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
 
     assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_translation_side_effect_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["translation_side_effect_gates"]["background_llm_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_clip_model_download_allowed() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["classification"]["model_downloads_allowed"] = True
+    summary["safety"]["model_downloads"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_forbidden_execution_or_mutation" in _error_codes(result)
+    assert "s3a_m1_forbidden_model_or_localization_side_effect" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_per_item_failure_budget() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["per_item_failures"]["source_missing_recorded"] = False
+    summary["manual_sync"]["failure_budget"]["max_item_failures"] = 0
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+    assert "s3a_m1_failure_budget_count_invalid" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_localization_scheduled_in_execute() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["localization"]["scheduled_in_execute"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_forbidden_model_or_localization_side_effect" in _error_codes(result)
 
 
 def test_s3a_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:

@@ -27,6 +27,41 @@
     "execute_endpoint": true,
     "hydrated_only_required": true,
     "job_status_endpoint": true,
+    "translation_side_effect_gates": {
+      "background_llm_blocked": true,
+      "auto_llm_blocked": true,
+      "schedule_localization_false_not_sufficient": true
+    },
+    "classification": {
+      "local_only": true,
+      "clip_cache_only_required": true,
+      "uncached_clip_skips": true,
+      "model_downloads_allowed": false
+    },
+    "active_run_recovery": {
+      "stale_pending_running_finalized": true,
+      "stale_cancelling_finalized": true,
+      "timeout_seconds": 1800
+    },
+    "per_item_failures": {
+      "source_missing_recorded": true,
+      "read_error_recorded": true,
+      "read_timeout_recorded": true,
+      "continue_within_failure_budget": true
+    },
+    "failure_budget": {
+      "max_item_failures": 20,
+      "max_failure_rate": 0.05,
+      "max_consecutive_failures": 10,
+      "max_duration_seconds": 600,
+      "stopped_by_failure_budget_recorded": true,
+      "stopped_by_duration_budget_recorded": true
+    },
+    "localization": {
+      "scheduled_in_execute": false,
+      "blocked_current_phase": true,
+      "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase"
+    },
     "ledger": {
       "dynamic_sync_run_used": true,
       "per_file_records_present": true,
@@ -92,6 +127,7 @@
     "app_managed_production_storage_mutation": false,
     "automatic_sync_enabled": false,
     "external_provider_calls": false,
+    "model_downloads": false,
     "llm_calls": false,
     "production_acceptance_completed": false,
     "production_ai_tagging_writes": false,

@@ -73,6 +73,8 @@ MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
         "cloud_placeholder",
+        "classification_model_uncached",
+        "content_changed_after_plan",
         "corrupted_image",
         "duplicate_hash",
         "existing_media_hash",
@@ -84,8 +86,11 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "path_escape",
         "read_error",
         "read_timeout",
+        "source_missing",
         "source_walk_error",
         "stat_error",
+        "stopped_by_duration_budget",
+        "stopped_by_failure_budget",
         "symlink",
         "too_large",
         "unsafe_path",
@@ -263,7 +268,7 @@ def _manual_state_for_reason(reason: str) -> str:
         return "skipped_changing"
     if reason in {"corrupted_image", "image_verify_failed"}:
         return "failed"
-    if reason in {"stat_error", "read_error", "read_timeout"}:
+    if reason in {"source_missing", "stat_error", "read_error", "read_timeout", "content_changed_after_plan"}:
         return "failed"
     return "skipped_unsupported"
 
@@ -627,7 +632,14 @@ def plan_manual_sync_dry_run(
             }
         )
         if include_private_details:
-            private_items.append({**item, "relative_path": record["relative_path"]})
+            private_items.append(
+                {
+                    **item,
+                    "relative_path": record["relative_path"],
+                    "content_hash": content_hash,
+                    "mtime_ns": metadata.get("mtime_ns"),
+                }
+            )
 
     if walk_errors:
         partial_scan = True
