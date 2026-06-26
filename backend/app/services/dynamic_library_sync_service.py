@@ -82,6 +82,7 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "hidden",
         "icloud_placeholder",
         "image_verify_failed",
+        "import_failed",
         "not_a_file",
         "path_escape",
         "read_error",
@@ -774,7 +775,7 @@ def _iter_source_files(root_path: Path, *, walk_errors: Optional[List[str]] = No
             walk_errors.append(type(exc).__name__ or "OSError")
 
     for dirpath, dirnames, filenames in os.walk(root_path, onerror=_on_walk_error):
-        dirnames[:] = [d for d in dirnames if d not in {".git", "__pycache__", "venv"}]
+        dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", "venv"})
         for filename in sorted(filenames):
             yield Path(dirpath) / filename
 

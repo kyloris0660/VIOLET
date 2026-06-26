@@ -54,6 +54,8 @@
       "inference_failure_reason": "ai_tagger_inference_failed",
       "returned_error_sanitized": true,
       "raw_error_details_public": false,
+      "proper_nouns_suggestion_only": true,
+      "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": true,
       "single_item_failure_does_not_fail_whole_run": true
     },
     "active_run_recovery": {
@@ -63,6 +65,8 @@
     },
     "plan_replay_protection": {
       "plan_hash_binds_created_at": true,
+      "directory_walk_order_deterministic": true,
+      "unchanged_tree_not_rejected_by_directory_order": true,
       "forged_fresh_timestamp_rejected": true,
       "source_change_still_rejected": true
     },
@@ -97,6 +101,9 @@
     "ledger": {
       "dynamic_sync_run_used": true,
       "per_file_records_present": true,
+      "import_preledger_committed_before_media_write": true,
+      "import_preledger_success_failure_updated": true,
+      "run_item_deduplicated_per_source_item": true,
       "deferred_unprocessed_rows_materialized": true,
       "deferred_unprocessed_without_source_read_or_hash": true,
       "public_safe": true
@@ -116,6 +123,8 @@
       "classification_job_active_blocked": true,
       "queued_ai_job_blocked": true,
       "queued_classification_job_blocked": true,
+      "queued_manual_sync_execute_blocks_ai_job": true,
+      "queued_manual_sync_execute_blocks_classification_job": true,
       "manual_sync_execute_active_blocks_ai_job": true,
       "manual_sync_execute_active_blocks_classification_job": true
     },
@@ -123,7 +132,8 @@
       "default_report_json_gitignored": true,
       "default_report_md_gitignored": true,
       "docs_reports_require_explicit_flags": true,
-      "execute_report_uses_approved_plan": true
+      "execute_report_uses_approved_plan": true,
+      "standalone_db_session_initialized": true
     },
     "pipeline": {
       "dev_test_execute_supported": true,

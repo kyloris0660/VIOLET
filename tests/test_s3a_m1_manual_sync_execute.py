@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
+from app.enums import FileTypeEnum  # noqa: E402
 from app.models import (  # noqa: E402
     AITagJob,
     ClassificationJob,
@@ -26,7 +27,10 @@ from app.models import (  # noqa: E402
     DynamicSourceItem,
     DynamicSyncRun,
     DynamicSyncRunItem,
+    Entity,
     Media,
+    MediaEntityAssignment,
+    SourceConcept,
     Tag,
     TagCategoryEnum,
     blombooru_media_tags,
@@ -234,6 +238,93 @@ def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
     assert first["integrity"]["hash_includes_private_content_fingerprint"] is True
     assert "private-name.png" not in str(first)
     assert str(source_root) not in str(first)
+
+
+def test_s3a_m1_plan_hash_is_stable_across_directory_walk_order(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "z_dir" / "z.png")
+    _write_png(source_root / "a_dir" / "a.png")
+    plan_time = planner._utcnow()
+    orders = iter((["z_dir", "a_dir"], ["a_dir", "z_dir"], ["a_dir", "z_dir"]))
+
+    def fake_walk(path, onerror=None):
+        path = Path(path)
+        if path == source_root:
+            dirnames = list(next(orders))
+            yield str(path), dirnames, []
+            for dirname in dirnames:
+                yield from fake_walk(path / dirname, onerror=onerror)
+            return
+        if path.name == "a_dir":
+            yield str(path), [], ["a.png"]
+            return
+        if path.name == "z_dir":
+            yield str(path), [], ["z.png"]
+            return
+        yield str(path), [], []
+
+    monkeypatch.setattr(planner.os, "walk", fake_walk)
+
+    first = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0, now=plan_time)
+    second = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0, now=plan_time)
+
+    assert first["integrity"]["plan_hash"] == second["integrity"]["plan_hash"]
+    assert [item["relative_path_hash"] for item in first["ledger"]["per_file_public_records"]] == [
+        item["relative_path_hash"] for item in second["ledger"]["per_file_public_records"]
+    ]
+
+
+def test_s3a_m1_execute_recheck_accepts_changed_directory_walk_order(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "z_dir" / "z.png")
+    _write_png(source_root / "a_dir" / "a.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    orders = iter((["z_dir", "a_dir"], ["a_dir", "z_dir"], ["z_dir", "a_dir"]))
+
+    def fake_walk(path, onerror=None):
+        path = Path(path)
+        if path == source_root:
+            dirnames = list(next(orders))
+            yield str(path), dirnames, []
+            for dirname in dirnames:
+                yield from fake_walk(path / dirname, onerror=onerror)
+            return
+        if path.name == "a_dir":
+            yield str(path), [], ["a.png"]
+            return
+        if path.name == "z_dir":
+            yield str(path), [], ["z.png"]
+            return
+        yield str(path), [], []
+
+    monkeypatch.setattr(planner.os, "walk", fake_walk)
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert db.get(DynamicSyncRun, run.id).status == "completed"
 
 
 def test_s3a_m1_execute_is_disabled_by_default(db, tmp_path):
@@ -458,6 +549,121 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
     assert execute_summary["llm_calls_performed"] is False
     assert execute_summary["localization"]["scheduled"] is False
     assert "private_plan_items" not in str(result)
+
+
+def test_s3a_m1_import_preledger_exists_before_media_write(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+    observed = {}
+
+    def fake_process_and_save_media(*, db, file_path, unique_filename, **_kwargs):
+        rows = db.query(DynamicSyncRunItem).all()
+        observed["preledger_rows"] = [(row.item_state, row.action, row.media_id) for row in rows]
+        assert observed["preledger_rows"] == [("import_in_progress", "import", None)]
+        media = Media(
+            filename=unique_filename,
+            path=f"media/original/{unique_filename}",
+            hash="unit-import-hash",
+            file_type=FileTypeEnum.image,
+            mime_type="image/png",
+            file_size=Path(file_path).stat().st_size,
+            width=2,
+            height=2,
+        )
+        db.add(media)
+        db.commit()
+        db.refresh(media)
+        return media
+
+    monkeypatch.setattr(execute_service, "process_and_save_media", fake_process_and_save_media)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    run_item = db.query(DynamicSyncRunItem).one()
+    media = db.query(Media).one()
+    assert observed["preledger_rows"] == [("import_in_progress", "import", None)]
+    assert run_item.item_state == "imported_in_test"
+    assert run_item.action == "import"
+    assert run_item.media_id == media.id
+    assert run_item.bytes_copied > 0
+
+
+def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+    observed = {}
+
+    def fake_process_and_save_media(**_kwargs):
+        rows = db.query(DynamicSyncRunItem).all()
+        observed["preledger_rows"] = [(row.item_state, row.action, row.media_id) for row in rows]
+        assert observed["preledger_rows"] == [("import_in_progress", "import", None)]
+        raise RuntimeError("simulated import failure for private_name.png")
+
+    monkeypatch.setattr(execute_service, "process_and_save_media", fake_process_and_save_media)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "private_name.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    private_hash = run.summary_json["manual_sync_execute"]["private_plan_items"][0]["content_hash"]
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+    public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
+
+    assert result["status"] == "completed"
+    assert observed["preledger_rows"] == [("import_in_progress", "import", None)]
+    assert db.query(Media).count() == 0
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.item_state == "failed"
+    assert run_item.action == "import"
+    assert run_item.reason == "import_failed"
+    assert run_item.media_id is None
+    assert run_item.current_metadata_json["error_code"] == "RuntimeError"
+    assert "private_name.png" not in str(public_status)
+    assert "'content_hash':" not in str(public_status)
+    assert private_hash not in str(public_status)
 
 
 def test_s3a_m1_generic_sync_serializers_redact_private_plan_items(db, tmp_path, monkeypatch):
@@ -868,6 +1074,103 @@ def test_s3a_m1_manual_execute_active_blocks_direct_classification(db, monkeypat
     assert exc.value.detail["code"] == "manual_sync_execute_active_blocks_classification_job"
 
 
+@pytest.mark.parametrize("status", ["pending", "running"])
+def test_s3a_m1_manual_execute_db_row_blocks_ai_and_classification_job_start(db, monkeypatch, status):
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: False)
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    db.add(DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status=status, dry_run=False))
+    db.commit()
+
+    with pytest.raises(HTTPException) as ai_exc:
+        asyncio.run(
+            ai_job_routes.create_ai_tag_job(
+                body=ai_job_routes.CreateAITagJobRequest(max_items=1),
+                current_user=SimpleNamespace(id=1),
+                db=db,
+            )
+        )
+    with pytest.raises(HTTPException) as classification_exc:
+        asyncio.run(
+            classification_routes.create_classification_job(
+                body=classification_routes.CreateClassificationJobRequest(max_items=1),
+                current_user=SimpleNamespace(id=1),
+                db=db,
+            )
+        )
+
+    assert ai_exc.value.status_code == 409
+    assert ai_exc.value.detail["code"] == "manual_sync_execute_active_blocks_ai_job"
+    assert classification_exc.value.status_code == 409
+    assert classification_exc.value.detail["code"] == "manual_sync_execute_active_blocks_classification_job"
+
+
+def test_s3a_m1_pending_manual_execute_db_row_blocks_direct_ai_tagging(db, monkeypatch):
+    class SessionProxy:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def __getattr__(self, name):
+            return getattr(self._wrapped, name)
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: False)
+    monkeypatch.setattr(ai_tagging_routes, "_get_session", lambda: SessionProxy(db))
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    db.add(DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status="pending", dry_run=False))
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(ai_tagging_routes.tag_single_media(media_id=1, current_user=SimpleNamespace(id=1)))
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "manual_sync_execute_active_blocks_ai_job"
+
+
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+def test_s3a_m1_finished_manual_execute_db_rows_do_not_block_job_start(db, monkeypatch, status):
+    import app.services.ai_tagging_job_service as ai_job_service
+    import app.services.classification_job_service as classification_job_service
+
+    ai_started = []
+    classification_started = []
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: False)
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("AI_TAGGING_BATCH_MAX_ITEMS", "10")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS", "10")
+    monkeypatch.setattr(ai_job_service, "is_ai_job_active", lambda: False)
+    monkeypatch.setattr(classification_job_service, "is_classification_job_active", lambda: False)
+    monkeypatch.setattr(ai_job_service, "create_ai_tag_job", lambda *_args, **_kwargs: _fake_ai_job())
+    monkeypatch.setattr(classification_job_service, "create_classification_job", lambda *_args, **_kwargs: _fake_classification_job())
+    monkeypatch.setattr(ai_job_service, "start_ai_tag_job", lambda job_id: ai_started.append(job_id))
+    monkeypatch.setattr(classification_job_service, "start_classification_job", lambda job_id: classification_started.append(job_id))
+    db.add(DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status=status, dry_run=False))
+    db.commit()
+
+    ai_result = asyncio.run(
+        ai_job_routes.create_ai_tag_job(
+            body=ai_job_routes.CreateAITagJobRequest(max_items=1),
+            current_user=SimpleNamespace(id=1),
+            db=db,
+        )
+    )
+    classification_result = asyncio.run(
+        classification_routes.create_classification_job(
+            body=classification_routes.CreateClassificationJobRequest(max_items=1),
+            current_user=SimpleNamespace(id=1),
+            db=db,
+        )
+    )
+
+    assert ai_result["id"] == 7
+    assert classification_result["id"] == 8
+    assert ai_started == [7]
+    assert classification_started == [8]
+
+
 def test_s3a_m1_ai_job_start_still_works_when_manual_execute_inactive(db, monkeypatch):
     import app.services.ai_tagging_job_service as ai_job_service
 
@@ -1057,6 +1360,26 @@ def test_s3a_m1_runner_defaults_to_local_manifest_reports(tmp_path):
     assert "docs" not in args.report_md.parts
 
 
+def test_s3a_m1_runner_initializes_database_session_lazily(monkeypatch):
+    calls = []
+
+    class FakeSession:
+        pass
+
+    def fake_init_engine():
+        calls.append("init_engine")
+        runner.app_database.SessionLocal = lambda: FakeSession()
+
+    monkeypatch.setattr(runner, "SessionLocal", None)
+    monkeypatch.setattr(runner.app_database, "SessionLocal", None)
+    monkeypatch.setattr(runner.app_database, "init_engine", fake_init_engine)
+
+    session = runner._open_db_session()
+
+    assert isinstance(session, FakeSession)
+    assert calls == ["init_engine"]
+
+
 def test_s3a_m1_runner_execute_report_uses_approved_plan_timestamp_and_hash(tmp_path, monkeypatch):
     approved_at = "2026-06-25T00:00:00+00:00"
     approved_plan = {
@@ -1192,6 +1515,72 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
     run_item = db.query(DynamicSyncRunItem).one()
     assert run_item.current_metadata_json["ai_tagging"]["status"] == "ai_tagged"
     assert run_item.current_metadata_json["classification"]["content_class"] == "anime"
+
+
+def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, monkeypatch):
+    import app.services.ai_tagging_service as ai_tagging_service
+
+    class FakeTagger:
+        is_loaded = True
+        current_model = "unit"
+
+        def ensure_loaded(self, *_args, **_kwargs):
+            return None
+
+        def get_runtime_provenance(self, **kwargs):
+            return {"provider": "unit", **kwargs}
+
+        def predict_from_file(self, *_args, **_kwargs):
+            return [
+                {"name": "hakurei_reimu", "category": "character", "confidence": 0.99},
+            ]
+
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+    monkeypatch.setattr(ai_tagging_service, "_get_tagger", lambda: FakeTagger())
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    tag = db.query(Tag).filter(Tag.name == "hakurei_reimu").one()
+    assert tag.category == TagCategoryEnum.character
+    media_tag = db.execute(
+        blombooru_media_tags.select().where(
+            blombooru_media_tags.c.tag_id == tag.id,
+        )
+    ).one()
+    assert media_tag.source == "ai_wd"
+    assert media_tag.is_suggestion is True
+    assert media_tag.is_locked is False
+    assert db.query(Entity).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(SourceConcept).count() == 0
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 1
+    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 0
 
 
 def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):

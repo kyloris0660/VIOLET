@@ -119,7 +119,7 @@ async def create_ai_tag_job(
 ):
     """Create a background AI tagging job. Returns immediately with a job_id."""
     try:
-        assert_manual_sync_execute_inactive_for_ai_job()
+        assert_manual_sync_execute_inactive_for_ai_job(db)
     except ManualSyncExecuteError as exc:
         _raise_manual_sync_gate_error(exc)
 

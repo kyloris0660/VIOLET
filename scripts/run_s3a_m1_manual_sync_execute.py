@@ -24,7 +24,7 @@ DEFAULT_REPORT_JSON = DEFAULT_OUTPUT_DIR / "manual-sync-runner-report.json"
 DEFAULT_REPORT_MD = DEFAULT_OUTPUT_DIR / "manual-sync-runner-report.md"
 
 from app.config import settings  # noqa: E402
-from app.database import SessionLocal  # noqa: E402
+from app import database as app_database  # noqa: E402
 from app.models import DynamicSourceRoot  # noqa: E402
 from app.services.dynamic_library_sync_service import plan_manual_sync_dry_run  # noqa: E402
 from app.services.manual_sync_execute_service import (  # noqa: E402
@@ -33,6 +33,8 @@ from app.services.manual_sync_execute_service import (  # noqa: E402
     create_manual_sync_execute_run,
     execute_manual_sync_run,
 )
+
+SessionLocal = None
 
 
 def _json_default(value: Any) -> str:
@@ -82,6 +84,16 @@ def _write_markdown(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _open_db_session():
+    if SessionLocal is not None:
+        return SessionLocal()
+    if app_database.SessionLocal is None:
+        app_database.init_engine()
+    if app_database.SessionLocal is None:
+        raise RuntimeError("Database SessionLocal is not initialized.")
+    return app_database.SessionLocal()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run S3A-M1 manual sync dry-run or guarded execute.")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -120,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"--execute missing required arguments: {', '.join(missing)}", file=sys.stderr)
             return 2
 
-    db = SessionLocal()
+    db = _open_db_session()
     try:
         source_record_id = None
         source_path = args.source_path

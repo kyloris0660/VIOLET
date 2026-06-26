@@ -84,7 +84,7 @@ async def create_classification_job(
     db: Session = Depends(get_db),
 ):
     try:
-        assert_manual_sync_execute_inactive_for_classification_job()
+        assert_manual_sync_execute_inactive_for_classification_job(db)
     except ManualSyncExecuteError as exc:
         _raise_manual_sync_gate_error(exc)
 
@@ -207,7 +207,7 @@ async def classify_single_media(
     db: Session = Depends(get_db),
 ):
     try:
-        assert_manual_sync_execute_inactive_for_classification_job()
+        assert_manual_sync_execute_inactive_for_classification_job(db)
     except ManualSyncExecuteError as exc:
         _raise_manual_sync_gate_error(exc)
 
@@ -238,7 +238,7 @@ async def update_media_class(
     db: Session = Depends(get_db),
 ):
     try:
-        assert_manual_sync_execute_inactive_for_classification_job()
+        assert_manual_sync_execute_inactive_for_classification_job(db)
     except ManualSyncExecuteError as exc:
         _raise_manual_sync_gate_error(exc)
 

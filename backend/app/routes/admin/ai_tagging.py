@@ -43,6 +43,14 @@ def _raise_manual_sync_gate_error(exc: ManualSyncExecuteError) -> None:
     raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
 
 
+def _assert_manual_sync_execute_inactive_for_ai_job() -> None:
+    db = _get_session()
+    try:
+        assert_manual_sync_execute_inactive_for_ai_job(db)
+    finally:
+        db.close()
+
+
 @router.get("/ai-tagging/model-status")
 async def get_model_status(
     current_user: User = Depends(require_admin_mode),
@@ -95,7 +103,7 @@ async def tag_single_media(
 ):
     """Run AI tagging on a single media item."""
     try:
-        assert_manual_sync_execute_inactive_for_ai_job()
+        _assert_manual_sync_execute_inactive_for_ai_job()
     except ManualSyncExecuteError as exc:
         _raise_manual_sync_gate_error(exc)
 
@@ -129,7 +137,7 @@ async def tag_batch(
     - dry_run=true returns predictions without writing to DB.
     """
     try:
-        assert_manual_sync_execute_inactive_for_ai_job()
+        _assert_manual_sync_execute_inactive_for_ai_job()
     except ManualSyncExecuteError as exc:
         _raise_manual_sync_gate_error(exc)
 

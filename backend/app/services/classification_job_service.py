@@ -310,6 +310,14 @@ def create_auto_classification_job_after_scan(
     from ..database import SessionLocal
     db = SessionLocal()
     try:
+        try:
+            from .manual_sync_execute_service import assert_manual_sync_execute_inactive_for_classification_job
+
+            assert_manual_sync_execute_inactive_for_classification_job(db)
+        except Exception as exc:
+            logger.info("Scan job %s: auto-classify skipped (manual sync execute guard: %s)", scan_job_id, exc)
+            return None
+
         max_items = settings.CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS
         media_ids = imported_media_ids[:max_items]
 

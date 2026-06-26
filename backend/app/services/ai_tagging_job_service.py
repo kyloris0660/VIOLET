@@ -370,6 +370,14 @@ def create_auto_tag_job_after_scan(
     from ..database import SessionLocal
     db = SessionLocal()
     try:
+        try:
+            from .manual_sync_execute_service import assert_manual_sync_execute_inactive_for_ai_job
+
+            assert_manual_sync_execute_inactive_for_ai_job(db)
+        except Exception as exc:
+            logger.info("Scan job %s: auto-tag skipped (manual sync execute guard: %s)", scan_job_id, exc)
+            return None
+
         max_items = settings.AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS
 
         if settings.AI_AUTO_TAG_AFTER_IMPORT_ONLY_NEW:

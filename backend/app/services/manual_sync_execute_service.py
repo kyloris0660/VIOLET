@@ -181,20 +181,34 @@ def _assert_no_active_ai_or_classification_jobs(db: Optional[Session] = None) ->
             )
 
 
-def assert_manual_sync_execute_inactive_for_ai_job() -> None:
-    if is_manual_sync_execute_active():
+def _manual_sync_execute_db_run_active(db: Optional[Session] = None) -> bool:
+    if db is None:
+        return False
+    return (
+        db.query(DynamicSyncRun.id)
+        .filter(
+            DynamicSyncRun.run_type == "manual_sync_execute",
+            DynamicSyncRun.status.in_(_ACTIVE_JOB_STATUSES),
+        )
+        .first()
+        is not None
+    )
+
+
+def assert_manual_sync_execute_inactive_for_ai_job(db: Optional[Session] = None) -> None:
+    if is_manual_sync_execute_active() or _manual_sync_execute_db_run_active(db):
         raise ManualSyncExecuteError(
             "manual_sync_execute_active_blocks_ai_job",
-            "AI tagging is blocked while a manual sync execute run is active.",
+            "AI tagging is blocked while a manual sync execute run is active or queued.",
             status_code=409,
         )
 
 
-def assert_manual_sync_execute_inactive_for_classification_job() -> None:
-    if is_manual_sync_execute_active():
+def assert_manual_sync_execute_inactive_for_classification_job(db: Optional[Session] = None) -> None:
+    if is_manual_sync_execute_active() or _manual_sync_execute_db_run_active(db):
         raise ManualSyncExecuteError(
             "manual_sync_execute_active_blocks_classification_job",
-            "Content classification is blocked while a manual sync execute run is active.",
+            "Content classification is blocked while a manual sync execute run is active or queued.",
             status_code=409,
         )
 
@@ -781,18 +795,24 @@ def _record_run_item(
     media_id: Optional[int] = None,
     current_metadata: Optional[Dict[str, Any]] = None,
 ) -> DynamicSyncRunItem:
-    run_item = DynamicSyncRunItem(
-        sync_run_id=run.id,
-        source_item_id=item.id,
-        item_state=state,
-        action=action,
-        reason=reason,
-        eligible_for_db_import=eligible,
-        bytes_copied=bytes_copied,
-        media_id=media_id,
-        current_metadata_json=current_metadata or {},
+    run_item = (
+        db.query(DynamicSyncRunItem)
+        .filter(
+            DynamicSyncRunItem.sync_run_id == run.id,
+            DynamicSyncRunItem.source_item_id == item.id,
+        )
+        .first()
     )
-    db.add(run_item)
+    if run_item is None:
+        run_item = DynamicSyncRunItem(sync_run_id=run.id, source_item_id=item.id)
+        db.add(run_item)
+    run_item.item_state = state
+    run_item.action = action
+    run_item.reason = reason
+    run_item.eligible_for_db_import = eligible
+    run_item.bytes_copied = bytes_copied
+    run_item.media_id = media_id
+    run_item.current_metadata_json = current_metadata or {}
     return run_item
 
 
@@ -883,6 +903,32 @@ def _mark_item_failed(
     )
 
 
+def _mark_item_import_in_progress(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    item: DynamicSourceItem,
+    metadata: Dict[str, Any],
+) -> DynamicSyncRunItem:
+    item.sync_state = "import_in_progress"
+    item.import_status = "import_in_progress"
+    item.classification_status = "deferred"
+    item.ai_tagging_status = "deferred"
+    item.localization_status = "waiting_import"
+    item.failure_reason = None
+    item.deferred_reason = None
+    return _record_run_item(
+        db,
+        run=run,
+        item=item,
+        state="import_in_progress",
+        action="import",
+        reason=None,
+        eligible=True,
+        current_metadata=metadata,
+    )
+
+
 def _materialize_deferred_unprocessed_items(
     db: Session,
     *,
@@ -924,13 +970,12 @@ def _materialize_deferred_unprocessed_items(
     return created
 
 
-def _has_confirmed_ai_wd_tags(db: Session, media_id: int) -> bool:
+def _has_ai_wd_tags(db: Session, media_id: int) -> bool:
     return bool(
         db.query(blombooru_media_tags.c.media_id)
         .filter(
             blombooru_media_tags.c.media_id == media_id,
             blombooru_media_tags.c.source == "ai_wd",
-            blombooru_media_tags.c.is_suggestion == False,
         )
         .first()
     )
@@ -944,7 +989,7 @@ def _heuristic_classification_ai_tag_block_reason(db: Session, item: Optional[Dy
         return "classification_skipped_ai_tagging_failed"
     if ai_status != "ai_tagged":
         return "classification_deferred_ai_tags_unavailable"
-    if not _has_confirmed_ai_wd_tags(db, media_id):
+    if not _has_ai_wd_tags(db, media_id):
         return "classification_deferred_ai_tags_unavailable"
     return None
 
@@ -1073,6 +1118,7 @@ def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
         db,
         media_id,
         dry_run=False,
+        force_suggestions=True,
         local_files_only=True,
         schedule_localization=False,
     )
@@ -1268,8 +1314,24 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             try:
                 if source_file is None:
                     raise ManualSyncExecuteError("source_missing", "Source file is missing.")
+                import_metadata = {**metadata, "safe_label": plan_item.get("safe_label")}
+                _mark_item_import_in_progress(
+                    db,
+                    run=run,
+                    item=item,
+                    metadata={**import_metadata, "import": {"status": "in_progress"}},
+                )
+                db.commit()
                 media_id, bytes_copied = _copy_and_import_media(db, source_file)
                 imported_media_ids.append(media_id)
+                item = _get_or_create_source_item(
+                    db,
+                    root=root,
+                    run=run,
+                    relative_path=rel,
+                    metadata=metadata,
+                    content_hash=str(current_content_hash) if current_content_hash else None,
+                )
                 item.media_id = media_id
                 item.sync_state = "imported"
                 item.import_status = "imported"
@@ -1287,7 +1349,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     eligible=True,
                     bytes_copied=bytes_copied,
                     media_id=media_id,
-                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label")},
+                    current_metadata=import_metadata,
                 )
                 counts["imported"] += 1
                 run.new_items = int(counts["imported"])
@@ -1321,7 +1383,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     action="skip" if duplicate else "import",
                     reason="existing_media_hash" if duplicate else "import_failed",
                     eligible=False,
-                    current_metadata=metadata,
+                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label")},
                 )
                 counts[item.sync_state] += 1
                 if duplicate:
@@ -1358,7 +1420,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     action="import",
                     reason="import_failed",
                     eligible=False,
-                    current_metadata={**metadata, "error": str(exc)[:200]},
+                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label"), "error_code": exc.__class__.__name__},
                 )
                 counts["failed"] += 1
                 item_failure_count += 1
