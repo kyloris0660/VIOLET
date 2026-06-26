@@ -1,6 +1,6 @@
 # Current Mainline Roadmap
 
-Status: active after PR #123 / PD1-A-R1 merge and S2G-M1 foundation work on
+Status: active after PR #124 / S2G-M1 merge and S3A-M1 manual execute work on
 2026-06-24.
 
 This is the durable short-term routing document for post-#122 work. It keeps
@@ -37,7 +37,7 @@ turning this phase into a broad planning essay.
 
 ## Accepted Sequence
 
-1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation`.
+1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation` - merged in PR #124.
    - Single consolidated phase, not two phases.
    - Includes GPU / AI tagging capability probe and benchmark.
    - Includes provider abstraction, provenance, batch/concurrency/throttle
@@ -47,10 +47,10 @@ turning this phase into a broad planning essay.
      foundation for dry-run/dev-test mode.
    - No production writes.
 
-2. `S3A-M1` - Explicit manual-sync execute path plus final UI / production acceptance.
-   - Small follow-up phase after S2G-M1.
+2. `S3A-M1` - Explicit manual-sync execute path plus final UI / launcher entry.
+   - Current follow-up phase after S2G-M1.
    - Implements or wires the explicit manual-sync execute path, adds the final
-     visible controls, and runs first small production acceptance only after
+     visible controls, and keeps first small production acceptance pending
      explicit operator approval.
    - Must bind to production profile/runtime config, not development `.env`.
    - Must remain manual; no automatic, scheduled, startup, service, or
@@ -92,9 +92,9 @@ turning this phase into a broad planning essay.
 ## What Is Intentionally Not Next
 
 - Do not enable automatic, scheduled, startup, service, or unattended sync from
-  S2G-M1.
-- Do not treat S2G-M1 capability probe or dry-run planner output as production
-  acceptance.
+  S2G-M1 or S3A-M1.
+- Do not treat S2G-M1 capability probe, dry-run planner output, or S3A-M1
+  dev/test execute validation as production acceptance.
 - Do not run provider, Pixiv, gallery-dl, SauceNAO, Google, or source-enrichment
   work.
 - Do not run SourceConcept R1/R2, Entity bridge, or confirmed assignment
@@ -125,9 +125,9 @@ turning this phase into a broad planning essay.
 
 ## Choosing The Next Work
 
-After S2G-M1 merges, the recommended next phase is:
-
-`S3A-M1: explicit manual-sync execute path plus final UI / production acceptance`.
+After S3A-M1 merges, the recommended next step is a separate small production
+acceptance run only if the operator provides exact approval after a fresh
+dry-run plan.
 
 Only change that order if the operator explicitly reprioritizes. If a future
 session is unsure, choose the first unmerged item in `Accepted Sequence` whose

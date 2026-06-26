@@ -15,6 +15,10 @@ from ...auth import require_admin_mode
 from ...config import settings
 from ...database import get_db
 from ...models import AITagJob, User
+from ...services.manual_sync_execute_service import (
+    ManualSyncExecuteError,
+    assert_manual_sync_execute_inactive_for_ai_job,
+)
 from ...utils.logger import logger
 
 router = APIRouter()
@@ -32,6 +36,10 @@ class CreateAITagJobRequest(BaseModel):
                     "Only media with matching content_class will be included. "
                     "None means no filtering (all classes)."
     )
+
+
+def _raise_manual_sync_gate_error(exc: ManualSyncExecuteError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
 
 
 def _serialize_ai_job(job: AITagJob) -> dict:
@@ -110,6 +118,11 @@ async def create_ai_tag_job(
     db: Session = Depends(get_db),
 ):
     """Create a background AI tagging job. Returns immediately with a job_id."""
+    try:
+        assert_manual_sync_execute_inactive_for_ai_job(db)
+    except ManualSyncExecuteError as exc:
+        _raise_manual_sync_gate_error(exc)
+
     if not settings.AI_TAGGING_ENABLED:
         raise HTTPException(
             status_code=400,

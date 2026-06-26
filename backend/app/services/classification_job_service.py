@@ -297,10 +297,27 @@ def create_auto_classification_job_after_scan(
     if is_classification_job_active():
         logger.info(f"Scan job {scan_job_id}: auto-classify skipped (another classification job is running)")
         return None
+    try:
+        from .manual_sync_execute_service import is_manual_sync_execute_active
+
+        if is_manual_sync_execute_active():
+            logger.info(f"Scan job {scan_job_id}: auto-classify skipped (manual sync execute is active)")
+            return None
+    except Exception as exc:
+        logger.warning("Scan job %s: manual sync active check failed before auto-classify: %s", scan_job_id, exc)
+        return None
 
     from ..database import SessionLocal
     db = SessionLocal()
     try:
+        try:
+            from .manual_sync_execute_service import assert_manual_sync_execute_inactive_for_classification_job
+
+            assert_manual_sync_execute_inactive_for_classification_job(db)
+        except Exception as exc:
+            logger.info("Scan job %s: auto-classify skipped (manual sync execute guard: %s)", scan_job_id, exc)
+            return None
+
         max_items = settings.CONTENT_CLASSIFICATION_AUTO_MAX_ITEMS
         media_ids = imported_media_ids[:max_items]
 

@@ -1056,6 +1056,21 @@ def test_preflight_reports_explicit_startup_write_policy(tmp_path, safe_backends
     assert policy["operator_intent_required_for_startup_maintenance"] is True
 
 
+def test_open_manual_sync_targets_content_tab_and_dynamic_sync_section(tmp_path, safe_backends):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    opened: list[str] = []
+
+    result = control.open_manual_sync_target(
+        repo_root=repo,
+        base_env=env,
+        open_func=lambda url: opened.append(url) or True,
+    )
+
+    assert result.ok is True
+    assert opened == ["http://127.0.0.1:8123/admin?tab=content#dynamic-library-sync-section"]
+    assert result.data["url"] == opened[0]
+
+
 def test_status_removes_stale_launcher_pid_state(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
     state_path = tmp_path / "state.json"

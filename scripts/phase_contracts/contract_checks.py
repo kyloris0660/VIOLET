@@ -2318,6 +2318,59 @@ def _read_s2g_m1_markdown_report(summary: Mapping[str, Any], result: ContractChe
     return ""
 
 
+def _read_s3a_m1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
+    path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
+    if path_text is MISSING or not str(path_text).strip():
+        result.fail(
+            "s3a_m1_markdown_report_path_missing",
+            "S3A-M1 summaries must name the public Markdown report path.",
+            path="public_reports.markdown_report_path",
+        )
+        return ""
+    candidate = Path(str(path_text))
+    if candidate.is_absolute():
+        result.fail(
+            "s3a_m1_markdown_report_path_unsafe",
+            "S3A-M1 Markdown report path must be repo-relative.",
+            path="public_reports.markdown_report_path",
+            expected="repo-relative path",
+            actual="[redacted-path]",
+        )
+        return ""
+    root = CONTRACT_ROOT.resolve()
+    resolved = (CONTRACT_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        result.fail(
+            "s3a_m1_markdown_report_path_escape",
+            "S3A-M1 Markdown report path must stay inside the repository.",
+            path="public_reports.markdown_report_path",
+            expected="inside repository",
+            actual="[redacted-path]",
+        )
+        return ""
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result.fail(
+            "s3a_m1_markdown_report_missing",
+            "S3A-M1 Markdown report path does not exist.",
+            path="public_reports.markdown_report_path",
+            expected="existing public report",
+            actual=path_text,
+        )
+    except OSError as exc:
+        result.fail(
+            "s3a_m1_markdown_report_unreadable",
+            "S3A-M1 Markdown report could not be read for redaction scanning.",
+            path="public_reports.markdown_report_path",
+            expected="readable public report",
+            actual=exc.__class__.__name__,
+        )
+    return ""
+
+
 def _read_s3a_pilot1_markdown_report(summary: Mapping[str, Any], result: ContractCheckResult) -> str:
     path_text = _get(summary, "public_reports.markdown_report_path", MISSING)
     if path_text is MISSING or not str(path_text).strip():
@@ -3572,6 +3625,303 @@ def _check_s2g_manual_sync_foundation(_contract: PhaseContract, summary: Mapping
         result.fail(
             "s2g_m1_public_payload_redaction_failed",
             "S2G-M1 contract independently found forbidden public JSON or Markdown content.",
+            path="public_payload",
+            expected="no findings",
+            actual={"finding_count": len(redaction_findings), "findings_redacted": True},
+        )
+
+
+def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "target_met_dev_test_ready",
+        "blocked_validation_failed",
+        "blocked_execute_gate_failed",
+        "blocked_public_redaction_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m1_unknown_status",
+            "S3A-M1 status must explicitly describe dev/test readiness or the blocking condition.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "target_met_dev_test_ready" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m1_non_completion_status_claimed_completion",
+            "Non-target S3A-M1 statuses must not claim target_met, route approval, full-chain completion, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met_dev_test_ready for completion claims",
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M1":
+        result.fail(
+            "s3a_m1_phase_identity_mismatch",
+            "S3A-M1 summaries must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M1",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "manual_sync.plan_endpoint",
+            "manual_sync.execute_endpoint",
+            "manual_sync.status_endpoint",
+            "manual_sync.job_status_endpoint",
+            "manual_sync.cancel_endpoint",
+            "manual_sync.plan_hash_required",
+            "manual_sync.exact_confirmation_required",
+            "manual_sync.plan_freshness_required",
+            "manual_sync.registered_root_required_for_execute",
+            "manual_sync.hydrated_only_required",
+            "manual_sync.default_execute_disabled",
+            "manual_sync.stale_replan_rejected",
+            "manual_sync.limits.execute_max_files_exceeded_rejected",
+            "manual_sync.limits.dry_run_execute_default_max_files_aligned",
+            "manual_sync.limits.normal_update_check_not_forced_to_execute_cap",
+            "manual_sync.limits.separate_update_check_and_execute_limits",
+            "manual_sync.active_job_gates.ai_job_active_blocked",
+            "manual_sync.active_job_gates.classification_job_active_blocked",
+            "manual_sync.active_job_gates.queued_ai_job_blocked",
+            "manual_sync.active_job_gates.queued_classification_job_blocked",
+            "manual_sync.active_job_gates.queued_manual_sync_execute_blocks_ai_job",
+            "manual_sync.active_job_gates.queued_manual_sync_execute_blocks_classification_job",
+            "manual_sync.active_job_gates.manual_sync_execute_active_blocks_ai_job",
+            "manual_sync.active_job_gates.manual_sync_execute_active_blocks_classification_job",
+            "manual_sync.runner_outputs.default_report_json_gitignored",
+            "manual_sync.runner_outputs.default_report_md_gitignored",
+            "manual_sync.runner_outputs.docs_reports_require_explicit_flags",
+            "manual_sync.runner_outputs.execute_report_uses_approved_plan",
+            "manual_sync.runner_outputs.standalone_db_session_initialized",
+            "manual_sync.translation_side_effect_gates.background_llm_blocked",
+            "manual_sync.translation_side_effect_gates.auto_llm_blocked",
+            "manual_sync.translation_side_effect_gates.llm_enabled_blocked",
+            "manual_sync.translation_side_effect_gates.live_worker_state_blocked",
+            "manual_sync.translation_side_effect_gates.schedule_localization_false_not_sufficient",
+            "manual_sync.classification.local_only",
+            "manual_sync.classification.clip_cache_only_required",
+            "manual_sync.classification.uncached_clip_skips",
+            "manual_sync.classification.method_and_order_reported",
+            "manual_sync.classification.heuristic_ai_tags_before_classification",
+            "manual_sync.classification.heuristic_deferred_when_ai_tags_unavailable",
+            "manual_sync.classification.heuristic_ai_failure_does_not_write_unknown",
+            "manual_sync.classification.clip_cached_path_preserved",
+            "manual_sync.ai_tagging.item_exception_containment",
+            "manual_sync.ai_tagging.returned_error_sanitized",
+            "manual_sync.ai_tagging.proper_nouns_suggestion_only",
+            "manual_sync.ai_tagging.no_sourceconcept_or_entity_truth_from_ai_proper_nouns",
+            "manual_sync.ai_tagging.single_item_failure_does_not_fail_whole_run",
+            "manual_sync.active_run_recovery.stale_pending_running_finalized",
+            "manual_sync.active_run_recovery.stale_cancelling_finalized",
+            "manual_sync.plan_replay_protection.plan_hash_binds_created_at",
+            "manual_sync.plan_replay_protection.directory_walk_order_deterministic",
+            "manual_sync.plan_replay_protection.unchanged_tree_not_rejected_by_directory_order",
+            "manual_sync.plan_replay_protection.forged_fresh_timestamp_rejected",
+            "manual_sync.plan_replay_protection.source_change_still_rejected",
+            "manual_sync.per_item_failures.source_missing_recorded",
+            "manual_sync.per_item_failures.read_error_recorded",
+            "manual_sync.per_item_failures.read_timeout_recorded",
+            "manual_sync.per_item_failures.continue_within_failure_budget",
+            "manual_sync.failure_budget.stopped_by_failure_budget_recorded",
+            "manual_sync.failure_budget.stopped_by_duration_budget_recorded",
+            "manual_sync.failure_budget.unprocessed_count_reported",
+            "manual_sync.failure_budget.pending_import_preserved_on_early_stop",
+            "manual_sync.localization.blocked_current_phase",
+            "manual_sync.public_serialization.generic_sync_run_redacts_private_plan",
+            "manual_sync.public_serialization.dashboard_state_redacts_private_plan",
+            "manual_sync.public_serialization.pending_summary_redacts_private_plan",
+            "manual_sync.public_serialization.job_serializers_redact_private_plan",
+            "manual_sync.ledger.per_file_records_present",
+            "manual_sync.ledger.dynamic_sync_run_used",
+            "manual_sync.ledger.import_preledger_committed_before_media_write",
+            "manual_sync.ledger.import_preledger_success_failure_updated",
+            "manual_sync.ledger.run_item_deduplicated_per_source_item",
+            "manual_sync.ledger.deferred_unprocessed_rows_materialized",
+            "manual_sync.ledger.deferred_unprocessed_without_source_read_or_hash",
+            "manual_sync.ledger.public_safe",
+            "manual_sync.pipeline.dev_test_execute_supported",
+            "manual_sync.pipeline.production_acceptance_pending",
+            "api_surface.manual_execute_endpoint_added",
+            "ui.web_admin_manual_execute_panel",
+            "ui.web_admin_plan_confirmation_flow",
+            "ui.web_admin_default_max_files_visible",
+            "ui.web_admin_separate_update_check_limit",
+            "ui.launcher_manual_sync_entry",
+            "ui.launcher_manual_sync_forces_content_tab",
+            "validation.focused_tests_passed",
+            "validation.launcher_tests_passed",
+            "validation.browser_validation_performed",
+            "validation.contract_check_passed",
+            "public_redaction.passed",
+        ),
+        code="s3a_m1_required_proof_missing",
+        message="S3A-M1 requires guarded execute, UI/launcher, validation, and public-redaction proof.",
+    )
+    if status == "target_met_dev_test_ready":
+        _check_required_boolean_paths(
+            summary,
+            result,
+            (
+                "target_met",
+                "manual_sync.dev_test_execute_validation.completed",
+                "manual_sync.dev_test_execute_validation.source_mutation_absent",
+                "manual_sync.dev_test_execute_validation.llm_calls_absent",
+            ),
+            code="s3a_m1_target_validation_missing",
+            message="S3A-M1 target status requires focused dev/test execute validation proof.",
+        )
+
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "ai_execution_profile.llm_calls_enabled",
+            "api_surface.automatic_execution_endpoint_added",
+            "safety.production_execute_performed",
+            "safety.production_import",
+            "safety.production_classification",
+            "safety.production_ai_tagging_writes",
+            "safety.production_localization_writes",
+            "safety.source_icloud_mutation",
+            "safety.app_managed_production_storage_mutation",
+            "safety.external_provider_calls",
+            "safety.model_downloads",
+            "safety.llm_calls",
+            "safety.automatic_sync_enabled",
+            "safety.scheduled_sync_enabled",
+            "safety.system_service_enabled",
+            "safety.startup_task_enabled",
+            "safety.production_acceptance_completed",
+        ),
+        code="s3a_m1_forbidden_execution_or_mutation",
+        message="S3A-M1 must keep production writes, source/iCloud mutation, LLM/provider calls, and unattended sync disabled.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "manual_sync.classification.model_downloads_allowed",
+            "manual_sync.ai_tagging.raw_error_details_public",
+            "manual_sync.localization.scheduled_in_execute",
+        ),
+        code="s3a_m1_forbidden_model_or_localization_side_effect",
+        message="S3A-M1 must not allow classification model downloads or execute-time localization scheduling.",
+    )
+
+    profile = _get(summary, "ai_execution_profile", {})
+    if not isinstance(profile, Mapping):
+        result.fail("s3a_m1_profile_not_object", "ai_execution_profile must be an object.", path="ai_execution_profile")
+        profile = {}
+    if str(profile.get("provider_backend") or "") != "onnxruntime":
+        result.fail("s3a_m1_provider_backend_invalid", "S3A-M1 AI execution must stay on local ONNX Runtime.", path="ai_execution_profile.provider_backend", expected="onnxruntime", actual=profile.get("provider_backend"))
+    provider_preference = profile.get("provider_preference")
+    if not isinstance(provider_preference, list) or "CPUExecutionProvider" not in provider_preference:
+        result.fail("s3a_m1_cpu_fallback_missing", "S3A-M1 AI profile must keep CPU fallback.", path="ai_execution_profile.provider_preference", expected="list containing CPUExecutionProvider", actual=provider_preference)
+    if not _as_bool(profile.get("local_files_only")):
+        result.fail("s3a_m1_local_files_only_missing", "S3A-M1 AI execution must enforce local-files-only model loading.", path="ai_execution_profile.local_files_only", expected=True, actual=profile.get("local_files_only"))
+    batch_size = _as_int(profile.get("batch_size", 0))
+    concurrency = _as_int(profile.get("concurrency", 0))
+    if not (1 <= batch_size <= 16):
+        result.fail("s3a_m1_batch_unbounded", "S3A-M1 AI batch size must stay bounded.", path="ai_execution_profile.batch_size", expected="1..16", actual=batch_size)
+    if concurrency != 1:
+        result.fail("s3a_m1_concurrency_unbounded", "S3A-M1 AI concurrency must remain one.", path="ai_execution_profile.concurrency", expected=1, actual=concurrency)
+
+    stages = _get(summary, "manual_sync.pipeline.stages", [])
+    stage_names = {
+        str(stage.get("name"))
+        for stage in stages
+        if isinstance(stages, list) and isinstance(stage, Mapping)
+    } if isinstance(stages, list) else set()
+    expected_stages = {"plan", "import", "classification", "ai_tagging", "localization", "summary"}
+    missing_stages = sorted(expected_stages - stage_names)
+    if missing_stages:
+        result.fail(
+            "s3a_m1_pipeline_stages_missing",
+            "Manual execute pipeline must expose plan, import, classification, AI tagging, localization, and summary stages.",
+            path="manual_sync.pipeline.stages",
+            expected=sorted(expected_stages),
+            actual=sorted(stage_names),
+        )
+
+    max_files = _as_int(_get(summary, "manual_sync.limits.safe_default_max_files", 0))
+    execute_max_files = _as_int(_get(summary, "manual_sync.limits.execute_max_files", 0))
+    default_execute_max_files = _as_int(_get(summary, "manual_sync.limits.manual_execute_default_max_files", 0))
+    max_duration = _as_int(_get(summary, "manual_sync.limits.max_duration_seconds", 0))
+    if not (1 <= max_files <= 1000):
+        result.fail("s3a_m1_max_files_unbounded", "S3A-M1 safe default max files must stay bounded.", path="manual_sync.limits.safe_default_max_files", expected="1..1000", actual=max_files)
+    if not (1 <= execute_max_files <= 5):
+        result.fail("s3a_m1_execute_max_files_unbounded", "S3A-M1 execute max_files cap must stay at or below 5.", path="manual_sync.limits.execute_max_files", expected="1..5", actual=execute_max_files)
+    if default_execute_max_files != execute_max_files:
+        result.fail("s3a_m1_default_execute_max_files_mismatch", "S3A-M1 dry-run/manual execute default max_files must match the execute cap.", path="manual_sync.limits.manual_execute_default_max_files", expected=execute_max_files, actual=default_execute_max_files)
+    if not (1 <= max_duration <= 3600):
+        result.fail("s3a_m1_max_duration_unbounded", "S3A-M1 max duration must stay bounded.", path="manual_sync.limits.max_duration_seconds", expected="1..3600", actual=max_duration)
+
+    recovery_timeout = _as_int(_get(summary, "manual_sync.active_run_recovery.timeout_seconds", 0))
+    if not (60 <= recovery_timeout <= 86400):
+        result.fail("s3a_m1_active_recovery_timeout_invalid", "S3A-M1 stale active run recovery timeout must be bounded.", path="manual_sync.active_run_recovery.timeout_seconds", expected="60..86400", actual=recovery_timeout)
+    max_item_failures = _as_int(_get(summary, "manual_sync.failure_budget.max_item_failures", 0))
+    max_consecutive_failures = _as_int(_get(summary, "manual_sync.failure_budget.max_consecutive_failures", 0))
+    max_failure_rate = _as_float(_get(summary, "manual_sync.failure_budget.max_failure_rate", 0.0))
+    failure_duration = _as_int(_get(summary, "manual_sync.failure_budget.max_duration_seconds", 0))
+    if not (1 <= max_item_failures <= 1000):
+        result.fail("s3a_m1_failure_budget_count_invalid", "S3A-M1 failure budget count must be present and bounded.", path="manual_sync.failure_budget.max_item_failures", expected="1..1000", actual=max_item_failures)
+    if not (1 <= max_consecutive_failures <= max_item_failures):
+        result.fail("s3a_m1_consecutive_failure_budget_invalid", "S3A-M1 consecutive failure cap must be present and no higher than the item failure budget.", path="manual_sync.failure_budget.max_consecutive_failures", expected="1..max_item_failures", actual=max_consecutive_failures)
+    if not (0.0 < max_failure_rate <= 1.0):
+        result.fail("s3a_m1_failure_rate_invalid", "S3A-M1 failure rate cap must be a positive fraction.", path="manual_sync.failure_budget.max_failure_rate", expected="0..1", actual=max_failure_rate)
+    if not (1 <= failure_duration <= 3600):
+        result.fail("s3a_m1_failure_duration_invalid", "S3A-M1 duration stop budget must stay bounded.", path="manual_sync.failure_budget.max_duration_seconds", expected="1..3600", actual=failure_duration)
+    localization_reason = str(_get(summary, "manual_sync.localization.blocked_reason", "") or "").strip()
+    if not localization_reason:
+        result.fail("s3a_m1_localization_block_reason_missing", "S3A-M1 localization state must report why scheduling is blocked.", path="manual_sync.localization.blocked_reason", expected="non-empty reason", actual=localization_reason)
+    model_uncached_reason = str(_get(summary, "manual_sync.ai_tagging.model_uncached_reason", "") or "")
+    file_missing_reason = str(_get(summary, "manual_sync.ai_tagging.file_missing_reason", "") or "")
+    inference_reason = str(_get(summary, "manual_sync.ai_tagging.inference_failure_reason", "") or "")
+    if model_uncached_reason != "ai_tagger_model_uncached":
+        result.fail("s3a_m1_ai_model_uncached_reason_invalid", "S3A-M1 must report the stable AI model cache failure reason.", path="manual_sync.ai_tagging.model_uncached_reason", expected="ai_tagger_model_uncached", actual=model_uncached_reason)
+    if file_missing_reason != "ai_tagger_file_missing":
+        result.fail("s3a_m1_ai_file_missing_reason_invalid", "S3A-M1 must report the stable AI file-missing failure reason.", path="manual_sync.ai_tagging.file_missing_reason", expected="ai_tagger_file_missing", actual=file_missing_reason)
+    if inference_reason != "ai_tagger_inference_failed":
+        result.fail("s3a_m1_ai_inference_reason_invalid", "S3A-M1 must report the stable AI inference failure reason.", path="manual_sync.ai_tagging.inference_failure_reason", expected="ai_tagger_inference_failed", actual=inference_reason)
+    if _as_bool(_get(summary, "manual_sync.ai_tagging.raw_error_details_public", False)):
+        result.fail("s3a_m1_ai_raw_error_public", "S3A-M1 public status/reporting must not expose raw AI tagging error details.", path="manual_sync.ai_tagging.raw_error_details_public", expected=False, actual=True)
+    ai_tags_unavailable_reason = str(_get(summary, "manual_sync.classification.ai_tags_unavailable_reason", "") or "")
+    ai_tagging_failed_reason = str(_get(summary, "manual_sync.classification.ai_tagging_failed_reason", "") or "")
+    if ai_tags_unavailable_reason != "classification_deferred_ai_tags_unavailable":
+        result.fail(
+            "s3a_m1_heuristic_ai_tags_unavailable_reason_invalid",
+            "S3A-M1 heuristic classification must report a stable defer reason when fresh AI tags are unavailable.",
+            path="manual_sync.classification.ai_tags_unavailable_reason",
+            expected="classification_deferred_ai_tags_unavailable",
+            actual=ai_tags_unavailable_reason,
+        )
+    if ai_tagging_failed_reason != "classification_skipped_ai_tagging_failed":
+        result.fail(
+            "s3a_m1_heuristic_ai_tagging_failed_reason_invalid",
+            "S3A-M1 heuristic classification must report a stable skip reason when AI tagging failed.",
+            path="manual_sync.classification.ai_tagging_failed_reason",
+            expected="classification_skipped_ai_tagging_failed",
+            actual=ai_tagging_failed_reason,
+        )
+
+    phrase = str(_get(summary, "manual_sync.confirmation_phrase_prefix", "") or "")
+    production_phrase = str(_get(summary, "manual_sync.production_confirmation_phrase_prefix", "") or "")
+    if phrase != "I APPROVE S3A-M1 MANUAL SYNC EXECUTE":
+        result.fail("s3a_m1_confirmation_prefix_invalid", "Manual confirmation prefix changed unexpectedly.", path="manual_sync.confirmation_phrase_prefix", expected="I APPROVE S3A-M1 MANUAL SYNC EXECUTE", actual=phrase)
+    if production_phrase != "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE":
+        result.fail("s3a_m1_production_confirmation_prefix_invalid", "Production confirmation prefix changed unexpectedly.", path="manual_sync.production_confirmation_phrase_prefix", expected="I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE", actual=production_phrase)
+
+    markdown_text = _read_s3a_m1_markdown_report(summary, result)
+    redaction_findings = scan_public_payload({"public_json_payload": summary, "public_markdown_text": markdown_text})
+    result.details["s3a_m1_public_redaction_finding_count"] = len(redaction_findings)
+    if redaction_findings:
+        result.fail(
+            "s3a_m1_public_payload_redaction_failed",
+            "S3A-M1 contract independently found forbidden public JSON or Markdown content.",
             path="public_payload",
             expected="no findings",
             actual={"finding_count": len(redaction_findings), "findings_redacted": True},
@@ -6105,6 +6455,7 @@ CUSTOM_CHECKS = {
     "s2g_s3a_f1_foundation": _check_s2g_s3a_f1_foundation,
     "s2g_real1_bounded_ai_tagging_validation": _check_s2g_real1_bounded_ai_tagging_validation,
     "s2g_manual_sync_foundation": _check_s2g_manual_sync_foundation,
+    "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

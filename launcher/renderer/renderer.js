@@ -31,6 +31,7 @@ const buttons = {
   preflight: document.getElementById('preflightButton'),
   start: document.getElementById('startButton'),
   openBrowser: document.getElementById('openBrowserButton'),
+  openManualSync: document.getElementById('openManualSyncButton'),
   stop: document.getElementById('stopButton'),
   restart: document.getElementById('restartButton'),
   copyDiagnostics: document.getElementById('copyDiagnosticsButton')
@@ -480,6 +481,20 @@ buttons.openBrowser.addEventListener('click', async () => {
     }
     advancedDiagnostics.textContent = JSON.stringify(browserPayload, null, 2);
     primaryMessage.textContent = '已打开浏览器，当前生产状态保持不变。';
+  } finally {
+    setBusy(false);
+  }
+});
+buttons.openManualSync.addEventListener('click', async () => {
+  setBusy(true);
+  try {
+    const manualSyncPayload = await window.violetLauncher.run('open-manual-sync');
+    if (manualSyncPayload && manualSyncPayload.ok === false) {
+      applyPayload(manualSyncPayload);
+      return;
+    }
+    advancedDiagnostics.textContent = JSON.stringify(manualSyncPayload, null, 2);
+    primaryMessage.textContent = '已打开手动同步入口，当前生产状态保持不变。';
   } finally {
     setBusy(false);
   }

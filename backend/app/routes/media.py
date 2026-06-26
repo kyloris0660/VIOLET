@@ -60,7 +60,12 @@ def update_tag_counts(db: Session, tag_ids: List[int]):
             synchronize_session=False
         )
         
-def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Optional[dict] = None) -> List[Tag]:
+def get_or_create_tags(
+    db: Session,
+    tag_names: List[str],
+    category_hints: Optional[dict] = None,
+    schedule_localization: bool = True,
+) -> List[Tag]:
     """Get or create tags by name.
     
     Args:
@@ -94,7 +99,7 @@ def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Option
             new_tag_names.append(name)
         tags.append(tag)
 
-    if new_tag_names:
+    if new_tag_names and schedule_localization:
         try:
             from ..services.tag_localization_service import schedule_auto_translate
             schedule_auto_translate(new_tag_names)

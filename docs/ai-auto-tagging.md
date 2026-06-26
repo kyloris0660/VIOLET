@@ -20,6 +20,11 @@ All dependencies are already in `requirements.txt`. No additional installation i
 
 The WDv3 tagger uses ONNX model files from SmilingWolf's HuggingFace repositories. Model files are **not** stored in git — they are downloaded automatically on first use to the HuggingFace cache directory (`~/.cache/huggingface/`).
 
+S3A-M1 manual sync execute is stricter than the legacy direct AI tagging UI:
+it calls AI tagging with `local_files_only=true`. If the model is not already
+cached locally, the manual sync AI stage fails/skips under the guarded run
+instead of downloading model files.
+
 ### Available Models
 
 | Model | Speed | Size |
@@ -269,6 +274,10 @@ When enabled (`force_suggestions=true` on job creation or `AI_AUTO_TAG_AFTER_IMP
 ### Tag Localization
 
 AI tagging jobs automatically schedule tag localization (auto-translate via LLM) for newly created tags, if `TAG_TRANSLATION_AUTO_ENABLED=true`.
+
+S3A-M1 manual sync execute disables this tag-creation localization side effect
+for its AI tagging calls and records localization as skipped for the current
+phase. No LLM call is part of S3A-M1 implementation validation.
 
 See [AI Tagging Jobs](ai-tagging-jobs.md) for complete API reference, configuration, and Admin UI documentation.
 

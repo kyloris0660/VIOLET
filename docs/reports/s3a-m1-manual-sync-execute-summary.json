@@ -1,0 +1,222 @@
+{
+  "ai_execution_profile": {
+    "batch_size": 2,
+    "concurrency": 1,
+    "llm_calls_enabled": false,
+    "local_files_only": true,
+    "provider_backend": "onnxruntime",
+    "provider_preference": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ]
+  },
+  "api_surface": {
+    "automatic_execution_endpoint_added": false,
+    "manual_execute_endpoint_added": true
+  },
+  "manual_sync": {
+    "cancel_endpoint": true,
+    "confirmation_phrase_prefix": "I APPROVE S3A-M1 MANUAL SYNC EXECUTE",
+    "default_execute_disabled": true,
+    "dev_test_execute_validation": {
+      "completed": true,
+      "llm_calls_absent": true,
+      "source_mutation_absent": true
+    },
+    "exact_confirmation_required": true,
+    "execute_endpoint": true,
+    "hydrated_only_required": true,
+    "job_status_endpoint": true,
+    "translation_side_effect_gates": {
+      "background_llm_blocked": true,
+      "auto_llm_blocked": true,
+      "llm_enabled_blocked": true,
+      "live_worker_state_blocked": true,
+      "schedule_localization_false_not_sufficient": true
+    },
+    "classification": {
+      "local_only": true,
+      "clip_cache_only_required": true,
+      "uncached_clip_skips": true,
+      "model_downloads_allowed": false,
+      "method_and_order_reported": true,
+      "heuristic_ai_tags_before_classification": true,
+      "heuristic_deferred_when_ai_tags_unavailable": true,
+      "heuristic_ai_failure_does_not_write_unknown": true,
+      "ai_tags_unavailable_reason": "classification_deferred_ai_tags_unavailable",
+      "ai_tagging_failed_reason": "classification_skipped_ai_tagging_failed",
+      "clip_cached_path_preserved": true
+    },
+    "ai_tagging": {
+      "item_exception_containment": true,
+      "model_uncached_reason": "ai_tagger_model_uncached",
+      "file_missing_reason": "ai_tagger_file_missing",
+      "inference_failure_reason": "ai_tagger_inference_failed",
+      "returned_error_sanitized": true,
+      "raw_error_details_public": false,
+      "proper_nouns_suggestion_only": true,
+      "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": true,
+      "single_item_failure_does_not_fail_whole_run": true
+    },
+    "active_run_recovery": {
+      "stale_pending_running_finalized": true,
+      "stale_cancelling_finalized": true,
+      "timeout_seconds": 1800
+    },
+    "plan_replay_protection": {
+      "plan_hash_binds_created_at": true,
+      "directory_walk_order_deterministic": true,
+      "unchanged_tree_not_rejected_by_directory_order": true,
+      "forged_fresh_timestamp_rejected": true,
+      "source_change_still_rejected": true
+    },
+    "per_item_failures": {
+      "source_missing_recorded": true,
+      "read_error_recorded": true,
+      "read_timeout_recorded": true,
+      "continue_within_failure_budget": true
+    },
+    "failure_budget": {
+      "execute_max_files": 5,
+      "max_item_failures": 20,
+      "max_failure_rate": 0.05,
+      "max_consecutive_failures": 10,
+      "max_duration_seconds": 600,
+      "stopped_by_failure_budget_recorded": true,
+      "stopped_by_duration_budget_recorded": true,
+      "unprocessed_count_reported": true,
+      "pending_import_preserved_on_early_stop": true
+    },
+    "localization": {
+      "scheduled_in_execute": false,
+      "blocked_current_phase": true,
+      "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase"
+    },
+    "public_serialization": {
+      "generic_sync_run_redacts_private_plan": true,
+      "dashboard_state_redacts_private_plan": true,
+      "pending_summary_redacts_private_plan": true,
+      "job_serializers_redact_private_plan": true
+    },
+    "ledger": {
+      "dynamic_sync_run_used": true,
+      "per_file_records_present": true,
+      "import_preledger_committed_before_media_write": true,
+      "import_preledger_success_failure_updated": true,
+      "run_item_deduplicated_per_source_item": true,
+      "deferred_unprocessed_rows_materialized": true,
+      "deferred_unprocessed_without_source_read_or_hash": true,
+      "public_safe": true
+    },
+    "limits": {
+      "execute_max_files": 5,
+      "manual_execute_default_max_files": 5,
+      "dry_run_execute_default_max_files_aligned": true,
+      "normal_update_check_not_forced_to_execute_cap": true,
+      "separate_update_check_and_execute_limits": true,
+      "execute_max_files_exceeded_rejected": true,
+      "max_duration_seconds": 600,
+      "safe_default_max_files": 25
+    },
+    "active_job_gates": {
+      "ai_job_active_blocked": true,
+      "classification_job_active_blocked": true,
+      "queued_ai_job_blocked": true,
+      "queued_classification_job_blocked": true,
+      "queued_manual_sync_execute_blocks_ai_job": true,
+      "queued_manual_sync_execute_blocks_classification_job": true,
+      "manual_sync_execute_active_blocks_ai_job": true,
+      "manual_sync_execute_active_blocks_classification_job": true
+    },
+    "runner_outputs": {
+      "default_report_json_gitignored": true,
+      "default_report_md_gitignored": true,
+      "docs_reports_require_explicit_flags": true,
+      "execute_report_uses_approved_plan": true,
+      "standalone_db_session_initialized": true
+    },
+    "pipeline": {
+      "dev_test_execute_supported": true,
+      "production_acceptance_pending": true,
+      "stages": [
+        {
+          "name": "plan"
+        },
+        {
+          "name": "import"
+        },
+        {
+          "name": "classification"
+        },
+        {
+          "name": "ai_tagging"
+        },
+        {
+          "name": "localization"
+        },
+        {
+          "name": "summary"
+        }
+      ]
+    },
+    "plan_endpoint": true,
+    "plan_freshness_required": true,
+    "plan_hash_required": true,
+    "production_confirmation_phrase_prefix": "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE",
+    "registered_root_required_for_execute": true,
+    "stale_replan_rejected": true,
+    "status_endpoint": true
+  },
+  "phase": "S3A-M1",
+  "pipeline_contract": {
+    "claims": {
+      "full_chain_complete": false,
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s3a_m1_manual_sync_execute_contract_v1",
+    "phase_identity": "S3A-M1",
+    "status": "target_met_dev_test_ready"
+  },
+  "public_redaction": {
+    "finding_count": 0,
+    "passed": true
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s3a-m1-manual-sync-execute.md",
+    "path_style": "repo_relative_public_artifacts",
+    "summary_json_path": "docs/reports/s3a-m1-manual-sync-execute-summary.json"
+  },
+  "safety": {
+    "app_managed_production_storage_mutation": false,
+    "automatic_sync_enabled": false,
+    "external_provider_calls": false,
+    "model_downloads": false,
+    "llm_calls": false,
+    "production_acceptance_completed": false,
+    "production_ai_tagging_writes": false,
+    "production_classification": false,
+    "production_execute_performed": false,
+    "production_import": false,
+    "production_localization_writes": false,
+    "scheduled_sync_enabled": false,
+    "source_icloud_mutation": false,
+    "startup_task_enabled": false,
+    "system_service_enabled": false
+  },
+  "target_met": true,
+  "ui": {
+    "launcher_manual_sync_entry": true,
+    "launcher_manual_sync_forces_content_tab": true,
+    "web_admin_separate_update_check_limit": true,
+    "web_admin_default_max_files_visible": true,
+    "web_admin_manual_execute_panel": true,
+    "web_admin_plan_confirmation_flow": true
+  },
+  "validation": {
+    "browser_validation_performed": true,
+    "contract_check_passed": true,
+    "focused_tests_passed": true,
+    "launcher_tests_passed": true
+  }
+}

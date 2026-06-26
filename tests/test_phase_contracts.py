@@ -1321,6 +1321,211 @@ def _s2g_m1_summary(**overrides: object) -> dict:
     return summary
 
 
+def _s3a_m1_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S3A-M1",
+        "target_met": True,
+        "pipeline_contract": {
+            "contract_id": "s3a_m1_manual_sync_execute_contract_v1",
+            "status": "target_met_dev_test_ready",
+            "phase_identity": "S3A-M1",
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": False},
+        },
+        "manual_sync": {
+            "plan_endpoint": True,
+            "execute_endpoint": True,
+            "status_endpoint": True,
+            "job_status_endpoint": True,
+            "cancel_endpoint": True,
+            "plan_hash_required": True,
+            "exact_confirmation_required": True,
+            "plan_freshness_required": True,
+            "registered_root_required_for_execute": True,
+            "hydrated_only_required": True,
+            "default_execute_disabled": True,
+            "stale_replan_rejected": True,
+            "confirmation_phrase_prefix": "I APPROVE S3A-M1 MANUAL SYNC EXECUTE",
+            "production_confirmation_phrase_prefix": "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE",
+            "limits": {
+                "safe_default_max_files": 25,
+                "execute_max_files": 5,
+                "manual_execute_default_max_files": 5,
+                "dry_run_execute_default_max_files_aligned": True,
+                "normal_update_check_not_forced_to_execute_cap": True,
+                "separate_update_check_and_execute_limits": True,
+                "execute_max_files_exceeded_rejected": True,
+                "max_duration_seconds": 600,
+            },
+            "active_job_gates": {
+                "ai_job_active_blocked": True,
+                "classification_job_active_blocked": True,
+                "queued_ai_job_blocked": True,
+                "queued_classification_job_blocked": True,
+                "queued_manual_sync_execute_blocks_ai_job": True,
+                "queued_manual_sync_execute_blocks_classification_job": True,
+                "manual_sync_execute_active_blocks_ai_job": True,
+                "manual_sync_execute_active_blocks_classification_job": True,
+            },
+            "runner_outputs": {
+                "default_report_json_gitignored": True,
+                "default_report_md_gitignored": True,
+                "docs_reports_require_explicit_flags": True,
+                "execute_report_uses_approved_plan": True,
+                "standalone_db_session_initialized": True,
+            },
+            "translation_side_effect_gates": {
+                "background_llm_blocked": True,
+                "auto_llm_blocked": True,
+                "llm_enabled_blocked": True,
+                "live_worker_state_blocked": True,
+                "schedule_localization_false_not_sufficient": True,
+            },
+            "classification": {
+                "local_only": True,
+                "clip_cache_only_required": True,
+                "uncached_clip_skips": True,
+                "model_downloads_allowed": False,
+                "method_and_order_reported": True,
+                "heuristic_ai_tags_before_classification": True,
+                "heuristic_deferred_when_ai_tags_unavailable": True,
+                "heuristic_ai_failure_does_not_write_unknown": True,
+                "ai_tags_unavailable_reason": "classification_deferred_ai_tags_unavailable",
+                "ai_tagging_failed_reason": "classification_skipped_ai_tagging_failed",
+                "clip_cached_path_preserved": True,
+            },
+            "ai_tagging": {
+                "item_exception_containment": True,
+                "model_uncached_reason": "ai_tagger_model_uncached",
+                "file_missing_reason": "ai_tagger_file_missing",
+                "inference_failure_reason": "ai_tagger_inference_failed",
+                "returned_error_sanitized": True,
+                "raw_error_details_public": False,
+                "proper_nouns_suggestion_only": True,
+                "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": True,
+                "single_item_failure_does_not_fail_whole_run": True,
+            },
+            "active_run_recovery": {
+                "stale_pending_running_finalized": True,
+                "stale_cancelling_finalized": True,
+                "timeout_seconds": 1800,
+            },
+            "plan_replay_protection": {
+                "plan_hash_binds_created_at": True,
+                "directory_walk_order_deterministic": True,
+                "unchanged_tree_not_rejected_by_directory_order": True,
+                "forged_fresh_timestamp_rejected": True,
+                "source_change_still_rejected": True,
+            },
+            "per_item_failures": {
+                "source_missing_recorded": True,
+                "read_error_recorded": True,
+                "read_timeout_recorded": True,
+                "continue_within_failure_budget": True,
+            },
+            "failure_budget": {
+                "max_item_failures": 20,
+                "max_failure_rate": 0.05,
+                "max_consecutive_failures": 10,
+                "max_duration_seconds": 600,
+                "stopped_by_failure_budget_recorded": True,
+                "stopped_by_duration_budget_recorded": True,
+                "unprocessed_count_reported": True,
+                "pending_import_preserved_on_early_stop": True,
+            },
+            "localization": {
+                "scheduled_in_execute": False,
+                "blocked_current_phase": True,
+                "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase",
+            },
+            "public_serialization": {
+                "generic_sync_run_redacts_private_plan": True,
+                "dashboard_state_redacts_private_plan": True,
+                "pending_summary_redacts_private_plan": True,
+                "job_serializers_redact_private_plan": True,
+            },
+            "ledger": {
+                "per_file_records_present": True,
+                "dynamic_sync_run_used": True,
+                "import_preledger_committed_before_media_write": True,
+                "import_preledger_success_failure_updated": True,
+                "run_item_deduplicated_per_source_item": True,
+                "deferred_unprocessed_rows_materialized": True,
+                "deferred_unprocessed_without_source_read_or_hash": True,
+                "public_safe": True,
+            },
+            "pipeline": {
+                "dev_test_execute_supported": True,
+                "production_acceptance_pending": True,
+                "stages": [
+                    {"name": "plan"},
+                    {"name": "import"},
+                    {"name": "classification"},
+                    {"name": "ai_tagging"},
+                    {"name": "localization"},
+                    {"name": "summary"},
+                ],
+            },
+            "dev_test_execute_validation": {
+                "completed": True,
+                "source_mutation_absent": True,
+                "llm_calls_absent": True,
+            },
+        },
+        "ai_execution_profile": {
+            "provider_backend": "onnxruntime",
+            "provider_preference": ["DmlExecutionProvider", "CPUExecutionProvider"],
+            "batch_size": 2,
+            "concurrency": 1,
+            "local_files_only": True,
+            "llm_calls_enabled": False,
+        },
+        "api_surface": {
+            "manual_execute_endpoint_added": True,
+            "automatic_execution_endpoint_added": False,
+        },
+        "ui": {
+            "web_admin_manual_execute_panel": True,
+            "web_admin_plan_confirmation_flow": True,
+            "web_admin_default_max_files_visible": True,
+            "web_admin_separate_update_check_limit": True,
+            "launcher_manual_sync_entry": True,
+            "launcher_manual_sync_forces_content_tab": True,
+        },
+        "validation": {
+            "focused_tests_passed": True,
+            "launcher_tests_passed": True,
+            "browser_validation_performed": True,
+            "contract_check_passed": True,
+        },
+        "public_reports": {
+            "summary_json_path": "docs/reports/s3a-m1-manual-sync-execute-summary.json",
+            "markdown_report_path": "docs/reports/s3a-m1-manual-sync-execute.md",
+            "path_style": "repo_relative_public_artifacts",
+        },
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "safety": {
+            "production_execute_performed": False,
+            "production_import": False,
+            "production_classification": False,
+            "production_ai_tagging_writes": False,
+            "production_localization_writes": False,
+            "source_icloud_mutation": False,
+            "app_managed_production_storage_mutation": False,
+            "external_provider_calls": False,
+            "model_downloads": False,
+            "llm_calls": False,
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+            "system_service_enabled": False,
+            "startup_task_enabled": False,
+            "production_acceptance_completed": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _set_nested(payload: dict, path: str, value: object) -> None:
     cursor = payload
     parts = path.split(".")
@@ -2976,6 +3181,302 @@ def test_s2g_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
     result = check_phase_contract("s2g_manual_sync_foundation_contract_v1", _s2g_m1_summary())
 
     assert "s2g_m1_public_payload_redaction_failed" in _error_codes(result)
+
+
+def test_s3a_m1_contract_accepts_manual_sync_execute_ui() -> None:
+    result = check_phase_contract(
+        "s3a_m1_manual_sync_execute_contract_v1",
+        _s3a_m1_summary(),
+    )
+
+    assert result.passed is True
+
+
+def test_s3a_m1_contract_rejects_missing_confirmation_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["exact_confirmation_required"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_production_execute_completion() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["pipeline"]["production_acceptance_pending"] = False
+    summary["safety"]["production_execute_performed"] = True
+    summary["safety"]["production_import"] = True
+    summary["safety"]["production_acceptance_completed"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+    assert "s3a_m1_forbidden_execution_or_mutation" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_launcher_or_browser_validation() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["ui"]["launcher_manual_sync_entry"] = False
+    summary["validation"]["browser_validation_performed"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_translation_side_effect_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["translation_side_effect_gates"]["live_worker_state_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_clip_model_download_allowed() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["classification"]["model_downloads_allowed"] = True
+    summary["safety"]["model_downloads"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_forbidden_execution_or_mutation" in _error_codes(result)
+    assert "s3a_m1_forbidden_model_or_localization_side_effect" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_per_item_failure_budget() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["per_item_failures"]["source_missing_recorded"] = False
+    summary["manual_sync"]["failure_budget"]["max_item_failures"] = 0
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+    assert "s3a_m1_failure_budget_count_invalid" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_private_plan_serializer_gap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["public_serialization"]["generic_sync_run_redacts_private_plan"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_heuristic_pre_ai_order() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["classification"]["heuristic_ai_tags_before_classification"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_ai_exception_whole_run_failure() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ai_tagging"]["single_item_failure_does_not_fail_whole_run"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_ai_proper_noun_confirmation() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ai_tagging"]["proper_nouns_suggestion_only"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_stale_plan_replay_gap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["plan_replay_protection"]["forged_fresh_timestamp_rejected"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_nondeterministic_directory_walk_hash() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["plan_replay_protection"]["directory_walk_order_deterministic"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_early_stop_pending_loss() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["failure_budget"]["pending_import_preserved_on_early_stop"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_deferred_unprocessed_ledger_rows() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ledger"]["deferred_unprocessed_rows_materialized"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_import_preledger() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ledger"]["import_preledger_committed_before_media_write"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_execute_max_files_cap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["limits"]["execute_max_files"] = 100000
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_execute_max_files_unbounded" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_unaligned_dry_run_execute_defaults() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["limits"]["dry_run_execute_default_max_files_aligned"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_update_check_forced_to_execute_cap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["limits"]["normal_update_check_not_forced_to_execute_cap"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_active_job_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["ai_job_active_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_queued_job_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["queued_ai_job_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_reciprocal_manual_execute_job_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["manual_sync_execute_active_blocks_ai_job"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_queued_manual_execute_reciprocal_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["queued_manual_sync_execute_blocks_ai_job"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_runner_default_docs_report_output() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["runner_outputs"]["default_report_json_gitignored"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_runner_execute_report_plan_drift() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["runner_outputs"]["execute_report_uses_approved_plan"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_runner_without_db_session_init() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["runner_outputs"]["standalone_db_session_initialized"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_raw_ai_error_public_details() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ai_tagging"]["returned_error_sanitized"] = False
+    summary["manual_sync"]["ai_tagging"]["raw_error_details_public"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+    assert "s3a_m1_ai_raw_error_public" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_launcher_without_content_tab_target() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["ui"]["launcher_manual_sync_forces_content_tab"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_heuristic_classification_without_ai_tag_defer() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["classification"]["heuristic_deferred_when_ai_tags_unavailable"] = False
+    summary["manual_sync"]["classification"]["ai_tags_unavailable_reason"] = "raw missing tag text"
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    codes = _error_codes(result)
+    assert "s3a_m1_required_proof_missing" in codes
+    assert "s3a_m1_heuristic_ai_tags_unavailable_reason_invalid" in codes
+
+
+def test_s3a_m1_contract_rejects_localization_scheduled_in_execute() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["localization"]["scheduled_in_execute"] = True
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_forbidden_model_or_localization_side_effect" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
+    monkeypatch.setattr(
+        contract_checks_module,
+        "_read_s3a_m1_markdown_report",
+        lambda _summary, _result: r"C:\Users\private\Pictures\example.png",
+    )
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", _s3a_m1_summary())
+
+    assert "s3a_m1_public_payload_redaction_failed" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

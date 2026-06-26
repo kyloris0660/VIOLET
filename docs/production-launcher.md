@@ -175,12 +175,19 @@ uptime when available, DB reachability, schema compatibility, storage status,
 and the latest public-safe error. The launcher polls status while the service is
 running and stops polling after the service is stopped.
 
-Open Browser and Copy Diagnostics do not replace the current status/checklist or
-runtime panel.
+Open Browser, Open Manual Sync, and Copy Diagnostics do not replace the current
+status/checklist or runtime panel.
 
 `打开浏览器` is also state-preserving on success: it opens the configured
 production URL but does not replace the current profile, health, or checklist
 view with the controller's minimal open-browser payload.
+
+`打开手动同步` is state-preserving on success: it opens
+`/admin#dynamic-library-sync-section` on the configured production URL. It does
+not bypass authentication, does not call the manual sync execute API, and does
+not grant production acceptance. Manual sync execution still requires the Web
+Admin flow, a fresh dry-run plan, exact confirmation phrase, and any separate
+operator approval required for production acceptance.
 
 Leaving `DB 访问值` blank preserves any existing local profile value. To clear a
 saved value, explicitly check `清除已保存 DB 访问值` and save the profile. DB access
@@ -242,9 +249,9 @@ requires production `data/settings.json` to already contain `secret_key`, so
 importing settings will not write a generated secret before the safe-start
 guard.
 
-This phase does not add a launcher path for schema migration, import, tagging,
-localization, sync, provider calls, SourceConcept, Entity bridge, cleanup,
-delete, reset, drop, or truncate.
+This phase does not add a launcher path for schema migration, direct import,
+direct tagging, localization, direct sync execution, provider calls,
+SourceConcept, Entity bridge, cleanup, delete, reset, drop, or truncate.
 
 ## Health And Stop Safety
 

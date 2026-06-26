@@ -1,7 +1,7 @@
 # Post-S2 Production Roadmap
 
-Status: accepted production routing reference after PR #123 / PD1-A-R1 and
-S2G-M1 foundation work.
+Status: accepted production routing reference after PR #124 / S2G-M1 and
+S3A-M1 manual execute work.
 
 Canonical short version: `docs/roadmap/current-mainline-roadmap.md`.
 This file keeps the post-S2 production utility track aligned with that current
@@ -28,14 +28,14 @@ production sync.
 - The project has a real production baseline library.
 - PR #123 / PD1-A-R1 is merged.
 - Merge commit: `4724530d83767a62b6525a58bb1a1d04e973d48e`.
-- S2G-M1 is the current production-utility foundation phase for AI execution
-  and manual controlled sync.
+- S2G-M1 is merged. S3A-M1 is the current production-utility manual execute/UI
+  phase for guarded controlled sync.
 - Production DB, storage, source roots, and private ledgers must stay separate
   from develop/test fixtures and feature-branch validation.
 
 ## Accepted Sequence
 
-1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation`.
+1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation` - merged in PR #124.
    - The production utility foundation after PD1-A-R1.
    - Single consolidated phase, not split into S2G-1 and S2G-2/3.
    - Covers GPU / AI tagging capability probe and benchmark, provider
@@ -45,11 +45,11 @@ production sync.
      pipeline foundation in dry-run/dev-test mode.
    - Does not authorize production writes.
 
-2. `S3A-M1` - Explicit manual-sync execute path plus final UI / production acceptance.
-   - Small follow-up phase after S2G-M1.
+2. `S3A-M1` - Explicit manual-sync execute path plus final UI / launcher entry.
+   - Current follow-up phase after S2G-M1.
    - Implements or wires the explicit manual-sync execute path, adds the final
-     visible controls, and runs the first small production acceptance batch
-     only after explicit operator approval.
+     visible controls, and leaves the first small production acceptance batch
+     pending explicit operator approval.
    - Must remain manual; no automatic, scheduled, startup, service, or
      unattended sync.
 
@@ -90,8 +90,8 @@ production sync.
 - The launcher should not show an intrusive automatic prompt by default.
 - The backend should call the S2G-M1 dry-run plan endpoint first:
   `POST /api/admin/dynamic-library-sync/manual-sync/plan`.
-- S3A-M1 must implement or wire a separate execute endpoint or runner before
-  production acceptance. That execute path must require explicit operator
+- S3A-M1 implements the separate execute endpoint and runner before production
+  acceptance. A production acceptance run still requires explicit operator
   approval, production identity proof, and a small first batch.
 - Safe defaults from S2G-M1 are max files `25`, max duration `600` seconds,
   AI batch size `2`, and concurrency `1`.
@@ -131,8 +131,9 @@ production sync.
 
 ## Current Non-Goals
 
-S2G-M1 does not authorize production import/classification/AI/localization,
-S3A-M1 production acceptance completion, S3B automation,
+S2G-M1 and S3A-M1 implementation do not authorize production
+import/classification/AI/localization, S3A-M1 production acceptance completion,
+S3B automation,
 provider/Pixiv/gallery-dl/SauceNAO/Google calls, SourceConcept R1/R2, Entity
 bridge, confirmed assignments, desired-media backfill, cleanup, delete, reset,
 drop, truncate, push main, or merge.

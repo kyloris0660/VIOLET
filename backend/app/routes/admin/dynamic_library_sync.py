@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ...auth import require_admin_mode
 from ...config import settings
 from ...database import get_db
-from ...models import DynamicSourceRoot, User
+from ...models import DynamicSourceRoot, DynamicSyncRun, User
 from ...services.dynamic_library_sync_service import (
     assert_manual_sync_allowed,
     get_dashboard_state,
@@ -24,6 +24,16 @@ from ...services.dynamic_library_sync_service import (
     serialize_source_root,
 )
 from ...services.job_control import build_ai_tagging_execution_profile
+from ...services.manual_sync_execute_service import (
+    ManualSyncExecuteError,
+    create_manual_sync_execute_run,
+    get_latest_manual_sync_execute_run,
+    is_manual_sync_execute_active,
+    manual_sync_execute_effective_max_files,
+    request_manual_sync_execute_cancel,
+    serialize_manual_sync_execute_run,
+    start_manual_sync_execute_run,
+)
 
 router = APIRouter()
 
@@ -47,6 +57,17 @@ class ManualSyncDryRunPlanRequest(BaseModel):
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
     hydrated_only: bool = True
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
+
+
+class ManualSyncExecuteRequest(BaseModel):
+    root_id: int = Field(..., ge=1)
+    max_files: Optional[int] = Field(default=None, ge=1, le=100000)
+    hydrated_only: bool = True
+    stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
+    expected_plan_hash: str = Field(..., min_length=12, max_length=128)
+    confirmation_phrase: str = Field(..., min_length=1, max_length=200)
+    plan_created_at: str = Field(..., min_length=1, max_length=80)
+    production_acceptance_approved: bool = False
 
 
 @router.get("/dynamic-library-sync")
@@ -136,6 +157,8 @@ async def get_manual_sync_foundation_status(
         "automatic_sync_enabled": False,
         "scheduled_sync_enabled": False,
         "single_active_ai_execution_guard": True,
+        "single_active_manual_sync_execute_guard": True,
+        "manual_sync_execute_active": is_manual_sync_execute_active(),
         "ai_job_active": is_ai_job_active(),
         "classification_job_active": is_classification_job_active(),
         "pending_summary": get_pending_summary(db),
@@ -173,13 +196,81 @@ def plan_manual_sync(
             db,
             source_path=source_path or "",
             source_record_id=source_record_id,
-            max_files=body.max_files,
+            max_files=manual_sync_execute_effective_max_files(body.max_files),
             hydrated_only=body.hydrated_only,
             stable_age_seconds=body.stable_age_seconds,
             include_private_details=False,
         )
+    except ManualSyncExecuteError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/dynamic-library-sync/manual-sync/execute")
+def execute_manual_sync(
+    body: ManualSyncExecuteRequest,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    try:
+        run = create_manual_sync_execute_run(
+            db,
+            root_id=body.root_id,
+            max_files=body.max_files,
+            hydrated_only=body.hydrated_only,
+            stable_age_seconds=body.stable_age_seconds,
+            expected_plan_hash=body.expected_plan_hash,
+            confirmation_phrase=body.confirmation_phrase,
+            plan_created_at=body.plan_created_at,
+            production_acceptance_approved=body.production_acceptance_approved,
+        )
+        start_manual_sync_execute_run(run.id)
+        return serialize_manual_sync_execute_run(run)
+    except ManualSyncExecuteError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/dynamic-library-sync/manual-sync/jobs/latest")
+def get_latest_manual_sync_job(
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    run = get_latest_manual_sync_execute_run(db)
+    if run is None:
+        return {"job": None}
+    return {"job": serialize_manual_sync_execute_run(run)}
+
+
+@router.get("/dynamic-library-sync/manual-sync/jobs/{run_id}")
+def get_manual_sync_job(
+    run_id: int,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    run = db.get(DynamicSyncRun, run_id)
+    if run is None or run.run_type != "manual_sync_execute":
+        raise HTTPException(status_code=404, detail="manual sync execute job not found")
+    return serialize_manual_sync_execute_run(run)
+
+
+@router.post("/dynamic-library-sync/manual-sync/jobs/{run_id}/cancel")
+def cancel_manual_sync_job(
+    run_id: int,
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db),
+):
+    run = db.get(DynamicSyncRun, run_id)
+    if run is None or run.run_type != "manual_sync_execute":
+        raise HTTPException(status_code=404, detail="manual sync execute job not found")
+    request_manual_sync_execute_cancel(run_id)
+    if run.status in {"pending", "running"}:
+        run.status = "cancelling"
+        db.commit()
+        db.refresh(run)
+    return serialize_manual_sync_execute_run(run)
 
 
 @router.post("/dynamic-library-sync/sync-pending")

@@ -17,6 +17,7 @@ const allowedCommands = new Set([
   'stop',
   'restart',
   'open-browser',
+  'open-manual-sync',
   'diagnostic-summary'
 ]);
 

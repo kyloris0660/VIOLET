@@ -6,6 +6,10 @@ class AdminPanel {
         this.themeSelect = null;
         this.languageSelect = null;
         this.statsModule = null;
+        this.dynamicSyncPlan = null;
+        this.dynamicSyncJobId = null;
+        this.dynamicSyncPollTimer = null;
+        this.dynamicSyncExecuteEnabled = false;
         window.adminPanel = this;
         this.init();
     }
@@ -346,11 +350,23 @@ class AdminPanel {
         }
         const dynamicSyncDryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
         if (dynamicSyncDryRunBtn) {
-            dynamicSyncDryRunBtn.addEventListener('click', () => this.runDynamicUpdateCheck());
+            dynamicSyncDryRunBtn.addEventListener('click', () => this.runManualSyncDryRunPlan());
         }
         const dynamicSyncPendingBtn = document.getElementById('dynamic-sync-sync-pending-btn');
         if (dynamicSyncPendingBtn) {
             dynamicSyncPendingBtn.addEventListener('click', () => this.syncDynamicPendingItems());
+        }
+        const dynamicSyncExecuteBtn = document.getElementById('dynamic-sync-execute-btn');
+        if (dynamicSyncExecuteBtn) {
+            dynamicSyncExecuteBtn.addEventListener('click', () => this.executeManualSyncPlan());
+        }
+        const dynamicSyncCancelBtn = document.getElementById('dynamic-sync-cancel-btn');
+        if (dynamicSyncCancelBtn) {
+            dynamicSyncCancelBtn.addEventListener('click', () => this.cancelManualSyncJob());
+        }
+        const dynamicSyncConfirmation = document.getElementById('dynamic-sync-confirmation');
+        if (dynamicSyncConfirmation) {
+            dynamicSyncConfirmation.addEventListener('input', () => this._updateManualSyncExecuteButton());
         }
         this.loadDynamicSyncDashboard();
 
@@ -1831,6 +1847,7 @@ class AdminPanel {
         const pending = data.pending_summary || {};
         const readiness = data.readiness || {};
         const roots = data.source_roots || [];
+        const policy = data.default_off_policy || {};
         const setText = (id, value) => {
             const el = document.getElementById(id);
             if (el) el.textContent = value;
@@ -1868,18 +1885,190 @@ class AdminPanel {
         }
 
         this._renderDynamicSyncRoots(roots);
+        this._renderManualSyncRootOptions(roots);
         this._renderDynamicSyncLastRun(data.last_sync_run);
         this._renderDynamicSyncReadiness(readiness);
         this._renderDynamicSyncAiLocalization(readiness.ai_localization_readiness || {});
 
         const syncBtn = document.getElementById('dynamic-sync-sync-pending-btn');
         const syncStatus = document.getElementById('dynamic-sync-sync-status');
-        const enabled = pending.manual_sync_execution_enabled && !pending.automatic_production_writes_enabled;
+        const enabled = !!policy.manual_sync_execution_enabled && !policy.automatic_production_writes_enabled;
+        this.dynamicSyncExecuteEnabled = enabled;
         if (syncBtn) syncBtn.disabled = !enabled;
         if (syncStatus) {
             syncStatus.textContent = enabled
                 ? this._dynamicSyncT('admin.dynamic_library_sync.manual_sync_enabled', 'Manual sync execution is enabled.')
                 : this._dynamicSyncT('admin.dynamic_library_sync.manual_sync_disabled', 'Manual sync execution is disabled by default until an approved S2 run.');
+        }
+        this._updateManualSyncExecuteButton();
+        this.loadLatestManualSyncJob();
+    }
+
+    _renderManualSyncRootOptions(roots) {
+        const select = document.getElementById('dynamic-sync-plan-root');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = roots.map(root => {
+            const label = `${root.id}: ${root.label || 'root'} (${(root.root_path_hash || '').slice(0, 8)})`;
+            return `<option value="${root.id}">${this.escapeHtml(label)}</option>`;
+        }).join('');
+        if (current && roots.some(root => String(root.id) === String(current))) {
+            select.value = current;
+        }
+    }
+
+    _manualSyncRequestBody() {
+        const rootSelect = document.getElementById('dynamic-sync-plan-root');
+        const maxFilesEl = document.getElementById('dynamic-sync-execute-max-files') || document.getElementById('dynamic-sync-max-files');
+        const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
+        const body = {
+            root_id: rootSelect && rootSelect.value ? parseInt(rootSelect.value, 10) : null,
+            hydrated_only: hydratedEl ? hydratedEl.checked : true,
+        };
+        const maxFiles = maxFilesEl && maxFilesEl.value ? parseInt(maxFilesEl.value, 10) : null;
+        if (maxFiles) body.max_files = maxFiles;
+        return body;
+    }
+
+    _renderManualSyncPlan(plan) {
+        const resultEl = document.getElementById('dynamic-sync-plan-result');
+        const confirmationEl = document.getElementById('dynamic-sync-confirmation');
+        if (!resultEl) return;
+        const counts = plan.counts || {};
+        const states = counts.state_counts || {};
+        const integrity = plan.integrity || {};
+        resultEl.classList.remove('hidden');
+        resultEl.innerHTML = `
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
+                <div><span class="text-secondary">Plan hash</span><br><span class="font-mono">${this.escapeHtml((integrity.plan_hash || '').slice(0, 24))}</span></div>
+                <div><span class="text-secondary">Seen</span><br><span class="font-bold">${counts.total_seen || 0}</span></div>
+                <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
+                <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
+            </div>
+            <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
+            <div><span class="text-secondary">Confirmation:</span></div>
+            <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(integrity.confirmation_phrase || '')}</code>
+        `;
+        if (confirmationEl) confirmationEl.value = '';
+        this._updateManualSyncExecuteButton();
+    }
+
+    _updateManualSyncExecuteButton() {
+        const btn = document.getElementById('dynamic-sync-execute-btn');
+        const confirmationEl = document.getElementById('dynamic-sync-confirmation');
+        if (!btn) return;
+        const expected = this.dynamicSyncPlan && this.dynamicSyncPlan.integrity
+            ? this.dynamicSyncPlan.integrity.confirmation_phrase
+            : '';
+        const matches = confirmationEl && confirmationEl.value.trim() === expected;
+        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && matches);
+    }
+
+    async runManualSyncDryRunPlan() {
+        const body = this._manualSyncRequestBody();
+        if (!body.root_id) {
+            app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
+            return;
+        }
+        try {
+            const plan = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            this.dynamicSyncPlan = plan;
+            this._renderManualSyncPlan(plan);
+            app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.plan_ready', 'Dry-run plan ready.'), 'success');
+        } catch (e) {
+            this.dynamicSyncPlan = null;
+            this._updateManualSyncExecuteButton();
+            app.showNotification(`Manual sync plan failed: ${e.message || e}`, 'error');
+        }
+    }
+
+    async executeManualSyncPlan() {
+        if (!this.dynamicSyncPlan) return;
+        const body = this._manualSyncRequestBody();
+        const confirmationEl = document.getElementById('dynamic-sync-confirmation');
+        const integrity = this.dynamicSyncPlan.integrity || {};
+        body.expected_plan_hash = integrity.plan_hash;
+        body.confirmation_phrase = confirmationEl ? confirmationEl.value.trim() : '';
+        body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
+        try {
+            const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            this.dynamicSyncJobId = job.id;
+            this._renderManualSyncJob(job);
+            this._startManualSyncPolling(job.id);
+            app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.execute_started', 'Manual sync execute started.'), 'success');
+        } catch (e) {
+            app.showNotification(`Manual sync execute blocked: ${e.message || e}`, 'error');
+        }
+    }
+
+    async loadLatestManualSyncJob() {
+        const statusEl = document.getElementById('dynamic-sync-job-status');
+        if (!statusEl) return;
+        try {
+            const payload = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/jobs/latest', { method: 'GET' });
+            if (payload.job) {
+                this._renderManualSyncJob(payload.job);
+                if (['pending', 'running', 'cancelling'].includes(payload.job.status)) {
+                    this._startManualSyncPolling(payload.job.id);
+                }
+            }
+        } catch (e) {
+            statusEl.textContent = `Manual sync job load failed: ${e.message || e}`;
+        }
+    }
+
+    _renderManualSyncJob(job) {
+        const statusEl = document.getElementById('dynamic-sync-job-status');
+        const cancelBtn = document.getElementById('dynamic-sync-cancel-btn');
+        if (!statusEl || !job) return;
+        const execute = job.manual_sync_execute || {};
+        const outcomes = execute.outcome_counts || {};
+        statusEl.innerHTML = `
+            <div>Job #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | stage=${this.escapeHtml(execute.current_stage || '-')}</div>
+            <div>seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}</div>
+            <div class="text-secondary">${Object.entries(outcomes).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
+        `;
+        if (cancelBtn) cancelBtn.disabled = !['pending', 'running', 'cancelling'].includes(job.status);
+    }
+
+    _startManualSyncPolling(runId) {
+        if (this.dynamicSyncPollTimer) {
+            window.clearInterval(this.dynamicSyncPollTimer);
+        }
+        this.dynamicSyncJobId = runId;
+        this.dynamicSyncPollTimer = window.setInterval(async () => {
+            try {
+                const job = await app.apiCall(`/api/admin/dynamic-library-sync/manual-sync/jobs/${runId}`, { method: 'GET' });
+                this._renderManualSyncJob(job);
+                if (!['pending', 'running', 'cancelling'].includes(job.status)) {
+                    window.clearInterval(this.dynamicSyncPollTimer);
+                    this.dynamicSyncPollTimer = null;
+                    this.loadDynamicSyncDashboard();
+                }
+            } catch (e) {
+                window.clearInterval(this.dynamicSyncPollTimer);
+                this.dynamicSyncPollTimer = null;
+                app.showNotification(`Manual sync polling failed: ${e.message || e}`, 'error');
+            }
+        }, 1500);
+    }
+
+    async cancelManualSyncJob() {
+        if (!this.dynamicSyncJobId) return;
+        try {
+            const job = await app.apiCall(`/api/admin/dynamic-library-sync/manual-sync/jobs/${this.dynamicSyncJobId}/cancel`, { method: 'POST' });
+            this._renderManualSyncJob(job);
+            app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.cancel_requested', 'Cancel requested.'), 'success');
+        } catch (e) {
+            app.showNotification(`Cancel failed: ${e.message || e}`, 'error');
         }
     }
 
@@ -1991,7 +2180,7 @@ class AdminPanel {
     }
 
     async runDynamicUpdateCheck() {
-        const maxFilesEl = document.getElementById('dynamic-sync-max-files');
+        const maxFilesEl = document.getElementById('dynamic-sync-check-max-files');
         const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
         const body = {
             hydrated_only: hydratedEl ? hydratedEl.checked : true,

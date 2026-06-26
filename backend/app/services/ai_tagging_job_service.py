@@ -76,13 +76,21 @@ def create_ai_tag_job(
     return job
 
 
-def start_ai_tag_job(job_id: int) -> None:
+def start_ai_tag_job(job_id: int, *, local_files_only: bool = False, schedule_localization: bool = True) -> None:
     """Launch a background thread for the given AI tag job."""
-    t = threading.Thread(target=run_ai_tag_job, args=(job_id,), daemon=True)
+    t = threading.Thread(
+        target=run_ai_tag_job,
+        args=(job_id,),
+        kwargs={
+            "local_files_only": local_files_only,
+            "schedule_localization": schedule_localization,
+        },
+        daemon=True,
+    )
     t.start()
 
 
-def run_ai_tag_job(job_id: int) -> None:
+def run_ai_tag_job(job_id: int, *, local_files_only: bool = False, schedule_localization: bool = True) -> None:
     """Execute an AI tagging job in a background thread with its own DB session."""
     from ..database import SessionLocal
     from ..services.ai_tagging_service import run_ai_tagging
@@ -137,6 +145,8 @@ def run_ai_tag_job(job_id: int) -> None:
                     db, media_id,
                     dry_run=job.dry_run,
                     force_suggestions=job.force_suggestions,
+                    local_files_only=local_files_only,
+                    schedule_localization=schedule_localization,
                 )
 
                 job.processed += 1
@@ -200,8 +210,11 @@ def run_ai_tag_job(job_id: int) -> None:
         job.finished_at = datetime.now(timezone.utc)
         job.status = "cancelled" if was_cancelled else "completed"
 
-        # Schedule tag localization for new tags
-        _schedule_localization(job, new_tag_names)
+        # Schedule tag localization for new tags when the caller allows it.
+        if schedule_localization:
+            _schedule_localization(job, new_tag_names)
+        else:
+            job.localization_status = "skipped_by_caller"
 
         db.commit()
 
@@ -344,10 +357,27 @@ def create_auto_tag_job_after_scan(
     if is_ai_job_active():
         logger.info(f"Scan job {scan_job_id}: auto-tag skipped (another AI job is already running)")
         return None
+    try:
+        from .manual_sync_execute_service import is_manual_sync_execute_active
+
+        if is_manual_sync_execute_active():
+            logger.info(f"Scan job {scan_job_id}: auto-tag skipped (manual sync execute is active)")
+            return None
+    except Exception as exc:
+        logger.warning("Scan job %s: manual sync active check failed before auto-tag: %s", scan_job_id, exc)
+        return None
 
     from ..database import SessionLocal
     db = SessionLocal()
     try:
+        try:
+            from .manual_sync_execute_service import assert_manual_sync_execute_inactive_for_ai_job
+
+            assert_manual_sync_execute_inactive_for_ai_job(db)
+        except Exception as exc:
+            logger.info("Scan job %s: auto-tag skipped (manual sync execute guard: %s)", scan_job_id, exc)
+            return None
+
         max_items = settings.AI_AUTO_TAG_AFTER_IMPORT_MAX_ITEMS
 
         if settings.AI_AUTO_TAG_AFTER_IMPORT_ONLY_NEW:
