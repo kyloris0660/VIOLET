@@ -3682,10 +3682,14 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.stale_replan_rejected",
             "manual_sync.limits.execute_max_files_exceeded_rejected",
             "manual_sync.limits.dry_run_execute_default_max_files_aligned",
+            "manual_sync.limits.normal_update_check_not_forced_to_execute_cap",
+            "manual_sync.limits.separate_update_check_and_execute_limits",
             "manual_sync.active_job_gates.ai_job_active_blocked",
             "manual_sync.active_job_gates.classification_job_active_blocked",
             "manual_sync.active_job_gates.queued_ai_job_blocked",
             "manual_sync.active_job_gates.queued_classification_job_blocked",
+            "manual_sync.active_job_gates.manual_sync_execute_active_blocks_ai_job",
+            "manual_sync.active_job_gates.manual_sync_execute_active_blocks_classification_job",
             "manual_sync.runner_outputs.default_report_json_gitignored",
             "manual_sync.runner_outputs.default_report_md_gitignored",
             "manual_sync.runner_outputs.docs_reports_require_explicit_flags",
@@ -3700,6 +3704,8 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.classification.uncached_clip_skips",
             "manual_sync.classification.method_and_order_reported",
             "manual_sync.classification.heuristic_ai_tags_before_classification",
+            "manual_sync.classification.heuristic_deferred_when_ai_tags_unavailable",
+            "manual_sync.classification.heuristic_ai_failure_does_not_write_unknown",
             "manual_sync.classification.clip_cached_path_preserved",
             "manual_sync.ai_tagging.item_exception_containment",
             "manual_sync.ai_tagging.returned_error_sanitized",
@@ -3724,6 +3730,8 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "manual_sync.public_serialization.job_serializers_redact_private_plan",
             "manual_sync.ledger.per_file_records_present",
             "manual_sync.ledger.dynamic_sync_run_used",
+            "manual_sync.ledger.deferred_unprocessed_rows_materialized",
+            "manual_sync.ledger.deferred_unprocessed_without_source_read_or_hash",
             "manual_sync.ledger.public_safe",
             "manual_sync.pipeline.dev_test_execute_supported",
             "manual_sync.pipeline.production_acceptance_pending",
@@ -3731,6 +3739,7 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
             "ui.web_admin_manual_execute_panel",
             "ui.web_admin_plan_confirmation_flow",
             "ui.web_admin_default_max_files_visible",
+            "ui.web_admin_separate_update_check_limit",
             "ui.launcher_manual_sync_entry",
             "ui.launcher_manual_sync_forces_content_tab",
             "validation.focused_tests_passed",
@@ -3870,6 +3879,24 @@ def _check_s3a_m1_manual_sync_execute(_contract: PhaseContract, summary: Mapping
         result.fail("s3a_m1_ai_inference_reason_invalid", "S3A-M1 must report the stable AI inference failure reason.", path="manual_sync.ai_tagging.inference_failure_reason", expected="ai_tagger_inference_failed", actual=inference_reason)
     if _as_bool(_get(summary, "manual_sync.ai_tagging.raw_error_details_public", False)):
         result.fail("s3a_m1_ai_raw_error_public", "S3A-M1 public status/reporting must not expose raw AI tagging error details.", path="manual_sync.ai_tagging.raw_error_details_public", expected=False, actual=True)
+    ai_tags_unavailable_reason = str(_get(summary, "manual_sync.classification.ai_tags_unavailable_reason", "") or "")
+    ai_tagging_failed_reason = str(_get(summary, "manual_sync.classification.ai_tagging_failed_reason", "") or "")
+    if ai_tags_unavailable_reason != "classification_deferred_ai_tags_unavailable":
+        result.fail(
+            "s3a_m1_heuristic_ai_tags_unavailable_reason_invalid",
+            "S3A-M1 heuristic classification must report a stable defer reason when fresh AI tags are unavailable.",
+            path="manual_sync.classification.ai_tags_unavailable_reason",
+            expected="classification_deferred_ai_tags_unavailable",
+            actual=ai_tags_unavailable_reason,
+        )
+    if ai_tagging_failed_reason != "classification_skipped_ai_tagging_failed":
+        result.fail(
+            "s3a_m1_heuristic_ai_tagging_failed_reason_invalid",
+            "S3A-M1 heuristic classification must report a stable skip reason when AI tagging failed.",
+            path="manual_sync.classification.ai_tagging_failed_reason",
+            expected="classification_skipped_ai_tagging_failed",
+            actual=ai_tagging_failed_reason,
+        )
 
     phrase = str(_get(summary, "manual_sync.confirmation_phrase_prefix", "") or "")
     production_phrase = str(_get(summary, "manual_sync.production_confirmation_phrase_prefix", "") or "")

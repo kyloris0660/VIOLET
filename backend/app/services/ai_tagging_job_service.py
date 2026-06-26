@@ -357,6 +357,15 @@ def create_auto_tag_job_after_scan(
     if is_ai_job_active():
         logger.info(f"Scan job {scan_job_id}: auto-tag skipped (another AI job is already running)")
         return None
+    try:
+        from .manual_sync_execute_service import is_manual_sync_execute_active
+
+        if is_manual_sync_execute_active():
+            logger.info(f"Scan job {scan_job_id}: auto-tag skipped (manual sync execute is active)")
+            return None
+    except Exception as exc:
+        logger.warning("Scan job %s: manual sync active check failed before auto-tag: %s", scan_job_id, exc)
+        return None
 
     from ..database import SessionLocal
     db = SessionLocal()

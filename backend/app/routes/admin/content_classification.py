@@ -15,6 +15,10 @@ from ...config import settings
 from ...database import get_db
 from ...models import ClassificationJob, Media, User
 from ...enums import ContentClassEnum
+from ...services.manual_sync_execute_service import (
+    ManualSyncExecuteError,
+    assert_manual_sync_execute_inactive_for_classification_job,
+)
 from ...utils.logger import logger
 
 router = APIRouter()
@@ -30,6 +34,10 @@ class CreateClassificationJobRequest(BaseModel):
 class UpdateMediaClassRequest(BaseModel):
     content_class: ContentClassEnum
     lock: Optional[bool] = None
+
+
+def _raise_manual_sync_gate_error(exc: ManualSyncExecuteError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
 
 
 def _serialize_classification_job(job: ClassificationJob) -> dict:
@@ -75,6 +83,11 @@ async def create_classification_job(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
+    try:
+        assert_manual_sync_execute_inactive_for_classification_job()
+    except ManualSyncExecuteError as exc:
+        _raise_manual_sync_gate_error(exc)
+
     if not settings.CONTENT_CLASSIFICATION_ENABLED:
         raise HTTPException(
             status_code=400,
@@ -193,6 +206,11 @@ async def classify_single_media(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
+    try:
+        assert_manual_sync_execute_inactive_for_classification_job()
+    except ManualSyncExecuteError as exc:
+        _raise_manual_sync_gate_error(exc)
+
     if not settings.CONTENT_CLASSIFICATION_ENABLED:
         raise HTTPException(
             status_code=400,
@@ -219,6 +237,11 @@ async def update_media_class(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
+    try:
+        assert_manual_sync_execute_inactive_for_classification_job()
+    except ManualSyncExecuteError as exc:
+        _raise_manual_sync_gate_error(exc)
+
     media = db.query(Media).filter(Media.id == media_id).first()
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")

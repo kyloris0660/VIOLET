@@ -1240,14 +1240,18 @@
 
                 <div class="bg p-4 border mb-4">
                     <h3 class="text-sm font-bold mb-3" data-i18n="admin.dynamic_library_sync.manual_update">手动更新检查</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3">
                         <div>
                             <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.plan_root">Root</label>
                             <select id="dynamic-sync-plan-root" class="bg px-3 py-2 border text-xs w-full min-h-[2.25rem]"></select>
                         </div>
                         <div>
-                            <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.max_files">最大文件数</label>
-                            <input type="number" id="dynamic-sync-max-files" min="1" max="5" value="5" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.max_files_placeholder" placeholder="5">
+                            <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.update_check_max_files">Update check limit</label>
+                            <input type="number" id="dynamic-sync-check-max-files" min="1" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.update_check_max_files_placeholder" placeholder="Blank = normal full check">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.manual_execute_max_files">Execute plan limit</label>
+                            <input type="number" id="dynamic-sync-execute-max-files" min="1" max="5" value="5" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.manual_execute_max_files_placeholder" placeholder="5">
                         </div>
                         <label class="flex items-end gap-2 text-xs pb-2">
                             <input type="checkbox" id="dynamic-sync-hydrated-only" class="w-4 h-4 accent-primary" checked>

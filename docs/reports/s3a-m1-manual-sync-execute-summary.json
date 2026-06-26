@@ -41,6 +41,10 @@
       "model_downloads_allowed": false,
       "method_and_order_reported": true,
       "heuristic_ai_tags_before_classification": true,
+      "heuristic_deferred_when_ai_tags_unavailable": true,
+      "heuristic_ai_failure_does_not_write_unknown": true,
+      "ai_tags_unavailable_reason": "classification_deferred_ai_tags_unavailable",
+      "ai_tagging_failed_reason": "classification_skipped_ai_tagging_failed",
       "clip_cached_path_preserved": true
     },
     "ai_tagging": {
@@ -93,12 +97,16 @@
     "ledger": {
       "dynamic_sync_run_used": true,
       "per_file_records_present": true,
+      "deferred_unprocessed_rows_materialized": true,
+      "deferred_unprocessed_without_source_read_or_hash": true,
       "public_safe": true
     },
     "limits": {
       "execute_max_files": 5,
       "manual_execute_default_max_files": 5,
       "dry_run_execute_default_max_files_aligned": true,
+      "normal_update_check_not_forced_to_execute_cap": true,
+      "separate_update_check_and_execute_limits": true,
       "execute_max_files_exceeded_rejected": true,
       "max_duration_seconds": 600,
       "safe_default_max_files": 25
@@ -107,7 +115,9 @@
       "ai_job_active_blocked": true,
       "classification_job_active_blocked": true,
       "queued_ai_job_blocked": true,
-      "queued_classification_job_blocked": true
+      "queued_classification_job_blocked": true,
+      "manual_sync_execute_active_blocks_ai_job": true,
+      "manual_sync_execute_active_blocks_classification_job": true
     },
     "runner_outputs": {
       "default_report_json_gitignored": true,
@@ -188,6 +198,7 @@
   "ui": {
     "launcher_manual_sync_entry": true,
     "launcher_manual_sync_forces_content_tab": true,
+    "web_admin_separate_update_check_limit": true,
     "web_admin_default_max_files_visible": true,
     "web_admin_manual_execute_panel": true,
     "web_admin_plan_confirmation_flow": true

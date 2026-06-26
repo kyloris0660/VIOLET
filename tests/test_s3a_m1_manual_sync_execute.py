@@ -1,9 +1,11 @@
 import sys
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -29,6 +31,9 @@ from app.models import (  # noqa: E402
     TagCategoryEnum,
     blombooru_media_tags,
 )
+from app.routes.admin import ai_tagging as ai_tagging_routes  # noqa: E402
+from app.routes.admin import ai_tagging_jobs as ai_job_routes  # noqa: E402
+from app.routes.admin import content_classification as classification_routes  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as planner  # noqa: E402
 from app.services import manual_sync_execute_service as execute_service  # noqa: E402
@@ -90,9 +95,63 @@ def _patch_test_storage(monkeypatch, tmp_path: Path) -> Path:
 def _enable_manual_execute(monkeypatch) -> None:
     monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
     monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
     monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
     monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
     monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+
+
+def _fake_ai_job(**overrides):
+    payload = {
+        "id": 7,
+        "status": "pending",
+        "trigger_source": "manual",
+        "scan_job_id": None,
+        "media_ids_json": None,
+        "max_items": 1,
+        "dry_run": False,
+        "only_without_ai_tags": True,
+        "force_suggestions": False,
+        "processed": 0,
+        "tags_added": 0,
+        "suggestions_added": 0,
+        "skipped_locked": 0,
+        "ignored_low_confidence": 0,
+        "failed": 0,
+        "failed_items_json": None,
+        "error_message": None,
+        "localization_status": None,
+        "created_at": None,
+        "started_at": None,
+        "finished_at": None,
+    }
+    payload.update(overrides)
+    return SimpleNamespace(**payload)
+
+
+def _fake_classification_job(**overrides):
+    payload = {
+        "id": 8,
+        "status": "pending",
+        "trigger_source": "manual",
+        "scan_job_id": None,
+        "media_ids_json": None,
+        "max_items": 1,
+        "only_unclassified": True,
+        "force_reclassify": False,
+        "processed": 0,
+        "classified_anime": 0,
+        "classified_non_anime": 0,
+        "classified_unknown": 0,
+        "failed": 0,
+        "failed_items_json": None,
+        "error_message": None,
+        "created_at": None,
+        "started_at": None,
+        "finished_at": None,
+    }
+    payload.update(overrides)
+    return SimpleNamespace(**payload)
 
 
 def test_s3a_m1_blank_max_files_api_plan_matches_execute_default(db, tmp_path, monkeypatch):
@@ -118,6 +177,38 @@ def test_s3a_m1_blank_max_files_api_plan_matches_execute_default(db, tmp_path, m
     assert plan["limits"]["max_files"] == execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES
     assert execute_payload["request"]["effective_max_files"] == execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES
     assert execute_payload["plan"]["integrity"]["plan_hash"] == plan["integrity"]["plan_hash"]
+
+
+def test_s3a_m1_update_check_default_is_not_manual_execute_cap(monkeypatch):
+    observed = {}
+
+    def fake_update_check(_db, *, root_ids, max_files, hydrated_only):
+        observed.update({"root_ids": root_ids, "max_files": max_files, "hydrated_only": hydrated_only})
+        return {"id": 123, "status": "completed"}
+
+    monkeypatch.setattr(dynamic_routes, "run_update_check", fake_update_check)
+
+    result = asyncio.run(
+        dynamic_routes.run_dynamic_update_check(
+            dynamic_routes.UpdateCheckRequest(),
+            current_user=SimpleNamespace(id=1),
+            db=SimpleNamespace(),
+        )
+    )
+
+    assert result["id"] == 123
+    assert observed["max_files"] is None
+    assert observed["hydrated_only"] is True
+
+
+def test_s3a_m1_manual_and_update_check_use_separate_frontend_limits():
+    admin_js = (ROOT / "frontend" / "static" / "js" / "admin.js").read_text(encoding="utf-8")
+    admin_html = (ROOT / "frontend" / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    assert "dynamic-sync-execute-max-files" in admin_html
+    assert "dynamic-sync-check-max-files" in admin_html
+    assert "document.getElementById('dynamic-sync-execute-max-files')" in admin_js
+    assert "document.getElementById('dynamic-sync-check-max-files')" in admin_js
 
 
 def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
@@ -725,6 +816,104 @@ def test_s3a_m1_execute_blocks_queued_classification_job(db, tmp_path, monkeypat
     assert exc.value.code == "classification_job_active_blocks_manual_sync_execute"
 
 
+def test_s3a_m1_manual_execute_active_blocks_ai_job_start(db, monkeypatch):
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: True)
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    body = ai_job_routes.CreateAITagJobRequest(max_items=1)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(ai_job_routes.create_ai_tag_job(body=body, current_user=SimpleNamespace(id=1), db=db))
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "manual_sync_execute_active_blocks_ai_job"
+
+
+def test_s3a_m1_manual_execute_active_blocks_direct_ai_tagging(monkeypatch):
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: True)
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(ai_tagging_routes.tag_single_media(media_id=1, current_user=SimpleNamespace(id=1)))
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "manual_sync_execute_active_blocks_ai_job"
+
+
+def test_s3a_m1_manual_execute_active_blocks_classification_job_start(db, monkeypatch):
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: True)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    body = classification_routes.CreateClassificationJobRequest(max_items=1)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(classification_routes.create_classification_job(body=body, current_user=SimpleNamespace(id=1), db=db))
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "manual_sync_execute_active_blocks_classification_job"
+
+
+def test_s3a_m1_manual_execute_active_blocks_direct_classification(db, monkeypatch):
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: True)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            classification_routes.classify_single_media(
+                media_id=1,
+                current_user=SimpleNamespace(id=1),
+                db=db,
+            )
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "manual_sync_execute_active_blocks_classification_job"
+
+
+def test_s3a_m1_ai_job_start_still_works_when_manual_execute_inactive(db, monkeypatch):
+    import app.services.ai_tagging_job_service as ai_job_service
+
+    started = []
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: False)
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("AI_TAGGING_BATCH_MAX_ITEMS", "10")
+    monkeypatch.setattr(ai_job_service, "is_ai_job_active", lambda: False)
+    monkeypatch.setattr(ai_job_service, "create_ai_tag_job", lambda *_args, **_kwargs: _fake_ai_job())
+    monkeypatch.setattr(ai_job_service, "start_ai_tag_job", lambda job_id: started.append(job_id))
+
+    result = asyncio.run(
+        ai_job_routes.create_ai_tag_job(
+            body=ai_job_routes.CreateAITagJobRequest(max_items=1),
+            current_user=SimpleNamespace(id=1),
+            db=db,
+        )
+    )
+
+    assert result["id"] == 7
+    assert started == [7]
+
+
+def test_s3a_m1_classification_job_start_still_works_when_manual_execute_inactive(db, monkeypatch):
+    import app.services.classification_job_service as classification_job_service
+
+    started = []
+    monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: False)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_BATCH_MAX_ITEMS", "10")
+    monkeypatch.setattr(classification_job_service, "is_classification_job_active", lambda: False)
+    monkeypatch.setattr(classification_job_service, "create_classification_job", lambda *_args, **_kwargs: _fake_classification_job())
+    monkeypatch.setattr(classification_job_service, "start_classification_job", lambda job_id: started.append(job_id))
+
+    result = asyncio.run(
+        classification_routes.create_classification_job(
+            body=classification_routes.CreateClassificationJobRequest(max_items=1),
+            current_user=SimpleNamespace(id=1),
+            db=db,
+        )
+    )
+
+    assert result["id"] == 8
+    assert started == [8]
+
+
 def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
@@ -1005,6 +1194,93 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
     assert run_item.current_metadata_json["classification"]["content_class"] == "anime"
 
 
+def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        execute_service,
+        "_ai_tag_imported_media",
+        lambda _db_arg, media_id: {"media_id": media_id, "error": "File not found: private-name.png"},
+    )
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    media = db.query(Media).one()
+    source_item = db.query(DynamicSourceItem).one()
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert media.content_class is None
+    assert source_item.ai_tagging_status == "failed_ai_tagger_file_missing"
+    assert source_item.classification_status == "classification_skipped_ai_tagging_failed"
+    assert run_item.current_metadata_json["classification"]["reason"] == "classification_skipped_ai_tagging_failed"
+    assert "private-name.png" not in str(result)
+
+
+def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_disabled(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    media = db.query(Media).one()
+    source_item = db.query(DynamicSourceItem).one()
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert media.content_class is None
+    assert source_item.ai_tagging_status == "skipped_ai_tagging_disabled"
+    assert source_item.classification_status == "classification_deferred_ai_tags_unavailable"
+    assert run_item.current_metadata_json["classification"]["reason"] == "classification_deferred_ai_tags_unavailable"
+
+
 def test_s3a_m1_ai_tagger_model_failure_is_item_level_not_whole_run(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
@@ -1226,7 +1502,15 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
     assert result["manual_sync_execute"]["unprocessed_count"] == 1
     assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 1
     assert db.get(DynamicSyncRun, run.id).pending_import_items == 1
-    assert db.query(DynamicSyncRunItem).count() == 2
+    run_items = db.query(DynamicSyncRunItem).all()
+    assert len(run_items) == 3
+    deferred = [item for item in run_items if item.item_state == "deferred_unprocessed"]
+    assert len(deferred) == 1
+    assert deferred[0].action == "defer"
+    assert deferred[0].reason == "not_processed_budget_stop"
+    public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
+    assert "missing-2.png" not in str(public_status)
+    assert "content_hash" not in str(deferred[0].current_metadata_json)
 
 
 def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
@@ -1263,4 +1547,52 @@ def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
     assert result["manual_sync_execute"]["unprocessed_count"] == 1
     assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 1
     assert db.get(DynamicSyncRun, run.id).pending_import_items == 1
-    assert db.query(DynamicSyncRunItem).count() == 0
+    run_items = db.query(DynamicSyncRunItem).all()
+    assert len(run_items) == 1
+    assert run_items[0].item_state == "deferred_unprocessed"
+    assert run_items[0].action == "defer"
+    assert run_items[0].reason == "not_processed_budget_stop"
+
+
+def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    monkeypatch.setattr(execute_service, "_is_cancel_requested", lambda _run_id: True)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    for index in range(2):
+        _write_png(source_root / f"cancel-{index}.png", (index + 1, index + 2, index + 3))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "cancelled"
+    assert result["manual_sync_execute"]["unprocessed_count"] == 2
+    assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 2
+    assert db.get(DynamicSyncRun, run.id).pending_import_items == 2
+    run_items = db.query(DynamicSyncRunItem).all()
+    assert len(run_items) == 2
+    assert {item.item_state for item in run_items} == {"deferred_unprocessed"}
+    assert {item.reason for item in run_items} == {"not_processed_cancelled"}
+    public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
+    assert "cancel-0.png" not in str(public_status)
+    assert "cancel-1.png" not in str(public_status)

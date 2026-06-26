@@ -1919,7 +1919,7 @@ class AdminPanel {
 
     _manualSyncRequestBody() {
         const rootSelect = document.getElementById('dynamic-sync-plan-root');
-        const maxFilesEl = document.getElementById('dynamic-sync-max-files');
+        const maxFilesEl = document.getElementById('dynamic-sync-execute-max-files') || document.getElementById('dynamic-sync-max-files');
         const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
         const body = {
             root_id: rootSelect && rootSelect.value ? parseInt(rootSelect.value, 10) : null,
@@ -2180,7 +2180,7 @@ class AdminPanel {
     }
 
     async runDynamicUpdateCheck() {
-        const maxFilesEl = document.getElementById('dynamic-sync-max-files');
+        const maxFilesEl = document.getElementById('dynamic-sync-check-max-files');
         const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
         const body = {
             hydrated_only: hydratedEl ? hydratedEl.checked : true,

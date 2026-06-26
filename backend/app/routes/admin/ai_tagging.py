@@ -15,6 +15,10 @@ from ...config import settings
 from ... import database as _db
 from ...models import User
 from ...utils.logger import logger
+from ...services.manual_sync_execute_service import (
+    ManualSyncExecuteError,
+    assert_manual_sync_execute_inactive_for_ai_job,
+)
 
 
 def _get_session():
@@ -33,6 +37,10 @@ class BatchAITaggingRequest(BaseModel):
     max_items: int = Field(default=10, ge=1)
     dry_run: bool = False
     only_without_ai_tags: bool = True
+
+
+def _raise_manual_sync_gate_error(exc: ManualSyncExecuteError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
 
 
 @router.get("/ai-tagging/model-status")
@@ -86,6 +94,11 @@ async def tag_single_media(
     current_user: User = Depends(require_admin_mode),
 ):
     """Run AI tagging on a single media item."""
+    try:
+        assert_manual_sync_execute_inactive_for_ai_job()
+    except ManualSyncExecuteError as exc:
+        _raise_manual_sync_gate_error(exc)
+
     if not settings.AI_TAGGING_ENABLED:
         raise HTTPException(status_code=400, detail="AI tagging is disabled. Set AI_TAGGING_ENABLED=true in .env")
 
@@ -115,6 +128,11 @@ async def tag_batch(
     - If media_ids is omitted, only selects items without existing AI tags.
     - dry_run=true returns predictions without writing to DB.
     """
+    try:
+        assert_manual_sync_execute_inactive_for_ai_job()
+    except ManualSyncExecuteError as exc:
+        _raise_manual_sync_gate_error(exc)
+
     if not settings.AI_TAGGING_ENABLED:
         raise HTTPException(status_code=400, detail="AI tagging is disabled. Set AI_TAGGING_ENABLED=true in .env")
 

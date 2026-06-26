@@ -7,7 +7,7 @@ S3A-M1 adds a guarded manual sync execute path behind a fresh dry-run plan whose
 Implemented surfaces:
 
 - Web Admin manual sync plan and execute panel.
-- Web Admin manual sync defaults the visible max-files input to 5.
+- Web Admin keeps separate update-check and manual-execute max-files inputs; manual execute defaults to 5, while normal update checks keep their existing default scan scope.
 - Launcher entry that opens the Web Admin Content tab and Dynamic Library Sync section.
 - Admin API endpoints for plan, execute, latest job, job status, and cancel.
 - CLI runner for public-safe dry-run reports and guarded dev/test execute; default runner reports go under `.local_manifests/s3a_m1_manual_sync_execute/` so committed contract summaries are only overwritten with explicit `--report-json` / `--report-md`, and execute reports use the operator-approved plan hash/timestamp.
@@ -19,18 +19,19 @@ Safety state:
 - Production acceptance is pending separate operator approval.
 - Localization scheduling is blocked in execute; the report state is blocked, not scheduled.
 - Translation LLM background, auto-translation, enabled LLM capability, and live/idle background worker states fail closed.
-- Manual execute dry-run and execute defaults are aligned at `max_files=5`; over-cap requests fail closed with `manual_sync_execute_max_files_exceeded`.
+- Manual execute dry-run and execute defaults are aligned at `max_files=5`; over-cap requests fail closed with `manual_sync_execute_max_files_exceeded`, while the normal update-check flow is not constrained by the execute cap.
 - Manual execute fails closed with `ai_job_active_blocks_manual_sync_execute` or `classification_job_active_blocks_manual_sync_execute` while background AI tagging or classification jobs are active or queued in pending/running/cancelling DB state.
+- AI tagging and content-classification start paths fail closed with `manual_sync_execute_active_blocks_ai_job` or `manual_sync_execute_active_blocks_classification_job` while manual sync execute is active.
 - CLIP classification is cache-only/local-only; uncached CLIP is skipped with `classification_model_uncached` and no Hugging Face/model download.
-- Heuristic classification runs after AI tagging so it consumes fresh `ai_wd` tags; CLIP keeps the cache-only classification path.
+- Heuristic classification runs after AI tagging only when fresh `ai_wd` tags are available; failed/skipped/disabled AI tagging defers classification with stable public reasons instead of writing an `unknown` content class.
 - AI tagger model-cache, file-missing, or inference errors are recorded per item with stable public reasons and do not fail the whole run unless the failure budget stops it; raw returned error text is not used as a public reason or outcome key.
 - Missing, unreadable, timed-out, or changed source files are recorded as per-item failures and continue within the configured failure budget.
-- Failure/cancel/duration stops report unprocessed counts and preserve remaining pending import work instead of zeroing it.
+- Failure/cancel/duration stops report unprocessed counts and materialize deferred per-item ledger rows without reading, hashing, copying, or mutating remaining source files.
 - No production execute, import, classification, AI tag writes, localization writes, source mutation, iCloud mutation, LLM calls, provider calls, model downloads, automatic sync, scheduled sync, startup sync, or system service was authorized or performed.
 
 Validation summary:
 
-- Focused backend and phase-contract tests passed, including private serializer redaction, live translation worker gates, aligned dry-run/execute defaults, execute max-files cap, active/queued AI/classification job gates, runner default output paths, approved-plan execute reporting, sanitized AI returned errors, plan replay rejection, heuristic classification ordering, cache-only CLIP handling, stale active run recovery, item-level source/AI failures, and failure/duration budgets.
+- Focused backend and phase-contract tests passed, including private serializer redaction, live translation worker gates, aligned dry-run/execute defaults, execute max-files cap, active/queued reciprocal AI/classification/manual-execute job gates, separate update-check versus execute limits, runner default output paths, approved-plan execute reporting, sanitized AI returned errors, plan replay rejection, heuristic classification ordering/defer behavior, cache-only CLIP handling, stale active run recovery, item-level source/AI failures, deferred unprocessed ledger rows, and failure/duration budgets.
 - Phase contract CLI passed for `s3a_m1_manual_sync_execute_contract_v1`.
 - Public redaction contract passed for the summary JSON.
 - Launcher contract, controller runner, and renderer behavior tests passed.

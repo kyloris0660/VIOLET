@@ -25,6 +25,7 @@ from ..models import (
     DynamicSourceRoot,
     DynamicSyncRun,
     DynamicSyncRunItem,
+    blombooru_media_tags,
 )
 from ..routes.media import process_and_save_media
 from ..schemas import RatingEnum
@@ -178,6 +179,24 @@ def _assert_no_active_ai_or_classification_jobs(db: Optional[Session] = None) ->
                 "Manual sync execute is blocked while a classification job is pending, running, or cancelling.",
                 status_code=409,
             )
+
+
+def assert_manual_sync_execute_inactive_for_ai_job() -> None:
+    if is_manual_sync_execute_active():
+        raise ManualSyncExecuteError(
+            "manual_sync_execute_active_blocks_ai_job",
+            "AI tagging is blocked while a manual sync execute run is active.",
+            status_code=409,
+        )
+
+
+def assert_manual_sync_execute_inactive_for_classification_job() -> None:
+    if is_manual_sync_execute_active():
+        raise ManualSyncExecuteError(
+            "manual_sync_execute_active_blocks_classification_job",
+            "Content classification is blocked while a manual sync execute run is active.",
+            status_code=409,
+        )
 
 
 def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -864,6 +883,72 @@ def _mark_item_failed(
     )
 
 
+def _materialize_deferred_unprocessed_items(
+    db: Session,
+    *,
+    root: DynamicSourceRoot,
+    run: DynamicSyncRun,
+    plan_items: List[Dict[str, Any]],
+    reason: str,
+) -> int:
+    created = 0
+    for plan_item in plan_items:
+        relative_path = str(plan_item.get("relative_path") or "")
+        metadata = {"safe_label": plan_item.get("safe_label"), "planned_state": plan_item.get("state")}
+        item = _get_or_create_source_item(
+            db,
+            root=root,
+            run=run,
+            relative_path=relative_path,
+            metadata={"suffix": Path(relative_path).suffix.lower()},
+            content_hash=None,
+        )
+        item.sync_state = "deferred_unprocessed"
+        item.import_status = "deferred"
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
+        item.failure_reason = None
+        item.deferred_reason = reason
+        _record_run_item(
+            db,
+            run=run,
+            item=item,
+            state="deferred_unprocessed",
+            action="defer",
+            reason=reason,
+            eligible=False,
+            current_metadata=metadata,
+        )
+        created += 1
+    return created
+
+
+def _has_confirmed_ai_wd_tags(db: Session, media_id: int) -> bool:
+    return bool(
+        db.query(blombooru_media_tags.c.media_id)
+        .filter(
+            blombooru_media_tags.c.media_id == media_id,
+            blombooru_media_tags.c.source == "ai_wd",
+            blombooru_media_tags.c.is_suggestion == False,
+        )
+        .first()
+    )
+
+
+def _heuristic_classification_ai_tag_block_reason(db: Session, item: Optional[DynamicSourceItem], media_id: int) -> Optional[str]:
+    if item is None:
+        return "classification_deferred_ai_tags_unavailable"
+    ai_status = str(item.ai_tagging_status or "")
+    if ai_status.startswith("failed_"):
+        return "classification_skipped_ai_tagging_failed"
+    if ai_status != "ai_tagged":
+        return "classification_deferred_ai_tags_unavailable"
+    if not _has_confirmed_ai_wd_tags(db, media_id):
+        return "classification_deferred_ai_tags_unavailable"
+    return None
+
+
 def _ensure_clip_model_cache_only() -> tuple[bool, Optional[str]]:
     try:
         from huggingface_hub import try_to_load_from_cache
@@ -1300,6 +1385,14 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             else 0
         )
         if unprocessed_count:
+            deferred_reason = "not_processed_cancelled" if stop_reason == "cancelled" or run.status == "cancelled" else "not_processed_budget_stop"
+            _materialize_deferred_unprocessed_items(
+                db,
+                root=root,
+                run=run,
+                plan_items=remaining_plan_items,
+                reason=deferred_reason,
+            )
             counts["deferred_unprocessed"] += unprocessed_count
         import_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
         run.summary_json = _set_stage(
@@ -1336,6 +1429,31 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     run.status = "cancelled"
                     stop_reason = "cancelled"
                     break
+                item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
+                if classification_method != "clip":
+                    blocked_reason = _heuristic_classification_ai_tag_block_reason(db, item, media_id)
+                    if blocked_reason:
+                        if item:
+                            item.classification_status = blocked_reason[:50]
+                            item.deferred_reason = blocked_reason
+                            counts["classification_skipped"] += 1
+                            consecutive_failures = 0
+                            _annotate_run_item_stage(
+                                db,
+                                run=run,
+                                item=item,
+                                stage="classification",
+                                status="skipped",
+                                reason=blocked_reason,
+                                extra={"method": classification_method},
+                            )
+                        db.commit()
+                        stage_processed += 1
+                        processed_items += 1
+                        stop_reason = _check_stop_budget()
+                        if stop_reason:
+                            break
+                        continue
                 try:
                     result = _classify_imported_media(db, media_id)
                 except Exception as exc:
@@ -1346,7 +1464,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                         "detail": str(exc)[:200],
                         "method": classification_method,
                     }
-                item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
                 if item:
                     if result.get("error"):
                         item.classification_status = "failed"

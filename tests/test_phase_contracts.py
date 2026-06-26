@@ -1351,6 +1351,8 @@ def _s3a_m1_summary(**overrides: object) -> dict:
                 "execute_max_files": 5,
                 "manual_execute_default_max_files": 5,
                 "dry_run_execute_default_max_files_aligned": True,
+                "normal_update_check_not_forced_to_execute_cap": True,
+                "separate_update_check_and_execute_limits": True,
                 "execute_max_files_exceeded_rejected": True,
                 "max_duration_seconds": 600,
             },
@@ -1359,6 +1361,8 @@ def _s3a_m1_summary(**overrides: object) -> dict:
                 "classification_job_active_blocked": True,
                 "queued_ai_job_blocked": True,
                 "queued_classification_job_blocked": True,
+                "manual_sync_execute_active_blocks_ai_job": True,
+                "manual_sync_execute_active_blocks_classification_job": True,
             },
             "runner_outputs": {
                 "default_report_json_gitignored": True,
@@ -1380,6 +1384,10 @@ def _s3a_m1_summary(**overrides: object) -> dict:
                 "model_downloads_allowed": False,
                 "method_and_order_reported": True,
                 "heuristic_ai_tags_before_classification": True,
+                "heuristic_deferred_when_ai_tags_unavailable": True,
+                "heuristic_ai_failure_does_not_write_unknown": True,
+                "ai_tags_unavailable_reason": "classification_deferred_ai_tags_unavailable",
+                "ai_tagging_failed_reason": "classification_skipped_ai_tagging_failed",
                 "clip_cached_path_preserved": True,
             },
             "ai_tagging": {
@@ -1431,6 +1439,8 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "ledger": {
                 "per_file_records_present": True,
                 "dynamic_sync_run_used": True,
+                "deferred_unprocessed_rows_materialized": True,
+                "deferred_unprocessed_without_source_read_or_hash": True,
                 "public_safe": True,
             },
             "pipeline": {
@@ -1467,6 +1477,7 @@ def _s3a_m1_summary(**overrides: object) -> dict:
             "web_admin_manual_execute_panel": True,
             "web_admin_plan_confirmation_flow": True,
             "web_admin_default_max_files_visible": True,
+            "web_admin_separate_update_check_limit": True,
             "launcher_manual_sync_entry": True,
             "launcher_manual_sync_forces_content_tab": True,
         },
@@ -3279,6 +3290,15 @@ def test_s3a_m1_contract_rejects_early_stop_pending_loss() -> None:
     assert "s3a_m1_required_proof_missing" in _error_codes(result)
 
 
+def test_s3a_m1_contract_rejects_missing_deferred_unprocessed_ledger_rows() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["ledger"]["deferred_unprocessed_rows_materialized"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
 def test_s3a_m1_contract_rejects_missing_execute_max_files_cap() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
     summary["manual_sync"]["limits"]["execute_max_files"] = 100000
@@ -3297,6 +3317,15 @@ def test_s3a_m1_contract_rejects_unaligned_dry_run_execute_defaults() -> None:
     assert "s3a_m1_required_proof_missing" in _error_codes(result)
 
 
+def test_s3a_m1_contract_rejects_update_check_forced_to_execute_cap() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["limits"]["normal_update_check_not_forced_to_execute_cap"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
 def test_s3a_m1_contract_rejects_missing_active_job_gate() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
     summary["manual_sync"]["active_job_gates"]["ai_job_active_blocked"] = False
@@ -3309,6 +3338,15 @@ def test_s3a_m1_contract_rejects_missing_active_job_gate() -> None:
 def test_s3a_m1_contract_rejects_missing_queued_job_gate() -> None:
     summary = copy.deepcopy(_s3a_m1_summary())
     summary["manual_sync"]["active_job_gates"]["queued_ai_job_blocked"] = False
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_missing_reciprocal_manual_execute_job_gate() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["active_job_gates"]["manual_sync_execute_active_blocks_ai_job"] = False
 
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
 
@@ -3351,6 +3389,18 @@ def test_s3a_m1_contract_rejects_launcher_without_content_tab_target() -> None:
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
 
     assert "s3a_m1_required_proof_missing" in _error_codes(result)
+
+
+def test_s3a_m1_contract_rejects_heuristic_classification_without_ai_tag_defer() -> None:
+    summary = copy.deepcopy(_s3a_m1_summary())
+    summary["manual_sync"]["classification"]["heuristic_deferred_when_ai_tags_unavailable"] = False
+    summary["manual_sync"]["classification"]["ai_tags_unavailable_reason"] = "raw missing tag text"
+
+    result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", summary)
+
+    codes = _error_codes(result)
+    assert "s3a_m1_required_proof_missing" in codes
+    assert "s3a_m1_heuristic_ai_tags_unavailable_reason_invalid" in codes
 
 
 def test_s3a_m1_contract_rejects_localization_scheduled_in_execute() -> None:
