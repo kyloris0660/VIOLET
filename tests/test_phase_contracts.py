@@ -1534,6 +1534,126 @@ def _set_nested(payload: dict, path: str, value: object) -> None:
     cursor[parts[-1]] = value
 
 
+def _s3a_m2_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S3A-M2",
+        "pipeline_contract": {
+            "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
+            "status": "target_met",
+            "phase_identity": "S3A-M2",
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": True},
+            "fresh_dry_run_completed": True,
+            "execute_after_approval": True,
+            "exact_operator_approval_present": True,
+        },
+        "source": {
+            "root_id": 1,
+            "public_source_identity": "source-abc123",
+            "paths_redacted": True,
+        },
+        "controlled_delta": {
+            "cap": 300,
+            "cap_exceeded": False,
+            "expected_delta_range": "100-300",
+            "silently_truncated": False,
+            "hydrated_only": True,
+        },
+        "dry_run": {
+            "plan_hash": "abcdef1234567890",
+            "total_seen": 120,
+            "estimated_import_count": 100,
+            "estimated_classification_count": 100,
+            "estimated_ai_tagging_count": 100,
+            "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E abcdef123456",
+            "partial_scan": False,
+        },
+        "execute": {
+            "status": "completed",
+            "imported": 100,
+            "classified": 100,
+            "ai_tagged": 100,
+            "failed": 0,
+            "deferred": 0,
+        },
+        "classification": {"reported": True, "count": 100, "failed": 0, "skipped": 0},
+        "ai_tagging": {
+            "reported": True,
+            "count": 100,
+            "failed": 0,
+            "skipped": 0,
+            "proper_nouns_suggestion_only": True,
+            "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": True,
+        },
+        "localization": {
+            "status": "completed",
+            "translated": 80,
+            "failed": 0,
+            "skipped": 20,
+            "llm_called": True,
+            "provider_call_count": 2,
+        },
+        "gpu_telemetry": {
+            "status": "collected",
+            "validation_status": "passed",
+            "actual_provider": "DmlExecutionProvider",
+            "max_gpu_memory_used_mib": 2048.0,
+            "peak_gpu_utilization_percent": 72.0,
+        },
+        "runtime": {
+            "total_seconds": 300.0,
+            "stage_durations_seconds": {
+                "import": 30.0,
+                "classification": 60.0,
+                "ai_tagging": 180.0,
+                "localization": 30.0,
+            },
+        },
+        "ledger_consistency": {"status": "passed", "passed": True},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "production_acceptance": {
+            "performed": True,
+            "approval_phrase_type": "s3a_m2_plan_hash_bound",
+            "approval_phrase_recorded": False,
+            "exact_statement": "production acceptance performed",
+        },
+        "api_runner_acceptance": {
+            "dry_run_plan_generated": True,
+            "execute_ran": True,
+            "status_polled_or_serialized": True,
+        },
+        "launcher_web_admin_acceptance": {
+            "validated": True,
+            "status": "passed",
+            "target_path": "/admin?tab=content#dynamic-library-sync-section",
+        },
+        "private_artifacts": {
+            "root": ".local_manifests/s3a_m2_delta_e2e",
+            "telemetry_root": ".local_manifests/s3a_m2_delta_e2e/telemetry",
+            "private_artifacts_committed": False,
+        },
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+            "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json",
+        },
+        "safety": {
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+            "startup_sync_enabled": False,
+            "system_service_enabled": False,
+            "source_icloud_mutation": False,
+            "source_mutation_attempted": False,
+            "provider_pixiv_gallery_dl_saucenao_google_calls": False,
+            "sourceconcept_entity_bridge": False,
+            "cleanup_delete_reset_drop_truncate": False,
+            "full_library_reimport": False,
+            "private_paths_or_hashes_in_public_report": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
 def _phase47_s2_summary(**overrides: object) -> dict:
     summary = {
         "head_evidence": {
@@ -3477,6 +3597,110 @@ def test_s3a_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", _s3a_m1_summary())
 
     assert "s3a_m1_public_payload_redaction_failed" in _error_codes(result)
+
+
+def test_s3a_m2_contract_accepts_dry_run_pending_approval() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    _set_nested(summary, "pipeline_contract.status", "dry_run_complete_pending_approval")
+    _set_nested(summary, "pipeline_contract.claims.target_met", False)
+    _set_nested(summary, "pipeline_contract.claims.safe_to_merge", False)
+    _set_nested(summary, "pipeline_contract.claims.full_chain_complete", False)
+    _set_nested(summary, "pipeline_contract.execute_after_approval", False)
+    _set_nested(summary, "pipeline_contract.exact_operator_approval_present", False)
+    _set_nested(summary, "production_acceptance.performed", False)
+    _set_nested(summary, "production_acceptance.exact_statement", "production acceptance not performed")
+    _set_nested(summary, "api_runner_acceptance.execute_ran", False)
+    _set_nested(summary, "execute.status", "not_run")
+    _set_nested(summary, "execute.imported", 0)
+    _set_nested(summary, "classification.count", 0)
+    _set_nested(summary, "ai_tagging.count", 0)
+    _set_nested(summary, "localization.status", "not_run")
+    _set_nested(summary, "localization.translated", 0)
+    _set_nested(summary, "localization.llm_called", False)
+    _set_nested(summary, "localization.provider_call_count", 0)
+    _set_nested(summary, "gpu_telemetry.status", "not_run")
+    _set_nested(summary, "gpu_telemetry.validation_status", "partial_provider_unknown")
+    _set_nested(summary, "gpu_telemetry.actual_provider", "not_loaded_before_execute")
+    _set_nested(summary, "gpu_telemetry.max_gpu_memory_used_mib", 0.0)
+    _set_nested(summary, "gpu_telemetry.peak_gpu_utilization_percent", 0.0)
+    _set_nested(summary, "ledger_consistency.status", "not_run")
+    _set_nested(summary, "ledger_consistency.passed", False)
+    _set_nested(summary, "launcher_web_admin_acceptance.validated", False)
+    _set_nested(summary, "launcher_web_admin_acceptance.status", "pending_after_dry_run")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s3a_m2_contract_accepts_explicit_cap_1000() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["controlled_delta"]["cap"] = 1000
+    summary["dry_run"]["total_seen"] = 900
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s3a_m2_contract_rejects_cap_above_1000() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["controlled_delta"]["cap"] = 1001
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_delta_cap_out_of_bounds" in _error_codes(result)
+
+
+def test_s3a_m2_contract_accepts_target_met() -> None:
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", _s3a_m2_summary())
+
+    assert result.passed is True
+
+
+def test_s3a_m2_contract_rejects_cap_exceeded_completion() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["controlled_delta"]["cap_exceeded"] = True
+    summary["dry_run"]["total_seen"] = 301
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_cap_exceeded_wrong_status" in codes
+    assert "s3a_m2_cap_exceeded_claimed_completion" in codes
+
+
+def test_s3a_m2_contract_rejects_cpu_fallback_as_gpu_success() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["gpu_telemetry"]["actual_provider"] = "CPUExecutionProvider"
+    summary["gpu_telemetry"]["validation_status"] = "passed"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_gpu_pass_without_gpu_provider" in codes
+    assert "s3a_m2_cpu_fallback_claimed_target" in codes
+
+
+def test_s3a_m2_contract_rejects_missing_launcher_validation_for_target() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["validated"] = False
+    summary["launcher_web_admin_acceptance"]["status"] = "pending_browser_validation_after_runner"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_target_proof_missing" in codes
+    assert "s3a_m2_launcher_validation_not_passed" in codes
+
+
+def test_s3a_m2_contract_rejects_public_redaction_leak() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["source"]["public_source_identity"] = r"C:\Users\private\Pictures\example.png"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_public_payload_not_safe" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

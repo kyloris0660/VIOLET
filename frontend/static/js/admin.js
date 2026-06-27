@@ -1893,6 +1893,20 @@ class AdminPanel {
         const syncBtn = document.getElementById('dynamic-sync-sync-pending-btn');
         const syncStatus = document.getElementById('dynamic-sync-sync-status');
         const enabled = !!policy.manual_sync_execution_enabled && !policy.automatic_production_writes_enabled;
+        const executeCap = parseInt(policy.manual_execute_max_files_cap || policy.manual_execute_default_max_files || 5, 10);
+        const executeInput = document.getElementById('dynamic-sync-execute-max-files');
+        const executeCapLabel = document.getElementById('dynamic-sync-execute-cap');
+        if (executeInput && executeCap > 0) {
+            executeInput.max = String(executeCap);
+            if (!executeInput.value || parseInt(executeInput.value, 10) > executeCap) {
+                executeInput.value = String(executeCap);
+            }
+            executeInput.placeholder = String(executeCap);
+        }
+        if (executeCapLabel) {
+            executeCapLabel.textContent = `Execute cap: ${executeCap || 5}`;
+        }
+        this.dynamicSyncProductionMode = (readiness.production_settings || {}).violet_env === 'production';
         this.dynamicSyncExecuteEnabled = enabled;
         if (syncBtn) syncBtn.disabled = !enabled;
         if (syncStatus) {
@@ -1937,6 +1951,8 @@ class AdminPanel {
         const counts = plan.counts || {};
         const states = counts.state_counts || {};
         const integrity = plan.integrity || {};
+        const limits = plan.limits || {};
+        const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
@@ -1945,21 +1961,28 @@ class AdminPanel {
                 <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
                 <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             </div>
+            <div class="mb-2"><span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
             <div><span class="text-secondary">Confirmation:</span></div>
-            <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(integrity.confirmation_phrase || '')}</code>
+            <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
         `;
         if (confirmationEl) confirmationEl.value = '';
         this._updateManualSyncExecuteButton();
+    }
+
+    _manualSyncExpectedConfirmationPhrase(plan) {
+        const integrity = (plan || {}).integrity || {};
+        if (this.dynamicSyncProductionMode && integrity.production_confirmation_phrase) {
+            return integrity.production_confirmation_phrase;
+        }
+        return integrity.confirmation_phrase || '';
     }
 
     _updateManualSyncExecuteButton() {
         const btn = document.getElementById('dynamic-sync-execute-btn');
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         if (!btn) return;
-        const expected = this.dynamicSyncPlan && this.dynamicSyncPlan.integrity
-            ? this.dynamicSyncPlan.integrity.confirmation_phrase
-            : '';
+        const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
         const matches = confirmationEl && confirmationEl.value.trim() === expected;
         btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && matches);
     }
@@ -1994,6 +2017,7 @@ class AdminPanel {
         body.expected_plan_hash = integrity.plan_hash;
         body.confirmation_phrase = confirmationEl ? confirmationEl.value.trim() : '';
         body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
+        body.production_acceptance_approved = !!this.dynamicSyncProductionMode;
         try {
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
                 method: 'POST',

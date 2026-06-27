@@ -45,6 +45,7 @@ START_LOCK_TTL_SECONDS = 600.0
 
 AUTOMATION_FLAGS = (
     "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED",
+    "S3B_UNATTENDED_SYNC_ENABLED",
     "AI_AUTO_TAG_AFTER_IMPORT",
     "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT",
     "TAG_TRANSLATION_AUTO_ENABLED",
@@ -634,6 +635,10 @@ def _coerce_profile_payload(
         profile["safe_startup"] = bool(payload.get("safe_startup"))
     if "require_auth" in payload:
         profile["require_auth"] = _auth_policy_bool(payload.get("require_auth"), default=True)
+    if "manual_sync_execute_max_files" in payload:
+        profile["manual_sync_execute_max_files"] = payload.get("manual_sync_execute_max_files")
+    if "manual_sync_max_duration_seconds" in payload:
+        profile["manual_sync_max_duration_seconds"] = payload.get("manual_sync_max_duration_seconds")
     if isinstance(payload.get("db"), Mapping):
         db = dict(profile["db"])
         for key in ("host", "name", "user", "password"):
@@ -711,6 +716,10 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
         "POSTGRES_USER": str(db.get("user") or "postgres"),
         "POSTGRES_PASSWORD": str(db.get("password") or ""),
     }
+    if profile.get("manual_sync_execute_max_files") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(profile.get("manual_sync_execute_max_files"))
+    if profile.get("manual_sync_max_duration_seconds") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(profile.get("manual_sync_max_duration_seconds"))
     for flag in AUTOMATION_FLAGS:
         profile_env[flag] = "false"
     for flag in DANGEROUS_PRODUCTION_FLAGS:

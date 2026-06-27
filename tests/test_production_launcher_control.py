@@ -138,6 +138,41 @@ def _healthy_payload() -> dict[str, object]:
     }
 
 
+def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    profile = {
+        "profile_id": control.DEFAULT_PROFILE_ID,
+        "env": "production",
+        "repo_root": str(repo),
+        "python": sys.executable,
+        "app_port": 8123,
+        "storage_root": str(storage),
+        "require_auth": True,
+        "db": {
+            "host": "localhost",
+            "port": 5432,
+            "name": "blombooru",
+            "user": "postgres",
+            "password": "",
+        },
+        "safe_startup": True,
+        "manual_sync_execute_max_files": 1000,
+        "manual_sync_max_duration_seconds": 7200,
+    }
+
+    coerced = control._coerce_profile_payload(profile, repo_root=repo)
+    env = control._profile_to_env(coerced, repo_root=repo)
+
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] == "1000"
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] == "7200"
+    assert env["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
+    assert env["S3B_UNATTENDED_SYNC_ENABLED"] == "false"
+    assert env["VIOLET_ENV"] == "production"
+
+
 def test_preflight_blocks_non_production_env(tmp_path, safe_backends):
     repo, _storage, env = _write_fake_repo(tmp_path)
     env["VIOLET_ENV"] = "development"

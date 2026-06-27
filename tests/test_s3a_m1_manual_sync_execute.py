@@ -205,14 +205,32 @@ def test_s3a_m1_update_check_default_is_not_manual_execute_cap(monkeypatch):
     assert observed["hydrated_only"] is True
 
 
+def test_s3a_m2_manual_execute_cap_can_be_raised_explicitly(monkeypatch):
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES", "300")
+
+    assert execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES == 5
+    assert execute_service.manual_sync_execute_max_files_cap() == 300
+    assert execute_service.manual_sync_execute_effective_max_files(None) == 300
+    assert execute_service.manual_sync_execute_effective_max_files(300) == 300
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        execute_service.manual_sync_execute_effective_max_files(301)
+
+    assert exc.value.code == "manual_sync_execute_max_files_exceeded"
+
+
 def test_s3a_m1_manual_and_update_check_use_separate_frontend_limits():
     admin_js = (ROOT / "frontend" / "static" / "js" / "admin.js").read_text(encoding="utf-8")
     admin_html = (ROOT / "frontend" / "templates" / "admin.html").read_text(encoding="utf-8")
 
     assert "dynamic-sync-execute-max-files" in admin_html
     assert "dynamic-sync-check-max-files" in admin_html
+    assert "dynamic-sync-execute-cap" in admin_html
     assert "document.getElementById('dynamic-sync-execute-max-files')" in admin_js
     assert "document.getElementById('dynamic-sync-check-max-files')" in admin_js
+    assert "manual_execute_max_files_cap" in admin_js
+    assert "_manualSyncExpectedConfirmationPhrase" in admin_js
+    assert "production_acceptance_approved" in admin_js
 
 
 def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
@@ -1904,7 +1922,7 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
 
 def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
-    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS", -1)
+    monkeypatch.setattr(execute_service, "manual_sync_execute_max_duration_seconds", lambda: -1)
     _patch_test_storage(monkeypatch, tmp_path)
 
     source_root = tmp_path / "source"
@@ -1941,6 +1959,51 @@ def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
     assert run_items[0].item_state == "deferred_unprocessed"
     assert run_items[0].action == "defer"
     assert run_items[0].reason == "not_processed_budget_stop"
+
+
+def test_s3a_m1_execute_does_not_hash_non_import_skip_items(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_root.mkdir(parents=True)
+    unsupported = source_root / "notes.txt"
+    unsupported.write_text("not media", encoding="utf-8")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["skipped_unsupported"] == 1
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    def fail_if_hashing_skip_item(path, _timeout):
+        raise AssertionError(f"execute must not hash non-import skip item: {path.name}")
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fail_if_hashing_skip_item)
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert result["manual_sync_execute"]["outcome_counts"]["skipped_unsupported"] == 1
+    assert db.query(Media).count() == 0
+    run_items = db.query(DynamicSyncRunItem).all()
+    assert len(run_items) == 1
+    assert run_items[0].item_state == "skipped_unsupported"
 
 
 def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, monkeypatch):

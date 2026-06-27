@@ -6431,6 +6431,286 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             result.fail("phase47_s2_forbidden_safety_flag", "S2 summary reports a forbidden safety flag.", path=path, expected=False, actual=True)
 
 
+def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "dry_run_complete_pending_approval",
+        "target_met",
+        "completed_partial_gpu_validation",
+        "completed_with_followup_required",
+        "blocked_readiness",
+        "blocked_delta_cap_exceeded",
+        "blocked_execute_not_completed",
+        "blocked_localization_incomplete",
+        "blocked_public_redaction_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m2_unknown_status",
+            "S3A-M2 status must explicitly report dry-run pending approval, target_met, partial completion, or the blocking condition.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "target_met" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_non_target_status_claimed_completion",
+            "Only S3A-M2 target_met may claim target_met, safe_to_merge, route approval, or full-chain completion.",
+            path="pipeline_contract.status",
+            expected="target_met for completion claims",
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M2":
+        result.fail(
+            "s3a_m2_phase_identity_mismatch",
+            "S3A-M2 summaries must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M2",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "pipeline_contract.fresh_dry_run_completed",
+            "source.paths_redacted",
+            "controlled_delta.hydrated_only",
+            "api_runner_acceptance.dry_run_plan_generated",
+            "classification.reported",
+            "ai_tagging.reported",
+            "ai_tagging.proper_nouns_suggestion_only",
+            "ai_tagging.no_sourceconcept_or_entity_truth_from_ai_proper_nouns",
+            "public_redaction.passed",
+        ),
+        code="s3a_m2_required_proof_missing",
+        message="S3A-M2 requires fresh dry-run, hydrated-only source handling, stage accounting, AI proper-noun safeguards, and public redaction proof.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "controlled_delta.silently_truncated",
+            "private_artifacts.private_artifacts_committed",
+            "safety.automatic_sync_enabled",
+            "safety.scheduled_sync_enabled",
+            "safety.startup_sync_enabled",
+            "safety.system_service_enabled",
+            "safety.source_icloud_mutation",
+            "safety.source_mutation_attempted",
+            "safety.provider_pixiv_gallery_dl_saucenao_google_calls",
+            "safety.sourceconcept_entity_bridge",
+            "safety.cleanup_delete_reset_drop_truncate",
+            "safety.full_library_reimport",
+            "safety.private_paths_or_hashes_in_public_report",
+        ),
+        code="s3a_m2_forbidden_scope_or_mutation",
+        message="S3A-M2 must keep unattended sync, source/provider expansion, source/iCloud mutation, full-library reimport, destructive cleanup, and private public-report leaks disabled.",
+    )
+
+    cap = _as_int(_get(summary, "controlled_delta.cap", 0))
+    total_seen = _as_int(_get(summary, "dry_run.total_seen", 0))
+    cap_exceeded = _as_bool(_get(summary, "controlled_delta.cap_exceeded", False))
+    if not (6 <= cap <= 1000):
+        result.fail(
+            "s3a_m2_delta_cap_out_of_bounds",
+            "S3A-M2 controlled delta cap must be explicitly above the M1 micro-batch cap and no higher than 1000.",
+            path="controlled_delta.cap",
+            expected="6..1000",
+            actual=cap,
+        )
+    if total_seen > cap and not cap_exceeded:
+        result.fail(
+            "s3a_m2_cap_exceeded_not_reported",
+            "Dry-run counts above the configured cap must set controlled_delta.cap_exceeded.",
+            path="controlled_delta.cap_exceeded",
+            expected=True,
+            actual=False,
+        )
+    if cap_exceeded and status != "blocked_delta_cap_exceeded":
+        result.fail(
+            "s3a_m2_cap_exceeded_wrong_status",
+            "Cap-exceeded dry-runs must stop with blocked_delta_cap_exceeded.",
+            path="pipeline_contract.status",
+            expected="blocked_delta_cap_exceeded",
+            actual=result.status,
+        )
+    if cap_exceeded and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_cap_exceeded_claimed_completion",
+            "S3A-M2 cannot claim completion when the production delta exceeded the explicit cap.",
+            path="controlled_delta.cap_exceeded",
+            expected=False,
+            actual=True,
+        )
+
+    execute_requested = _as_bool(_get(summary, "pipeline_contract.execute_after_approval", False))
+    production_performed = _as_bool(_get(summary, "production_acceptance.performed", False))
+    if execute_requested and not _as_bool(_get(summary, "pipeline_contract.exact_operator_approval_present", False)):
+        result.fail(
+            "s3a_m2_execute_without_exact_operator_approval",
+            "S3A-M2 execute requires the exact phase-specific operator approval phrase.",
+            path="pipeline_contract.exact_operator_approval_present",
+            expected=True,
+            actual=False,
+        )
+    if production_performed and not _as_bool(_get(summary, "api_runner_acceptance.execute_ran", False)):
+        result.fail(
+            "s3a_m2_production_acceptance_without_execute",
+            "Production acceptance cannot be marked performed unless the API/runner execute path ran.",
+            path="api_runner_acceptance.execute_ran",
+            expected=True,
+            actual=False,
+        )
+    if production_performed:
+        if str(_get(summary, "execute.status", "")).casefold() != "completed":
+            result.fail(
+                "s3a_m2_execute_not_completed",
+                "Performed production acceptance requires a completed manual sync execute run.",
+                path="execute.status",
+                expected="completed",
+                actual=_get(summary, "execute.status", None),
+            )
+        if not _as_bool(_get(summary, "ledger_consistency.passed", False)):
+            result.fail(
+                "s3a_m2_ledger_consistency_failed",
+                "Performed production acceptance requires ledger consistency proof.",
+                path="ledger_consistency.passed",
+                expected=True,
+                actual=_get(summary, "ledger_consistency.passed", None),
+            )
+        localization_status = str(_get(summary, "localization.status", "")).casefold()
+        if localization_status not in {"completed", "completed_noop_no_candidates"}:
+            result.fail(
+                "s3a_m2_localization_not_complete",
+                "Performed production acceptance requires completed localization or an explicit no-candidate completion.",
+                path="localization.status",
+                expected=["completed", "completed_noop_no_candidates"],
+                actual=_get(summary, "localization.status", None),
+            )
+        if _as_int(_get(summary, "localization.failed", 0)) != 0:
+            result.fail(
+                "s3a_m2_localization_failures_present",
+                "Target production acceptance cannot include failed localization rows.",
+                path="localization.failed",
+                expected=0,
+                actual=_get(summary, "localization.failed", None),
+            )
+
+    gpu_status = str(_get(summary, "gpu_telemetry.validation_status", "") or "").casefold()
+    actual_provider = str(_get(summary, "gpu_telemetry.actual_provider", "") or "")
+    gpu_providers = {"DmlExecutionProvider", "CUDAExecutionProvider"}
+    if gpu_status == "passed" and actual_provider not in gpu_providers:
+        result.fail(
+            "s3a_m2_gpu_pass_without_gpu_provider",
+            "GPU validation cannot pass unless the actual ONNX Runtime provider is DirectML or CUDA.",
+            path="gpu_telemetry.actual_provider",
+            expected=sorted(gpu_providers),
+            actual=actual_provider,
+        )
+    if actual_provider == "CPUExecutionProvider" and status == "target_met":
+        result.fail(
+            "s3a_m2_cpu_fallback_claimed_target",
+            "CPU fallback must be reported as partial and cannot satisfy S3A-M2 GPU validation.",
+            path="gpu_telemetry.actual_provider",
+            expected=sorted(gpu_providers),
+            actual=actual_provider,
+        )
+
+    if status == "dry_run_complete_pending_approval":
+        if production_performed or _as_bool(_get(summary, "api_runner_acceptance.execute_ran", False)):
+            result.fail(
+                "s3a_m2_dry_run_status_after_execute",
+                "Dry-run pending approval status must not report production execute.",
+                path="production_acceptance.performed",
+                expected=False,
+                actual=production_performed,
+            )
+
+    if status == "target_met":
+        required_target_true = (
+            "production_acceptance.performed",
+            "pipeline_contract.exact_operator_approval_present",
+            "api_runner_acceptance.execute_ran",
+            "ledger_consistency.passed",
+            "launcher_web_admin_acceptance.validated",
+        )
+        _check_required_boolean_paths(
+            summary,
+            result,
+            required_target_true,
+            code="s3a_m2_target_proof_missing",
+            message="S3A-M2 target_met requires approved production execute, ledger proof, and launcher/Web Admin validation.",
+        )
+        if str(_get(summary, "launcher_web_admin_acceptance.status", "")).casefold() != "passed":
+            result.fail(
+                "s3a_m2_launcher_validation_not_passed",
+                "S3A-M2 target_met requires launcher/Web Admin status validation to pass.",
+                path="launcher_web_admin_acceptance.status",
+                expected="passed",
+                actual=_get(summary, "launcher_web_admin_acceptance.status", None),
+            )
+        if gpu_status != "passed" or actual_provider not in gpu_providers:
+            result.fail(
+                "s3a_m2_gpu_validation_not_passed",
+                "S3A-M2 target_met requires GPU validation through DirectML or CUDA.",
+                path="gpu_telemetry.validation_status",
+                expected="passed",
+                actual=_get(summary, "gpu_telemetry.validation_status", None),
+            )
+        if _as_int(_get(summary, "execute.imported", 0)) <= 0:
+            result.fail(
+                "s3a_m2_target_without_imported_delta",
+                "S3A-M2 target_met requires a real imported production delta.",
+                path="execute.imported",
+                expected="> 0",
+                actual=_get(summary, "execute.imported", None),
+            )
+        if _as_int(_get(summary, "classification.count", 0)) <= 0:
+            result.fail(
+                "s3a_m2_target_without_classification",
+                "S3A-M2 target_met requires classification work to complete for the delta.",
+                path="classification.count",
+                expected="> 0",
+                actual=_get(summary, "classification.count", None),
+            )
+        if _as_int(_get(summary, "ai_tagging.count", 0)) <= 0:
+            result.fail(
+                "s3a_m2_target_without_ai_tagging",
+                "S3A-M2 target_met requires AI tagging work to complete for the delta.",
+                path="ai_tagging.count",
+                expected="> 0",
+                actual=_get(summary, "ai_tagging.count", None),
+            )
+
+    public_payloads: list[Any] = [summary]
+    markdown_path = _get(summary, "public_reports.markdown_report_path", None)
+    if isinstance(markdown_path, str) and markdown_path:
+        path = (CONTRACT_ROOT / markdown_path).resolve()
+        try:
+            path.relative_to(CONTRACT_ROOT)
+            if path.exists():
+                public_payloads.append({"public_markdown_text": path.read_text(encoding="utf-8")})
+        except Exception:
+            result.fail(
+                "s3a_m2_public_report_path_invalid",
+                "S3A-M2 public markdown report path must stay under the repository root.",
+                path="public_reports.markdown_report_path",
+                expected="repo-relative path",
+                actual=markdown_path,
+            )
+    findings: list[dict[str, Any]] = []
+    for payload in public_payloads:
+        findings.extend(scan_public_payload(payload))
+    if findings:
+        result.fail(
+            "s3a_m2_public_payload_not_safe",
+            "S3A-M2 public artifacts must not leak local paths, filenames, secrets, source roots, source URLs, or private provenance.",
+            path="public_redaction",
+            actual=findings[:5],
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -6456,6 +6736,7 @@ CUSTOM_CHECKS = {
     "s2g_real1_bounded_ai_tagging_validation": _check_s2g_real1_bounded_ai_tagging_validation,
     "s2g_manual_sync_foundation": _check_s2g_manual_sync_foundation,
     "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
+    "s3a_m2_production_delta_e2e": _check_s3a_m2_production_delta_e2e,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

@@ -1,0 +1,506 @@
+{
+  "ai_tagging": {
+    "count": 300,
+    "failed": 0,
+    "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": true,
+    "proper_nouns_suggestion_only": true,
+    "provider_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "effective_batch_size": 2,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 2,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "CUDAExecutionProvider",
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": true,
+        "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider",
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "CUDAExecutionProvider",
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "reported": true,
+    "skipped": 0
+  },
+  "api_runner_acceptance": {
+    "dry_run_plan_generated": true,
+    "execute_ran": true,
+    "raw_artifacts_root": ".local_manifests/s3a_m2_delta_e2e",
+    "status_polled_or_serialized": true
+  },
+  "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+  "classification": {
+    "count": 300,
+    "failed": 0,
+    "reported": true,
+    "skipped": 0
+  },
+  "controlled_delta": {
+    "cap": 1000,
+    "cap_exceeded": false,
+    "expected_delta_range": "100-300",
+    "hydrated_only": true,
+    "plan_source": "source_delta",
+    "silently_truncated": false
+  },
+  "db_validation": {
+    "after_dynamic_source_item_count": 40075,
+    "after_media_count": 34994,
+    "before_dynamic_source_item_count": 39706,
+    "before_media_count": 34694,
+    "media_delta": 300,
+    "raw_path_committed": false,
+    "run_failed": 0,
+    "run_imported": 300,
+    "run_status": "completed",
+    "run_total_seen": 453,
+    "source_item_delta": 369
+  },
+  "dry_run": {
+    "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E 00783009f792",
+    "estimated_ai_tagging_count": 300,
+    "estimated_classification_count": 300,
+    "estimated_import_count": 300,
+    "estimated_localization_workload": 300,
+    "expires_at": "2026-06-27T01:34:54.588676+00:00",
+    "failure_reasons": {
+      "cloud_placeholder": 36,
+      "existing_media_hash": 19,
+      "hidden": 1,
+      "unsupported_extension": 97
+    },
+    "partial_scan": false,
+    "plan_created_at": "2026-06-27T01:24:54.588676+00:00",
+    "plan_hash": "00783009f79266d00015c1b98261b618dea13a03e939c1292ad33a007a24db5c",
+    "service_confirmation_phrase_redacted": true,
+    "source_ledger_aggregate_counts": {
+      "pipeline_status_counts": {
+        "ai_tagging:deferred": 4591,
+        "ai_tagging:tagged": 30971,
+        "ai_tagging:tagged_reused": 4063,
+        "classification:classified": 30934,
+        "classification:classified_reused": 4100,
+        "classification:deferred": 4591,
+        "import:deferred": 4591,
+        "import:imported": 35034,
+        "localization:deferred": 4591,
+        "localization:localized": 35034
+      },
+      "public_failure_reason_counts": {
+        "read_error": 4591
+      },
+      "source_status_counts": {
+        "available": 35034,
+        "deferred": 4399,
+        "failed": 192
+      },
+      "sync_state_counts": {
+        "deferred": 28018,
+        "new": 11607
+      }
+    },
+    "state_counts": {
+      "ai_tagged_in_test": 0,
+      "candidate": 0,
+      "classified_in_test": 0,
+      "failed": 0,
+      "import_planned": 300,
+      "imported_in_test": 0,
+      "localization_scheduled_in_test": 0,
+      "skipped_changing": 0,
+      "skipped_duplicate": 0,
+      "skipped_existing_media": 19,
+      "skipped_path_policy_error": 0,
+      "skipped_placeholder": 36,
+      "skipped_unsupported": 98,
+      "skipped_zero_byte": 0
+    },
+    "total_seen": 453
+  },
+  "execute": {
+    "ai_tagged": 300,
+    "ai_tagging_failed": 0,
+    "ai_tagging_skipped": 0,
+    "classification_failed": 0,
+    "classification_skipped": 0,
+    "classified": 300,
+    "current_stage": "summary",
+    "deferred": 0,
+    "failed": 0,
+    "imported": 300,
+    "outcome_counts": {
+      "ai_tagged": 300,
+      "classified": 300,
+      "imported": 300,
+      "skipped_existing_media": 19,
+      "skipped_placeholder": 36,
+      "skipped_unsupported": 98
+    },
+    "provider_provenance": {
+      "backend": "onnxruntime",
+      "batch": {
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "configured_batch_size": 2,
+        "effective_batch_size": 2,
+        "load_control_effective_batch_size": 2,
+        "model_optimal_batch_size": 8,
+        "phase_max_batch_size": 16
+      },
+      "batch_size": 2,
+      "configured_batch_size": 2,
+      "effective_batch_size": 2,
+      "load_control": {
+        "allow_provider_fallback": true,
+        "applied_session_options": {
+          "cpu_inter_op_threads": 1,
+          "cpu_intra_op_threads": 4,
+          "execution_mode": "ORT_SEQUENTIAL"
+        },
+        "batch_cap_source": "configured",
+        "batch_max_items": 10,
+        "batch_size": 2,
+        "configured_batch_size": 2,
+        "cpu_inter_op_threads": 1,
+        "cpu_intra_op_threads": 4,
+        "effective_batch_size": 2,
+        "execution_mode": "ORT_SEQUENTIAL",
+        "max_concurrent_jobs": 1,
+        "preprocess_workers": 2,
+        "process_priority": "below_normal",
+        "process_priority_applied": false,
+        "process_priority_note": "not_applied_in_shared_app_process; bounded_threads_and_single_job_are_active_controls",
+        "provider_preference": [
+          "CUDAExecutionProvider",
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "valid_for_runtime": true,
+        "validation_errors": [],
+        "worker_count": 1
+      },
+      "model_name": "wd-swinv2-tagger-v3",
+      "model_repo_id": "SmilingWolf/wd-swinv2-tagger-v3",
+      "provider": {
+        "actual_onnx_provider_loaded": "DmlExecutionProvider",
+        "actual_provider": "DmlExecutionProvider",
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "fallback_occurred": true,
+        "fallback_reason": "unavailable_requested_providers=CUDAExecutionProvider",
+        "loaded_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "provider_load_errors": [],
+        "requested_provider_preference": [
+          "CUDAExecutionProvider",
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "tagger_version_source": "SmilingWolf WD Tagger v3 ONNX via onnxruntime",
+      "thresholds": {
+        "character_threshold": 0.65,
+        "general_threshold": 0.35,
+        "rating_threshold": 0.5,
+        "suggestion_threshold": 0.2
+      }
+    },
+    "run_id": 7,
+    "status": "completed"
+  },
+  "generated_at": "2026-06-27T02:02:50Z",
+  "gpu_telemetry": {
+    "actual_provider": "DmlExecutionProvider",
+    "avg_gpu_utilization_percent": 34.089,
+    "cpu_fallback_observed": false,
+    "gpu_name": "NVIDIA GeForce RTX 4070 Ti",
+    "gpu_provider_used": true,
+    "gpu_sample_count": 192,
+    "max_gpu_memory_used_mib": 3752.0,
+    "nvidia_smi_available": true,
+    "partial_reason": null,
+    "peak_gpu_utilization_percent": 65.0,
+    "peak_process_rss_bytes": 0,
+    "peak_system_ram_percent": 0.0,
+    "psutil_available": false,
+    "raw_path_committed": false,
+    "raw_samples_artifact": ".local_manifests/s3a_m2_delta_e2e/telemetry/resource-samples.jsonl",
+    "raw_samples_path_redacted": true,
+    "samples": 192,
+    "status": "collected",
+    "validation_status": "passed"
+  },
+  "head_sha": "51c3e33001d3a0d1d675657fb5d730dd7901d8d4",
+  "launcher_web_admin_acceptance": {
+    "browser": "msedge",
+    "dry_run_clicked": true,
+    "execute_cap_visible": "Execute cap: 1000",
+    "execute_clicked": false,
+    "latest_job_imported": 300,
+    "latest_job_status": "completed",
+    "production_execute_run_id_seen": 7,
+    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/launcher-web-admin-validation.json",
+    "raw_path_committed": false,
+    "status": "passed",
+    "target_path": "/admin?tab=content#dynamic-library-sync-section",
+    "update_check_limit_separated": true,
+    "validated": true
+  },
+  "ledger_consistency": {
+    "expected_plan_items": 453,
+    "imported_without_media_count": 0,
+    "passed": true,
+    "public_safe": true,
+    "reason_counts": {
+      "cloud_placeholder": 36,
+      "existing_media_hash": 19,
+      "hidden": 1,
+      "imported": 300,
+      "unsupported_extension": 97
+    },
+    "run_id": 7,
+    "run_item_count": 453,
+    "status": "passed"
+  },
+  "localization": {
+    "backend_type": "llm_provider",
+    "candidate_count": 3,
+    "duplicate_provider_outputs": 0,
+    "dynamic_source_items_updated": 300,
+    "errors": [],
+    "executed": true,
+    "failed": 0,
+    "job_id": 19,
+    "ledger_artifact": ".local_manifests/s3a_m2_delta_e2e/localization-ledger.jsonl",
+    "ledger_path_redacted": true,
+    "llm_called": true,
+    "proper_noun_candidates_skipped": 25,
+    "proper_noun_unreviewed_aliases_trusted": false,
+    "provider": "fallback(primary->fallback)",
+    "provider_available": true,
+    "provider_call_count": 1,
+    "raw_path_committed": false,
+    "requested_max_tags": 1500,
+    "retries": 0,
+    "skipped": 25,
+    "stage": "localization",
+    "status": "completed",
+    "translated": 3,
+    "unknown_provider_outputs": 0
+  },
+  "mode": "execute",
+  "not_completed": [
+    "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
+    "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
+    "SourceConcept/Entity bridge work was not run."
+  ],
+  "phase": "S3A-M2",
+  "pipeline_contract": {
+    "claims": {
+      "full_chain_complete": true,
+      "safe_to_merge": true,
+      "target_met": true
+    },
+    "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
+    "exact_operator_approval_present": true,
+    "execute_after_approval": true,
+    "fresh_dry_run_completed": true,
+    "phase_identity": "S3A-M2",
+    "status": "target_met"
+  },
+  "private_artifacts": {
+    "private_artifacts_committed": false,
+    "root": ".local_manifests/s3a_m2_delta_e2e",
+    "telemetry_root": ".local_manifests/s3a_m2_delta_e2e/telemetry"
+  },
+  "production_acceptance": {
+    "approval_phrase_recorded": false,
+    "approval_phrase_type": "s3a_m2_plan_hash_bound",
+    "exact_statement": "production acceptance performed",
+    "performed": true
+  },
+  "public_redaction": {
+    "checked_payloads": [
+      "summary_json",
+      "markdown_report"
+    ],
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+    "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json"
+  },
+  "readiness": {
+    "active_jobs": {
+      "ai_tagging": 0,
+      "classification": 0,
+      "translation": 0
+    },
+    "ai_model": {
+      "available": true,
+      "enabled": true,
+      "error_type": null,
+      "loaded": false,
+      "model_downloaded": true,
+      "model_name": "wd-swinv2-tagger-v3"
+    },
+    "based_on_origin_main": true,
+    "blockers": [],
+    "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+    "head_sha": "51c3e33001d3a0d1d675657fb5d730dd7901d8d4",
+    "llm_localization": {
+      "base_url_configured": true,
+      "base_url_host": "api.openai.com",
+      "enabled": true,
+      "fallback_auth_present": true,
+      "fallback_base_url_host": "api.deepseek.com",
+      "fallback_enabled": true,
+      "fallback_model_configured": true,
+      "fallback_provider": "deepseek",
+      "model_configured": true,
+      "primary_auth_present": true,
+      "provider": "fallback(primary->fallback)",
+      "provider_available": true,
+      "provider_configured": true,
+      "sensitive_values_recorded": false
+    },
+    "onnx_provider_probe": {
+      "available_providers": [
+        "DmlExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "gpu_provider_available": true
+    },
+    "origin_main_sha": "51c3e33001d3a0d1d675657fb5d730dd7901d8d4",
+    "passed": true,
+    "production_settings": {
+      "auto_sync_enabled": false,
+      "db_name": "blombooru",
+      "manual_sync_enabled": true,
+      "storage_root_explicitly_set": false,
+      "unattended_sync_enabled": false,
+      "violet_env": "production"
+    },
+    "python_env": {
+      "executable_path_redacted": true,
+      "public_executable_name": "python.exe"
+    },
+    "runtime_cap": {
+      "cap_visible_in_report": true,
+      "delta_cap": 1000,
+      "manual_execute_max_files_cap": 1000
+    },
+    "source": {
+      "label_redacted": true,
+      "paths_redacted": true,
+      "public_source_identity": "153684ac810c2191",
+      "root_id": 2,
+      "valid": true
+    },
+    "warnings": []
+  },
+  "runtime": {
+    "stage_durations_seconds": {
+      "dry_run_plan": 0.016,
+      "init": 1.187,
+      "localization": 5.016,
+      "manual_execute_import_classification_ai": 386.031,
+      "summary": 0.031
+    },
+    "total_seconds": 392.343
+  },
+  "safety": {
+    "automatic_sync_enabled": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "full_library_reimport": false,
+    "no_merge": true,
+    "no_push_main": true,
+    "private_paths_or_hashes_in_public_report": false,
+    "provider_pixiv_gallery_dl_saucenao_google_calls": false,
+    "scheduled_sync_enabled": false,
+    "source_icloud_mutation": false,
+    "source_mutation_attempted": false,
+    "sourceconcept_entity_bridge": false,
+    "startup_sync_enabled": false,
+    "system_service_enabled": false
+  },
+  "skipped_failed_deferred": {
+    "deferred": 0,
+    "failed": 0,
+    "skipped_duplicate": 0,
+    "skipped_existing_media": 19,
+    "skipped_placeholder": 36,
+    "skipped_unsupported": 98
+  },
+  "source": {
+    "paths_redacted": true,
+    "public_source_identity": "153684ac810c2191",
+    "root_id": 2
+  },
+  "status": "target_met",
+  "title": "Production Delta Manual Sync E2E + GPU Telemetry"
+}

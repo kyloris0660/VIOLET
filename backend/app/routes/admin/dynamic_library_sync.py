@@ -30,6 +30,7 @@ from ...services.manual_sync_execute_service import (
     get_latest_manual_sync_execute_run,
     is_manual_sync_execute_active,
     manual_sync_execute_effective_max_files,
+    manual_sync_execute_max_files_cap,
     request_manual_sync_execute_cancel,
     serialize_manual_sync_execute_run,
     start_manual_sync_execute_run,
@@ -75,7 +76,12 @@ async def dynamic_library_sync_dashboard(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
-    return get_dashboard_state(db)
+    payload = get_dashboard_state(db)
+    policy = dict(payload.get("default_off_policy") or {})
+    policy["manual_execute_max_files_cap"] = manual_sync_execute_max_files_cap()
+    policy["manual_execute_default_max_files"] = manual_sync_execute_max_files_cap()
+    payload["default_off_policy"] = policy
+    return payload
 
 
 @router.get("/dynamic-library-sync/source-roots")
@@ -154,6 +160,8 @@ async def get_manual_sync_foundation_status(
         "dry_run_plan_available": True,
         "manual_sync_execution_enabled": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED,
         "production_execute_enabled_this_phase": False,
+        "manual_execute_max_files_cap": manual_sync_execute_max_files_cap(),
+        "manual_execute_default_max_files": manual_sync_execute_max_files_cap(),
         "automatic_sync_enabled": False,
         "scheduled_sync_enabled": False,
         "single_active_ai_execution_guard": True,

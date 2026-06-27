@@ -225,12 +225,12 @@ def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[s
 
 def _budget_policy_payload() -> Dict[str, Any]:
     return {
-        "max_files": MANUAL_SYNC_EXECUTE_MAX_FILES,
+        "max_files": manual_sync_execute_max_files_cap(),
         "max_item_failures": MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES,
         "max_failure_rate": MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE,
         "failure_rate_min_items": MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS,
         "max_consecutive_failures": MANUAL_SYNC_EXECUTE_MAX_CONSECUTIVE_FAILURES,
-        "max_duration_seconds": MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS,
+        "max_duration_seconds": manual_sync_execute_max_duration_seconds(),
         "stop_reasons": ["stopped_by_failure_budget", "stopped_by_duration_budget"],
     }
 
@@ -243,7 +243,7 @@ def _budget_stop_reason(
     consecutive_failures: int,
 ) -> Optional[str]:
     started = _aware_utc(started_at) or _utcnow()
-    if (_utcnow() - started).total_seconds() > MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS:
+    if (_utcnow() - started).total_seconds() > manual_sync_execute_max_duration_seconds():
         return "stopped_by_duration_budget"
     if failed_items > MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES:
         return "stopped_by_failure_budget"
@@ -258,14 +258,23 @@ def _budget_stop_reason(
     return None
 
 
+def manual_sync_execute_max_files_cap() -> int:
+    return int(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES)
+
+
+def manual_sync_execute_max_duration_seconds() -> int:
+    return int(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS)
+
+
 def manual_sync_execute_effective_max_files(max_files: Optional[int]) -> int:
+    cap = manual_sync_execute_max_files_cap()
     if max_files is None:
-        return MANUAL_SYNC_EXECUTE_MAX_FILES
+        return cap
     effective = int(max_files)
-    if effective > MANUAL_SYNC_EXECUTE_MAX_FILES:
+    if effective > cap:
         raise ManualSyncExecuteError(
             "manual_sync_execute_max_files_exceeded",
-            f"S3A-M1 manual sync execute is capped at {MANUAL_SYNC_EXECUTE_MAX_FILES} files.",
+            f"Manual sync execute is capped at {cap} files.",
             status_code=400,
         )
     return max(1, effective)
@@ -289,7 +298,7 @@ def _public_request_payload(
         "root_id": root_id,
         "max_files": max_files,
         "effective_max_files": effective_max_files,
-        "execute_max_files_cap": MANUAL_SYNC_EXECUTE_MAX_FILES,
+        "execute_max_files_cap": manual_sync_execute_max_files_cap(),
         "hydrated_only": hydrated_only,
         "stable_age_seconds": stable_age_seconds,
         "expected_plan_hash": expected_plan_hash,
@@ -1236,6 +1245,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             rel = relative_path
             metadata: Dict[str, Any] = {}
             current_content_hash = plan_item.get("content_hash")
+            state = str(plan_item.get("state") or "failed")
             source_file: Optional[Path] = None
             item_failure_reason: Optional[str] = None
             try:
@@ -1246,7 +1256,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 else:
                     metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
                     item_failure_reason = _manual_public_reason_code(preflight_reason)
-                    if item_failure_reason is None:
+                    if item_failure_reason is None and state == "import_planned":
                         current_hash, hash_reason = _calculate_manual_plan_file_hash(
                             source_file,
                             max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)),
@@ -1273,7 +1283,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 content_hash=str(current_content_hash) if current_content_hash else None,
             )
 
-            state = str(plan_item.get("state") or "failed")
             reason = _manual_public_reason_code(plan_item.get("reason"))
             if item_failure_reason:
                 failure_metadata = {**metadata, "safe_label": plan_item.get("safe_label")}

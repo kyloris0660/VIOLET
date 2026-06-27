@@ -641,6 +641,16 @@ class Settings:
         return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES", "1000")))
 
     @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES(self) -> int:
+        """Hard cap for guarded manual sync execute requests.
+
+        S3A-M1 defaults to 5. Later approved production delta phases can raise
+        this explicitly through the runtime environment without removing the
+        fail-closed cap.
+        """
+        return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES", "5")))
+
+    @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS(self) -> int:
         """Files newer than this are deferred as still-changing in manual plans."""
         return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS", "2")))
