@@ -133,6 +133,9 @@ def test_update_check_persists_pending_counts_and_repeated_runs_are_idempotent(d
     assert first["deferred_items"] == 2
     assert first["pending_summary"]["pending_new"] == 2
     assert first["pending_summary"]["pending_deferred"] == 2
+    assert first["pending_summary"]["pending_deferred_scope"] == "historical_accumulated_active_source_roots"
+    assert first["pending_summary"]["pending_deferred_includes_historical"] is True
+    assert first["pending_summary"]["current_actionable_pending_import"] == 2
     assert first["pending_summary"]["threshold"] == 100
     assert first["pending_summary"]["threshold_reached"] is False
     assert db.query(DynamicSourceItem).count() == 4

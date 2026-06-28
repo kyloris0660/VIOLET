@@ -1857,6 +1857,10 @@ class AdminPanel {
         setText('dynamic-sync-pending-new', pending.pending_new || 0);
         setText('dynamic-sync-pending-changed', pending.pending_changed || 0);
         setText('dynamic-sync-pending-deferred', pending.pending_deferred || 0);
+        const deferredScopeLabel = pending.pending_deferred_includes_historical
+            ? this._dynamicSyncT('admin.dynamic_library_sync.pending_deferred_historical_scope', 'Historical active-root inventory')
+            : this._dynamicSyncT('admin.dynamic_library_sync.pending_deferred_current_scope', 'Current blockers');
+        setText('dynamic-sync-pending-deferred-scope', deferredScopeLabel);
         setText('dynamic-sync-threshold', pending.threshold || 100);
         const thresholdStatus = pending.threshold_reached
             ? this._dynamicSyncT('admin.dynamic_library_sync.threshold_reached', 'Reached')
@@ -1875,7 +1879,15 @@ class AdminPanel {
             if (pending.threshold_reached || warnings.length || blockers.length) {
                 warning.classList.remove('hidden');
                 const parts = [];
-                if (pending.threshold_reached) parts.push(this._dynamicSyncT('admin.dynamic_library_sync.threshold_warning', 'Pending threshold reached.'));
+                if (pending.threshold_reached) {
+                    const thresholdKey = pending.pending_deferred_includes_historical
+                        ? 'admin.dynamic_library_sync.threshold_warning_historical'
+                        : 'admin.dynamic_library_sync.threshold_warning';
+                    const thresholdFallback = pending.pending_deferred_includes_historical
+                        ? 'Historical deferred/failed inventory reached threshold; use the dry-run plan for current delta counts.'
+                        : 'Pending threshold reached.';
+                    parts.push(this._dynamicSyncT(thresholdKey, thresholdFallback));
+                }
                 if (blockers.length) parts.push(`Blockers: ${blockers.join(', ')}`);
                 if (warnings.length) parts.push(`Warnings: ${warnings.join(', ')}`);
                 warning.textContent = parts.join(' ');
